@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-./lib/idp_common_pkg[appsync, evaluation]
-=======
 ./lib/idp_common_pkg[evaluation,appsync]  # Evaluation module and AppSync with dependencies
->>>>>>> origin/develop
