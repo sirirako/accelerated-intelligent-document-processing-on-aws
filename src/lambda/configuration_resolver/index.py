@@ -94,10 +94,27 @@ def stringify_values(obj):
         # Convert everything to string, except None values
         return str(obj) if obj is not None else None
 
+def deep_merge(target, source):
+    """
+    Deep merge two dictionaries
+    """
+    result = target.copy()
+    
+    if not source:
+        return result
+    
+    for key, value in source.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    
+    return result
+
 def handle_update_configuration(custom_config):
     """
     Handle the updateConfiguration GraphQL mutation
-    Updates the Custom configuration item in DynamoDB
+    Updates the Custom or Default configuration item in DynamoDB
     """
     try:
         # Handle empty configuration case
@@ -117,18 +134,49 @@ def handle_update_configuration(custom_config):
         else:
             custom_config_obj = custom_config
         
-        # Convert all values to strings to ensure compatibility with DynamoDB
-        stringified_config = stringify_values(custom_config_obj)
+        # Check if this should be saved as default
+        save_as_default = custom_config_obj.pop('saveAsDefault', False)
         
-        # Update the Custom configuration in DynamoDB
-        response = table.put_item(
-            Item={
-                'Configuration': 'Custom',
-                **stringified_config
-            }
-        )
+        if save_as_default:
+            # Get current default configuration
+            default_item = get_configuration_item('Default')
+            current_default = remove_configuration_key(default_item) if default_item else {}
+            
+            # Merge custom changes with current default to create new complete default
+            new_default_config = deep_merge(current_default, custom_config_obj)
+            
+            # Convert to strings for DynamoDB
+            stringified_default = stringify_values(new_default_config)
+            
+            # Save new default configuration
+            table.put_item(
+                Item={
+                    'Configuration': 'Default',
+                    **stringified_default
+                }
+            )
+            
+            # Clear custom configuration
+            table.put_item(
+                Item={
+                    'Configuration': 'Custom'
+                }
+            )
+            
+            logger.info(f"Updated Default configuration and cleared Custom: {json.dumps(stringified_default)}")
+        else:
+            # Normal custom config update
+            stringified_config = stringify_values(custom_config_obj)
+            
+            table.put_item(
+                Item={
+                    'Configuration': 'Custom',
+                    **stringified_config
+                }
+            )
+            
+            logger.info(f"Updated Custom configuration: {json.dumps(stringified_config)}")
         
-        logger.info(f"Updated Custom configuration: {json.dumps(stringified_config)}")
         return True
         
     except json.JSONDecodeError as e:

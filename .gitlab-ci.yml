@@ -46,11 +46,11 @@ developer_tests:
 
 integration_tests:
   stage: integration_tests
-  variables:
-    # In order to run tests in another account, add a AWS_CREDS_TARGET_ROLE variable to the Gitlab pipeline variables.
-    AWS_CREDS_TARGET_ROLE: ${AWS_CREDS_TARGET_ROLE}
-    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-    IDP_ACCOUNT_ID: ${IDP_ACCOUNT_ID}
+  # variables:
+  #   # In order to run tests in another account, add a AWS_CREDS_TARGET_ROLE variable to the Gitlab pipeline variables.
+  #   AWS_CREDS_TARGET_ROLE: ${AWS_CREDS_TARGET_ROLE}
+  #   AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+  #   IDP_ACCOUNT_ID: ${IDP_ACCOUNT_ID}
   
   # Add rules to only run on develop branch
   rules:

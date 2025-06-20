@@ -13,6 +13,9 @@ import {
   Form,
   SegmentedControl,
   Modal,
+  FormField,
+  Input,
+  RadioGroup,
 } from '@awsui/components-react';
 import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
@@ -42,6 +45,11 @@ const ConfigurationLayout = () => {
   const [validationErrors, setValidationErrors] = useState([]);
   const [viewMode, setViewMode] = useState('form'); // Form view as default
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showSaveAsDefaultModal, setShowSaveAsDefaultModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('json');
+  const [exportFileName, setExportFileName] = useState('configuration');
+  const [importError, setImportError] = useState(null);
 
   const editorRef = useRef(null);
 
@@ -473,7 +481,7 @@ const ConfigurationLayout = () => {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (saveAsDefault = false) => {
     // Validate content before saving
     const currentErrors = validateCurrentContent();
 
@@ -580,95 +588,106 @@ const ConfigurationLayout = () => {
         return newResult;
       };
 
-      // Create our customized config by comparing with defaults
-      const differences = compareWithDefault(formValues, defaultConfig);
+      let configToSave;
 
-      // Flatten path results into a proper object structure - revised to avoid ESLint errors
-      const buildObjectFromPaths = (paths) => {
-        // Create a fresh result object
-        const newResult = {};
+      if (saveAsDefault) {
+        // When saving as default, save the entire current configuration
+        configToSave = { ...formValues, saveAsDefault: true };
+        console.log('Saving entire config as new default:', configToSave);
+      } else {
+        // Create our customized config by comparing with defaults
+        const differences = compareWithDefault(formValues, defaultConfig);
 
-        Object.entries(paths).forEach(([path, value]) => {
-          if (!path) return; // Skip empty paths
+        // Flatten path results into a proper object structure - revised to avoid ESLint errors
+        const buildObjectFromPaths = (paths) => {
+          // Create a fresh result object
+          const newResult = {};
 
-          // For paths with dots, build nested structure
-          if (path.includes('.') || path.includes('[')) {
-            // Handle array notation
-            if (path.includes('[')) {
-              // Arrays need special handling
-              // This is simplified - we'll include the whole array when it's customized
-              const arrayPath = path.split('[')[0];
-              if (!Object.prototype.hasOwnProperty.call(newResult, arrayPath)) {
-                // Find the array in formValues
-                const arrayValue = path.split('.').reduce((acc, part) => {
-                  if (!acc) return undefined;
-                  return acc[part.replace(/\[\d+\]$/, '')];
-                }, formValues);
+          Object.entries(paths).forEach(([path, value]) => {
+            if (!path) return; // Skip empty paths
 
-                if (arrayValue) {
-                  // Create a new object with this property
-                  Object.assign(newResult, { [arrayPath]: arrayValue });
+            // For paths with dots, build nested structure
+            if (path.includes('.') || path.includes('[')) {
+              // Handle array notation
+              if (path.includes('[')) {
+                // Arrays need special handling
+                // This is simplified - we'll include the whole array when it's customized
+                const arrayPath = path.split('[')[0];
+                if (!Object.prototype.hasOwnProperty.call(newResult, arrayPath)) {
+                  // Find the array in formValues
+                  const arrayValue = path.split('.').reduce((acc, part) => {
+                    if (!acc) return undefined;
+                    return acc[part.replace(/\[\d+\]$/, '')];
+                  }, formValues);
+
+                  if (arrayValue) {
+                    // Create a new object with this property
+                    Object.assign(newResult, { [arrayPath]: arrayValue });
+                  }
                 }
+              } else {
+                // Regular object paths
+                const parts = path.split('.');
+
+                // Build an object to merge
+                const objectToMerge = {};
+                let current = objectToMerge;
+
+                // Build nested structure without modifying existing objects
+                for (let i = 0; i < parts.length - 1; i += 1) {
+                  // Use += 1 instead of ++
+                  current[parts[i]] = {};
+                  current = current[parts[i]];
+                }
+
+                // Set the value at the final path
+                current[parts[parts.length - 1]] = value;
+
+                // Deep merge this into result
+                const deepMerge = (target, source) => {
+                  const output = { ...target };
+
+                  Object.keys(source).forEach((key) => {
+                    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                      if (target[key] && typeof target[key] === 'object') {
+                        output[key] = deepMerge(target[key], source[key]);
+                      } else {
+                        output[key] = { ...source[key] };
+                      }
+                    } else {
+                      output[key] = source[key];
+                    }
+                  });
+
+                  return output;
+                };
+
+                // Merge into result without modifying original objects
+                Object.assign(newResult, deepMerge(newResult, objectToMerge));
               }
             } else {
-              // Regular object paths
-              const parts = path.split('.');
-
-              // Build an object to merge
-              const objectToMerge = {};
-              let current = objectToMerge;
-
-              // Build nested structure without modifying existing objects
-              for (let i = 0; i < parts.length - 1; i += 1) {
-                // Use += 1 instead of ++
-                current[parts[i]] = {};
-                current = current[parts[i]];
-              }
-
-              // Set the value at the final path
-              current[parts[parts.length - 1]] = value;
-
-              // Deep merge this into result
-              const deepMerge = (target, source) => {
-                const output = { ...target };
-
-                Object.keys(source).forEach((key) => {
-                  if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-                    if (target[key] && typeof target[key] === 'object') {
-                      output[key] = deepMerge(target[key], source[key]);
-                    } else {
-                      output[key] = { ...source[key] };
-                    }
-                  } else {
-                    output[key] = source[key];
-                  }
-                });
-
-                return output;
-              };
-
-              // Merge into result without modifying original objects
-              Object.assign(newResult, deepMerge(newResult, objectToMerge));
+              // For top-level values, create a new object with the property
+              Object.assign(newResult, { [path]: value });
             }
-          } else {
-            // For top-level values, create a new object with the property
-            Object.assign(newResult, { [path]: value });
-          }
-        });
+          });
 
-        return newResult;
-      };
+          return newResult;
+        };
 
-      // Convert the difference paths to a proper nested structure
-      Object.assign(customConfigToSave, buildObjectFromPaths(differences));
-
-      console.log('Saving customized config:', customConfigToSave);
+        // Convert the difference paths to a proper nested structure
+        Object.assign(customConfigToSave, buildObjectFromPaths(differences));
+        configToSave = customConfigToSave;
+        console.log('Saving customized config:', configToSave);
+      }
 
       // Make sure we send at least the Info field, even if no customizations
-      const success = await updateConfiguration(customConfigToSave);
+      const success = await updateConfiguration(configToSave);
 
       if (success) {
         setSaveSuccess(true);
+        if (saveAsDefault) {
+          setShowSaveAsDefaultModal(false);
+        }
         // Force a refresh of the configuration to ensure UI is in sync with backend
         setTimeout(() => {
           fetchConfiguration();
@@ -749,6 +768,71 @@ const ConfigurationLayout = () => {
     }
   };
 
+  const handleExport = () => {
+    try {
+      let content;
+      let mimeType;
+      let fileExtension;
+
+      if (exportFormat === 'yaml') {
+        content = yaml.dump(mergedConfig);
+        mimeType = 'text/yaml';
+        fileExtension = 'yaml';
+      } else {
+        content = JSON.stringify(mergedConfig, null, 2);
+        mimeType = 'application/json';
+        fileExtension = 'json';
+      }
+
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${exportFileName}.${fileExtension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setShowExportModal(false);
+    } catch (err) {
+      setSaveError(`Export failed: ${err.message}`);
+    }
+  };
+
+  const handleImport = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        setImportError(null);
+        let importedConfig;
+        const content = e.target.result;
+
+        if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
+          importedConfig = yaml.load(content);
+        } else {
+          importedConfig = JSON.parse(content);
+        }
+
+        if (importedConfig && typeof importedConfig === 'object') {
+          handleFormChange(importedConfig);
+          setSaveSuccess(false);
+          setSaveError(null);
+        } else {
+          setImportError('Invalid configuration file format');
+        }
+      } catch (err) {
+        setImportError(`Import failed: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+    // Clear the input value to allow re-importing the same file
+    const input = event.target;
+    input.value = '';
+  };
+
   if (loading) {
     return (
       <Container header={<Header variant="h2">Configuration</Header>}>
@@ -810,6 +894,74 @@ const ConfigurationLayout = () => {
         </Box>
       </Modal>
 
+      <Modal
+        visible={showSaveAsDefaultModal}
+        onDismiss={() => setShowSaveAsDefaultModal(false)}
+        header="Save as New Default"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowSaveAsDefaultModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => handleSave(true)} loading={isSaving}>
+                Save as Default
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="m">
+          <Box variant="span">
+            Are you sure you want to save the current configuration as the new default? This will replace the existing
+            default configuration and cannot be undone.
+          </Box>
+          <Alert type="warning" header="Important: Version upgrade considerations">
+            The default configuration may be overwritten when you update the solution to a new version. We recommend
+            using the Export button to download and save your configuration so you can easily restore it after an
+            upgrade if needed.
+          </Alert>
+        </SpaceBetween>
+      </Modal>
+
+      <Modal
+        visible={showExportModal}
+        onDismiss={() => setShowExportModal(false)}
+        header="Export Configuration"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowExportModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleExport}>
+                Export
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="l">
+          <FormField label="File format">
+            <RadioGroup
+              value={exportFormat}
+              onChange={({ detail }) => setExportFormat(detail.value)}
+              items={[
+                { value: 'json', label: 'JSON' },
+                { value: 'yaml', label: 'YAML' },
+              ]}
+            />
+          </FormField>
+          <FormField label="File name">
+            <Input
+              value={exportFileName}
+              onChange={({ detail }) => setExportFileName(detail.value)}
+              placeholder="configuration"
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
+
       <Container
         header={
           <Header
@@ -835,10 +987,26 @@ const ConfigurationLayout = () => {
                     Format YAML
                   </Button>
                 )}
+                <Button variant="normal" onClick={() => setShowExportModal(true)}>
+                  Export
+                </Button>
+                <Button variant="normal" onClick={() => document.getElementById('import-file').click()}>
+                  Import
+                </Button>
+                <input
+                  id="import-file"
+                  type="file"
+                  accept=".json,.yaml,.yml"
+                  style={{ display: 'none' }}
+                  onChange={handleImport}
+                />
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)
                 </Button>
-                <Button variant="primary" onClick={handleSave} loading={isSaving}>
+                <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)}>
+                  Save as default
+                </Button>
+                <Button variant="primary" onClick={() => handleSave(false)} loading={isSaving}>
                   Save changes
                 </Button>
               </SpaceBetween>
@@ -863,6 +1031,12 @@ const ConfigurationLayout = () => {
           {saveError && (
             <Alert type="error" dismissible onDismiss={() => setSaveError(null)} header="Error saving configuration">
               {saveError}
+            </Alert>
+          )}
+
+          {importError && (
+            <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import error">
+              {importError}
             </Alert>
           )}
 

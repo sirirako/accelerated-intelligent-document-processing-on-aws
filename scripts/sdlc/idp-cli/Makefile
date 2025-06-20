@@ -1,11 +1,11 @@
 IDP_ACCOUNT_ID?=715841340161
 AWS_REGION?=us-east-1
-IDP_ADMIN_EMAIL?=vincilb@amazon.com
+IDP_ADMIN_EMAIL?=strahanr@amazon.com
 IDP_CWD?=../../../
 DEBUG?=True
 
 INSTALL_BUCKET?=none
-SDLC_SOURCE_CODE_BUCKET?=idp-sdlc-source-code-$(IDP_ACCOUNT_ID)-$(AWS_REGION)
+SDLC_SOURCE_CODE_BUCKET?=idp-sdlc-sourcecode-$(IDP_ACCOUNT_ID)-$(AWS_REGION)
 IDP_CFN_PREFIX?=idp-dev
 IDP_STACK_NAME?=$(IDP_CFN_PREFIX)
 IDP_PIPELINE_NAME?=idp-sdlc-deploy-pipeline

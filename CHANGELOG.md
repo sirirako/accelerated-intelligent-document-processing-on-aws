@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
+- **Enhanced Configuration Management**
+  - **Save as Default**: New button to save current configuration as the new default baseline with confirmation modal and version upgrade warnings
+  - **Export Configuration**: Export current configuration to local files in JSON or YAML format with customizable filename
+  - **Import Configuration**: Import configuration from local JSON or YAML files with automatic format detection and validation
+  - Enhanced Lambda resolver with deep merge functionality for proper default configuration updates
+  - Automatic custom configuration reset when saving as default to maintain clean state
 - **Nested Attribute Groups and Lists Support**
   - Enhanced document configuration schema to support complex nested attribute structures with three attribute types:
     - **Simple attributes**: Single-value extractions (existing behavior)

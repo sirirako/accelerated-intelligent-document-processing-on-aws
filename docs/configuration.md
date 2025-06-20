@@ -18,6 +18,13 @@ The web interface allows real-time configuration updates without stack redeploym
 - **Evaluation Methods**: Set evaluation methods and thresholds for each attribute
 - **Summarization**: Configure model, prompts, and parameters for document summarization (when `IsSummarizationEnabled` is true)
 
+### Configuration Management Features
+
+- **Save as Default**: Save your current configuration as the new default baseline. This replaces the existing default configuration and automatically clears custom overrides. **Warning**: Default configurations may be overwritten during solution upgrades - export your configuration first for backup.
+- **Export Configuration**: Download your current configuration to local files in JSON or YAML format with customizable filenames. Use this to backup configurations before upgrades or share configurations between environments.
+- **Import Configuration**: Upload configuration files from your local machine in JSON or YAML format. The system automatically detects the file format and validates the configuration before applying changes.
+- **Restore Default**: Reset all configuration settings back to the original default values, removing all customizations.
+
 Configuration changes are validated and applied immediately, with rollback capability if issues arise. See [web-ui.md](web-ui.md) for details on using the administration interface.
 
 ## Stack Parameters

@@ -279,6 +279,7 @@ class S3Util:
                             file_path = os.path.join(root, file)
                             zipf.write(file_path, os.path.relpath(file_path, absolute_path))
                 
+                temp_zip.flush()
                 temp_zip_path = temp_zip.name
 
             # Upload the ZIP file
