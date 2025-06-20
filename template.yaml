@@ -97,8 +97,8 @@ Parameters:
     Default: "default"
     AllowedValues:
       - "default"
+      - "bank-statement-sample"
       - "few_shot_example_with_multimodal_page_classification"
-      - "medical_records_summarization"
     Description: Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
   Pattern2CustomClassificationModelARN:
@@ -856,6 +856,7 @@ Resources:
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         UDOPModelArtifactPath: !Ref Pattern3UDOPModelArtifactPath
         IsSummarizationEnabled: !Ref IsSummarizationEnabled
+        IsAssessmentEnabled: !Ref IsAssessmentEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn

@@ -43,7 +43,7 @@ The Evaluation Service component provides functionality to evaluate document ext
 from idp_common.models import Document, Status
 from idp_common import ocr, classification, extraction, evaluation
 
-# Get configuration (with evaluation methods specified)
+# Get configuration (with evaluation methods specified for all attribute types)
 config = {
     "evaluation": {
         "llm_method": {
@@ -56,53 +56,87 @@ config = {
     },
     "classes": [
         {
-            "name": "invoice",
+            "name": "Bank Statement",
             "attributes": [
+                # Simple Attributes
                 {
-                    "name": "invoice_number",
-                    "description": "The unique identifier for the invoice",
-                    "evaluation_method": "EXACT"  # Use exact string matching
+                    "name": "Account Number",
+                    "description": "Primary account identifier",
+                    "attributeType": "simple",  # or omit for default
+                    "evaluation_method": "EXACT"
                 },
                 {
-                    "name": "amount_due",
-                    "description": "The total amount to be paid",
-                    "evaluation_method": "NUMERIC_EXACT"  # Use numeric comparison
+                    "name": "Statement Period",
+                    "description": "Statement period (e.g., January 2024)",
+                    "attributeType": "simple",
+                    "evaluation_method": "FUZZY",
+                    "evaluation_threshold": 0.8
                 },
+                
+                # Group Attributes - nested object structures
                 {
-                    "name": "vendor_name",
-                    "description": "Name of the vendor",
-                    "evaluation_method": "FUZZY",  # Use fuzzy matching
-                    "evaluation_threshold": 0.8  # Minimum similarity threshold
+                    "name": "Account Holder Address",
+                    "description": "Complete address information for the account holder",
+                    "attributeType": "group",
+                    "groupAttributes": [
+                        {
+                            "name": "Street Number",
+                            "description": "House or building number",
+                            "evaluation_method": "FUZZY",
+                            "evaluation_threshold": 0.9
+                        },
+                        {
+                            "name": "Street Name",
+                            "description": "Name of the street",
+                            "evaluation_method": "FUZZY",
+                            "evaluation_threshold": 0.8
+                        },
+                        {
+                            "name": "City",
+                            "description": "City name",
+                            "evaluation_method": "FUZZY",
+                            "evaluation_threshold": 0.9
+                        },
+                        {
+                            "name": "State",
+                            "description": "State abbreviation",
+                            "evaluation_method": "EXACT"
+                        },
+                        {
+                            "name": "ZIP Code",
+                            "description": "Postal code",
+                            "evaluation_method": "EXACT"
+                        }
+                    ]
                 },
+                
+                # List Attributes - arrays of items with consistent structure
                 {
-                    "name": "line_items",
-                    "description": "List of items in the invoice",
-                    "evaluation_method": "SEMANTIC",  # Use embedding-based semantic matching
-                    "evaluation_threshold": 0.8  # Minimum similarity threshold
-                },
-                {
-                    "name": "transaction_list",
-                    "description": "List of transactions from the invoice",
-                    "evaluation_method": "HUNGARIAN",  # Use Hungarian algorithm for list matching
-                    "hungarian_comparator": "EXACT"  # Use exact string comparison (default)
-                },
-                {
-                    "name": "payment_methods",
-                    "description": "List of payment methods accepted",
-                    "evaluation_method": "HUNGARIAN",  # Use Hungarian algorithm with fuzzy matching
-                    "hungarian_comparator": "FUZZY",  # Use fuzzy string comparison
-                    "evaluation_threshold": 0.7  # Similarity threshold for fuzzy matching
-                },
-                {
-                    "name": "amounts",
-                    "description": "List of monetary amounts",
-                    "evaluation_method": "HUNGARIAN",  # Use Hungarian algorithm with numeric matching
-                    "hungarian_comparator": "NUMERIC"  # Use numeric comparison after normalization
-                },
-                {
-                    "name": "notes",
-                    "description": "Additional notes about the invoice",
-                    "evaluation_method": "LLM"  # Use LLM-based evaluation (default method, also used when evaluation_method is missing)
+                    "name": "Transactions",
+                    "description": "List of all transactions in the statement period",
+                    "attributeType": "list",
+                    "listItemTemplate": {
+                        "itemDescription": "Individual transaction record",
+                        "itemAttributes": [
+                            {
+                                "name": "Date",
+                                "description": "Transaction date",
+                                "evaluation_method": "FUZZY",
+                                "evaluation_threshold": 0.9
+                            },
+                            {
+                                "name": "Description",
+                                "description": "Transaction description or merchant name",
+                                "evaluation_method": "SEMANTIC",
+                                "evaluation_threshold": 0.7
+                            },
+                            {
+                                "name": "Amount",
+                                "description": "Transaction amount",
+                                "evaluation_method": "NUMERIC_EXACT"
+                            }
+                        ]
+                    }
                 }
             ]
         }
@@ -303,3 +337,210 @@ The confidence integration is fully backward compatible:
 - Reports without assessment data show "N/A" for confidence columns
 - Evaluation logic remains unchanged when confidence data is absent
 - Existing evaluation workflows continue to work without modification
+
+## Nested Structure Support
+
+The evaluation service fully supports nested document structures including group attributes and list attributes. The service automatically processes these complex structures by flattening them into individual evaluable fields while preserving the configured evaluation methods.
+
+### Attribute Types and Processing
+
+#### Simple Attributes
+Basic single-value extractions that are evaluated directly:
+
+```python
+# Configuration
+{
+    "name": "Account Number",
+    "attributeType": "simple",
+    "evaluation_method": "EXACT"
+}
+
+# Flattened attribute name: "Account Number"
+# Evaluation: Direct comparison using EXACT method
+```
+
+#### Group Attributes  
+Nested object structures where each sub-attribute is evaluated individually:
+
+```python
+# Configuration
+{
+    "name": "Account Holder Address",
+    "attributeType": "group",
+    "groupAttributes": [
+        {
+            "name": "Street Number",
+            "evaluation_method": "FUZZY",
+            "evaluation_threshold": 0.9
+        },
+        {
+            "name": "City",
+            "evaluation_method": "FUZZY", 
+            "evaluation_threshold": 0.9
+        }
+    ]
+}
+
+# Flattened attribute names:
+# - "Account Holder Address.Street Number" (FUZZY evaluation)
+# - "Account Holder Address.City" (FUZZY evaluation)
+```
+
+#### List Attributes
+Arrays of items where each item's attributes are evaluated individually:
+
+```python
+# Configuration
+{
+    "name": "Transactions",
+    "attributeType": "list",
+    "listItemTemplate": {
+        "itemAttributes": [
+            {
+                "name": "Date",
+                "evaluation_method": "FUZZY",
+                "evaluation_threshold": 0.9
+            },
+            {
+                "name": "Amount",
+                "evaluation_method": "NUMERIC_EXACT"
+            }
+        ]
+    }
+}
+
+# Flattened attribute names for each transaction:
+# - "Transactions[0].Date" (FUZZY evaluation)
+# - "Transactions[0].Amount" (NUMERIC_EXACT evaluation)
+# - "Transactions[1].Date" (FUZZY evaluation)
+# - "Transactions[1].Amount" (NUMERIC_EXACT evaluation)
+# - And so on for each transaction...
+```
+
+### Data Flattening Process
+
+The evaluation service automatically flattens nested extraction results for comparison:
+
+#### Input Data (Nested)
+```json
+{
+  "Account Number": "1234567890",
+  "Account Holder Address": {
+    "Street Number": "123",
+    "Street Name": "Main St",
+    "City": "Seattle",
+    "State": "WA"
+  },
+  "Transactions": [
+    {
+      "Date": "01/15/2024",
+      "Description": "Coffee Shop",
+      "Amount": "-4.50"
+    },
+    {
+      "Date": "01/16/2024", 
+      "Description": "ATM Withdrawal",
+      "Amount": "-20.00"
+    }
+  ]
+}
+```
+
+#### Flattened Data (For Evaluation)
+```json
+{
+  "Account Number": "1234567890",
+  "Account Holder Address.Street Number": "123",
+  "Account Holder Address.Street Name": "Main St", 
+  "Account Holder Address.City": "Seattle",
+  "Account Holder Address.State": "WA",
+  "Transactions[0].Date": "01/15/2024",
+  "Transactions[0].Description": "Coffee Shop",
+  "Transactions[0].Amount": "-4.50",
+  "Transactions[1].Date": "01/16/2024",
+  "Transactions[1].Description": "ATM Withdrawal", 
+  "Transactions[1].Amount": "-20.00"
+}
+```
+
+### Evaluation Results for Nested Structures
+
+The evaluation service provides detailed results for all flattened attributes:
+
+#### Sample Evaluation Output
+```json
+{
+  "attributes": [
+    {
+      "name": "Account Number",
+      "expected": "1234567890",
+      "actual": "1234567890", 
+      "matched": true,
+      "score": 1.0,
+      "confidence": 0.95,
+      "evaluation_method": "EXACT"
+    },
+    {
+      "name": "Account Holder Address.City",
+      "expected": "Seattle",
+      "actual": "Seattle",
+      "matched": true,
+      "score": 1.0,
+      "confidence": 0.88,
+      "evaluation_method": "FUZZY",
+      "evaluation_threshold": 0.9
+    },
+    {
+      "name": "Transactions[0].Amount",
+      "expected": "-4.50",
+      "actual": "-4.50",
+      "matched": true,
+      "score": 1.0,
+      "confidence": 0.92,
+      "evaluation_method": "NUMERIC_EXACT"
+    },
+    {
+      "name": "Transactions[1].Description", 
+      "expected": "ATM Withdrawal",
+      "actual": "ATM Cash",
+      "matched": true,
+      "score": 0.85,
+      "confidence": 0.87,
+      "evaluation_method": "SEMANTIC",
+      "evaluation_threshold": 0.7
+    }
+  ]
+}
+```
+
+#### Markdown Report for Nested Structures
+```markdown
+| Status | Attribute | Expected | Actual | Confidence | Score | Method | Reason |
+| :----: | --------- | -------- | ------ | :--------: | ----- | ------ | ------ |
+| ✅ | Account Number | 1234567890 | 1234567890 | 0.95 | 1.00 | EXACT | Exact match |
+| ✅ | Account Holder Address.Street Number | 123 | 123 | 0.95 | 1.00 | FUZZY (threshold: 0.9) | Exact match |
+| ✅ | Account Holder Address.City | Seattle | Seattle | 0.88 | 1.00 | FUZZY (threshold: 0.9) | Exact match |
+| ❌ | Account Holder Address.State | WA | Washington | 0.82 | 0.00 | EXACT | Values do not match exactly |
+| ✅ | Transactions[0].Date | 01/15/2024 | 01/15/2024 | 0.94 | 1.00 | FUZZY (threshold: 0.9) | Exact match |
+| ✅ | Transactions[0].Amount | -4.50 | -4.50 | 0.92 | 1.00 | NUMERIC_EXACT | Exact numeric match |
+| ✅ | Transactions[1].Description | ATM Withdrawal | ATM Cash | 0.87 | 0.85 | SEMANTIC (threshold: 0.7) | Semantically similar |
+```
+
+### Benefits of Nested Structure Support
+
+1. **Granular Analysis**: Individual evaluation of each nested field provides precise insights
+2. **Flexible Configuration**: Different evaluation methods can be applied to different parts of nested structures
+3. **Comprehensive Coverage**: All attributes in complex documents are evaluated, regardless of nesting level
+4. **Pattern Recognition**: Identify consistent issues with specific nested attributes (e.g., address parsing problems)
+5. **Scalable Processing**: Handles documents with varying numbers of list items efficiently
+6. **Detailed Reporting**: Clear attribution of evaluation results to specific nested fields
+
+### Use Cases for Nested Evaluation
+
+- **Bank Statements**: Evaluate account details (group) and individual transactions (list)
+- **Invoices**: Evaluate vendor information (group) and line items (list)
+- **Medical Records**: Evaluate patient information (group) and procedures/medications (lists)
+- **Legal Documents**: Evaluate parties (group) and clauses/terms (lists)
+- **Financial Reports**: Evaluate company info (group) and financial line items (lists)
+
+The nested structure support enables comprehensive evaluation of complex documents while maintaining the flexibility to apply appropriate evaluation methods to each type of data within the document.

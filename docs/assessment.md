@@ -13,6 +13,359 @@ The Assessment feature provides automated confidence evaluation of document extr
 - **Per-Attribute Scoring**: Provides individual confidence scores and explanations for each extracted attribute
 - **Token-Optimized Processing**: Uses condensed text confidence data for 80-90% token reduction compared to full OCR results
 - **UI Integration**: Seamlessly displays assessment results in the web interface with explainability information
+- **Confidence Threshold Support**: Configurable global and per-attribute confidence thresholds with color-coded visual indicators
+- **Enhanced Visual Feedback**: Real-time confidence assessment with green/red/black color coding in all data viewing interfaces
+- **Optional Deployment**: Controlled by `IsAssessmentEnabled` parameter (defaults to false for cost optimization)
+- **Flexible Image Usage**: Images only processed when explicitly requested via `{DOCUMENT_IMAGE}` placeholder
+
+## Architecture
+
+### Assessment Workflow
+
+1. **Post-Extraction Processing**: Assessment runs after successful extraction within the same state machine
+2. **Document Analysis**: LLM analyzes extraction results against source document text and optionally images
+3. **Confidence Scoring**: Generates confidence scores (0.0-1.0) with explanatory reasoning for each attribute
+4. **Result Integration**: Appends assessment data to existing extraction results in `explainability_info` format
+5. **UI Display**: Assessment results automatically appear in the web interface visual editor
+
+### State Machine Integration
+
+The assessment step is conditionally integrated into Pattern-2's ProcessSections map state:
+
+```json
+{
+  "AssessSection": {
+    "Type": "Task",
+    "Resource": "arn:aws:states:::lambda:invoke",
+    "Parameters": {
+      "FunctionName": "${AssessmentFunction}",
+      "Payload": {
+        "document.$": "$.document",
+        "section_id.$": "$.section_id"
+      }
+    },
+    "End": true
+  }
+}
+```
+
+## Configuration
+
+### Deployment Parameter
+
+Enable assessment during stack deployment:
+
+```yaml
+Parameters:
+  IsAssessmentEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable assessment functionality for extraction confidence evaluation
+```
+
+### Assessment Configuration Section
+
+Add the assessment section to your configuration YAML:
+
+```yaml
+assessment:
+  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  temperature: 0
+  top_k: 5
+  top_p: 0.1
+  max_tokens: 4096
+  system_prompt: |
+    You are an expert document analyst specializing in assessing the confidence and accuracy of document extraction results.
+  task_prompt: |
+    Assess the confidence of the following extraction results by analyzing them against the source document.
+    
+    Document Class: {DOCUMENT_CLASS}
+    
+    Extraction Results to Assess:
+    {EXTRACTION_RESULTS}
+    
+    Attribute Definitions:
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    
+    Source Document Text:
+    {DOCUMENT_TEXT}
+    
+    OCR Confidence Data:
+    {OCR_TEXT_CONFIDENCE}
+    
+    {DOCUMENT_IMAGE}
+    
+    Provide a confidence assessment for each extracted attribute as a JSON object with this format:
+    {
+      "attribute_name": {
+        "confidence": 0.85,
+        "confidence_reason": "Clear text match found in document with high OCR confidence"
+      }
+    }
+```
+
+### Prompt Placeholders
+
+The assessment prompts support the following placeholders:
+
+| Placeholder | Description |
+|-------------|-------------|
+| `{DOCUMENT_CLASS}` | The classified document type |
+| `{EXTRACTION_RESULTS}` | JSON string of extraction results to assess |
+| `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` | Formatted list of attribute names and descriptions |
+| `{DOCUMENT_TEXT}` | Full document text (markdown) from OCR |
+| `{OCR_TEXT_CONFIDENCE}` | Condensed OCR confidence data (80-90% token reduction) |
+| `{DOCUMENT_IMAGE}` | **Optional** - Inserts document images at specified position |
+
+### Image Processing with DOCUMENT_IMAGE
+
+The `{DOCUMENT_IMAGE}` placeholder enables precise control over image inclusion:
+
+#### Text-Only Assessment (Default)
+```yaml
+task_prompt: |
+  Assess extraction results based on document text and OCR confidence data:
+  
+  Document Text: {DOCUMENT_TEXT}
+  OCR Confidence: {OCR_TEXT_CONFIDENCE}
+  Extraction Results: {EXTRACTION_RESULTS}
+```
+
+#### Multimodal Assessment
+```yaml
+task_prompt: |
+  Assess extraction results by analyzing both text and visual document content:
+  
+  Document Text: {DOCUMENT_TEXT}
+  
+  {DOCUMENT_IMAGE}
+  
+  Based on the above document image and text, assess these extraction results:
+  {EXTRACTION_RESULTS}
+```
+
+**Important**: Images are only processed when the `{DOCUMENT_IMAGE}` placeholder is explicitly present in the prompt template.
+
+## Output Format
+
+Assessment results are appended to extraction results in the `explainability_info` format expected by the UI. The format varies based on the attribute type defined in your document class configuration.
+
+### Attribute Types and Assessment Formats
+
+The assessment service supports three types of attributes, each with a specific assessment response format:
+
+#### 1. Simple Attributes
+
+For basic single-value extractions like dates, amounts, or names:
+
+**Configuration:**
+```yaml
+attributes:
+  - name: "StatementDate"
+    attributeType: "simple"
+    description: "The date of the bank statement"
+```
+
+**Assessment Response:**
+```json
+{
+  "StatementDate": {
+    "confidence": 0.85,
+    "confidence_reason": "Date clearly visible in statement header"
+  }
+}
+```
+
+#### 2. Group Attributes
+
+For nested object structures with multiple related fields:
+
+**Configuration:**
+```yaml
+attributes:
+  - name: "AccountDetails"
+    attributeType: "group"
+    description: "Bank account information"
+    groupAttributes:
+      - name: "AccountNumber"
+        description: "The account number"
+      - name: "RoutingNumber"
+        description: "The bank routing number"
+```
+
+**Assessment Response:**
+```json
+{
+  "AccountDetails": {
+    "AccountNumber": {
+      "confidence": 0.90,
+      "confidence_reason": "Account number clearly printed in standard location"
+    },
+    "RoutingNumber": {
+      "confidence": 0.75,
+      "confidence_reason": "Routing number visible but slightly blurred"
+    }
+  }
+}
+```
+
+#### 3. List Attributes
+
+For arrays of items, such as transactions in a bank statement:
+
+**Configuration:**
+```yaml
+attributes:
+  - name: "Transactions"
+    attributeType: "list"
+    description: "List of all transactions on the statement"
+    listItemTemplate:
+      itemDescription: "Individual transaction entry"
+      itemAttributes:
+        - name: "Date"
+          description: "Transaction date"
+        - name: "Description"
+          description: "Transaction description"
+        - name: "Amount"
+          description: "Transaction amount"
+```
+
+**Assessment Response:**
+```json
+{
+  "Transactions": [
+    {
+      "Date": {
+        "confidence": 0.95,
+        "confidence_reason": "Date clearly printed in standard format"
+      },
+      "Description": {
+        "confidence": 0.88,
+        "confidence_reason": "Description text is clear and readable"
+      },
+      "Amount": {
+        "confidence": 0.92,
+        "confidence_reason": "Amount aligned in currency column with clear digits"
+      }
+    },
+    {
+      "Date": {
+        "confidence": 0.90,
+        "confidence_reason": "Date visible but slightly smudged"
+      },
+      "Description": {
+        "confidence": 0.85,
+        "confidence_reason": "Description partially cut off but main text readable"
+      },
+      "Amount": {
+        "confidence": 0.94,
+        "confidence_reason": "Amount clearly printed with proper decimal alignment"
+      }
+    }
+  ]
+}
+```
+
+### Complete Example
+
+Here's a complete example showing all three attribute types in a single assessment response:
+
+```json
+{
+  "inference_result": {
+    "StatementDate": "2024-01-31",
+    "AccountDetails": {
+      "AccountNumber": "1234567890",
+      "RoutingNumber": "021000021"
+    },
+    "Transactions": [
+      {
+        "Date": "2024-01-15",
+        "Description": "Direct Deposit - Salary",
+        "Amount": "3500.00"
+      },
+      {
+        "Date": "2024-01-20", 
+        "Description": "ATM Withdrawal",
+        "Amount": "-200.00"
+      }
+    ]
+  },
+  "explainability_info": [
+    {
+      "StatementDate": {
+        "confidence": 0.95,
+        "confidence_reason": "Statement date clearly printed in header",
+        "confidence_threshold": 0.85
+      },
+      "AccountDetails": {
+        "AccountNumber": {
+          "confidence": 0.90,
+          "confidence_reason": "Account number clearly visible in account section",
+          "confidence_threshold": 0.90
+        },
+        "RoutingNumber": {
+          "confidence": 0.85,
+          "confidence_reason": "Routing number printed clearly below account number",
+          "confidence_threshold": 0.90
+        }
+      },
+      "Transactions": [
+        {
+          "Date": {
+            "confidence": 0.95,
+            "confidence_reason": "Transaction date clearly printed",
+            "confidence_threshold": 0.80
+          },
+          "Description": {
+            "confidence": 0.88,
+            "confidence_reason": "Description text is clear and complete",
+            "confidence_threshold": 0.75
+          },
+          "Amount": {
+            "confidence": 0.92,
+            "confidence_reason": "Amount properly aligned in currency format",
+            "confidence_threshold": 0.85
+          }
+        },
+        {
+          "Date": {
+            "confidence": 0.90,
+            "confidence_reason": "Date readable with minor print quality issues",
+            "confidence_threshold": 0.80
+          },
+          "Description": {
+            "confidence": 0.85,
+            "confidence_reason": "Description clear, standard ATM format",
+            "confidence_threshold": 0.75
+          },
+          "Amount": {
+            "confidence": 0.94,
+            "confidence_reason": "Negative amount clearly indicated with proper formatting",
+            "confidence_threshold": 0.85
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "assessment_time_seconds": 4.12,
+    "assessment_parsing_succeeded": true
+  }
+}
+```
+
+### Assessment Response Requirements
+
+**Important Guidelines:**
+
+1. **Match Extraction Structure**: The assessment response must exactly match the structure of the `inference_result`
+2. **List Item Assessment**: For list attributes, assess **each individual item** separately, not as an aggregate
+3. **Nested Confidence**: Group attributes should have confidence assessments for each sub-attribute
+4. **Consistent Format**: Each confidence assessment should include `confidence` (0.0-1.0) and optionally `confidence_reason`
+5. **Threshold Integration**: The system automatically adds `confidence_threshold` values based on configuration
+
 ## Confidence Thresholds
 
 ### Overview

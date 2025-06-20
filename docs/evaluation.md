@@ -94,7 +94,11 @@ EvaluationModelId:
   Description: Model to use for evaluation reports (e.g., "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
 ```
 
-You can also configure evaluation methods for specific document classes and attributes through the solution's configuration. For example:
+You can also configure evaluation methods for specific document classes and attributes through the solution's configuration. The framework supports three types of attributes with different evaluation approaches:
+
+### Simple Attributes
+
+Basic single-value extractions evaluated as individual fields:
 
 ```yaml
 classes:
@@ -102,6 +106,7 @@ classes:
     attributes:
       - name: invoice_number
         description: The unique identifier for the invoice
+        attributeType: simple  # or omit for default
         evaluation_method: EXACT  # Use exact string matching
       - name: amount_due
         description: The total amount to be paid
@@ -111,6 +116,122 @@ classes:
         evaluation_method: FUZZY  # Use fuzzy matching
         evaluation_threshold: 0.8  # Minimum similarity threshold
 ```
+
+### Group Attributes
+
+Nested object structures where each sub-attribute is evaluated individually:
+
+```yaml
+classes:
+  - name: "Bank Statement"
+    attributes:
+      - name: "Account Holder Address"
+        description: "Complete address information for the account holder"
+        attributeType: group
+        groupAttributes:
+          - name: "Street Number"
+            description: "House or building number"
+            evaluation_method: FUZZY
+            evaluation_threshold: 0.9
+          - name: "Street Name"
+            description: "Name of the street"
+            evaluation_method: FUZZY
+            evaluation_threshold: 0.8
+          - name: "City"
+            description: "City name"
+            evaluation_method: FUZZY
+            evaluation_threshold: 0.9
+          - name: "State"
+            description: "State abbreviation (e.g., CA, NY)"
+            evaluation_method: EXACT
+          - name: "ZIP Code"
+            description: "5 or 9 digit postal code"
+            evaluation_method: EXACT
+```
+
+### List Attributes
+
+Arrays of items where each item's attributes are evaluated individually across all list entries:
+
+```yaml
+classes:
+  - name: "Bank Statement"
+    attributes:
+      - name: "Transactions"
+        description: "List of all transactions in the statement period"
+        attributeType: list
+        listItemTemplate:
+          itemDescription: "Individual transaction record"
+          itemAttributes:
+            - name: "Date"
+              description: "Transaction date (MM/DD/YYYY)"
+              evaluation_method: FUZZY
+              evaluation_threshold: 0.9
+            - name: "Description"
+              description: "Transaction description or merchant name"
+              evaluation_method: SEMANTIC
+              evaluation_threshold: 0.7
+            - name: "Amount"
+              description: "Transaction amount (positive for deposits, negative for withdrawals)"
+              evaluation_method: NUMERIC_EXACT
+```
+
+## Attribute Processing and Evaluation
+
+The evaluation framework automatically processes nested structures by flattening them into individual evaluable fields:
+
+### Group Attribute Processing
+
+Group attributes are flattened using dot notation:
+- `Account Holder Address.Street Number` (evaluated with FUZZY method)
+- `Account Holder Address.City` (evaluated with FUZZY method)
+- `Account Holder Address.State` (evaluated with EXACT method)
+
+### List Attribute Processing
+
+List attributes are processed by creating individual evaluations for each array item:
+- `Transactions[0].Date` (evaluated with FUZZY method)
+- `Transactions[0].Amount` (evaluated with NUMERIC_EXACT method)
+- `Transactions[1].Date` (evaluated with FUZZY method)
+- `Transactions[1].Amount` (evaluated with NUMERIC_EXACT method)
+- And so on for each transaction in the list...
+
+### Evaluation Reports for Nested Structures
+
+The evaluation reports provide detailed breakdowns for all nested attributes:
+
+**Group Attribute Results:**
+```
+| Status | Attribute | Expected | Actual | Confidence | Score | Method | Reason |
+| :----: | --------- | -------- | ------ | :--------: | ----- | ------ | ------ |
+| ✅ | Account Holder Address.Street Number | 123 | 123 | 0.95 | 1.00 | FUZZY | Exact match |
+| ✅ | Account Holder Address.City | Seattle | Seattle | 0.88 | 1.00 | FUZZY | Exact match |
+| ❌ | Account Holder Address.State | WA | Washington | 0.82 | 0.00 | EXACT | Values do not match exactly |
+```
+
+**List Attribute Results:**
+```
+| Status | Attribute | Expected | Actual | Confidence | Score | Method | Reason |
+| :----: | --------- | -------- | ------ | :--------: | ----- | ------ | ------ |
+| ✅ | Transactions[0].Date | 01/15/2024 | 01/15/2024 | 0.94 | 1.00 | FUZZY | Exact match |
+| ✅ | Transactions[0].Amount | -25.00 | -25.00 | 0.92 | 1.00 | NUMERIC_EXACT | Exact numeric match |
+| ✅ | Transactions[1].Description | Coffee Shop | Starbucks Coffee | 0.85 | 0.88 | SEMANTIC | Semantically similar |
+```
+
+### Evaluation Metrics for Complex Documents
+
+For documents with nested structures, the evaluation framework provides comprehensive metrics at multiple levels:
+
+1. **Overall Document Metrics**: Aggregate accuracy across all attributes (simple, group, and list)
+2. **Section-Level Metrics**: Performance within each document section
+3. **Attribute-Level Metrics**: Individual performance for each flattened attribute
+4. **Group-Level Insights**: Summary statistics for related attributes within groups
+5. **List-Level Analysis**: Pattern analysis across list items (e.g., transaction accuracy trends)
+
+This multi-level analysis helps identify specific areas for improvement, such as:
+- Consistent issues with certain group attributes (e.g., address parsing)
+- Performance degradation with larger transaction lists
+- Specific list item attributes that frequently fail evaluation
 
 ## Viewing Reports
 

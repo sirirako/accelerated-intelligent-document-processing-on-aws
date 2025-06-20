@@ -172,7 +172,7 @@ For high-volume document processing, consider requesting quota increases for:
 | Amazon Bedrock | On-demand InvokeModel tokens per minute | Varies by model |
 | Amazon Bedrock | On-demand InvokeModel requests per minute | Varies by model |
 | Amazon Bedrock | ApplyGuardrail requests per minute | Varies by region |
-| Amazon Textract | DetectDocumentText transactions per second | 3-5 TPS |
+| Amazon Textract | DetectDocumentText / AnalyzeDocument transactions per second | 10-25 TPS |
 | Amazon SageMaker | Number of endpoints per region | 2-10 endpoints |
 | AWS Lambda | Concurrent executions | 1,000 executions |
 | AWS Step Functions | State transitions per second | 2,000 transitions |

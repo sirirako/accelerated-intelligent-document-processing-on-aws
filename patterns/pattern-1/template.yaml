@@ -148,6 +148,35 @@ Resources:
                 description:
                   type: string
                   description: Class description
+                examples:
+                  type: array
+                  description: Class few-shot examples
+                  listLabel: Few-shot examples
+                  itemLabel: Few-shot example
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - classPrompt
+                      - attributesPrompt
+                      - imagesPath
+                    properties:
+                      name:
+                        type: string
+                        description: Example name
+                        order: 0
+                      classPrompt:
+                        type: string
+                        description: Classification prompt as few-shot classification example for this class
+                        order: 2
+                      attributesPrompt:
+                        type: string
+                        description: Extraction prompt as few-shot attribute value extraction example for this class.
+                        order: 3
+                      imagePath:
+                        type: string
+                        description: Image(s) Path in the Configuration Bucket. Supports single files, or S3 prefixes for folders with multiple images. Optional but recommended for better visual understanding.
+                        order: 4
                 attributes:
                   type: array
                   listLabel: Attributes
@@ -157,7 +186,7 @@ Resources:
                     required:
                       - name
                       - description
-                    properties:
+                      - attributeType
                     properties:
                       name:
                         type: string
@@ -167,31 +196,144 @@ Resources:
                         type: string
                         description: Attribute description
                         order: 1
-                      # Group these fields in a new row with columns for side-by-side display
+                      attributeType:
+                        type: string
+                        description: Type of attribute
+                        enum: ["simple", "group", "list"]
+                        order: 2
+                      # Simple attribute properties (existing fields)
                       evaluation_method:
                         type: string
                         description: Evaluation Method
-                        enum: ["", "LLM", "SEMANTIC", "FUZZY", "HUNGARIAN", "NUMERIC_EXACT", "EXACT"]
-                        order: 2
-                      hungarian_comparator:
-                        type: string
-                        description: "Comparator type for HUNGARIAN method"
-                        enum: ["EXACT", "FUZZY", "NUMERIC"]
+                        enum: ["", "LLM", "SEMANTIC", "FUZZY", "NUMERIC_EXACT", "EXACT"]
                         order: 3
                         dependsOn: {
-                          field: "evaluation_method",
-                          value: "HUNGARIAN"
+                          field: "attributeType",
+                          value: "simple"
                         }
                       evaluation_threshold:
                         type: number
-                        description: Evaluation Threshold - used for SEMANTIC, FUZZY, and HUNGARIAN methods
+                        description: Evaluation Threshold - used for SEMANTIC, and FUZZY methods
                         minimum: 0
                         maximum: 1
-                        order: 4
+                        order: 5
                         dependsOn: {
                           field: "evaluation_method",
-                          values: ["SEMANTIC", "FUZZY", "HUNGARIAN"]
+                          values: ["SEMANTIC", "FUZZY"]
                         }
+                      confidence_threshold:
+                        type: number
+                        description: Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.
+                        minimum: 0
+                        maximum: 1
+                        order: 6
+                        dependsOn: {
+                          field: "attributeType",
+                          value: "simple"
+                        }
+                      # Group-specific properties
+                      groupAttributes:
+                        type: array
+                        listLabel: Group Attributes
+                        itemLabel: Attribute
+                        order: 7
+                        dependsOn: {
+                          field: "attributeType",
+                          value: "group"
+                        }
+                        items:
+                          type: object
+                          required:
+                            - name
+                            - description
+                          properties:
+                            name:
+                              type: string
+                              description: Attribute name
+                              order: 0
+                            description:
+                              type: string
+                              description: Attribute description
+                              order: 1
+                            evaluation_method:
+                              type: string
+                              description: Evaluation Method
+                              enum: ["", "LLM", "SEMANTIC", "FUZZY", "NUMERIC_EXACT", "EXACT"]
+                              order: 2
+                            evaluation_threshold:
+                              type: number
+                              description: Evaluation Threshold - used for SEMANTIC, and FUZZY methods
+                              minimum: 0
+                              maximum: 1
+                              order: 4
+                              dependsOn: {
+                                field: "evaluation_method",
+                                values: ["SEMANTIC", "FUZZY"]
+                              }
+                            confidence_threshold:
+                              type: number
+                              description: Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.
+                              minimum: 0
+                              maximum: 1
+                              order: 5
+                          columns: 2
+                      # List-specific properties
+                      listItemTemplate:
+                        type: object
+                        sectionLabel: List Item Template
+                        order: 8
+                        dependsOn: {
+                          field: "attributeType",
+                          value: "list"
+                        }
+                        required:
+                          - itemAttributes
+                        properties:
+                          itemDescription:
+                            type: string
+                            description: Description of each list item
+                            order: 0
+                          itemAttributes:
+                            type: array
+                            listLabel: Item Attributes
+                            itemLabel: Attribute
+                            order: 1
+                            items:
+                              type: object
+                              required:
+                                - name
+                                - description
+                              properties:
+                                name:
+                                  type: string
+                                  description: Attribute name
+                                  order: 0
+                                description:
+                                  type: string
+                                  description: Attribute description
+                                  order: 1
+                                evaluation_method:
+                                  type: string
+                                  description: Evaluation Method
+                                  enum: ["", "LLM", "SEMANTIC", "FUZZY", "NUMERIC_EXACT", "EXACT"]
+                                  order: 2
+                                evaluation_threshold:
+                                  type: number
+                                  description: Evaluation Threshold - used for SEMANTIC, and FUZZY methods
+                                  minimum: 0
+                                  maximum: 1
+                                  order: 4
+                                  dependsOn: {
+                                    field: "evaluation_method",
+                                    values: ["SEMANTIC", "FUZZY"]
+                                  }
+                                confidence_threshold:
+                                  type: number
+                                  description: Confidence threshold for this specific attribute (0.0 to 1.0). If not set, the default confidence threshold from assessment section will be used.
+                                  minimum: 0
+                                  maximum: 1
+                                  order: 5
+                              columns: 2
                     # This controls the layout of the form fields inside each attribute item
                     columns: 2
           evaluation:

@@ -129,13 +129,11 @@ The text confidence data provides essential information in a minimal format:
   "text_blocks": [
     {
       "text": "INVOICE #12345",
-      "confidence": 98.7,
-      "type": "PRINTED"
+      "confidence": 98.7
     },
     {
       "text": "Date: March 15, 2024",
-      "confidence": 95.2,
-      "type": "PRINTED"
+      "confidence": 95.2
     }
   ]
 }
@@ -167,33 +165,302 @@ assess each extracted field:
 - Automatically limits to 20 images per Bedrock constraints
 - Graceful fallback when images are unavailable
 
-## Assessment Output Structure
+## Attribute Types and Assessment Formats
 
-The service appends assessment results to existing extraction results:
+The assessment service supports three distinct attribute types, each requiring a specific assessment response format. The service automatically detects the attribute type from your document class configuration and handles the assessment processing accordingly.
+
+### 1. Simple Attributes
+
+For basic single-value extractions like dates, amounts, or names.
+
+**Configuration Example:**
+```yaml
+attributes:
+  - name: "InvoiceNumber"
+    attributeType: "simple"  # or omit for default
+    description: "The invoice number from the document"
+  - name: "TotalAmount"
+    attributeType: "simple"
+    description: "The total amount due"
+```
+
+**Expected Assessment Response:**
+```json
+{
+  "InvoiceNumber": {
+    "confidence": 0.92,
+    "confidence_reason": "Invoice number clearly visible in standard location"
+  },
+  "TotalAmount": {
+    "confidence": 0.87,
+    "confidence_reason": "Amount visible but OCR confidence slightly lower due to formatting"
+  }
+}
+```
+
+### 2. Group Attributes
+
+For nested object structures with multiple related fields that are logically grouped together.
+
+**Configuration Example:**
+```yaml
+attributes:
+  - name: "VendorDetails"
+    attributeType: "group"
+    description: "Vendor contact information"
+    groupAttributes:
+      - name: "VendorName"
+        description: "Name of the vendor company"
+      - name: "VendorAddress"
+        description: "Vendor's business address"
+      - name: "VendorPhone"
+        description: "Vendor's contact phone number"
+```
+
+**Expected Assessment Response:**
+```json
+{
+  "VendorDetails": {
+    "VendorName": {
+      "confidence": 0.95,
+      "confidence_reason": "Company name clearly printed in header"
+    },
+    "VendorAddress": {
+      "confidence": 0.88,
+      "confidence_reason": "Address visible with good OCR quality"
+    },
+    "VendorPhone": {
+      "confidence": 0.82,
+      "confidence_reason": "Phone number partially blurred but readable"
+    }
+  }
+}
+```
+
+### 3. List Attributes
+
+For arrays of items where each item has the same structure, such as line items, transactions, or entries.
+
+**Configuration Example:**
+```yaml
+attributes:
+  - name: "LineItems"
+    attributeType: "list"
+    description: "Individual line items on the invoice"
+    listItemTemplate:
+      itemDescription: "A single invoice line item"
+      itemAttributes:
+        - name: "Description"
+          description: "Item description or service name"
+        - name: "Quantity"
+          description: "Number of items or hours"
+        - name: "UnitPrice"
+          description: "Price per unit"
+        - name: "Total"
+          description: "Line item total (quantity × unit price)"
+```
+
+**Expected Assessment Response:**
+```json
+{
+  "LineItems": [
+    {
+      "Description": {
+        "confidence": 0.94,
+        "confidence_reason": "Service description clearly printed"
+      },
+      "Quantity": {
+        "confidence": 0.91,
+        "confidence_reason": "Quantity number easily readable"
+      },
+      "UnitPrice": {
+        "confidence": 0.89,
+        "confidence_reason": "Unit price in standard currency format"
+      },
+      "Total": {
+        "confidence": 0.93,
+        "confidence_reason": "Total amount calculation clearly visible"
+      }
+    },
+    {
+      "Description": {
+        "confidence": 0.87,
+        "confidence_reason": "Description text slightly compressed but readable"
+      },
+      "Quantity": {
+        "confidence": 0.95,
+        "confidence_reason": "Quantity clearly printed in quantity column"
+      },
+      "UnitPrice": {
+        "confidence": 0.88,
+        "confidence_reason": "Unit price readable with minor OCR uncertainty"
+      },
+      "Total": {
+        "confidence": 0.92,
+        "confidence_reason": "Line total properly formatted and clear"
+      }
+    }
+  ]
+}
+```
+
+### Service Processing Behavior
+
+The assessment service automatically handles each attribute type differently:
+
+**Simple Attributes:**
+- Expects a single confidence assessment object
+- Adds confidence threshold to the assessment data
+- Creates alerts for low confidence scores
+
+**Group Attributes:**
+- Processes each sub-attribute within the group independently
+- Applies confidence thresholds to each sub-attribute
+- Creates individual alerts for each sub-attribute that falls below threshold
+
+**List Attributes:**
+- Processes each array item separately (individual assessment per list item)
+- Applies the same confidence thresholds to all items in the list
+- Creates alerts using array notation (e.g., "LineItems[0].Description", "LineItems[1].Total")
+- **Important**: Does NOT create aggregate assessments - each item must be assessed individually
+
+### Assessment Response Requirements
+
+**Critical Guidelines:**
+
+1. **Structure Matching**: Assessment response must exactly mirror the extraction result structure
+2. **List Processing**: For list attributes, assess each array item individually, never as an aggregate
+3. **Nested Consistency**: Group attributes require confidence assessments for all sub-attributes
+4. **Individual Focus**: Each confidence assessment should evaluate a specific field, not summarize multiple fields
+
+**Common Mistakes to Avoid:**
+
+```json
+// ❌ WRONG: Aggregate assessment for list
+{
+  "LineItems": {
+    "confidence": 0.85,
+    "confidence_reason": "Overall line items look good"
+  }
+}
+
+// ✅ CORRECT: Individual item assessments
+{
+  "LineItems": [
+    {
+      "Description": {"confidence": 0.94, "confidence_reason": "..."},
+      "Quantity": {"confidence": 0.91, "confidence_reason": "..."}
+    },
+    {
+      "Description": {"confidence": 0.87, "confidence_reason": "..."},
+      "Quantity": {"confidence": 0.95, "confidence_reason": "..."}
+    }
+  ]
+}
+```
+
+## Complete Assessment Output Example
+
+Here's a comprehensive example showing all three attribute types in a single assessment:
 
 ```json
 {
   "inference_result": {
-    "vendor_name": "ACME Corporation",
-    "invoice_number": "INV-12345",
-    "total_amount": "$1,250.00"
+    "InvoiceNumber": "INV-12345",
+    "VendorDetails": {
+      "VendorName": "ACME Corporation",
+      "VendorAddress": "123 Business St, City, ST 12345",
+      "VendorPhone": "(555) 123-4567"
+    },
+    "LineItems": [
+      {
+        "Description": "Professional Services",
+        "Quantity": "40",
+        "UnitPrice": "$125.00",
+        "Total": "$5,000.00"
+      },
+      {
+        "Description": "Materials",
+        "Quantity": "10",
+        "UnitPrice": "$25.00", 
+        "Total": "$250.00"
+      }
+    ]
   },
-  "explainability_info": {
-    "vendor_name": {
-      "confidence": 0.95,
-      "confidence_reason": "Vendor name clearly visible in document header with high OCR confidence (98.7%). Text format and positioning consistent with standard invoice layout."
-    },
-    "invoice_number": {
-      "confidence": 0.92,
-      "confidence_reason": "Invoice number clearly extracted with good OCR confidence (96.1%). Standard format and location confirmed."
-    },
-    "total_amount": {
-      "confidence": 0.87,
-      "confidence_reason": "Amount visible and extracted correctly, though OCR confidence slightly lower (89.3%) due to formatting complexity in table structure."
+  "explainability_info": [
+    {
+      "InvoiceNumber": {
+        "confidence": 0.92,
+        "confidence_reason": "Invoice number clearly visible in standard header location",
+        "confidence_threshold": 0.85
+      },
+      "VendorDetails": {
+        "VendorName": {
+          "confidence": 0.95,
+          "confidence_reason": "Company name clearly printed in document header with high OCR confidence",
+          "confidence_threshold": 0.90
+        },
+        "VendorAddress": {
+          "confidence": 0.88,
+          "confidence_reason": "Address visible with good OCR quality, standard formatting",
+          "confidence_threshold": 0.80
+        },
+        "VendorPhone": {
+          "confidence": 0.82,
+          "confidence_reason": "Phone number readable but slightly compressed in layout",
+          "confidence_threshold": 0.75
+        }
+      },
+      "LineItems": [
+        {
+          "Description": {
+            "confidence": 0.94,
+            "confidence_reason": "Service description clearly printed in line item table",
+            "confidence_threshold": 0.80
+          },
+          "Quantity": {
+            "confidence": 0.91,
+            "confidence_reason": "Quantity number clearly visible in quantity column",
+            "confidence_threshold": 0.85
+          },
+          "UnitPrice": {
+            "confidence": 0.89,
+            "confidence_reason": "Unit price in standard currency format, well aligned",
+            "confidence_threshold": 0.85
+          },
+          "Total": {
+            "confidence": 0.93,
+            "confidence_reason": "Total amount clearly calculated and displayed",
+            "confidence_threshold": 0.85
+          }
+        },
+        {
+          "Description": {
+            "confidence": 0.87,
+            "confidence_reason": "Description text slightly compressed but fully readable",
+            "confidence_threshold": 0.80
+          },
+          "Quantity": {
+            "confidence": 0.95,
+            "confidence_reason": "Quantity clearly printed with excellent OCR confidence",
+            "confidence_threshold": 0.85
+          },
+          "UnitPrice": {
+            "confidence": 0.88,
+            "confidence_reason": "Unit price readable with standard formatting",
+            "confidence_threshold": 0.85
+          },
+          "Total": {
+            "confidence": 0.92,
+            "confidence_reason": "Line total properly formatted and clearly visible",
+            "confidence_threshold": 0.85
+          }
+        }
+      ]
     }
-  },
+  ],
   "metadata": {
-    "assessment_time_seconds": 3.47,
+    "assessment_time_seconds": 4.23,
     "assessment_parsing_succeeded": true
   }
 }

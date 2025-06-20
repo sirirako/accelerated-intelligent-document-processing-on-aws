@@ -753,6 +753,9 @@ extraction:
 
     </extraction-guidelines>
 
+    If the attributes section below contains a list of attribute names and
+    descriptions, then output only those attributes, using the provided
+    descriptions as guidance for finding the correct values. 
 
     <attributes>
 

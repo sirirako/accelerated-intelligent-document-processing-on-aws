@@ -65,7 +65,7 @@ class ExtractionService:
 
     def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
         """
-        Format attribute descriptions for the prompt.
+        Format attribute descriptions for the prompt, supporting nested structures.
 
         Args:
             attributes: List of attribute configurations
@@ -73,12 +73,41 @@ class ExtractionService:
         Returns:
             Formatted attribute descriptions as a string
         """
-        return "\n".join(
-            [
-                f"{attr.get('name', '')}  \t[ {attr.get('description', '')} ]"
-                for attr in attributes
-            ]
-        )
+        formatted_lines = []
+
+        for attr in attributes:
+            attr_name = attr.get("name", "")
+            attr_description = attr.get("description", "")
+            attr_type = attr.get("attributeType", "simple")
+
+            if attr_type == "group":
+                # Handle group attributes with nested groupAttributes
+                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+                group_attributes = attr.get("groupAttributes", [])
+                for group_attr in group_attributes:
+                    group_name = group_attr.get("name", "")
+                    group_desc = group_attr.get("description", "")
+                    formatted_lines.append(f"  - {group_name}  \t[ {group_desc} ]")
+
+            elif attr_type == "list":
+                # Handle list attributes with listItemTemplate
+                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+                list_template = attr.get("listItemTemplate", {})
+                item_description = list_template.get("itemDescription", "")
+                if item_description:
+                    formatted_lines.append(f"  Each item: {item_description}")
+
+                item_attributes = list_template.get("itemAttributes", [])
+                for item_attr in item_attributes:
+                    item_name = item_attr.get("name", "")
+                    item_desc = item_attr.get("description", "")
+                    formatted_lines.append(f"  - {item_name}  \t[ {item_desc} ]")
+
+            else:
+                # Handle simple attributes (default case for backward compatibility)
+                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+
+        return "\n".join(formatted_lines)
 
     def _prepare_prompt_from_template(
         self,

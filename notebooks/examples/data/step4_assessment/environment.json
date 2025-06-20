@@ -1,7 +1,0 @@
-{
-  "input_bucket": "idp-modular-input-912625584728-us-west-2",
-  "output_bucket": "idp-modular-output-912625584728-us-west-2",
-  "region": "us-west-2",
-  "sample_file_key": "modular-sample-2025-06-17_21-28-11.pdf",
-  "account_id": "912625584728"
-}

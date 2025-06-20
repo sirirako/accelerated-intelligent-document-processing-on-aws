@@ -53,6 +53,64 @@ class TestExtractionService:
                         {"name": "amount", "description": "The total amount"},
                     ],
                 },
+                {
+                    "name": "bank_statement",
+                    "description": "Monthly bank account statement",
+                    "attributes": [
+                        {
+                            "name": "account_number",
+                            "description": "Primary account identifier",
+                            "attributeType": "simple",
+                        },
+                        {
+                            "name": "account_holder_address",
+                            "description": "Complete address information for the account holder",
+                            "attributeType": "group",
+                            "groupAttributes": [
+                                {
+                                    "name": "street_number",
+                                    "description": "House or building number",
+                                    "confidence_threshold": "0.9",
+                                },
+                                {
+                                    "name": "street_name",
+                                    "description": "Name of the street",
+                                    "confidence_threshold": "0.8",
+                                },
+                                {
+                                    "name": "city",
+                                    "description": "City name",
+                                    "confidence_threshold": "0.9",
+                                },
+                            ],
+                        },
+                        {
+                            "name": "transactions",
+                            "description": "List of all transactions in the statement period",
+                            "attributeType": "list",
+                            "listItemTemplate": {
+                                "itemDescription": "Individual transaction record",
+                                "itemAttributes": [
+                                    {
+                                        "name": "date",
+                                        "description": "Transaction date (MM/DD/YYYY)",
+                                        "confidence_threshold": "0.9",
+                                    },
+                                    {
+                                        "name": "description",
+                                        "description": "Transaction description or merchant name",
+                                        "confidence_threshold": "0.7",
+                                    },
+                                    {
+                                        "name": "amount",
+                                        "description": "Transaction amount",
+                                        "confidence_threshold": "0.95",
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
             ],
             "extraction": {
                 "model": "anthropic.claude-3-sonnet-20240229-v1:0",
@@ -144,6 +202,117 @@ class TestExtractionService:
         assert "The invoice number" in formatted
         assert "invoice_date" in formatted
         assert "The invoice date" in formatted
+
+    def test_format_nested_attribute_descriptions(self, service):
+        """Test formatting nested attribute descriptions (group and list types)."""
+        # Get bank statement attributes with nested structures
+        bank_statement_attrs = service._get_class_attributes("bank_statement")
+        formatted = service._format_attribute_descriptions(bank_statement_attrs)
+
+        # Test that main attributes are present
+        assert "account_number" in formatted
+        assert "Primary account identifier" in formatted
+        assert "account_holder_address" in formatted
+        assert "Complete address information" in formatted
+        assert "transactions" in formatted
+        assert "List of all transactions" in formatted
+
+        # Test that group nested attributes are properly indented
+        assert "  - street_number" in formatted
+        assert "House or building number" in formatted
+        assert "  - street_name" in formatted
+        assert "Name of the street" in formatted
+        assert "  - city" in formatted
+        assert "City name" in formatted
+
+        # Test that list nested attributes are properly formatted
+        assert "Each item: Individual transaction record" in formatted
+        assert "  - date" in formatted
+        assert "Transaction date (MM/DD/YYYY)" in formatted
+        assert "  - description" in formatted
+        assert "Transaction description or merchant name" in formatted
+        assert "  - amount" in formatted
+        assert "Transaction amount" in formatted
+
+    def test_format_attribute_descriptions_empty_list(self, service):
+        """Test formatting attribute descriptions with empty list."""
+        formatted = service._format_attribute_descriptions([])
+        assert formatted == ""
+
+    def test_format_attribute_descriptions_group_only(self, service):
+        """Test formatting attribute descriptions with group type only."""
+        attributes = [
+            {
+                "name": "address",
+                "description": "Complete address information",
+                "attributeType": "group",
+                "groupAttributes": [
+                    {"name": "street", "description": "Street name"},
+                    {"name": "city", "description": "City name"},
+                ],
+            }
+        ]
+
+        formatted = service._format_attribute_descriptions(attributes)
+
+        assert "address" in formatted
+        assert "Complete address information" in formatted
+        assert "  - street" in formatted
+        assert "Street name" in formatted
+        assert "  - city" in formatted
+        assert "City name" in formatted
+
+    def test_format_attribute_descriptions_list_only(self, service):
+        """Test formatting attribute descriptions with list type only."""
+        attributes = [
+            {
+                "name": "items",
+                "description": "List of items",
+                "attributeType": "list",
+                "listItemTemplate": {
+                    "itemDescription": "Individual item",
+                    "itemAttributes": [
+                        {"name": "name", "description": "Item name"},
+                        {"name": "price", "description": "Item price"},
+                    ],
+                },
+            }
+        ]
+
+        formatted = service._format_attribute_descriptions(attributes)
+
+        assert "items" in formatted
+        assert "List of items" in formatted
+        assert "Each item: Individual item" in formatted
+        assert "  - name" in formatted
+        assert "Item name" in formatted
+        assert "  - price" in formatted
+        assert "Item price" in formatted
+
+    def test_format_attribute_descriptions_list_without_item_description(self, service):
+        """Test formatting list attributes without itemDescription."""
+        attributes = [
+            {
+                "name": "items",
+                "description": "List of items",
+                "attributeType": "list",
+                "listItemTemplate": {
+                    "itemAttributes": [
+                        {"name": "name", "description": "Item name"},
+                    ],
+                },
+            }
+        ]
+
+        formatted = service._format_attribute_descriptions(attributes)
+
+        assert "items" in formatted
+        assert "List of items" in formatted
+        assert (
+            "Each item:" not in formatted
+        )  # Should not appear when itemDescription is missing
+        assert "  - name" in formatted
+        assert "Item name" in formatted
 
     @patch("idp_common.s3.get_text_content")
     @patch("idp_common.image.prepare_image")

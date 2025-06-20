@@ -8,14 +8,17 @@ ocr:
     - name: TABLES
 classes:
   - name: letter
-    description: A formal written message that is typically sent from one person to another
+    description: A formal written correspondence with sender/recipient addresses, date, salutation, body, and closing signature
     attributes:
       - name: sender_name
         description: The name of the person or entity who wrote or sent the letter. Look for text following or near terms like 'from', 'sender', 'authored by', 'written by', or at the end of the letter before a signature.
+        confidence_threshold: '0.85'
       - name: sender_address
         description: The physical address of the sender, typically appearing at the top of the letter. May be labeled as 'address', 'location', or 'from address'.
+        confidence_threshold: '0.8'
       - name: recipient_name
         description: The name of the person or entity receiving the letter. Look for this after 'to', 'recipient', 'addressee', or at the beginning of the letter.
+        confidence_threshold: '0.9'
       - name: recipient_address
         description: The physical address where the letter is to be delivered. Often labeled as 'to address' or 'delivery address', typically appearing below the recipient name.
       - name: date
@@ -31,7 +34,7 @@ classes:
       - name: reference_number
         description: An identifying number or code associated with the letter. Look for labels like 'ref', 'reference', or 'our ref'.
   - name: form
-    description: A document with blank spaces for filling in information
+    description: A structured document with labeled fields, checkboxes, or blanks requiring user input and completion
     attributes:
       - name: form_type
         description: The category or purpose of the form, such as 'application', 'registration', 'request', etc. May be identified by 'form name', 'document type', or 'form category'.
@@ -54,7 +57,7 @@ classes:
       - name: comments
         description: Additional notes or remarks about the form. Look for sections labeled 'notes', 'remarks', or 'comments'.
   - name: invoice
-    description: A commercial document issued by a seller to a buyer relating to a sale
+    description: A billing document listing items/services, quantities, prices, payment terms, and transaction totals
     attributes:
       - name: invoice_number
         description: The unique identifier for the invoice. Look for 'invoice no', 'invoice
@@ -87,7 +90,7 @@ classes:
       - name: po_number
         description: The purchase order reference number. May be abbreviated as 'PO' or appear as 'purchase order' or 'order reference'.
   - name: resume
-    description: A document summarizing a person's background, skills, and qualifications
+    description: A professional summary showcasing work experience, education, skills, and achievements for job applications
     attributes:
       - name: full_name
         description: The complete name of the job applicant, typically appearing prominently at the top of the resume. May be simply labeled as 'name' or 'applicant name'.
@@ -110,7 +113,7 @@ classes:
       - name: achievements
         description: Notable accomplishments and recognition. May be labeled as 'achievements', 'accomplishments', or 'awards'.
   - name: scientific_publication
-    description: A formally published document presenting scientific research findings
+    description: A peer-reviewed academic document with abstract, methodology, results, citations, and research findings
     attributes:
       - name: title
         description: The name of the scientific paper, typically appearing prominently at the beginning. May be labeled as 'title', 'paper title', or 'article title'.
@@ -139,7 +142,7 @@ classes:
       - name: institutions
         description: The organizations with which the authors are affiliated. May be labeled as 'affiliations' or 'institutions'.
   - name: memo
-    description: A brief written message used for internal communication within an organization
+    description: An internal business communication with TO/FROM/DATE/SUBJECT headers for organizational announcements or directives
     attributes:
       - name: memo_date
         description: The date when the memo was written. Look for 'date' or 'memo date', typically near the top of the document.
@@ -162,7 +165,7 @@ classes:
       - name: action_required
         description: Steps that should be taken in response to the memo. Look for 'action', 'response needed', or 'next steps'.
   - name: advertisement
-    description: A public notice promoting a product, service, or event
+    description: A promotional material featuring product images, marketing text, calls-to-action, and branding elements
     attributes:
       - name: product_name
         description: The name of the item or service being advertised. Look for prominently displayed text that could be a 'product', 'item', or 'service' name.
@@ -185,7 +188,7 @@ classes:
       - name: disclaimer
         description: Legal statements limiting liability or making clarifications. Usually appears as fine print introduced by 'disclaimer' or phrases like 'terms apply' or 'conditions apply'.
   - name: email
-    description: An electronic message sent from one person to another over a computer network
+    description: A digital message with email headers (To/From/Subject), timestamps, and conversational threading
     attributes:
       - name: from_address
         description: The email address of the sender. Look for text following 'from', 'sender', or 'sent by', typically at the beginning of the email header.
@@ -208,7 +211,7 @@ classes:
       - name: message_id
         description: A unique identifier for the specific email. Look for 'message id' or 'email id', usually hidden in the email metadata.
   - name: questionnaire
-    description: A set of written questions designed to collect information from respondents
+    description: A survey instrument containing numbered questions with multiple choice, rating scales, or open-ended responses
     attributes:
       - name: form_title
         description: The name or title of the questionnaire. Look for prominently displayed text at the beginning that could be a 'title', 'survey name', or 'questionnaire name'.
@@ -230,8 +233,27 @@ classes:
         description: A unique identifier for the questionnaire. May be labeled as 'survey id', 'reference number', or 'form id'.
       - name: completion_status
         description: Whether the questionnaire has been fully completed. Look for indicators of 'status', 'completion', or 'progress', often shown as a percentage or progress bar.
+      - name: Phone Call Representative Courtesy
+        description: Measures the perceived politeness and professionalism of the customer service representative during the phone interaction. Checkbox selection on the satisfaction scale with options like "Very Satisfied", "Somewhat Satisfied" etc.
+        attributes: []
+        evaluation_method: ''
+      - name: Phone call representative knowledge rating
+        description: Measures the perceived knowledge level of the customer service representative during the phone interaction. Checkbox selection on the satisfaction scale with options like "Very Satisfied", "Somewhat Satisfied" etc.
+        attributes: []
+      - name: Request handling satisfaction rating
+        description: Measures the customer's level of satisfaction with the way their request was handled. Checkbox selection on the satisfaction scale with options like "Very Satisfied", "Somewhat Satisfied" etc.
+        attributes: []
+      - name: Overall Satisfaction rating
+        description: This rating BEST describes the way the customer feels about the representative's response to their request for asssistance. Checkbox selection on the satisfaction scale with options like "I was very satisfied", "I was somewhat satisfied" etc.
+        attributes: []
+      - name: Future purchase intent
+        description: A measure of whether the user will continue to buy the product they contacted about. Checkbox selection with options like "I definitely would", "I probably would" etc.
+        attributes: []
+      - name: Product recommendation intent
+        description: A measure of whether the caller is willing to recommend the product that they called about to others. Checkbox selection with options like "I definitely would", "I probably would" etc.
+        attributes: []
   - name: specification
-    description: A detailed description of technical requirements or characteristics
+    description: A technical document detailing precise requirements, measurements, standards, and implementation criteria
     attributes:
       - name: product_name
         description: The name of the item being specified. Look for text labeled as 'product', 'item', or 'model', typically appearing prominently at the beginning.
@@ -254,7 +276,7 @@ classes:
       - name: approval_info
         description: Details about who has validated the specification. May be indicated by phrases like 'approved by', 'certified by', or 'validated'.
   - name: generic
-    description: A general document type that doesn't fit into other specific categories
+    description: An unstructured document lacking distinctive formatting or purpose-specific elements of other categories
     attributes:
       - name: document_type
         description: The classification or category of the document. Look for terms like 'type', 'category', or 'class' that indicate what kind of document this is.
@@ -280,48 +302,57 @@ classification:
   model: Custom fine tuned UDOP model
 extraction:
   top_p: '0.1'
-  max_tokens: '4096'
+  max_tokens: '10000'
   top_k: '5'
   task_prompt: >-
     <background>
+    
+    You are an expert in document analysis and information extraction. 
+    You can understand and extract key information from documents classified as type 
 
-    You are an expert in business document analysis and information extraction. 
+    {DOCUMENT_CLASS}.
 
-    You can understand and extract key information from business documents. 
+    </background>
+
 
     <task>
 
-    Your task is to take the unstructured text provided and convert it into a
+    Your task is to take the unstructured text provided and convert it into a well-organized table format using JSON. Identify the main entities, attributes, or categories mentioned in the attributes list below and use them as keys in the JSON object. 
+    Then, extract the relevant information from the text and populate the corresponding values in the JSON object.
 
-    well-organized table format using JSON. Identify the main entities,
+    </task>
 
-    attributes, or categories mentioned in the attributes list below and use
 
-    them as keys in the JSON object. 
-
-    Then, extract the relevant information from the text and populate the
-
-    corresponding values in the JSON object. 
+    <extraction-guidelines>
 
     Guidelines:
+        1. Ensure that the data is accurately represented and properly formatted within
+        the JSON structure
+        2. Include double quotes around all keys and values
+        3. Do not make up data - only extract information explicitly found in the
+        document
+        4. Do not use /n for new lines, use a space instead
+        5. If a field is not found or if unsure, return null
+        6. All dates should be in MM/DD/YYYY format
+        7. Do not perform calculations or summations unless totals are explicitly given
+        8. If an alias is not found in the document, return null
+        9. Guidelines for checkboxes:
+         9.A. CAREFULLY examine each checkbox, radio button, and selection field:
+            - Look for marks like ✓, ✗, x, filled circles (●), darkened areas, or handwritten checks indicating selection
+            - For checkboxes and multi-select fields, ONLY INCLUDE options that show clear visual evidence of selection
+            - DO NOT list options that have no visible selection mark
+         9.B. For ambiguous or overlapping tick marks:
+            - If a mark overlaps between two or more checkboxes, determine which option contains the majority of the mark
+            - Consider a checkbox selected if the mark is primarily inside the check box or over the option text
+            - When a mark touches multiple options, analyze which option was most likely intended based on position and density. For handwritten checks, the mark typically flows from the selected checkbox outward.
+            - Carefully analyze visual cues and contextual hints. Think from a human perspective, anticipate natural tendencies, and apply thoughtful reasoning to make the best possible judgment.
+        10. Think step by step first and then answer.
 
-    Ensure that the data is accurately represented and properly formatted within the JSON structure
+    </extraction-guidelines>
 
-    Include double quotes around all keys and values
-
-    Do not make up data - only extract information explicitly found in the document
-
-    Do not use /n for new lines, use a space instead
-
-    If a field is not found or if unsure, return null
-
-    All dates should be in MM/DD/YYYY format
-
-    Do not perform calculations or summations unless totals are explicitly given
-
-    If an alias is not found in the document, return null
-
-    Here are the attributes you should extract:
+    If the attributes section below contains a list of attribute names and
+    descriptions, then output only those attributes, using the provided
+    descriptions as guidance for finding the correct values. 
 
     <attributes>
 
@@ -329,21 +360,38 @@ extraction:
 
     </attributes>
 
-    </task>
 
-    </background>
+    <<CACHEPOINT>>
 
-    <<CACHEPOINT>>  
 
-    The document tpe is {DOCUMENT_CLASS}. Here is the document content:
-
-    <document_ocr_data>
+    <document-text>
 
     {DOCUMENT_TEXT}
 
-    </document_ocr_data>
+    </document-text>
+  
+
+    <document_image>
+
+    {DOCUMENT_IMAGE}
+
+    </document_image>
+
+
+    <final-instructions>
+
+    Extract key information from the document and return a JSON object with the following key steps:
+    1. Carefully analyze the document text to identify the requested attributes
+    2. Extract only information explicitly found in the document - never make up data
+    3. Format all dates as MM/DD/YYYY and replace newlines with spaces
+    4. For checkboxes, only include options with clear visual selection marks
+    5. Use null for any fields not found in the document
+    6. Ensure the output is properly formatted JSON with quoted keys and values
+    7. Think step by step before finalizing your answer
+
+    </final-instructions>
   temperature: '0.0'
-  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  model: us.amazon.nova-pro-v1:0
   system_prompt: >-
     You are a document assistant. Respond only with JSON. Never make up data, only provide data found in the document being provided.
 summarization:
@@ -351,13 +399,13 @@ summarization:
   max_tokens: '4096'
   top_k: '5'
   task_prompt: >-
-    <document_ocr_data>
+    <document-text>
 
     {DOCUMENT_TEXT}
 
-    </document_ocr_data>
+    </document-text>
 
-    Analyze the provided document (<document_ocr_data>) and create a comprehensive summary.
+    Analyze the provided document (<document-text>) and create a comprehensive summary.
 
     CRITICAL INSTRUCTION: You MUST return your response as valid JSON with the
     EXACT structure shown at the end of these instructions. Do not include any
@@ -407,6 +455,139 @@ summarization:
   model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
   system_prompt: >-
     You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \nSummarization Style: Balanced\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.
+assessment:
+  default_confidence_threshold: '0.9'
+  top_p: '0.1'
+  max_tokens: '10000'
+  top_k: '5'
+  temperature: '0.0'
+  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  system_prompt: >-
+    You are a document analysis assessment expert. Your task is to evaluate the confidence and accuracy of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores and reasoning for each extracted attribute.
+  task_prompt: >-
+    <background>
+
+    You are an expert document analysis assessment system. Your task is to evaluate the confidence of extraction results for a document of class {DOCUMENT_CLASS}.
+
+    </background>
+
+
+    <task>
+
+    Analyze the extraction results against the source document and provide confidence assessments for each extracted attribute. Consider factors such as:
+
+    1. Text clarity and OCR quality in the source regions
+    2. Alignment between extracted values and document content
+    3. Presence of clear evidence supporting the extraction
+    4. Potential ambiguity or uncertainty in the source material
+    5. Completeness and accuracy of the extracted information
+
+    </task>
+
+
+    <assessment-guidelines>
+
+    For each attribute, provide:
+    A confidence score between 0.0 and 1.0 where:
+       - 1.0 = Very high confidence, clear and unambiguous evidence
+       - 0.8-0.9 = High confidence, strong evidence with minor uncertainty
+       - 0.6-0.7 = Medium confidence, reasonable evidence but some ambiguity
+       - 0.4-0.5 = Low confidence, weak or unclear evidence
+       - 0.0-0.3 = Very low confidence, little to no supporting evidence
+
+    Guidelines:
+    - Base assessments on actual document content and OCR quality
+    - Consider both text-based evidence and visual/layout clues
+    - Account for OCR confidence scores when provided
+    - Be objective and specific in reasoning
+    - If an extraction appears incorrect, score accordingly with explanation
+
+    </assessment-guidelines>
+
+    <attributes-definitions>
+
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+
+    </attributes-definitions>
+
+
+    <<CACHEPOINT>>
+
+
+    <extraction-results>
+
+    {EXTRACTION_RESULTS}
+
+    </extraction-results>
+
+
+    <document-image>
+
+    {DOCUMENT_IMAGE}
+
+    </document-image>
+
+
+    <ocr-text-confidence-results>
+
+    {OCR_TEXT_CONFIDENCE}
+
+    </ocr-text-confidence-results>
+
+
+    <final-instructions>
+
+    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
+
+    For SIMPLE attributes:
+    {
+      "simple_attribute_name": {
+        "confidence": 0.85
+      }
+    }
+
+    For GROUP attributes (nested object structure):
+    {
+      "group_attribute_name": {
+        "sub_attribute_1": {
+          "confidence": 0.90
+        },
+        "sub_attribute_2": {
+          "confidence": 0.75
+        }
+      }
+    }
+
+    For LIST attributes (array of assessed items):
+    {
+      "list_attribute_name": [
+        {
+          "item_attribute_1": {
+            "confidence": 0.95
+          },
+          "item_attribute_2": {
+            "confidence": 0.88
+          }
+        },
+        {
+          "item_attribute_1": {
+            "confidence": 0.92
+          },
+          "item_attribute_2": {
+            "confidence": 0.70
+          }
+        }
+      ]
+    }
+
+    IMPORTANT: 
+    - For LIST attributes like "Transactions", assess EACH individual item in the list separately
+    - Each transaction should be assessed as a separate object in the array
+    - Do NOT provide aggregate assessments for list items - assess each one individually
+    - Include assessments for ALL attributes present in the extraction results
+    - Match the exact structure of the extracted data
+
+    </final-instructions>
 evaluation:
   llm_method:
     top_p: '0.1'
@@ -532,3 +713,23 @@ pricing:
         price: '3.0E-7'
       - name: cacheWriteInputTokens
         price: '3.75E-6'
+  - name: bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0
+    units:
+      - name: inputTokens
+        price: '3.0E-6'
+      - name: outputTokens
+        price: '1.5E-5'
+      - name: cacheReadInputTokens
+        price: '3.0E-7'
+      - name: cacheWriteInputTokens
+        price: '3.75E-6'
+  - name: bedrock/us.anthropic.claude-opus-4-20250514-v1:0
+    units:
+      - name: inputTokens
+        price: '1.5E-5'
+      - name: outputTokens
+        price: '7.5E-5'
+      - name: cacheReadInputTokens
+        price: '1.5E-6'
+      - name: cacheWriteInputTokens
+        price: '1.875E-5'

@@ -93,74 +93,197 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
 
     def _get_attributes_for_class(self, class_name: str) -> List[EvaluationAttribute]:
         """
-        Get attribute configurations for a document class.
+        Get attribute configurations for a document class, supporting nested structures.
 
         Args:
             class_name: Document class name
 
         Returns:
-            List of attribute configurations
+            List of attribute configurations (flattened for nested structures)
         """
         classes_config = self.config.get("classes", [])
         for class_config in classes_config:
             if class_config.get("name", "").lower() == class_name.lower():
                 attributes = []
                 for attr_config in class_config.get("attributes", []):
-                    eval_method = EvaluationMethod.LLM  # Default method
-                    threshold = 0.8  # Default evaluation threshold
-                    comparator_type = None  # Default to None
-
-                    # Get evaluation method if specified in config
-                    method_str = attr_config.get("evaluation_method", "LLM")
-                    try:
-                        eval_method = EvaluationMethod(method_str.upper())
-                    except ValueError:
-                        logger.warning(
-                            f"Unknown evaluation method for '{class_name}' -> '{attr_config['name']}': '{method_str}' (using LLM)"
-                        )
-                        method_str = "LLM"
-
-                    # Get threshold if applicable
-                    try:
-                        if "evaluation_threshold" in attr_config:
-                            threshold = float(attr_config["evaluation_threshold"])
-                    except ValueError:
-                        logger.warning(
-                            f"Invalid evaluation threshold for '{class_name}' -> '{attr_config['name']}': '{attr_config['evaluation_threshold']}' (using default)"
-                        )
-
-                    # Get comparator type for Hungarian method
-                    if eval_method == EvaluationMethod.HUNGARIAN:
-                        comparator_type = attr_config.get(
-                            "hungarian_comparator", "EXACT"
-                        )
-
-                    attributes.append(
-                        EvaluationAttribute(
-                            name=attr_config.get("name", ""),
-                            description=attr_config.get("description", ""),
-                            evaluation_method=eval_method,
-                            evaluation_threshold=threshold,
-                            comparator_type=comparator_type,
-                        )
-                    )
+                    attributes.extend(self._process_attribute_config(attr_config))
                 return attributes
 
         # Return empty list if class not found
         logger.warning(f"No attribute configuration found for class: {class_name}")
         return []
 
+    def _process_attribute_config(
+        self, attr_config: Dict[str, Any], parent_name: str = ""
+    ) -> List[EvaluationAttribute]:
+        """
+        Process an attribute configuration, handling nested structures.
+
+        Args:
+            attr_config: Attribute configuration dictionary
+            parent_name: Parent attribute name for nested structures
+
+        Returns:
+            List of evaluation attributes (flattened)
+        """
+        attributes = []
+        attr_name = attr_config.get("name", "")
+        attr_type = attr_config.get("attributeType", "simple")
+
+        # Build full attribute name for nested structures
+        full_name = f"{parent_name}.{attr_name}" if parent_name else attr_name
+
+        if attr_type == "group":
+            # Handle group attributes with nested groupAttributes
+            group_attributes = attr_config.get("groupAttributes", [])
+            for group_attr in group_attributes:
+                attributes.extend(self._process_attribute_config(group_attr, full_name))
+
+        elif attr_type == "list":
+            # Handle list attributes with listItemTemplate
+            list_template = attr_config.get("listItemTemplate", {})
+            item_attributes = list_template.get("itemAttributes", [])
+
+            for item_attr in item_attributes:
+                # For list items, use array notation in the name
+                list_item_name = f"{full_name}[]"
+                attributes.extend(
+                    self._process_attribute_config(item_attr, list_item_name)
+                )
+
+        else:
+            # Handle simple attributes (default case)
+            eval_method = EvaluationMethod.LLM  # Default method
+            threshold = 0.8  # Default evaluation threshold
+            comparator_type = None  # Default to None
+
+            # Get evaluation method if specified in config
+            method_str = attr_config.get("evaluation_method", "LLM")
+            try:
+                eval_method = EvaluationMethod(method_str.upper())
+            except ValueError:
+                logger.warning(
+                    f"Unknown evaluation method for '{full_name}': '{method_str}' (using LLM)"
+                )
+
+            # Get threshold if applicable
+            try:
+                if "evaluation_threshold" in attr_config:
+                    threshold = float(attr_config["evaluation_threshold"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid evaluation threshold for '{full_name}': '{attr_config['evaluation_threshold']}' (using default)"
+                )
+
+            # Get comparator type for Hungarian method
+            if eval_method == EvaluationMethod.HUNGARIAN:
+                comparator_type = attr_config.get("hungarian_comparator", "EXACT")
+
+            attributes.append(
+                EvaluationAttribute(
+                    name=full_name,
+                    description=attr_config.get("description", ""),
+                    evaluation_method=eval_method,
+                    evaluation_threshold=threshold,
+                    comparator_type=comparator_type,
+                )
+            )
+
+        return attributes
+
+    def _flatten_nested_data(
+        self, data: Dict[str, Any], parent_key: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Flatten nested data structures for evaluation.
+
+        Args:
+            data: Nested data dictionary
+            parent_key: Parent key for building flattened keys
+
+        Returns:
+            Flattened dictionary with dot notation for nested keys
+        """
+        flattened = {}
+
+        for key, value in data.items():
+            # Build the full key
+            full_key = f"{parent_key}.{key}" if parent_key else key
+
+            if isinstance(value, dict):
+                # Recursively flatten nested dictionaries (group attributes)
+                flattened.update(self._flatten_nested_data(value, full_key))
+            elif isinstance(value, list):
+                # Handle list attributes - create entries for each item
+                for i, item in enumerate(value):
+                    if isinstance(item, dict):
+                        # For dict items in lists, flatten each item
+                        item_key = f"{full_key}[{i}]"
+                        flattened.update(self._flatten_nested_data(item, item_key))
+                    else:
+                        # For simple items in lists
+                        flattened[f"{full_key}[{i}]"] = item
+            else:
+                # Simple value
+                flattened[full_key] = value
+
+        return flattened
+
+    def _flatten_confidence_scores(
+        self, confidence_data: Dict[str, Any], parent_key: str = ""
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Flatten nested confidence scores for evaluation.
+
+        Args:
+            confidence_data: Nested confidence data
+            parent_key: Parent key for building flattened keys
+
+        Returns:
+            Flattened confidence scores dictionary
+        """
+        flattened = {}
+
+        for key, value in confidence_data.items():
+            # Build the full key
+            full_key = f"{parent_key}.{key}" if parent_key else key
+
+            if isinstance(value, dict):
+                if "confidence" in value:
+                    # This is a confidence assessment
+                    flattened[full_key] = {
+                        "confidence": float(value["confidence"]),
+                        "confidence_threshold": float(
+                            value.get("confidence_threshold", None)
+                        )
+                        if value.get("confidence_threshold") is not None
+                        else None,
+                    }
+                else:
+                    # Nested group - recurse
+                    flattened.update(self._flatten_confidence_scores(value, full_key))
+            elif isinstance(value, list):
+                # Handle list confidence assessments
+                for i, item in enumerate(value):
+                    if isinstance(item, dict):
+                        item_key = f"{full_key}[{i}]"
+                        flattened.update(
+                            self._flatten_confidence_scores(item, item_key)
+                        )
+
+        return flattened
+
     def _load_extraction_results(
         self, uri: str
     ) -> Tuple[Dict[str, Any], Dict[str, float]]:
         """
-        Load extraction results from S3.
+        Load extraction results from S3 and flatten nested structures.
 
         Args:
             uri: S3 URI to the extraction results
 
         Returns:
-            Tuple of (extraction_results, confidence_scores)
+            Tuple of (flattened_extraction_results, flattened_confidence_scores)
         """
         try:
             content = s3.get_json_content(uri)
@@ -169,9 +292,12 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
 
             # Check if results are wrapped in inference_result key
             if isinstance(content, dict) and "inference_result" in content:
-                extraction_results = content["inference_result"]
+                raw_extraction_results = content["inference_result"]
             else:
-                extraction_results = content
+                raw_extraction_results = content
+
+            # Flatten the extraction results to handle nested structures
+            extraction_results = self._flatten_nested_data(raw_extraction_results)
 
             # Extract confidence scores from explainability_info if present
             if isinstance(content, dict) and "explainability_info" in content:
@@ -183,19 +309,9 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
                     # Get the first explainability entry (should be the main one)
                     confidence_data = explainability_info[0]
                     if isinstance(confidence_data, dict):
-                        for attr_name, attr_info in confidence_data.items():
-                            if (
-                                isinstance(attr_info, dict)
-                                and "confidence" in attr_info
-                            ):
-                                confidence_scores[attr_name] = {
-                                    "confidence": float(attr_info["confidence"]),
-                                    "confidence_threshold": float(
-                                        attr_info.get("confidence_threshold", None)
-                                    )
-                                    if attr_info.get("confidence_threshold") is not None
-                                    else None,
-                                }
+                        confidence_scores = self._flatten_confidence_scores(
+                            confidence_data
+                        )
 
             return extraction_results, confidence_scores
         except Exception:
@@ -430,36 +546,85 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
         # Create a set of attribute names already processed from configuration
         processed_attr_names = set()
 
+        # Create a mapping for list attribute patterns
+        list_attribute_configs = {}
+        for attr_config in configured_attributes:
+            if "[]" in attr_config.name:
+                # Store list attribute config for pattern matching
+                pattern = attr_config.name.replace("[]", r"\[\d+\]")
+                list_attribute_configs[pattern] = attr_config
+
         # Prepare configured attributes evaluation tasks
         for attr_config in configured_attributes:
             attr_name = attr_config.name
-            expected_value = expected_results.get(attr_name)
-            actual_value = actual_results.get(attr_name)
-            processed_attr_names.add(attr_name)
 
-            # Create a task for this attribute
-            task = {
-                "attr_name": attr_name,
-                "expected_value": expected_value,
-                "actual_value": actual_value,
-                "evaluation_method": attr_config.evaluation_method,
-                "evaluation_threshold": attr_config.evaluation_threshold,
-                "document_class": class_name,
-                "attr_description": attr_config.description,
-                "comparator_type": attr_config.comparator_type,
-                "is_unconfigured": False,
-            }
+            if "[]" in attr_name:
+                # This is a list attribute template - find all matching actual attributes
+                import re
 
-            # Separate tasks based on evaluation method
-            if attr_config.evaluation_method in [
-                EvaluationMethod.LLM,
-                EvaluationMethod.SEMANTIC,
-            ]:
-                # These methods are expensive (API calls), so parallelize them
-                parallel_tasks.append(task)
+                pattern = attr_name.replace("[]", r"\[\d+\]")
+                all_data_names = set(expected_results.keys()).union(
+                    set(actual_results.keys())
+                )
+
+                for data_attr_name in all_data_names:
+                    if re.match(f"^{pattern}$", data_attr_name):
+                        expected_value = expected_results.get(data_attr_name)
+                        actual_value = actual_results.get(data_attr_name)
+                        processed_attr_names.add(data_attr_name)
+
+                        # Create a task for this specific list item
+                        task = {
+                            "attr_name": data_attr_name,
+                            "expected_value": expected_value,
+                            "actual_value": actual_value,
+                            "evaluation_method": attr_config.evaluation_method,
+                            "evaluation_threshold": attr_config.evaluation_threshold,
+                            "document_class": class_name,
+                            "attr_description": attr_config.description,
+                            "comparator_type": attr_config.comparator_type,
+                            "is_unconfigured": False,
+                        }
+
+                        # Separate tasks based on evaluation method
+                        if attr_config.evaluation_method in [
+                            EvaluationMethod.LLM,
+                            EvaluationMethod.SEMANTIC,
+                        ]:
+                            # These methods are expensive (API calls), so parallelize them
+                            parallel_tasks.append(task)
+                        else:
+                            # These methods are fast, so run them sequentially
+                            sequential_tasks.append(task)
             else:
-                # These methods are fast, so run them sequentially
-                sequential_tasks.append(task)
+                # Regular non-list attribute
+                expected_value = expected_results.get(attr_name)
+                actual_value = actual_results.get(attr_name)
+                processed_attr_names.add(attr_name)
+
+                # Create a task for this attribute
+                task = {
+                    "attr_name": attr_name,
+                    "expected_value": expected_value,
+                    "actual_value": actual_value,
+                    "evaluation_method": attr_config.evaluation_method,
+                    "evaluation_threshold": attr_config.evaluation_threshold,
+                    "document_class": class_name,
+                    "attr_description": attr_config.description,
+                    "comparator_type": attr_config.comparator_type,
+                    "is_unconfigured": False,
+                }
+
+                # Separate tasks based on evaluation method
+                if attr_config.evaluation_method in [
+                    EvaluationMethod.LLM,
+                    EvaluationMethod.SEMANTIC,
+                ]:
+                    # These methods are expensive (API calls), so parallelize them
+                    parallel_tasks.append(task)
+                else:
+                    # These methods are fast, so run them sequentially
+                    sequential_tasks.append(task)
 
         # Now find attributes that exist in the data but not in configuration
         # Get all attribute names from both expected and actual results
@@ -599,8 +764,40 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
                             f"Error evaluating attribute {attr_name}: {traceback.format_exc()}"
                         )
 
-        # Sort attribute results by name for consistent output
-        attribute_results.sort(key=lambda x: x.name)
+        # Sort attribute results with proper numerical ordering for list indices
+        def sort_key(attr_result):
+            """
+            Custom sort key that handles list indices numerically.
+
+            Examples:
+            - "Account Number" -> ("Account Number", -1, "")
+            - "Account Holder Address.City" -> ("Account Holder Address", -1, "City")
+            - "Transactions[0].Date" -> ("Transactions", 0, "Date")
+            - "Transactions[10].Amount" -> ("Transactions", 10, "Amount")
+            """
+            import re
+
+            name = attr_result.name
+
+            # Check if this is a list attribute with index notation
+            list_match = re.match(r"^([^[]+)\[(\d+)\]\.(.+)$", name)
+            if list_match:
+                base_name = list_match.group(1)
+                index = int(list_match.group(2))
+                attr_name = list_match.group(3)
+                return (base_name, index, attr_name)
+
+            # Check if this is a group attribute with dot notation
+            if "." in name and "[" not in name:
+                parts = name.split(".", 1)
+                base_name = parts[0]
+                attr_name = parts[1]
+                return (base_name, -1, attr_name)
+
+            # Simple attribute
+            return (name, -1, "")
+
+        attribute_results.sort(key=sort_key)
 
         # Calculate metrics
         metrics = calculate_metrics(tp=tp, fp=fp, fn=fn, tn=tn, fp1=fp1, fp2=fp2)

@@ -21,6 +21,45 @@ from idp_common.models import Document
 logger = logging.getLogger(__name__)
 
 
+def _safe_float_conversion(value: Any, default: float = 0.0) -> float:
+    """
+    Safely convert a value to float, handling strings and None values.
+
+    Args:
+        value: Value to convert to float
+        default: Default value if conversion fails
+
+    Returns:
+        Float value or default if conversion fails
+    """
+    if value is None:
+        return default
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, str):
+        # Handle empty strings
+        if not value.strip():
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Could not convert string '{value}' to float, using default {default}"
+            )
+            return default
+
+    # Handle other types by attempting conversion
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        logger.warning(
+            f"Could not convert {type(value)} '{value}' to float, using default {default}"
+        )
+        return default
+
+
 class AssessmentService:
     """Service for assessing extraction result confidence using LLMs."""
 
@@ -66,7 +105,7 @@ class AssessmentService:
 
     def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
         """
-        Format attribute descriptions for the prompt.
+        Format attribute descriptions for the prompt, supporting nested structures.
 
         Args:
             attributes: List of attribute configurations
@@ -74,12 +113,238 @@ class AssessmentService:
         Returns:
             Formatted attribute descriptions as a string
         """
-        return "\n".join(
-            [
-                f"{attr.get('name', '')}  \t[ {attr.get('description', '')} ]"
-                for attr in attributes
-            ]
-        )
+        formatted_lines = []
+
+        for attr in attributes:
+            attr_name = attr.get("name", "")
+            attr_description = attr.get("description", "")
+            attr_type = attr.get("attributeType", "simple")
+
+            if attr_type == "group":
+                # Handle group attributes with nested groupAttributes
+                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+                group_attributes = attr.get("groupAttributes", [])
+                for group_attr in group_attributes:
+                    group_name = group_attr.get("name", "")
+                    group_desc = group_attr.get("description", "")
+                    formatted_lines.append(f"  - {group_name}  \t[ {group_desc} ]")
+
+            elif attr_type == "list":
+                # Handle list attributes with listItemTemplate
+                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+                list_template = attr.get("listItemTemplate", {})
+                item_description = list_template.get("itemDescription", "")
+                if item_description:
+                    formatted_lines.append(f"  Each item: {item_description}")
+
+                item_attributes = list_template.get("itemAttributes", [])
+                for item_attr in item_attributes:
+                    item_name = item_attr.get("name", "")
+                    item_desc = item_attr.get("description", "")
+                    formatted_lines.append(f"  - {item_name}  \t[ {item_desc} ]")
+
+            else:
+                # Handle simple attributes (default case for backward compatibility)
+                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+
+        return "\n".join(formatted_lines)
+
+    def _get_attribute_confidence_threshold(
+        self, attr_name: str, attributes: List[Dict[str, Any]], default_threshold: float
+    ) -> float:
+        """
+        Get confidence threshold for a specific attribute, supporting nested structures.
+
+        Args:
+            attr_name: Name of the attribute to find threshold for
+            attributes: List of attribute configurations
+            default_threshold: Default threshold if not found
+
+        Returns:
+            Confidence threshold for the attribute
+        """
+        # First check top-level attributes
+        for attr in attributes:
+            if attr.get("name") == attr_name:
+                return _safe_float_conversion(
+                    attr.get("confidence_threshold", default_threshold),
+                    default_threshold,
+                )
+
+        # Check nested group attributes
+        for attr in attributes:
+            if attr.get("attributeType") == "group":
+                group_attributes = attr.get("groupAttributes", [])
+                for group_attr in group_attributes:
+                    if group_attr.get("name") == attr_name:
+                        return _safe_float_conversion(
+                            group_attr.get("confidence_threshold", default_threshold),
+                            default_threshold,
+                        )
+
+        # Check nested list item attributes
+        for attr in attributes:
+            if attr.get("attributeType") == "list":
+                list_template = attr.get("listItemTemplate", {})
+                item_attributes = list_template.get("itemAttributes", [])
+                for item_attr in item_attributes:
+                    if item_attr.get("name") == attr_name:
+                        return _safe_float_conversion(
+                            item_attr.get("confidence_threshold", default_threshold),
+                            default_threshold,
+                        )
+
+        # Return default if not found
+        return default_threshold
+
+    def _get_attribute_config(
+        self, attr_name: str, attributes: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Get the configuration for a specific attribute, supporting nested structures.
+
+        Args:
+            attr_name: Name of the attribute to find
+            attributes: List of attribute configurations
+
+        Returns:
+            Attribute configuration dictionary, or empty dict if not found
+        """
+        # First check top-level attributes
+        for attr in attributes:
+            if attr.get("name") == attr_name:
+                return attr
+
+        # Check nested group attributes
+        for attr in attributes:
+            if attr.get("attributeType") == "group":
+                group_attributes = attr.get("groupAttributes", [])
+                for group_attr in group_attributes:
+                    if group_attr.get("name") == attr_name:
+                        return group_attr
+
+        # Check nested list item attributes
+        for attr in attributes:
+            if attr.get("attributeType") == "list":
+                list_template = attr.get("listItemTemplate", {})
+                item_attributes = list_template.get("itemAttributes", [])
+                for item_attr in item_attributes:
+                    if item_attr.get("name") == attr_name:
+                        return item_attr
+
+        # Return empty dict if not found
+        return {}
+
+    def _enhance_dict_assessment(
+        self, assessment_dict: Dict[str, Any], threshold: float
+    ) -> Dict[str, Any]:
+        """
+        Enhance an assessment dictionary by adding confidence thresholds to confidence assessments.
+
+        Args:
+            assessment_dict: Dictionary containing assessment data
+            threshold: Confidence threshold to add
+
+        Returns:
+            Enhanced assessment dictionary
+        """
+        # Safety check: ensure assessment_dict is actually a dictionary
+        if not isinstance(assessment_dict, dict):
+            logger.warning(
+                f"Expected dictionary for assessment enhancement, got {type(assessment_dict)}. "
+                f"Creating default assessment structure."
+            )
+            return {
+                "confidence": 0.5,
+                "confidence_reason": f"LLM returned unexpected type {type(assessment_dict)} instead of dictionary. Using default confidence.",
+                "confidence_threshold": threshold,
+            }
+
+        # Check if this dictionary itself is a confidence assessment
+        if "confidence" in assessment_dict:
+            # This is a direct confidence assessment - add threshold
+            return {
+                **assessment_dict,
+                "confidence_threshold": threshold,
+            }
+
+        # Otherwise, check nested values for confidence assessments
+        enhanced = {}
+        for key, value in assessment_dict.items():
+            if isinstance(value, dict) and "confidence" in value:
+                # This is a nested confidence assessment - add threshold
+                enhanced[key] = {
+                    **value,
+                    "confidence_threshold": threshold,
+                }
+            elif isinstance(value, dict):
+                # Recursively process nested dictionaries
+                enhanced[key] = self._enhance_dict_assessment(value, threshold)
+            else:
+                # Not a confidence assessment - pass through unchanged
+                enhanced[key] = value
+        return enhanced
+
+    def _check_confidence_alerts(
+        self,
+        assessment_data: Dict[str, Any],
+        attr_name: str,
+        threshold: float,
+        alerts_list: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Check assessment data for confidence threshold violations and add alerts.
+
+        Args:
+            assessment_data: Dictionary containing assessment data
+            attr_name: Name of the attribute being assessed
+            threshold: Confidence threshold to check against
+            alerts_list: List to append alerts to (modified in place)
+        """
+        # Safety check: ensure assessment_data is actually a dictionary
+        if not isinstance(assessment_data, dict):
+            logger.warning(
+                f"Expected dictionary for confidence alert checking, got {type(assessment_data)} for attribute '{attr_name}'. "
+                f"Skipping confidence alert check."
+            )
+            return
+
+        # Safety check: ensure threshold is a valid float
+        safe_threshold = _safe_float_conversion(threshold, 0.9)
+
+        # First check if this assessment_data itself is a direct confidence assessment
+        if "confidence" in assessment_data:
+            confidence = _safe_float_conversion(
+                assessment_data.get("confidence", 0.0), 0.0
+            )
+            if confidence < safe_threshold:
+                alerts_list.append(
+                    {
+                        "attribute_name": attr_name,
+                        "confidence": confidence,
+                        "confidence_threshold": safe_threshold,
+                    }
+                )
+
+        # Then check for nested sub-attributes (for group/complex attributes)
+        for sub_attr_name, sub_assessment in assessment_data.items():
+            if isinstance(sub_assessment, dict) and "confidence" in sub_assessment:
+                confidence = _safe_float_conversion(
+                    sub_assessment.get("confidence", 0.0), 0.0
+                )
+                if confidence < safe_threshold:
+                    full_attr_name = (
+                        f"{attr_name}.{sub_attr_name}"
+                        if "." not in attr_name
+                        else f"{attr_name}.{sub_attr_name}"
+                    )
+                    alerts_list.append(
+                        {
+                            "attribute_name": full_attr_name,
+                            "confidence": confidence,
+                            "confidence_threshold": safe_threshold,
+                        }
+                    )
 
     def _prepare_prompt_from_template(
         self,
@@ -446,11 +711,17 @@ class AssessmentService:
             # Get assessment configuration
             assessment_config = self.config.get("assessment", {})
             model_id = self.config.get("model_id") or assessment_config.get("model")
-            temperature = float(assessment_config.get("temperature", 0))
-            top_k = float(assessment_config.get("top_k", 5))
-            top_p = float(assessment_config.get("top_p", 0.1))
+            temperature = _safe_float_conversion(
+                assessment_config.get("temperature", 0), 0.0
+            )
+            top_k = _safe_float_conversion(assessment_config.get("top_k", 5), 5.0)
+            top_p = _safe_float_conversion(assessment_config.get("top_p", 0.1), 0.1)
             max_tokens = (
-                int(assessment_config.get("max_tokens", 4096))
+                int(
+                    _safe_float_conversion(
+                        assessment_config.get("max_tokens", 4096), 4096
+                    )
+                )
                 if assessment_config.get("max_tokens")
                 else None
             )
@@ -535,8 +806,8 @@ class AssessmentService:
                 parsing_succeeded = False  # Mark that parsing failed
 
             # Get confidence thresholds
-            default_confidence_threshold = assessment_config.get(
-                "default_confidence_threshold", 0.9
+            default_confidence_threshold = _safe_float_conversion(
+                assessment_config.get("default_confidence_threshold", 0.9), 0.9
             )
 
             # Enhance assessment data with confidence thresholds and create confidence threshold alerts
@@ -544,32 +815,106 @@ class AssessmentService:
             confidence_threshold_alerts = []
 
             for attr_name, attr_assessment in assessment_data.items():
-                # Get the attribute config to check for per-attribute confidence threshold
-                attr_threshold = default_confidence_threshold
-                for attr in attributes:
-                    if attr.get("name") == attr_name:
-                        attr_threshold = attr.get(
-                            "confidence_threshold", default_confidence_threshold
+                # Get the attribute config to check for per-attribute confidence threshold (including nested attributes)
+                attr_threshold = self._get_attribute_confidence_threshold(
+                    attr_name, attributes, default_confidence_threshold
+                )
+
+                # Find the attribute configuration to determine its type
+                attr_config = self._get_attribute_config(attr_name, attributes)
+                attr_type = (
+                    attr_config.get("attributeType", "simple")
+                    if attr_config
+                    else "simple"
+                )
+
+                # Check if attr_assessment is a dictionary (expected format for simple/group attributes)
+                if isinstance(attr_assessment, dict):
+                    # For simple attributes or group attributes - add confidence_threshold to each confidence assessment
+                    enhanced_assessment_data[attr_name] = self._enhance_dict_assessment(
+                        attr_assessment, attr_threshold
+                    )
+
+                    # Check for confidence threshold alerts in the assessment
+                    self._check_confidence_alerts(
+                        attr_assessment,
+                        attr_name,
+                        attr_threshold,
+                        confidence_threshold_alerts,
+                    )
+
+                elif isinstance(attr_assessment, list):
+                    # Handle list attributes (expected format for LIST attributes like transactions)
+                    if attr_type == "list":
+                        # This is expected for list attributes - process each item in the list
+                        enhanced_list = []
+                        for i, item_assessment in enumerate(attr_assessment):
+                            if isinstance(item_assessment, dict):
+                                enhanced_item = self._enhance_dict_assessment(
+                                    item_assessment, attr_threshold
+                                )
+                                enhanced_list.append(enhanced_item)
+
+                                # Check for confidence threshold alerts in list items
+                                self._check_confidence_alerts(
+                                    item_assessment,
+                                    f"{attr_name}[{i}]",
+                                    attr_threshold,
+                                    confidence_threshold_alerts,
+                                )
+                            else:
+                                # Handle unexpected format within list
+                                logger.warning(
+                                    f"List item {i} in attribute '{attr_name}' is not a dictionary. "
+                                    f"Expected dict, got {type(item_assessment)}. Using default confidence."
+                                )
+                                default_item = {
+                                    "confidence": 0.5,
+                                    "confidence_reason": f"List item {i} in '{attr_name}' has unexpected format. Using default confidence.",
+                                    "confidence_threshold": attr_threshold,
+                                }
+                                enhanced_list.append(default_item)
+
+                                # Add alert for default confidence
+                                if 0.5 < attr_threshold:
+                                    confidence_threshold_alerts.append(
+                                        {
+                                            "attribute_name": f"{attr_name}[{i}]",
+                                            "confidence": 0.5,
+                                            "confidence_threshold": attr_threshold,
+                                        }
+                                    )
+
+                        enhanced_assessment_data[attr_name] = enhanced_list
+                    else:
+                        # List format for non-list attribute is unexpected
+                        logger.warning(
+                            f"Attribute '{attr_name}' (type: {attr_type}) assessment is a list but attribute is not configured as list type. "
+                            f"Using default confidence."
                         )
-                        break
-                attr_threshold = float(attr_threshold)
 
-                # Add confidence_threshold to the assessment data
-                enhanced_assessment_data[attr_name] = {
-                    **attr_assessment,
-                    "confidence_threshold": attr_threshold,
-                }
-
-                # Check if confidence is below threshold and create alert
-                confidence = attr_assessment.get("confidence", 0.0)
-                if confidence < attr_threshold:
-                    confidence_threshold_alerts.append(
-                        {
-                            "attribute_name": attr_name,
-                            "confidence": confidence,
+                        # Create a default assessment structure
+                        default_assessment = {
+                            "confidence": 0.5,
+                            "confidence_reason": f"LLM returned list format for non-list attribute '{attr_name}'. Using default confidence (0.5) and threshold ({attr_threshold}).",
                             "confidence_threshold": attr_threshold,
                         }
+                        enhanced_assessment_data[attr_name] = default_assessment
+
+                else:
+                    # Handle other unexpected types
+                    logger.warning(
+                        f"Attribute '{attr_name}' assessment is of unexpected type {type(attr_assessment)}. "
+                        f"Expected dictionary or list (for list attributes). Using default confidence."
                     )
+
+                    # Create a default assessment structure
+                    default_assessment = {
+                        "confidence": 0.5,
+                        "confidence_reason": f"LLM returned unexpected type {type(attr_assessment)} for attribute '{attr_name}'. Using default confidence (0.5) and threshold ({attr_threshold}).",
+                        "confidence_threshold": attr_threshold,
+                    }
+                    enhanced_assessment_data[attr_name] = default_assessment
 
             # Update the existing extraction result with enhanced assessment data
             extraction_data["explainability_info"] = [enhanced_assessment_data]

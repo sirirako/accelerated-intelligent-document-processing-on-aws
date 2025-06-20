@@ -360,21 +360,39 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       return;
     }
 
-    // Create a new empty item
+    // Create a new item with only required properties and meaningful defaults
     let newItem;
     if (property && property.items && property.items.type === 'object') {
       newItem = {};
       if (property.items.properties) {
         Object.entries(property.items.properties).forEach(([propKey, propSchema]) => {
           if (propKey === 'name') {
+            // Always include the name
             newItem[propKey] = name.trim();
-          } else if (propSchema.type === 'list' || propSchema.type === 'array') {
-            newItem[propKey] = [];
-          } else if (propSchema.type === 'object') {
-            newItem[propKey] = {};
-          } else {
-            newItem[propKey] = '';
+          } else if (propSchema.enum && propSchema.enum.length > 0) {
+            // Include enum properties with their first option as default
+            const [firstEnumValue] = propSchema.enum;
+            newItem[propKey] = firstEnumValue;
+          } else if (
+            propSchema.default !== undefined &&
+            propSchema.default !== '' &&
+            propSchema.default !== null &&
+            !(Array.isArray(propSchema.default) && propSchema.default.length === 0) &&
+            !(
+              typeof propSchema.default === 'object' &&
+              propSchema.default !== null &&
+              !Array.isArray(propSchema.default) &&
+              Object.keys(propSchema.default).length === 0
+            )
+          ) {
+            // Only include properties with meaningful non-empty default values
+            newItem[propKey] = propSchema.default;
           }
+          // Skip ALL other properties including:
+          // - Empty strings, arrays, objects
+          // - Properties without defaults
+          // - Properties with empty/null defaults
+          // They will be added later when the user actually fills them in
         });
       }
     } else {
@@ -439,6 +457,36 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   };
 
   const updateValue = (path, value) => {
+    // Don't create properties for empty/meaningless values
+    if (
+      value === '' ||
+      value === null ||
+      (Array.isArray(value) && value.length === 0) ||
+      (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0)
+    ) {
+      // Instead of setting empty values, check if we should remove the property entirely
+      const newValues = { ...formValues };
+      const segments = path.split(/[.[\]]+/).filter(Boolean);
+      let current = newValues;
+
+      // Navigate to the parent of the property we want to delete
+      for (let i = 0; i < segments.length - 1; i += 1) {
+        if (!current[segments[i]]) {
+          // Parent doesn't exist, so we can't delete anything
+          return;
+        }
+        current = current[segments[i]];
+      }
+
+      const [lastSegment] = segments.slice(-1);
+      // Only delete the property if it exists
+      if (current && typeof current === 'object' && lastSegment in current) {
+        delete current[lastSegment];
+        onChange(newValues);
+      }
+      return;
+    }
+
     const newValues = { ...formValues };
     const segments = path.split(/[.[\]]+/).filter(Boolean);
     let current = newValues;
@@ -456,7 +504,8 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       current = current[segment];
     });
 
-    current[segments[segments.length - 1]] = value;
+    const [lastSegment] = segments.slice(-1);
+    current[lastSegment] = value;
     onChange(newValues);
   };
 
