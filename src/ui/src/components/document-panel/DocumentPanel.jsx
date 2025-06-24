@@ -20,6 +20,7 @@ import './DocumentPanel.css';
 import DocumentViewers from '../document-viewers/DocumentViewers';
 import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
+import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
 import {
   getSectionConfidenceAlerts,
@@ -593,6 +594,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       />
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
+      <ChatPanel objectKey={item.objectKey} />
     </SpaceBetween>
   );
 };

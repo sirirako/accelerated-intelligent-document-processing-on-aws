@@ -522,6 +522,54 @@ StateTaxes[0]:
   └── Period: 8.43 [Confidence: 83.2% / Threshold: 80.0% - GREEN]
 ```
 
+## Image Processing Configuration
+
+The assessment service supports configurable image dimensions for optimal confidence evaluation:
+
+### Default Configuration
+
+```yaml
+assessment:
+  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  # Image processing settings
+  image:
+    target_width: 951    # Default width in pixels
+    target_height: 1268  # Default height in pixels
+```
+
+### Custom Image Dimensions
+
+Configure image dimensions based on assessment requirements:
+
+```yaml
+# For detailed visual assessment
+assessment:
+  image:
+    target_width: 1200
+    target_height: 1600
+
+# For standard confidence evaluation
+assessment:
+  image:
+    target_width: 800
+    target_height: 1000
+```
+
+### Image Resizing Features for Assessment
+
+- **Aspect Ratio Preservation**: Images maintain proportions for accurate visual analysis
+- **Smart Scaling**: Only downsizes when necessary to preserve visual detail
+- **High-Quality Resampling**: Better image quality for confidence assessment
+- **Performance Optimization**: Optimized images reduce assessment processing time
+
+### Configuration Benefits for Assessment
+
+- **Enhanced Visual Analysis**: Appropriate resolution improves confidence evaluation accuracy
+- **Better OCR Verification**: Higher quality images help verify extraction results against visual content
+- **Improved Confidence Scoring**: Better image quality leads to more accurate confidence assessments
+- **Service-Specific Tuning**: Optimize image dimensions for different assessment complexity levels
+- **Resource Optimization**: Balance assessment quality and processing costs
+
 ## Cost Optimization
 
 ### Token Reduction Strategy
@@ -532,6 +580,7 @@ The assessment feature implements several cost optimization techniques:
 2. **Conditional Image Processing**: Images only processed when `{DOCUMENT_IMAGE}` placeholder is present
 3. **Optional Deployment**: Assessment infrastructure only deployed when `IsAssessmentEnabled=true`
 4. **Efficient Prompting**: Optimized prompt templates minimize token usage while maintaining accuracy
+5. **Configurable Image Dimensions**: Adjust image resolution to balance assessment quality and processing costs
 
 
 ## Testing and Validation

@@ -190,19 +190,24 @@ class TestClassificationService:
             assert result == "Formatted prompt"
 
     @patch("idp_common.s3.get_text_content")
-    @patch("idp_common.s3.get_binary_content")
+    @patch("idp_common.image.prepare_image")
     @patch(
         "idp_common.classification.service.ClassificationService._invoke_bedrock_model"
     )
     @patch("idp_common.image.prepare_bedrock_image_attachment")
     def test_classify_page_bedrock_success(
-        self, mock_prepare_image, mock_invoke, mock_get_binary, mock_get_text, service
+        self,
+        mock_prepare_bedrock_image,
+        mock_invoke,
+        mock_prepare_image,
+        mock_get_text,
+        service,
     ):
         """Test successful page classification with Bedrock."""
         # Mock responses
         mock_get_text.return_value = "This is an invoice for $100"
-        mock_get_binary.return_value = b"image_data"
-        mock_prepare_image.return_value = {"image": "base64_encoded_image"}
+        mock_prepare_image.return_value = b"image_data"
+        mock_prepare_bedrock_image.return_value = {"image": "base64_encoded_image"}
         mock_invoke.return_value = {
             "response": {
                 "output": {"message": {"content": [{"text": '{"class": "invoice"}'}]}}
@@ -227,8 +232,8 @@ class TestClassificationService:
 
         # Verify calls
         mock_get_text.assert_called_once_with("s3://bucket/text.txt")
-        mock_get_binary.assert_called_once_with("s3://bucket/image.jpg")
-        mock_prepare_image.assert_called_once_with(b"image_data")
+        mock_prepare_image.assert_called_once_with("s3://bucket/image.jpg")
+        mock_prepare_bedrock_image.assert_called_once_with(b"image_data")
         mock_invoke.assert_called_once()
 
     @patch("idp_common.s3.get_text_content")

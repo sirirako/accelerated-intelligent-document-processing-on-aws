@@ -250,8 +250,8 @@ class SaveReportingData:
                 evaluation_date = doc_time
                 year, month, day = (
                     doc_time.strftime("%Y"),
-                    doc_time.strftime("%m"),
-                    doc_time.strftime("%d"),
+                    doc_time.strftime("%Y-%m"),
+                    doc_time.strftime("%Y-%m-%d"),
                 )
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
@@ -263,8 +263,8 @@ class SaveReportingData:
                 evaluation_date = datetime.datetime.now()
                 year, month, day = (
                     evaluation_date.strftime("%Y"),
-                    evaluation_date.strftime("%m"),
-                    evaluation_date.strftime("%d"),
+                    evaluation_date.strftime("%Y-%m"),
+                    evaluation_date.strftime("%Y-%m-%d"),
                 )
         else:
             logger.warning(
@@ -273,8 +273,8 @@ class SaveReportingData:
             evaluation_date = datetime.datetime.now()
             year, month, day = (
                 evaluation_date.strftime("%Y"),
-                evaluation_date.strftime("%m"),
-                evaluation_date.strftime("%d"),
+                evaluation_date.strftime("%Y-%m"),
+                evaluation_date.strftime("%Y-%m-%d"),
             )
 
         # Escape document ID by replacing slashes with underscores
@@ -435,8 +435,8 @@ class SaveReportingData:
                 timestamp = doc_time
                 year, month, day = (
                     doc_time.strftime("%Y"),
-                    doc_time.strftime("%m"),
-                    doc_time.strftime("%d"),
+                    doc_time.strftime("%Y-%m"),
+                    doc_time.strftime("%Y-%m-%d"),
                 )
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
@@ -448,8 +448,8 @@ class SaveReportingData:
                 timestamp = datetime.datetime.now()
                 year, month, day = (
                     timestamp.strftime("%Y"),
-                    timestamp.strftime("%m"),
-                    timestamp.strftime("%d"),
+                    timestamp.strftime("%Y-%m"),
+                    timestamp.strftime("%Y-%m-%d"),
                 )
         else:
             logger.warning(
@@ -458,8 +458,8 @@ class SaveReportingData:
             timestamp = datetime.datetime.now()
             year, month, day = (
                 timestamp.strftime("%Y"),
-                timestamp.strftime("%m"),
-                timestamp.strftime("%d"),
+                timestamp.strftime("%Y-%m"),
+                timestamp.strftime("%Y-%m-%d"),
             )
 
         # Escape document ID by replacing slashes with underscores

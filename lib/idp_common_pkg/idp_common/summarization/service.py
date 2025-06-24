@@ -799,6 +799,15 @@ class SummarizationService:
                     key=json_key,
                     content_type="application/json",
                 )
+                
+                # Store the raw text
+                fulltext_key = f"{document.input_key}/summary/fulltext.txt"
+                s3.write_content(
+                    content=all_text,
+                    bucket=output_bucket,
+                    key=fulltext_key,
+                    content_type="text/plain"
+                )
 
                 # Generate and store markdown report
                 md_key = f"{document.input_key}/summary/summary.md"

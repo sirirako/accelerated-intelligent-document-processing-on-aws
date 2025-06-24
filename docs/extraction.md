@@ -399,6 +399,55 @@ extraction:
 
 Examples are class-specific - only examples from the same document class being processed will be included in the prompt.
 
+## Image Processing Configuration
+
+The extraction service supports configurable image dimensions for optimal performance and quality:
+
+### Default Configuration
+
+```yaml
+extraction:
+  model: us.amazon.nova-pro-v1:0
+  # Image processing settings
+  image:
+    target_width: 951    # Default width in pixels
+    target_height: 1268  # Default height in pixels
+```
+
+### Custom Image Dimensions
+
+Configure image dimensions based on your extraction requirements:
+
+```yaml
+# For high-accuracy extraction with detailed visual analysis
+extraction:
+  image:
+    target_width: 1200
+    target_height: 1600
+
+# For fast processing with standard resolution
+extraction:
+  image:
+    target_width: 800
+    target_height: 1000
+```
+
+### Image Resizing Features
+
+- **Aspect Ratio Preservation**: Images are resized proportionally without distortion
+- **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
+- **High-Quality Resampling**: Better visual quality after resizing for improved field detection
+- **Performance Optimization**: Optimized images reduce processing time and memory usage
+
+### Configuration Benefits for Extraction
+
+- **Enhanced Field Detection**: Appropriate image resolution improves accuracy for table and form extraction
+- **Visual Element Processing**: Better handling of signatures, stamps, checkboxes, and visual indicators
+- **OCR Error Correction**: Higher quality images help verify and correct text extraction results
+- **Service-Specific Tuning**: Optimize image dimensions for different document types and extraction complexity
+- **Runtime Configuration**: Adjust image processing without code changes
+- **Resource Optimization**: Balance quality and performance based on extraction requirements
+
 ## Best Practices
 
 1. **Clear Attribute Descriptions**: Include detail on where and how information appears in the document. More specific descriptions lead to better extraction results.
@@ -421,3 +470,7 @@ Examples are class-specific - only examples from the same document class being p
 8. **Handle Document Variations**: Consider creating separate document classes for significantly different layouts of the same document type rather than trying to handle all variations with a single class.
 
 9. **Test Extraction Pipeline End-to-End**: Validate your extraction configuration with the full pipeline including OCR, classification, and extraction to ensure components work together effectively.
+
+10. **Optimize Image Dimensions**: Configure image dimensions based on document complexity - use higher resolution for forms and tables, standard resolution for simple text documents.
+
+11. **Balance Quality vs Performance**: Higher resolution images provide better extraction accuracy but consume more resources and processing time.

@@ -46,12 +46,34 @@ def handler(event, context):
     
     # Load configuration and initialize the OCR service
     config = get_config()
-    features = [feature['name'] for feature in config.get("ocr",{}).get("features",[])]
+    ocr_config = config.get("ocr", {})
+    features = [feature['name'] for feature in ocr_config.get("features", [])]
+    image_config = ocr_config.get("image", {})
+    
+    # Extract resize configuration if present
+    resize_config = None
+    if image_config:
+        target_width = image_config.get("target_width")
+        target_height = image_config.get("target_height")
+        if target_width is not None and target_height is not None:
+            target_width = int(target_width)
+            target_height = int(target_height)
+            resize_config = {
+                "target_width": target_width,
+                "target_height": target_height
+            }
+            logger.info(f"Image resize configuration found: {resize_config}")
+        else:
+            logger.info("No image resize configuration found in ocr.image config")
+    else:
+        logger.info("No image configuration found in ocr config")
+    
     logger.info(f"Initializing OCR for MAX_WORKERS: {MAX_WORKERS}, enhanced_features: {features}")
     service = ocr.OcrService(
         region=region,
         max_workers=MAX_WORKERS,
-        enhanced_features=features
+        enhanced_features=features,
+        resize_config=resize_config
     )
     
     # Process the document - the service will read the PDF content directly

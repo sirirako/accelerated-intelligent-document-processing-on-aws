@@ -7,6 +7,9 @@ ocr:
     - name: LAYOUT
     - name: TABLES
     - name: SIGNATURES
+  image:
+    target_width: '951'
+    target_height: '1268'
 classes:
   - name: letter
     description: A formal written correspondence with sender/recipient addresses, date, salutation, body, and closing signature
@@ -300,6 +303,9 @@ classes:
       - name: comments
         description: Additional notes or remarks about the document. Look for sections labeled 'notes', 'remarks', or 'comments'.
 classification:
+  image:
+    target_width: '951'
+    target_height: '1268'
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
@@ -439,6 +445,9 @@ classification:
     You are a document classification expert who can analyze and classify multiple documents and their page boundaries within a document package from various domains. Your task is to determine the document type based on its content and structure, using the provided document type definitions. Your output must be valid JSON according to the requested format.
   classificationMethod: textbasedHolisticClassification
 extraction:
+  image:
+    target_width: '951'
+    target_height: '1268'
   top_p: '0.1'
   max_tokens: '10000'
   top_k: '5'
@@ -594,6 +603,9 @@ summarization:
   system_prompt: >-
     You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \nSummarization Style: Balanced\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.
 assessment:
+  image:
+    target_width: '951'
+    target_height: '1268'
   default_confidence_threshold: '0.9'
   top_p: '0.1'
   max_tokens: '10000'

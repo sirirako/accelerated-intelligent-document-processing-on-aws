@@ -337,6 +337,54 @@ The `imagePath` field supports multiple formats:
 
 For comprehensive details on configuring few-shot examples, including multimodal vs. text-only approaches, example management, and advanced features, refer to the [few-shot-examples.md](./few-shot-examples.md) documentation.
 
+## Image Processing Configuration
+
+The classification service supports configurable image dimensions for optimal performance and quality:
+
+### Default Configuration
+
+```yaml
+classification:
+  model: us.amazon.nova-pro-v1:0
+  # Image processing settings
+  image:
+    target_width: 951    # Default width in pixels
+    target_height: 1268  # Default height in pixels
+```
+
+### Custom Image Dimensions
+
+Configure image dimensions based on your specific requirements:
+
+```yaml
+# For high-accuracy classification
+classification:
+  image:
+    target_width: 1200
+    target_height: 1600
+
+# For fast processing with lower resolution
+classification:
+  image:
+    target_width: 600
+    target_height: 800
+```
+
+### Image Resizing Features
+
+- **Aspect Ratio Preservation**: Images are resized proportionally without distortion
+- **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
+- **High-Quality Resampling**: Better visual quality after resizing
+- **Performance Optimization**: Smaller, optimized images process faster with lower memory usage
+
+### Configuration Benefits
+
+- **Service-Specific Tuning**: Each service can use optimal image dimensions
+- **Runtime Configuration**: No code changes needed to adjust image processing
+- **Backward Compatibility**: Default values maintain existing behavior
+- **Memory Optimization**: Configurable dimensions allow memory optimization
+- **Better Resource Utilization**: Service-specific sizing reduces unnecessary processing
+
 ## Best Practices for Classification
 
 1. **Provide Clear Class Descriptions**: Include distinctive features and common elements
@@ -346,3 +394,5 @@ For comprehensive details on configuring few-shot examples, including multimodal
 5. **Monitor and Refine**: Use the evaluation framework to track classification accuracy
 6. **Consider Visual Elements**: Describe visual layout and design patterns in class descriptions
 7. **Test with Real Documents**: Validate classification against actual document samples
+8. **Optimize Image Dimensions**: Configure appropriate image sizes based on document complexity and processing requirements
+9. **Balance Quality vs Performance**: Higher resolution images provide better accuracy but consume more resources

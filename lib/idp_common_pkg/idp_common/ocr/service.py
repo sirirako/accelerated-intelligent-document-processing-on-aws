@@ -32,6 +32,8 @@ class OcrService:
         region: Optional[str] = None,
         max_workers: int = 20,
         enhanced_features: Union[bool, List[str]] = False,
+        dpi: int = 300,
+        resize_config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the OCR service.
@@ -43,12 +45,26 @@ class OcrService:
                            - If False: Uses basic detect_document_text (faster, no features)
                            - If List[str]: Uses analyze_document with specified features
                               Valid features: TABLES, FORMS, SIGNATURES, LAYOUT
+            dpi: DPI (dots per inch) for image generation from PDF pages
+            resize_config: Optional dictionary containing image resizing configuration
+                          with 'target_width' and 'target_height' keys
 
         Raises:
             ValueError: If invalid features are specified in enhanced_features
         """
         self.region = region or os.environ.get("AWS_REGION", "us-east-1")
         self.max_workers = max_workers
+        self.dpi = dpi
+        self.resize_config = resize_config
+
+        # Log DPI setting for debugging
+        logger.info(f"OCR Service initialized with DPI: {self.dpi}")
+
+        # Log resize config if provided
+        if self.resize_config:
+            logger.info(
+                f"OCR Service initialized with resize config: {self.resize_config}"
+            )
 
         # Define valid Textract feature types
         VALID_FEATURES = ["TABLES", "FORMS", "SIGNATURES", "LAYOUT"]
@@ -260,12 +276,12 @@ class OcrService:
         t0 = time.time()
         page_id = page_index + 1
 
-        # Extract page image
+        # Extract page image at specified DPI
         page = pdf_document.load_page(page_index)
-        pix = page.get_pixmap()
+        pix = page.get_pixmap(dpi=self.dpi)
         img_bytes = pix.tobytes("jpeg")
 
-        # Upload image to S3
+        # Upload original image to S3
         image_key = f"{prefix}/pages/{page_id}/image.jpg"
         s3.write_content(img_bytes, output_bucket, image_key, content_type="image/jpeg")
 
@@ -274,12 +290,25 @@ class OcrService:
             f"Time for image conversion (page {page_id}): {t1 - t0:.6f} seconds"
         )
 
-        # Process with Textract
+        # Resize image for OCR processing if configured
+        ocr_img_bytes = img_bytes  # Default to original image
+        if self.resize_config:
+            from idp_common import image
+
+            target_width = self.resize_config.get("target_width")
+            target_height = self.resize_config.get("target_height")
+
+            ocr_img_bytes = image.resize_image(img_bytes, target_width, target_height)
+            logger.debug(
+                f"Resized image for OCR processing (page {page_id}) to {target_width}x{target_height}"
+            )
+
+        # Process with OCR using potentially resized image
         if isinstance(self.enhanced_features, list) and self.enhanced_features:
-            textract_result = self._analyze_document(img_bytes, page_id)
+            textract_result = self._analyze_document(ocr_img_bytes, page_id)
         else:
             textract_result = self.textract_client.detect_document_text(
-                Document={"Bytes": img_bytes}
+                Document={"Bytes": ocr_img_bytes}
             )
 
         # Extract metering data

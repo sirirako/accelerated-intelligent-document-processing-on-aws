@@ -617,7 +617,12 @@ class ExtractionService:
             t1 = time.time()
             logger.info(f"Time taken to read text content: {t1 - t0:.2f} seconds")
 
-            # Read page images
+            # Read page images with configurable dimensions
+            extraction_config = self.config.get("extraction", {})
+            image_config = extraction_config.get("image", {})
+            target_width = image_config.get("target_width")
+            target_height = image_config.get("target_height")
+
             page_images = []
             for page_id in sorted_page_ids:
                 if page_id not in document.pages:
@@ -625,14 +630,23 @@ class ExtractionService:
 
                 page = document.pages[page_id]
                 image_uri = page.image_uri
-                image_content = image.prepare_image(image_uri)
+                if target_width is not None and target_height is not None:
+                    # Cast to int in case config values are strings
+                    target_width = int(target_width)
+                    target_height = int(target_height)
+                    image_content = image.prepare_image(
+                        image_uri, target_width, target_height
+                    )
+                else:
+                    image_content = image.prepare_image(
+                        image_uri
+                    )  # Uses function defaults
                 page_images.append(image_content)
 
             t2 = time.time()
             logger.info(f"Time taken to read images: {t2 - t1:.2f} seconds")
 
             # Get extraction configuration
-            extraction_config = self.config.get("extraction", {})
             model_id = self.config.get("model_id") or extraction_config.get("model")
             temperature = float(extraction_config.get("temperature", 0))
             top_k = float(extraction_config.get("top_k", 5))

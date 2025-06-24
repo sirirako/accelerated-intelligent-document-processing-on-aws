@@ -14,7 +14,8 @@ def resize_image(image_data: bytes,
                 target_width: int = 951, 
                 target_height: int = 1268) -> bytes:
     """
-    Resize an image to target dimensions if larger than target
+    Resize an image to fit within target dimensions while preserving aspect ratio.
+    No padding, no distortion - pure proportional scaling.
     
     Args:
         image_data: Raw image bytes
@@ -26,13 +27,22 @@ def resize_image(image_data: bytes,
     """
     image = Image.open(io.BytesIO(image_data))
     current_width, current_height = image.size
-    current_resolution = current_width * current_height
-    target_resolution = target_width * target_height
     
-    if current_resolution > target_resolution:
-        logger.info(f"Downsizing image from {current_width}x{current_height}")
-        image = image.resize((target_width, target_height))
+    # Calculate scaling factor to fit within bounds while preserving aspect ratio
+    width_ratio = target_width / current_width
+    height_ratio = target_height / current_height
+    scale_factor = min(width_ratio, height_ratio)  # Fit within bounds
     
+    # Only resize if we're making it smaller
+    if scale_factor < 1.0:
+        new_width = int(current_width * scale_factor)
+        new_height = int(current_height * scale_factor)
+        logger.info(f"Resizing image from {current_width}x{current_height} to {new_width}x{new_height} (scale: {scale_factor:.3f})")
+        image = image.resize((new_width, new_height), Image.LANCZOS)
+    else:
+        logger.debug(f"Image {current_width}x{current_height} already fits within {target_width}x{target_height}, no resizing needed")
+    
+    # Convert to JPEG bytes
     img_byte_array = io.BytesIO()
     image.save(img_byte_array, format="JPEG")
     return img_byte_array.getvalue()

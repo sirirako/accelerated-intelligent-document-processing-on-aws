@@ -37,7 +37,7 @@ The `document_evaluations` table contains document-level evaluation metrics:
 | false_discovery_rate | double | False discovery rate (0-1) |
 | execution_time | double | Time taken to evaluate (seconds) |
 
-This table is partitioned by year, month, day, and document ID.
+This table is partitioned by year, month (YYYY-MM format), day (YYYY-MM-DD format), and document ID.
 
 ### Section Evaluations
 
@@ -56,7 +56,7 @@ The `section_evaluations` table contains section-level evaluation metrics:
 | false_discovery_rate | double | Section false discovery rate (0-1) |
 | evaluation_date | timestamp | When the evaluation was performed |
 
-This table is partitioned by year, month, day, and document ID.
+This table is partitioned by year, month (YYYY-MM format), day (YYYY-MM-DD format), and document ID.
 
 ### Attribute Evaluations
 
@@ -78,7 +78,7 @@ The `attribute_evaluations` table contains attribute-level evaluation metrics:
 | confidence_threshold | string | Confidence threshold used |
 | evaluation_date | timestamp | When the evaluation was performed |
 
-This table is partitioned by year, month, day, and document ID.
+This table is partitioned by year, month (YYYY-MM format), day (YYYY-MM-DD format), and document ID.
 
 ## Metering Table
 
@@ -94,7 +94,7 @@ The `metering` table captures detailed usage metrics for each document processin
 | number_of_pages | int | Number of pages in the document |
 | timestamp | timestamp | When the operation was performed |
 
-This table is partitioned by year, month, day, and document ID.
+This table is partitioned by year, month (YYYY-MM format), day (YYYY-MM-DD format), and document ID.
 
 The metering table is particularly valuable for:
 - Cost analysis and allocation

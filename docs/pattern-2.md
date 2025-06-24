@@ -58,6 +58,10 @@ Each step includes comprehensive retry logic for handling transient errors:
 - **Purpose**: Processes input PDFs using Amazon Textract
 - **Key Features**:
   - Concurrent page processing with ThreadPoolExecutor
+  - **Configurable Image Processing**: Enhanced image resizing with aspect-ratio preservation
+  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion (default: 300)
+  - **Dual Image Strategy**: Stores original high-DPI images while using resized images for OCR processing
+  - **Smart Resizing**: Only downsizes images when necessary (scale factor < 1.0)
   - Image preprocessing and optimization
   - Comprehensive error handling and retries
   - Detailed metrics tracking
@@ -211,6 +215,73 @@ The pattern exports these outputs to the parent stack:
 - Configuration supports multiple presets per pattern (e.g., default, checkboxed_attributes_extraction, medical_records_summarization, few_shot_example)
 - Configuration can be updated through the Web UI without stack redeployment
 - Model choices are constrained through enum constraints in the configuration schema
+
+## OCR Configuration
+
+The OCR service in Pattern 2 supports enhanced image processing capabilities for optimal text extraction:
+
+### DPI Configuration
+
+Configure DPI (Dots Per Inch) for PDF-to-image conversion:
+
+```python
+# Example OCR service initialization with custom DPI
+ocr_service = OcrService(
+    dpi=400,  # Higher DPI for better quality (default: 300)
+    resize_config={
+        'target_width': 1200,
+        'target_height': 1600
+    }
+)
+```
+
+### Image Resizing Configuration
+
+The OCR service supports optional image resizing for processing optimization:
+
+```yaml
+# OCR configuration example
+ocr:
+  dpi: 300  # PDF-to-image conversion DPI
+  resize_config:
+    target_width: 951   # Target width for processing
+    target_height: 1268 # Target height for processing
+```
+
+### OCR Image Processing Features
+
+- **Configurable DPI**: Higher DPI (400+) for better quality, standard DPI (300) for balanced performance
+- **Dual Image Strategy**: 
+  - Stores original high-DPI images in S3 for archival and downstream processing
+  - Uses resized images for OCR processing to optimize performance
+- **Aspect Ratio Preservation**: Images are resized proportionally without distortion
+- **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
+- **Enhanced Logging**: Detailed logging for DPI and resize operations
+
+### Configuration Benefits
+
+- **Quality Control**: Higher DPI settings improve OCR accuracy for complex documents
+- **Performance Optimization**: Resized images reduce processing time and memory usage
+- **Storage Efficiency**: Dual strategy balances quality preservation with processing efficiency
+- **Flexibility**: Runtime configuration allows adjustment without code changes
+- **Backward Compatibility**: Default values maintain existing behavior
+
+### Best Practices for OCR
+
+1. **DPI Selection**:
+   - Use 300 DPI for standard documents
+   - Use 400+ DPI for documents with small text or complex layouts
+   - Consider processing costs when using higher DPI settings
+
+2. **Image Resizing**:
+   - Enable resizing for large documents to improve processing speed
+   - Maintain aspect ratios to preserve text readability
+   - Test different dimensions based on document types
+
+3. **Performance Tuning**:
+   - Monitor processing times and adjust DPI/resize settings accordingly
+   - Use concurrent processing for multi-page documents
+   - Balance quality requirements with processing costs
 
 ## Customizing Classification
 
@@ -645,3 +716,11 @@ sam local invoke ExtractionFunction --env-vars testing/env.json -e testing/Extra
    - Include examples for all document classes you expect to process
    - Regularly review and update examples based on real-world performance
    - Test configurations with examples before production deployment
+
+8. **Image Processing Optimization**:
+   - Configure appropriate image dimensions for each service based on document complexity
+   - Use higher DPI (400+) for OCR when processing documents with small text or complex layouts
+   - Balance image quality with processing performance and costs
+   - Test different image configurations with your specific document types
+   - Monitor memory usage and processing times when adjusting image settings
+   - Leverage the dual image strategy in OCR to preserve quality while optimizing processing

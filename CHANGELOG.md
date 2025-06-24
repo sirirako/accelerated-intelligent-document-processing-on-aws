@@ -5,7 +5,16 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.4]
+
 ### Added
+- **Configurable Image Processing and Enhanced Resizing Logic**
+  - **Improved Image Resizing Algorithm**: Enhanced aspect-ratio preserving scaling that only downsizes when necessary (scale factor < 1.0) to prevent image distortion
+  - **Configurable Image Dimensions**: All processing services (Assessment, Classification, Extraction, OCR) now support configurable image dimensions through configuration with default 951×1268 resolution
+  - **Service-Specific Image Optimization**: Each service can use optimal image dimensions for performance and quality tuning
+  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion (default: 300) and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
+  - **Runtime Configuration**: No code changes needed to adjust image processing - all configurable through service configuration
+  - **Backward Compatibility**: Default values maintain existing behavior with no immediate action required for existing deployments
 - **Enhanced Configuration Management**
   - **Save as Default**: New button to save current configuration as the new default baseline with confirmation modal and version upgrade warnings
   - **Export Configuration**: Export current configuration to local files in JSON or YAML format with customizable filename
@@ -54,6 +63,10 @@ SPDX-License-Identifier: MIT-0
 - Defend against non-numeric confidence_threshold values in the configuration - avoid float conversion or numeric comparison exceptions in Assessement step
 - Prevent creation of empty configuration fields in UI
 - Firefox browser issues with signed URLs (PR #14)
+- Improved S3 Partition Key Format for Better Date Range Filtering:
+  - Updated reporting data partition keys to use YYYY-MM format for month and YYYY-MM-DD format for day
+  - Enables easier date range filtering in analytics queries across different months and years
+  - Partition structure now: `year=2024/month=2024-03/day=2024-03-15/` instead of `year=2024/month=03/day=15/`
 
 ## [0.3.3]
 
