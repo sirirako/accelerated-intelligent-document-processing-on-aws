@@ -17,6 +17,42 @@ import { API, Logger } from 'aws-amplify';
 import { Editor } from '@monaco-editor/react';
 import getFileContents from '../../graphql/queries/getFileContents';
 import uploadDocument from '../../graphql/queries/uploadDocument';
+import { getFieldHighlightInfo, getFieldConfidenceInfo } from '../common/confidence-alerts-utils';
+// Lazy load VisualEditorModal for better performance
+const VisualEditorModal = React.lazy(() => import('./VisualEditorModal'));
+
+const logger = new Logger('FileEditor');
+
+const EDITOR_DEFAULT_HEIGHT = '600px';
+
+// A simplified form-based JSON editor
+const FormEditorView = ({ jsonData, onChange, isReadOnly, sectionData }) => {
+  // Render primitive values like strings, numbers, booleans, null
+  function renderPrimitiveValue(value, onChangeValue, fieldPath) {
+    if (value === null || value === undefined) {
+      return (
+        <FormField>
+          <Input value="null" disabled={isReadOnly} onChange={() => !isReadOnly && onChangeValue(null)} />
+        </FormField>
+      );
+    }
+
+    if (typeof value === 'boolean') {
+      return (
+        <FormField>
+          <Checkbox
+            checked={value}
+            disabled={isReadOnly}
+            onChange={({ detail }) => !isReadOnly && onChangeValue(detail.checked)}
+          >
+            {String(value)}
+          </Checkbox>
+        </FormField>
+      );
+    }
+
+    // Handle numeric values with proper input configuration
+    if (typeof value === 'number') {
       const fieldPathString = Array.isArray(fieldPath) ? fieldPath.join('.') : fieldPath || '';
       const isConfidenceField =
         fieldPathString &&
@@ -199,6 +235,44 @@ import uploadDocument from '../../graphql/queries/uploadDocument';
                         onChangeValue(newArray);
                       },
                       fieldPath,
+                      true, // isArrayIndex
+                    )}
+                  </Box>
+                );
+              })}
+              {!isReadOnly && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    const newValue = [...value, value.length > 0 ? null : ''];
+                    onChangeValue(newValue);
+                  }}
+                >
+                  Add Item
+                </Button>
+              )}
+            </SpaceBetween>
+          </Box>
+        </Box>
+      );
+    }
+
+    // Handle objects
+    if (typeof value === 'object') {
+      return (
+        <Box padding="xxxs">
+          <SpaceBetween size="xxxs">
+            {Object.entries(value).map(([key, propValue]) => (
+              <Box key={`prop-${key}`}>
+                {renderKeyValuePair(
+                  key,
+                  propValue,
+                  (newValue) => {
+                    const newObj = { ...value };
+                    newObj[key] = newValue;
+                    onChangeValue(newObj);
+                  },
+                  fieldPath,
                   false, // isArrayIndex
                 )}
               </Box>

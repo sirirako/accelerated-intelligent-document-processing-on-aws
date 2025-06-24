@@ -3,6 +3,26 @@
 
 import { getDocumentConfidenceAlertCount } from './confidence-alerts-utils';
 
+// Helper function to determine HITL status without nested ternaries
+const getHitlStatus = (status) => {
+  if (!status || status === 'N/A') {
+    return 'N/A';
+  }
+  return status;
+};
+
+// Helper function to check if HITL is completed
+const isHitlCompleted = (status) => {
+  if (!status) return false;
+  const statusLower = status.toLowerCase();
+  return (
+    statusLower === 'completed' ||
+    statusLower.includes('complete') ||
+    statusLower.includes('done') ||
+    statusLower.includes('finished')
+  );
+};
+
 /* Maps document attributes from API to a format that can be used in tables and panel */
 // eslint-disable-next-line arrow-body-style
 const mapDocumentsAttributes = (documents) => {
@@ -52,6 +72,15 @@ const mapDocumentsAttributes = (documents) => {
     // Calculate confidence alert count
     const confidenceAlertCount = getDocumentConfidenceAlertCount(sections);
 
+    // Extract HITL metadata
+    const hitlTriggered = hitlStatus && hitlStatus !== 'N/A';
+    const hitlCompleted = isHitlCompleted(hitlStatus);
+
+    // Debug logging for HITL status
+    console.log('HITL Status from backend:', hitlStatus);
+    console.log('HITL Triggered:', hitlTriggered);
+    console.log('HITL Completed:', hitlCompleted);
+
     const mapping = {
       objectKey,
       objectStatus,
@@ -72,8 +101,10 @@ const mapDocumentsAttributes = (documents) => {
       confidenceAlertCount,
       listPK,
       listSK,
-      hitlStatus,
+      hitlTriggered,
       hitlReviewURL,
+      hitlCompleted,
+      hitlStatus: getHitlStatus(hitlStatus),
     };
 
     console.log('mapped-document-attributes', mapping);

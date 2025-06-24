@@ -96,11 +96,6 @@ Parameters:
     Type: String
     Default: "true"
     Description: "Enable Human In The Loop?"
-   
-  ConfidenceThreshold:
-    Type: String
-    Default: ""
-    Description: "Confidence Threshold for Document extraction keys and classification mapping"
     
   SageMakerA2IReviewPortalURL:
     Type: String
@@ -375,8 +370,19 @@ Resources:
                     format: textarea
                     description: Task prompt for LLM evaluation - supports parameters {DOCUMENT_CLASS}, {ATTRIBUTE_NAME}, {ATTRIBUTE_DESCRIPTION}, {EXPECTED_VALUE} and {ACTUAL_VALUE}
                     order: 7
-          summarization:
+          assessment:
             order: 4
+            type: object
+            sectionLabel: Assessment & HITL Configuration
+            properties:
+              hitl_confidence_score:
+                type: number
+                description: HITL Confidence Threshold (1-100) - Documents with confidence below this threshold will be sent for Human In The Loop review
+                minimum: 1
+                maximum: 100
+                order: 1
+          summarization:
+            order: 5
             type: object
             sectionLabel: Summarization Inference
             properties:
@@ -412,7 +418,7 @@ Resources:
                 description: Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 7
           pricing:
-            order: 5
+            order: 6
             type: array
             sectionLabel: Pricing Estimates - check https://aws.amazon.com/bedrock/pricing/
             listLabel: Services
@@ -586,7 +592,6 @@ Resources:
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
           ENABLE_HITL: !Ref EnableHITL
-          CONFIDENCE_THRESHOLD: !Ref ConfidenceThreshold
           DB_NAME: !Ref BDAMetadataTable
           BDA_PROJECT_ARN: !Ref BDAProjectArn
       LoggingConfig:

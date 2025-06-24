@@ -68,11 +68,6 @@ Parameters:
     Default: true
     Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction and classification of BDA is less than configured Confidence Threshold
 
-  Pattern1BDAConfidenceThreshold:
-    Type: Number
-    Default: 80
-    Description: Confidence Threshold to invoke Human In the Loop for verification of extraction and classification
-
   ExistingPrivateWorkforceArn:
     Type: String
     Default: ""
@@ -319,16 +314,6 @@ Parameters:
 
 Rules:
   # Pattern 1 rules
-  RequirePattern1BDAConfidenceThresholdIfHITL:
-    RuleCondition: 
-      !Equals [
-        !Ref Pattern1EnableHITL, 
-        "true"
-      ]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref Pattern1BDAConfidenceThreshold, ""]]
-        AssertDescription: Pattern1BDAConfidenceThreshold is required when Pattern1EnableHITL is true.
-
   ValidateExistingPrivateWorkforceArn:
     RuleCondition:
       !And [
@@ -411,7 +396,6 @@ Metadata:
           - Pattern1Configuration
           - Pattern1BDAProjectArn
           - Pattern1EnableHITL
-          - Pattern1BDAConfidenceThreshold
           - ExistingPrivateWorkforceArn
       - Label:
           default: "Pattern 2 Configuration"
@@ -486,8 +470,6 @@ Metadata:
         default: "Pattern1 - Configuration Preset"
       Pattern1EnableHITL:
         default: "Pattern1 - Enable Human In The Loop"
-      Pattern1BDAConfidenceThreshold:
-        default: "Pattern1 - BDA Confidence Threshold"
       ExistingPrivateWorkforceArn:
         default: "Pattern1 - Existing Private Workforce ARN"
       Pattern2Configuration:
@@ -792,7 +774,6 @@ Resources:
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
-        ConfidenceThreshold: !Ref Pattern1BDAConfidenceThreshold
         EnableHITL: !Ref Pattern1EnableHITL
         ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-1/${Pattern1Configuration}/config.yaml"
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
@@ -3620,7 +3601,9 @@ Resources:
               - Effect: Allow
                 Action:
                   - ssm:PutParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
         - PolicyName: KMSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4320,6 +4303,7 @@ Resources:
           Variables:
             LOG_LEVEL: !Ref LogLevel
             CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+            STACK_NAME: !Ref AWS::StackName
         LoggingConfig:
           LogGroup: !Ref ConfigurationResolverFunctionLogGroup
         Policies:
@@ -4334,6 +4318,11 @@ Resources:
                   - kms:GenerateDataKey*
                   - kms:DescribeKey
                 Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup

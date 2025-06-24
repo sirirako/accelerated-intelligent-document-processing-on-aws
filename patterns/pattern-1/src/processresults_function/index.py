@@ -28,7 +28,38 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 
 # Use the common S3 client
 s3_client = get_s3_client()
+ssm_client = boto3.client('ssm')
 bedrock_client = boto3.client('bedrock-data-automation')
+
+def get_confidence_threshold_from_ssm(stack_name: str) -> float:
+    """
+    Get the HITL confidence threshold from SSM Parameter Store.
+    
+    Args:
+        stack_name (str): The CloudFormation stack name
+        
+    Returns:
+        float: The confidence threshold as a decimal (0.0-1.0)
+    """
+    try:
+        parameter_name = f"/{stack_name}/hitl_confidence_threshold"
+        response = ssm_client.get_parameter(Name=parameter_name)
+        threshold_value = float(response['Parameter']['Value'])
+        # Convert percentage to decimal if needed (80 -> 0.80)
+        if threshold_value > 1.0:
+            threshold_value = threshold_value / 100.0
+        logger.info(f"Retrieved confidence threshold from SSM: {threshold_value}")
+        return threshold_value
+    except ClientError as e:
+        logger.warning(f"Failed to retrieve confidence threshold from SSM parameter {parameter_name}: {e}")
+        # Return default value of 80% (0.80) if SSM parameter is not found
+        logger.info("Using default confidence threshold: 0.80")
+        return 0.80
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Invalid confidence threshold value in SSM parameter: {e}")
+        # Return default value if the parameter value is invalid
+        logger.info("Using default confidence threshold: 0.80")
+        return 0.80
 
 def create_metadata_file(file_uri, class_type, file_type=None):
     """
@@ -939,7 +970,13 @@ def handler(event, context):
     
     if enable_hitl:
         try:
-            confidence_threshold = float(os.environ.get('CONFIDENCE_THRESHOLD', '80')) / 100
+            # Get stack name from environment and retrieve confidence threshold from SSM
+            stack_name = os.environ.get('METRIC_NAMESPACE', '')
+            if not stack_name:
+                logger.error("METRIC_NAMESPACE environment variable not found")
+                raise ValueError("Stack name not available")
+            
+            confidence_threshold = get_confidence_threshold_from_ssm(stack_name)
             metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
             job_metadata_key = f'{metdatafile_path}/job_metadata.json'
             execution_id = event.get("execution_arn", "").split(':')[-1]

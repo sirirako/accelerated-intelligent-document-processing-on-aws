@@ -9,8 +9,6 @@ export default gql`
         ObjectKey
         PK
         SK
-        HITLStatus
-        HITLReviewURL
       }
       nextToken
     }

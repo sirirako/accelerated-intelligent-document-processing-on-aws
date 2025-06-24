@@ -26,19 +26,22 @@ def __getattr__(name):
         "reporting",
     ]:
         if name not in _submodules:
-            _submodules[name] = __import__(f"idp_common.{name}", fromlist=[name])
+            _submodules[name] = __import__(f"idp_common.{name}", fromlist=["*"])
         return _submodules[name]
 
-    # Handle specific imports from models
-    if name in ["get_config", "Document", "Page", "Section", "Status"]:
-        if "models" not in _submodules:
-            _submodules["models"] = __import__("idp_common.models", fromlist=["models"])
-        return getattr(_submodules["models"], name)
+    # Special handling for directly exposed functions
+    if name == "get_config":
+        config = __getattr__("config")
+        return config.get_config
 
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+    # Special handling for directly exposed classes
+    if name in ["Document", "Page", "Section", "Status"]:
+        models = __getattr__("models")
+        return getattr(models, name)
+
+    raise AttributeError(f"module 'idp_common' has no attribute '{name}'")
 
 
-# Define what should be available when using "from idp_common import *"
 __all__ = [
     "bedrock",
     "s3",

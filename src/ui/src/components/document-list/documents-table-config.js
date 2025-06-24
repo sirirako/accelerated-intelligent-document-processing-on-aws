@@ -29,25 +29,32 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
   {
     id: 'hitlStatus',
-    header: <span style={{ color: 'inherit' }}>HITL A2I Status</span>,
-    cell: (item) => item.hitlStatus || 'N/A',
-    sortingField: 'hitlStatus',
-    width: 150,
-  },
-  {
-    id: 'hitlReview',
-    header: <span style={{ color: 'inherit' }}>HITL A2I Review</span>,
+    header: 'HITL (A2I) Status',
     cell: (item) => {
-      if (item.hitlStatus === 'IN_PROGRESS' && item.hitlReviewURL) {
+      if (!item.hitlTriggered) {
+        return 'N/A';
+      }
+
+      if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
+        return 'A2I Review Completed';
+      }
+
+      if (item.hitlReviewURL) {
         return (
-          <Link href={item.hitlReviewURL} external externalIconAriaLabel="Opens A2I review in a new tab">
-            Review in A2I
+          <Link href={item.hitlReviewURL} external>
+            A2I Review In Progress
           </Link>
         );
       }
-      return 'N/A';
+
+      // If we have a status but no URL and not completed, show the status
+      if (item.hitlStatus) {
+        return item.hitlStatus === 'IN_PROGRESS' ? 'A2I Review In Progress' : item.hitlStatus;
+      }
+
+      return 'A2I Review Triggered';
     },
-    sortingField: 'hitlReviewURL',
+    sortingField: 'hitlStatus',
     width: 150,
   },
   {
@@ -88,7 +95,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
 ];
 
-export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[2];
+export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[3]; // initialEventTime
 
 export const SELECTION_LABELS = {
   itemSelectionLabel: (data, row) => `select ${row.objectKey}`,
@@ -108,8 +115,7 @@ const VISIBLE_CONTENT_OPTIONS = [
     options: [
       { id: 'objectKey', label: 'Document ID', editable: false },
       { id: 'objectStatus', label: 'Status' },
-      { id: 'hitlStatus', label: 'HITL A2I Status' },
-      { id: 'hitlReview', label: 'HITL A2I Review' },
+      { id: 'hitlStatus', label: 'HITL (A2I) Status' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
@@ -123,7 +129,6 @@ const VISIBLE_CONTENT = [
   'objectKey',
   'objectStatus',
   'hitlStatus',
-  'hitlReview',
   'initialEventTime',
   'completionTime',
   'duration',

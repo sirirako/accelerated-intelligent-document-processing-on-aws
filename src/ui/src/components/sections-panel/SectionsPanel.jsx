@@ -3,26 +3,72 @@
 
 /* eslint-disable react/prop-types */
 import React from 'react';
-import { Box, Container, SpaceBetween, Table } from '@awsui/components-react';
+import { Box, Container, SpaceBetween, Table, StatusIndicator, ExpandableSection } from '@awsui/components-react';
 import FileViewer from '../document-viewer/JSONViewer';
-import { getSectionConfidenceAlertCount } from '../common/confidence-alerts-utils';
+import {
+  getSectionConfidenceAlertCount,
+  getSectionConfidenceAlerts,
+  getHitlConfidenceThreshold,
+} from '../common/confidence-alerts-utils';
 
 // Cell renderer components
 const IdCell = ({ item }) => <span>{item.Id}</span>;
 const ClassCell = ({ item }) => <span>{item.Class}</span>;
 const PageIdsCell = ({ item }) => <span>{item.PageIds.join(', ')}</span>;
-const ConfidenceAlertsCell = ({ item }) => <span>{getSectionConfidenceAlertCount(item)}</span>;
-const ActionsCell = ({ item, pages, documentItem }) => (
+
+// Enhanced confidence alerts cell with detailed information
+const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
+  if (!mergedConfig) {
+    // Fallback to original behavior
+    return <span>{getSectionConfidenceAlertCount(item)}</span>;
+  }
+
+  const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
+  const alerts = getSectionConfidenceAlerts(item, mergedConfig);
+  const alertCount = alerts.length;
+
+  if (alertCount === 0) {
+    return (
+      <Box>
+        <StatusIndicator type="success">0</StatusIndicator>
+        <Box fontSize="body-s" color="text-body-secondary">
+          Threshold: {(hitlThreshold * 100).toFixed(0)}%
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <StatusIndicator type="warning">{alertCount}</StatusIndicator>
+      <Box fontSize="body-s" color="text-body-secondary">
+        Threshold: {(hitlThreshold * 100).toFixed(0)}%
+      </Box>
+      <ExpandableSection headerText={`View ${alertCount} field${alertCount !== 1 ? 's' : ''}`} variant="footer">
+        <SpaceBetween size="xs">
+          {alerts.map((alert) => (
+            <Box key={`alert-${alert.fieldName}-${alert.confidence}`} fontSize="body-s" color="text-body-secondary">
+              <strong>{alert.fieldName}</strong>:{' '}
+              <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span>
+            </Box>
+          ))}
+        </SpaceBetween>
+      </ExpandableSection>
+    </Box>
+  );
+};
+
+const ActionsCell = ({ item, pages, documentItem, mergedConfig }) => (
   <FileViewer
     fileUri={item.OutputJSONUri}
     fileType="json"
     buttonText="View/Edit Data"
-    sectionData={{ ...item, pages, documentItem }}
+    sectionData={{ ...item, pages, documentItem, mergedConfig }}
   />
 );
 
 // Column definitions
-const createColumnDefinitions = (pages, documentItem) => [
+const createColumnDefinitions = (pages, documentItem, mergedConfig) => [
   {
     id: 'id',
     header: 'Section ID',
@@ -52,7 +98,7 @@ const createColumnDefinitions = (pages, documentItem) => [
   {
     id: 'confidenceAlerts',
     header: 'Confidence Alerts',
-    cell: (item) => <ConfidenceAlertsCell item={item} />,
+    cell: (item) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
     minWidth: 140,
     width: 140,
     isResizable: true,
@@ -60,16 +106,16 @@ const createColumnDefinitions = (pages, documentItem) => [
   {
     id: 'actions',
     header: 'Actions',
-    cell: (item) => <ActionsCell item={item} pages={pages} documentItem={documentItem} />,
+    cell: (item) => <ActionsCell item={item} pages={pages} documentItem={documentItem} mergedConfig={mergedConfig} />,
     minWidth: 400,
     width: 400,
     isResizable: true,
   },
 ];
 
-const SectionsPanel = ({ sections, pages, documentItem }) => {
+const SectionsPanel = ({ sections, pages, documentItem, mergedConfig }) => {
   // Create column definitions
-  const columnDefinitions = createColumnDefinitions(pages, documentItem);
+  const columnDefinitions = createColumnDefinitions(pages, documentItem, mergedConfig);
 
   return (
     <SpaceBetween size="l">

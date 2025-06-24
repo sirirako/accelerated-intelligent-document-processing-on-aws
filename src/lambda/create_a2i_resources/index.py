@@ -628,6 +628,21 @@ def handler(event, context):
                         Type='String',
                         Overwrite=True
                     )
+                    
+                    # Create HITL confidence threshold SSM parameter with default value 80
+                    try:
+                        ssm.put_parameter(
+                            Name=f"/{stack_name}/hitl_confidence_threshold",
+                            Value="80",
+                            Type='String',
+                            Overwrite=True,
+                            Description="HITL confidence threshold for Pattern-1 BDA processing"
+                        )
+                        print(f"Created SSM parameter /{stack_name}/hitl_confidence_threshold with default value 80")
+                    except Exception as e:
+                        print(f"Warning: Failed to create HITL confidence threshold SSM parameter: {e}")
+                        # Don't fail the entire operation if SSM parameter creation fails
+                    
                     response_data['HumanTaskUiArn'] = human_task_ui_arn
                     response_data['FlowDefinitionArn'] = flow_definition_arn
                     send_cfn_response(event, context, 'SUCCESS', response_data)

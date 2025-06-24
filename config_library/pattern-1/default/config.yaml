@@ -2,30 +2,8 @@
 # SPDX-License-Identifier: MIT-0
 
 notes: Processing configuration in BDA project.
-confidence:
-  overall_threshold: 0.8  # Default threshold, will be overridden by CloudFormation parameter
-  description: 'Overall confidence threshold for BDA processing. If the blueprint confidence or any key-value confidence falls below this threshold, HITL will be triggered.'
-  ui_display:
-    label: 'Confidence Threshold'
-    description: 'Minimum confidence score required to avoid A2I human review'
-    type: 'slider'
-    min: 0.0
-    max: 1.0
-    step: 0.05
-    format: 'percentage'
-hitl:
-  enabled: true  # Will be overridden by CloudFormation parameter
-  description: 'Human In The Loop A2I configuration for Pattern-1'
-  trigger_conditions:
-    - 'blueprint_confidence_below_threshold'
-    - 'keyvalue_confidence_below_threshold'
-  ui_display:
-    show_confidence_scores: true
-    highlight_low_confidence: true
-    color_coding:
-      high_confidence: '#16794d'  # Green
-      medium_confidence: '#ff9500'  # Orange  
-      low_confidence: '#d13313'  # Red
+assessment:
+  hitl_confidence_score: '80'
 summarization:
   top_p: '0.1'
   max_tokens: '4096'

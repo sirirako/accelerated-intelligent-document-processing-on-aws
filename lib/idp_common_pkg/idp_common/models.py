@@ -167,6 +167,9 @@ class Document:
     summarization_result: Any = None  # Holds the DocumentSummarizationResult object
     errors: List[str] = field(default_factory=list)
 
+    # HITL metadata
+    hitl_metadata: List[HitlMetadata] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert document to dictionary representation."""
         # First convert basic attributes
@@ -285,16 +288,16 @@ class Document:
                     page_ids=section_data.get("page_ids", []),
                     extraction_result_uri=section_data.get("extraction_result_uri"),
                     attributes=section_data.get("attributes"),
+                    confidence_threshold_alerts=section_data.get(
+                        "confidence_threshold_alerts", []
+                    ),
                 )
             )
 
-        # Convert status from string to enum
-        if "status" in data:
-            try:
-                document.status = Status(data["status"])
-            except ValueError:
-                # If the status isn't a valid enum value, use QUEUED as default
-                document.status = Status.QUEUED
+        # Convert HITL metadata if present
+        hitl_metadata_data = data.get("hitl_metadata", [])
+        for metadata_item in hitl_metadata_data:
+            document.hitl_metadata.append(HitlMetadata.from_dict(metadata_item))
 
         return document
 
