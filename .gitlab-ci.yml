@@ -28,6 +28,8 @@ developer_tests:
     - apt-get update -y
     - apt-get install make -y
     - pip install ruff
+    # Install test dependencies
+    - cd lib/idp_common_pkg && pip install -e ".[test]" && cd ../..
 
   script:
     - make lint-cicd
