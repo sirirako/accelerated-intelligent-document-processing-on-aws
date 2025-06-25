@@ -35,6 +35,8 @@ export default gql`
       EvaluationStatus
       SummaryReportUri
       ExpiresAfter
+      HITLStatus
+      HITLReviewURL
     }
   }
 `;

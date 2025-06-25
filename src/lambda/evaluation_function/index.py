@@ -12,25 +12,6 @@ import json
 import os
 import logging
 import time
-import boto3
-from typing import Dict, Any, Optional, List
-from enum import Enum
-
-# Import IDP common packages
-from idp_common.models import Document, Status
-from idp_common import get_config, evaluation
-from idp_common.appsync import DocumentAppSyncService
-
-# Configure logging
-logger = logging.getLogger()
-logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
-logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
-# Get LOG_LEVEL from environment variable with INFO as default
-
-# Get bucket names from environment variables
-METRIC_NAMESPACE = os.environ.get('METRIC_NAMESPACE', 'GENAIDP')
-BASELINE_BUCKET = os.environ['BASELINE_BUCKET']
-REPORTING_BUCKET = os.environ['REPORTING_BUCKET']
 SAVE_REPORTING_FUNCTION_NAME = os.environ.get('SAVE_REPORTING_FUNCTION_NAME', 'SaveReportingData')
 
 # Configuration will be loaded in handler function

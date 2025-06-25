@@ -19,6 +19,7 @@ The solution includes a responsive web-based user interface built with React tha
 - Inspection of processing outputs for section classification and information extraction
 - Accuracy evaluation reports when baseline data is provided
 - View and edit pattern configuration, including document classes, prompt engineering, and model settings
+- **Confidence threshold configuration** for HITL (Human-in-the-Loop) triggering through the Assessment & HITL Configuration section
 - Document upload from local computer
 - Knowledge base querying for document collections
 

@@ -13,8 +13,12 @@ from botocore.exceptions import ClientError
 from idp_common.s3 import get_s3_client, write_content
 from idp_common.utils import build_s3_uri
 from idp_common import metrics
-from idp_common.models import Document, Page, Section, Status
+from idp_common.models import Document, Page, Section, Status, HitlMetadata
 from idp_common.appsync.service import DocumentAppSyncService
+import boto3
+import random
+import string
+from decimal import Decimal
 
 
 logger = logging.getLogger()
@@ -24,6 +28,38 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 
 # Use the common S3 client
 s3_client = get_s3_client()
+ssm_client = boto3.client('ssm')
+bedrock_client = boto3.client('bedrock-data-automation')
+
+def get_confidence_threshold_from_ssm(stack_name: str) -> float:
+    """
+    Get the HITL confidence threshold from SSM Parameter Store.
+    
+    Args:
+        stack_name (str): The CloudFormation stack name
+        
+    Returns:
+        float: The confidence threshold as a decimal (0.0-1.0)
+    """
+    try:
+        parameter_name = f"/{stack_name}/hitl_confidence_threshold"
+        response = ssm_client.get_parameter(Name=parameter_name)
+        threshold_value = float(response['Parameter']['Value'])
+        # Convert percentage to decimal if needed (80 -> 0.80)
+        if threshold_value > 1.0:
+            threshold_value = threshold_value / 100.0
+        logger.info(f"Retrieved confidence threshold from SSM: {threshold_value}")
+        return threshold_value
+    except ClientError as e:
+        logger.warning(f"Failed to retrieve confidence threshold from SSM parameter {parameter_name}: {e}")
+        # Return default value of 80% (0.80) if SSM parameter is not found
+        logger.info("Using default confidence threshold: 0.80")
+        return 0.80
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Invalid confidence threshold value in SSM parameter: {e}")
+        # Return default value if the parameter value is invalid
+        logger.info("Using default confidence threshold: 0.80")
+        return 0.80
 
 def create_metadata_file(file_uri, class_type, file_type=None):
     """
@@ -478,12 +514,342 @@ def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, objec
         document.errors.append(f"Failed to list pages: {str(e)}")
         return document
 
+def start_human_loop(
+    execution_id: str,
+    kv_pairs: list,
+    source_image_uri: str,
+    bounding_boxes: list,
+    blueprintName: str,
+    bp_confidence: float,
+    confidenceThreshold: float,
+    page_id: int,
+    page_indices: list,
+    record_number: int
+) -> dict:
+    """
+    Start a SageMaker A2I human review loop if confidence is below threshold.
+    """
+    a2i_runtime_client = boto3.client('sagemaker-a2i-runtime')
+    ssm = boto3.client('ssm')
+
+    logger.info(f"pageID: {page_id}")
+    page_id_num = int(page_id) + 1
+    logger.info(f"pageIDNum: {page_id_num}")
+
+    try:
+        # Retrieve Bedrock project configuration
+        project_response = bedrock_client.get_data_automation_project(
+            projectArn=os.environ.get('BDA_PROJECT_ARN', ''),
+            projectStage='LIVE'
+        )
+        custom_output = project_response['project']['customOutputConfiguration']
+        blueprint_arns = custom_output.get('blueprints', [])
+
+        blueprint_options = []
+        for blueprint_arn in blueprint_arns:
+            try:
+                arn_string = blueprint_arn['blueprintArn']
+                logger.info(f"Processing blueprint ARN: {arn_string}")
+                blueprint_response = bedrock_client.get_blueprint(
+                    blueprintArn=arn_string,
+                    blueprintStage='LIVE'
+                )
+                blueprint_name = blueprint_response['blueprint']['blueprintName']
+                blueprint_options.append({
+                    "value": blueprint_name,
+                    "label": blueprint_name.replace('-', ' ').title()
+                })
+                logger.info(f"Retrieved blueprint name: {blueprint_name}")
+            except KeyError:
+                logger.error("Invalid blueprint ARN format in project configuration")
+            except ClientError as e:
+                logger.error(f"Bedrock API error: {e.response['Error']['Message']}")
+            except Exception as e:
+                logger.error(f"Unexpected error processing blueprint: {str(e)}")
+
+        logger.info(f"Retrieved {len(blueprint_options)} blueprint options from project")
+    except ClientError as e:
+        logger.error(f"Failed to retrieve Bedrock project: {e.response['Error']['Message']}")
+        blueprint_options = []
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving blueprints: {str(e)}")
+        blueprint_options = []
+
+    human_loop_input = {
+        "sourceDocument": source_image_uri,
+        "keyValuePairs": kv_pairs,
+        "boundingBoxes": bounding_boxes,
+        "confidenceThreshold": confidenceThreshold,
+        "blueprintName": blueprintName,
+        "bp_confidence": bp_confidence,
+        "blueprintOptions": blueprint_options,
+        "page_number": page_id_num,
+        "page_array": page_indices,
+        "execution_id": execution_id,
+        "record_id": record_number
+    }
+
+    try:
+        FlowDefinitionArn = ssm.get_parameter(Name=f"/{os.environ.get('METRIC_NAMESPACE', 'IDP')}/FlowDefinitionArn")['Parameter']['Value']
+        human_review_id = generate_random_string(2)
+        response = a2i_runtime_client.start_human_loop(
+            HumanLoopName=f"review-bda-{execution_id}-{human_review_id}",
+            FlowDefinitionArn=FlowDefinitionArn,
+            HumanLoopInput={"InputContent": json.dumps(human_loop_input)}
+        )
+        logger.info(f"Started human loop: {response['HumanLoopArn']}")
+        return response
+    except Exception as e:
+        logger.error(f"Error starting human loop: {str(e)}")
+        raise
+
+def generate_random_string(length: int) -> str:
+    """Generate a random alphanumeric string of specified length."""
+    characters = string.ascii_letters + string.digits
+    return ''.join(random.choices(characters, k=length))
+
+def parse_s3_path(s3_uri: str) -> (str, str):
+    """Extract bucket and key from s3:// URI."""
+    parsed = urlparse(s3_uri)
+    return parsed.netloc, parsed.path.lstrip('/')
+
+def download_json(bucket: str, key: str) -> dict:
+    """Download and parse JSON from S3."""
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    return json.loads(response['Body'].read())
+
+def download_decimal(bucket: str, key: str) -> dict:
+    """Download and parse JSON from S3, converting floats to Decimal."""
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    return json.loads(response['Body'].read(), parse_float=Decimal)
+
+def process_keyvalue_details(explainability_data: list, page_indices: list) -> dict:
+    """
+    Process explainability data to extract key-value and bounding box details per page.
+    """
+    results = {
+        'key_value_details': {str(p): [] for p in page_indices},
+        'bounding_box_details': {str(p): [] for p in page_indices}
+    }
+    last_page = str(page_indices[-1]) if page_indices else '0'
+
+    def get_page(raw_page: int) -> str:
+        """Convert 1-based page to 0-based index and validate."""
+        if raw_page is None:
+            return last_page
+        adjusted = raw_page - 1
+        return str(adjusted) if adjusted in page_indices else last_page
+
+    def process_entry(key_path: list, entry: dict, page: int):
+        target_page = get_page(page)
+        kv_entry = {
+            'key': format_key_path(key_path),
+            'value': entry.get('value', ''),
+            'confidence': entry.get('confidence', 0.0)
+        }
+        bbox = {}
+        if entry.get('geometry'):
+            for geom in entry['geometry']:
+                if 'boundingBox' in geom:
+                    bbox = {k: geom['boundingBox'].get(k, 0) for k in ['top', 'left', 'width', 'height']}
+                    break
+        results['key_value_details'][target_page].append(kv_entry)
+        results['bounding_box_details'][target_page].append({
+            'key': format_key_path(key_path),
+            'bounding_box': bbox
+        })
+
+    def format_key_path(path_parts: list) -> str:
+        """Convert path array to flattened key notation."""
+        formatted = []
+        for part in path_parts:
+            if isinstance(part, int) or (isinstance(part, str) and part.startswith('_')):
+                formatted[-1] += f"[{part[1:]}]"
+            else:
+                formatted.append(str(part))
+        return '.'.join(formatted)
+
+    def traverse(data: dict, path: list = None, current_page: int = None):
+        path = path or []
+        if isinstance(data, dict):
+            page = current_page
+            if 'geometry' in data and data['geometry']:
+                page = data['geometry'][0].get('page')
+            if 'value' in data:
+                process_entry(path, data, page)
+            else:
+                for k, v in data.items():
+                    traverse(v, path + [k], page)
+        elif isinstance(data, list):
+            for i, item in enumerate(data):
+                traverse(item, path + [f"_{i}"], current_page)
+
+    for entry in explainability_data:
+        traverse(entry)
+    return results
+
+def process_segments(
+    input_bucket: str,
+    output_bucket: str,
+    object_key: str,
+    segment_metadata: list,
+    confidence_threshold: float,
+    execution_id: str,
+    document
+):
+    """
+    Process each segment, extract key-value details, and invoke human review if needed.
+    """
+    dynamodb = boto3.resource('dynamodb')
+    table_name = os.environ.get("DB_NAME", "")
+    
+    if table_name:
+        table = dynamodb.Table(table_name)
+    else:
+        logger.warning("DB_NAME environment variable not set, skipping DynamoDB operations")
+    
+    now = datetime.datetime.now().isoformat()
+    hitl_triggered = False
+
+    for record_number, segment in enumerate(segment_metadata, start=1):
+        logger.info(f"Processing segment for execution id: {execution_id}")
+        item = {
+            "execution_id": execution_id,
+            "record_number": record_number,
+            "input_bucket": input_bucket,
+            "output_bucket": output_bucket,
+            "object_key": object_key,
+            "timestamp": now,
+            "bp_match": segment.get('custom_output_status'),
+            "hitl_bp_change": None
+        }
+
+        if segment.get('custom_output_status') == 'MATCH':
+            custom_bucket, custom_key = parse_s3_path(segment['custom_output_path'])
+            custom_output = download_json(custom_bucket, custom_key)
+            custom_decimal_output = download_decimal(custom_bucket, custom_key)
+            explainability_data = custom_output.get('explainability_info', [])
+            page_indices = custom_output.get("split_document", {}).get("page_indices", [])
+            pagespecific_details = process_keyvalue_details(
+                explainability_data,
+                page_indices
+            )
+            blueprint_name = custom_output["matched_blueprint"]["name"]
+            bp_confidence = custom_output["matched_blueprint"]["confidence"]
+
+            # Check if any key-value or blueprint confidence is below threshold
+            low_confidence = any(
+                kv['confidence'] < confidence_threshold
+                for page_num in page_indices
+                for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
+            ) or float(bp_confidence) < confidence_threshold
+
+            item.update({
+                "page_array": page_indices,
+                "hitl_triggered": low_confidence,
+                "extraction_bp_name": blueprint_name,
+                "extracted_result": custom_decimal_output
+            })
+
+            hitl_metadata = HitlMetadata(
+                execution_id=execution_id,
+                record_number=record_number,
+                bp_match=segment.get('custom_output_status'),
+                extraction_bp_name=blueprint_name,
+                hitl_triggered=low_confidence,
+                page_array=page_indices
+            )
+
+            if low_confidence:
+                hitl_triggered = True
+                metrics.put_metric('HITLTriggered', 1)
+                for page_number in page_indices:
+                    page_str = str(page_number)
+                    key_values = pagespecific_details['key_value_details'].get(page_str, [])
+                    bounding_boxes = pagespecific_details['bounding_box_details'].get(page_str, [])
+                    ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
+                    try:
+                        human_loop_response = start_human_loop(
+                            execution_id,
+                            key_values,
+                            ImageUri,
+                            bounding_boxes,
+                            blueprint_name,
+                            bp_confidence,
+                            confidence_threshold,
+                            page_number,
+                            page_indices,
+                            record_number
+                        )
+                        logger.info(f"Started human loop for page {page_number}: {human_loop_response}")
+                    except Exception as e:
+                        logger.error(f"Failed to start human loop for page {page_number}: {str(e)}")
+                
+                item.update({
+                    "hitl_corrected_result": custom_decimal_output
+                })
+        else:
+            # Process standard output if no custom output match
+            std_bucket, std_key = parse_s3_path(segment['standard_output_path'])
+            std_output = download_decimal(std_bucket, std_key)
+            metadata = std_output.get('metadata', {})
+            start_page = metadata.get('start_page_index', 0)
+            end_page = metadata.get('end_page_index', 0)
+            page_array = list(range(start_page, end_page + 1))
+            item.update({
+                "page_array": page_array,
+                "hitl_triggered": True,
+                "extraction_bp_name": "None",
+                "extracted_result": std_output
+            })
+
+            hitl_metadata = HitlMetadata(
+                execution_id=execution_id,
+                record_number=record_number,
+                bp_match=segment.get('custom_output_status'),
+                extraction_bp_name="None",
+                hitl_triggered=True,
+                page_array=page_array
+            )
+            
+            hitl_triggered = True
+            for page_number in range(start_page, end_page + 1):
+                ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
+                try:
+                    human_loop_response = start_human_loop(
+                        execution_id=execution_id,
+                        kv_pairs=[],
+                        source_image_uri=ImageUri,
+                        bounding_boxes=[],
+                        blueprintName="",
+                        bp_confidence=0.00,
+                        confidenceThreshold=confidence_threshold,
+                        page_id=page_number,
+                        page_indices=page_array,
+                        record_number=record_number
+                    )
+                    logger.info(f"Triggered human loop for page {page_number}: {human_loop_response}")
+                except Exception as e:
+                    logger.error(f"Failed to start human loop for page {page_number}: {str(e)}")
+        
+        document.hitl_metadata.append(hitl_metadata)
+
+        if table_name:
+            logger.info(f"Saving to DynamoDB: {json.dumps(item, default=str)}")
+            try:
+                table.put_item(Item=item)
+            except Exception as e:
+                logger.error(f"Error saving to DynamoDB: {str(e)}")
+    
+    return document, hitl_triggered
+
 def handler(event, context):
     """
     Process the BDA results and build a Document object with pages and sections.
+    Can handle both single BDA response and arrays of BDA responses from blueprint changes.
     
     Args:
-        event: Event containing BDA response information
+        event: Event containing BDA response information (single or array)
         context: Lambda context
         
     Returns:
@@ -491,15 +857,37 @@ def handler(event, context):
     """
     logger.info(f"Processing event: {json.dumps(event)}")
     
-    # Extract required information
-    output_bucket = event['output_bucket']
-    object_key = event['BDAResponse']['job_detail']['input_s3_object']['name']
-    input_bucket = event['BDAResponse']['job_detail']['input_s3_object']['s3_bucket']
-    bda_result_bucket = event['BDAResponse']['job_detail']['output_s3_location']['s3_bucket']
-    bda_result_prefix = event['BDAResponse']['job_detail']['output_s3_location']['name']
+    # Check if we have a single BDA response or an array of responses
+    bda_responses = []
+    
+    if isinstance(event, list):
+        # We have an array of BDA responses (from blueprint change)
+        logger.info(f"Processing array of {len(event)} BDA responses")
+        bda_responses = event
+    else:
+        # We have a single BDA response (from initial processing)
+        logger.info("Processing single BDA response")
+        bda_responses = [event]
+    
+    # Extract required information from the first response
+    first_response = bda_responses[0]
+    output_bucket = first_response.get('output_bucket')
+    
+    # Handle different response formats
+    if 'BDAResponse' in first_response:
+        # Standard initial processing format
+        object_key = first_response['BDAResponse']['job_detail']['input_s3_object']['name']
+        input_bucket = first_response['BDAResponse']['job_detail']['input_s3_object']['s3_bucket']
+    elif 'metadata' in first_response:
+        # Blueprint change format
+        object_key = first_response['metadata']['object_key']
+        input_bucket = first_response['metadata']['input_bucket']
+        output_bucket = first_response['metadata']['working_bucket']
+    else:
+        logger.error("Unknown response format")
+        raise ValueError("Could not determine document information from response")
     
     logger.info(f"Input bucket: {input_bucket}, prefix: {object_key}")
-    logger.info(f"BDA Result bucket: {bda_result_bucket}, prefix: {bda_result_prefix}")
     logger.info(f"Output bucket: {output_bucket}, base path: {object_key}")
 
     # Create a new Document object
@@ -509,7 +897,7 @@ def handler(event, context):
         input_key=object_key,
         output_bucket=output_bucket,
         status=Status.POSTPROCESSING,
-        workflow_execution_arn=event.get("execution_arn")
+        workflow_execution_arn=first_response.get("execution_arn")
     )
 
     # Update document status
@@ -517,7 +905,7 @@ def handler(event, context):
     logger.info(f"Updating document status to {document.status}")
     appsync_service.update_document(document)
    
-    # Create page images
+    # Create page images (only need to do this once)
     try:
         page_count = create_pdf_page_images(input_bucket, output_bucket, object_key)
         logger.info(f"Successfully created and uploaded {page_count} page images to S3")
@@ -525,9 +913,44 @@ def handler(event, context):
         logger.error(f"Error creating page images: {str(e)}")
         document.errors.append(f"Error creating page images: {str(e)}")
 
-    # Process sections and pages from BDA output
-    document = process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
-    document = process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
+    # Process each BDA response
+    hitl_triggered_any = False
+    section_to_bda_mapping = {}
+    
+    for response_idx, bda_response in enumerate(bda_responses):
+        logger.info(f"Processing BDA response {response_idx + 1} of {len(bda_responses)}")
+        
+        # Extract BDA result information
+        bda_result_bucket = None
+        bda_result_prefix = None
+        
+        if 'BDAResponse' in bda_response:
+            # Standard response format
+            bda_result_bucket = bda_response['BDAResponse']['job_detail']['output_s3_location']['s3_bucket']
+            bda_result_prefix = bda_response['BDAResponse']['job_detail']['output_s3_location']['name']
+        elif 'bda_response' in bda_response:
+            # Blueprint change response format
+            job_id = bda_response['bda_response'].get('jobId')
+            if job_id:
+                # Need to look up the job details to get output location
+                bda_runtime_client = boto3.client('bedrock-data-automation-runtime')
+                try:
+                    job_details = bda_runtime_client.get_data_automation_job(jobId=job_id)
+                    bda_result_bucket = job_details['job']['outputS3Location']['s3Bucket']
+                    bda_result_prefix = job_details['job']['outputS3Location']['name']
+                except Exception as e:
+                    logger.error(f"Error getting job details for job {job_id}: {str(e)}")
+                    continue
+        
+        if not bda_result_bucket or not bda_result_prefix:
+            logger.error(f"Could not determine BDA result location for response {response_idx}")
+            continue
+            
+        logger.info(f"BDA Result bucket: {bda_result_bucket}, prefix: {bda_result_prefix}")
+        
+        # Process sections and pages from BDA output
+        document = process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
+        document = process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
 
     # Calculate metrics
     page_ids_in_sections = set()
@@ -540,6 +963,62 @@ def handler(event, context):
     standard_pages_count = total_pages - custom_pages_count
     if standard_pages_count < 0:
         standard_pages_count = 0
+
+    # Process HITL if enabled
+    hitl_triggered = "false"
+    enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower() == 'true'
+    
+    if enable_hitl:
+        try:
+            # Get stack name from environment and retrieve confidence threshold from SSM
+            stack_name = os.environ.get('METRIC_NAMESPACE', '')
+            if not stack_name:
+                logger.error("METRIC_NAMESPACE environment variable not found")
+                raise ValueError("Stack name not available")
+            
+            confidence_threshold = get_confidence_threshold_from_ssm(stack_name)
+            metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
+            job_metadata_key = f'{metdatafile_path}/job_metadata.json'
+            execution_id = event.get("execution_arn", "").split(':')[-1]
+            logger.info(f"HITL execution ID: {execution_id}")
+
+            try:
+                jobmetadata_file = s3_client.get_object(Bucket=bda_result_bucket, Key=job_metadata_key)
+                job_metadata = json.loads(jobmetadata_file['Body'].read())
+                if 'output_metadata' in job_metadata:
+                    output_metadata = job_metadata['output_metadata']
+                    if isinstance(output_metadata, list):
+                        for asset in output_metadata:
+                            document, hitl_result = process_segments(
+                                input_bucket,
+                                output_bucket,
+                                object_key,
+                                asset.get('segment_metadata', []),
+                                confidence_threshold,
+                                execution_id,
+                                document
+                            )
+                            if hitl_result:
+                                hitl_triggered = "true"
+                    elif isinstance(output_metadata, dict):
+                        for asset_id, asset in output_metadata.items():
+                            document, hitl_result = process_segments(
+                                input_bucket,
+                                output_bucket,
+                                object_key,
+                                asset.get('segment_metadata', []),
+                                confidence_threshold,
+                                execution_id,
+                                document
+                            )
+                            if hitl_result:
+                                hitl_triggered = "true"
+                    else:
+                        logger.error("Unexpected output_metadata format in job_metadata.json")
+            except Exception as e:
+                logger.error(f"Error processing job_metadata.json: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error in HITL processing: {str(e)}")
     
     # Record metrics for processed pages
     metrics.put_metric('ProcessedDocuments', 1)
@@ -557,9 +1036,24 @@ def handler(event, context):
         }
     }
     
+    # Update document status based on HITL requirement
+    if hitl_triggered == "true":
+        # Keep as RUNNING until HITL completes
+        document.status = Status.RUNNING
+        logger.info(f"Document requires human review, setting status to {document.status}")
+    else:
+        # Only mark as COMPLETED if no human review is needed
+        document.status = Status.COMPLETED
+        document.completion_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        logger.info(f"Document processing complete, setting status to {document.status}")
+    
+    appsync_service.update_document(document)
+    
     # Prepare response
     response = {
-        "document": document.to_dict()
+        "document": document.to_dict(),
+        "hitl_triggered": hitl_triggered,
+        "bda_response_count": len(bda_responses)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

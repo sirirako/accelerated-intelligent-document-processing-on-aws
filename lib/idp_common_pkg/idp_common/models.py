@@ -86,6 +86,51 @@ class Section:
 
 
 @dataclass
+class HitlMetadata:
+    """Represents HITL (Human-In-The-Loop) metadata for a document."""
+
+    execution_id: Optional[str] = None
+    record_number: Optional[int] = None
+    bp_match: Optional[bool] = None
+    extraction_bp_name: Optional[str] = None
+    hitl_bp_change: Optional[str] = None
+    hitl_triggered: bool = False
+    page_array: List[str] = field(default_factory=list)
+    review_portal_url: Optional[str] = None  # Added field for review portal URL
+    hitl_completed: bool = False  # Added field to track completion status
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert HITL metadata to dictionary representation."""
+        return {
+            "execution_id": self.execution_id,
+            "record_number": self.record_number,
+            "bp_match": self.bp_match,
+            "extraction_bp_name": self.extraction_bp_name,
+            "hitl_bp_change": self.hitl_bp_change,
+            "hitl_triggered": self.hitl_triggered,
+            "page_array": self.page_array,
+            "review_portal_url": self.review_portal_url,  # Include review portal URL in dict
+            "hitl_completed": self.hitl_completed,  # Include completion status in dict
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "HitlMetadata":
+        """Create a HitlMetadata from a dictionary representation."""
+        if not data:
+            return cls()
+
+        return cls(
+            execution_id=data.get("execution_id"),
+            record_number=data.get("record_number"),
+            bp_match=data.get("bp_match"),
+            extraction_bp_name=data.get("extraction_bp_name"),
+            hitl_bp_change=data.get("hitl_bp_change"),
+            hitl_triggered=data.get("hitl_triggered", False),
+            page_array=data.get("page_array", []),
+        )
+
+
+@dataclass
 class Document:
     """
     Core document type that is passed through the processing pipeline.
@@ -121,6 +166,9 @@ class Document:
     evaluation_result: Any = None  # Holds the DocumentEvaluationResult object
     summarization_result: Any = None  # Holds the DocumentSummarizationResult object
     errors: List[str] = field(default_factory=list)
+
+    # HITL metadata
+    hitl_metadata: List[HitlMetadata] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert document to dictionary representation."""
@@ -175,6 +223,12 @@ class Document:
             if section.attributes:
                 section_dict["attributes"] = section.attributes
             result["sections"].append(section_dict)
+
+        # Add HITL metadata if it has any values
+        if self.hitl_metadata:
+            result["hitl_metadata"] = [
+                metadata.to_dict() for metadata in self.hitl_metadata
+            ]
 
         return result
 
@@ -239,6 +293,11 @@ class Document:
                     ),
                 )
             )
+
+        # Convert HITL metadata if present
+        hitl_metadata_data = data.get("hitl_metadata", [])
+        for metadata_item in hitl_metadata_data:
+            document.hitl_metadata.append(HitlMetadata.from_dict(metadata_item))
 
         return document
 

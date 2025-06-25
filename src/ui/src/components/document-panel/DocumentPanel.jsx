@@ -8,10 +8,12 @@ import {
   ColumnLayout,
   Container,
   SpaceBetween,
+  Link,
   Button,
   Header,
   Table,
   ExpandableSection,
+  StatusIndicator,
 } from '@awsui/components-react';
 import { Logger } from 'aws-amplify';
 import './DocumentPanel.css';
@@ -20,8 +22,88 @@ import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
+import {
+  getSectionConfidenceAlerts,
+  getHitlConfidenceThreshold,
+  getDocumentConfidenceAlertCount,
+} from '../common/confidence-alerts-utils';
+// Uncomment the line below to enable debugging
+// import { debugDocumentStructure } from '../common/debug-utils';
 
 const logger = new Logger('DocumentPanel');
+
+// Component to display detailed confidence alerts
+const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
+  // Uncomment the line below to enable debugging
+  // debugDocumentStructure({ sections, mergedConfig });
+
+  if (!sections || !Array.isArray(sections) || !mergedConfig) {
+    return (
+      <div>
+        <StatusIndicator type="success">0 alerts</StatusIndicator>
+        <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
+          No configuration available
+        </Box>
+      </div>
+    );
+  }
+
+  const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
+  const totalAlertCount = getDocumentConfidenceAlertCount(sections, mergedConfig);
+
+  // Collect all confidence alerts from all sections for detailed display
+  const allAlerts = [];
+  sections.forEach((section, sectionIndex) => {
+    const sectionAlerts = getSectionConfidenceAlerts(section, mergedConfig);
+    sectionAlerts.forEach((alert) => {
+      allAlerts.push({
+        ...alert,
+        sectionId: section.Id || `Section ${sectionIndex + 1}`,
+        sectionClass: section.Class || 'Unknown',
+      });
+    });
+  });
+
+  if (totalAlertCount === 0) {
+    return (
+      <div>
+        <StatusIndicator type="success">0 alerts</StatusIndicator>
+        <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
+          Threshold: {(hitlThreshold * 100).toFixed(0)}%
+        </Box>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <StatusIndicator type="warning">
+        {totalAlertCount} alert{totalAlertCount !== 1 ? 's' : ''}
+      </StatusIndicator>
+      <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
+        Threshold: {(hitlThreshold * 100).toFixed(0)}%
+      </Box>
+      <ExpandableSection
+        headerText={`View ${totalAlertCount} field${totalAlertCount !== 1 ? 's' : ''} below threshold`}
+        variant="footer"
+      >
+        <SpaceBetween size="xs">
+          {allAlerts.map((alert) => (
+            <Box key={`${alert.sectionId}-${alert.fieldName}`} padding="xs" color="text-body-secondary">
+              <Box fontSize="body-s">
+                <strong>{alert.sectionId}</strong> - {alert.fieldName}
+              </Box>
+              <Box fontSize="body-s">
+                Confidence: <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span> (below{' '}
+                {(alert.confidenceThreshold * 100).toFixed(0)}%)
+              </Box>
+            </Box>
+          ))}
+        </SpaceBetween>
+      </ExpandableSection>
+    </div>
+  );
+};
 
 // Helper function to parse serviceApi key into context and service
 const parseServiceApiKey = (serviceApiKey) => {
@@ -33,6 +115,32 @@ const parseServiceApiKey = (serviceApiKey) => {
   }
   // Fallback for keys that don't follow the new format (less than 3 parts) - set context to ''
   return { context: '', serviceApi: serviceApiKey };
+};
+
+// Helper function to render HITL status without nested ternaries
+const renderHitlStatus = (item) => {
+  if (!item.hitlTriggered) {
+    return 'N/A';
+  }
+
+  if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
+    return 'A2I Review Completed';
+  }
+
+  if (item.hitlReviewURL) {
+    return (
+      <Link href={item.hitlReviewURL} external>
+        A2I Review In Progress
+      </Link>
+    );
+  }
+
+  // If we have a status but no URL and not completed, show the status
+  if (item.hitlStatus) {
+    return item.hitlStatus === 'IN_PROGRESS' ? 'A2I Review In Progress' : item.hitlStatus;
+  }
+
+  return 'A2I Review Triggered';
 };
 
 // Helper function to format cost cells
@@ -400,9 +508,18 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>HITL (A2I) Status</strong>
+            </Box>
+            <div>{renderHitlStatus(item)}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
               <strong>Confidence Alerts</strong>
             </Box>
-            <div>{item.confidenceAlertCount || 0}</div>
+            <ConfidenceAlertsSection sections={item.sections} mergedConfig={item.mergedConfig} />
           </div>
         </SpaceBetween>
 
@@ -421,6 +538,15 @@ const DocumentAttributes = ({ item }) => {
 
 export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess }) => {
   logger.debug('DocumentPanel item', item);
+
+  // Fetch configuration for dynamic confidence threshold
+  const { mergedConfig } = useConfiguration();
+
+  // Create enhanced item with configuration
+  const enhancedItem = {
+    ...item,
+    mergedConfig,
+  };
 
   return (
     <SpaceBetween size="s">
@@ -449,7 +575,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       >
         <SpaceBetween size="l">
           <DocumentAttributes
-            item={item}
+            item={enhancedItem}
             setToolsOpen={setToolsOpen}
             getDocumentDetailsFromIds={getDocumentDetailsFromIds}
           />
@@ -466,7 +592,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         evaluationReportUri={item.evaluationReportUri}
         summaryReportUri={item.summaryReportUri}
       />
-      <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} />
+      <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
       <ChatPanel objectKey={item.objectKey} />
     </SpaceBetween>
