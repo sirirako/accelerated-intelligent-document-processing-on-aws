@@ -252,11 +252,11 @@ def generate_report(comparison_results, summary_stats, field_differences, invali
     report_path = f'{output_dir}/comparison_report_{timestamp}.txt'
     with open(report_path, 'w') as f:
         f.write("JSON Files Comparison Report\n")
-        f.write("==========================\n\n")
+        f.write("=====\n\n")
         
         # Write AI Summary
         f.write("AI-Generated Analysis\n")
-        f.write("====================\n")
+        f.write("======\n")
         f.write(ai_summary)
         f.write("\n\n" + "="*50 + "\n\n")
         
@@ -273,7 +273,7 @@ def generate_report(comparison_results, summary_stats, field_differences, invali
         
         # Write invalid files details
         f.write("\nInvalid Files Details:\n")
-        f.write("=====================\n")
+        f.write("\n")
         
         f.write("\nSet 1 Invalid Files:\n")
         for filename, error in invalid_files['set1']:
@@ -285,13 +285,13 @@ def generate_report(comparison_results, summary_stats, field_differences, invali
         
         # Write field-level differences summary
         f.write("\nField-level Differences Summary:\n")
-        f.write("==============================\n")
+        f.write("==\n")
         for field, count in sorted(field_differences.items(), key=lambda x: x[1], reverse=True):
             f.write(f"{field}: {count} differences\n")
         
         # Write detailed comparison results
         f.write("\nDetailed Comparison Results:\n")
-        f.write("==========================\n")
+        f.write("=====\n")
         for result in comparison_results:
             f.write(f"\nFile: {result['filename']}\n")
             f.write(f"Status: {result['status']}\n")

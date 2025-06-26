@@ -34,20 +34,20 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
         const img = imageRef.current;
         const rect = img.getBoundingClientRect();
         const containerRect = img.parentElement.getBoundingClientRect();
-        
+
         // Get the actual displayed dimensions and position after all transforms
         const transformedWidth = rect.width;
         const transformedHeight = rect.height;
         const transformedOffsetX = rect.left - containerRect.left;
         const transformedOffsetY = rect.top - containerRect.top;
-        
+
         setDimensions({
           transformedWidth,
           transformedHeight,
           transformedOffsetX,
           transformedOffsetY,
         });
-        
+
         logger.debug('VisualEditorModal - BoundingBox dimensions updated:', {
           imageWidth: img.width,
           imageHeight: img.height,
@@ -56,7 +56,7 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
           offsetX: rect.left - containerRect.left,
           offsetY: rect.top - containerRect.top,
           imageRect: rect,
-          containerRect
+          containerRect,
         });
       };
 
@@ -83,13 +83,13 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
         const img = imageRef.current;
         const rect = img.getBoundingClientRect();
         const containerRect = img.parentElement.getBoundingClientRect();
-        
+
         // Get the actual displayed dimensions and position after all transforms
         const transformedWidth = rect.width;
         const transformedHeight = rect.height;
         const transformedOffsetX = rect.left - containerRect.left;
         const transformedOffsetY = rect.top - containerRect.top;
-        
+
         setDimensions({
           transformedWidth,
           transformedHeight,
@@ -97,10 +97,10 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
           transformedOffsetY,
         });
       };
-      
+
       // Small delay to allow transforms to complete
       const timeoutId = setTimeout(updateDimensions, 50);
-      
+
       return () => clearTimeout(timeoutId);
     }
     return undefined;
@@ -116,13 +116,13 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
   }
 
   const bbox = box.boundingBox;
-  
+
   // Calculate position and size directly on the transformed image
   const finalLeft = bbox.left * dimensions.transformedWidth + dimensions.transformedOffsetX;
   const finalTop = bbox.top * dimensions.transformedHeight + dimensions.transformedOffsetY;
   const finalWidth = bbox.width * dimensions.transformedWidth;
   const finalHeight = bbox.height * dimensions.transformedHeight;
-  
+
   // Position the bounding box directly without additional transforms
   const style = {
     position: 'absolute',
@@ -133,9 +133,9 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
     border: '2px solid red',
     pointerEvents: 'none',
     zIndex: 10,
-    transition: 'all 0.1s ease-out'
+    transition: 'all 0.1s ease-out',
   };
-  
+
   logger.debug('VisualEditorModal - BoundingBox style calculated:', {
     bbox,
     dimensions,
@@ -143,522 +143,528 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
     finalTop,
     finalWidth,
     finalHeight,
-    style
+    style,
   });
 
   return <div style={style} />;
 });
 
 // Memoized component to render a form field based on its type
-const FormFieldRenderer = memo(({
-  fieldKey,
-  value,
-  onChange,
-  isReadOnly,
-  confidence,
-  geometry,
-  onFieldFocus,
-  onFieldDoubleClick,
-  path = [],
-  explainabilityInfo = null,
-}) => {
-  // Determine field type
-  let fieldType = typeof value;
-  if (Array.isArray(value)) {
-    fieldType = 'array';
-  } else if (value === null || value === undefined) {
-    fieldType = 'null';
-  }
-
-  // Get confidence information from explainability data (for all fields)
-  // Filter out structural keys from the path for explainability lookup
-  // We need to remove top-level keys like 'inference_result', 'explainability_info', etc.
-  const structuralKeys = ['inference_result', 'inferenceResult', 'explainability_info'];
-  let filteredPath = path.filter(
-    (pathSegment) => !structuralKeys.includes(pathSegment) && typeof pathSegment !== 'undefined',
-  );
-  
-  // Remove the field name itself from the path if it's the last element
-  // The path should point to the parent container, not include the field name
-  if (filteredPath.length > 0 && filteredPath[filteredPath.length - 1] === fieldKey) {
-    filteredPath = filteredPath.slice(0, -1);
-  }
-  
-  const confidenceInfo = getFieldConfidenceInfo(fieldKey, explainabilityInfo, filteredPath);
-
-  // Determine color and style for confidence display
-  let confidenceColor;
-  let confidenceStyle;
-  if (confidenceInfo.hasConfidenceInfo) {
-    if (confidenceInfo.displayMode === 'with-threshold') {
-      confidenceColor = confidenceInfo.isAboveThreshold ? 'text-status-success' : 'text-status-error';
-      confidenceStyle = undefined;
-    } else {
-      confidenceColor = undefined;
-      confidenceStyle = { color: confidenceInfo.textColor };
+const FormFieldRenderer = memo(
+  ({
+    fieldKey,
+    value,
+    onChange,
+    isReadOnly,
+    confidence,
+    geometry,
+    onFieldFocus,
+    onFieldDoubleClick,
+    path = [],
+    explainabilityInfo = null,
+    mergedConfig = null,
+  }) => {
+    // Determine field type
+    let fieldType = typeof value;
+    if (Array.isArray(value)) {
+      fieldType = 'array';
+    } else if (value === null || value === undefined) {
+      fieldType = 'null';
     }
-  }
 
-  // Create label with confidence score if available (legacy support)
-  const label = confidence !== undefined ? `${fieldKey} (${(confidence * 100).toFixed(1)}%)` : fieldKey;
+    // Get confidence information from explainability data (for all fields)
+    // Filter out structural keys from the path for explainability lookup
+    // We need to remove top-level keys like 'inference_result', 'explainability_info', etc.
+    const structuralKeys = ['inference_result', 'inferenceResult', 'explainability_info'];
+    let filteredPath = path.filter(
+      (pathSegment) => !structuralKeys.includes(pathSegment) && typeof pathSegment !== 'undefined',
+    );
 
-  // Handle field focus - pass geometry info if available
-  const handleFocus = () => {
-    if (geometry && onFieldFocus) {
-      onFieldFocus(geometry);
+    // Remove the field name itself from the path if it's the last element
+    // The path should point to the parent container, not include the field name
+    if (filteredPath.length > 0 && filteredPath[filteredPath.length - 1] === fieldKey) {
+      filteredPath = filteredPath.slice(0, -1);
     }
-  };
 
-  // Handle field click - optimized version
-  const handleClick = (event) => {
-    const clickStart = performance.now();
-    logger.debug('🖱️ FIELD CLICK START:', { fieldKey, timestamp: clickStart });
-    
-    if (event) {
-      event.stopPropagation();
+    const confidenceInfo = getFieldConfidenceInfo(fieldKey, explainabilityInfo, filteredPath, mergedConfig);
+
+    // Determine color and style for confidence display
+    let confidenceColor;
+    let confidenceStyle;
+    if (confidenceInfo.hasConfidenceInfo) {
+      if (confidenceInfo.displayMode === 'with-threshold') {
+        confidenceColor = confidenceInfo.isAboveThreshold ? 'text-status-success' : 'text-status-error';
+        confidenceStyle = undefined;
+      } else {
+        confidenceColor = undefined;
+        confidenceStyle = { color: confidenceInfo.textColor };
+      }
     }
-    
-    let actualGeometry = geometry;
-    
-    // Try to extract geometry from explainabilityInfo if not provided
-    if (!actualGeometry && explainabilityInfo && Array.isArray(explainabilityInfo) && explainabilityInfo[0]) {
-      const [firstExplainabilityItem] = explainabilityInfo;
-      
-      // Try direct field lookup first
-      let fieldInfo = firstExplainabilityItem[fieldKey];
-      
-      // If not found directly, try to navigate the full path
-      if (!fieldInfo) {
-        const fullPathParts = [...path, fieldKey];
-        let pathFieldInfo = firstExplainabilityItem;
-        
-        fullPathParts.forEach((pathPart) => {
-          if (pathFieldInfo && typeof pathFieldInfo === 'object') {
-            if (Array.isArray(pathFieldInfo) && !Number.isNaN(parseInt(pathPart, 10))) {
-              const arrayIndex = parseInt(pathPart, 10);
-              if (arrayIndex >= 0 && arrayIndex < pathFieldInfo.length) {
-                pathFieldInfo = pathFieldInfo[arrayIndex];
+
+    // Create label with confidence score if available (legacy support)
+    const label = confidence !== undefined ? `${fieldKey} (${(confidence * 100).toFixed(1)}%)` : fieldKey;
+
+    // Handle field focus - pass geometry info if available
+    const handleFocus = () => {
+      if (geometry && onFieldFocus) {
+        onFieldFocus(geometry);
+      }
+    };
+
+    // Handle field click - optimized version
+    const handleClick = (event) => {
+      const clickStart = performance.now();
+      logger.debug('🖱️ FIELD CLICK START:', { fieldKey, timestamp: clickStart });
+
+      if (event) {
+        event.stopPropagation();
+      }
+
+      let actualGeometry = geometry;
+
+      // Try to extract geometry from explainabilityInfo if not provided
+      if (!actualGeometry && explainabilityInfo && Array.isArray(explainabilityInfo) && explainabilityInfo[0]) {
+        const [firstExplainabilityItem] = explainabilityInfo;
+
+        // Try direct field lookup first
+        let fieldInfo = firstExplainabilityItem[fieldKey];
+
+        // If not found directly, try to navigate the full path
+        if (!fieldInfo) {
+          const fullPathParts = [...path, fieldKey];
+          let pathFieldInfo = firstExplainabilityItem;
+
+          fullPathParts.forEach((pathPart) => {
+            if (pathFieldInfo && typeof pathFieldInfo === 'object') {
+              if (Array.isArray(pathFieldInfo) && !Number.isNaN(parseInt(pathPart, 10))) {
+                const arrayIndex = parseInt(pathPart, 10);
+                if (arrayIndex >= 0 && arrayIndex < pathFieldInfo.length) {
+                  pathFieldInfo = pathFieldInfo[arrayIndex];
+                } else {
+                  pathFieldInfo = null;
+                }
+              } else if (pathFieldInfo[pathPart]) {
+                pathFieldInfo = pathFieldInfo[pathPart];
               } else {
                 pathFieldInfo = null;
               }
-            } else if (pathFieldInfo[pathPart]) {
-              pathFieldInfo = pathFieldInfo[pathPart];
             } else {
               pathFieldInfo = null;
             }
-          } else {
-            pathFieldInfo = null;
-          }
-        });
-        
-        fieldInfo = pathFieldInfo;
+          });
+
+          fieldInfo = pathFieldInfo;
+        }
+
+        if (fieldInfo && fieldInfo.geometry && Array.isArray(fieldInfo.geometry) && fieldInfo.geometry[0]) {
+          actualGeometry = fieldInfo.geometry[0];
+        }
       }
-      
-      if (fieldInfo && fieldInfo.geometry && Array.isArray(fieldInfo.geometry) && fieldInfo.geometry[0]) {
-        actualGeometry = fieldInfo.geometry[0];
+
+      if (actualGeometry && onFieldFocus) {
+        const focusStart = performance.now();
+        logger.debug('🎯 FIELD FOCUS START:', { fieldKey, timestamp: focusStart });
+        onFieldFocus(actualGeometry);
+        const focusEnd = performance.now();
+        logger.debug('✅ FIELD FOCUS END:', { fieldKey, duration: `${(focusEnd - focusStart).toFixed(2)}ms` });
       }
-    }
-    
-    if (actualGeometry && onFieldFocus) {
-      const focusStart = performance.now();
-      logger.debug('🎯 FIELD FOCUS START:', { fieldKey, timestamp: focusStart });
-      onFieldFocus(actualGeometry);
-      const focusEnd = performance.now();
-      logger.debug('✅ FIELD FOCUS END:', { fieldKey, duration: `${(focusEnd - focusStart).toFixed(2)}ms` });
-    }
-    
-    const clickEnd = performance.now();
-    logger.debug('🏁 FIELD CLICK END:', { fieldKey, totalDuration: `${(clickEnd - clickStart).toFixed(2)}ms` });
-  };
 
-  // Handle field double-click
-  const handleDoubleClick = (event) => {
-    if (event) {
-      event.stopPropagation();
-    }
-    logger.debug('=== FIELD DOUBLE-CLICKED ===');
-    logger.debug('Field Key:', fieldKey);
-    logger.debug('Geometry Passed:', geometry);
-    
-    let actualGeometry = geometry;
-    
-    // Try to extract geometry from explainabilityInfo if not provided
-    if (!actualGeometry && explainabilityInfo && Array.isArray(explainabilityInfo) && explainabilityInfo[0]) {
-      const [firstExplainabilityItem] = explainabilityInfo;
-      const fieldInfo = firstExplainabilityItem[fieldKey];
-      
-      if (fieldInfo && fieldInfo.geometry && Array.isArray(fieldInfo.geometry) && fieldInfo.geometry[0]) {
-        actualGeometry = fieldInfo.geometry[0];
+      const clickEnd = performance.now();
+      logger.debug('🏁 FIELD CLICK END:', { fieldKey, totalDuration: `${(clickEnd - clickStart).toFixed(2)}ms` });
+    };
+
+    // Handle field double-click
+    const handleDoubleClick = (event) => {
+      if (event) {
+        event.stopPropagation();
       }
-    }
-    
-    if (actualGeometry && onFieldDoubleClick) {
-      logger.debug('Calling onFieldDoubleClick with geometry:', actualGeometry);
-      onFieldDoubleClick(actualGeometry);
-    } else {
-      logger.debug('No geometry found for field double-click:', fieldKey);
-    }
-    logger.debug('=== END FIELD DOUBLE-CLICK ===');
-  };
+      logger.debug('=== FIELD DOUBLE-CLICKED ===');
+      logger.debug('Field Key:', fieldKey);
+      logger.debug('Geometry Passed:', geometry);
 
-  // Render based on field type
-  switch (fieldType) {
-    case 'string':
-      return (
-        <div
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
-          onKeyDown={(e) => e.key === 'Enter' && handleClick(e)}
-          role="button"
-          tabIndex={0}
-          style={{ cursor: geometry ? 'pointer' : 'default' }}
-        >
-          <FormField label={
-            <Box>
-              {fieldKey}:
-              {confidenceInfo.hasConfidenceInfo && (
-                <Box
-                  fontSize="body-s"
-                  padding={{ top: 'xxxs' }}
-                  color={confidenceColor}
-                  style={confidenceStyle}
-                >
-                  {confidenceInfo.displayMode === 'with-threshold' 
-                    ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(confidenceInfo.confidenceThreshold * 100).toFixed(1)}%`
-                    : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`
-                  }
-                </Box>
-              )}
-            </Box>
-          }>
-            <Input
-              value={value || ''}
-              disabled={isReadOnly}
-              onChange={({ detail }) => {
-                const startTime = performance.now();
-                logger.debug('🔥 KEYSTROKE START:', {
-                  fieldKey, newValue: detail.value, isReadOnly, timestamp: startTime
-                });
-                
-                if (!isReadOnly) {
-                  logger.debug('🔄 Calling onChange...', { fieldKey });
-                  const changeStartTime = performance.now();
-                  onChange(detail.value);
-                  const changeEndTime = performance.now();
-                  logger.debug('✅ onChange completed:', { fieldKey, duration: `${(changeEndTime - changeStartTime).toFixed(2)}ms` });
-                }
-                
-                const endTime = performance.now();
-                logger.debug('🏁 KEYSTROKE END:', { fieldKey, totalDuration: `${(endTime - startTime).toFixed(2)}ms` });
-              }}
-              onFocus={handleFocus}
-            />
-          </FormField>
-        </div>
-      );
+      let actualGeometry = geometry;
 
-    case 'number':
-      return (
-        <div
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleClick(e);
-            }
-          }}
-          role="button"
-          tabIndex={0}
-          style={{ cursor: geometry ? 'pointer' : 'default' }}
-        >
-          <FormField label={
-            <Box>
-              {fieldKey}:
-              {confidenceInfo.hasConfidenceInfo && (
-                <Box
-                  fontSize="body-s"
-                  padding={{ top: 'xxxs' }}
-                  color={confidenceColor}
-                  style={confidenceStyle}
-                >
-                  {confidenceInfo.displayMode === 'with-threshold' 
-                    ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(confidenceInfo.confidenceThreshold * 100).toFixed(1)}%`
-                    : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`
-                  }
-                </Box>
-              )}
-            </Box>
-          }>
-            <Input
-              type="number"
-              value={String(value)}
-              disabled={isReadOnly}
-              onChange={({ detail }) => {
-                if (!isReadOnly) {
-                  const numValue = Number(detail.value);
-                  onChange(Number.isNaN(numValue) ? 0 : numValue);
-                }
-              }}
-              onFocus={handleFocus}
-            />
-          </FormField>
-        </div>
-      );
+      // Try to extract geometry from explainabilityInfo if not provided
+      if (!actualGeometry && explainabilityInfo && Array.isArray(explainabilityInfo) && explainabilityInfo[0]) {
+        const [firstExplainabilityItem] = explainabilityInfo;
+        const fieldInfo = firstExplainabilityItem[fieldKey];
 
-    case 'boolean':
-      return (
-        <div
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleClick(e);
-            }
-          }}
-          role="button"
-          tabIndex={0}
-          style={{ cursor: geometry ? 'pointer' : 'default' }}
-        >
-          <FormField label={
-            <Box>
-              {fieldKey}:
-              {confidenceInfo.hasConfidenceInfo && (
-                <Box
-                  fontSize="body-s"
-                  padding={{ top: 'xxxs' }}
-                  color={confidenceColor}
-                  style={confidenceStyle}
-                >
-                  {confidenceInfo.displayMode === 'with-threshold' 
-                    ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(confidenceInfo.confidenceThreshold * 100).toFixed(1)}%`
-                    : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`
-                  }
-                </Box>
-              )}
-            </Box>
-          }>
-            <Checkbox
-              checked={Boolean(value)}
-              disabled={isReadOnly}
-              onChange={({ detail }) => !isReadOnly && onChange(detail.checked)}
-              onFocus={handleFocus}
-            >
-              {String(value)}
-            </Checkbox>
-          </FormField>
-        </div>
-      );
+        if (fieldInfo && fieldInfo.geometry && Array.isArray(fieldInfo.geometry) && fieldInfo.geometry[0]) {
+          actualGeometry = fieldInfo.geometry[0];
+        }
+      }
 
-    case 'object':
-      if (value === null) {
+      if (actualGeometry && onFieldDoubleClick) {
+        logger.debug('Calling onFieldDoubleClick with geometry:', actualGeometry);
+        onFieldDoubleClick(actualGeometry);
+      } else {
+        logger.debug('No geometry found for field double-click:', fieldKey);
+      }
+      logger.debug('=== END FIELD DOUBLE-CLICK ===');
+    };
+
+    // Render based on field type
+    switch (fieldType) {
+      case 'string':
         return (
-          <FormField label={label}>
-            <Input value="null" disabled={isReadOnly} onFocus={handleFocus} />
-          </FormField>
-        );
-      }
-
-      return (
-        <Box padding="xs">
-          <Box fontSize="body-m" fontWeight="bold" padding="xxxs" onFocus={handleFocus}>
-            {label}
-          </Box>
-          <Box padding={{ left: 'l' }}>
-            <SpaceBetween size="xs">
-              {Object.entries(value).map(([key, val]) => {
-                // Get confidence and geometry for this field from explainability_info
-                let fieldConfidence;
-                let fieldGeometry;
-                
-                // Try to get from explainability_info if available
-                if (explainabilityInfo && Array.isArray(explainabilityInfo)) {
-                  // Handle nested structure like explainabilityInfo[0].NAME_DETAILS.LAST_NAME
-                  const currentPath = [...path, key];
-                  const [firstExplainabilityItem] = explainabilityInfo;
-                  // eslint-disable-next-line prefer-destructuring
-                  let fieldInfo = firstExplainabilityItem;
-                  
-                  // Navigate through the path to find the field info
-                  let pathFieldInfo = fieldInfo;
-                  currentPath.forEach((pathPart) => {
-                    if (pathFieldInfo && typeof pathFieldInfo === 'object' && pathFieldInfo[pathPart]) {
-                      pathFieldInfo = pathFieldInfo[pathPart];
-                    } else {
-                      pathFieldInfo = null;
-                    }
+          <div
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={(e) => e.key === 'Enter' && handleClick(e)}
+            role="button"
+            tabIndex={0}
+            style={{ cursor: geometry ? 'pointer' : 'default' }}
+          >
+            <FormField
+              label={
+                <Box>
+                  {fieldKey}:
+                  {confidenceInfo.hasConfidenceInfo && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                    </Box>
+                  )}
+                </Box>
+              }
+            >
+              <Input
+                value={value || ''}
+                disabled={isReadOnly}
+                onChange={({ detail }) => {
+                  const startTime = performance.now();
+                  logger.debug('🔥 KEYSTROKE START:', {
+                    fieldKey,
+                    newValue: detail.value,
+                    isReadOnly,
+                    timestamp: startTime,
                   });
-                  fieldInfo = pathFieldInfo;
-                  
-                  if (fieldInfo) {
-                    fieldConfidence = fieldInfo.confidence;
-                    
-                    // Extract geometry - handle both direct geometry and geometry arrays
-                    if (fieldInfo.geometry && Array.isArray(fieldInfo.geometry) && fieldInfo.geometry.length > 0) {
-                      const geomData = fieldInfo.geometry[0];
-                      if (geomData.boundingBox && geomData.page !== undefined) {
-                        fieldGeometry = {
-                          boundingBox: geomData.boundingBox,
-                          page: geomData.page,
-                          vertices: geomData.vertices
-                        };
-                      }
-                    }
+
+                  if (!isReadOnly) {
+                    logger.debug('🔄 Calling onChange...', { fieldKey });
+                    const changeStartTime = performance.now();
+                    onChange(detail.value);
+                    const changeEndTime = performance.now();
+                    logger.debug('✅ onChange completed:', {
+                      fieldKey,
+                      duration: `${(changeEndTime - changeStartTime).toFixed(2)}ms`,
+                    });
                   }
-                }
-                                
-                return (
-                  <FormFieldRenderer
-                    key={`obj-${fieldKey}-${path.join('.')}-${key}`}
-                    fieldKey={key}
-                    value={val}
-                    onChange={(newVal) => {
-                      if (!isReadOnly) {
-                        const newObj = { ...value };
-                        newObj[key] = newVal;
-                        onChange(newObj);
-                      }
-                    }}
-                    isReadOnly={isReadOnly}
-                    confidence={fieldConfidence}
-                    geometry={fieldGeometry}
-                    onFieldFocus={onFieldFocus}
-                    onFieldDoubleClick={onFieldDoubleClick}
-                    path={[...path, key]}
-                    explainabilityInfo={explainabilityInfo}
-                  />
-                );
-              })}
-            </SpaceBetween>
-          </Box>
-        </Box>
-      );
 
-    case 'array':
-      return (
-        <Box padding="xs">
-          <Box fontSize="body-m" fontWeight="bold" padding="xxxs" onFocus={handleFocus}>
-            {label} ({value.length} items)
-          </Box>
-          <Box padding={{ left: 'l' }}>
-            <SpaceBetween size="xs">
-              {value.map((item, index) => {
-                // Create a stable unique key for each array item
-                const itemKey = `arr-${fieldKey}-${path.join('.')}-${index}`;
-
-                // Extract confidence and geometry for array items
-                let itemConfidence;
-                let itemGeometry;
-                
-                // Try to get from explainability_info if available
-                if (explainabilityInfo && Array.isArray(explainabilityInfo)) {
-                  const [firstExplainabilityItem] = explainabilityInfo;
-                  
-                  // Handle nested structure - navigate to the array field first
-                  let arrayFieldInfo = firstExplainabilityItem;
-                  path.forEach((pathPart) => {
-                    if (arrayFieldInfo && typeof arrayFieldInfo === 'object' && arrayFieldInfo[pathPart]) {
-                      arrayFieldInfo = arrayFieldInfo[pathPart];
-                    } else {
-                      arrayFieldInfo = null;
-                    }
+                  const endTime = performance.now();
+                  logger.debug('🏁 KEYSTROKE END:', {
+                    fieldKey,
+                    totalDuration: `${(endTime - startTime).toFixed(2)}ms`,
                   });
-                  
-                  // For arrays, the explainability info structure can be:
-                  // 1. An array where each element has confidence/geometry (e.g., ENDORSEMENTS, RESTRICTIONS)
-                  // 2. An object with nested structure
-                  if (arrayFieldInfo && Array.isArray(arrayFieldInfo) && arrayFieldInfo[index]) {
-                    const itemInfo = arrayFieldInfo[index];
-                    if (itemInfo) {
-                      itemConfidence = itemInfo.confidence;
-                      
-                      // Extract geometry
-                      if (itemInfo.geometry && Array.isArray(itemInfo.geometry) && itemInfo.geometry.length > 0) {
-                        const geomData = itemInfo.geometry[0];
+                }}
+                onFocus={handleFocus}
+              />
+            </FormField>
+          </div>
+        );
+
+      case 'number':
+        return (
+          <div
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick(e);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            style={{ cursor: geometry ? 'pointer' : 'default' }}
+          >
+            <FormField
+              label={
+                <Box>
+                  {fieldKey}:
+                  {confidenceInfo.hasConfidenceInfo && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                    </Box>
+                  )}
+                </Box>
+              }
+            >
+              <Input
+                type="number"
+                value={String(value)}
+                disabled={isReadOnly}
+                onChange={({ detail }) => {
+                  if (!isReadOnly) {
+                    const numValue = Number(detail.value);
+                    onChange(Number.isNaN(numValue) ? 0 : numValue);
+                  }
+                }}
+                onFocus={handleFocus}
+              />
+            </FormField>
+          </div>
+        );
+
+      case 'boolean':
+        return (
+          <div
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick(e);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            style={{ cursor: geometry ? 'pointer' : 'default' }}
+          >
+            <FormField
+              label={
+                <Box>
+                  {fieldKey}:
+                  {confidenceInfo.hasConfidenceInfo && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                    </Box>
+                  )}
+                </Box>
+              }
+            >
+              <Checkbox
+                checked={Boolean(value)}
+                disabled={isReadOnly}
+                onChange={({ detail }) => !isReadOnly && onChange(detail.checked)}
+                onFocus={handleFocus}
+              >
+                {String(value)}
+              </Checkbox>
+            </FormField>
+          </div>
+        );
+
+      case 'object':
+        if (value === null) {
+          return (
+            <FormField label={label}>
+              <Input value="null" disabled={isReadOnly} onFocus={handleFocus} />
+            </FormField>
+          );
+        }
+
+        return (
+          <Box padding="xs">
+            <Box fontSize="body-m" fontWeight="bold" padding="xxxs" onFocus={handleFocus}>
+              {label}
+            </Box>
+            <Box padding={{ left: 'l' }}>
+              <SpaceBetween size="xs">
+                {Object.entries(value).map(([key, val]) => {
+                  // Get confidence and geometry for this field from explainability_info
+                  let fieldConfidence;
+                  let fieldGeometry;
+
+                  // Try to get from explainability_info if available
+                  if (explainabilityInfo && Array.isArray(explainabilityInfo)) {
+                    // Handle nested structure like explainabilityInfo[0].NAME_DETAILS.LAST_NAME
+                    const currentPath = [...path, key];
+                    const [firstExplainabilityItem] = explainabilityInfo;
+                    // eslint-disable-next-line prefer-destructuring
+                    let fieldInfo = firstExplainabilityItem;
+
+                    // Navigate through the path to find the field info
+                    let pathFieldInfo = fieldInfo;
+                    currentPath.forEach((pathPart) => {
+                      if (pathFieldInfo && typeof pathFieldInfo === 'object' && pathFieldInfo[pathPart]) {
+                        pathFieldInfo = pathFieldInfo[pathPart];
+                      } else {
+                        pathFieldInfo = null;
+                      }
+                    });
+                    fieldInfo = pathFieldInfo;
+
+                    if (fieldInfo) {
+                      fieldConfidence = fieldInfo.confidence;
+
+                      // Extract geometry - handle both direct geometry and geometry arrays
+                      if (fieldInfo.geometry && Array.isArray(fieldInfo.geometry) && fieldInfo.geometry.length > 0) {
+                        const geomData = fieldInfo.geometry[0];
                         if (geomData.boundingBox && geomData.page !== undefined) {
-                          itemGeometry = {
+                          fieldGeometry = {
                             boundingBox: geomData.boundingBox,
                             page: geomData.page,
-                            vertices: geomData.vertices
+                            vertices: geomData.vertices,
                           };
                         }
                       }
                     }
                   }
-                }
 
-                return (
-                  <FormFieldRenderer
-                    key={itemKey}
-                    fieldKey={`[${index}]`}
-                    value={item}
-                    onChange={(newVal) => {
-                      if (!isReadOnly) {
-                        const newArray = [...value];
-                        newArray[index] = newVal;
-                        onChange(newArray);
-                      }
-                    }}
-                    isReadOnly={isReadOnly}
-                    confidence={itemConfidence}
-                    geometry={itemGeometry}
-                    onFieldFocus={onFieldFocus}
-                    onFieldDoubleClick={onFieldDoubleClick}
-                    path={[...path, index]}
-                    explainabilityInfo={explainabilityInfo}
-                  />
-                );
-              })}
-            </SpaceBetween>
-          </Box>
-        </Box>
-      );
-
-    default:
-      return (
-        <div
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleClick(e);
-            }
-          }}
-          role="button"
-          tabIndex={0}
-          style={{ cursor: geometry ? 'pointer' : 'default' }}
-        >
-          <FormField label={
-            <Box>
-              {fieldKey}:
-              {confidenceInfo.hasConfidenceInfo && (
-                <Box
-                  fontSize="body-s"
-                  padding={{ top: 'xxxs' }}
-                  color={confidenceColor}
-                  style={confidenceStyle}
-                >
-                  {confidenceInfo.displayMode === 'with-threshold' 
-                    ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(confidenceInfo.confidenceThreshold * 100).toFixed(1)}%`
-                    : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`
-                  }
-                </Box>
-              )}
+                  return (
+                    <FormFieldRenderer
+                      key={`obj-${fieldKey}-${path.join('.')}-${key}`}
+                      fieldKey={key}
+                      value={val}
+                      onChange={(newVal) => {
+                        if (!isReadOnly) {
+                          const newObj = { ...value };
+                          newObj[key] = newVal;
+                          onChange(newObj);
+                        }
+                      }}
+                      isReadOnly={isReadOnly}
+                      confidence={fieldConfidence}
+                      geometry={fieldGeometry}
+                      onFieldFocus={onFieldFocus}
+                      onFieldDoubleClick={onFieldDoubleClick}
+                      path={[...path, key]}
+                      explainabilityInfo={explainabilityInfo}
+                      mergedConfig={mergedConfig}
+                    />
+                  );
+                })}
+              </SpaceBetween>
             </Box>
-          }>
-            <Input
-              value={String(value)}
-              disabled={isReadOnly}
-              onChange={({ detail }) => !isReadOnly && onChange(detail.value)}
-              onFocus={handleFocus}
-            />
-          </FormField>
-        </div>
-      );
-  }
-});
+          </Box>
+        );
+
+      case 'array':
+        return (
+          <Box padding="xs">
+            <Box fontSize="body-m" fontWeight="bold" padding="xxxs" onFocus={handleFocus}>
+              {label} ({value.length} items)
+            </Box>
+            <Box padding={{ left: 'l' }}>
+              <SpaceBetween size="xs">
+                {value.map((item, index) => {
+                  // Create a stable unique key for each array item
+                  const itemKey = `arr-${fieldKey}-${path.join('.')}-${index}`;
+
+                  // Extract confidence and geometry for array items
+                  let itemConfidence;
+                  let itemGeometry;
+
+                  // Try to get from explainability_info if available
+                  if (explainabilityInfo && Array.isArray(explainabilityInfo)) {
+                    const [firstExplainabilityItem] = explainabilityInfo;
+
+                    // Handle nested structure - navigate to the array field first
+                    let arrayFieldInfo = firstExplainabilityItem;
+                    path.forEach((pathPart) => {
+                      if (arrayFieldInfo && typeof arrayFieldInfo === 'object' && arrayFieldInfo[pathPart]) {
+                        arrayFieldInfo = arrayFieldInfo[pathPart];
+                      } else {
+                        arrayFieldInfo = null;
+                      }
+                    });
+
+                    // For arrays, the explainability info structure can be:
+                    // 1. An array where each element has confidence/geometry (e.g., ENDORSEMENTS, RESTRICTIONS)
+                    // 2. An object with nested structure
+                    if (arrayFieldInfo && Array.isArray(arrayFieldInfo) && arrayFieldInfo[index]) {
+                      const itemInfo = arrayFieldInfo[index];
+                      if (itemInfo) {
+                        itemConfidence = itemInfo.confidence;
+
+                        // Extract geometry
+                        if (itemInfo.geometry && Array.isArray(itemInfo.geometry) && itemInfo.geometry.length > 0) {
+                          const geomData = itemInfo.geometry[0];
+                          if (geomData.boundingBox && geomData.page !== undefined) {
+                            itemGeometry = {
+                              boundingBox: geomData.boundingBox,
+                              page: geomData.page,
+                              vertices: geomData.vertices,
+                            };
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  return (
+                    <FormFieldRenderer
+                      key={itemKey}
+                      fieldKey={`[${index}]`}
+                      value={item}
+                      onChange={(newVal) => {
+                        if (!isReadOnly) {
+                          const newArray = [...value];
+                          newArray[index] = newVal;
+                          onChange(newArray);
+                        }
+                      }}
+                      isReadOnly={isReadOnly}
+                      confidence={itemConfidence}
+                      geometry={itemGeometry}
+                      onFieldFocus={onFieldFocus}
+                      onFieldDoubleClick={onFieldDoubleClick}
+                      path={[...path, index]}
+                      explainabilityInfo={explainabilityInfo}
+                      mergedConfig={mergedConfig}
+                    />
+                  );
+                })}
+              </SpaceBetween>
+            </Box>
+          </Box>
+        );
+
+      default:
+        return (
+          <div
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick(e);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            style={{ cursor: geometry ? 'pointer' : 'default' }}
+          >
+            <FormField
+              label={
+                <Box>
+                  {fieldKey}:
+                  {confidenceInfo.hasConfidenceInfo && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                    </Box>
+                  )}
+                </Box>
+              }
+            >
+              <Input
+                value={String(value)}
+                disabled={isReadOnly}
+                onChange={({ detail }) => !isReadOnly && onChange(detail.value)}
+                onFocus={handleFocus}
+              />
+            </FormField>
+          </div>
+        );
+    }
+  },
+);
 
 const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly, sectionData }) => {
   const { currentCredentials } = useAppContext();
@@ -690,7 +696,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
       if (onChange) {
         const parentCallStart = performance.now();
         logger.debug('🚀 DEBOUNCED PARENT onChange - Calling parent onChange...');
-        
+
         // Use requestIdleCallback to ensure parent onChange doesn't block UI
         // If not available, fall back to setTimeout with 0 delay
         const executeParentChange = () => {
@@ -698,13 +704,13 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
             onChange(jsonString);
             const parentCallEnd = performance.now();
             logger.debug('🏁 DEBOUNCED PARENT onChange - Parent onChange completed:', {
-              duration: `${(parentCallEnd - parentCallStart).toFixed(2)}ms`
+              duration: `${(parentCallEnd - parentCallStart).toFixed(2)}ms`,
             });
           } catch (error) {
             logger.error('Error in parent onChange:', error);
           }
         };
-        
+
         if (window.requestIdleCallback) {
           // Use requestIdleCallback to run during browser idle time
           window.requestIdleCallback(executeParentChange, { timeout: 5000 });
@@ -728,8 +734,6 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
   // Extract inference results and page IDs from local data for immediate UI updates
   const inferenceResult = localJsonData?.inference_result || localJsonData?.inferenceResult || localJsonData;
   const pageIds = sectionData?.PageIds || [];
-
-
 
   // Load page images - only when modal opens or when core data changes
   useEffect(() => {
@@ -793,30 +797,30 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
 
   // Zoom controls
   const handleZoomIn = () => {
-    setZoomLevel(prev => Math.min(prev * 1.25, 4));
+    setZoomLevel((prev) => Math.min(prev * 1.25, 4));
   };
 
   const handleZoomOut = () => {
-    setZoomLevel(prev => Math.max(prev / 1.25, 0.25));
+    setZoomLevel((prev) => Math.max(prev / 1.25, 0.25));
   };
 
   // Pan controls
   const panStep = 50;
-  
+
   const handlePanLeft = () => {
-    setPanOffset(prev => ({ ...prev, x: prev.x + panStep }));
+    setPanOffset((prev) => ({ ...prev, x: prev.x + panStep }));
   };
 
   const handlePanRight = () => {
-    setPanOffset(prev => ({ ...prev, x: prev.x - panStep }));
+    setPanOffset((prev) => ({ ...prev, x: prev.x - panStep }));
   };
 
   const handlePanUp = () => {
-    setPanOffset(prev => ({ ...prev, y: prev.y + panStep }));
+    setPanOffset((prev) => ({ ...prev, y: prev.y + panStep }));
   };
 
   const handlePanDown = () => {
-    setPanOffset(prev => ({ ...prev, y: prev.y - panStep }));
+    setPanOffset((prev) => ({ ...prev, y: prev.y - panStep }));
   };
 
   const handleResetView = () => {
@@ -829,7 +833,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoomLevel(prev => Math.min(Math.max(prev * delta, 0.25), 4));
+      setZoomLevel((prev) => Math.min(Math.max(prev * delta, 0.25), 4));
     }
   };
 
@@ -838,7 +842,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
   const handleFieldFocus = (geometry) => {
     const focusStart = performance.now();
     logger.debug('VisualEditorModal - handleFieldFocus START:', { timestamp: focusStart });
-    
+
     // Use setTimeout to make this completely asynchronous and non-blocking
     setTimeout(() => {
       if (geometry) {
@@ -855,16 +859,18 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
       } else {
         setActiveFieldGeometry(null);
       }
-      
+
       const focusEnd = performance.now();
-      logger.debug('VisualEditorModal - handleFieldFocus END:', { duration: `${(focusEnd - focusStart).toFixed(2)}ms` });
+      logger.debug('VisualEditorModal - handleFieldFocus END:', {
+        duration: `${(focusEnd - focusStart).toFixed(2)}ms`,
+      });
     }, 0);
   };
 
   // Handle field double-click - zoom to 200% and center on field
   const handleFieldDoubleClick = (geometry) => {
     logger.debug('VisualEditorModal - handleFieldDoubleClick called with geometry:', geometry);
-    
+
     if (geometry && imageRef.current && imageContainerRef.current) {
       // First switch to the correct page if needed
       if (geometry.page !== undefined && pageIds.length > 0) {
@@ -880,66 +886,72 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
       // Set zoom to 200%
       const targetZoom = 2.0;
       setZoomLevel(targetZoom);
-      
+
       // Calculate pan offset to center the field
       setTimeout(() => {
         if (imageRef.current && imageContainerRef.current) {
           const img = imageRef.current;
           const container = imageContainerRef.current;
-          
+
           // Get image and container dimensions
           const imgRect = img.getBoundingClientRect();
           const containerRect = container.getBoundingClientRect();
-          
+
           const imageWidth = img.width || img.naturalWidth;
           const imageHeight = img.height || img.naturalHeight;
           const offsetX = imgRect.left - containerRect.left;
           const offsetY = imgRect.top - containerRect.top;
-          
+
           // Get bounding box coordinates
           const bbox = geometry.boundingBox;
-          
+
           if (bbox) {
             const { left, top, width, height } = bbox;
-            
+
             // Calculate field center in image coordinates
             const fieldCenterX = (left + width / 2) * imageWidth + offsetX;
             const fieldCenterY = (top + height / 2) * imageHeight + offsetY;
-            
+
             // Calculate viewport center
             const viewportCenterX = containerRect.width / 2;
             const viewportCenterY = containerRect.height / 2;
-            
+
             // Calculate image center
             const imageCenterX = offsetX + imageWidth / 2;
             const imageCenterY = offsetY + imageHeight / 2;
-            
+
             // Calculate relative position of field center from image center
             const relativeX = fieldCenterX - imageCenterX;
             const relativeY = fieldCenterY - imageCenterY;
-            
+
             // At 200% zoom, calculate where the field center will be
             const scaledRelativeX = relativeX * targetZoom;
             const scaledRelativeY = relativeY * targetZoom;
-            
+
             // Calculate required pan offset to center the field in viewport
             const requiredPanX = viewportCenterX - (imageCenterX + scaledRelativeX);
             const requiredPanY = viewportCenterY - (imageCenterY + scaledRelativeY);
-            
+
             logger.debug('VisualEditorModal - Auto-centering calculation:', {
-              fieldCenterX, fieldCenterY,
-              viewportCenterX, viewportCenterY,
-              imageCenterX, imageCenterY,
-              relativeX, relativeY,
-              scaledRelativeX, scaledRelativeY,
-              requiredPanX, requiredPanY
+              fieldCenterX,
+              fieldCenterY,
+              viewportCenterX,
+              viewportCenterY,
+              imageCenterX,
+              imageCenterY,
+              relativeX,
+              relativeY,
+              scaledRelativeX,
+              scaledRelativeY,
+              requiredPanX,
+              requiredPanY,
             });
-            
+
             setPanOffset({ x: requiredPanX, y: requiredPanY });
           }
         }
       }, 100); // Small delay to allow zoom to take effect
-      
+
       // Also set the active geometry for bounding box display
       setActiveFieldGeometry(geometry);
     }
@@ -949,16 +961,16 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
   const carouselItems = pageIds.map((pageId) => ({
     id: pageId,
     content: (
-      <div 
+      <div
         ref={pageId === currentPage ? imageContainerRef : null}
-        style={{ 
-          position: 'relative', 
-          width: '100%', 
-          height: '100%', 
-          display: 'flex', 
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
           justifyContent: 'center',
           overflow: 'hidden',
-          cursor: zoomLevel > 1 ? 'grab' : 'default'
+          cursor: zoomLevel > 1 ? 'grab' : 'default',
         }}
         onWheel={handleWheel}
       >
@@ -976,7 +988,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                 objectFit: 'contain',
                 transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
                 transformOrigin: 'center center',
-                transition: 'transform 0.1s ease-out'
+                transition: 'transform 0.1s ease-out',
               }}
               onError={(e) => {
                 logger.error(`Error loading image for page ${pageId}:`, e);
@@ -992,7 +1004,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
             {activeFieldGeometry && (
               <BoundingBox
                 box={activeFieldGeometry}
-                page={currentPage} 
+                page={currentPage}
                 currentPage={currentPage}
                 imageRef={imageRef}
                 zoomLevel={zoomLevel}
@@ -1019,26 +1031,30 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
       footer={
         <Box float="right">
           <SpaceBetween direction="horizontal" size="xs">
-            <Button 
-              variant="link" 
+            <Button
+              variant="link"
               onClick={() => {
                 const dismissStart = performance.now();
                 logger.debug('🚪 CANCEL BUTTON - onDismiss starting...', { timestamp: dismissStart });
                 onDismiss();
                 const dismissEnd = performance.now();
-                logger.debug('✅ CANCEL BUTTON - onDismiss completed:', { duration: `${(dismissEnd - dismissStart).toFixed(2)}ms` });
+                logger.debug('✅ CANCEL BUTTON - onDismiss completed:', {
+                  duration: `${(dismissEnd - dismissStart).toFixed(2)}ms`,
+                });
               }}
             >
               Cancel
             </Button>
-            <Button 
-              variant="primary" 
+            <Button
+              variant="primary"
               onClick={() => {
                 const dismissStart = performance.now();
                 logger.debug('🚪 DONE BUTTON - onDismiss starting...', { timestamp: dismissStart });
                 onDismiss();
                 const dismissEnd = performance.now();
-                logger.debug('✅ DONE BUTTON - onDismiss completed:', { duration: `${(dismissEnd - dismissStart).toFixed(2)}ms` });
+                logger.debug('✅ DONE BUTTON - onDismiss completed:', {
+                  duration: `${(dismissEnd - dismissStart).toFixed(2)}ms`,
+                });
               }}
             >
               Done
@@ -1093,8 +1109,6 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
               if (carouselItems.length > 0) {
                 return (
                   <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-
-
                     {/* Display current page */}
                     {carouselItems.find((item) => item.id === currentPage)?.content}
 
@@ -1147,7 +1161,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: '8px'
+                        gap: '8px',
                       }}
                     >
                       {/* Page indicator */}
@@ -1160,7 +1174,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                       >
                         Page {pageIds.indexOf(currentPage) + 1} of {pageIds.length}
                       </Box>
-                      
+
                       {/* Zoom and Pan Controls */}
                       <Box
                         style={{
@@ -1171,7 +1185,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',
-                          fontSize: '12px'
+                          fontSize: '12px',
                         }}
                       >
                         <span style={{ fontWeight: 'bold' }}>Zoom:</span>
@@ -1186,7 +1200,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             fontSize: '14px',
                             fontWeight: 'bold',
                             userSelect: 'none',
-                            padding: '2px 4px'
+                            padding: '2px 4px',
                           }}
                           title="Zoom Out"
                         >
@@ -1206,7 +1220,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             fontSize: '14px',
                             fontWeight: 'bold',
                             userSelect: 'none',
-                            padding: '2px 4px'
+                            padding: '2px 4px',
                           }}
                           title="Zoom In"
                         >
@@ -1223,7 +1237,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             opacity: zoomLevel <= 1 ? 0.5 : 1,
                             fontSize: '14px',
                             userSelect: 'none',
-                            padding: '2px 3px'
+                            padding: '2px 3px',
                           }}
                           title="Pan Left"
                         >
@@ -1239,7 +1253,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             opacity: zoomLevel <= 1 ? 0.5 : 1,
                             fontSize: '14px',
                             userSelect: 'none',
-                            padding: '2px 3px'
+                            padding: '2px 3px',
                           }}
                           title="Pan Right"
                         >
@@ -1255,7 +1269,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             opacity: zoomLevel <= 1 ? 0.5 : 1,
                             fontSize: '14px',
                             userSelect: 'none',
-                            padding: '2px 3px'
+                            padding: '2px 3px',
                           }}
                           title="Pan Up"
                         >
@@ -1271,7 +1285,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             opacity: zoomLevel <= 1 ? 0.5 : 1,
                             fontSize: '14px',
                             userSelect: 'none',
-                            padding: '2px 3px'
+                            padding: '2px 3px',
                           }}
                           title="Pan Down"
                         >
@@ -1287,7 +1301,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                             fontSize: '12px',
                             userSelect: 'none',
                             padding: '2px 3px',
-                            marginLeft: '2px'
+                            marginLeft: '2px',
                           }}
                           title="Reset View"
                         >
@@ -1372,15 +1386,15 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                         if (onChange) {
                           const jsonStart = performance.now();
                           logger.debug('🔄 DEBOUNCED - JSON stringify starting...');
-                          
+
                           try {
                             const jsonString = JSON.stringify(updatedData, null, 2);
                             const jsonEnd = performance.now();
-                            logger.debug('✅ DEBOUNCED - JSON stringify completed:', { 
+                            logger.debug('✅ DEBOUNCED - JSON stringify completed:', {
                               duration: `${(jsonEnd - jsonStart).toFixed(2)}ms`,
-                              jsonLength: jsonString.length 
+                              jsonLength: jsonString.length,
                             });
-                            
+
                             // Call debounced parent onChange
                             debouncedParentOnChange(jsonString);
                           } catch (error) {
@@ -1394,6 +1408,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
                     onFieldDoubleClick={handleFieldDoubleClick}
                     path={[]}
                     explainabilityInfo={jsonData?.explainability_info}
+                    mergedConfig={sectionData?.mergedConfig}
                   />
                 ) : (
                   <Box padding="xl" textAlign="center">

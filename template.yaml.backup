@@ -60,6 +60,7 @@ Parameters:
     AllowedPattern: "^(|^arn:aws:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
     Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
 
+<<<<<<< HEAD
   Pattern1EnableHITL:
     Type: String
     AllowedValues:
@@ -67,6 +68,11 @@ Parameters:
       - false
     Default: true
     Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction and classification of BDA is less than configured Confidence Threshold
+
+  Pattern1BDAConfidenceThreshold:
+    Type: Number
+    Default: 80
+    Description: Confidence Threshold to invoke Human In the Loop for verification of extraction and classification
 
   ExistingPrivateWorkforceArn:
     Type: String
@@ -82,6 +88,13 @@ Parameters:
     Type: String
     Default: "default"
     AllowedValues:
+=======
+
+  Pattern1Configuration:
+    Type: String
+    Default: "default"
+    AllowedValues:
+>>>>>>> origin/develop
       - "default"
     Description: Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
@@ -92,19 +105,27 @@ Parameters:
     Default: "default"
     AllowedValues:
       - "default"
-      - "bank-statement-sample"
       - "few_shot_example_with_multimodal_page_classification"
+      - "medical_records_summarization"
     Description: Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
   Pattern2CustomClassificationModelARN:
     Type: String
     Default: ""
+<<<<<<< HEAD
+    Description: (NOT YET SUPPORTED) Specify Custom Fine Tuned Classification Model ARN. Leave blank to use pretrained model specified in the selected configuration.
+=======
     Description: Specify Custom Fine Tuned Classification Model ARN. Leave blank to use pretrained model specified in the selected configuration.
+>>>>>>> origin/develop
 
   Pattern2CustomExtractionModelARN:
     Type: String
     Default: ""
+<<<<<<< HEAD
+    Description: (NOT YET SUPPORTED) Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
+=======
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
+>>>>>>> origin/develop
 
   # Pattern 3 Parameters
 
@@ -136,7 +157,11 @@ Parameters:
     Type: String
     Default: ""
     Description: >-
+<<<<<<< HEAD
+      (Optional) Existing bucket used for storing evaluation results in JSON format for analytics.
+=======
       (Optional) Existing bucket used for analytics. (Currently used for evaluation analytics)
+>>>>>>> origin/develop
       Provide the name of an existing bucket here or leave blank to automatically create a new bucket.
 
   EvaluationAutoEnabled:
@@ -314,6 +339,16 @@ Parameters:
 
 Rules:
   # Pattern 1 rules
+  RequirePattern1BDAConfidenceThresholdIfHITL:
+    RuleCondition: 
+      !Equals [
+        !Ref Pattern1EnableHITL, 
+        "true"
+      ]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref Pattern1BDAConfidenceThreshold, ""]]
+        AssertDescription: Pattern1BDAConfidenceThreshold is required when Pattern1EnableHITL is true.
+
   ValidateExistingPrivateWorkforceArn:
     RuleCondition:
       !And [
@@ -334,9 +369,11 @@ Rules:
       - Assert: !Not [!Equals [!Ref Pattern3UDOPModelArtifactPath, ""]]
         AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
 
+<<<<<<< HEAD
   # Pattern 2 rules - Custom model validation now handled in pattern templates
 
-
+=======
+>>>>>>> origin/develop
 Conditions:
   IsPattern1:
     !Equals [
@@ -395,8 +432,12 @@ Metadata:
         Parameters:
           - Pattern1Configuration
           - Pattern1BDAProjectArn
+<<<<<<< HEAD
           - Pattern1EnableHITL
+          - Pattern1BDAConfidenceThreshold
           - ExistingPrivateWorkforceArn
+=======
+>>>>>>> origin/develop
       - Label:
           default: "Pattern 2 Configuration"
         Parameters:
@@ -423,10 +464,13 @@ Metadata:
           - ReportingBucketName
           - EvaluationAutoEnabled
       - Label:
+<<<<<<< HEAD
+=======
           default: "Reporting"
         Parameters:
           - ReportingBucketName
       - Label:
+>>>>>>> origin/develop
           default: "Document Knowledge Base"
         Parameters:
           - DocumentKnowledgeBase
@@ -468,10 +512,15 @@ Metadata:
         default: "Pattern2 - Custom Extraction Model ARN"
       Pattern1Configuration:
         default: "Pattern1 - Configuration Preset"
+<<<<<<< HEAD
       Pattern1EnableHITL:
         default: "Pattern1 - Enable Human In The Loop"
+      Pattern1BDAConfidenceThreshold:
+        default: "Pattern1 - BDA Confidence Threshold"
       ExistingPrivateWorkforceArn:
         default: "Pattern1 - Existing Private Workforce ARN"
+=======
+>>>>>>> origin/develop
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
       Pattern3UDOPModelArtifactPath:
@@ -486,8 +535,11 @@ Metadata:
         default: "Reporting Bucket Name"
       EvaluationAutoEnabled:
         default: "Evaluation Auto Enabled"
+<<<<<<< HEAD
+=======
       ReportingBucketName:
         default: "Reporting Bucket Name"
+>>>>>>> origin/develop
       IsSummarizationEnabled:
         default: "Summarization Enabled"
       IsAssessmentEnabled:
@@ -592,7 +644,10 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+<<<<<<< HEAD
+=======
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+>>>>>>> origin/develop
     Properties:
       Handler: index.handler
       Runtime: python3.12
@@ -774,6 +829,8 @@ Resources:
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
+<<<<<<< HEAD
+        ConfidenceThreshold: !Ref Pattern1BDAConfidenceThreshold
         EnableHITL: !Ref Pattern1EnableHITL
         ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-1/${Pattern1Configuration}/config.yaml"
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
@@ -781,6 +838,10 @@ Resources:
           - IsPattern1HITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
           - ""
+=======
+        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-1/${Pattern1Configuration}/config.yaml"
+        ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+>>>>>>> origin/develop
 
   PATTERN2STACK:
     DependsOn:
@@ -837,7 +898,6 @@ Resources:
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         UDOPModelArtifactPath: !Ref Pattern3UDOPModelArtifactPath
         IsSummarizationEnabled: !Ref IsSummarizationEnabled
-        IsAssessmentEnabled: !Ref IsAssessmentEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
@@ -1054,7 +1114,11 @@ Resources:
 
   ConfigurationBucket:
     Type: AWS::S3::Bucket
+<<<<<<< HEAD
+    DeletionPolicy: RetainExceptOnCreate
+=======
     DeletionPolicy: Retain
+>>>>>>> origin/develop
     Properties:
       NotificationConfiguration:
         EventBridgeConfiguration:
@@ -1319,7 +1383,11 @@ Resources:
         Description: "Table for document-level evaluation metrics"
         TableType: "EXTERNAL_TABLE"
         Parameters: {
+<<<<<<< HEAD
+          "classification": "json",
+=======
           "classification": "parquet",
+>>>>>>> origin/develop
           "typeOfData": "file"
         }
         StorageDescriptor:
@@ -1329,10 +1397,17 @@ Resources:
                 - ShouldCreateReportingBucket
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
+<<<<<<< HEAD
+          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          SerdeInfo:
+            SerializationLibrary: "org.apache.hadoop.hive.serde2.JsonSerDe"
+=======
           InputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
           OutputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
           SerdeInfo:
             SerializationLibrary: "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+>>>>>>> origin/develop
           Columns:
             - Name: document_id
               Type: string
@@ -1375,7 +1450,11 @@ Resources:
         Description: "Table for section-level evaluation metrics"
         TableType: "EXTERNAL_TABLE"
         Parameters: {
+<<<<<<< HEAD
+          "classification": "json",
+=======
           "classification": "parquet",
+>>>>>>> origin/develop
           "typeOfData": "file"
         }
         StorageDescriptor:
@@ -1385,10 +1464,17 @@ Resources:
                 - ShouldCreateReportingBucket
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
+<<<<<<< HEAD
+          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          SerdeInfo:
+            SerializationLibrary: "org.apache.hadoop.hive.serde2.JsonSerDe"
+=======
           InputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
           OutputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
           SerdeInfo:
             SerializationLibrary: "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+>>>>>>> origin/develop
           Columns:
             - Name: document_id
               Type: string
@@ -1431,7 +1517,11 @@ Resources:
         Description: "Table for attribute-level evaluation metrics"
         TableType: "EXTERNAL_TABLE"
         Parameters: {
+<<<<<<< HEAD
+          "classification": "json",
+=======
           "classification": "parquet",
+>>>>>>> origin/develop
           "typeOfData": "file"
         }
         StorageDescriptor:
@@ -1441,10 +1531,17 @@ Resources:
                 - ShouldCreateReportingBucket
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
+<<<<<<< HEAD
           InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
           OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
           SerdeInfo:
             SerializationLibrary: "org.openx.data.jsonserde.JsonSerDe"
+=======
+          InputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+          SerdeInfo:
+            SerializationLibrary: "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+>>>>>>> origin/develop
           Columns:
             - Name: document_id
               Type: string
@@ -1466,10 +1563,13 @@ Resources:
               Type: string
             - Name: evaluation_method
               Type: string
+<<<<<<< HEAD
+=======
             - Name: confidence
               Type: string
             - Name: confidence_threshold
               Type: string
+>>>>>>> origin/develop
             - Name: evaluation_date
               Type: timestamp
           Compressed: true
@@ -1482,7 +1582,8 @@ Resources:
             Type: string
           - Name: document
             Type: string
-
+<<<<<<< HEAD
+=======
 
   MeteringTable:
     Type: AWS::Glue::Table
@@ -1533,6 +1634,7 @@ Resources:
             Type: string
           - Name: document
             Type: string
+>>>>>>> origin/develop
 
   EvaluationBaselineBucket:
     Type: AWS::S3::Bucket
@@ -2418,8 +2520,16 @@ Resources:
             - !Ref EvaluationBaselineBucketName
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+<<<<<<< HEAD
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateReportingBucket
+              - !Ref ReportingBucket
+              - !Ref ReportingBucketName
+=======
         - LambdaInvokePolicy:
             FunctionName: !Ref SaveReportingDataFunction
+>>>>>>> origin/develop
         - Statement:
             - Effect: Allow
               Action:
@@ -3601,9 +3711,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ssm:PutParameter
-                Resource: 
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
         - PolicyName: KMSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4303,7 +4411,6 @@ Resources:
           Variables:
             LOG_LEVEL: !Ref LogLevel
             CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
-            STACK_NAME: !Ref AWS::StackName
         LoggingConfig:
           LogGroup: !Ref ConfigurationResolverFunctionLogGroup
         Policies:
@@ -4318,11 +4425,6 @@ Resources:
                   - kms:GenerateDataKey*
                   - kms:DescribeKey
                 Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-              - Effect: Allow
-                Action:
-                  - ssm:GetParameter
-                  - ssm:PutParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup

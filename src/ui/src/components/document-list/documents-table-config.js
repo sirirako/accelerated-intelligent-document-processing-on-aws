@@ -28,6 +28,36 @@ export const COLUMN_DEFINITIONS_MAIN = [
     width: 150,
   },
   {
+    id: 'hitlStatus',
+    header: 'HITL (A2I) Status',
+    cell: (item) => {
+      if (!item.hitlTriggered) {
+        return 'N/A';
+      }
+
+      if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
+        return 'A2I Review Completed';
+      }
+
+      if (item.hitlReviewURL) {
+        return (
+          <Link href={item.hitlReviewURL} external>
+            A2I Review In Progress
+          </Link>
+        );
+      }
+
+      // If we have a status but no URL and not completed, show the status
+      if (item.hitlStatus) {
+        return item.hitlStatus === 'IN_PROGRESS' ? 'A2I Review In Progress' : item.hitlStatus;
+      }
+
+      return 'A2I Review Triggered';
+    },
+    sortingField: 'hitlStatus',
+    width: 150,
+  },
+  {
     id: 'initialEventTime',
     header: 'Submitted',
     cell: (item) => item.initialEventTime,
@@ -65,7 +95,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
 ];
 
-export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[2];
+export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[3]; // initialEventTime
 
 export const SELECTION_LABELS = {
   itemSelectionLabel: (data, row) => `select ${row.objectKey}`,
@@ -85,6 +115,7 @@ const VISIBLE_CONTENT_OPTIONS = [
     options: [
       { id: 'objectKey', label: 'Document ID', editable: false },
       { id: 'objectStatus', label: 'Status' },
+      { id: 'hitlStatus', label: 'HITL (A2I) Status' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
@@ -97,6 +128,7 @@ const VISIBLE_CONTENT_OPTIONS = [
 const VISIBLE_CONTENT = [
   'objectKey',
   'objectStatus',
+  'hitlStatus',
   'initialEventTime',
   'completionTime',
   'duration',
