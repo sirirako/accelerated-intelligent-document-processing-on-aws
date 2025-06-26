@@ -91,7 +91,7 @@ class TestOcrService:
 
             # Create and return the service
             return OcrService(region="us-west-2", max_workers=5)
-            
+
     @pytest.fixture
     def bedrock_service(self, mock_s3_client):
         """Fixture providing an OcrService instance with Bedrock backend."""
@@ -104,9 +104,9 @@ class TestOcrService:
             # Create and return the service with Bedrock backend
             return OcrService(
                 region="us-west-2",
-                max_workers=5, 
+                max_workers=5,
                 backend="bedrock",
-                bedrock_model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+                bedrock_model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
             )
 
     @pytest.fixture
@@ -148,14 +148,14 @@ class TestOcrService:
             OcrService(enhanced_features=["INVALID_FEATURE"])
 
         assert "Invalid Textract feature" in str(excinfo.value)
-        
+
     def test_init_with_invalid_backend(self):
         """Test initialization with invalid backend."""
         with patch("boto3.client"), pytest.raises(ValueError) as excinfo:
             OcrService(backend="invalid_backend")
 
         assert "Invalid backend" in str(excinfo.value)
-        
+
     def test_init_with_bedrock_backend(self):
         """Test initialization with Bedrock backend."""
         with patch("boto3.client"):
@@ -163,14 +163,19 @@ class TestOcrService:
                 region="us-west-2",
                 max_workers=10,
                 backend="bedrock",
-                bedrock_model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+                bedrock_model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
             )
 
             assert service.region == "us-west-2"
             assert service.max_workers == 10
             assert service.backend == "bedrock"
-            assert service.bedrock_model_id == "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-            assert service.enhanced_features is False  # Enhanced features not used with Bedrock
+            assert (
+                service.bedrock_model_id
+                == "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+            )
+            assert (
+                service.enhanced_features is False
+            )  # Enhanced features not used with Bedrock
 
     @patch("fitz.open")
     @patch("idp_common.s3.write_content")
@@ -428,29 +433,29 @@ class TestOcrService:
                 FeatureTypes=["TABLES", "FORMS"],
             )
             service.textract_client.detect_document_text.assert_not_called()
-            
+
     @patch("idp_common.s3.write_content")
     @patch("idp_common.bedrock.invoke_model")
     @patch("idp_common.bedrock.extract_text_from_response")
     @patch("idp_common.image.prepare_bedrock_image_attachment")
     def test_process_single_page_bedrock(
-        self, 
-        mock_prepare_image, 
-        mock_extract_text, 
-        mock_invoke_model, 
-        mock_write_content, 
-        bedrock_service, 
-        mock_pdf_document
+        self,
+        mock_prepare_image,
+        mock_extract_text,
+        mock_invoke_model,
+        mock_write_content,
+        bedrock_service,
+        mock_pdf_document,
     ):
         """Test processing a single page with Bedrock backend."""
         # Configure mocks
         mock_prepare_image.return_value = {"image": "mock_image_data"}
         mock_invoke_model.return_value = {
             "response": {"content": "Extracted text"},
-            "metering": {"inputTokens": 100, "outputTokens": 50}
+            "metering": {"inputTokens": 100, "outputTokens": 50},
         }
         mock_extract_text.return_value = "This is a test document."
-        
+
         # Process a single page
         result, metering = bedrock_service._process_single_page(
             page_index=0,
@@ -458,7 +463,7 @@ class TestOcrService:
             output_bucket="output-bucket",
             prefix="test-document.pdf",
         )
-        
+
         # Verify the result
         assert (
             result["image_uri"]
@@ -476,14 +481,16 @@ class TestOcrService:
             result["text_confidence_uri"]
             == "s3://output-bucket/test-document.pdf/pages/1/textConfidence.json"
         )
-        
+
         # Verify Bedrock was called correctly
         mock_prepare_image.assert_called_once_with(b"mock image bytes")
         mock_invoke_model.assert_called_once()
         mock_extract_text.assert_called_once()
-        
+
         # Verify S3 write_content was called for each output file
-        assert mock_write_content.call_count == 4  # image, raw text, parsed text, text confidence
+        assert (
+            mock_write_content.call_count == 4
+        )  # image, raw text, parsed text, text confidence
 
     def test_analyze_document(self, service, mock_textract_response):
         """Test the _analyze_document method."""

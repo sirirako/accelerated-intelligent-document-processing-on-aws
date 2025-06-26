@@ -37,7 +37,9 @@ class OcrService:
         resize_config: Optional[Dict[str, Any]] = None,
         bedrock_config: Dict[str, Any] = None,
         backend: str = "textract",  # New parameter: "textract" or "bedrock"
-        preprocessing_config: Optional[Dict[str, Any]] = None,  # New parameter for preprocessing
+        preprocessing_config: Optional[
+            Dict[str, Any]
+        ] = None,  # New parameter for preprocessing
     ):
         """
         Initialize the OCR service.
@@ -127,10 +129,12 @@ class OcrService:
                 raise ValueError(
                     "bedrock_config is required when using 'bedrock' backend"
                 )
-            
+
             # Validate required bedrock_config fields
             required_fields = ["model_id", "system_prompt", "task_prompt"]
-            missing_fields = [field for field in required_fields if not self.bedrock_config.get(field)]
+            missing_fields = [
+                field for field in required_fields if not self.bedrock_config.get(field)
+            ]
             if missing_fields:
                 raise ValueError(
                     f"Missing required bedrock_config fields: {missing_fields}"
@@ -389,8 +393,11 @@ class OcrService:
         # Apply preprocessing if enabled (only for OCR processing, not saved image)
         if self.preprocessing_config and self.preprocessing_config.get("enabled"):
             from idp_common.image import apply_adaptive_binarization
+
             ocr_img_bytes = apply_adaptive_binarization(ocr_img_bytes)
-            logger.debug(f"Applied adaptive binarization preprocessing for OCR processing (page {page_id})")
+            logger.debug(
+                f"Applied adaptive binarization preprocessing for OCR processing (page {page_id})"
+            )
 
         # Process with OCR using potentially resized image
         if isinstance(self.enhanced_features, list) and self.enhanced_features:
@@ -524,8 +531,11 @@ class OcrService:
         # Apply preprocessing if enabled (only for OCR processing, not saved image)
         if self.preprocessing_config and self.preprocessing_config.get("enabled"):
             from idp_common.image import apply_adaptive_binarization
+
             ocr_img_bytes = apply_adaptive_binarization(ocr_img_bytes)
-            logger.debug(f"Applied adaptive binarization preprocessing for Bedrock OCR processing (page {page_id})")
+            logger.debug(
+                f"Applied adaptive binarization preprocessing for Bedrock OCR processing (page {page_id})"
+            )
 
         # Prepare image for Bedrock
         image_content = image.prepare_bedrock_image_attachment(ocr_img_bytes)
