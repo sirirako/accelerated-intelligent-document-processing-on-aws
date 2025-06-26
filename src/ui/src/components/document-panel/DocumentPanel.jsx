@@ -21,6 +21,7 @@ import DocumentViewers from '../document-viewers/DocumentViewers';
 import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
+import { StepFunctionFlowViewer } from '../step-function-flow';
 import useConfiguration from '../../hooks/use-configuration';
 import {
   getSectionConfidenceAlerts,
@@ -539,6 +540,9 @@ const DocumentAttributes = ({ item }) => {
 export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess }) => {
   logger.debug('DocumentPanel item', item);
 
+  // State for Step Function flow viewer
+  const [isFlowViewerVisible, setIsFlowViewerVisible] = useState(false);
+
   // Fetch configuration for dynamic confidence threshold
   const { mergedConfig } = useConfiguration();
 
@@ -556,6 +560,15 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
             variant="h2"
             actions={
               <SpaceBetween direction="horizontal" size="xs">
+                {item?.executionArn && (
+                  <Button
+                    iconName="status-positive"
+                    variant={isFlowViewerVisible ? 'primary' : 'normal'}
+                    onClick={() => setIsFlowViewerVisible(true)}
+                  >
+                    View Processing Flow
+                  </Button>
+                )}
                 {onReprocess && (
                   <Button iconName="arrow-right" variant="normal" onClick={onReprocess}>
                     Reprocess
@@ -595,6 +608,15 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
       <ChatPanel objectKey={item.objectKey} />
+
+      {/* Step Function Flow Viewer */}
+      {item?.executionArn && (
+        <StepFunctionFlowViewer
+          executionArn={item.executionArn}
+          visible={isFlowViewerVisible}
+          onDismiss={() => setIsFlowViewerVisible(false)}
+        />
+      )}
     </SpaceBetween>
   );
 };

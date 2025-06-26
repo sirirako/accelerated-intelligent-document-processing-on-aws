@@ -89,6 +89,7 @@ const mapDocumentsAttributes = (documents) => {
       workflowStartTime: formatDate(workflowStartTime),
       completionTime: formatDate(completionTime),
       workflowExecutionArn,
+      executionArn: workflowExecutionArn, // Add executionArn for Step Functions flow viewer
       workflowStatus,
       duration: getDuration(completionTime, initialEventTime),
       sections,

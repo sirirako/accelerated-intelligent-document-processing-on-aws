@@ -3932,6 +3932,7 @@ Resources:
                   - lambda:InvokeFunction
                 Resource: 
                   - !GetAtt GetFileContentsResolverFunction.Arn
+                  - !GetAtt GetStepFunctionExecutionResolverFunction.Arn
                   - !GetAtt ConfigurationResolverFunction.Arn
                   - !GetAtt UploadResolverFunction.Arn
                   - !GetAtt CopyToBaselineResolverFunction.Arn
@@ -4276,6 +4277,78 @@ Resources:
       DataSourceName: !GetAtt GetFileContentsDataSource.Name
       TypeName: Query
       FieldName: getFileContents
+
+  GetStepFunctionExecutionResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.12
+      BuildProperties:
+        Lambda:
+          LayerVersions:
+            - !Ref CommonLibraryLayer
+    Properties:
+      CodeUri: src/lambda/get_stepfunction_execution_resolver/
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 512
+      Timeout: 60
+      LoggingConfig:
+        LogGroup: !Ref GetStepFunctionExecutionResolverFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource: 
+                - !Sub
+                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - StateMachineName: !If
+                      - IsPattern3
+                      - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+                      - !If
+                        - IsPattern2
+                        - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+                        - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+        - KMSDecryptPolicy:
+            KeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  GetStepFunctionExecutionResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  GetStepFunctionExecutionDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: GetStepFunctionExecution
+      Description: Lambda function to return Step Functions execution details via GraphQL API
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GetStepFunctionExecutionResolverFunction.Arn
+
+  GetStepFunctionExecutionResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt GetStepFunctionExecutionDataSource.Name
+      TypeName: Query
+      FieldName: getStepFunctionExecution
 
   ConfigurationResolverFunction:
       Type: AWS::Serverless::Function

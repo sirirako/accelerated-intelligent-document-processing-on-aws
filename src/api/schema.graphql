@@ -137,6 +137,27 @@ type FileContentsResponse @aws_cognito_user_pools @aws_iam {
   isBinary: Boolean
 }
 
+type StepFunctionExecutionStep @aws_cognito_user_pools @aws_iam {
+  name: String!
+  type: String!
+  status: String!
+  startDate: AWSDateTime
+  stopDate: AWSDateTime
+  input: AWSJSON
+  output: AWSJSON
+  error: String
+}
+
+type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
+  executionArn: String!
+  status: String!
+  startDate: AWSDateTime
+  stopDate: AWSDateTime
+  input: AWSJSON
+  output: AWSJSON
+  steps: [StepFunctionExecutionStep]
+}
+
 type Mutation  {
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
@@ -156,6 +177,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   getConfiguration: ConfigurationResponse
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(s3Uri: String!, prompt: String!): String
+  getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
