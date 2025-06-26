@@ -7,6 +7,7 @@ import { API, graphqlOperation, Logger } from 'aws-amplify';
 import { Container, Header, SpaceBetween, Box, Alert, Spinner, Button, Modal } from '@awsui/components-react';
 import { FaPlay, FaCheck, FaTimes, FaClock, FaRobot, FaFileAlt, FaEye, FaChartBar } from 'react-icons/fa';
 import getStepFunctionExecution from '../../graphql/queries/getStepFunctionExecution';
+import onStepFunctionExecutionUpdate from '../../graphql/subscriptions/onStepFunctionExecutionUpdate';
 import FlowDiagram from './FlowDiagram';
 import StepDetails from './StepDetails';
 import './StepFunctionFlowViewer.css';
@@ -19,6 +20,9 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [isRealTime, setIsRealTime] = useState(false);
+  const [refreshInterval] = useState(3000); // 3 seconds default (removed setter as it's not used)
 
   const fetchStepFunctionExecution = async () => {
     if (!executionArn || !visible) return;
@@ -38,19 +42,89 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     }
   };
 
-  // Initial fetch and auto-refresh logic
+  // Set up real-time subscription
+  const setupSubscription = () => {
+    if (!executionArn || subscription) return;
+
+    try {
+      const sub = API.graphql(graphqlOperation(onStepFunctionExecutionUpdate, { executionArn })).subscribe({
+        next: ({ value }) => {
+          logger.debug('Received Step Functions update:', value);
+          if (value.data?.onStepFunctionExecutionUpdate) {
+            setData({ getStepFunctionExecution: value.data.onStepFunctionExecutionUpdate });
+            setIsRealTime(true);
+            logger.info('Real-time update received for execution:', executionArn);
+          }
+        },
+        error: (err) => {
+          logger.warn('Subscription failed, falling back to polling:', err);
+          setIsRealTime(false);
+          // Continue with polling as fallback
+        },
+      });
+
+      setSubscription(sub);
+      // Don't set isRealTime=true until we actually receive data
+      logger.debug('Step Functions subscription established (waiting for first update)');
+
+      // Set a timeout to detect if subscription is not working
+      setTimeout(() => {
+        if (!isRealTime) {
+          logger.warn('No real-time updates received, subscription may not be configured');
+          setIsRealTime(false);
+        }
+      }, 10000); // Wait 10 seconds for first update
+    } catch (err) {
+      logger.error('Failed to establish subscription:', err);
+      setIsRealTime(false);
+    }
+  };
+
+  // Helper function to get status indicator
+  const getStatusIndicator = () => {
+    if (isRealTime) {
+      return (
+        <Box variant="small" color="text-status-success">
+          🔴 Live Updates
+        </Box>
+      );
+    }
+    if (autoRefresh) {
+      return (
+        <Box variant="small" color="text-status-info">
+          🔄 Auto-refresh ({refreshInterval / 1000}s)
+        </Box>
+      );
+    }
+    return (
+      <Box variant="small" color="text-status-inactive">
+        ⏸️ Manual refresh only
+      </Box>
+    );
+  };
+
+  // Initial fetch and subscription setup
   useEffect(() => {
-    fetchStepFunctionExecution();
+    if (visible && executionArn) {
+      fetchStepFunctionExecution();
+      setupSubscription();
+    }
 
     let intervalId;
-    if (autoRefresh && visible) {
-      intervalId = setInterval(fetchStepFunctionExecution, 3000);
+    if (autoRefresh && visible && !isRealTime) {
+      // Only use polling if subscription is not active
+      intervalId = setInterval(fetchStepFunctionExecution, refreshInterval);
     }
 
     return () => {
       if (intervalId) clearInterval(intervalId);
+      if (subscription) {
+        subscription.unsubscribe();
+        setSubscription(null);
+        setIsRealTime(false);
+      }
     };
-  }, [executionArn, visible, autoRefresh]);
+  }, [executionArn, visible, autoRefresh, isRealTime, refreshInterval]);
 
   useEffect(() => {
     if (data?.getStepFunctionExecution?.status === 'SUCCEEDED' || data?.getStepFunctionExecution?.status === 'FAILED') {
@@ -141,14 +215,17 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
           variant="h2"
           actions={
             <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                variant={autoRefresh ? 'primary' : 'normal'}
-                onClick={() => setAutoRefresh(!autoRefresh)}
-                iconName={autoRefresh ? 'pause' : 'play'}
-              >
-                {autoRefresh ? 'Pause' : 'Resume'} Auto-refresh
-              </Button>
-              <Button onClick={() => fetchStepFunctionExecution()} iconName="refresh">
+              {getStatusIndicator()}
+              {!isRealTime && (
+                <Button
+                  variant={autoRefresh ? 'primary' : 'normal'}
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  iconName={autoRefresh ? 'pause' : 'play'}
+                >
+                  {autoRefresh ? 'Pause' : 'Resume'} Auto-refresh
+                </Button>
+              )}
+              <Button onClick={() => fetchStepFunctionExecution()} iconName="refresh" loading={loading}>
                 Refresh
               </Button>
             </SpaceBetween>
