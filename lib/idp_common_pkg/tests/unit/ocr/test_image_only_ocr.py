@@ -5,7 +5,6 @@
 Unit tests for image-only OCR processing (backend="none").
 """
 
-import json
 import unittest
 from unittest.mock import MagicMock, patch
 

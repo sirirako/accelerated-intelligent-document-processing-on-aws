@@ -19,7 +19,7 @@ import boto3
 import fitz  # PyMuPDF
 from botocore.config import Config
 
-from idp_common import s3, utils, bedrock, image
+from idp_common import bedrock, s3, utils
 from idp_common.models import Document, Page, Status
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ class OcrService:
                 "textract", region_name=self.region, config=adaptive_config
             )
 
-            logger.info(f"OCR Service initialized with Textract backend")
+            logger.info("OCR Service initialized with Textract backend")
         elif self.backend == "bedrock":
             # Enhanced features not used with Bedrock
             self.enhanced_features = False
@@ -143,7 +143,7 @@ class OcrService:
             # No OCR processing - image-only mode
             self.enhanced_features = False
             logger.info(
-                f"OCR Service initialized with 'none' backend - image-only processing"
+                "OCR Service initialized with 'none' backend - image-only processing"
             )
 
         # Initialize S3 client (used by all backends for image storage)
