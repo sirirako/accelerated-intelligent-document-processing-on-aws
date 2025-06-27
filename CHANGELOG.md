@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+- **Enhanced JSON Extraction from LLM Responses (Issue #16)**
+  - Modularized duplicate `_extract_json()` functions across classification, extraction, summarization, and assessment services into a common `extract_json_from_text()` utility function
+  - Improved multi-line JSON handling with literal newlines in string values that previously caused parsing failures
+  - Added robust JSON validation and multiple fallback strategies for better extraction reliability
+  - Enhanced string parsing with proper escape sequence handling for quotes and newlines
+  - Added comprehensive unit tests covering various JSON formats including multi-line scenarios
+
 ## [0.3.4]
 
 ### Added

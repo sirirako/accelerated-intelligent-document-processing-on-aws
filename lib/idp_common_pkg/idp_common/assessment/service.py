@@ -17,6 +17,7 @@ from typing import Any, Dict, List
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.models import Document
+from idp_common.utils import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -804,7 +805,7 @@ class AssessmentService:
 
             try:
                 # Try to parse the assessment text as JSON
-                assessment_data = json.loads(self._extract_json(assessment_text))
+                assessment_data = json.loads(extract_json_from_text(assessment_text))
             except Exception as e:
                 # Handle parsing error
                 logger.error(
@@ -972,44 +973,6 @@ class AssessmentService:
             raise
 
         return document
-
-    def _extract_json(self, text: str) -> str:
-        """
-        Extract JSON string from text response.
-
-        Args:
-            text: The text response from the model
-
-        Returns:
-            Extracted JSON string
-        """
-        # Check for code block format
-        if "```json" in text:
-            start_idx = text.find("```json") + len("```json")
-            end_idx = text.find("```", start_idx)
-            if end_idx > start_idx:
-                return text[start_idx:end_idx].strip()
-        elif "```" in text:
-            start_idx = text.find("```") + len("```")
-            end_idx = text.find("```", start_idx)
-            if end_idx > start_idx:
-                return text[start_idx:end_idx].strip()
-
-        # Check for simple JSON
-        if "{" in text and "}" in text:
-            start_idx = text.find("{")
-            # Find matching closing brace
-            open_braces = 0
-            for i in range(start_idx, len(text)):
-                if text[i] == "{":
-                    open_braces += 1
-                elif text[i] == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        return text[start_idx : i + 1].strip()
-
-        # If we can't find JSON, return the text as-is
-        return text
 
     def assess_document(self, document: Document) -> Document:
         """
