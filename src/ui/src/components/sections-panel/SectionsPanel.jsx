@@ -3,7 +3,7 @@
 
 /* eslint-disable react/prop-types */
 import React from 'react';
-import { Box, Container, SpaceBetween, Table, StatusIndicator, ExpandableSection } from '@awsui/components-react';
+import { Box, Container, SpaceBetween, Table, StatusIndicator } from '@awsui/components-react';
 import FileViewer from '../document-viewer/JSONViewer';
 import { getSectionConfidenceAlertCount, getSectionConfidenceAlerts } from '../common/confidence-alerts-utils';
 
@@ -12,45 +12,26 @@ const IdCell = ({ item }) => <span>{item.Id}</span>;
 const ClassCell = ({ item }) => <span>{item.Class}</span>;
 const PageIdsCell = ({ item }) => <span>{item.PageIds.join(', ')}</span>;
 
-// Enhanced confidence alerts cell with detailed information
+// Confidence alerts cell showing only count
 const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
   if (!mergedConfig) {
-    // Fallback to original behavior
-    return <span>{getSectionConfidenceAlertCount(item)}</span>;
+    // Fallback to original behavior - just show the count as a number
+    const count = getSectionConfidenceAlertCount(item);
+    return count === 0 ? (
+      <StatusIndicator type="success">0</StatusIndicator>
+    ) : (
+      <StatusIndicator type="warning">{count}</StatusIndicator>
+    );
   }
 
   const alerts = getSectionConfidenceAlerts(item, mergedConfig);
   const alertCount = alerts.length;
 
   if (alertCount === 0) {
-    return (
-      <Box>
-        <StatusIndicator type="success">0</StatusIndicator>
-        <Box fontSize="body-s" color="text-body-secondary">
-          Confidence Alerts
-        </Box>
-      </Box>
-    );
+    return <StatusIndicator type="success">0</StatusIndicator>;
   }
 
-  return (
-    <Box>
-      <StatusIndicator type="warning">{alertCount}</StatusIndicator>
-      <Box fontSize="body-s" color="text-body-secondary">
-        Confidence Alerts
-      </Box>
-      <ExpandableSection headerText={`View ${alertCount} field${alertCount !== 1 ? 's' : ''}`} variant="footer">
-        <SpaceBetween size="xs">
-          {alerts.map((alert) => (
-            <Box key={`alert-${alert.fieldName}-${alert.confidence}`} fontSize="body-s" color="text-body-secondary">
-              <strong>{alert.fieldName}</strong>:{' '}
-              <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span>
-            </Box>
-          ))}
-        </SpaceBetween>
-      </ExpandableSection>
-    </Box>
-  );
+  return <StatusIndicator type="warning">{alertCount}</StatusIndicator>;
 };
 
 const ActionsCell = ({ item, pages, documentItem, mergedConfig }) => (
@@ -92,7 +73,7 @@ const createColumnDefinitions = (pages, documentItem, mergedConfig) => [
   },
   {
     id: 'confidenceAlerts',
-    header: 'Confidence Alerts',
+    header: 'Low Confidence Fields',
     cell: (item) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
     minWidth: 140,
     width: 140,

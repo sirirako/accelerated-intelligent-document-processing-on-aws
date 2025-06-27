@@ -22,81 +22,28 @@ import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
-import { getSectionConfidenceAlerts, getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
+import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
 const logger = new Logger('DocumentPanel');
 
-// Component to display detailed confidence alerts
+// Component to display confidence alerts count only
 const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
   // Uncomment the line below to enable debugging
   // debugDocumentStructure({ sections, mergedConfig });
 
   if (!sections || !Array.isArray(sections) || !mergedConfig) {
-    return (
-      <div>
-        <StatusIndicator type="success">0 alerts</StatusIndicator>
-        <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-          No configuration available
-        </Box>
-      </div>
-    );
+    return <StatusIndicator type="success">0</StatusIndicator>;
   }
 
   const totalAlertCount = getDocumentConfidenceAlertCount(sections, mergedConfig);
 
-  // Collect all confidence alerts from all sections for detailed display
-  const allAlerts = [];
-  sections.forEach((section, sectionIndex) => {
-    const sectionAlerts = getSectionConfidenceAlerts(section, mergedConfig);
-    sectionAlerts.forEach((alert) => {
-      allAlerts.push({
-        ...alert,
-        sectionId: section.Id || `Section ${sectionIndex + 1}`,
-        sectionClass: section.Class || 'Unknown',
-      });
-    });
-  });
-
   if (totalAlertCount === 0) {
-    return (
-      <div>
-        <StatusIndicator type="success">0 alerts</StatusIndicator>
-        <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-          All fields meet confidence requirements
-        </Box>
-      </div>
-    );
+    return <StatusIndicator type="success">0</StatusIndicator>;
   }
 
-  return (
-    <div>
-      <StatusIndicator type="warning">
-        {totalAlertCount} alert{totalAlertCount !== 1 ? 's' : ''}
-      </StatusIndicator>
-      <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-        Low confidence fields detected
-      </Box>
-      <ExpandableSection
-        headerText={`View ${totalAlertCount} field${totalAlertCount !== 1 ? 's' : ''} with low confidence`}
-        variant="footer"
-      >
-        <SpaceBetween size="xs">
-          {allAlerts.map((alert) => (
-            <Box key={`${alert.sectionId}-${alert.fieldName}`} padding="xs" color="text-body-secondary">
-              <Box fontSize="body-s">
-                <strong>{alert.sectionId}</strong> - {alert.fieldName}
-              </Box>
-              <Box fontSize="body-s">
-                Confidence: <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span>
-              </Box>
-            </Box>
-          ))}
-        </SpaceBetween>
-      </ExpandableSection>
-    </div>
-  );
+  return <StatusIndicator type="warning">{totalAlertCount}</StatusIndicator>;
 };
 
 // Helper function to parse serviceApi key into context and service

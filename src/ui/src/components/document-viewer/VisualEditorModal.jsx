@@ -192,8 +192,13 @@ const FormFieldRenderer = memo(
     let confidenceColor;
     let confidenceStyle;
     if (confidenceInfo.hasConfidenceInfo) {
-      confidenceColor = undefined;
-      confidenceStyle = { color: confidenceInfo.textColor };
+      if (confidenceInfo.displayMode === 'with-threshold') {
+        confidenceColor = confidenceInfo.isAboveThreshold ? 'text-status-success' : 'text-status-error';
+        confidenceStyle = undefined;
+      } else {
+        confidenceColor = undefined;
+        confidenceStyle = { color: confidenceInfo.textColor };
+      }
     }
 
     // Create label with confidence score if available (legacy support)
@@ -316,7 +321,11 @@ const FormFieldRenderer = memo(
                   {fieldKey}:
                   {confidenceInfo.hasConfidenceInfo && (
                     <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
-                      {`Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
                     </Box>
                   )}
                 </Box>
@@ -378,7 +387,11 @@ const FormFieldRenderer = memo(
                   {fieldKey}:
                   {confidenceInfo.hasConfidenceInfo && (
                     <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
-                      {`Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
                     </Box>
                   )}
                 </Box>
@@ -421,7 +434,11 @@ const FormFieldRenderer = memo(
                   {fieldKey}:
                   {confidenceInfo.hasConfidenceInfo && (
                     <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
-                      {`Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
                     </Box>
                   )}
                 </Box>
@@ -626,7 +643,11 @@ const FormFieldRenderer = memo(
                   {fieldKey}:
                   {confidenceInfo.hasConfidenceInfo && (
                     <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
-                      {`Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
                     </Box>
                   )}
                 </Box>

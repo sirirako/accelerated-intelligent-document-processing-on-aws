@@ -33,14 +33,14 @@ def get_hitl_confidence_score_from_ssm():
         return threshold_value
     except ClientError as e:
         logger.warning(f"Failed to retrieve HITL confidence score from SSM parameter {parameter_name}: {e}")
-        # Return default value of 80 if SSM parameter is not found
-        logger.info("Using default HITL confidence score: 80")
-        return "80"
+        # Return default value of 0.8 if SSM parameter is not found
+        logger.info("Using default HITL confidence score: 0.8")
+        return "0.8"
     except Exception as e:
         logger.warning(f"Error retrieving HITL confidence score from SSM: {e}")
         # Return default value if any other error occurs
-        logger.info("Using default HITL confidence score: 80")
-        return "80"
+        logger.info("Using default HITL confidence score: 0.8")
+        return "0.8"
 
 def update_hitl_confidence_score_in_ssm(value):
     """

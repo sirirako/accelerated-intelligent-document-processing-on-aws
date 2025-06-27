@@ -160,7 +160,11 @@ const FormEditorView = ({ jsonData, onChange, isReadOnly, sectionData }) => {
             {key}:
             {confidenceInfo.hasConfidenceInfo && (
               <Box fontSize="body-s" padding={{ top: 'xxxs' }} style={{ color: confidenceInfo.textColor || undefined }}>
-                {`Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                {confidenceInfo.displayMode === 'with-threshold'
+                  ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                      confidenceInfo.confidenceThreshold * 100
+                    ).toFixed(1)}%`
+                  : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
               </Box>
             )}
           </Box>
