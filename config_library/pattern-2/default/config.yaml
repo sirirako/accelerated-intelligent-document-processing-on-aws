@@ -4,10 +4,9 @@
 notes: Default settings
 ocr:
   backend: "textract"  # Default to Textract for backward compatibility
-  # Uncomment and configure these settings to use Bedrock for OCR
-  # model_id: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-  # system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
-  # task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
+  model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
+  task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
   features:
     - name: LAYOUT
     - name: TABLES

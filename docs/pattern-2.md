@@ -225,6 +225,72 @@ The pattern exports these outputs to the parent stack:
 - Configuration can be updated through the Web UI without stack redeployment
 - Model choices are constrained through enum constraints in the configuration schema
 
+## Bedrock OCR Feature
+
+### Overview
+
+Pattern 2 now supports Amazon Bedrock LLMs (Claude, Nova) as an alternative OCR backend alongside the traditional Amazon Textract service. This feature enables multimodal document processing where large language models can extract text from document images using their vision capabilities.
+
+### Configuration
+
+Bedrock OCR is configured through the pattern's configuration files. The OCR backend can be selected using the `backend` parameter:
+
+```yaml
+ocr:
+  backend: "bedrock"  # Options: "textract", "bedrock", "none"
+  model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
+  task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
+```
+
+### Enabling Bedrock OCR
+
+To use Bedrock OCR:
+
+1. **Set the backend**: Configure `backend: "bedrock"` in your OCR configuration
+2. **Choose a model**: Select from supported vision-capable models:
+   - `us.amazon.nova-lite-v1:0`
+   - `us.amazon.nova-pro-v1:0` 
+   - `us.amazon.nova-premier-v1:0`
+   - `us.anthropic.claude-3-haiku-20240307-v1:0`
+   - `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
+   - `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
+   - `us.anthropic.claude-sonnet-4-20250514-v1:0`
+   - `us.anthropic.claude-opus-4-20250514-v1:0`
+3. **Configure prompts**: Customize system and task prompts for your specific use case
+4. **Deploy**: The configuration can be updated through the Web UI without stack redeployment
+
+### Benefits
+
+**Advantages of Bedrock OCR:**
+- **Multimodal Understanding**: LLMs can understand both visual layout and textual content
+- **Context Awareness**: Better handling of complex document structures and relationships
+- **Flexibility**: Customizable prompts for domain-specific terminology and formats
+- **Advanced Reasoning**: Can handle challenging cases like handwritten text, poor quality scans, or complex layouts
+- **Unified Processing**: Same models used for OCR, classification, and extraction provide consistency
+
+**When to Use Bedrock OCR:**
+- Documents with complex layouts or mixed content types
+- Handwritten or low-quality documents where Textract struggles
+- Domain-specific documents requiring contextual understanding
+- When you want unified processing across the entire pipeline
+- For experimental or specialized use cases requiring prompt customization
+
+### Cost Considerations
+
+**Bedrock OCR Pricing:**
+- Charged per input/output token rather than per page
+- Typically higher cost per page than Textract for standard documents
+- Cost varies significantly by model (Nova Lite < Nova Pro < Claude models)
+- Image tokens are more expensive than text tokens
+
+**Cost Optimization Tips:**
+1. **Model Selection**: Use Nova Lite for cost-sensitive applications, Claude for quality-critical use cases
+2. **Image Preprocessing**: Enable image resizing and preprocessing to reduce token consumption
+3. **Prompt Optimization**: Use concise, focused prompts to minimize token usage
+4. **Hybrid Approach**: Use Textract for standard documents, Bedrock for complex cases
+5. **Batch Processing**: Process multiple pages efficiently with concurrent processing
+
 ## OCR Configuration
 
 The OCR service in Pattern 2 supports enhanced image processing capabilities for optimal text extraction:
@@ -252,9 +318,11 @@ The OCR service supports optional image resizing for processing optimization:
 # OCR configuration example
 ocr:
   dpi: 300  # PDF-to-image conversion DPI
-  resize_config:
-    target_width: 951   # Target width for processing
-    target_height: 1268 # Target height for processing
+  image:
+    resize_config:
+      target_width: 951   # Target width for processing
+      target_height: 1268 # Target height for processing
+    preprocessing: true   # Enable adaptive binarization preprocessing
 ```
 
 ### OCR Image Processing Features
@@ -265,13 +333,39 @@ ocr:
   - Uses resized images for OCR processing to optimize performance
 - **Aspect Ratio Preservation**: Images are resized proportionally without distortion
 - **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
+- **Image Preprocessing**: Optional adaptive binarization to improve OCR accuracy on challenging documents
 - **Enhanced Logging**: Detailed logging for DPI and resize operations
+
+### Image Preprocessing Configuration
+
+The OCR service supports optional adaptive binarization preprocessing to improve OCR accuracy on challenging documents:
+
+```yaml
+# Enable preprocessing for improved OCR accuracy
+ocr:
+  image:
+    preprocessing: true  # Enable adaptive binarization
+```
+
+**Adaptive Binarization Benefits:**
+- **Improved OCR Accuracy**: Significantly enhances text extraction on documents with uneven lighting, shadows, or low contrast
+- **Background Noise Reduction**: Removes background gradients and noise that can interfere with OCR
+- **Enhanced Edge Detection**: Sharpens text boundaries for better character recognition
+- **Robust Processing**: Handles challenging document conditions like poor scans or faded text
+
+**When to Enable Preprocessing:**
+- Documents with uneven lighting or shadows
+- Low contrast text or faded documents
+- Scanned documents with background noise
+- Handwritten or mixed content documents
+- When standard OCR accuracy is insufficient
 
 ### Configuration Benefits
 
 - **Quality Control**: Higher DPI settings improve OCR accuracy for complex documents
 - **Performance Optimization**: Resized images reduce processing time and memory usage
 - **Storage Efficiency**: Dual strategy balances quality preservation with processing efficiency
+- **Preprocessing Enhancement**: Adaptive binarization improves OCR accuracy on challenging documents
 - **Flexibility**: Runtime configuration allows adjustment without code changes
 - **Backward Compatibility**: Default values maintain existing behavior
 
@@ -291,59 +385,6 @@ ocr:
    - Monitor processing times and adjust DPI/resize settings accordingly
    - Use concurrent processing for multi-page documents
    - Balance quality requirements with processing costs
-## Bedrock OCR Feature
-
-Pattern 2 now supports using Amazon Bedrock LLMs for OCR (Optical Character Recognition) as an alternative to Amazon Textract. This feature leverages the multimodal capabilities of models like Claude to extract text from document images.
-
-### Overview
-
-The Bedrock OCR feature allows you to:
-- Use Claude or Nova models for OCR processing
-- Customize OCR behavior through system and task prompts
-- Potentially improve OCR quality for complex documents
-- Better handle tables, forms, and structured content
-
-### Configuration
-
-Bedrock OCR is configured through the configuration files. The `bedrock_ocr` configuration demonstrates how to set up this feature:
-
-```yaml
-ocr:
-  backend: "bedrock"  # Use Bedrock for OCR instead of Textract
-  model_id: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"  # Claude 3.5 Sonnet
-  system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
-  task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
-```
-
-### Enabling Bedrock OCR
-
-To use Bedrock OCR:
-
-1. Deploy Pattern 2 normally
-2. In the Web UI, navigate to the Configuration page
-3. Select the "bedrock_ocr" configuration from the dropdown menu
-4. Click "Apply Configuration"
-
-Alternatively, you can deploy with a custom configuration:
-
-```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --parameter-overrides ConfigurationDefaultS3Uri=s3://your-bucket/config_library/pattern-2/bedrock_ocr/config.yaml
-```
-
-### Benefits
-
-Using Bedrock LLMs for OCR provides several advantages:
-
-1. **Improved OCR quality**: Bedrock LLMs can often extract text more accurately from complex documents, especially those with challenging layouts or poor image quality
-2. **Better handling of tables and forms**: Bedrock LLMs can understand the context and structure of tables and forms, leading to better extraction
-3. **Preservation of document layout**: The LLM can be instructed to preserve the original document layout in the extracted text
-4. **Flexibility with prompting**: You can customize the system and task prompts to optimize OCR for specific document types
-
-### Cost Considerations
-
-Using Bedrock LLMs for OCR will generally be more expensive than using Textract. The pricing section in the configuration file provides detailed cost estimates for the Bedrock models.
 
 ## Customizing Classification
 

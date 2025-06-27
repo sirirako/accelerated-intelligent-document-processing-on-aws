@@ -103,7 +103,7 @@ class TestOcrService:
             assert service.backend == "textract"
             assert service.region == "us-west-2"
             assert service.max_workers == 20
-            assert service.dpi == 300
+            assert service.dpi is None
             assert service.enhanced_features is False
             assert service.resize_config is None
             assert service.preprocessing_config is None

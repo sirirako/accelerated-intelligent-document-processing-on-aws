@@ -33,7 +33,7 @@ class OcrService:
         region: Optional[str] = None,
         max_workers: int = 20,
         enhanced_features: Union[bool, List[str]] = False,
-        dpi: int = 300,
+        dpi: Optional[int] = None,
         resize_config: Optional[Dict[str, Any]] = None,
         bedrock_config: Dict[str, Any] = None,
         backend: str = "textract",  # New parameter: "textract" or "bedrock"
