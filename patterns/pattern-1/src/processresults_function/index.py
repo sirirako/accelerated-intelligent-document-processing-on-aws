@@ -45,9 +45,12 @@ def get_confidence_threshold_from_ssm(stack_name: str) -> float:
         parameter_name = f"/{stack_name}/hitl_confidence_threshold"
         response = ssm_client.get_parameter(Name=parameter_name)
         threshold_value = float(response['Parameter']['Value'])
-        # Convert percentage to decimal if needed (80 -> 0.80)
-        if threshold_value > 1.0:
-            threshold_value = threshold_value / 100.0
+        
+        # Validate that the threshold is in the expected 0.0-1.0 range
+        if threshold_value < 0.0 or threshold_value > 1.0:
+            logger.warning(f"Invalid confidence threshold value {threshold_value}. Must be between 0.0 and 1.0. Using default: 0.80")
+            return 0.80
+            
         logger.info(f"Retrieved confidence threshold from SSM: {threshold_value}")
         return threshold_value
     except ClientError as e:

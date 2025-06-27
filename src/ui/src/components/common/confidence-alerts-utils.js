@@ -16,8 +16,17 @@ export const getHitlConfidenceThreshold = (mergedConfig) => {
   }
 
   const threshold = parseFloat(mergedConfig.assessment.hitl_confidence_score);
-  // Convert from percentage (1-100) to decimal (0.0-1.0)
-  return threshold / 100;
+
+  // Validate that threshold is in 0.0-1.0 range
+  if (Number.isNaN(threshold) || threshold < 0.0 || threshold > 1.0) {
+    console.warn(
+      `Invalid HITL confidence threshold: ${mergedConfig.assessment.hitl_confidence_score}. Using default 0.8`,
+    );
+    return 0.8;
+  }
+
+  // Return threshold as-is (already in 0.0-1.0 scale)
+  return threshold;
 };
 
 /**

@@ -3,7 +3,7 @@
 
 notes: Processing configuration in BDA project.
 assessment:
-  hitl_confidence_score: '80'
+  hitl_confidence_score: '0.8'
 summarization:
   top_p: '0.1'
   max_tokens: '4096'

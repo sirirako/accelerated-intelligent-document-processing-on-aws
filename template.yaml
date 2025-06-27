@@ -3645,7 +3645,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
       Runtime: python3.12
-      Timeout: 600  # Increased timeout for comprehensive cleanup
+      Timeout: 900  # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
       Environment:
         Variables:
           STACK_NAME: !Ref AWS::StackName
