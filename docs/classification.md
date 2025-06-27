@@ -385,6 +385,74 @@ classification:
 - **Memory Optimization**: Configurable dimensions allow memory optimization
 - **Better Resource Utilization**: Service-specific sizing reduces unnecessary processing
 
+## JSON and YAML Output Support
+
+The classification service supports both JSON and YAML output formats from LLM responses, with automatic format detection and parsing:
+
+### Automatic Format Detection
+
+The system automatically detects whether the LLM response is in JSON or YAML format:
+
+```yaml
+# JSON response (traditional)
+classification:
+  task_prompt: |
+    Classify this document and respond with JSON:
+    {"class": "invoice", "confidence": 0.95}
+
+# YAML response (more token-efficient)
+classification:
+  task_prompt: |
+    Classify this document and respond with YAML:
+    class: invoice
+    confidence: 0.95
+```
+
+### Token Efficiency Benefits
+
+YAML format provides significant token savings:
+
+- **10-30% fewer tokens** than equivalent JSON
+- No quotes required around keys
+- More compact syntax for nested structures
+- Natural support for multiline content
+
+### Example Prompt Configurations
+
+**JSON-focused prompt:**
+```yaml
+classification:
+  system_prompt: |
+    You are a document classifier. Respond only with JSON format.
+  task_prompt: |
+    Classify this document and return a JSON object with the class name and confidence score.
+```
+
+**YAML-focused prompt:**
+```yaml
+classification:
+  system_prompt: |
+    You are a document classifier. Respond only with YAML format.
+  task_prompt: |
+    Classify this document and return YAML with the class name and confidence score.
+```
+
+### Backward Compatibility
+
+- All existing JSON-based prompts continue to work unchanged
+- The system automatically detects and parses both formats
+- No configuration changes required for existing deployments
+- Intelligent fallback between formats if parsing fails
+
+### Implementation Details
+
+The classification service uses the new `extract_structured_data_from_text()` function which:
+
+- Automatically detects JSON vs YAML format
+- Provides robust parsing with multiple extraction strategies
+- Handles malformed content gracefully
+- Returns both parsed data and detected format for logging
+
 ## Best Practices for Classification
 
 1. **Provide Clear Class Descriptions**: Include distinctive features and common elements
@@ -396,3 +464,5 @@ classification:
 7. **Test with Real Documents**: Validate classification against actual document samples
 8. **Optimize Image Dimensions**: Configure appropriate image sizes based on document complexity and processing requirements
 9. **Balance Quality vs Performance**: Higher resolution images provide better accuracy but consume more resources
+10. **Consider Output Format**: Use YAML prompts for token efficiency, especially with complex nested responses
+11. **Leverage Format Flexibility**: Take advantage of automatic format detection to optimize prompts for different use cases
