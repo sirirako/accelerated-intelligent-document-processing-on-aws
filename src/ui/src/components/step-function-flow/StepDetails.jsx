@@ -128,8 +128,32 @@ const StepDetails = ({ step, formatDuration, getStepIcon }) => {
 
         {/* Error Information */}
         {step.error && (
-          <Alert type="error" header="Step Error">
-            {step.error}
+          <Alert
+            type="error"
+            header="Step Error"
+            action={
+              <Button
+                variant="inline-icon"
+                iconName="copy"
+                onClick={() => copyToClipboard(step.error)}
+                ariaLabel="Copy error message"
+              />
+            }
+          >
+            <Box>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                  margin: 0,
+                  padding: '8px 0',
+                }}
+              >
+                {step.error}
+              </pre>
+            </Box>
           </Alert>
         )}
 

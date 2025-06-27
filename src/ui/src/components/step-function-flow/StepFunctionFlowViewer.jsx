@@ -305,7 +305,12 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
                     <span className={`timeline-step-status status-${step.status.toLowerCase()}`}>{step.status}</span>
                     <span className="timeline-step-duration">{formatDuration(step.startDate, step.stopDate)}</span>
                   </div>
-                  {step.error && <div className="timeline-step-error">Error: {step.error}</div>}
+                  {step.error && (
+                    <div className="timeline-step-error">
+                      <strong>Error:</strong>{' '}
+                      {step.error.length > 100 ? `${step.error.substring(0, 100)}...` : step.error}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
