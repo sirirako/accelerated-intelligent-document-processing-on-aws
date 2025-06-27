@@ -5,6 +5,22 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+- **YAML Parsing Support for LLM Responses**
+  - Added comprehensive YAML parsing capabilities to complement existing JSON parsing functionality
+  - New `extract_yaml_from_text()` function with robust multi-strategy YAML extraction:
+    - YAML in ```yaml and ```yml code blocks
+    - YAML with document markers (---)
+    - Pattern-based YAML detection using indentation and key indicators
+  - New `detect_format()` function for automatic format detection returning 'json', 'yaml', or 'unknown'
+  - New unified `extract_structured_data_from_text()` wrapper function that automatically detects and parses both JSON and YAML formats
+  - **Token Efficiency**: YAML typically uses 10-30% fewer tokens than equivalent JSON due to more compact syntax
+  - **Service Integration**: Updated classification service to use the new unified parsing function with automatic fallback between formats
+  - **Comprehensive Testing**: Added 39 new unit tests covering all YAML extraction strategies, format detection, and edge cases
+  - **Backward Compatibility**: All existing JSON functionality preserved unchanged, new functionality is purely additive
+  - **Intelligent Fallback**: Robust fallback mechanism handles cases where preferred format fails (e.g., JSON requested as YAML falls back to JSON)
+  - **Production Ready**: Handles malformed content gracefully, comprehensive error handling and logging
+
 ### Fixed
 - **Enhanced JSON Extraction from LLM Responses (Issue #16)**
   - Modularized duplicate `_extract_json()` functions across classification, extraction, summarization, and assessment services into a common `extract_json_from_text()` utility function

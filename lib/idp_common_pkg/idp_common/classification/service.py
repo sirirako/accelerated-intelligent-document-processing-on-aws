@@ -30,7 +30,7 @@ from idp_common.classification.models import (
     PageClassification,
 )
 from idp_common.models import Document, Section, Status
-from idp_common.utils import extract_json_from_text
+from idp_common.utils import extract_json_from_text, extract_structured_data_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -674,13 +674,21 @@ class ClassificationService:
                 "text", ""
             )
 
-            # Try to extract JSON from the response
+            # Try to extract structured data (JSON or YAML) from the response
             try:
-                classification_json = extract_json_from_text(classification_text)
-                classification_data = json.loads(classification_json)
-                doc_type = classification_data.get("class", "")
+                classification_data, detected_format = (
+                    extract_structured_data_from_text(classification_text)
+                )
+                if isinstance(classification_data, dict):
+                    doc_type = classification_data.get("class", "")
+                    logger.debug(
+                        f"Parsed classification response as {detected_format}: {classification_data}"
+                    )
+                else:
+                    # If parsing failed, try to extract classification directly from text
+                    doc_type = self._extract_class_from_text(classification_text)
             except Exception as e:
-                logger.warning(f"Failed to parse JSON from response: {e}")
+                logger.warning(f"Failed to parse structured data from response: {e}")
                 # Try to extract classification directly from text
                 doc_type = self._extract_class_from_text(classification_text)
 
