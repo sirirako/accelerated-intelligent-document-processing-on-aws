@@ -529,29 +529,33 @@ class TestExtractionService:
 
     def test_extract_json_code_block(self, service):
         """Test extracting JSON from code block."""
+        from idp_common.utils import extract_json_from_text
+
         # Test with ```json code block
         text = 'Here is the result:\n```json\n{"invoice_number": "INV-123"}\n```\nEnd of result.'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"invoice_number": "INV-123"}'
 
         # Test with simple ``` code block
         text = 'Here is the result:\n```\n{"invoice_number": "INV-123"}\n```\nEnd of result.'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"invoice_number": "INV-123"}'
 
     def test_extract_json_simple(self, service):
         """Test extracting JSON without code block."""
+        from idp_common.utils import extract_json_from_text
+
         # Test with simple JSON
         text = 'The extraction result is {"invoice_number": "INV-123"} based on the document.'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"invoice_number": "INV-123"}'
 
         # Test with nested JSON
         text = 'Result: {"invoice": {"number": "INV-123", "date": "2025-05-08"}}'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"invoice": {"number": "INV-123", "date": "2025-05-08"}}'
 
         # Test with no JSON
         text = "No JSON here"
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == "No JSON here"
