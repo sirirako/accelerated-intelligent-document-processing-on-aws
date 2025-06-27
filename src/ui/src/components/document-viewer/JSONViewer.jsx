@@ -159,25 +159,8 @@ const FormEditorView = ({ jsonData, onChange, isReadOnly, sectionData }) => {
           <Box width="30%" padding="xxxs" fontWeight="bold" fontSize="body-s">
             {key}:
             {confidenceInfo.hasConfidenceInfo && (
-              <Box
-                fontSize="body-s"
-                padding={{ top: 'xxxs' }}
-                color={
-                  confidenceInfo.displayMode === 'with-threshold'
-                    ? confidenceInfo.isAboveThreshold
-                      ? 'text-status-success'
-                      : 'text-status-error'
-                    : undefined
-                }
-                style={
-                  confidenceInfo.displayMode === 'confidence-only' ? { color: confidenceInfo.textColor } : undefined
-                }
-              >
-                {confidenceInfo.displayMode === 'with-threshold'
-                  ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
-                      confidenceInfo.confidenceThreshold * 100
-                    ).toFixed(1)}%`
-                  : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+              <Box fontSize="body-s" padding={{ top: 'xxxs' }} style={{ color: confidenceInfo.textColor || undefined }}>
+                {`Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
               </Box>
             )}
           </Box>

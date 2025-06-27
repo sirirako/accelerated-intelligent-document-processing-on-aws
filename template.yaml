@@ -65,7 +65,7 @@ Parameters:
     AllowedValues:
       - true
       - false
-    Default: true
+    Default: false
     Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction and classification of BDA is less than configured Confidence Threshold
 
   ExistingPrivateWorkforceArn:
@@ -3662,6 +3662,7 @@ Resources:
     Properties:
       ServiceToken: 
         Fn::GetAtt: CreateA2IResourcesLambda.Arn
+      StackName: !Ref AWS::StackName
       SourceCodeHash: <A2I_RESOURCES_HASH_TOKEN>
   
   GetWorkforceURLFunction:

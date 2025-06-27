@@ -22,11 +22,7 @@ import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
-import {
-  getSectionConfidenceAlerts,
-  getHitlConfidenceThreshold,
-  getDocumentConfidenceAlertCount,
-} from '../common/confidence-alerts-utils';
+import { getSectionConfidenceAlerts, getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
@@ -48,7 +44,6 @@ const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
     );
   }
 
-  const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
   const totalAlertCount = getDocumentConfidenceAlertCount(sections, mergedConfig);
 
   // Collect all confidence alerts from all sections for detailed display
@@ -69,7 +64,7 @@ const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
       <div>
         <StatusIndicator type="success">0 alerts</StatusIndicator>
         <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-          Threshold: {(hitlThreshold * 100).toFixed(0)}%
+          All fields meet confidence requirements
         </Box>
       </div>
     );
@@ -81,10 +76,10 @@ const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
         {totalAlertCount} alert{totalAlertCount !== 1 ? 's' : ''}
       </StatusIndicator>
       <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-        Threshold: {(hitlThreshold * 100).toFixed(0)}%
+        Low confidence fields detected
       </Box>
       <ExpandableSection
-        headerText={`View ${totalAlertCount} field${totalAlertCount !== 1 ? 's' : ''} below threshold`}
+        headerText={`View ${totalAlertCount} field${totalAlertCount !== 1 ? 's' : ''} with low confidence`}
         variant="footer"
       >
         <SpaceBetween size="xs">
@@ -94,8 +89,7 @@ const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
                 <strong>{alert.sectionId}</strong> - {alert.fieldName}
               </Box>
               <Box fontSize="body-s">
-                Confidence: <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span> (below{' '}
-                {(alert.confidenceThreshold * 100).toFixed(0)}%)
+                Confidence: <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span>
               </Box>
             </Box>
           ))}

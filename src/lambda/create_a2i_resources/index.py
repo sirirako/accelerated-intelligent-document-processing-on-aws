@@ -851,10 +851,16 @@ def handler(event, context):
     human_task_ui_name = resource_names['human_task_ui']
     flow_definition_name = resource_names['flow_definition']
     
+    # Create a consistent Physical Resource ID based on stack name
+    # This ensures CloudFormation recognizes this as the same resource across updates
+    physical_resource_id = f"A2IResources-{stack_name}"
+    
     ssm = boto3.client('ssm')
     
     # For debugging
     print(f"Event received: {json.dumps(event)}")
+    print(f"Request Type: {event.get('RequestType')}")
+    print(f"Physical Resource ID: {physical_resource_id}")
     print(f"Using AWS-compliant names: HumanTaskUI={human_task_ui_name}, FlowDefinition={flow_definition_name}")
     
     response_data = {}
@@ -893,14 +899,14 @@ def handler(event, context):
                     
                     response_data['HumanTaskUiArn'] = human_task_ui_arn
                     response_data['FlowDefinitionArn'] = flow_definition_arn
-                    send_cfn_response(event, context, 'SUCCESS', response_data)
+                    send_cfn_response(event, context, 'SUCCESS', response_data, physical_resource_id)
                 else:
                     print("Failed to create flow definition")
-                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create flow definition'})
+                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create flow definition'}, physical_resource_id)
                     return
             else:
                 print("Failed to create human task UI")
-                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create human task UI'})
+                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create human task UI'}, physical_resource_id)
                 return
         
         elif event.get('RequestType') == 'Update':
@@ -919,13 +925,13 @@ def handler(event, context):
             if not flow_deletion_success:
                 error_msg = f"Failed to delete existing Flow Definition '{flow_definition_name}' within timeout period"
                 print(error_msg)
-                send_cfn_response(event, context, 'FAILED', {'Error': error_msg})
+                send_cfn_response(event, context, 'FAILED', {'Error': error_msg}, physical_resource_id)
                 return
                 
             if not ui_deletion_success:
                 error_msg = f"Failed to delete existing Human Task UI '{human_task_ui_name}' within timeout period"
                 print(error_msg)
-                send_cfn_response(event, context, 'FAILED', {'Error': error_msg})
+                send_cfn_response(event, context, 'FAILED', {'Error': error_msg}, physical_resource_id)
                 return
             
             print("All existing resources successfully deleted. Proceeding with recreation...")
@@ -949,14 +955,14 @@ def handler(event, context):
                     response_data['HumanTaskUiArn'] = human_task_ui_arn
                     response_data['FlowDefinitionArn'] = flow_definition_arn
                     print("A2I Resources updated successfully")
-                    send_cfn_response(event, context, 'SUCCESS', response_data)
+                    send_cfn_response(event, context, 'SUCCESS', response_data, physical_resource_id)
                 else:
                     print("Failed to create new flow definition during update")
-                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new flow definition during update'})
+                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new flow definition during update'}, physical_resource_id)
                     return
             else:
                 print("Failed to create new human task UI during update")
-                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new human task UI during update'})
+                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new human task UI during update'}, physical_resource_id)
                 return
                 
         elif event.get('RequestType') == 'Delete':
@@ -997,15 +1003,17 @@ def handler(event, context):
                 print("No workteam ARN found in environment - skipping workforce cleanup")
             
             print("Success in deleting all A2I resources (Flow Definition, Human Task UI, and Workforce)")
-            send_cfn_response(event, context, 'SUCCESS', {})
+            send_cfn_response(event, context, 'SUCCESS', {}, physical_resource_id)
             return
             
         # In case RequestType is not provided or recognized
         else:
             print(f"Unknown RequestType: {event.get('RequestType')}")
-            send_cfn_response(event, context, 'FAILED', {'Error': f"Unknown RequestType: {event.get('RequestType')}"})
+            send_cfn_response(event, context, 'FAILED', {'Error': f"Unknown RequestType: {event.get('RequestType')}"}, physical_resource_id)
             return
     except Exception as e:
         print(f"Error: {str(e)}")
-        send_cfn_response(event, context, 'FAILED', {'Error': str(e)})
+        # Use a fallback physical resource ID if the main one isn't available
+        fallback_physical_resource_id = f"A2IResources-{os.environ.get('STACK_NAME', 'unknown')}"
+        send_cfn_response(event, context, 'FAILED', {'Error': str(e)}, fallback_physical_resource_id)
         return

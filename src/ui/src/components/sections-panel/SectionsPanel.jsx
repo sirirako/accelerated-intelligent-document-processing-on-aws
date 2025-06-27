@@ -5,11 +5,7 @@
 import React from 'react';
 import { Box, Container, SpaceBetween, Table, StatusIndicator, ExpandableSection } from '@awsui/components-react';
 import FileViewer from '../document-viewer/JSONViewer';
-import {
-  getSectionConfidenceAlertCount,
-  getSectionConfidenceAlerts,
-  getHitlConfidenceThreshold,
-} from '../common/confidence-alerts-utils';
+import { getSectionConfidenceAlertCount, getSectionConfidenceAlerts } from '../common/confidence-alerts-utils';
 
 // Cell renderer components
 const IdCell = ({ item }) => <span>{item.Id}</span>;
@@ -23,7 +19,6 @@ const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
     return <span>{getSectionConfidenceAlertCount(item)}</span>;
   }
 
-  const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
   const alerts = getSectionConfidenceAlerts(item, mergedConfig);
   const alertCount = alerts.length;
 
@@ -32,7 +27,7 @@ const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
       <Box>
         <StatusIndicator type="success">0</StatusIndicator>
         <Box fontSize="body-s" color="text-body-secondary">
-          Threshold: {(hitlThreshold * 100).toFixed(0)}%
+          Confidence Alerts
         </Box>
       </Box>
     );
@@ -42,7 +37,7 @@ const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
     <Box>
       <StatusIndicator type="warning">{alertCount}</StatusIndicator>
       <Box fontSize="body-s" color="text-body-secondary">
-        Threshold: {(hitlThreshold * 100).toFixed(0)}%
+        Confidence Alerts
       </Box>
       <ExpandableSection headerText={`View ${alertCount} field${alertCount !== 1 ? 's' : ''}`} variant="footer">
         <SpaceBetween size="xs">
