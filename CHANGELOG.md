@@ -5,6 +5,22 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+- **Multi-Backend OCR Support**
+  - Textract Backend (default): Existing AWS Textract functionality
+  - Bedrock Backend: New LLM-based OCR using Claude/Nova models
+  - None Backend: Image-only processing without OCR
+- **Bedrock OCR Integration**
+  - Customizable system and task prompts for OCR optimization
+  - Better handling of complex documents, tables, and forms
+  - Layout preservation capabilities
+- **Image Preprocessing**
+  - Adaptive Binarization: Improves OCR accuracy on documents with:
+    - Uneven lighting or shadows
+    - Low contrast text
+    - Background noise or gradients
+  - Optional feature with configurable enable/disable
+
 ### Fixed
 - **Enhanced JSON Extraction from LLM Responses (Issue #16)**
   - Modularized duplicate `_extract_json()` functions across classification, extraction, summarization, and assessment services into a common `extract_json_from_text()` utility function
