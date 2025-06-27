@@ -19,7 +19,7 @@ import boto3
 import fitz  # PyMuPDF
 from botocore.config import Config
 
-from idp_common import bedrock, s3, utils
+from idp_common import bedrock, image, s3, utils
 from idp_common.models import Document, Page, Status
 
 logger = logging.getLogger(__name__)
@@ -518,8 +518,6 @@ class OcrService:
         # Apply resize config if provided (consistent with Textract)
         ocr_img_bytes = img_bytes  # Default to original image
         if self.resize_config:
-            from idp_common import image
-
             target_width = self.resize_config.get("target_width")
             target_height = self.resize_config.get("target_height")
 

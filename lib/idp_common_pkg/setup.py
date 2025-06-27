@@ -23,6 +23,7 @@ extras_require = {
         "Pillow==11.2.1",
         "PyMuPDF==1.25.5",
         "amazon-textract-textractor[pandas]==1.9.2",
+        "numpy==1.26.4",
         "pandas==2.2.3",
     ],
     # Classification module dependencies
