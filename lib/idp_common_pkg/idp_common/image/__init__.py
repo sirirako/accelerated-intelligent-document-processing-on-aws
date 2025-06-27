@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-from PIL import Image
+from PIL import Image, ImageFilter, ImageChops, ImageOps
 import io
 import logging
 from typing import Tuple, Optional, Dict, Any, Union
@@ -71,6 +71,71 @@ def prepare_image(image_source: Union[str, bytes],
         
     # Resize and process
     return resize_image(image_data, target_width, target_height)
+
+def apply_adaptive_binarization(image_data: bytes) -> bytes:
+    """
+    Apply adaptive binarization using Pillow-only implementation.
+    
+    This preprocessing step can significantly improve OCR accuracy on documents with:
+    - Uneven lighting or shadows
+    - Low contrast text
+    - Background noise or gradients
+    
+    Implements adaptive mean thresholding similar to OpenCV's ADAPTIVE_THRESH_MEAN_C
+    with block_size=15 and C=10.
+    
+    Args:
+        image_data: Raw image bytes
+        
+    Returns:
+        Processed image as JPEG bytes with adaptive binarization applied
+    """
+    try:
+        # Convert bytes to PIL Image
+        pil_image = Image.open(io.BytesIO(image_data))
+        
+        # Convert to grayscale if not already
+        if pil_image.mode != 'L':
+            pil_image = pil_image.convert('L')
+        
+        # Apply adaptive thresholding using Pillow operations
+        block_size = 15
+        C = 10
+        
+        # Create a blurred version for local mean calculation
+        # Use BoxBlur with radius = block_size // 2 to approximate local mean
+        radius = block_size // 2
+        blurred = pil_image.filter(ImageFilter.BoxBlur(radius))
+        
+        # Apply adaptive threshold: original > (blurred - C) ? 255 : 0
+        # Load pixel data for efficient access
+        width, height = pil_image.size
+        original_pixels = list(pil_image.getdata())
+        blurred_pixels = list(blurred.getdata())
+        
+        binary_pixels = []
+        # Apply thresholding pixel by pixel
+        for orig, blur in zip(original_pixels, blurred_pixels):
+            threshold = blur - C
+            binary_pixels.append(255 if orig > threshold else 0)
+        
+        # Create binary image
+        binary_image = Image.new('L', (width, height))
+        binary_image.putdata(binary_pixels)
+        
+        # Convert to JPEG bytes
+        img_byte_array = io.BytesIO()
+        binary_image.save(img_byte_array, format="JPEG")
+        
+        logger.debug("Applied adaptive binarization preprocessing (Pillow implementation)")
+        return img_byte_array.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Error applying adaptive binarization: {str(e)}")
+        # Return original image if preprocessing fails
+        logger.warning("Falling back to original image due to preprocessing error")
+        return image_data
+
 
 def prepare_bedrock_image_attachment(image_data: bytes) -> Dict[str, Any]:
     """

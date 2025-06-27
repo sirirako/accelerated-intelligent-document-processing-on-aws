@@ -156,11 +156,67 @@ Resources:
                     minimum: 100
                     maximum: 3500
                     order: 1
+                  preprocessing:
+                    type: boolean
+                    description: "Apply adaptive binarization preprocessing to improve OCR accuracy on documents with uneven lighting or low contrast. Warning: May slightly increase processing time."
+                    default: false
+                    order: 2
               features:
                   type: array
                   listLabel: Features
                   itemLabel: Feature
                   order: 1
+              backend:
+                type: string
+                description: "OCR backend to use: 'textract' for AWS Textract, 'bedrock' for LLM-based OCR, 'none' for image-only processing without OCR"
+                enum: ["textract", "bedrock", "none"]
+                default: "textract"
+                order: 1
+              model_id:
+                type: string
+                description: "Bedrock model ID (only used if backend is 'bedrock')"
+                enum: 
+                  - "us.amazon.nova-lite-v1:0"
+                  - "us.amazon.nova-pro-v1:0"
+                  - "us.amazon.nova-premier-v1:0"
+                  - "us.anthropic.claude-3-haiku-20240307-v1:0"
+                  - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+                  - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+                  - "us.anthropic.claude-sonnet-4-20250514-v1:0"
+                  - "us.anthropic.claude-opus-4-20250514-v1:0"
+                order: 2
+                dependsOn: {
+                  field: "backend",
+                  value: "bedrock"
+                }
+              system_prompt:
+                type: string
+                description: "System prompt for Bedrock OCR (only used if backend is 'bedrock')"
+                default: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
+                order: 3
+                dependsOn: {
+                  field: "backend",
+                  value: "bedrock"
+                }
+              task_prompt:
+                type: string
+                description: "Task prompt for Bedrock OCR (only used if backend is 'bedrock')"
+                default: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
+                order: 4
+                dependsOn: {
+                  field: "backend",
+                  value: "bedrock"
+                }
+              features:
+                  type: array
+                  listLabel: "Textract Features"
+                  itemLabel: "Feature"
+                  description: "Textract features (only used if backend is 'textract')"
+                  order: 5
+                  dependsOn: {
+                    field: "backend",
+                    values: ["textract"]
+                  }
                   items:
                     type: object
                     required:
@@ -777,6 +833,12 @@ Resources:
               - textract:DetectDocumentText
               - textract:AnalyzeDocument
             Resource: '*'
+          # Bedrock permissions for OCR
+          - Effect: Allow
+            Action: bedrock:InvokeModel
+            Resource: 
+                - !Sub "arn:aws:bedrock:*::foundation-model/*"
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           # AppSync permissions for updating document status
           - Effect: Allow
             Action:

@@ -2,28 +2,27 @@
 # SPDX-License-Identifier: MIT-0
 
 """
-Unit tests for the OCR service module.
+Unit tests for the OCR Service class.
 """
 
 # ruff: noqa: E402, I001
 # The above line disables E402 (module level import not at top of file) and I001 (import block sorting) for this file
 
+import pytest
+
 # Import standard library modules first
 import sys
-from unittest.mock import MagicMock, patch
+from io import BytesIO
+from unittest.mock import ANY, MagicMock, patch
 
-# Mock modules that might cause import issues
+# Mock PyMuPDF and textractor before importing any modules that might depend on them
 sys.modules["fitz"] = MagicMock()
 sys.modules["textractor"] = MagicMock()
 sys.modules["textractor.parsers"] = MagicMock()
 sys.modules["textractor.parsers.response_parser"] = MagicMock()
 
-# Now import third-party modules
-import pytest
-
-# Finally import application modules
-from idp_common.ocr.service import OcrService
 from idp_common.models import Document, Status
+from idp_common.ocr.service import OcrService
 
 
 @pytest.mark.unit
@@ -38,441 +37,714 @@ class TestOcrService:
             "Blocks": [
                 {
                     "BlockType": "PAGE",
-                    "Id": "1234",
-                    "Relationships": [{"Type": "CHILD", "Ids": ["5678"]}],
+                    "Id": "page-1",
+                    "Confidence": 99.5,
                 },
-                {"BlockType": "LINE", "Id": "5678", "Text": "This is a test document."},
+                {
+                    "BlockType": "LINE",
+                    "Id": "line-1",
+                    "Text": "Sample text line 1",
+                    "Confidence": 98.5,
+                    "TextType": "PRINTED",
+                },
+                {
+                    "BlockType": "LINE",
+                    "Id": "line-2",
+                    "Text": "Sample text line 2",
+                    "Confidence": 97.2,
+                    "TextType": "PRINTED",
+                },
             ],
         }
 
     @pytest.fixture
-    def mock_textract_client(self, mock_textract_response):
-        """Fixture providing a mock Textract client."""
-        mock_client = MagicMock()
-        mock_client.detect_document_text.return_value = mock_textract_response
-        mock_client.analyze_document.return_value = mock_textract_response
-        return mock_client
-
-    @pytest.fixture
-    def mock_s3_client(self):
-        """Fixture providing a mock S3 client."""
-        mock_client = MagicMock()
-        mock_client.get_object.return_value = {
-            "Body": MagicMock(read=lambda: b"mock pdf content")
+    def mock_bedrock_response(self):
+        """Fixture providing a mock Bedrock response."""
+        return {
+            "response": {
+                "output": {
+                    "message": {"content": [{"text": "Extracted text from document"}]}
+                }
+            },
+            "metering": {"input_tokens": 100, "output_tokens": 50},
         }
-        return mock_client
 
     @pytest.fixture
-    def mock_pdf_document(self):
-        """Fixture providing a mock PDF document."""
-        mock_doc = MagicMock()
-        mock_page = MagicMock()
-        mock_pixmap = MagicMock()
-
-        # Configure the mocks
-        mock_doc.load_page.return_value = mock_page
-        mock_page.get_pixmap.return_value = mock_pixmap
-        mock_pixmap.tobytes.return_value = b"mock image bytes"
-        mock_doc.__len__ = lambda _: 2  # Mock 2 pages
-
-        return mock_doc
+    def mock_bedrock_config(self):
+        """Fixture providing a mock Bedrock configuration."""
+        return {
+            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+            "system_prompt": "You are an OCR assistant.",
+            "task_prompt": "Extract text from this image.",
+        }
 
     @pytest.fixture
-    def service(self, mock_textract_client, mock_s3_client):
-        """Fixture providing an OcrService instance with mocked clients."""
-        with patch("boto3.client") as mock_boto3_client:
-            # Configure boto3.client to return our mock clients
-            mock_boto3_client.side_effect = lambda service, **kwargs: {
-                "textract": mock_textract_client,
-                "s3": mock_s3_client,
-            }[service]
-
-            # Create and return the service
-            return OcrService(region="us-west-2", max_workers=5)
-
-    @pytest.fixture
-    def sample_document(self):
-        """Fixture providing a sample document."""
-        return Document(
+    def mock_document(self):
+        """Fixture providing a mock Document."""
+        doc = Document(
             id="test-doc",
             input_key="test-document.pdf",
-            input_bucket="input-bucket",
+            input_bucket="test-bucket",
             output_bucket="output-bucket",
-            status=Status.QUEUED,
+            status=Status.OCR,
         )
+        return doc
 
-    def test_init_default(self):
-        """Test initialization with default parameters."""
-        with patch("boto3.client"), patch("os.environ.get", return_value="us-east-1"):
-            service = OcrService()
+    @pytest.fixture
+    def mock_pdf_content(self):
+        """Fixture providing mock PDF content."""
+        return b"Mock PDF content"
 
-            assert service.region == "us-east-1"
+    def test_init_textract_backend_default(self):
+        """Test initialization with default Textract backend."""
+        with patch("boto3.client") as mock_client:
+            service = OcrService(region="us-west-2")
+
+            assert service.backend == "textract"
+            assert service.region == "us-west-2"
             assert service.max_workers == 20
+            assert service.dpi is None
             assert service.enhanced_features is False
+            assert service.resize_config is None
+            assert service.preprocessing_config is None
 
-    def test_init_with_params(self):
-        """Test initialization with custom parameters."""
+            # Verify both Textract and S3 clients were created
+            assert mock_client.call_count == 2
+            mock_client.assert_any_call("textract", region_name="us-west-2", config=ANY)
+            mock_client.assert_any_call("s3")
+
+    def test_init_textract_with_enhanced_features(self):
+        """Test initialization with enhanced Textract features."""
+        with patch("boto3.client"):
+            service = OcrService(
+                region="us-east-1",
+                enhanced_features=["TABLES", "FORMS"],
+                max_workers=10,
+                dpi=150,
+            )
+
+            assert service.backend == "textract"
+            assert service.enhanced_features == ["TABLES", "FORMS"]
+            assert service.max_workers == 10
+            assert service.dpi == 150
+
+    def test_init_textract_invalid_features(self):
+        """Test initialization with invalid Textract features."""
+        with patch("boto3.client"):
+            with pytest.raises(ValueError, match="Invalid Textract feature"):
+                OcrService(enhanced_features=["INVALID_FEATURE"])
+
+    def test_init_bedrock_backend(self, mock_bedrock_config):
+        """Test initialization with Bedrock backend."""
         with patch("boto3.client"):
             service = OcrService(
                 region="us-west-2",
-                max_workers=10,
-                enhanced_features=["TABLES", "FORMS"],
+                backend="bedrock",
+                bedrock_config=mock_bedrock_config,
             )
 
-            assert service.region == "us-west-2"
-            assert service.max_workers == 10
-            assert service.enhanced_features == ["TABLES", "FORMS"]
+            assert service.backend == "bedrock"
+            assert service.enhanced_features is False
+            assert service.bedrock_config == mock_bedrock_config
 
-    def test_init_with_invalid_features(self):
-        """Test initialization with invalid features."""
-        with patch("boto3.client"), pytest.raises(ValueError) as excinfo:
-            OcrService(enhanced_features=["INVALID_FEATURE"])
+    def test_init_bedrock_missing_config(self):
+        """Test initialization with Bedrock backend but missing config."""
+        with patch("boto3.client"):
+            with pytest.raises(ValueError, match="bedrock_config is required"):
+                OcrService(backend="bedrock")
 
-        assert "Invalid Textract feature" in str(excinfo.value)
+    def test_init_bedrock_incomplete_config(self):
+        """Test initialization with Bedrock backend but incomplete config."""
+        incomplete_config = {"model_id": "claude-3"}  # Missing required fields
 
+        with patch("boto3.client"):
+            with pytest.raises(ValueError, match="Missing required bedrock_config"):
+                OcrService(backend="bedrock", bedrock_config=incomplete_config)
+
+    def test_init_none_backend(self):
+        """Test initialization with 'none' backend."""
+        with patch("boto3.client"):
+            service = OcrService(backend="none")
+
+            assert service.backend == "none"
+            assert service.enhanced_features is False
+
+    def test_init_invalid_backend(self):
+        """Test initialization with invalid backend."""
+        with patch("boto3.client"):
+            with pytest.raises(ValueError, match="Invalid backend"):
+                OcrService(backend="invalid")
+
+    def test_init_with_resize_config(self):
+        """Test initialization with resize configuration."""
+        resize_config = {"target_width": 1024, "target_height": 768}
+
+        with patch("boto3.client"):
+            service = OcrService(resize_config=resize_config)
+
+            assert service.resize_config == resize_config
+
+    def test_init_with_preprocessing_config(self):
+        """Test initialization with preprocessing configuration."""
+        preprocessing_config = {"enabled": True, "method": "adaptive_binarization"}
+
+        with patch("boto3.client"):
+            service = OcrService(preprocessing_config=preprocessing_config)
+
+            assert service.preprocessing_config == preprocessing_config
+
+    @patch("boto3.client")
     @patch("fitz.open")
-    @patch("idp_common.s3.write_content")
     def test_process_document_success(
-        self,
-        mock_write_content,
-        mock_fitz_open,
-        service,
-        sample_document,
-        mock_pdf_document,
-        mock_textract_response,
+        self, mock_fitz_open, mock_boto_client, mock_document, mock_pdf_content
     ):
         """Test successful document processing."""
-        # Configure mocks
-        mock_fitz_open.return_value = mock_pdf_document
+        # Mock S3 client
+        mock_s3_client = MagicMock()
+        mock_s3_client.get_object.return_value = {"Body": BytesIO(mock_pdf_content)}
+        mock_boto_client.return_value = mock_s3_client
 
-        # Mock the textractor parser
-        mock_parsed_response = MagicMock()
-        mock_parsed_response.to_markdown.return_value = "This is a test document."
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.__len__.return_value = 2  # 2 pages
+        mock_fitz_open.return_value = mock_pdf_doc
 
+        # Mock concurrent processing
         with patch(
-            "textractor.parsers.response_parser.parse",
-            return_value=mock_parsed_response,
-        ):
-            # Process the document
-            result = service.process_document(sample_document)
+            "idp_common.ocr.service.OcrService._process_single_page"
+        ) as mock_process:
+            mock_process.return_value = (
+                {
+                    "raw_text_uri": "s3://output/raw.json",
+                    "parsed_text_uri": "s3://output/parsed.json",
+                    "text_confidence_uri": "s3://output/confidence.json",
+                    "image_uri": "s3://output/image.jpg",
+                },
+                {"OCR/textract/detect_document_text": {"pages": 1}},
+            )
 
-            # Verify the document was updated
+            service = OcrService()
+            result = service.process_document(mock_document)
+
+            # Verify document was updated
             assert result.num_pages == 2
             assert len(result.pages) == 2
             assert "1" in result.pages
             assert "2" in result.pages
-            assert result.pages["1"].image_uri.startswith(
-                "s3://output-bucket/test-document.pdf/pages/1/image.jpg"
-            )
-            assert result.pages["1"].raw_text_uri.startswith(
-                "s3://output-bucket/test-document.pdf/pages/1/rawText.json"
-            )
-            assert result.pages["1"].parsed_text_uri.startswith(
-                "s3://output-bucket/test-document.pdf/pages/1/result.json"
-            )
-            assert result.pages["1"].text_confidence_uri.startswith(
-                "s3://output-bucket/test-document.pdf/pages/1/textConfidence.json"
-            )
-            assert len(result.errors) == 0
+            assert result.status != Status.FAILED
 
-            # Verify S3 client was called
-            service.s3_client.get_object.assert_called_once_with(
-                Bucket="input-bucket", Key="test-document.pdf"
-            )
+            # Verify PDF was opened and closed
+            mock_fitz_open.assert_called_once()
+            mock_pdf_doc.close.assert_called_once()
 
-            # Verify write_content was called for each page (image, raw text, parsed text, text confidence)
-            assert mock_write_content.call_count == 8  # 4 files per page, 2 pages
-
-    @patch("fitz.open")
-    def test_process_document_s3_error(self, mock_fitz_open, service, sample_document):
+    @patch("boto3.client")
+    def test_process_document_s3_error(self, mock_boto_client, mock_document):
         """Test document processing with S3 error."""
-        # Configure S3 client to raise an exception
-        service.s3_client.get_object.side_effect = Exception("S3 error")
+        # Mock S3 client to raise exception
+        mock_s3_client = MagicMock()
+        mock_s3_client.get_object.side_effect = Exception("S3 error")
+        mock_boto_client.return_value = mock_s3_client
 
-        # Process the document
-        result = service.process_document(sample_document)
+        service = OcrService()
+        result = service.process_document(mock_document)
 
-        # Verify the document has an error
+        # Verify error handling
         assert result.status == Status.FAILED
-        assert len(result.errors) == 1
-        assert "Error retrieving document from S3" in result.errors[0]
+        assert len(result.errors) > 0
+        assert "S3 error" in result.errors[0]
 
-        # Verify fitz.open was not called
-        mock_fitz_open.assert_not_called()
-
+    @patch("boto3.client")
     @patch("fitz.open")
-    @patch("idp_common.s3.write_content")
-    def test_process_document_page_error(
-        self,
-        mock_write_content,
-        mock_fitz_open,
-        service,
-        sample_document,
-        mock_pdf_document,
+    def test_process_document_pdf_error(
+        self, mock_fitz_open, mock_boto_client, mock_document, mock_pdf_content
     ):
-        """Test document processing with page processing error."""
-        # Configure mocks
-        mock_fitz_open.return_value = mock_pdf_document
+        """Test document processing with PDF error."""
+        # Mock S3 client
+        mock_s3_client = MagicMock()
+        mock_s3_client.get_object.return_value = {"Body": BytesIO(mock_pdf_content)}
+        mock_boto_client.return_value = mock_s3_client
 
-        # Make the first page processing fail
-        with patch.object(service, "_process_single_page") as mock_process_page:
-            mock_process_page.side_effect = [
-                Exception("Page processing error"),  # First page fails
-                (
-                    {
-                        "image_uri": "s3://uri",
-                        "raw_text_uri": "s3://uri",
-                        "parsed_text_uri": "s3://uri",
-                        "text_confidence_uri": "s3://uri",
-                    },
-                    {},
-                ),  # Second page succeeds
-            ]
+        # Mock PDF to raise exception
+        mock_fitz_open.side_effect = Exception("PDF error")
 
-            # Process the document
-            result = service.process_document(sample_document)
+        service = OcrService()
+        result = service.process_document(mock_document)
 
-            # Verify the document has an error but still processed the second page
-            assert len(result.errors) == 1
-            assert "Error processing page 1" in result.errors[0]
-            assert len(result.pages) == 1
-            assert "2" in result.pages
+        # Verify error handling
+        assert result.status == Status.FAILED
+        assert len(result.errors) > 0
+        assert "PDF error" in result.errors[0]
 
-    def test_feature_combo(self):
-        """Test the _feature_combo method."""
-        # Test with no features
+    def test_feature_combo_no_features(self):
+        """Test feature combination with no enhanced features."""
         with patch("boto3.client"):
             service = OcrService(enhanced_features=False)
-            assert service._feature_combo() == ""
+            combo = service._feature_combo()
+            assert combo == ""
 
-            # Test with empty list
-            service = OcrService(enhanced_features=[])
-            assert service._feature_combo() == ""
-
-            # Test with TABLES only
+    def test_feature_combo_tables_only(self):
+        """Test feature combination with tables only."""
+        with patch("boto3.client"):
             service = OcrService(enhanced_features=["TABLES"])
-            assert service._feature_combo() == "-Tables"
+            combo = service._feature_combo()
+            assert combo == "-Tables"
 
-            # Test with FORMS only
+    def test_feature_combo_forms_only(self):
+        """Test feature combination with forms only."""
+        with patch("boto3.client"):
             service = OcrService(enhanced_features=["FORMS"])
-            assert service._feature_combo() == "-Forms"
+            combo = service._feature_combo()
+            assert combo == "-Forms"
 
-            # Test with TABLES and FORMS
-            service = OcrService(enhanced_features=["TABLES", "FORMS"])
-            assert service._feature_combo() == "-Tables+Forms"
-
-            # Test with LAYOUT only
-            service = OcrService(enhanced_features=["LAYOUT"])
-            assert service._feature_combo() == "-Layout"
-
-            # Test with SIGNATURES only
-            service = OcrService(enhanced_features=["SIGNATURES"])
-            assert service._feature_combo() == "-Signatures"
-
-    def test_get_api_name(self):
-        """Test the _get_api_name method."""
-        # Test with no features
+    def test_feature_combo_tables_and_forms(self):
+        """Test feature combination with tables and forms."""
         with patch("boto3.client"):
-            service = OcrService(enhanced_features=False)
-            assert service._get_api_name() == "detect_document_text"
+            service = OcrService(enhanced_features=["TABLES", "FORMS"])
+            combo = service._feature_combo()
+            assert combo == "-Tables+Forms"
 
-            # Test with empty list
-            service = OcrService(enhanced_features=[])
-            assert service._get_api_name() == "detect_document_text"
+    def test_feature_combo_layout_only(self):
+        """Test feature combination with layout only."""
+        with patch("boto3.client"):
+            service = OcrService(enhanced_features=["LAYOUT"])
+            combo = service._feature_combo()
+            assert combo == "-Layout"
 
-            # Test with features
-            service = OcrService(enhanced_features=["TABLES"])
-            assert service._get_api_name() == "analyze_document"
+    def test_feature_combo_signatures_only(self):
+        """Test feature combination with signatures only."""
+        with patch("boto3.client"):
+            service = OcrService(enhanced_features=["SIGNATURES"])
+            combo = service._feature_combo()
+            assert combo == "-Signatures"
 
+    @patch("boto3.client")
     @patch("idp_common.s3.write_content")
-    def test_process_single_page_basic(
-        self, mock_write_content, service, mock_pdf_document, mock_textract_response
+    @patch("fitz.Page")
+    def test_process_single_page_textract(
+        self, mock_page, mock_write_content, mock_boto_client, mock_textract_response
     ):
-        """Test processing a single page with basic features."""
-        # Configure service to use basic features
-        service.enhanced_features = False
+        """Test single page processing with Textract."""
+        # Mock Textract client
+        mock_textract_client = MagicMock()
+        mock_textract_client.detect_document_text.return_value = mock_textract_response
+        mock_boto_client.return_value = mock_textract_client
 
-        # Mock the textractor parser
-        mock_parsed_response = MagicMock()
-        mock_parsed_response.to_markdown.return_value = "This is a test document."
+        # Mock page image extraction
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
 
-        with patch(
-            "textractor.parsers.response_parser.parse",
-            return_value=mock_parsed_response,
-        ):
-            # Process a single page
-            result, metering = service._process_single_page(
-                page_index=0,
-                pdf_document=mock_pdf_document,
-                output_bucket="output-bucket",
-                prefix="test-document.pdf",
-            )
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.load_page.return_value = mock_page_obj
+        mock_pdf_doc.is_pdf = True
 
-            # Verify the result
-            assert (
-                result["image_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/image.jpg"
-            )
-            assert (
-                result["raw_text_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/rawText.json"
-            )
-            assert (
-                result["parsed_text_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/result.json"
-            )
-            assert (
-                result["text_confidence_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/textConfidence.json"
-            )
-
-            # Verify metering data
-            assert "OCR/textract/detect_document_text" in metering
-            assert metering["OCR/textract/detect_document_text"]["pages"] == 1
-
-            # Verify Textract client was called with detect_document_text
-            service.textract_client.detect_document_text.assert_called_once()
-            service.textract_client.analyze_document.assert_not_called()
-
-    @patch("idp_common.s3.write_content")
-    def test_process_single_page_enhanced(
-        self, mock_write_content, service, mock_pdf_document, mock_textract_response
-    ):
-        """Test processing a single page with enhanced features."""
-        # Configure service to use enhanced features
-        service.enhanced_features = ["TABLES", "FORMS"]
-
-        # Mock the textractor parser
-        mock_parsed_response = MagicMock()
-        mock_parsed_response.to_markdown.return_value = "This is a test document."
-
-        with patch(
-            "textractor.parsers.response_parser.parse",
-            return_value=mock_parsed_response,
-        ):
-            # Process a single page
-            result, metering = service._process_single_page(
-                page_index=0,
-                pdf_document=mock_pdf_document,
-                output_bucket="output-bucket",
-                prefix="test-document.pdf",
-            )
-
-            # Verify the result
-            assert (
-                result["image_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/image.jpg"
-            )
-            assert (
-                result["raw_text_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/rawText.json"
-            )
-            assert (
-                result["parsed_text_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/result.json"
-            )
-            assert (
-                result["text_confidence_uri"]
-                == "s3://output-bucket/test-document.pdf/pages/1/textConfidence.json"
-            )
-
-            # Verify metering data
-            assert "OCR/textract/analyze_document-Tables+Forms" in metering
-            assert metering["OCR/textract/analyze_document-Tables+Forms"]["pages"] == 1
-
-            # Verify Textract client was called with analyze_document
-            service.textract_client.analyze_document.assert_called_once_with(
-                Document={"Bytes": b"mock image bytes"},
-                FeatureTypes=["TABLES", "FORMS"],
-            )
-            service.textract_client.detect_document_text.assert_not_called()
-
-    def test_analyze_document(self, service, mock_textract_response):
-        """Test the _analyze_document method."""
-        # Configure service to use enhanced features
-        service.enhanced_features = ["TABLES", "FORMS"]
-
-        # Call the method
-        result = service._analyze_document(b"mock image bytes", page_id=1)
-
-        # Verify Textract client was called correctly
-        service.textract_client.analyze_document.assert_called_once_with(
-            Document={"Bytes": b"mock image bytes"}, FeatureTypes=["TABLES", "FORMS"]
+        service = OcrService()
+        result, metering = service._process_single_page_textract(
+            0, mock_pdf_doc, "output-bucket", "test-prefix"
         )
 
-        # Verify the result
+        # Verify results
+        assert "raw_text_uri" in result
+        assert "parsed_text_uri" in result
+        assert "text_confidence_uri" in result
+        assert "image_uri" in result
+        assert "OCR/textract/detect_document_text" in metering
+
+        # Verify Textract was called
+        mock_textract_client.detect_document_text.assert_called_once()
+
+        # Verify S3 writes
+        assert mock_write_content.call_count == 4  # image, raw, confidence, parsed
+
+    @patch("boto3.client")
+    @patch("idp_common.s3.write_content")
+    @patch("idp_common.bedrock.invoke_model")
+    @patch("idp_common.bedrock.extract_text_from_response")
+    @patch("idp_common.image.prepare_bedrock_image_attachment")
+    @patch("fitz.Page")
+    def test_process_single_page_bedrock(
+        self,
+        mock_page,
+        mock_prepare_image,
+        mock_extract_text,
+        mock_invoke_model,
+        mock_write_content,
+        mock_boto_client,
+        mock_bedrock_config,
+        mock_bedrock_response,
+    ):
+        """Test single page processing with Bedrock."""
+        # Mock page image extraction
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
+
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.load_page.return_value = mock_page_obj
+        mock_pdf_doc.is_pdf = True
+
+        # Mock Bedrock functions
+        mock_prepare_image.return_value = {"image": "base64_image"}
+        mock_invoke_model.return_value = mock_bedrock_response
+        mock_extract_text.return_value = "Extracted text"
+
+        service = OcrService(backend="bedrock", bedrock_config=mock_bedrock_config)
+        result, metering = service._process_single_page_bedrock(
+            0, mock_pdf_doc, "output-bucket", "test-prefix"
+        )
+
+        # Verify results
+        assert "raw_text_uri" in result
+        assert "parsed_text_uri" in result
+        assert "text_confidence_uri" in result
+        assert "image_uri" in result
+        assert metering == {"input_tokens": 100, "output_tokens": 50}
+
+        # Verify Bedrock was called
+        mock_invoke_model.assert_called_once()
+        mock_extract_text.assert_called_once()
+
+        # Verify S3 writes
+        assert mock_write_content.call_count == 4  # image, raw, confidence, parsed
+
+    @patch("boto3.client")
+    @patch("idp_common.s3.write_content")
+    @patch("fitz.Page")
+    def test_process_single_page_none(
+        self, mock_page, mock_write_content, mock_boto_client
+    ):
+        """Test single page processing with 'none' backend."""
+        # Mock page image extraction
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
+
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.load_page.return_value = mock_page_obj
+        mock_pdf_doc.is_pdf = True
+
+        service = OcrService(backend="none")
+        result, metering = service._process_single_page_none(
+            0, mock_pdf_doc, "output-bucket", "test-prefix"
+        )
+
+        # Verify results
+        assert "raw_text_uri" in result
+        assert "parsed_text_uri" in result
+        assert "text_confidence_uri" in result
+        assert "image_uri" in result
+        assert metering == {}  # No metering data for 'none' backend
+
+        # Verify S3 writes (empty content)
+        assert mock_write_content.call_count == 4  # image, raw, confidence, parsed
+
+    @patch("fitz.Page")
+    def test_extract_page_image_pdf(self, mock_page):
+        """Test page image extraction from PDF."""
+        # Mock page and pixmap
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"pdf_image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
+
+        with patch("boto3.client"):
+            service = OcrService(dpi=200)
+            result = service._extract_page_image(mock_page_obj, True, 1)
+
+            # Verify DPI was used for PDF
+            mock_page_obj.get_pixmap.assert_called_once_with(dpi=200)
+            assert result == b"pdf_image_data"
+
+    @patch("fitz.Page")
+    def test_extract_page_image_non_pdf(self, mock_page):
+        """Test page image extraction from non-PDF."""
+        # Mock page and pixmap
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
+
+        with patch("boto3.client"):
+            service = OcrService(dpi=200)
+            result = service._extract_page_image(mock_page_obj, False, 1)
+
+            # Verify no DPI was used for non-PDF
+            mock_page_obj.get_pixmap.assert_called_once_with()
+            assert result == b"image_data"
+
+    @patch("boto3.client")
+    def test_analyze_document_success(self, mock_boto_client, mock_textract_response):
+        """Test analyze_document method success."""
+        # Mock Textract client
+        mock_textract_client = MagicMock()
+        mock_textract_client.analyze_document.return_value = mock_textract_response
+        mock_boto_client.return_value = mock_textract_client
+
+        service = OcrService(enhanced_features=["TABLES", "FORMS"])
+        result = service._analyze_document(b"document_bytes", 1)
+
+        # Verify call
+        mock_textract_client.analyze_document.assert_called_once_with(
+            Document={"Bytes": b"document_bytes"}, FeatureTypes=["TABLES", "FORMS"]
+        )
         assert result == mock_textract_response
 
-    def test_parse_textract_response_success(self, service, mock_textract_response):
-        """Test successful parsing of Textract response."""
-        # Mock the textractor parser
-        mock_parsed_response = MagicMock()
-        mock_parsed_response.to_markdown.return_value = "This is a test document."
+    @patch("boto3.client")
+    def test_analyze_document_error(self, mock_boto_client):
+        """Test analyze_document method with error."""
+        # Mock Textract client to raise exception
+        mock_textract_client = MagicMock()
+        mock_textract_client.analyze_document.side_effect = Exception("Textract error")
+        mock_boto_client.return_value = mock_textract_client
 
-        with patch(
-            "textractor.parsers.response_parser.parse",
-            return_value=mock_parsed_response,
-        ):
-            # Mock the return value of _parse_textract_response
-            with patch.object(
-                service,
-                "_parse_textract_response",
-                return_value={"text": "This is a test document."},
-            ):
-                # Parse the response
-                result = service._parse_textract_response(
-                    mock_textract_response, page_id=1
-                )
+        service = OcrService(enhanced_features=["TABLES"])
 
-                # Verify the result
-                assert result["text"] == "This is a test document."
+        with pytest.raises(Exception, match="Textract error"):
+            service._analyze_document(b"document_bytes", 1)
 
-    def test_parse_textract_response_markdown_error(
-        self, service, mock_textract_response
-    ):
-        """Test parsing Textract response with markdown conversion error."""
-        # Mock the textractor parser
-        mock_parsed_response = MagicMock()
-        mock_parsed_response.to_markdown.side_effect = Exception("Markdown error")
-        mock_parsed_response.text = "Plain text content"
+    def test_get_api_name_detect_document_text(self):
+        """Test API name for detect_document_text."""
+        with patch("boto3.client"):
+            service = OcrService(enhanced_features=False)
+            api_name = service._get_api_name()
+            assert api_name == "detect_document_text"
 
-        with patch(
-            "textractor.parsers.response_parser.parse",
-            return_value=mock_parsed_response,
-        ):
-            # Mock the return value of _parse_textract_response
-            with patch.object(
-                service,
-                "_parse_textract_response",
-                return_value={"text": "Plain text content"},
-            ):
-                # Parse the response
-                result = service._parse_textract_response(
-                    mock_textract_response, page_id=1
-                )
+    def test_get_api_name_analyze_document(self):
+        """Test API name for analyze_document."""
+        with patch("boto3.client"):
+            service = OcrService(enhanced_features=["TABLES"])
+            api_name = service._get_api_name()
+            assert api_name == "analyze_document"
 
-                # Verify the result falls back to plain text
+    def test_generate_text_confidence_data(self, mock_textract_response):
+        """Test generation of text confidence data."""
+        with patch("boto3.client"):
+            service = OcrService()
+            result = service._generate_text_confidence_data(mock_textract_response)
+
+            # Verify structure
+            assert "page_count" in result
+            assert "text_blocks" in result
+            assert result["page_count"] == 1
+            assert len(result["text_blocks"]) == 2  # Two LINE blocks
+
+            # Verify text blocks
+            assert result["text_blocks"][0]["text"] == "Sample text line 1"
+            assert result["text_blocks"][0]["confidence"] == 98.5
+            assert result["text_blocks"][0]["type"] == "PRINTED"
+
+            assert result["text_blocks"][1]["text"] == "Sample text line 2"
+            assert result["text_blocks"][1]["confidence"] == 97.2
+            assert result["text_blocks"][1]["type"] == "PRINTED"
+
+    def test_parse_textract_response_markdown_success(self):
+        """Test parsing Textract response to markdown successfully."""
+        with patch("boto3.client"):
+            service = OcrService()
+
+            # Mock the response_parser module directly using patch
+            with patch("textractor.parsers.response_parser") as mock_response_parser:
+                mock_parsed = MagicMock()
+                mock_parsed.to_markdown.return_value = "# Document\nContent here"
+                mock_response_parser.parse.return_value = mock_parsed
+
+                result = service._parse_textract_response({"Blocks": []}, 1)
+
+                assert result["text"] == "# Document\nContent here"
+                mock_parsed.to_markdown.assert_called_once()
+
+    def test_parse_textract_response_markdown_fallback(self):
+        """Test parsing Textract response with markdown fallback to plain text."""
+        with patch("boto3.client"):
+            service = OcrService()
+
+            # Mock the response_parser module directly using patch
+            with patch("textractor.parsers.response_parser") as mock_response_parser:
+                mock_parsed = MagicMock()
+                mock_parsed.to_markdown.side_effect = Exception("Markdown error")
+                mock_parsed.text = "Plain text content"
+                mock_response_parser.parse.return_value = mock_parsed
+
+                result = service._parse_textract_response({"Blocks": []}, 1)
+
                 assert result["text"] == "Plain text content"
+                mock_parsed.to_markdown.assert_called_once()
 
-    def test_parse_textract_response_parser_error(
-        self, service, mock_textract_response
+    def test_parse_textract_response_parser_failure(self):
+        """Test parsing Textract response with parser failure."""
+        with patch("boto3.client"):
+            service = OcrService()
+
+            # Mock the response_parser module to raise exception
+            with patch("textractor.parsers.response_parser") as mock_response_parser:
+                mock_response_parser.parse.side_effect = Exception("Parser error")
+
+                textract_response = {
+                    "Blocks": [
+                        {"BlockType": "LINE", "Text": "Line 1"},
+                        {"BlockType": "LINE", "Text": "Line 2"},
+                        {"BlockType": "WORD", "Text": "Word 1"},  # Should be ignored
+                    ]
+                }
+
+                result = service._parse_textract_response(textract_response, 1)
+
+                # Should fallback to basic extraction
+                assert result["text"] == "Line 1\nLine 2"
+
+    def test_parse_textract_response_no_text_content(self):
+        """Test parsing Textract response with no text content."""
+        with patch("boto3.client"):
+            service = OcrService()
+
+            # Mock the response_parser module to raise exception
+            with patch("textractor.parsers.response_parser") as mock_response_parser:
+                mock_response_parser.parse.side_effect = Exception("Parser error")
+
+                textract_response = {"Blocks": []}  # No LINE blocks
+
+                result = service._parse_textract_response(textract_response, 1)
+
+                # Should return error message
+                assert "Error extracting text" in result["text"]
+
+    @patch("boto3.client")
+    @patch("idp_common.image.resize_image")
+    @patch("fitz.Page")
+    def test_process_single_page_with_resize_config(
+        self, mock_page, mock_resize_image, mock_boto_client, mock_textract_response
     ):
-        """Test parsing Textract response with parser error."""
-        # Mock the textractor parser to raise an exception
-        with patch(
-            "textractor.parsers.response_parser.parse",
-            side_effect=Exception("Parser error"),
-        ):
-            # Mock the return value of _parse_textract_response
+        """Test single page processing with resize configuration."""
+        # Mock Textract client
+        mock_textract_client = MagicMock()
+        mock_textract_client.detect_document_text.return_value = mock_textract_response
+        mock_boto_client.return_value = mock_textract_client
+
+        # Mock page image extraction
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"original_image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
+
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.load_page.return_value = mock_page_obj
+        mock_pdf_doc.is_pdf = True
+
+        # Mock resize
+        mock_resize_image.return_value = b"resized_image_data"
+
+        resize_config = {"target_width": 1024, "target_height": 768}
+        service = OcrService(resize_config=resize_config)
+
+        with patch("idp_common.s3.write_content"):
+            result, metering = service._process_single_page_textract(
+                0, mock_pdf_doc, "output-bucket", "test-prefix"
+            )
+
+            # Verify resize was called
+            mock_resize_image.assert_called_once_with(b"original_image_data", 1024, 768)
+
+            # Verify Textract was called with resized image
+            mock_textract_client.detect_document_text.assert_called_once_with(
+                Document={"Bytes": b"resized_image_data"}
+            )
+
+    @patch("boto3.client")
+    @patch("idp_common.image.apply_adaptive_binarization")
+    @patch("fitz.Page")
+    def test_process_single_page_with_preprocessing(
+        self,
+        mock_page,
+        mock_preprocessing,
+        mock_boto_client,
+        mock_textract_response,
+    ):
+        """Test single page processing with preprocessing."""
+        # Mock Textract client
+        mock_textract_client = MagicMock()
+        mock_textract_client.detect_document_text.return_value = mock_textract_response
+        mock_boto_client.return_value = mock_textract_client
+
+        # Mock page image extraction
+        mock_page_obj = MagicMock()
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = b"original_image_data"
+        mock_page_obj.get_pixmap.return_value = mock_pixmap
+
+        # Mock PDF document
+        mock_pdf_doc = MagicMock()
+        mock_pdf_doc.load_page.return_value = mock_page_obj
+        mock_pdf_doc.is_pdf = True
+
+        # Mock preprocessing
+        mock_preprocessing.return_value = b"preprocessed_image_data"
+
+        preprocessing_config = {"enabled": True}
+        service = OcrService(preprocessing_config=preprocessing_config)
+
+        with patch("idp_common.s3.write_content"):
+            result, metering = service._process_single_page_textract(
+                0, mock_pdf_doc, "output-bucket", "test-prefix"
+            )
+
+            # Verify preprocessing was called
+            mock_preprocessing.assert_called_once_with(b"original_image_data")
+
+            # Verify Textract was called with preprocessed image
+            mock_textract_client.detect_document_text.assert_called_once_with(
+                Document={"Bytes": b"preprocessed_image_data"}
+            )
+
+    def test_process_single_page_dispatch_textract(self):
+        """Test _process_single_page dispatches to Textract method."""
+        with patch("boto3.client"):
+            service = OcrService(backend="textract")
+
             with patch.object(
-                service,
-                "_parse_textract_response",
-                return_value={"text": "This is a test document."},
-            ):
-                # Parse the response
-                result = service._parse_textract_response(
-                    mock_textract_response, page_id=1
+                service, "_process_single_page_textract"
+            ) as mock_textract:
+                mock_textract.return_value = ("result", "metering")
+
+                result = service._process_single_page(
+                    0, MagicMock(), "bucket", "prefix"
                 )
 
-                # Verify the result falls back to basic extraction
-                assert result["text"] == "This is a test document."
+                mock_textract.assert_called_once_with(0, ANY, "bucket", "prefix")
+                assert result == ("result", "metering")
+
+    def test_process_single_page_dispatch_bedrock(self, mock_bedrock_config):
+        """Test _process_single_page dispatches to Bedrock method."""
+        with patch("boto3.client"):
+            service = OcrService(backend="bedrock", bedrock_config=mock_bedrock_config)
+
+            with patch.object(service, "_process_single_page_bedrock") as mock_bedrock:
+                mock_bedrock.return_value = ("result", "metering")
+
+                result = service._process_single_page(
+                    0, MagicMock(), "bucket", "prefix"
+                )
+
+                mock_bedrock.assert_called_once_with(0, ANY, "bucket", "prefix")
+                assert result == ("result", "metering")
+
+    def test_process_single_page_dispatch_none(self):
+        """Test _process_single_page dispatches to none method."""
+        with patch("boto3.client"):
+            service = OcrService(backend="none")
+
+            with patch.object(service, "_process_single_page_none") as mock_none:
+                mock_none.return_value = ("result", "metering")
+
+                result = service._process_single_page(
+                    0, MagicMock(), "bucket", "prefix"
+                )
+
+                mock_none.assert_called_once_with(0, ANY, "bucket", "prefix")
+                assert result == ("result", "metering")
