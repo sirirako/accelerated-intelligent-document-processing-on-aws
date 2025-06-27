@@ -34,6 +34,7 @@ SPDX-License-Identifier: MIT-0
   - **Backward Compatibility**: All existing JSON functionality preserved unchanged, new functionality is purely additive
   - **Intelligent Fallback**: Robust fallback mechanism handles cases where preferred format fails (e.g., JSON requested as YAML falls back to JSON)
   - **Production Ready**: Handles malformed content gracefully, comprehensive error handling and logging
+  - **Example Notebook**: Added `notebooks/examples/step3_extraction_using_yaml.ipynb` demonstrating YAML-based extraction with automatic format detection and token efficiency benefits
 
 ### Fixed
 - **Enhanced JSON Extraction from LLM Responses (Issue #16)**
