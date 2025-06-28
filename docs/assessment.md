@@ -96,13 +96,20 @@ assessment:
     
     {DOCUMENT_IMAGE}
     
-    Provide a confidence assessment for each extracted attribute as a JSON object with this format:
+    Provide a confidence assessment for each extracted attribute. You can respond in either JSON or YAML format:
+    
+    JSON format:
     {
       "attribute_name": {
         "confidence": 0.85,
         "confidence_reason": "Clear text match found in document with high OCR confidence"
       }
     }
+    
+    YAML format (more token-efficient):
+    attribute_name:
+      confidence: 0.85
+      confidence_reason: Clear text match found in document with high OCR confidence
 ```
 
 ### Prompt Placeholders
