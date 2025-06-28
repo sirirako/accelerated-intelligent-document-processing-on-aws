@@ -58,6 +58,7 @@ extras_require = {
         "pytest-xdist>=3.3.1",  # For parallel test execution
         "requests>=2.32.3,<3.0.0",
         "pyarrow==20.0.0",
+        "PyYAML==6.0.2",
     ],
     # Development dependencies
     "dev": [
