@@ -20,6 +20,9 @@ Parameters:
   OutputBucket:
     Type: String
 
+  WorkingBucket:
+    Type: String
+
   TrackingTable:
     Type: String
 
@@ -604,12 +607,15 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref OCRFunctionLogGroup
       Policies:
         - AWSLambdaBasicExecutionRole
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - S3ReadPolicy:
             BucketName: !Ref InputBucket
         - DynamoDBCrudPolicy:
@@ -678,12 +684,15 @@ Resources:
           APPSYNC_API_URL: !Ref AppSyncApiUrl
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref ClassificationFunctionLogGroup
       Policies:
         - AWSLambdaBasicExecutionRole
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - S3ReadPolicy:
             BucketName: !Ref InputBucket
         - DynamoDBCrudPolicy:
@@ -755,12 +764,15 @@ Resources:
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref ExtractionFunctionLogGroup
       Policies:
         - AWSLambdaBasicExecutionRole
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - S3ReadPolicy:
             BucketName: !Ref InputBucket
         - S3ReadPolicy:
@@ -1556,4 +1568,3 @@ Outputs:
   DashboardArn:
     Description: ARN of the Pattern 3 (UDOP) CloudWatch Dashboard
     Value: !Sub "arn:aws:cloudwatch::${AWS::AccountId}:dashboard/${Dashboard}"
-

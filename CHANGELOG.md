@@ -6,6 +6,19 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
+- **Document Compression for Large Documents**
+  - Added automatic compression support to handle large documents that exceed Step Functions payload limits (256KB)
+  - **Key Features**:
+    - Automatic compression when documents exceed configurable size thresholds (default 200KB)
+    - Transparent handling of both compressed and uncompressed documents in Lambda functions
+    - Section ID preservation in compressed payloads for Step Functions Map operations
+    - Temporary S3 storage for compressed document state with automatic cleanup via lifecycle policies
+  - **New Utility Methods**:
+    - `Document.handle_input_document()`: Automatically detects and decompresses document input from Lambda events
+    - `Document.prepare_output()`: Automatically compresses large documents for Lambda responses
+    - `Document.compress()` and `Document.decompress()`: Manual compression/decompression methods
+  - **Lambda Function Integration**: All Pattern-2 and Pattern-3 Lambda functions updated to use compression utilities
+  - **Resolves Step Functions Errors**: Eliminates "result with a size exceeding the maximum number of bytes service limit" errors for large multi-page documents
 - **Multi-Backend OCR Support**
   - Textract Backend (default): Existing AWS Textract functionality
   - Bedrock Backend: New LLM-based OCR using Claude/Nova models
