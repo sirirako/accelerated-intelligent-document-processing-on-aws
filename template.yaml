@@ -3603,7 +3603,6 @@ Resources:
                   - ssm:PutParameter
                 Resource: 
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
         - PolicyName: KMSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4323,7 +4322,7 @@ Resources:
                 Action:
                   - ssm:GetParameter
                   - ssm:PutParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup

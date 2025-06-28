@@ -1276,29 +1276,16 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
         <Input
           value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
           type={property.type === 'number' ? 'number' : 'text'}
-          step={path === 'assessment.hitl_confidence_score' ? '0.01' : undefined}
-          min={path === 'assessment.hitl_confidence_score' ? '0' : property.minimum}
-          max={path === 'assessment.hitl_confidence_score' ? '1' : property.maximum}
+          min={property.minimum}
+          max={property.maximum}
           onChange={({ detail }) => {
             let finalValue = detail.value;
             if (property.type === 'number' && detail.value !== '') {
               finalValue = Number(detail.value);
-
-              // Special validation for HITL confidence score
-              if (path === 'assessment.hitl_confidence_score') {
-                if (finalValue < 0 || finalValue > 1) {
-                  // Don't update if value is out of range
-                  return;
-                }
-              }
             }
             updateValue(path, finalValue);
           }}
-          placeholder={
-            path === 'assessment.hitl_confidence_score'
-              ? 'Enter value between 0.0 and 1.0 (e.g., 0.8 for 80%)'
-              : undefined
-          }
+          placeholder={undefined}
         />
       );
     }
@@ -1319,31 +1306,13 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       input
     );
 
-    // Check for validation errors
-    const isHitlConfidenceField = path === 'assessment.hitl_confidence_score';
-    const hasValidationError =
-      isHitlConfidenceField &&
-      displayValue !== undefined &&
-      displayValue !== null &&
-      (Number(displayValue) < 0 || Number(displayValue) > 1 || Number.isNaN(Number(displayValue)));
-
-    const errorText = hasValidationError
-      ? 'Value must be between 0.0 and 1.0 (e.g., 0.8 for 80% confidence)'
-      : undefined;
-
-    // Update constraints text for HITL confidence field
-    let finalConstraints;
-    if (isHitlConfidenceField) {
-      finalConstraints = 'Enter a decimal value between 0.0 and 1.0 (e.g., 0.8 for 80% confidence threshold)';
-    } else {
-      finalConstraints = constraints.length > 0 ? constraints : undefined;
-    }
+    // Use standard constraints
+    const finalConstraints = constraints.length > 0 ? constraints : undefined;
 
     return (
       <FormField
         label={displayText}
         constraintText={finalConstraints}
-        errorText={errorText}
         stretch
         className={`compact-form-field ${isFieldCustomized ? 'modified-field' : ''}`}
       >

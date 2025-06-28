@@ -1,25 +1,25 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import json
-import io
-import os
-import logging
 import datetime
-import fitz  # PyMuPDF
-from urllib.parse import urlparse
-from botocore.exceptions import ClientError
-
-from idp_common.s3 import get_s3_client, write_content
-from idp_common.utils import build_s3_uri
-from idp_common import metrics
-from idp_common.models import Document, Page, Section, Status, HitlMetadata
-from idp_common.appsync.service import DocumentAppSyncService
-import boto3
+import io
+import json
+import logging
+import os
 import random
 import string
 from decimal import Decimal
+from urllib.parse import urlparse
 
+import boto3
+import fitz  # PyMuPDF
+from botocore.exceptions import ClientError
+from idp_common import metrics
+from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.config import get_config
+from idp_common.models import Document, HitlMetadata, Page, Section, Status
+from idp_common.s3 import get_s3_client, write_content
+from idp_common.utils import build_s3_uri
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -31,36 +31,31 @@ s3_client = get_s3_client()
 ssm_client = boto3.client('ssm')
 bedrock_client = boto3.client('bedrock-data-automation')
 
-def get_confidence_threshold_from_ssm(stack_name: str) -> float:
+def get_confidence_threshold_from_config(document: Document) -> float:
     """
-    Get the HITL confidence threshold from SSM Parameter Store.
+    Get the HITL confidence threshold from configuration.
     
     Args:
-        stack_name (str): The CloudFormation stack name
+        document (Document): The document object containing configuration
         
     Returns:
         float: The confidence threshold as a decimal (0.0-1.0)
     """
     try:
-        parameter_name = f"/{stack_name}/hitl_confidence_threshold"
-        response = ssm_client.get_parameter(Name=parameter_name)
-        threshold_value = float(response['Parameter']['Value'])
+        config = get_config(document)
+        assessment_config = config.get('assessment', {})
+        threshold_value = float(assessment_config.get('default_confidence_threshold', 0.8))
         
         # Validate that the threshold is in the expected 0.0-1.0 range
         if threshold_value < 0.0 or threshold_value > 1.0:
             logger.warning(f"Invalid confidence threshold value {threshold_value}. Must be between 0.0 and 1.0. Using default: 0.80")
             return 0.80
             
-        logger.info(f"Retrieved confidence threshold from SSM: {threshold_value}")
+        logger.info(f"Retrieved confidence threshold from configuration: {threshold_value}")
         return threshold_value
-    except ClientError as e:
-        logger.warning(f"Failed to retrieve confidence threshold from SSM parameter {parameter_name}: {e}")
-        # Return default value of 80% (0.80) if SSM parameter is not found
-        logger.info("Using default confidence threshold: 0.80")
-        return 0.80
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Invalid confidence threshold value in SSM parameter: {e}")
-        # Return default value if the parameter value is invalid
+    except Exception as e:
+        logger.warning(f"Failed to retrieve confidence threshold from configuration: {e}")
+        # Return default value of 80% (0.80) if configuration is not available
         logger.info("Using default confidence threshold: 0.80")
         return 0.80
 
@@ -626,9 +621,14 @@ def download_decimal(bucket: str, key: str) -> dict:
     response = s3_client.get_object(Bucket=bucket, Key=key)
     return json.loads(response['Body'].read(), parse_float=Decimal)
 
-def process_keyvalue_details(explainability_data: list, page_indices: list) -> dict:
+def process_keyvalue_details(explainability_data: list, page_indices: list, confidence_threshold: float = 0.8) -> dict:
     """
     Process explainability data to extract key-value and bounding box details per page.
+    
+    Args:
+        explainability_data: List of explainability data from BDA
+        page_indices: List of page indices
+        confidence_threshold: Confidence threshold value to add to each field
     """
     results = {
         'key_value_details': {str(p): [] for p in page_indices},
@@ -648,7 +648,8 @@ def process_keyvalue_details(explainability_data: list, page_indices: list) -> d
         kv_entry = {
             'key': format_key_path(key_path),
             'value': entry.get('value', ''),
-            'confidence': entry.get('confidence', 0.0)
+            'confidence': entry.get('confidence', 0.0),
+            'confidence_threshold': confidence_threshold
         }
         bbox = {}
         if entry.get('geometry'):
@@ -690,6 +691,35 @@ def process_keyvalue_details(explainability_data: list, page_indices: list) -> d
     for entry in explainability_data:
         traverse(entry)
     return results
+
+
+def create_confidence_threshold_alerts(pagespecific_details: dict, confidence_threshold: float) -> list:
+    """
+    Create confidence threshold alerts from page-specific key-value details.
+    
+    Args:
+        pagespecific_details: Dictionary containing key-value details per page
+        confidence_threshold: Confidence threshold to check against
+        
+    Returns:
+        List of confidence threshold alert dictionaries matching AppSync service expectations
+    """
+    alerts = []
+    
+    # Process key-value details from all pages
+    for page_num, kv_details in pagespecific_details.get('key_value_details', {}).items():
+        for kv_entry in kv_details:
+            confidence = kv_entry.get('confidence', 0.0)
+            if confidence < confidence_threshold:
+                alert = {
+                    'attribute_name': kv_entry.get('key', ''),
+                    'confidence': confidence,
+                    'confidence_threshold': confidence_threshold
+                }
+                alerts.append(alert)
+    
+    logger.info(f"Created {len(alerts)} confidence threshold alerts")
+    return alerts
 
 def process_segments(
     input_bucket: str,
@@ -735,8 +765,25 @@ def process_segments(
             page_indices = custom_output.get("split_document", {}).get("page_indices", [])
             pagespecific_details = process_keyvalue_details(
                 explainability_data,
-                page_indices
+                page_indices,
+                confidence_threshold
             )
+            
+            # Create confidence threshold alerts for UI display
+            confidence_threshold_alerts = create_confidence_threshold_alerts(
+                pagespecific_details, 
+                confidence_threshold
+            )
+            
+            # Update the corresponding document section with confidence alerts
+            # Find the section that contains these page indices
+            page_ids_str = [str(idx) for idx in page_indices]
+            for section in document.sections:
+                # Check if this section's pages match the current segment's pages
+                if set(section.page_ids) == set(page_ids_str):
+                    section.confidence_threshold_alerts = confidence_threshold_alerts
+                    logger.info(f"Updated section {section.section_id} with {len(confidence_threshold_alerts)} confidence alerts")
+                    break
             blueprint_name = custom_output["matched_blueprint"]["name"]
             bp_confidence = custom_output["matched_blueprint"]["confidence"]
 
@@ -917,8 +964,6 @@ def handler(event, context):
         document.errors.append(f"Error creating page images: {str(e)}")
 
     # Process each BDA response
-    hitl_triggered_any = False
-    section_to_bda_mapping = {}
     
     for response_idx, bda_response in enumerate(bda_responses):
         logger.info(f"Processing BDA response {response_idx + 1} of {len(bda_responses)}")
@@ -973,13 +1018,8 @@ def handler(event, context):
     
     if enable_hitl:
         try:
-            # Get stack name from environment and retrieve confidence threshold from SSM
-            stack_name = os.environ.get('METRIC_NAMESPACE', '')
-            if not stack_name:
-                logger.error("METRIC_NAMESPACE environment variable not found")
-                raise ValueError("Stack name not available")
-            
-            confidence_threshold = get_confidence_threshold_from_ssm(stack_name)
+            # Get confidence threshold from configuration
+            confidence_threshold = get_confidence_threshold_from_config(document)
             metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
             job_metadata_key = f'{metdatafile_path}/job_metadata.json'
             execution_id = event.get("execution_arn", "").split(':')[-1]
