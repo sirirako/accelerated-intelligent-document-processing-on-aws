@@ -31,8 +31,10 @@ def handler(event, context):
     logger.info(f"Config: {json.dumps(config)}")
     
     # For Map state, we get just one section from the document
-    # Extract the document and section from the event
-    full_document = Document.from_dict(event.get("document", {}))
+    # Extract the document and section from the event - handle both compressed and uncompressed
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    full_document = Document.handle_input_document(event.get("document", {}), working_bucket, logger)
+    
     section = Section.from_dict(event.get("section", {}))
     
     # Get the section ID for later use
@@ -78,11 +80,10 @@ def handler(event, context):
         logger.error(error_message)
         raise Exception(error_message)
     
-    # Return section extraction result with the document
-    # The state machine will later combine all section results
+    # Prepare output with automatic compression if needed
     response = {
         "section_id": section_id,
-        "document": section_document.to_dict()
+        "document": section_document.prepare_output(working_bucket, f"extraction_{section_id}", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
