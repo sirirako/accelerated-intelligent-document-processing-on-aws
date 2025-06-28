@@ -78,9 +78,9 @@ def handler(event, context):
     logger.info(f"Updating document status to {document.status}")
     appsync_service.update_document(document)
     
-    # Return the completed document
+    # Return the completed document with compression
     response = {
-        "document": document.to_dict()
+        "document": document.prepare_output(working_bucket, "processresults", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

@@ -547,15 +547,38 @@ class Document:
 
             # Create lightweight wrapper preserving section IDs for Map step
             # Include minimal sections array for Step Functions Map state compatibility
-            sections_for_map = [
-                {"section_id": section.section_id} for section in self.sections
-            ]
+            # Add metadata for troubleshooting and monitoring
+            sections_for_map = []
+            for section in self.sections:
+                # Calculate page range for this section
+                if section.page_ids:
+                    page_numbers = [
+                        int(pid) for pid in section.page_ids if pid.isdigit()
+                    ]
+                    if page_numbers:
+                        min_page = min(page_numbers)
+                        max_page = max(page_numbers)
+                        page_range = {"min": min_page, "max": max_page}
+                    else:
+                        page_range = {"min": 0, "max": 0}
+                else:
+                    page_range = {"min": 0, "max": 0}
+
+                sections_for_map.append(
+                    {
+                        "section_id": section.section_id,
+                        "classification": section.classification,
+                        "num_pages": len(section.page_ids),
+                        "page_range": page_range,
+                    }
+                )
 
             return {
                 "document_id": self.id,
                 "s3_uri": s3_uri,
                 "timestamp": timestamp,
                 "status": self.status.value,
+                "num_pages": self.num_pages,
                 "sections": sections_for_map,  # For Step Functions Map state
                 "compressed": True,
             }
@@ -650,17 +673,17 @@ class Document:
             return cls.from_dict(event_data)
 
     def prepare_output(
-        self, working_bucket, step_name, logger=None, size_threshold_kb=100
+        self, working_bucket, step_name, logger=None, size_threshold_kb=0
     ):
         """
         Utility method to prepare document output for Lambda responses.
-        Automatically compresses large documents and returns appropriate response format.
+        Automatically compresses documents and returns appropriate response format.
 
         Args:
             working_bucket: S3 bucket for compression
             step_name: Name of the processing step (for S3 key generation)
             logger: Optional logger for debug messages
-            size_threshold_kb: Size threshold in KB for compression (default 100KB)
+            size_threshold_kb: Size threshold in KB for compression (default 0KB - always compress)
 
         Returns:
             dict: Response data with either compressed reference or document dict
@@ -672,7 +695,7 @@ class Document:
         if logger:
             logger.info(f"Document size after {step_name}: {document_size} bytes")
 
-        # Compress if document is larger than threshold
+        # Compress if document is larger than threshold (default 0KB means always compress)
         if working_bucket and document_size > threshold_bytes:
             if logger:
                 logger.info(
