@@ -375,11 +375,11 @@ Resources:
             type: object
             sectionLabel: Assessment & HITL Configuration
             properties:
-              hitl_confidence_score:
+              default_confidence_threshold:
                 type: number
-                description: HITL Confidence Threshold (1-100) - Documents with confidence below this threshold will be sent for Human In The Loop review
-                minimum: 1
-                maximum: 100
+                description: HITL Confidence Threshold (0.0-1.0) - Documents with confidence below this threshold will be sent for Human In The Loop review
+                minimum: 0.0
+                maximum: 1.0
                 order: 1
           summarization:
             order: 5
