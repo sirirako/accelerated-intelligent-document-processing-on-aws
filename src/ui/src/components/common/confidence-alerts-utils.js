@@ -6,70 +6,18 @@
  */
 
 /**
- * Get field-specific confidence threshold from configuration (Pattern-2)
- * @param {string} fieldName - Name of the field
+ * Get the HITL confidence threshold from configuration
  * @param {Object} mergedConfig - Merged configuration object
- * @returns {number|null} Field-specific threshold or null if not found
+ * @returns {number} HITL confidence threshold as decimal (0.0-1.0)
  */
-export const getFieldSpecificThreshold = (fieldName, mergedConfig) => {
-  if (!mergedConfig || !mergedConfig.classes || !Array.isArray(mergedConfig.classes)) {
-    return null;
+export const getHitlConfidenceThreshold = (mergedConfig) => {
+  if (!mergedConfig || !mergedConfig.assessment || !mergedConfig.assessment.hitl_confidence_score) {
+    return 0.8; // Default threshold of 80%
   }
 
-  // Search through all classes and their attributes for the field
-  const foundAttribute = mergedConfig.classes
-    .filter((classConfig) => classConfig.attributes && Array.isArray(classConfig.attributes))
-    .flatMap((classConfig) => classConfig.attributes)
-    .find((attr) => attr.name === fieldName);
-
-  if (foundAttribute && foundAttribute.confidence_threshold) {
-    const threshold = parseFloat(foundAttribute.confidence_threshold);
-    if (!Number.isNaN(threshold)) {
-      // Check if threshold is in percentage format (1-100) and convert to decimal (0.0-1.0)
-      if (threshold > 1.0) {
-        return threshold / 100;
-      }
-      // Already in decimal format (0.0-1.0)
-      return threshold;
-    }
-  }
-
-  // Check for default confidence threshold in assessment section
-  if (mergedConfig.assessment && mergedConfig.assessment.default_confidence_threshold) {
-    const threshold = parseFloat(mergedConfig.assessment.default_confidence_threshold);
-    if (!Number.isNaN(threshold)) {
-      // Check if threshold is in percentage format (1-100) and convert to decimal (0.0-1.0)
-      if (threshold > 1.0) {
-        return threshold / 100;
-      }
-      // Already in decimal format (0.0-1.0)
-      return threshold;
-    }
-  }
-
-  return null;
-};
-
-/**
- * Get the default confidence threshold from configuration
- * @param {Object} mergedConfig - Merged configuration object
- * @returns {number} Default confidence threshold as decimal (0.0-1.0)
- */
-export const getDefaultConfidenceThreshold = (mergedConfig) => {
-  // Check for default confidence threshold in assessment section
-  if (mergedConfig && mergedConfig.assessment && mergedConfig.assessment.default_confidence_threshold) {
-    const threshold = parseFloat(mergedConfig.assessment.default_confidence_threshold);
-    if (!Number.isNaN(threshold)) {
-      // Check if threshold is in percentage format (1-100) and convert to decimal (0.0-1.0)
-      if (threshold > 1.0) {
-        return threshold / 100;
-      }
-      // Already in decimal format (0.0-1.0)
-      return threshold;
-    }
-  }
-
-  return 0.8; // Default threshold of 80%
+  const threshold = parseFloat(mergedConfig.assessment.hitl_confidence_score);
+  // Convert from percentage (1-100) to decimal (0.0-1.0)
+  return threshold / 100;
 };
 
 /**
@@ -90,11 +38,6 @@ const findExplainabilityData = (section) => {
   // Check Output.explainabilityData
   if (section.Output && section.Output.explainabilityData) {
     return section.Output.explainabilityData;
-  }
-
-  // For Pattern-1 (BDA), check for assessment data in Output
-  if (section.Output && section.Output.assessment) {
-    return section.Output.assessment;
   }
 
   // Check if Output itself contains confidence data
@@ -131,29 +74,19 @@ const findExplainabilityData = (section) => {
         }
       }
     }
-
-    // For Pattern-1 (BDA), the Output itself might contain the extracted data with confidence
-    // Check if Output directly contains fields with confidence scores
-    const hasDirectConfidenceData = Object.values(section.Output).some(
-      (fieldValue) => fieldValue && typeof fieldValue === 'object' && typeof fieldValue.confidence === 'number',
-    );
-
-    if (hasDirectConfidenceData) {
-      return section.Output;
-    }
   }
 
   return null;
 };
 
 /**
- * Get fields that are below the default confidence threshold from explainability data
+ * Get fields that are below the HITL confidence threshold from explainability data
  * @param {Object} explainabilityData - Explainability data containing confidence scores
- * @param {number} defaultThreshold - Default confidence threshold (0.0-1.0)
+ * @param {number} hitlThreshold - HITL confidence threshold (0.0-1.0)
  * @param {string} path - Current path in the data structure
  * @returns {Array} Array of field objects with confidence below threshold
  */
-export const getFieldsBelowThreshold = (explainabilityData, defaultThreshold, path = '') => {
+export const getFieldsBelowThreshold = (explainabilityData, hitlThreshold, path = '') => {
   const fieldsBelow = [];
 
   if (!explainabilityData || typeof explainabilityData !== 'object') {
@@ -167,12 +100,12 @@ export const getFieldsBelowThreshold = (explainabilityData, defaultThreshold, pa
       if (typeof confidence === 'number') {
         const fieldPath = path ? `${path}.${fieldName}` : fieldName;
 
-        if (confidence < defaultThreshold) {
+        if (confidence < hitlThreshold) {
           fieldsBelow.push({
             fieldName,
             fieldPath,
             confidence,
-            confidenceThreshold: defaultThreshold,
+            confidenceThreshold: hitlThreshold,
           });
         }
       }
@@ -182,14 +115,14 @@ export const getFieldsBelowThreshold = (explainabilityData, defaultThreshold, pa
         fieldData.forEach((item, index) => {
           if (item && typeof item === 'object') {
             const nestedPath = path ? `${path}.${fieldName}[${index}]` : `${fieldName}[${index}]`;
-            const nestedFields = getFieldsBelowThreshold(item, defaultThreshold, nestedPath);
+            const nestedFields = getFieldsBelowThreshold(item, hitlThreshold, nestedPath);
             fieldsBelow.push(...nestedFields);
           }
         });
       } else if (typeof fieldData === 'object' && fieldData !== null && !('confidence' in fieldData)) {
         // This is a nested object without confidence, recurse into it
         const nestedPath = path ? `${path}.${fieldName}` : fieldName;
-        const nestedFields = getFieldsBelowThreshold(fieldData, defaultThreshold, nestedPath);
+        const nestedFields = getFieldsBelowThreshold(fieldData, hitlThreshold, nestedPath);
         fieldsBelow.push(...nestedFields);
       }
     }
@@ -211,13 +144,13 @@ export const getDocumentConfidenceAlertCount = (sections, mergedConfig = null) =
 
   // If mergedConfig is provided, use dynamic threshold calculation
   if (mergedConfig) {
-    const defaultThreshold = getDefaultConfidenceThreshold(mergedConfig);
+    const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
 
     return sections.reduce((total, section) => {
       const explainabilityData = findExplainabilityData(section);
 
       if (explainabilityData) {
-        const fieldsBelow = getFieldsBelowThreshold(explainabilityData, defaultThreshold);
+        const fieldsBelow = getFieldsBelowThreshold(explainabilityData, hitlThreshold);
         return total + fieldsBelow.length;
       }
 
@@ -252,11 +185,11 @@ export const getSectionConfidenceAlertCount = (section, mergedConfig = null) => 
 
   // If mergedConfig is provided, use dynamic threshold calculation
   if (mergedConfig) {
-    const defaultThreshold = getDefaultConfidenceThreshold(mergedConfig);
+    const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
     const explainabilityData = findExplainabilityData(section);
 
     if (explainabilityData) {
-      const fieldsBelow = getFieldsBelowThreshold(explainabilityData, defaultThreshold);
+      const fieldsBelow = getFieldsBelowThreshold(explainabilityData, hitlThreshold);
       return fieldsBelow.length;
     }
   }
@@ -265,7 +198,6 @@ export const getSectionConfidenceAlertCount = (section, mergedConfig = null) => 
   if (!section.ConfidenceThresholdAlerts || !Array.isArray(section.ConfidenceThresholdAlerts)) {
     return 0;
   }
-
   return section.ConfidenceThresholdAlerts.length;
 };
 
@@ -282,11 +214,11 @@ export const getSectionConfidenceAlerts = (section, mergedConfig = null) => {
 
   // If mergedConfig is provided, use dynamic threshold calculation
   if (mergedConfig) {
-    const defaultThreshold = getDefaultConfidenceThreshold(mergedConfig);
+    const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
     const explainabilityData = findExplainabilityData(section);
 
     if (explainabilityData) {
-      const fieldsBelow = getFieldsBelowThreshold(explainabilityData, defaultThreshold);
+      const fieldsBelow = getFieldsBelowThreshold(explainabilityData, hitlThreshold);
       return fieldsBelow;
     }
   }
@@ -339,15 +271,7 @@ export const getFieldHighlightInfo = (fieldName, fieldConfidence, confidenceThre
  * @returns {Object} Object with confidence info and display properties
  */
 export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [], mergedConfig = null) => {
-  console.log('getFieldConfidenceInfo called with:', {
-    fieldName,
-    explainabilityInfo: explainabilityInfo ? 'present' : 'null',
-    path,
-    mergedConfig: mergedConfig ? 'present' : 'null',
-  });
-
   if (!explainabilityInfo || !fieldName) {
-    console.log('getFieldConfidenceInfo: Missing explainabilityInfo or fieldName');
     return { hasConfidenceInfo: false };
   }
 
@@ -355,11 +279,8 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
   const explainabilityData = Array.isArray(explainabilityInfo) ? explainabilityInfo[0] : explainabilityInfo;
 
   if (!explainabilityData || typeof explainabilityData !== 'object') {
-    console.log('getFieldConfidenceInfo: Invalid explainabilityData');
     return { hasConfidenceInfo: false };
   }
-
-  console.log('getFieldConfidenceInfo: explainabilityData keys:', Object.keys(explainabilityData));
 
   // Navigate to the nested location in explainabilityData using the path
   let currentExplainabilityData = explainabilityData;
@@ -374,7 +295,6 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
         if (!Number.isNaN(index) && index >= 0 && index < currentExplainabilityData.length) {
           currentExplainabilityData = currentExplainabilityData[index];
         } else {
-          console.log(`getFieldConfidenceInfo: Invalid array index ${pathSegment}`);
           return { hasConfidenceInfo: false };
         }
       } else {
@@ -382,27 +302,19 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
         currentExplainabilityData = currentExplainabilityData[pathSegment];
       }
     } else {
-      console.log(`getFieldConfidenceInfo: Path traversal failed at ${pathSegment}`);
       return { hasConfidenceInfo: false };
     }
   }
 
   // Now look for the field in the current explainability data location
   if (!currentExplainabilityData || typeof currentExplainabilityData !== 'object') {
-    console.log('getFieldConfidenceInfo: No valid explainability data at target path');
     return { hasConfidenceInfo: false };
   }
-
-  console.log(`getFieldConfidenceInfo: Looking for field ${fieldName} in:`, Object.keys(currentExplainabilityData));
 
   const fieldData = currentExplainabilityData[fieldName];
   if (!fieldData || typeof fieldData !== 'object') {
-    console.log(`getFieldConfidenceInfo: No field data found for ${fieldName}`);
-    console.log(`Available fields:`, Object.keys(currentExplainabilityData));
     return { hasConfidenceInfo: false };
   }
-
-  console.log(`getFieldConfidenceInfo: Field data for ${fieldName}:`, fieldData);
 
   const { confidence } = fieldData;
   let confidenceThreshold = fieldData.confidence_threshold;
@@ -411,31 +323,20 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
   const hasConfidence = typeof confidence === 'number';
 
   if (!hasConfidence) {
-    console.log(`getFieldConfidenceInfo: No confidence data for ${fieldName}, confidence value:`, confidence);
     return { hasConfidenceInfo: false };
   }
 
-  console.log(`getFieldConfidenceInfo: Found confidence ${confidence} for ${fieldName}`);
-
   // Use dynamic threshold from configuration if available and no field-specific threshold
   if (mergedConfig && (confidenceThreshold === undefined || confidenceThreshold === null)) {
-    // First, try to get field-specific threshold from configuration (Pattern-2)
-    confidenceThreshold = getFieldSpecificThreshold(fieldName, mergedConfig);
-
-    // If no field-specific threshold, use document-level default threshold
-    if (confidenceThreshold === undefined || confidenceThreshold === null) {
-      confidenceThreshold = getDefaultConfidenceThreshold(mergedConfig);
-    }
+    confidenceThreshold = getHitlConfidenceThreshold(mergedConfig);
   }
 
   const hasThreshold = typeof confidenceThreshold === 'number';
 
-  console.log(`getFieldConfidenceInfo: Threshold for ${fieldName}:`, confidenceThreshold);
-
   // Case 1: Both confidence and threshold available
   if (hasConfidence && hasThreshold) {
     const isAboveThreshold = confidence >= confidenceThreshold;
-    const result = {
+    return {
       hasConfidenceInfo: true,
       confidence,
       confidenceThreshold,
@@ -444,13 +345,11 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
       textColor: isAboveThreshold ? '#16794d' : '#d13313', // Green for good, red for poor
       displayMode: 'with-threshold',
     };
-    console.log(`getFieldConfidenceInfo result for ${fieldName}:`, result);
-    return result;
   }
 
   // Case 2: Only confidence available (no threshold)
   if (hasConfidence && !hasThreshold) {
-    const result = {
+    return {
       hasConfidenceInfo: true,
       confidence,
       confidenceThreshold: undefined,
@@ -459,12 +358,9 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
       textColor: '#000000', // Black font when no threshold to compare
       displayMode: 'confidence-only',
     };
-    console.log(`getFieldConfidenceInfo result for ${fieldName} (no threshold):`, result);
-    return result;
   }
 
   // Case 3: Neither available (handled by the hasConfidence check above)
-  console.log(`getFieldConfidenceInfo: No valid confidence info for ${fieldName}`);
   return { hasConfidenceInfo: false };
 };
 

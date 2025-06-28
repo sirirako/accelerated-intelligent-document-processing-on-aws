@@ -179,7 +179,7 @@ def create_pdf_page_images(bda_result_bucket, output_bucket, object_key):
         logger.error(f"Error creating page images: {str(e)}")
         raise
 
-def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document):
+def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold=0.8):
     """
     Process BDA sections and build sections for the Document object
     
@@ -189,6 +189,7 @@ def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, ob
         output_bucket (str): The output bucket
         object_key (str): The object key
         document (Document): The document object to update
+        confidence_threshold (float): Confidence threshold to add to explainability data
     
     Returns:
         Document: The updated document
@@ -228,15 +229,50 @@ def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, ob
                 file_name = src_key.split('/')[-1]
                 target_key = f"{target_section_path}{file_name}"
                 
-                # Copy the file
-                s3_client.copy_object(
-                    CopySource={'Bucket': bda_result_bucket, 'Key': src_key},
-                    Bucket=output_bucket,
-                    Key=target_key,
-                    ContentType='application/json' if file_name.endswith('.json') else 'application/octet-stream',
-                    MetadataDirective='REPLACE'
-                )
-                logger.info(f"Copied {src_key} to {target_key}")
+                # Special handling for result.json files to add confidence thresholds
+                if file_name == 'result.json':
+                    try:
+                        # Download the result.json file
+                        result_obj = s3_client.get_object(Bucket=bda_result_bucket, Key=src_key)
+                        result_data = json.loads(result_obj['Body'].read().decode('utf-8'))
+                        
+                        # Add confidence thresholds to explainability_info if present
+                        if 'explainability_info' in result_data:
+                            result_data['explainability_info'] = add_confidence_thresholds_to_explainability(
+                                result_data['explainability_info'], confidence_threshold
+                            )
+                            logger.info(f"Added confidence threshold {confidence_threshold} to explainability_info in section {section_id}")
+                        
+                        # Write the modified result.json to the target location
+                        write_content(
+                            result_data,
+                            output_bucket,
+                            target_key,
+                            content_type='application/json'
+                        )
+                        logger.info(f"Processed and copied {src_key} to {target_key}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing result.json {src_key}: {str(e)}")
+                        # Fallback to regular copy if processing fails
+                        s3_client.copy_object(
+                            CopySource={'Bucket': bda_result_bucket, 'Key': src_key},
+                            Bucket=output_bucket,
+                            Key=target_key,
+                            ContentType='application/json',
+                            MetadataDirective='REPLACE'
+                        )
+                        logger.info(f"Fallback copied {src_key} to {target_key}")
+                else:
+                    # Regular copy for non-result.json files
+                    s3_client.copy_object(
+                        CopySource={'Bucket': bda_result_bucket, 'Key': src_key},
+                        Bucket=output_bucket,
+                        Key=target_key,
+                        ContentType='application/json' if file_name.endswith('.json') else 'application/octet-stream',
+                        MetadataDirective='REPLACE'
+                    )
+                    logger.info(f"Copied {src_key} to {target_key}")
             
             # Get the result.json file
             result_path = f"{target_section_path}result.json"
@@ -306,13 +342,45 @@ def extract_markdown_from_json(raw_json):
         return '\n\n---\n\nPAGE BREAK\n\n---\n\n'.join(markdown_texts)
     return ""
 
-def extract_page_from_multipage_json(raw_json, page_index):
+def add_confidence_thresholds_to_explainability(explainability_data, confidence_threshold):
+    """
+    Add confidence thresholds to explainability data recursively.
+    
+    Args:
+        explainability_data: The explainability data (dict, list, or other)
+        confidence_threshold: The confidence threshold to add
+        
+    Returns:
+        The modified explainability data with confidence thresholds added
+    """
+    if isinstance(explainability_data, dict):
+        # Create a copy to avoid modifying the original
+        result = explainability_data.copy()
+        
+        # If this dict has a confidence field, add the confidence_threshold
+        if 'confidence' in result and isinstance(result['confidence'], (int, float)):
+            result['confidence_threshold'] = confidence_threshold
+        
+        # Recursively process nested dictionaries
+        for key, value in result.items():
+            result[key] = add_confidence_thresholds_to_explainability(value, confidence_threshold)
+        
+        return result
+    elif isinstance(explainability_data, list):
+        # Recursively process list items
+        return [add_confidence_thresholds_to_explainability(item, confidence_threshold) for item in explainability_data]
+    else:
+        # Return primitive values as-is
+        return explainability_data
+
+def extract_page_from_multipage_json(raw_json, page_index, confidence_threshold=None):
     """
     Extract a single page from a multi-page result JSON
     
     Args:
         raw_json (dict): The BDA result JSON
         page_index (int): The page index to extract
+        confidence_threshold (float, optional): Confidence threshold to add to explainability data
         
     Returns:
         dict: A new result JSON with only the specified page
@@ -351,6 +419,18 @@ def extract_page_from_multipage_json(raw_json, page_index):
                 element_copy["page_indices"] = [page_index]
                 single_page_json["elements"].append(element_copy)
     
+    # Include explainability_info if present and add confidence thresholds
+    if "explainability_info" in raw_json:
+        explainability_info = raw_json["explainability_info"]
+        if confidence_threshold is not None:
+            # Add confidence thresholds to the explainability data
+            single_page_json["explainability_info"] = add_confidence_thresholds_to_explainability(
+                explainability_info, confidence_threshold
+            )
+            logger.info(f"Added confidence threshold {confidence_threshold} to explainability_info for page {page_index}")
+        else:
+            single_page_json["explainability_info"] = explainability_info
+    
     return single_page_json
 
 def extract_markdown_from_single_page_json(raw_json):
@@ -369,7 +449,7 @@ def extract_markdown_from_single_page_json(raw_json):
             return page["representation"]["markdown"]
     return ""
 
-def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document):
+def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold=0.8):
     """
     Process BDA page outputs and build pages for the Document object
     
@@ -379,6 +459,7 @@ def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, objec
         output_bucket (str): The output bucket
         object_key (str): The object key
         document (Document): The document object to update
+        confidence_threshold (float): Confidence threshold to add to explainability data
     
     Returns:
         Document: The updated document
@@ -429,8 +510,8 @@ def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, objec
                             
                         page_id = str(page_index)
                         
-                        # Extract a single page result.json for this page
-                        single_page_json = extract_page_from_multipage_json(raw_json, page_index)
+                        # Extract a single page result.json for this page with confidence threshold
+                        single_page_json = extract_page_from_multipage_json(raw_json, page_index, confidence_threshold)
                         
                         # Determine page directory path in output bucket
                         page_path = f"{pages_output_prefix}{page_id}/"
@@ -950,6 +1031,10 @@ def handler(event, context):
         workflow_execution_arn=first_response.get("execution_arn")
     )
 
+    # Get confidence threshold from configuration for adding to explainability data
+    confidence_threshold = get_confidence_threshold_from_config(document)
+    logger.info(f"Using confidence threshold: {confidence_threshold}")
+
     # Update document status
     appsync_service = DocumentAppSyncService()
     logger.info(f"Updating document status to {document.status}")
@@ -997,8 +1082,8 @@ def handler(event, context):
         logger.info(f"BDA Result bucket: {bda_result_bucket}, prefix: {bda_result_prefix}")
         
         # Process sections and pages from BDA output
-        document = process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
-        document = process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
+        document = process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold)
+        document = process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold)
 
     # Calculate metrics
     page_ids_in_sections = set()
@@ -1018,8 +1103,7 @@ def handler(event, context):
     
     if enable_hitl:
         try:
-            # Get confidence threshold from configuration
-            confidence_threshold = get_confidence_threshold_from_config(document)
+            # Use the confidence threshold already calculated above
             metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
             job_metadata_key = f'{metdatafile_path}/job_metadata.json'
             execution_id = event.get("execution_arn", "").split(':')[-1]
