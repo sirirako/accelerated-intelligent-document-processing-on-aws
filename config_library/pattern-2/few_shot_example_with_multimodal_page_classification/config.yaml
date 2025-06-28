@@ -3,10 +3,17 @@
 
 notes: Default settings
 ocr:
+  backend: "textract"  # Default to Textract for backward compatibility
+  model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
+  task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
   features:
     - name: LAYOUT
     - name: TABLES
     - name: SIGNATURES
+  image:
+    target_width: '951'
+    target_height: '1268'
 classes:
   - name: letter
     description: >-
