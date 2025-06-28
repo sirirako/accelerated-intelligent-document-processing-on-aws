@@ -546,14 +546,17 @@ class Document:
             logger.info(f"Compressed document {self.id} to {s3_uri}")
 
             # Create lightweight wrapper preserving section IDs for Map step
-            section_ids = [section.section_id for section in self.sections]
+            # Include minimal sections array for Step Functions Map state compatibility
+            sections_for_map = [
+                {"section_id": section.section_id} for section in self.sections
+            ]
 
             return {
                 "document_id": self.id,
                 "s3_uri": s3_uri,
                 "timestamp": timestamp,
                 "status": self.status.value,
-                "section_ids": section_ids,
+                "sections": sections_for_map,  # For Step Functions Map state
                 "compressed": True,
             }
 
