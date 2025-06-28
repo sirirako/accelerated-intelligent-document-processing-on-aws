@@ -35,10 +35,24 @@ def handler(event, context):
     working_bucket = os.environ.get('WORKING_BUCKET')
     full_document = Document.handle_input_document(event.get("document", {}), working_bucket, logger)
     
-    section = Section.from_dict(event.get("section", {}))
+    # Get the section ID from the Map state input
+    section_input = event.get("section", {})
+    section_id = section_input.get("section_id")
     
-    # Get the section ID for later use
-    section_id = section.section_id
+    if not section_id:
+        raise ValueError("No section_id found in event")
+    
+    # Look up the full section from the decompressed document
+    section = None
+    for doc_section in full_document.sections:
+        if doc_section.section_id == section_id:
+            section = doc_section
+            break
+    
+    if not section:
+        raise ValueError(f"Section {section_id} not found in document")
+    
+    logger.info(f"Processing section {section_id} with {len(section.page_ids)} pages")
     
     # Update document status to EXTRACTING
     full_document.status = Status.EXTRACTING
