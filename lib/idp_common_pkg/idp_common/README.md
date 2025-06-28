@@ -199,7 +199,7 @@ response_data = document.prepare_output(
 ### Key Features
 
 - **Automatic Detection**: Utility methods automatically detect compressed vs uncompressed documents
-- **Size Threshold**: Configurable compression threshold (default 100kB)
+- **Size Threshold**: Configurable compression threshold (default 0KB - always compress)
 - **Section Preservation**: Section IDs are preserved in compressed payloads for Step Functions Map operations
 - **Transparent Handling**: Lambda functions work seamlessly with both compressed and uncompressed documents
 - **S3 Storage**: Compressed documents are stored in `s3://working-bucket/compressed_documents/{document_id}/`
