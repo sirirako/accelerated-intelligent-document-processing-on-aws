@@ -102,7 +102,7 @@ document = Document.from_compressed_or_dict(data, working_bucket)
 
 ### Configuration
 
-- **Default threshold**: 100kB (configurable)
+- **Default threshold**: 0KB - always compress (configurable)
 - **Storage location**: `s3://working-bucket/compressed_documents/{document_id}/{timestamp}_{step_name}_state.json`
 - **Automatic cleanup**: Temporary compressed files can be cleaned up via S3 lifecycle policies
 
