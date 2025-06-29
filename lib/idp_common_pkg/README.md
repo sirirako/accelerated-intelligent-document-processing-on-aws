@@ -9,7 +9,7 @@ This package contains common utilities and services for the GenAI IDP Accelerato
 
 ### Core Data Model
 
-- **Document Model**: Central data structure for the entire IDP pipeline ([models.py](idp_common/models.py), [README](idp_common/README.md))
+- **Document Model**: Central data structure for the entire IDP pipeline with automatic compression support for large documents ([models.py](idp_common/models.py), [README](idp_common/README.md))
 
 ### Core Services
 
@@ -44,9 +44,71 @@ This package contains common utilities and services for the GenAI IDP Accelerato
 - S3 URI parsing
 - Metering data aggregation
 
+## Document Compression for Large Documents
+
+The Document model includes automatic compression support to handle large documents that exceed Step Functions payload limits (256KB). This feature is essential for processing multi-page documents with extensive content.
+
+### Key Features
+
+- **Automatic Compression**: Documents exceeding configurable size thresholds are automatically compressed to S3
+- **Transparent Handling**: Lambda functions seamlessly handle both compressed and uncompressed documents
+- **Section Preservation**: Section IDs are preserved in compressed payloads for Step Functions Map operations
+- **Utility Methods**: Simplified input/output handling with `load_document()` and `serialize_document()`
+
+### Usage in Lambda Functions
+
+```python
+from idp_common.models import Document
+import os
+
+def lambda_handler(event, context):
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    
+    # Handle input - automatically detects and decompresses if needed
+    document = Document.load_document(
+        event_data=event["document"], 
+        working_bucket=working_bucket, 
+        logger=logger
+    )
+    
+    # Process document...
+    # (your processing logic here)
+    
+    # Prepare output - automatically compresses if document is large
+    response = {
+        "document": document.serialize_document(
+            working_bucket=working_bucket, 
+            step_name="classification", 
+            logger=logger
+        )
+    }
+    
+    return response
+```
+
+### Manual Compression/Decompression
+
+```python
+# Manual compression
+compressed_data = document.compress(working_bucket, "processing_step")
+# Returns: {"document_id": "...", "s3_uri": "...", "section_ids": [...], "compressed": True}
+
+# Manual decompression
+restored_document = Document.decompress(working_bucket, compressed_data)
+
+# Handle either compressed or regular document data
+document = Document.from_compressed_or_dict(data, working_bucket)
+```
+
+### Configuration
+
+- **Default threshold**: 0KB - always compress (configurable)
+- **Storage location**: `s3://working-bucket/compressed_documents/{document_id}/{timestamp}_{step_name}_state.json`
+- **Automatic cleanup**: Temporary compressed files can be cleaned up via S3 lifecycle policies
+
 ## Unified Document-based Architecture
 
-All core services (OCR, Classification, Extraction, and AppSync) use a unified Document model approach:
+All core services (OCR, Classification, Extraction, and AppSync) use a unified Document model approach with automatic compression support:
 
 ```python
 from idp_common import get_config

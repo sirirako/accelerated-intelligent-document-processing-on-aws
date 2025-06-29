@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 from typing import Dict, Any, Union
 import cfnresponse
 import yaml
+from decimal import Decimal
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -55,6 +56,18 @@ def fetch_content_from_s3(s3_uri: str) -> Union[Dict[str, Any], str]:
         logger.error(f"Error processing S3 URI {s3_uri}: {str(e)}")
         raise
 
+def convert_floats_to_decimal(obj):
+    """
+    Recursively convert float values to Decimal for DynamoDB compatibility
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: convert_floats_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_decimal(item) for item in obj]
+    return obj
+
 def resolve_content(content: Union[str, Dict[str, Any]]) -> Union[Dict[str, Any], str]:
     """
     Resolves content - if it's a string starting with s3://, fetch from S3
@@ -69,10 +82,13 @@ def update_configuration(configuration_type: str, data: Dict[str, Any]) -> None:
     Updates or creates a configuration item in DynamoDB
     """
     try:
+        # Convert any float values to Decimal for DynamoDB compatibility
+        converted_data = convert_floats_to_decimal(data)
+        
         table.put_item(
             Item={
                 'Configuration': configuration_type,
-                **data
+                **converted_data
             }
         )
     except ClientError as e:
@@ -121,6 +137,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             # Update Schema configuration
             if 'Schema' in properties:
                 resolved_schema = resolve_content(properties['Schema'])
+                # Convert any float values to Decimal for DynamoDB compatibility
                 update_configuration('Schema', {'Schema': resolved_schema})
             
             # Update Default configuration

@@ -157,19 +157,11 @@ class TestSummarizationService:
 
     def test_extract_json_code_block(self):
         """Test extracting JSON from code block format."""
-        text = 'Here is the summary:\n```json\n{"summary": "This is a summary", "key_points": ["Point 1", "Point 2"]}\n```\nI hope this helps!'
-        service = SummarizationService(
-            region="us-west-2",
-            config={
-                "summarization": {
-                    "model": "test-model",
-                    "system_prompt": "test",
-                    "task_prompt": "test",
-                }
-            },
-        )
+        from idp_common.utils import extract_json_from_text
 
-        json_str = service._extract_json(text)
+        text = 'Here is the summary:\n```json\n{"summary": "This is a summary", "key_points": ["Point 1", "Point 2"]}\n```\nI hope this helps!'
+
+        json_str = extract_json_from_text(text)
         parsed = json.loads(json_str)
 
         assert parsed["summary"] == "This is a summary"
@@ -177,19 +169,11 @@ class TestSummarizationService:
 
     def test_extract_json_braces(self):
         """Test extracting JSON between braces."""
-        text = 'Here is the summary: {"summary": "This is a summary", "key_points": ["Point 1", "Point 2"]} I hope this helps!'
-        service = SummarizationService(
-            region="us-west-2",
-            config={
-                "summarization": {
-                    "model": "test-model",
-                    "system_prompt": "test",
-                    "task_prompt": "test",
-                }
-            },
-        )
+        from idp_common.utils import extract_json_from_text
 
-        json_str = service._extract_json(text)
+        text = 'Here is the summary: {"summary": "This is a summary", "key_points": ["Point 1", "Point 2"]} I hope this helps!'
+
+        json_str = extract_json_from_text(text)
         parsed = json.loads(json_str)
 
         assert parsed["summary"] == "This is a summary"
@@ -197,19 +181,11 @@ class TestSummarizationService:
 
     def test_extract_json_normalized(self):
         """Test extracting JSON with normalization."""
-        text = 'Here is the summary: {\n"summary": "This is a summary",\n"key_points": ["Point 1", "Point 2"]\n} I hope this helps!'
-        service = SummarizationService(
-            region="us-west-2",
-            config={
-                "summarization": {
-                    "model": "test-model",
-                    "system_prompt": "test",
-                    "task_prompt": "test",
-                }
-            },
-        )
+        from idp_common.utils import extract_json_from_text
 
-        json_str = service._extract_json(text)
+        text = 'Here is the summary: {\n"summary": "This is a summary",\n"key_points": ["Point 1", "Point 2"]\n} I hope this helps!'
+
+        json_str = extract_json_from_text(text)
         parsed = json.loads(json_str)
 
         assert parsed["summary"] == "This is a summary"
@@ -217,18 +193,9 @@ class TestSummarizationService:
 
     def test_extract_json_empty(self):
         """Test extracting JSON from empty text."""
-        service = SummarizationService(
-            region="us-west-2",
-            config={
-                "summarization": {
-                    "model": "test-model",
-                    "system_prompt": "test",
-                    "task_prompt": "test",
-                }
-            },
-        )
+        from idp_common.utils import extract_json_from_text
 
-        json_str = service._extract_json("")
+        json_str = extract_json_from_text("")
         assert json_str == ""
 
     def test_create_error_summary(self, service):
@@ -539,8 +506,8 @@ class TestSummarizationService:
         assert "<page-number>2</page-number>" in call_args
         assert "<page-number>3</page-number>" in call_args
 
-        # Verify write_content was called twice (JSON and Markdown)
-        assert mock_write_content.call_count == 2
+        # Verify write_content was called three times (JSON, fulltext, and Markdown)
+        assert mock_write_content.call_count == 3
 
         # Verify document has summarization_result
         assert result.summarization_result is not None

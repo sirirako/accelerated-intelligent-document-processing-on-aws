@@ -23,6 +23,8 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   EvaluationStatus: String
   SummaryReportUri: String
   ExpiresAfter: AWSTimestamp
+  HITLStatus: String
+  HITLReviewURL: String
 }
 
 type Section @aws_cognito_user_pools @aws_iam {
@@ -57,6 +59,8 @@ type DocumentListItem implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
     ObjectKey: ID
     InitialEventTime: AWSDateTime
     ExpiresAfter: AWSTimestamp
+    HITLStatus: String
+    HITLReviewURL: String
 }
 
 type ConfigurationResponse @aws_cognito_user_pools @aws_iam {
@@ -151,6 +155,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   getFileContents(s3Uri: String!): FileContentsResponse
   getConfiguration: ConfigurationResponse
   queryKnowledgeBase(input: String!, sessionId: String): String
+  chatWithDocument(s3Uri: String!, prompt: String!): String
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {

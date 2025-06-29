@@ -5,6 +5,76 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.5]
+
+### Added
+- **Human-in-the-Loop (HITL) Support - Pattern 1**
+  - Added comprehensive Human-in-the-Loop review capabilities using Amazon SageMaker Augmented AI (A2I)
+  - **Key Features**:
+    - Automatic triggering when extraction confidence falls below configurable threshold
+    - Integration with SageMaker A2I Review Portal for human validation and correction
+    - Configurable confidence threshold through Web UI Portal Configuration tab (0.0-1.0 range)
+    - Seamless result integration with human-verified data automatically updating source results
+  - **Workflow Integration**: 
+    - HITL tasks created automatically when confidence thresholds are not met
+    - Reviewers can validate correct extractions or make necessary corrections through the Review Portal
+    - Document processing continues with human-verified data after review completion
+  - **Configuration Management**:
+    - `EnableHITL` parameter for feature toggle
+    - Confidence threshold configurable via Web UI without stack redeployment
+    - Support for existing private workforce work teams via input parameter
+  - **CloudFormation Output**: Added `SageMakerA2IReviewPortalURL` for easy access to review portal
+  - **Known Limitations**: Current A2I version cannot provide direct hyperlinks to specific document tasks; template updates require resource recreation
+- **Document Compression for Large Documents - all patterns**
+  - Added automatic compression support to handle large documents and avoid exceeding Step Functions payload limits (256KB)
+  - **Key Features**:
+    - Automatic compression (default trigger threshold of 0KB enables compression by default)
+    - Transparent handling of both compressed and uncompressed documents in Lambda functions
+    - Temporary S3 storage for compressed document state with automatic cleanup via lifecycle policies
+  - **New Utility Methods**:
+    - `Document.load_document()`: Automatically detects and decompresses document input from Lambda events
+    - `Document.serialize_document()`: Automatically compresses large documents for Lambda responses
+    - `Document.compress()` and `Document.decompress()`: Compression/decompression methods
+  - **Lambda Function Integration**: All relevant Lambda functions updated to use compression utilities
+  - **Resolves Step Functions Errors**: Eliminates "result with a size exceeding the maximum number of bytes service limit" errors for large multi-page documents
+- **Multi-Backend OCR Support - Pattern 2 and 3**
+  - Textract Backend (default): Existing AWS Textract functionality
+  - Bedrock Backend: New LLM-based OCR using Claude/Nova models
+  - None Backend: Image-only processing without OCR
+- **Bedrock OCR Integration - Pattern 2 and 3**
+  - Customizable system and task prompts for OCR optimization
+  - Better handling of complex documents, tables, and forms
+  - Layout preservation capabilities
+- **Image Preprocessing - Pattern 2 and 3**
+  - Adaptive Binarization: Improves OCR accuracy on documents with:
+    - Uneven lighting or shadows
+    - Low contrast text
+    - Background noise or gradients
+  - Optional feature with configurable enable/disable
+- **YAML Parsing Support for LLM Responses - Pattern 2 and 3**
+  - Added comprehensive YAML parsing capabilities to complement existing JSON parsing functionality
+  - New `extract_yaml_from_text()` function with robust multi-strategy YAML extraction:
+    - YAML in ```yaml and ```yml code blocks
+    - YAML with document markers (---)
+    - Pattern-based YAML detection using indentation and key indicators
+  - New `detect_format()` function for automatic format detection returning 'json', 'yaml', or 'unknown'
+  - New unified `extract_structured_data_from_text()` wrapper function that automatically detects and parses both JSON and YAML formats
+  - **Token Efficiency**: YAML typically uses 10-30% fewer tokens than equivalent JSON due to more compact syntax
+  - **Service Integration**: Updated classification service to use the new unified parsing function with automatic fallback between formats
+  - **Comprehensive Testing**: Added 39 new unit tests covering all YAML extraction strategies, format detection, and edge cases
+  - **Backward Compatibility**: All existing JSON functionality preserved unchanged, new functionality is purely additive
+  - **Intelligent Fallback**: Robust fallback mechanism handles cases where preferred format fails (e.g., JSON requested as YAML falls back to JSON)
+  - **Production Ready**: Handles malformed content gracefully, comprehensive error handling and logging
+  - **Example Notebook**: Added `notebooks/examples/step3_extraction_using_yaml.ipynb` demonstrating YAML-based extraction with automatic format detection and token efficiency benefits
+
+### Fixed
+- **Enhanced JSON Extraction from LLM Responses (Issue #16)**
+  - Modularized duplicate `_extract_json()` functions across classification, extraction, summarization, and assessment services into a common `extract_json_from_text()` utility function
+  - Improved multi-line JSON handling with literal newlines in string values that previously caused parsing failures
+  - Added robust JSON validation and multiple fallback strategies for better extraction reliability
+  - Enhanced string parsing with proper escape sequence handling for quotes and newlines
+  - Added comprehensive unit tests covering various JSON formats including multi-line scenarios
+
 ## [0.3.4]
 
 ### Added

@@ -435,6 +435,11 @@ function build_main_template() {
   # Generate configuration file list for explicit copying
   local CONFIG_FILE_LIST=$(generate_config_file_list)
   
+  # Calculate hashes for custom resource Lambda functions
+  WORKFORCE_URL_HASH=$(calculate_hash "./src/lambda/get-workforce-url")
+  A2I_RESOURCES_HASH=$(calculate_hash "./src/lambda/create_a2i_resources")
+  COGNITO_CLIENT_HASH=$(calculate_hash "./src/lambda/cognito_updater_hitl")
+  
   echo "Inline edit main template to replace:"
   echo "   <VERSION> with: $VERSION"
   echo "   <BUILD_DATE_TIME> with: $BUILD_DATE_TIME"
@@ -445,6 +450,9 @@ function build_main_template() {
   echo "   <HASH_TOKEN> with: $HASH"
   echo "   <CONFIG_LIBRARY_HASH_TOKEN> with: $CONFIG_LIBRARY_HASH"
   echo "   <CONFIG_FILES_LIST_TOKEN> with file list: $CONFIG_FILE_LIST"
+  echo "   <WORKFORCE_URL_HASH_TOKEN> with: $WORKFORCE_URL_HASH"
+  echo "   <A2I_RESOURCES_HASH_TOKEN> with: $A2I_RESOURCES_HASH"
+  echo "   <COGNITO_CLIENT_HASH_TOKEN> with: $COGNITO_CLIENT_HASH"
   
   # Use a more reliable approach for multiple sed replacements
   sed -e "s|<VERSION>|$VERSION|g" \
@@ -456,6 +464,9 @@ function build_main_template() {
       -e "s|<HASH_TOKEN>|$HASH|g" \
       -e "s|<CONFIG_LIBRARY_HASH_TOKEN>|$CONFIG_LIBRARY_HASH|g" \
       -e "s|<CONFIG_FILES_LIST_TOKEN>|$CONFIG_FILE_LIST|g" \
+      -e "s|<WORKFORCE_URL_HASH_TOKEN>|$WORKFORCE_URL_HASH|g" \
+      -e "s|<A2I_RESOURCES_HASH_TOKEN>|$A2I_RESOURCES_HASH|g" \
+      -e "s|<COGNITO_CLIENT_HASH_TOKEN>|$COGNITO_CLIENT_HASH|g" \
       .aws-sam/packaged.yaml > .aws-sam/${MAIN_TEMPLATE}
   
   # Upload and validate main template
@@ -521,6 +532,8 @@ check_parameters
 check_prerequisites
 setup_artifacts_bucket
 
+echo "Delete temp files in ./lib"
+rm -fr ./lib/build ./lib/idp_common_pkg/idp_common.egg-info
 # Clean previous files from package common library
 clean_lib
 

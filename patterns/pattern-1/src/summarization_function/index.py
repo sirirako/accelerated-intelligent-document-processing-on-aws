@@ -41,8 +41,13 @@ def handler(event, context):
         if not document_dict:
             raise ValueError("No document data provided")
         
-        # Convert dict to Document object
-        document = Document.from_dict(document_dict)
+        # Get working bucket and load document using new utility method
+        working_bucket = os.environ.get('WORKING_BUCKET')
+        if not working_bucket:
+            raise ValueError("WORKING_BUCKET environment variable not set")
+        
+        # Convert dict to Document object using new utility method
+        document = Document.load_document(document_dict, working_bucket, logger)
         
         # Update document status to SUMMARIZING
         document.status = Status.SUMMARIZING
@@ -71,9 +76,9 @@ def handler(event, context):
         else:
             logger.warning("Document summarization completed but no summary report URI was set")
         
-        # Return the processed document
+        # Return the processed document using new serialization method
         return {
-            'document': processed_document.to_dict(),
+            'document': processed_document.serialize_document(working_bucket, "summarization", logger),
         }
         
     except Exception as e:

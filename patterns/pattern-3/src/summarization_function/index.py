@@ -35,14 +35,15 @@ def handler(event, context):
     start_time = time.time()
     
     try:
-        # Get required parameters
-        document_dict = event.get('document', {})
+        # Get required parameters - handle both compressed and uncompressed
+        document_data = event.get('document', {})
         
-        if not document_dict:
+        if not document_data:
             raise ValueError("No document data provided")
         
-        # Convert dict to Document object
-        document = Document.from_dict(document_dict)
+        # Convert data to Document object - handle compression
+        working_bucket = os.environ.get('WORKING_BUCKET')
+        document = Document.load_document(document_data, working_bucket, logger)
         
         # Update document status to SUMMARIZING
         document.status = Status.SUMMARIZING
@@ -71,9 +72,9 @@ def handler(event, context):
         else:
             logger.warning("Document summarization completed but no summary report URI was set")
         
-        # Return the processed document
+        # Prepare output with automatic compression if needed
         return {
-            'document': processed_document.to_dict(),
+            'document': processed_document.serialize_document(working_bucket, "summarization", logger),
         }
         
     except Exception as e:

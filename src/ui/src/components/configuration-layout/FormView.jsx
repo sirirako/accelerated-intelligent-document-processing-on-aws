@@ -1276,6 +1276,8 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
         <Input
           value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
           type={property.type === 'number' ? 'number' : 'text'}
+          min={property.minimum}
+          max={property.maximum}
           onChange={({ detail }) => {
             let finalValue = detail.value;
             if (property.type === 'number' && detail.value !== '') {
@@ -1283,6 +1285,7 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
             }
             updateValue(path, finalValue);
           }}
+          placeholder={undefined}
         />
       );
     }
@@ -1303,10 +1306,13 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       input
     );
 
+    // Use standard constraints
+    const finalConstraints = constraints.length > 0 ? constraints : undefined;
+
     return (
       <FormField
         label={displayText}
-        constraintText={constraints.length > 0 ? constraints : undefined}
+        constraintText={finalConstraints}
         stretch
         className={`compact-form-field ${isFieldCustomized ? 'modified-field' : ''}`}
       >
