@@ -56,8 +56,9 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
             workflow_result = output_data.get("Result", {})
             
             if "document" in workflow_result:
-                # Get document from the final processing step - this contains all data
-                processed_doc = Document.from_dict(workflow_result.get("document", {}))
+                # Get document from the final processing step - handle both compressed and uncompressed
+                working_bucket = os.environ.get('WORKING_BUCKET')
+                processed_doc = Document.handle_input_document(workflow_result.get("document", {}), working_bucket, logger)
                 
                 # Copy data from processed document to our update document
                 document.num_pages = processed_doc.num_pages

@@ -31,12 +31,28 @@ def handler(event, context):
     logger.info(f"Config: {json.dumps(config)}")
     
     # For Map state, we get just one section from the document
-    # Extract the document and section from the event
-    full_document = Document.from_dict(event.get("document", {}))
-    section = Section.from_dict(event.get("section", {}))
+    # Extract the document and section from the event - handle both compressed and uncompressed
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    full_document = Document.handle_input_document(event.get("document", {}), working_bucket, logger)
     
-    # Get the section ID for later use
-    section_id = section.section_id
+    # Get the section ID from the Map state input
+    section_input = event.get("section", {})
+    section_id = section_input.get("section_id")
+    
+    if not section_id:
+        raise ValueError("No section_id found in event")
+    
+    # Look up the full section from the decompressed document
+    section = None
+    for doc_section in full_document.sections:
+        if doc_section.section_id == section_id:
+            section = doc_section
+            break
+    
+    if not section:
+        raise ValueError(f"Section {section_id} not found in document")
+    
+    logger.info(f"Processing section {section_id} with {len(section.page_ids)} pages")
     
     # Update document status to EXTRACTING
     full_document.status = Status.EXTRACTING
@@ -78,11 +94,10 @@ def handler(event, context):
         logger.error(error_message)
         raise Exception(error_message)
     
-    # Return section extraction result with the document
-    # The state machine will later combine all section results
+    # Prepare output with automatic compression if needed
     response = {
         "section_id": section_id,
-        "document": section_document.to_dict()
+        "document": section_document.prepare_output(working_bucket, f"extraction_{section_id}", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

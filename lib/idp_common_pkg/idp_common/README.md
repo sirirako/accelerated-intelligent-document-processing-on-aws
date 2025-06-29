@@ -61,7 +61,7 @@ results = reporter.save(document, data_to_save=["evaluation_results"])
 
 ### Document
 
-The `Document` class is the central data structure for the entire IDP pipeline:
+The `Document` class is the central data structure for the entire IDP pipeline with automatic compression support for large documents:
 
 ```python
 @dataclass
@@ -69,6 +69,9 @@ class Document:
     """
     Core document type that is passed through the processing pipeline.
     Each processing step enriches this object.
+    
+    The Document class provides comprehensive support for handling large documents
+    in Step Functions workflows through automatic compression and decompression.
     """
     # Core identifiers
     id: Optional[str] = None            # Generated document ID
@@ -154,6 +157,74 @@ class Status(Enum):
     SUMMARIZING = "SUMMARIZING" # Document summarization
     COMPLETED = "COMPLETED"     # All processing completed
     FAILED = "FAILED"           # Processing failed
+```
+
+## Document Compression for Large Documents
+
+The Document class includes automatic compression support to handle large documents that exceed Step Functions payload limits (256KB). This is essential for processing multi-page documents with extensive content.
+
+### Compression Methods
+
+```python
+# Automatic compression when document exceeds threshold
+compressed_data = document.compress(working_bucket, "processing_step")
+# Returns: {"document_id": "...", "s3_uri": "...", "section_ids": [...], "compressed": True}
+
+# Restore full document from compressed data
+restored_document = Document.decompress(working_bucket, compressed_data)
+
+# Handle either compressed or regular document data
+document = Document.from_compressed_or_dict(data, working_bucket)
+```
+
+### Utility Methods for Lambda Functions
+
+```python
+# Handle input - automatically detects and decompresses if needed
+document = Document.handle_input_document(
+    event_data=event["document"], 
+    working_bucket=working_bucket, 
+    logger=logger
+)
+
+# Prepare output - automatically compresses if document is large
+response_data = document.prepare_output(
+    working_bucket=working_bucket, 
+    step_name="classification", 
+    logger=logger,
+    size_threshold_kb=200  # Optional: custom threshold
+)
+```
+
+### Key Features
+
+- **Automatic Detection**: Utility methods automatically detect compressed vs uncompressed documents
+- **Size Threshold**: Configurable compression threshold (default 0KB - always compress)
+- **Section Preservation**: Section IDs are preserved in compressed payloads for Step Functions Map operations
+- **Transparent Handling**: Lambda functions work seamlessly with both compressed and uncompressed documents
+- **S3 Storage**: Compressed documents are stored in `s3://working-bucket/compressed_documents/{document_id}/`
+
+### Usage in Lambda Functions
+
+```python
+import os
+from idp_common.models import Document
+
+def lambda_handler(event, context):
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    
+    # Input handling - works with both compressed and uncompressed documents
+    document = Document.handle_input_document(
+        event["document"], working_bucket, logger
+    )
+    
+    # Your processing logic here...
+    # document = process_document(document)
+    
+    # Output handling - automatically compresses if needed
+    return {
+        "document": document.prepare_output(working_bucket, "step_name", logger)
+    }
 ```
 
 ## Common Class Operations

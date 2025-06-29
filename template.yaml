@@ -796,6 +796,7 @@ Resources:
         InputBucket: !Ref InputBucket
         ConfigurationBucket: !Ref ConfigurationBucket
         OutputBucket: !Ref OutputBucket
+        WorkingBucket: !Ref WorkingBucket
         TrackingTable: !Ref TrackingTable
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         LogRetentionDays: !Ref LogRetentionDays
@@ -2185,6 +2186,7 @@ Resources:
           OUTPUT_BUCKET: !Ref OutputBucket
           REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
           SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
+          WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
@@ -2406,6 +2408,7 @@ Resources:
             - !Ref EvaluationBaselineBucketName
           SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable

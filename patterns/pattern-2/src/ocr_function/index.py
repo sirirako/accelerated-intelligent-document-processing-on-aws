@@ -122,9 +122,10 @@ def handler(event, context):
     t1 = time.time()
     logger.info(f"Total OCR processing time: {t1-t0:.2f} seconds")
     
-    # Return the document as a dict - it will be passed to the next function
+    # Prepare output with automatic compression if needed
+    working_bucket = os.environ.get('WORKING_BUCKET')
     response = {
-        "document": document.to_dict()
+        "document": document.prepare_output(working_bucket, "ocr", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
