@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
-- **Document Compression for Large Documents**
+- **Document Compression for Large Documents - all patterns**
   - Added automatic compression support to handle large documents and avoid exceeding Step Functions payload limits (256KB)
   - **Key Features**:
     - Automatic compression (default trigger threshold of 0KB enables compression by default)
