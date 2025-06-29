@@ -23,6 +23,7 @@ from idp_common import bedrock, s3, utils
 from idp_common.models import Document, Status
 from idp_common.summarization.markdown_formatter import SummaryMarkdownFormatter
 from idp_common.summarization.models import DocumentSummarizationResult, DocumentSummary
+from idp_common.utils import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -107,99 +108,6 @@ class SummarizationService:
 
         return config
 
-    def _extract_json(self, text: str) -> str:
-        """
-        Extract JSON string from text with improved multi-line handling.
-
-        This enhanced version handles JSON with literal newlines and provides
-        multiple fallback strategies for robust JSON extraction.
-        """
-        if not text:
-            logger.warning("Empty text provided to _extract_json")
-            return text
-
-        # Strategy 1: Check for code block format
-        if "```json" in text:
-            start_idx = text.find("```json") + len("```json")
-            end_idx = text.find("```", start_idx)
-            if end_idx > start_idx:
-                json_str = text[start_idx:end_idx].strip()
-                try:
-                    # Test if it's valid JSON
-                    json.loads(json_str)
-                    return json_str
-                except json.JSONDecodeError:
-                    logger.debug(
-                        "Found code block but content is not valid JSON, trying other strategies"
-                    )
-
-        # Strategy 2: Extract JSON between braces and try direct parsing
-        if "{" in text and "}" in text:
-            start_idx = text.find("{")
-            # Find matching closing brace
-            open_braces = 0
-            for i in range(start_idx, len(text)):
-                if text[i] == "{":
-                    open_braces += 1
-                elif text[i] == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        json_str = text[start_idx : i + 1].strip()
-                        try:
-                            # Test if it's valid JSON as-is
-                            json.loads(json_str)
-                            return json_str
-                        except json.JSONDecodeError:
-                            # If direct parsing fails, continue to next strategy
-                            logger.debug(
-                                "Found JSON-like content but direct parsing failed, trying normalization"
-                            )
-                            break
-
-        # Strategy 3: Try to extract JSON using more aggressive methods
-        try:
-            # Find the outermost braces
-            if "{" in text and "}" in text:
-                start_idx = text.find("{")
-                end_idx = text.rfind("}")  # Use rfind to get the last closing brace
-                if end_idx > start_idx:
-                    json_str = text[start_idx : end_idx + 1]
-
-                    # Try parsing as-is first
-                    try:
-                        json.loads(json_str)
-                        return json_str
-                    except json.JSONDecodeError:
-                        pass
-
-                    # Try normalizing the JSON string
-                    try:
-                        # Method 1: Handle literal newlines by replacing with spaces
-                        normalized_json = " ".join(
-                            line.strip() for line in json_str.splitlines()
-                        )
-                        json.loads(normalized_json)
-                        return normalized_json
-                    except json.JSONDecodeError:
-                        pass
-
-                    # Method 2: Try a more aggressive approach with regex
-                    import re
-
-                    try:
-                        # Remove extra whitespace but preserve structure
-                        normalized_json = re.sub(r"\s+", " ", json_str)
-                        json.loads(normalized_json)
-                        return normalized_json
-                    except json.JSONDecodeError:
-                        logger.debug("All normalization attempts failed")
-        except Exception as e:
-            logger.warning(f"Error during JSON extraction: {str(e)}")
-
-        # If all strategies fail, return the original text
-        logger.warning("Could not extract valid JSON, returning original text")
-        return text
-
     def _invoke_bedrock_model(
         self, content: List[Dict[str, Any]], config: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -281,7 +189,7 @@ class SummarizationService:
 
             # Try to extract JSON from the response
             try:
-                summary_json = self._extract_json(summary_text)
+                summary_json = extract_json_from_text(summary_text)
                 summary_data = json.loads(summary_json)
 
                 # If the summary is in the expected format with a "summary" field containing markdown

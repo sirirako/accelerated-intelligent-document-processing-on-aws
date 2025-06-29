@@ -11,6 +11,38 @@ import time
 sagemaker = boto3.client('sagemaker')
 sts = boto3.client('sts')
 
+def get_remaining_time_in_millis(context):
+    """
+    Get remaining execution time for the Lambda function.
+    
+    Args:
+        context: Lambda context object
+        
+    Returns:
+        int: Remaining time in milliseconds
+    """
+    if context and hasattr(context, 'get_remaining_time_in_millis'):
+        return context.get_remaining_time_in_millis()
+    return 300000  # Default to 5 minutes if context is not available
+
+def calculate_safe_wait_time(context, default_wait_time, buffer_time=30):
+    """
+    Calculate a safe wait time that doesn't exceed Lambda timeout.
+    
+    Args:
+        context: Lambda context object
+        default_wait_time (int): Default wait time in seconds
+        buffer_time (int): Buffer time in seconds to leave for cleanup
+        
+    Returns:
+        int: Safe wait time in seconds
+    """
+    remaining_ms = get_remaining_time_in_millis(context)
+    remaining_seconds = remaining_ms // 1000
+    safe_wait_time = max(30, remaining_seconds - buffer_time)  # Minimum 30 seconds
+    
+    return min(default_wait_time, safe_wait_time)
+
 def sanitize_name(name, max_length=63):
     """
     Convert a name to AWS-compliant format for HumanTaskUI
@@ -262,7 +294,7 @@ def create_human_task_ui(human_task_ui_name):
                                 <crowd-input 
                                     name="{{ pair.key | escape }}" 
                                     value="{{ pair.value | escape }}"
-                                    required>
+                                    >
                                 </crowd-input>
                                 <p class="confidence-{% if pair.confidence < task.input.confidenceThreshold %}low{% else %}high{% endif %}">
                                     Confidence: {{ pair.confidence | round: 2 }}
@@ -543,7 +575,24 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
         except Exception as workforce_list_error:
             cleanup_results.append(f"Workforce listing/cleanup failed: {workforce_list_error}")
         
-        # Step 5: Final verification - check both workteam and workforce status
+        # Step 5: Clean up default workforce if it exists
+        print("Checking for default workforce...")
+        try:
+            sagemaker.describe_workforce(WorkforceName='default')
+            print("Default workforce found, attempting cleanup...")
+            try:
+                sagemaker.delete_workforce(WorkforceName='default')
+                cleanup_results.append("Successfully deleted default workforce")
+                time.sleep(5)  # Wait for deletion to propagate
+            except Exception as default_workforce_error:
+                cleanup_results.append(f"Could not delete default workforce: {default_workforce_error}")
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                cleanup_results.append("Default workforce does not exist or already deleted")
+            else:
+                cleanup_results.append(f"Error checking default workforce: {e}")
+        
+        # Step 6: Final verification - check both workteam and workforce status
         print("Performing final verification...")
         try:
             time.sleep(5)
@@ -579,20 +628,219 @@ def comprehensive_workforce_cleanup(workteam_name, stack_name):
         return cleanup_results
 
 
-def delete_flow_definition(flow_definition_name):
+def wait_for_flow_definition_deletion(flow_definition_name, max_wait_time=180, check_interval=10, context=None):
+    """
+    Wait for flow definition to be completely deleted before proceeding.
+    
+    Args:
+        flow_definition_name (str): Name of the flow definition
+        max_wait_time (int): Maximum time to wait in seconds (default: 3 minutes)
+        check_interval (int): Time between checks in seconds (default: 10 seconds)
+        context: Lambda context for timeout management
+    
+    Returns:
+        bool: True if deletion is confirmed, False if timeout or error
+    """
+    # Adjust wait time based on remaining Lambda execution time
+    if context:
+        safe_wait_time = calculate_safe_wait_time(context, max_wait_time, buffer_time=60)
+        if safe_wait_time < max_wait_time:
+            print(f"Adjusting flow definition wait time from {max_wait_time}s to {safe_wait_time}s due to Lambda timeout constraints")
+            max_wait_time = safe_wait_time
+    
+    print(f"Waiting for flow definition '{flow_definition_name}' to be completely deleted (max {max_wait_time}s)...")
+    start_time = time.time()
+    
+    while time.time() - start_time < max_wait_time:
+        try:
+            # Try to describe the flow definition
+            sagemaker.describe_flow_definition(FlowDefinitionName=flow_definition_name)
+            elapsed = int(time.time() - start_time)
+            print(f"Flow definition still exists, waiting... ({elapsed}s elapsed)")
+            time.sleep(check_interval)
+        except sagemaker.exceptions.ResourceNotFound:
+            elapsed = int(time.time() - start_time)
+            print(f"Flow definition '{flow_definition_name}' successfully deleted after {elapsed}s")
+            return True
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                elapsed = int(time.time() - start_time)
+                print(f"Flow definition '{flow_definition_name}' successfully deleted after {elapsed}s")
+                return True
+            else:
+                print(f"Error checking flow definition status: {e}")
+                time.sleep(check_interval)
+    
+    print(f"Timeout waiting for flow definition deletion after {max_wait_time}s")
+    return False
+
+
+def wait_for_human_task_ui_deletion(human_task_ui_name, max_wait_time=120, check_interval=5, context=None):
+    """
+    Wait for human task UI to be completely deleted before proceeding.
+    
+    Args:
+        human_task_ui_name (str): Name of the human task UI
+        max_wait_time (int): Maximum time to wait in seconds (default: 2 minutes)
+        check_interval (int): Time between checks in seconds (default: 5 seconds)
+        context: Lambda context for timeout management
+    
+    Returns:
+        bool: True if deletion is confirmed, False if timeout or error
+    """
+    # Adjust wait time based on remaining Lambda execution time
+    if context:
+        safe_wait_time = calculate_safe_wait_time(context, max_wait_time, buffer_time=30)
+        if safe_wait_time < max_wait_time:
+            print(f"Adjusting human task UI wait time from {max_wait_time}s to {safe_wait_time}s due to Lambda timeout constraints")
+            max_wait_time = safe_wait_time
+    
+    print(f"Waiting for human task UI '{human_task_ui_name}' to be completely deleted (max {max_wait_time}s)...")
+    start_time = time.time()
+    
+    while time.time() - start_time < max_wait_time:
+        try:
+            # Try to describe the human task UI
+            sagemaker.describe_human_task_ui(HumanTaskUiName=human_task_ui_name)
+            elapsed = int(time.time() - start_time)
+            print(f"Human task UI still exists, waiting... ({elapsed}s elapsed)")
+            time.sleep(check_interval)
+        except sagemaker.exceptions.ResourceNotFound:
+            elapsed = int(time.time() - start_time)
+            print(f"Human task UI '{human_task_ui_name}' successfully deleted after {elapsed}s")
+            return True
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                elapsed = int(time.time() - start_time)
+                print(f"Human task UI '{human_task_ui_name}' successfully deleted after {elapsed}s")
+                return True
+            else:
+                print(f"Error checking human task UI status: {e}")
+                time.sleep(check_interval)
+    
+    print(f"Timeout waiting for human task UI deletion after {max_wait_time}s")
+    return False
+
+
+def delete_flow_definition(flow_definition_name, context=None):
+    """
+    Delete flow definition and wait for completion.
+    
+    Args:
+        flow_definition_name (str): Name of the flow definition to delete
+        context: Lambda context for timeout management
+        
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
     try:
+        # First check if the flow definition exists
+        try:
+            sagemaker.describe_flow_definition(FlowDefinitionName=flow_definition_name)
+        except sagemaker.exceptions.ResourceNotFound:
+            print(f"Flow Definition '{flow_definition_name}' does not exist, skipping deletion.")
+            return True
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                print(f"Flow Definition '{flow_definition_name}' does not exist, skipping deletion.")
+                return True
+        
+        # Attempt deletion
         sagemaker.delete_flow_definition(FlowDefinitionName=flow_definition_name)
-        print(f"Flow Definition '{flow_definition_name}' deleted successfully.")
+        print(f"Flow Definition '{flow_definition_name}' deletion initiated.")
+        
+        # Wait for deletion to complete
+        return wait_for_flow_definition_deletion(flow_definition_name, context=context)
+        
     except Exception as e:
         print(f"Error deleting Flow Definition '{flow_definition_name}': {e}")
+        return False
 
 
-def delete_human_task_ui(human_task_ui_name):
+def delete_default_workforce():
+    """
+    Delete the default SageMaker workforce.
+    
+    Returns:
+        bool: True if deletion was successful or workforce doesn't exist, False otherwise
+    """
     try:
+        # First check if the default workforce exists
+        try:
+            workforce_response = sagemaker.describe_workforce(WorkforceName='default')
+            print("Default workforce found, attempting deletion...")
+        except sagemaker.exceptions.ResourceNotFound:
+            print("Default workforce does not exist, skipping deletion.")
+            return True
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                print("Default workforce does not exist, skipping deletion.")
+                return True
+            else:
+                print(f"Error checking default workforce existence: {e}")
+                return False
+        
+        # Attempt to delete the default workforce
+        sagemaker.delete_workforce(WorkforceName='default')
+        print("Default workforce deletion initiated successfully.")
+        
+        # Wait a bit for the deletion to propagate
+        time.sleep(5)
+        
+        # Verify deletion
+        try:
+            sagemaker.describe_workforce(WorkforceName='default')
+            print("Warning: Default workforce still exists after deletion attempt")
+            return False
+        except sagemaker.exceptions.ResourceNotFound:
+            print("Default workforce successfully deleted.")
+            return True
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                print("Default workforce successfully deleted.")
+                return True
+            else:
+                print(f"Error verifying default workforce deletion: {e}")
+                return False
+                
+    except Exception as e:
+        print(f"Error deleting default workforce: {e}")
+        return False
+
+
+def delete_human_task_ui(human_task_ui_name, context=None):
+    """
+    Delete human task UI and wait for completion.
+    
+    Args:
+        human_task_ui_name (str): Name of the human task UI to delete
+        context: Lambda context for timeout management
+        
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # First check if the human task UI exists
+        try:
+            sagemaker.describe_human_task_ui(HumanTaskUiName=human_task_ui_name)
+        except sagemaker.exceptions.ResourceNotFound:
+            print(f"HumanTaskUI '{human_task_ui_name}' does not exist, skipping deletion.")
+            return True
+        except Exception as e:
+            if 'ValidationException' in str(e) or 'ResourceNotFound' in str(e):
+                print(f"HumanTaskUI '{human_task_ui_name}' does not exist, skipping deletion.")
+                return True
+        
+        # Attempt deletion
         sagemaker.delete_human_task_ui(HumanTaskUiName=human_task_ui_name)
-        print(f"HumanTaskUI '{human_task_ui_name}' deleted successfully.")
+        print(f"HumanTaskUI '{human_task_ui_name}' deletion initiated.")
+        
+        # Wait for deletion to complete
+        return wait_for_human_task_ui_deletion(human_task_ui_name, context=context)
+        
     except Exception as e:
         print(f"Error deleting HumanTaskUI '{human_task_ui_name}': {e}")
+        return False
 
 def handler(event, context):
     stack_name = os.environ['STACK_NAME']
@@ -603,10 +851,16 @@ def handler(event, context):
     human_task_ui_name = resource_names['human_task_ui']
     flow_definition_name = resource_names['flow_definition']
     
+    # Create a consistent Physical Resource ID based on stack name
+    # This ensures CloudFormation recognizes this as the same resource across updates
+    physical_resource_id = f"A2IResources-{stack_name}"
+    
     ssm = boto3.client('ssm')
     
     # For debugging
     print(f"Event received: {json.dumps(event)}")
+    print(f"Request Type: {event.get('RequestType')}")
+    print(f"Physical Resource ID: {physical_resource_id}")
     print(f"Using AWS-compliant names: HumanTaskUI={human_task_ui_name}, FlowDefinition={flow_definition_name}")
     
     response_data = {}
@@ -645,24 +899,49 @@ def handler(event, context):
                     
                     response_data['HumanTaskUiArn'] = human_task_ui_arn
                     response_data['FlowDefinitionArn'] = flow_definition_arn
-                    send_cfn_response(event, context, 'SUCCESS', response_data)
+                    send_cfn_response(event, context, 'SUCCESS', response_data, physical_resource_id)
                 else:
                     print("Failed to create flow definition")
-                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create flow definition'})
+                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create flow definition'}, physical_resource_id)
                     return
             else:
                 print("Failed to create human task UI")
-                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create human task UI'})
+                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create human task UI'}, physical_resource_id)
                 return
         
         elif event.get('RequestType') == 'Update':
             print("Updating A2I Resources...")
             # Ignore the SourceCodeHash property as it's only used to force updates
             _ = event['ResourceProperties'].get('SourceCodeHash')
-            delete_flow_definition(flow_definition_name)
-            delete_human_task_ui(human_task_ui_name)
             
-            human_task_ui_arn = create_human_task_ui(stack_name)
+            # Step 1: Delete existing resources and wait for completion
+            print("Deleting existing Flow Definition...")
+            flow_deletion_success = delete_flow_definition(flow_definition_name, context)
+            
+            print("Deleting existing Human Task UI...")
+            ui_deletion_success = delete_human_task_ui(human_task_ui_name, context)
+            
+            # Step 2: Verify deletions were successful
+            if not flow_deletion_success:
+                error_msg = f"Failed to delete existing Flow Definition '{flow_definition_name}' within timeout period"
+                print(error_msg)
+                send_cfn_response(event, context, 'FAILED', {'Error': error_msg}, physical_resource_id)
+                return
+                
+            if not ui_deletion_success:
+                error_msg = f"Failed to delete existing Human Task UI '{human_task_ui_name}' within timeout period"
+                print(error_msg)
+                send_cfn_response(event, context, 'FAILED', {'Error': error_msg}, physical_resource_id)
+                return
+            
+            print("All existing resources successfully deleted. Proceeding with recreation...")
+            
+            # Step 3: Add additional buffer time to ensure AWS services are ready
+            print("Adding buffer time for AWS service consistency...")
+            time.sleep(10)
+            
+            # Step 4: Create new resources
+            human_task_ui_arn = create_human_task_ui(human_task_ui_name)
             if human_task_ui_arn:
                 flow_definition_arn = create_flow_definition(stack_name, human_task_ui_arn, a2i_workteam_arn, flow_definition_name)
                 if flow_definition_arn:
@@ -675,25 +954,40 @@ def handler(event, context):
                     )
                     response_data['HumanTaskUiArn'] = human_task_ui_arn
                     response_data['FlowDefinitionArn'] = flow_definition_arn
-                    send_cfn_response(event, context, 'SUCCESS', response_data)
+                    print("A2I Resources updated successfully")
+                    send_cfn_response(event, context, 'SUCCESS', response_data, physical_resource_id)
                 else:
-                    print("Failed to update flow definition")
-                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to update flow definition'})
+                    print("Failed to create new flow definition during update")
+                    send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new flow definition during update'}, physical_resource_id)
                     return
             else:
-                print("Failed to update human task UI")
-                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to update human task UI'})
+                print("Failed to create new human task UI during update")
+                send_cfn_response(event, context, 'FAILED', {'Error': 'Failed to create new human task UI during update'}, physical_resource_id)
                 return
                 
         elif event.get('RequestType') == 'Delete':
             print("Deleting A2I Resources...")
             
-            # Step 1: Delete Flow Definition and Human Task UI first
-            delete_flow_definition(flow_definition_name)
-            delete_human_task_ui(human_task_ui_name)
-            # sagemaker.delete_workforce(WorkforceName='default')
+            # Step 1: Delete Flow Definition and Human Task UI with proper wait
+            print("Deleting Flow Definition...")
+            flow_deletion_success = delete_flow_definition(flow_definition_name, context)
             
-            # Step 2: Perform comprehensive workforce cleanup
+            print("Deleting Human Task UI...")
+            ui_deletion_success = delete_human_task_ui(human_task_ui_name, context)
+            
+            # Log deletion results but don't fail the stack deletion if resources are already gone
+            if not flow_deletion_success:
+                print(f"Warning: Flow Definition '{flow_definition_name}' deletion may not have completed within timeout")
+            if not ui_deletion_success:
+                print(f"Warning: Human Task UI '{human_task_ui_name}' deletion may not have completed within timeout")
+            
+            # Step 2: Delete the default SageMaker workforce
+            print("Deleting default SageMaker workforce...")
+            default_workforce_deletion_success = delete_default_workforce()
+            if not default_workforce_deletion_success:
+                print("Warning: Default workforce deletion may not have completed successfully")
+            
+            # Step 3: Perform comprehensive workforce cleanup
             # Extract workteam name from environment or construct it
             workteam_arn = os.environ.get('A2I_WORKTEAM_ARN', '')
             if workteam_arn:
@@ -709,15 +1003,17 @@ def handler(event, context):
                 print("No workteam ARN found in environment - skipping workforce cleanup")
             
             print("Success in deleting all A2I resources (Flow Definition, Human Task UI, and Workforce)")
-            send_cfn_response(event, context, 'SUCCESS', {})
+            send_cfn_response(event, context, 'SUCCESS', {}, physical_resource_id)
             return
             
         # In case RequestType is not provided or recognized
         else:
             print(f"Unknown RequestType: {event.get('RequestType')}")
-            send_cfn_response(event, context, 'FAILED', {'Error': f"Unknown RequestType: {event.get('RequestType')}"})
+            send_cfn_response(event, context, 'FAILED', {'Error': f"Unknown RequestType: {event.get('RequestType')}"}, physical_resource_id)
             return
     except Exception as e:
         print(f"Error: {str(e)}")
-        send_cfn_response(event, context, 'FAILED', {'Error': str(e)})
+        # Use a fallback physical resource ID if the main one isn't available
+        fallback_physical_resource_id = f"A2IResources-{os.environ.get('STACK_NAME', 'unknown')}"
+        send_cfn_response(event, context, 'FAILED', {'Error': str(e)}, fallback_physical_resource_id)
         return

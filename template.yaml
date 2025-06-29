@@ -65,7 +65,7 @@ Parameters:
     AllowedValues:
       - true
       - false
-    Default: true
+    Default: false
     Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction and classification of BDA is less than configured Confidence Threshold
 
   ExistingPrivateWorkforceArn:
@@ -3603,7 +3603,6 @@ Resources:
                   - ssm:PutParameter
                 Resource: 
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
         - PolicyName: KMSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -3645,7 +3644,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
       Runtime: python3.12
-      Timeout: 600  # Increased timeout for comprehensive cleanup
+      Timeout: 900  # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
       Environment:
         Variables:
           STACK_NAME: !Ref AWS::StackName
@@ -3662,6 +3661,7 @@ Resources:
     Properties:
       ServiceToken: 
         Fn::GetAtt: CreateA2IResourcesLambda.Arn
+      StackName: !Ref AWS::StackName
       SourceCodeHash: <A2I_RESOURCES_HASH_TOKEN>
   
   GetWorkforceURLFunction:
@@ -4395,7 +4395,7 @@ Resources:
                 Action:
                   - ssm:GetParameter
                   - ssm:PutParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/hitl_confidence_threshold'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup

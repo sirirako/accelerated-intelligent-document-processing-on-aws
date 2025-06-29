@@ -303,6 +303,7 @@ summarization:
 
     Do not include any text, explanations, or notes outside of this JSON structure. The JSON must be properly formatted and parseable.
 assessment:
+  default_confidence_threshold: '0.8'
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
