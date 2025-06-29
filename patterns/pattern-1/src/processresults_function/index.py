@@ -1176,9 +1176,9 @@ def handler(event, context):
     
     appsync_service.update_document(document)
     
-    # Prepare response
+    # Prepare response using new serialization method
     response = {
-        "document": document.to_dict(),
+        "document": document.serialize_document(output_bucket, "processresults", logger),
         "hitl_triggered": hitl_triggered,
         "bda_response_count": len(bda_responses)
     }
