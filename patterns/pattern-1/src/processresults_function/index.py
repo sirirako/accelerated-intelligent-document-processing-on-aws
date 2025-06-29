@@ -1177,8 +1177,14 @@ def handler(event, context):
     appsync_service.update_document(document)
     
     # Prepare response using new serialization method
+    # Use working bucket for document compression
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    if not working_bucket:
+        logger.warning("WORKING_BUCKET environment variable not set, using output_bucket for compression")
+        working_bucket = output_bucket
+    
     response = {
-        "document": document.serialize_document(output_bucket, "processresults", logger),
+        "document": document.serialize_document(working_bucket, "processresults", logger),
         "hitl_triggered": hitl_triggered,
         "bda_response_count": len(bda_responses)
     }
