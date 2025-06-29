@@ -5,7 +5,26 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.5]
+
 ### Added
+- **Human-in-the-Loop (HITL) Support - Pattern 1**
+  - Added comprehensive Human-in-the-Loop review capabilities using Amazon SageMaker Augmented AI (A2I)
+  - **Key Features**:
+    - Automatic triggering when extraction confidence falls below configurable threshold
+    - Integration with SageMaker A2I Review Portal for human validation and correction
+    - Configurable confidence threshold through Web UI Portal Configuration tab (0.0-1.0 range)
+    - Seamless result integration with human-verified data automatically updating source results
+  - **Workflow Integration**: 
+    - HITL tasks created automatically when confidence thresholds are not met
+    - Reviewers can validate correct extractions or make necessary corrections through the Review Portal
+    - Document processing continues with human-verified data after review completion
+  - **Configuration Management**:
+    - `EnableHITL` parameter for feature toggle
+    - Confidence threshold configurable via Web UI without stack redeployment
+    - Support for existing private workforce work teams via input parameter
+  - **CloudFormation Output**: Added `SageMakerA2IReviewPortalURL` for easy access to review portal
+  - **Known Limitations**: Current A2I version cannot provide direct hyperlinks to specific document tasks; template updates require resource recreation
 - **Document Compression for Large Documents - all patterns**
   - Added automatic compression support to handle large documents and avoid exceeding Step Functions payload limits (256KB)
   - **Key Features**:
