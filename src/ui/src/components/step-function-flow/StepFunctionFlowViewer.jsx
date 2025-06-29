@@ -16,13 +16,12 @@ const logger = new Logger('StepFunctionFlowViewer');
 
 const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
   const [selectedStep, setSelectedStep] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [isRealTime, setIsRealTime] = useState(false);
-  const [refreshInterval] = useState(3000); // 3 seconds default (removed setter as it's not used)
+  const [subscriptionEnabled, setSubscriptionEnabled] = useState(true);
 
   const fetchStepFunctionExecution = async () => {
     if (!executionArn || !visible) return;
@@ -44,7 +43,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
 
   // Set up real-time subscription
   const setupSubscription = () => {
-    if (!executionArn || subscription) return;
+    if (!executionArn || subscription || !subscriptionEnabled) return;
 
     try {
       const sub = API.graphql(graphqlOperation(onStepFunctionExecutionUpdate, { executionArn })).subscribe({
@@ -57,9 +56,9 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
           }
         },
         error: (err) => {
-          logger.warn('Subscription failed, falling back to polling:', err);
+          logger.warn('Subscription failed:', err);
           setIsRealTime(false);
-          // Continue with polling as fallback
+          // Don't fall back to polling - require manual refresh
         },
       });
 
@@ -89,47 +88,58 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
         </Box>
       );
     }
-    if (autoRefresh) {
+    if (subscriptionEnabled) {
       return (
         <Box variant="small" color="text-status-info">
-          🔄 Auto-refresh ({refreshInterval / 1000}s)
+          🔔 Subscription Enabled
         </Box>
       );
     }
     return (
       <Box variant="small" color="text-status-inactive">
-        ⏸️ Manual refresh only
+        🔕 Subscription Disabled
       </Box>
     );
+  };
+
+  // Toggle subscription
+  const toggleSubscription = () => {
+    if (subscriptionEnabled) {
+      // Disable subscription
+      if (subscription) {
+        subscription.unsubscribe();
+        setSubscription(null);
+      }
+      setIsRealTime(false);
+      setSubscriptionEnabled(false);
+    } else {
+      // Enable subscription
+      setSubscriptionEnabled(true);
+      setupSubscription();
+    }
   };
 
   // Initial fetch and subscription setup
   useEffect(() => {
     if (visible && executionArn) {
       fetchStepFunctionExecution();
-      setupSubscription();
-    }
-
-    let intervalId;
-    if (autoRefresh && visible && !isRealTime) {
-      // Only use polling if subscription is not active
-      intervalId = setInterval(fetchStepFunctionExecution, refreshInterval);
+      if (subscriptionEnabled) {
+        setupSubscription();
+      }
     }
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
       if (subscription) {
         subscription.unsubscribe();
         setSubscription(null);
         setIsRealTime(false);
       }
     };
-  }, [executionArn, visible, autoRefresh, isRealTime, refreshInterval]);
+  }, [executionArn, visible, subscriptionEnabled]);
 
   useEffect(() => {
-    if (data?.getStepFunctionExecution?.status === 'SUCCEEDED' || data?.getStepFunctionExecution?.status === 'FAILED') {
-      setAutoRefresh(false);
-    }
+    // No need to disable subscription when execution completes
+    // Let the user control this with the toggle button
   }, [data]);
 
   const getStepIcon = (stepName, stepType, status) => {
@@ -216,15 +226,13 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
           actions={
             <SpaceBetween direction="horizontal" size="xs">
               {getStatusIndicator()}
-              {!isRealTime && (
-                <Button
-                  variant={autoRefresh ? 'primary' : 'normal'}
-                  onClick={() => setAutoRefresh(!autoRefresh)}
-                  iconName={autoRefresh ? 'pause' : 'play'}
-                >
-                  {autoRefresh ? 'Pause' : 'Resume'} Auto-refresh
-                </Button>
-              )}
+              <Button
+                variant={subscriptionEnabled ? 'primary' : 'normal'}
+                onClick={toggleSubscription}
+                iconName={subscriptionEnabled ? 'notification-on' : 'notification-off'}
+              >
+                {subscriptionEnabled ? 'Disable' : 'Enable'} Subscription
+              </Button>
               <Button onClick={() => fetchStepFunctionExecution()} iconName="refresh" loading={loading}>
                 Refresh
               </Button>

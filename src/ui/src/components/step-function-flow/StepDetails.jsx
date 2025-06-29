@@ -57,6 +57,7 @@ JsonDisplay.defaultProps = {
 const StepDetails = ({ step, formatDuration, getStepIcon }) => {
   const [inputExpanded, setInputExpanded] = useState(false);
   const [outputExpanded, setOutputExpanded] = useState(false);
+  const [errorExpanded, setErrorExpanded] = useState(true); // Default to expanded for errors
 
   const formatJson = (jsonString) => {
     if (!jsonString) return '';
@@ -128,10 +129,12 @@ const StepDetails = ({ step, formatDuration, getStepIcon }) => {
 
         {/* Error Information */}
         {step.error && (
-          <Alert
-            type="error"
-            header="Step Error"
-            action={
+          <ExpandableSection
+            headerText="Step Error"
+            variant="error"
+            expanded={errorExpanded}
+            onChange={({ detail }) => setErrorExpanded(detail.expanded)}
+            headerActions={
               <Button
                 variant="inline-icon"
                 iconName="copy"
@@ -140,21 +143,14 @@ const StepDetails = ({ step, formatDuration, getStepIcon }) => {
               />
             }
           >
-            <Box>
-              <pre
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  fontFamily: 'monospace',
-                  fontSize: '14px',
-                  margin: 0,
-                  padding: '8px 0',
-                }}
-              >
-                {step.error}
-              </pre>
-            </Box>
-          </Alert>
+            <Alert type="error" header="Error Details">
+              <Box>
+                <pre className="error-message">
+                  {step.error}
+                </pre>
+              </Box>
+            </Alert>
+          </ExpandableSection>
         )}
 
         {/* Input Data */}

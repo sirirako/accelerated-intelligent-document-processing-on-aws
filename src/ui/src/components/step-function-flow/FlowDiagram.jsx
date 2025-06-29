@@ -28,6 +28,20 @@ const FlowDiagram = ({ steps, onStepClick, selectedStep, getStepIcon }) => {
     return 0;
   };
 
+  const getProgressBarStyle = (step) => {
+    const width = `${getProgressPercentage(step)}%`;
+    
+    // Add specific styling for failed steps
+    if (step.status === 'FAILED') {
+      return {
+        width,
+        backgroundColor: '#dc3545', // Red color for failed steps
+      };
+    }
+    
+    return { width };
+  };
+
   return (
     <div className="flow-diagram">
       <div className="flow-container">
@@ -51,10 +65,18 @@ const FlowDiagram = ({ steps, onStepClick, selectedStep, getStepIcon }) => {
               </div>
               <div className="step-label">
                 <div className="step-name">{step.name}</div>
-                <div className="step-status-text">{step.status}</div>
+                <div className={`step-status-text status-text-${step.status.toLowerCase()}`}>{step.status}</div>
+                {step.error && (
+                  <div className="step-error-indicator">
+                    <span className="error-icon">⚠️</span>
+                  </div>
+                )}
               </div>
               <div className="step-progress">
-                <div className="step-progress-bar" style={{ width: `${getProgressPercentage(step)}%` }} />
+                <div 
+                  className={`step-progress-bar ${step.status.toLowerCase()}`} 
+                  style={getProgressBarStyle(step)} 
+                />
               </div>
             </div>
 
@@ -102,6 +124,7 @@ FlowDiagram.propTypes = {
       status: PropTypes.string.isRequired,
       startDate: PropTypes.string,
       stopDate: PropTypes.string,
+      error: PropTypes.string,
     }),
   ),
   onStepClick: PropTypes.func.isRequired,

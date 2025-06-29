@@ -131,6 +131,10 @@
   position: relative;
 }
 
+.step-progress-bar.failed {
+  background: linear-gradient(90deg, #dc3545, #c82333);
+}
+
 .flow-step.running .step-progress-bar::after {
   content: '';
   position: absolute;
@@ -272,4 +276,18 @@
     flex-wrap: wrap;
     gap: 16px;
   }
+}
+.step-status-text.status-text-failed {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.step-error-indicator {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #dc3545;
+}
+
+.error-icon {
+  margin-right: 4px;
 }
