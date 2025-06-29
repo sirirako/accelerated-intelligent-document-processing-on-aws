@@ -125,7 +125,7 @@ def handler(event, context):
     # Prepare output with automatic compression if needed
     working_bucket = os.environ.get('WORKING_BUCKET')
     response = {
-        "document": document.prepare_output(working_bucket, "ocr", logger)
+        "document": document.serialize_document(working_bucket, "ocr", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

@@ -152,15 +152,15 @@ class Document:
     - from_compressed_or_dict(): Handle both compressed and regular document data
 
     Utility Methods:
-    - handle_input_document(): Process document input from Lambda events
-    - prepare_output(): Prepare document output with automatic compression
+    - load_document(): Process document input from Lambda events
+    - serialize_document(): Prepare document output with automatic compression
 
     Usage Examples:
         # Handle input in Lambda functions
-        document = Document.handle_input_document(event_data, working_bucket, logger)
+        document = Document.load_document(event_data, working_bucket, logger)
 
         # Prepare output with automatic compression
-        response = {"document": document.prepare_output(working_bucket, "step_name", logger)}
+        response = {"document": document.serialize_document(working_bucket, "step_name", logger)}
 
         # Manual compression/decompression
         compressed_data = document.compress(working_bucket, "processing")
@@ -650,7 +650,7 @@ class Document:
             return cls.from_dict(data)
 
     @classmethod
-    def handle_input_document(cls, event_data, working_bucket, logger=None):
+    def load_document(cls, event_data, working_bucket, logger=None):
         """
         Utility method to handle document input from Lambda events.
         Automatically handles both compressed and uncompressed documents.
@@ -672,7 +672,7 @@ class Document:
                 logger.info("Loaded uncompressed document")
             return cls.from_dict(event_data)
 
-    def prepare_output(
+    def serialize_document(
         self, working_bucket, step_name, logger=None, size_threshold_kb=0
     ):
         """

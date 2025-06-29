@@ -41,7 +41,7 @@ def handler(event, context):
         
     # Convert document data to Document object - handle compression
     working_bucket = os.environ.get('WORKING_BUCKET')
-    document = Document.handle_input_document(document_data, working_bucket, logger)
+    document = Document.load_document(document_data, working_bucket, logger)
     logger.info(f"Processing assessment for document {document.id}, section {section_id}")
 
     # Update document status to ASSESSING
@@ -72,7 +72,7 @@ def handler(event, context):
     
     # Prepare output with automatic compression if needed
     result = {
-        'document': updated_document.prepare_output(working_bucket, f"assessment_{section_id}", logger),
+        'document': updated_document.serialize_document(working_bucket, f"assessment_{section_id}", logger),
         'section_id': section_id
     }
     

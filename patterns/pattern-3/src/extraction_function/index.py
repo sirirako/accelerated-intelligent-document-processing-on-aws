@@ -33,7 +33,7 @@ def handler(event, context):
     # For Map state, we get just one section from the document
     # Extract the document and section from the event - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
-    full_document = Document.handle_input_document(event.get("document", {}), working_bucket, logger)
+    full_document = Document.load_document(event.get("document", {}), working_bucket, logger)
     
     # Get the section ID from the Map state input
     section_input = event.get("section", {})
@@ -97,7 +97,7 @@ def handler(event, context):
     # Prepare output with automatic compression if needed
     response = {
         "section_id": section_id,
-        "document": section_document.prepare_output(working_bucket, f"extraction_{section_id}", logger)
+        "document": section_document.serialize_document(working_bucket, f"extraction_{section_id}", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

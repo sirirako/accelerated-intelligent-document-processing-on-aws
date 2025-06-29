@@ -13,26 +13,26 @@ SPDX-License-Identifier: MIT-0
     - Transparent handling of both compressed and uncompressed documents in Lambda functions
     - Temporary S3 storage for compressed document state with automatic cleanup via lifecycle policies
   - **New Utility Methods**:
-    - `Document.handle_input_document()`: Automatically detects and decompresses document input from Lambda events
-    - `Document.prepare_output()`: Automatically compresses large documents for Lambda responses
+    - `Document.load_document()`: Automatically detects and decompresses document input from Lambda events
+    - `Document.serialize_document()`: Automatically compresses large documents for Lambda responses
     - `Document.compress()` and `Document.decompress()`: Compression/decompression methods
-  - **Lambda Function Integration**: All Pattern-2 and Pattern-3 Lambda functions updated to use compression utilities
+  - **Lambda Function Integration**: All relevant Lambda functions updated to use compression utilities
   - **Resolves Step Functions Errors**: Eliminates "result with a size exceeding the maximum number of bytes service limit" errors for large multi-page documents
-- **Multi-Backend OCR Support**
+- **Multi-Backend OCR Support - Pattern 2 and 3**
   - Textract Backend (default): Existing AWS Textract functionality
   - Bedrock Backend: New LLM-based OCR using Claude/Nova models
   - None Backend: Image-only processing without OCR
-- **Bedrock OCR Integration**
+- **Bedrock OCR Integration - Pattern 2 and 3**
   - Customizable system and task prompts for OCR optimization
   - Better handling of complex documents, tables, and forms
   - Layout preservation capabilities
-- **Image Preprocessing**
+- **Image Preprocessing - Pattern 2 and 3**
   - Adaptive Binarization: Improves OCR accuracy on documents with:
     - Uneven lighting or shadows
     - Low contrast text
     - Background noise or gradients
   - Optional feature with configurable enable/disable
-- **YAML Parsing Support for LLM Responses**
+- **YAML Parsing Support for LLM Responses - Pattern 2 and 3**
   - Added comprehensive YAML parsing capabilities to complement existing JSON parsing functionality
   - New `extract_yaml_from_text()` function with robust multi-strategy YAML extraction:
     - YAML in ```yaml and ```yml code blocks

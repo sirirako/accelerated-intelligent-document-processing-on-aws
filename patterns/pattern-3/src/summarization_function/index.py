@@ -43,7 +43,7 @@ def handler(event, context):
         
         # Convert data to Document object - handle compression
         working_bucket = os.environ.get('WORKING_BUCKET')
-        document = Document.handle_input_document(document_data, working_bucket, logger)
+        document = Document.load_document(document_data, working_bucket, logger)
         
         # Update document status to SUMMARIZING
         document.status = Status.SUMMARIZING
@@ -74,7 +74,7 @@ def handler(event, context):
         
         # Prepare output with automatic compression if needed
         return {
-            'document': processed_document.prepare_output(working_bucket, "summarization", logger),
+            'document': processed_document.serialize_document(working_bucket, "summarization", logger),
         }
         
     except Exception as e:

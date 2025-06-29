@@ -53,7 +53,7 @@ The Document model includes automatic compression support to handle large docume
 - **Automatic Compression**: Documents exceeding configurable size thresholds are automatically compressed to S3
 - **Transparent Handling**: Lambda functions seamlessly handle both compressed and uncompressed documents
 - **Section Preservation**: Section IDs are preserved in compressed payloads for Step Functions Map operations
-- **Utility Methods**: Simplified input/output handling with `handle_input_document()` and `prepare_output()`
+- **Utility Methods**: Simplified input/output handling with `load_document()` and `serialize_document()`
 
 ### Usage in Lambda Functions
 
@@ -65,7 +65,7 @@ def lambda_handler(event, context):
     working_bucket = os.environ.get('WORKING_BUCKET')
     
     # Handle input - automatically detects and decompresses if needed
-    document = Document.handle_input_document(
+    document = Document.load_document(
         event_data=event["document"], 
         working_bucket=working_bucket, 
         logger=logger
@@ -76,7 +76,7 @@ def lambda_handler(event, context):
     
     # Prepare output - automatically compresses if document is large
     response = {
-        "document": document.prepare_output(
+        "document": document.serialize_document(
             working_bucket=working_bucket, 
             step_name="classification", 
             logger=logger
