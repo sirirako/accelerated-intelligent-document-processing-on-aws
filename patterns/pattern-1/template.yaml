@@ -995,6 +995,7 @@ Resources:
           DYNAMODB_TABLE: !Ref BDAMetadataTable
           LOG_LEVEL: !Ref LogLevel
           SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref HITLWaitFunctionLogGroup
       Policies:
@@ -1003,6 +1004,8 @@ Resources:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref BDAMetadataTable
+        - S3ReadPolicy:
+            BucketName: !Ref WorkingBucket
         - Statement:
           - Effect: Allow
             Action:
