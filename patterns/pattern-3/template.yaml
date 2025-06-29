@@ -135,7 +135,7 @@ Resources:
             order: 0
             type: string
             description: Notes
-        ocr:
+          ocr:
             order: 1
             type: object
             sectionLabel: OCR Configuration
