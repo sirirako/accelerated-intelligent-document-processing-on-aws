@@ -844,12 +844,15 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref AssessmentFunctionLogGroup
       Policies:
         - AWSLambdaBasicExecutionRole
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - S3ReadPolicy:
             BucketName: !Ref InputBucket
         - S3ReadPolicy:
@@ -919,6 +922,7 @@ Resources:
           METRIC_NAMESPACE: !Ref StackName
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
       Policies:
@@ -927,6 +931,8 @@ Resources:
             BucketName: !Ref InputBucket
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -982,6 +988,7 @@ Resources:
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref SummarizationFunctionLogGroup
       Policies:
@@ -990,6 +997,8 @@ Resources:
             BucketName: !Ref InputBucket
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
         - Statement:
