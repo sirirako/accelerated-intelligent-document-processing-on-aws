@@ -32,7 +32,7 @@ def handler(event, context):
     
     # Extract document from the OCR result - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
-    document = Document.handle_input_document(event["OCRResult"]["document"], working_bucket, logger)
+    document = Document.load_document(event["OCRResult"]["document"], working_bucket, logger)
     
     # Update document status to CLASSIFYING
     document.status = Status.CLASSIFYING
@@ -109,7 +109,7 @@ def handler(event, context):
     
     # Prepare output with automatic compression if needed
     response = {
-        "document": document.prepare_output(working_bucket, "classification", logger)
+        "document": document.serialize_document(working_bucket, "classification", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

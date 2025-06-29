@@ -85,7 +85,7 @@ def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
             
         # Get document from the final processing step - handle both compressed and uncompressed
         working_bucket = os.environ.get('WORKING_BUCKET')
-        document = Document.handle_input_document(processed_result.get("document", {}), working_bucket, logger)
+        document = Document.load_document(processed_result.get("document", {}), working_bucket, logger)
         logger.info(f"Successfully loaded actual document with {len(document.pages)} pages and {len(document.sections)} sections")
         return document
     except Exception as e:

@@ -181,14 +181,14 @@ document = Document.from_compressed_or_dict(data, working_bucket)
 
 ```python
 # Handle input - automatically detects and decompresses if needed
-document = Document.handle_input_document(
+document = Document.load_document(
     event_data=event["document"], 
     working_bucket=working_bucket, 
     logger=logger
 )
 
 # Prepare output - automatically compresses if document is large
-response_data = document.prepare_output(
+response_data = document.serialize_document(
     working_bucket=working_bucket, 
     step_name="classification", 
     logger=logger,
@@ -214,7 +214,7 @@ def lambda_handler(event, context):
     working_bucket = os.environ.get('WORKING_BUCKET')
     
     # Input handling - works with both compressed and uncompressed documents
-    document = Document.handle_input_document(
+    document = Document.load_document(
         event["document"], working_bucket, logger
     )
     
@@ -223,7 +223,7 @@ def lambda_handler(event, context):
     
     # Output handling - automatically compresses if needed
     return {
-        "document": document.prepare_output(working_bucket, "step_name", logger)
+        "document": document.serialize_document(working_bucket, "step_name", logger)
     }
 ```
 

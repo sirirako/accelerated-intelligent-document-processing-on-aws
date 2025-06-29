@@ -32,7 +32,7 @@ def handler(event, context):
     # Get the base document from the original classification result - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
     classification_document_data = event.get("ClassificationResult", {}).get("document", {})
-    document = Document.handle_input_document(classification_document_data, working_bucket, logger)
+    document = Document.load_document(classification_document_data, working_bucket, logger)
     
     extraction_results = event.get("ExtractionResults", [])
     
@@ -51,11 +51,11 @@ def handler(event, context):
         # or extraction result if assessment is disabled
         assessment_document_data = result.get("AssessmentResult", {}).get("document", {})
         if assessment_document_data:
-            section_document = Document.handle_input_document(assessment_document_data, working_bucket, logger)
+            section_document = Document.load_document(assessment_document_data, working_bucket, logger)
         else:
             # No assessment result, try extraction result
             extraction_document_data = result.get("document", {})
-            section_document = Document.handle_input_document(extraction_document_data, working_bucket, logger)
+            section_document = Document.load_document(extraction_document_data, working_bucket, logger)
         if section_document:       
             # Add section to document if present
             if section_document.sections:
@@ -80,7 +80,7 @@ def handler(event, context):
     
     # Return the completed document with compression
     response = {
-        "document": document.prepare_output(working_bucket, "processresults", logger)
+        "document": document.serialize_document(working_bucket, "processresults", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
