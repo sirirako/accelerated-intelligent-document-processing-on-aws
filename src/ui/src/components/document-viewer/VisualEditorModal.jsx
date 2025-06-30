@@ -980,7 +980,7 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
               ref={pageId === currentPage ? imageRef : null}
               src={pageImages[pageId]}
               alt={`Page ${pageId}`}
-              style={{ 
+              style={{
                 maxWidth: '100%',
                 maxHeight: 'min(70vh, 700px)',
                 width: 'auto',

@@ -30,7 +30,7 @@ const FlowDiagram = ({ steps, onStepClick, selectedStep, getStepIcon }) => {
 
   const getProgressBarStyle = (step) => {
     const width = `${getProgressPercentage(step)}%`;
-    
+
     // Add specific styling for failed steps
     if (step.status === 'FAILED') {
       return {
@@ -38,7 +38,7 @@ const FlowDiagram = ({ steps, onStepClick, selectedStep, getStepIcon }) => {
         backgroundColor: '#dc3545', // Red color for failed steps
       };
     }
-    
+
     return { width };
   };
 
@@ -73,10 +73,7 @@ const FlowDiagram = ({ steps, onStepClick, selectedStep, getStepIcon }) => {
                 )}
               </div>
               <div className="step-progress">
-                <div 
-                  className={`step-progress-bar ${step.status.toLowerCase()}`} 
-                  style={getProgressBarStyle(step)} 
-                />
+                <div className={`step-progress-bar ${step.status.toLowerCase()}`} style={getProgressBarStyle(step)} />
               </div>
             </div>
 

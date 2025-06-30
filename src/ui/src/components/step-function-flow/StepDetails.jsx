@@ -145,9 +145,7 @@ const StepDetails = ({ step, formatDuration, getStepIcon }) => {
           >
             <Alert type="error" header="Error Details">
               <Box>
-                <pre className="error-message">
-                  {step.error}
-                </pre>
+                <pre className="error-message">{step.error}</pre>
               </Box>
             </Alert>
           </ExpandableSection>

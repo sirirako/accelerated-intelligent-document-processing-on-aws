@@ -166,6 +166,7 @@ type Mutation  {
   uploadDocument(fileName: String!, contentType: String, prefix: String, bucket: String): PresignedUrlResponse! @aws_cognito_user_pools
   copyToBaseline(objectKey: String!): CopyToBaselineResponse! @aws_cognito_user_pools
   reprocessDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
+  publishStepFunctionExecutionUpdate(executionArn: String!, data: AWSJSON!): StepFunctionExecutionResponse @aws_iam
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -186,6 +187,7 @@ type Subscription @aws_cognito_user_pools @aws_iam {
   onUpdateDocument: Document
     @aws_subscribe(mutations: ["updateDocument"])
   onStepFunctionExecutionUpdate(executionArn: String!): StepFunctionExecutionResponse
+    @aws_subscribe(mutations: ["publishStepFunctionExecutionUpdate"])
 }
 
 schema {
