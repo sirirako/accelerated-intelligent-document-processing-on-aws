@@ -10,7 +10,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import boto3
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,9 @@ class DynamoDBClient:
             logger.error(f"BotoCore error during get_item: {str(e)}")
             raise DynamoDBError(f"BotoCore error: {str(e)}")
 
-    def transact_write_items(self, transact_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def transact_write_items(
+        self, transact_items: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """
         Execute a transaction with multiple write operations.
 
@@ -193,12 +195,16 @@ class DynamoDBClient:
             response = self.dynamodb.meta.client.transact_write_items(
                 TransactItems=processed_items
             )
-            logger.debug(f"Successfully executed transaction with {len(transact_items)} items")
+            logger.debug(
+                f"Successfully executed transaction with {len(transact_items)} items"
+            )
             return response
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
-            logger.error(f"DynamoDB transact_write_items failed: {error_code} - {error_message}")
+            logger.error(
+                f"DynamoDB transact_write_items failed: {error_code} - {error_message}"
+            )
             raise DynamoDBError(f"Transaction failed: {error_message}", error_code)
         except BotoCoreError as e:
             logger.error(f"BotoCore error during transact_write_items: {str(e)}")
@@ -247,7 +253,9 @@ class DynamoDBClient:
                 scan_params["ExclusiveStartKey"] = exclusive_start_key
 
             response = self.table.scan(**scan_params)
-            logger.debug(f"Successfully scanned table, returned {len(response.get('Items', []))} items")
+            logger.debug(
+                f"Successfully scanned table, returned {len(response.get('Items', []))} items"
+            )
             return response
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -300,7 +308,9 @@ class DynamoDBClient:
                 query_params["ExclusiveStartKey"] = exclusive_start_key
 
             response = self.table.query(**query_params)
-            logger.debug(f"Successfully queried table, returned {len(response.get('Items', []))} items")
+            logger.debug(
+                f"Successfully queried table, returned {len(response.get('Items', []))} items"
+            )
             return response
         except ClientError as e:
             error_code = e.response["Error"]["Code"]

@@ -11,9 +11,8 @@ storage and retrieval through direct DynamoDB operations, bypassing AppSync.
 import datetime
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from boto3.dynamodb.conditions import Key, Attr
 from idp_common.dynamodb.client import DynamoDBClient
 from idp_common.models import Document, Page, Section, Status
 
@@ -96,7 +95,9 @@ class DocumentDynamoDBService:
 
         return item
 
-    def _document_to_update_expressions(self, document: Document) -> tuple[str, Dict[str, str], Dict[str, Any]]:
+    def _document_to_update_expressions(
+        self, document: Document
+    ) -> tuple[str, Dict[str, str], Dict[str, Any]]:
         """
         Convert a Document object to DynamoDB update expressions.
 
@@ -298,7 +299,9 @@ class DocumentDynamoDBService:
 
         # Convert sections
         sections_data = item.get("Sections", [])
-        if sections_data is not None:  # Ensure sections_data is not None before iterating
+        if (
+            sections_data is not None
+        ):  # Ensure sections_data is not None before iterating
             for section_data in sections_data:
                 # Convert page IDs to strings
                 page_ids = [str(page_id) for page_id in section_data.get("PageIds", [])]
@@ -400,7 +403,9 @@ class DocumentDynamoDBService:
             "SK": "none",
         }
 
-        update_expression, expression_names, expression_values = self._document_to_update_expressions(document)
+        update_expression, expression_names, expression_values = (
+            self._document_to_update_expressions(document)
+        )
 
         response = self.client.update_item(
             key=key,
@@ -478,7 +483,9 @@ class DocumentDynamoDBService:
 
         response = self.client.scan(
             filter_expression=filter_expression,
-            expression_attribute_values=expression_attribute_values if expression_attribute_values else None,
+            expression_attribute_values=expression_attribute_values
+            if expression_attribute_values
+            else None,
             limit=limit or 50,
             exclusive_start_key=exclusive_start_key,
         )
@@ -523,7 +530,9 @@ class DocumentDynamoDBService:
             hour = now.hour
 
         if hour < 0 or hour > 23:
-            raise ValueError("Invalid hour parameter - value should be between 0 and 23")
+            raise ValueError(
+                "Invalid hour parameter - value should be between 0 and 23"
+            )
 
         # Calculate shard
         hour_shard = hour // shard_divider
@@ -573,7 +582,9 @@ class DocumentDynamoDBService:
             shard = now.hour // shard_divider
 
         if shard >= shards_in_day or shard < 0:
-            raise ValueError(f"Invalid shard parameter value - must be positive and less than {shards_in_day}")
+            raise ValueError(
+                f"Invalid shard parameter value - must be positive and less than {shards_in_day}"
+            )
 
         shard_pad = f"{shard:02d}"
         list_pk = f"list#{date}#s#{shard_pad}"

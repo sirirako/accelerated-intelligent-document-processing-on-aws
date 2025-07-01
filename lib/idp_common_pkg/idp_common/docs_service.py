@@ -9,8 +9,8 @@ the DOCUMENT_TRACKING_MODE environment variable. It allows switching between
 AppSync and DynamoDB implementations while maintaining the same interface.
 """
 
-import os
 import logging
+import os
 from typing import Optional, Union
 
 from idp_common.appsync import DocumentAppSyncService
@@ -30,37 +30,36 @@ DEFAULT_MODE = APPSYNC_MODE
 class DocumentServiceFactory:
     """
     Factory class for creating document services based on configuration.
-    
+
     This factory allows switching between AppSync and DynamoDB implementations
     while maintaining the same interface for document operations.
     """
-    
+
     @staticmethod
     def create_service(
-        mode: Optional[str] = None,
-        **kwargs
+        mode: Optional[str] = None, **kwargs
     ) -> Union[DocumentAppSyncService, DocumentDynamoDBService]:
         """
         Create a document service based on the specified mode.
-        
+
         Args:
             mode: Optional mode override. If not provided, uses DOCUMENT_TRACKING_MODE
                   environment variable, defaulting to 'appsync'
             **kwargs: Additional arguments passed to the service constructor
-            
+
         Returns:
             DocumentAppSyncService or DocumentDynamoDBService instance
-            
+
         Raises:
             ValueError: If an unsupported mode is specified
-            
+
         Examples:
             # Use environment variable (default behavior)
             service = DocumentServiceFactory.create_service()
-            
+
             # Override mode explicitly
             service = DocumentServiceFactory.create_service(mode='dynamodb')
-            
+
             # Pass additional arguments
             service = DocumentServiceFactory.create_service(
                 mode='appsync',
@@ -72,16 +71,16 @@ class DocumentServiceFactory:
             mode = os.environ.get("DOCUMENT_TRACKING_MODE", DEFAULT_MODE).lower()
         else:
             mode = mode.lower()
-            
+
         # Validate mode
         if mode not in SUPPORTED_MODES:
             raise ValueError(
                 f"Unsupported document tracking mode: '{mode}'. "
                 f"Supported modes are: {', '.join(SUPPORTED_MODES)}"
             )
-        
+
         logger.info(f"Creating document service with mode: {mode}")
-        
+
         # Create the appropriate service
         if mode == APPSYNC_MODE:
             return DocumentAppSyncService(**kwargs)
@@ -90,32 +89,32 @@ class DocumentServiceFactory:
         else:
             # This should never happen due to validation above, but included for completeness
             raise ValueError(f"Unsupported mode: {mode}")
-    
+
     @staticmethod
     def get_current_mode() -> str:
         """
         Get the current document tracking mode from environment variable.
-        
+
         Returns:
             Current mode string ('appsync' or 'dynamodb')
         """
         return os.environ.get("DOCUMENT_TRACKING_MODE", DEFAULT_MODE).lower()
-    
+
     @staticmethod
     def is_appsync_mode() -> bool:
         """
         Check if current mode is AppSync.
-        
+
         Returns:
             True if current mode is AppSync, False otherwise
         """
         return DocumentServiceFactory.get_current_mode() == APPSYNC_MODE
-    
+
     @staticmethod
     def is_dynamodb_mode() -> bool:
         """
         Check if current mode is DynamoDB.
-        
+
         Returns:
             True if current mode is DynamoDB, False otherwise
         """
@@ -124,29 +123,28 @@ class DocumentServiceFactory:
 
 # Convenience function for creating services
 def create_document_service(
-    mode: Optional[str] = None,
-    **kwargs
+    mode: Optional[str] = None, **kwargs
 ) -> Union[DocumentAppSyncService, DocumentDynamoDBService]:
     """
     Convenience function to create a document service.
-    
+
     This is a shorthand for DocumentServiceFactory.create_service().
-    
+
     Args:
         mode: Optional mode override. If not provided, uses DOCUMENT_TRACKING_MODE
               environment variable, defaulting to 'appsync'
         **kwargs: Additional arguments passed to the service constructor
-        
+
     Returns:
         DocumentAppSyncService or DocumentDynamoDBService instance
-        
+
     Examples:
         # Simple usage
         service = create_document_service()
-        
+
         # With mode override
         service = create_document_service(mode='dynamodb')
-        
+
         # With additional parameters
         service = create_document_service(
             mode='appsync',
