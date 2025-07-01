@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timezone, timedelta
 import logging
 from idp_common.models import Document, Status
-from idp_common.appsync import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configure logging
 logger = logging.getLogger()
@@ -18,7 +18,7 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 
 # Initialize clients
 sqs = boto3.client('sqs')
-appsync_service = DocumentAppSyncService()
+document_service = create_document_service()
 queue_url = os.environ['QUEUE_URL']
 retentionDays = int(os.environ['DATA_RETENTION_IN_DAYS'])
 
@@ -43,11 +43,11 @@ def handler(event, context):
     # Calculate expiry date
     expires_after = int((datetime.now(timezone.utc) + timedelta(days=retentionDays)).timestamp())
 
-    # Create document in DynamoDB via AppSync
-    logger.info(f"Creating document via AppSync: {document.input_key}")
+    # Create document in DynamoDB via document service
+    logger.info(f"Creating document via document service: {document.input_key}")
     
-    # Create document in AppSync with TTL
-    created_key = appsync_service.create_document(document, expires_after=expires_after)
+    # Create document in document service with TTL
+    created_key = document_service.create_document(document, expires_after=expires_after)
     logger.info(f"Document created with key: {created_key}")
     
     # Send serialized document to SQS queue

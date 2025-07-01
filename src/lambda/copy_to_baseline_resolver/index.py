@@ -231,7 +231,7 @@ def update_document_copy_status(object_key, evaluation_status=None):
     try:
         # Import at function level to avoid circular imports
         from idp_common.models import Document, Status
-        from idp_common.appsync.service import DocumentAppSyncService
+        from idp_common.docs_service import create_document_service
         
         logger.info("Imported required modules")
         
@@ -252,16 +252,16 @@ def update_document_copy_status(object_key, evaluation_status=None):
         if not document.metering:
             document.metering = {}
         
-        # Update the document in AppSync
-        logger.info("Creating AppSync service")
-        appsync_service = DocumentAppSyncService()
+        # Update the document in document service
+        logger.info("Creating document service")
+        document_service = create_document_service()
         
         # Check if APPSYNC_API_URL is set in environment
         from os import environ
         logger.info(f"APPSYNC_API_URL from environment: {environ.get('APPSYNC_API_URL')}")
         
-        logger.info("Calling update_document on AppSync service")
-        result = appsync_service.update_document(document)
+        logger.info("Calling update_document on document service")
+        result = document_service.update_document(document)
         logger.info(f"Document update result: {result}")
         
         logger.info(f"Successfully updated document {object_key} with baseline copy status")

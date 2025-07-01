@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from idp_common import s3, utils
 from idp_common.models import Document, Page, Section, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -38,9 +38,9 @@ def handler(event, context):
     
     # Update document status to POSTPROCESSING
     document.status = Status.POSTPROCESSING
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
     # Clear sections list to rebuild from extraction results
     document.sections = []
@@ -76,7 +76,7 @@ def handler(event, context):
         
     # Update final status in AppSync
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
     # Return the completed document with compression
     response = {
