@@ -9,11 +9,6 @@
 			"lib/idp_common_pkg"
 		],
 		"notebook.formatOnSave.enabled": true,
-<<<<<<< HEAD
-		"[python]": {
-			"editor.formatOnSave": true,
-			"editor.defaultFormatter": "charliermarsh.ruff"
-=======
 		"notebook.codeActionsOnSave": {
 			"notebook.source.fixAll": "explicit",
 			"notebook.source.organizeImports": "explicit"
@@ -25,7 +20,6 @@
 				"source.fixAll": "explicit",
 				"source.organizeImports": "explicit"
 			},
->>>>>>> origin/develop
 		},
 		"makefile.configureOnOpen": false
 	},
