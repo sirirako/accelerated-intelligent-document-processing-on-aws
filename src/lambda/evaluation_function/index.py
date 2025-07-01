@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional
 
 from idp_common import get_config, evaluation
 from idp_common.models import Document, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Environment variables
 BASELINE_BUCKET = os.environ.get('BASELINE_BUCKET')
@@ -29,8 +29,8 @@ SAVE_REPORTING_FUNCTION_NAME = os.environ.get('SAVE_REPORTING_FUNCTION_NAME', 'S
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
-# Create AppSync service
-appsync_service = DocumentAppSyncService()
+# Create document service
+document_service = create_document_service()
 
 # Define evaluation status constants
 class EvaluationStatus(Enum):
@@ -41,7 +41,7 @@ class EvaluationStatus(Enum):
 
 def update_document_evaluation_status(document: Document, status: EvaluationStatus) -> Document:
     """
-    Update document evaluation status via AppSync
+    Update document evaluation status via document service
     
     Args:
         document: The Document object to update
@@ -51,12 +51,12 @@ def update_document_evaluation_status(document: Document, status: EvaluationStat
         The updated Document object
         
     Raises:
-        AppSyncError: If the GraphQL operation fails
+        DocumentServiceError: If the operation fails
     """
     document.status = Status.COMPLETED
     document.evaluation_status = status.value
-    logger.info(f"Updating document via AppSync: {document.input_key} with status: {status.value}")
-    return appsync_service.update_document(document)
+    logger.info(f"Updating document via document service: {document.input_key} with status: {status.value}")
+    return document_service.update_document(document)
 
 def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
     """

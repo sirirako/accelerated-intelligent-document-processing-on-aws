@@ -13,7 +13,7 @@ import time
 
 from idp_common import classification, metrics, get_config
 from idp_common.models import Document, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configuration will be loaded in handler function
 region = os.environ['AWS_REGION']
@@ -39,9 +39,9 @@ def handler(event, context):
     # Update document status to CLASSIFYING
     document.status = Status.CLASSIFYING
     document.workflow_execution_arn = event.get("execution_arn")
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
     if not document.pages:
         error_message = "Document has no pages to classify"
@@ -89,7 +89,7 @@ def handler(event, context):
         
         logger.error(error_message)
         # Update document status in AppSync before raising exception
-        appsync_service.update_document(document)
+        document_service.update_document(document)
         
         # Raise the original exception type if available, otherwise raise generic exception
         if primary_exception:

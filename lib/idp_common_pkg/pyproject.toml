@@ -81,6 +81,12 @@ appsync = [
     "requests==2.32.4",
 ]
 
+# Document service factory dependencies (includes both appsync and dynamodb support)
+# This includes all dependencies needed for both backends
+docs_service = [
+    "requests==2.32.4",  # Required for appsync module (dynamodb only needs boto3 which is core)
+]
+
 # Testing dependencies
 test = [
     "pytest>=7.4.0",

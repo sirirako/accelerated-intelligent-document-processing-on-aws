@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError
 import logging
 from typing import Dict, Any, Tuple
 from idp_common.models import Document, Status
-from idp_common.appsync import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -18,7 +18,7 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 
 sfn = boto3.client('stepfunctions')
 dynamodb = boto3.resource('dynamodb')
-appsync_service = DocumentAppSyncService()
+document_service = create_document_service()
 concurrency_table = dynamodb.Table(os.environ['CONCURRENCY_TABLE'])
 state_machine_arn = os.environ['STATE_MACHINE_ARN']
 MAX_CONCURRENT = int(os.environ.get('MAX_CONCURRENT', '5'))
@@ -135,8 +135,8 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
             # Start workflow with the document
             execution = start_workflow(document)
             
-            # Update document status in AppSync
-            updated_doc = appsync_service.update_document(document)
+            # Update document status in document service
+            updated_doc = document_service.update_document(document)
             logger.info(f"Document updated: {updated_doc}")
             
             return True, message_id
