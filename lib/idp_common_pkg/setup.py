@@ -51,6 +51,10 @@ extras_require = {
     "appsync": [
         "requests==2.32.4",
     ],
+    # Document service factory dependencies (includes both appsync and dynamodb support)
+    "docs_service": [
+        "requests==2.32.4",
+    ],
     # Testing dependencies
     "test": [
         "pytest>=7.4.0",
