@@ -594,6 +594,7 @@ Resources:
           ENABLE_HITL: !Ref EnableHITL
           DB_NAME: !Ref BDAMetadataTable
           BDA_PROJECT_ARN: !Ref BDAProjectArn
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
       Policies:
@@ -678,6 +679,7 @@ Resources:
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref SummarizationFunctionLogGroup
       Policies:
@@ -686,6 +688,8 @@ Resources:
             BucketName: !Ref InputBucket
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
         - Statement:
@@ -966,6 +970,19 @@ Resources:
 
   HITLWaitFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
       CodeUri: src/hitl-wait-function/
       Handler: index.lambda_handler
@@ -978,6 +995,7 @@ Resources:
           DYNAMODB_TABLE: !Ref BDAMetadataTable
           LOG_LEVEL: !Ref LogLevel
           SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref HITLWaitFunctionLogGroup
       Policies:
@@ -986,6 +1004,8 @@ Resources:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref BDAMetadataTable
+        - S3ReadPolicy:
+            BucketName: !Ref WorkingBucket
         - Statement:
           - Effect: Allow
             Action:

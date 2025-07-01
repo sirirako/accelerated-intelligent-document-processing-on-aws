@@ -796,6 +796,7 @@ Resources:
         InputBucket: !Ref InputBucket
         ConfigurationBucket: !Ref ConfigurationBucket
         OutputBucket: !Ref OutputBucket
+        WorkingBucket: !Ref WorkingBucket
         TrackingTable: !Ref TrackingTable
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         LogRetentionDays: !Ref LogRetentionDays
@@ -828,6 +829,7 @@ Resources:
         InputBucket: !Ref InputBucket
         ConfigurationBucket: !Ref ConfigurationBucket
         OutputBucket: !Ref OutputBucket
+        WorkingBucket: !Ref WorkingBucket
         TrackingTable: !Ref TrackingTable
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         LogRetentionDays: !Ref LogRetentionDays
@@ -2185,11 +2187,14 @@ Resources:
           OUTPUT_BUCKET: !Ref OutputBucket
           REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
           SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
+          WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConcurrencyTable
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - Statement:
             - Effect: Allow
               Action:
@@ -2511,6 +2516,7 @@ Resources:
             - !Ref EvaluationBaselineBucketName
           SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
@@ -2523,6 +2529,8 @@ Resources:
             - !Ref EvaluationBaselineBucketName
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - LambdaInvokePolicy:
             FunctionName: !Ref SaveReportingDataFunction
         - Statement:
@@ -3650,6 +3658,11 @@ Resources:
   A2IHumanTaskUILambdaRole:
     Type: AWS::IAM::Role
     Condition: IsPattern1HITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for SageMaker A2I operations as resource name is not available"
     Properties:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -3772,6 +3785,16 @@ Resources:
   GetWorkforceURLFunction:
     Type: AWS::Serverless::Function
     Condition: IsPattern1HITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
       Handler: index.handler
       Runtime: python3.12

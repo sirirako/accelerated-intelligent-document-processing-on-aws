@@ -5,22 +5,53 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.5]
+
 ### Added
-- **Multi-Backend OCR Support**
+- **Human-in-the-Loop (HITL) Support - Pattern 1**
+  - Added comprehensive Human-in-the-Loop review capabilities using Amazon SageMaker Augmented AI (A2I)
+  - **Key Features**:
+    - Automatic triggering when extraction confidence falls below configurable threshold
+    - Integration with SageMaker A2I Review Portal for human validation and correction
+    - Configurable confidence threshold through Web UI Portal Configuration tab (0.0-1.0 range)
+    - Seamless result integration with human-verified data automatically updating source results
+  - **Workflow Integration**: 
+    - HITL tasks created automatically when confidence thresholds are not met
+    - Reviewers can validate correct extractions or make necessary corrections through the Review Portal
+    - Document processing continues with human-verified data after review completion
+  - **Configuration Management**:
+    - `EnableHITL` parameter for feature toggle
+    - Confidence threshold configurable via Web UI without stack redeployment
+    - Support for existing private workforce work teams via input parameter
+  - **CloudFormation Output**: Added `SageMakerA2IReviewPortalURL` for easy access to review portal
+  - **Known Limitations**: Current A2I version cannot provide direct hyperlinks to specific document tasks; template updates require resource recreation
+- **Document Compression for Large Documents - all patterns**
+  - Added automatic compression support to handle large documents and avoid exceeding Step Functions payload limits (256KB)
+  - **Key Features**:
+    - Automatic compression (default trigger threshold of 0KB enables compression by default)
+    - Transparent handling of both compressed and uncompressed documents in Lambda functions
+    - Temporary S3 storage for compressed document state with automatic cleanup via lifecycle policies
+  - **New Utility Methods**:
+    - `Document.load_document()`: Automatically detects and decompresses document input from Lambda events
+    - `Document.serialize_document()`: Automatically compresses large documents for Lambda responses
+    - `Document.compress()` and `Document.decompress()`: Compression/decompression methods
+  - **Lambda Function Integration**: All relevant Lambda functions updated to use compression utilities
+  - **Resolves Step Functions Errors**: Eliminates "result with a size exceeding the maximum number of bytes service limit" errors for large multi-page documents
+- **Multi-Backend OCR Support - Pattern 2 and 3**
   - Textract Backend (default): Existing AWS Textract functionality
   - Bedrock Backend: New LLM-based OCR using Claude/Nova models
   - None Backend: Image-only processing without OCR
-- **Bedrock OCR Integration**
+- **Bedrock OCR Integration - Pattern 2 and 3**
   - Customizable system and task prompts for OCR optimization
   - Better handling of complex documents, tables, and forms
   - Layout preservation capabilities
-- **Image Preprocessing**
+- **Image Preprocessing - Pattern 2 and 3**
   - Adaptive Binarization: Improves OCR accuracy on documents with:
     - Uneven lighting or shadows
     - Low contrast text
     - Background noise or gradients
   - Optional feature with configurable enable/disable
-- **YAML Parsing Support for LLM Responses**
+- **YAML Parsing Support for LLM Responses - Pattern 2 and 3**
   - Added comprehensive YAML parsing capabilities to complement existing JSON parsing functionality
   - New `extract_yaml_from_text()` function with robust multi-strategy YAML extraction:
     - YAML in ```yaml and ```yml code blocks

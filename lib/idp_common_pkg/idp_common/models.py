@@ -9,6 +9,7 @@ as it moves through the processing pipeline.
 """
 
 import json
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -135,6 +136,35 @@ class Document:
     """
     Core document type that is passed through the processing pipeline.
     Each processing step enriches this object.
+
+    The Document class provides comprehensive support for handling large documents
+    in Step Functions workflows through automatic compression and decompression.
+
+    Key Features:
+    - Automatic compression for documents exceeding size thresholds
+    - Seamless handling of compressed and uncompressed document data
+    - Utility methods for Lambda function input/output processing
+    - Preservation of section IDs for Step Functions Map operations
+
+    Compression Methods:
+    - compress(): Store full document in S3 and return lightweight wrapper
+    - decompress(): Restore full document from S3 using compressed wrapper
+    - from_compressed_or_dict(): Handle both compressed and regular document data
+
+    Utility Methods:
+    - load_document(): Process document input from Lambda events
+    - serialize_document(): Prepare document output with automatic compression
+
+    Usage Examples:
+        # Handle input in Lambda functions
+        document = Document.load_document(event_data, working_bucket, logger)
+
+        # Prepare output with automatic compression
+        response = {"document": document.serialize_document(working_bucket, "step_name", logger)}
+
+        # Manual compression/decompression
+        compressed_data = document.compress(working_bucket, "processing")
+        restored_document = Document.decompress(working_bucket, compressed_data)
     """
 
     # Core identifiers
@@ -479,3 +509,203 @@ class Document:
         except Exception as e:
             logger.error(f"Error building document from S3: {str(e)}")
             raise
+
+    def compress(self, bucket: str, step_name: str = "processing") -> Dict[str, Any]:
+        """
+        Store full document in S3 and return lightweight wrapper for Step Functions.
+
+        Args:
+            bucket: S3 bucket to store the full document
+            step_name: Name of the processing step (for unique S3 key)
+
+        Returns:
+            Lightweight wrapper containing essential fields and section IDs for Map step
+        """
+        import logging
+
+        import boto3
+
+        logger = logging.getLogger(__name__)
+        s3_client = boto3.client("s3")
+
+        # Generate unique S3 key with timestamp
+        timestamp = str(int(time.time() * 1000))  # milliseconds for uniqueness
+        s3_key = f"compressed_documents/{self.id}/{timestamp}_{step_name}_state.json"
+
+        try:
+            # Store full document in S3
+            full_document_json = self.to_json()
+            s3_client.put_object(
+                Bucket=bucket,
+                Key=s3_key,
+                Body=full_document_json,
+                ContentType="application/json",
+            )
+
+            s3_uri = f"s3://{bucket}/{s3_key}"
+            logger.info(f"Compressed document {self.id} to {s3_uri}")
+
+            # Create lightweight wrapper preserving section IDs for Map step
+            # Include minimal sections array for Step Functions Map state compatibility
+            # Add metadata for troubleshooting and monitoring
+            sections_for_map = []
+            for section in self.sections:
+                # Calculate page range for this section
+                if section.page_ids:
+                    page_numbers = [
+                        int(pid) for pid in section.page_ids if pid.isdigit()
+                    ]
+                    if page_numbers:
+                        min_page = min(page_numbers)
+                        max_page = max(page_numbers)
+                        page_range = {"min": min_page, "max": max_page}
+                    else:
+                        page_range = {"min": 0, "max": 0}
+                else:
+                    page_range = {"min": 0, "max": 0}
+
+                sections_for_map.append(
+                    {
+                        "section_id": section.section_id,
+                        "classification": section.classification,
+                        "num_pages": len(section.page_ids),
+                        "page_range": page_range,
+                    }
+                )
+
+            return {
+                "document_id": self.id,
+                "s3_uri": s3_uri,
+                "timestamp": timestamp,
+                "status": self.status.value,
+                "num_pages": self.num_pages,
+                "sections": sections_for_map,  # For Step Functions Map state
+                "compressed": True,
+            }
+
+        except Exception as e:
+            logger.error(f"Error compressing document {self.id}: {str(e)}")
+            raise
+
+    @classmethod
+    def decompress(cls, bucket: str, compressed_data: Dict[str, Any]) -> "Document":
+        """
+        Restore full Document from S3 using compressed wrapper data.
+
+        Args:
+            bucket: S3 bucket containing the compressed document
+            compressed_data: Lightweight wrapper from compress() method
+
+        Returns:
+            Full Document object with all content restored
+        """
+        import logging
+        from urllib.parse import urlparse
+
+        import boto3
+
+        logger = logging.getLogger(__name__)
+        s3_client = boto3.client("s3")
+
+        try:
+            # Extract S3 key from URI
+            s3_uri = compressed_data.get("s3_uri")
+            if not s3_uri:
+                raise ValueError("No s3_uri found in compressed data")
+
+            parsed_uri = urlparse(s3_uri)
+            s3_key = parsed_uri.path.lstrip("/")
+
+            # Retrieve full document from S3
+            response = s3_client.get_object(Bucket=bucket, Key=s3_key)
+            document_json = response["Body"].read().decode("utf-8")
+
+            # Restore full document
+            document = cls.from_json(document_json)
+
+            logger.info(f"Decompressed document {document.id} from {s3_uri}")
+            return document
+
+        except Exception as e:
+            logger.error(f"Error decompressing document: {str(e)}")
+            raise
+
+    @classmethod
+    def from_compressed_or_dict(cls, data, bucket=None):
+        """
+        Create a Document from either compressed data or a regular dict.
+
+        Args:
+            data: Either a compressed document reference or a regular document dict
+            bucket: S3 bucket name (required if data is compressed)
+
+        Returns:
+            Document: The document instance
+        """
+        if isinstance(data, dict) and data.get("compressed") is True:
+            if not bucket:
+                raise ValueError("Bucket required for decompressing document")
+            return cls.decompress(bucket, data)
+        else:
+            return cls.from_dict(data)
+
+    @classmethod
+    def load_document(cls, event_data, working_bucket, logger=None):
+        """
+        Utility method to handle document input from Lambda events.
+        Automatically handles both compressed and uncompressed documents.
+
+        Args:
+            event_data: The document data from the Lambda event
+            working_bucket: S3 bucket for decompression
+            logger: Optional logger for debug messages
+
+        Returns:
+            Document: The document instance
+        """
+        if isinstance(event_data, dict) and event_data.get("compressed") is True:
+            if logger:
+                logger.info("Decompressed document from S3")
+            return cls.decompress(working_bucket, event_data)
+        else:
+            if logger:
+                logger.info("Loaded uncompressed document")
+            return cls.from_dict(event_data)
+
+    def serialize_document(
+        self, working_bucket, step_name, logger=None, size_threshold_kb=0
+    ):
+        """
+        Utility method to prepare document output for Lambda responses.
+        Automatically compresses documents and returns appropriate response format.
+
+        Args:
+            working_bucket: S3 bucket for compression
+            step_name: Name of the processing step (for S3 key generation)
+            logger: Optional logger for debug messages
+            size_threshold_kb: Size threshold in KB for compression (default 0KB - always compress)
+
+        Returns:
+            dict: Response data with either compressed reference or document dict
+        """
+        document_json = json.dumps(self.to_dict(), default=str)
+        document_size = len(document_json.encode("utf-8"))
+        threshold_bytes = size_threshold_kb * 1024
+
+        if logger:
+            logger.info(f"Document size after {step_name}: {document_size} bytes")
+
+        # Compress if document is larger than threshold (default 0KB means always compress)
+        if working_bucket and document_size > threshold_bytes:
+            if logger:
+                logger.info(
+                    f"Document size ({document_size} bytes) exceeds {size_threshold_kb}KB threshold, compressing to S3"
+                )
+            compressed_data = self.compress(working_bucket, step_name)
+            return compressed_data
+        else:
+            if logger:
+                logger.info(
+                    f"Document size ({document_size} bytes) is under {size_threshold_kb}KB threshold, returning as JSON"
+                )
+            return self.to_dict()
