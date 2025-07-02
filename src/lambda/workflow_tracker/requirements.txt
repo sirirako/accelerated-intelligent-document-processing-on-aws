@@ -1,1 +1,1 @@
-./lib/idp_common_pkg[appsync]  # idp_common package with Document model and AppSync integration
+./lib/idp_common_pkg[docs_service]  # idp_common package with Document model and document service integration

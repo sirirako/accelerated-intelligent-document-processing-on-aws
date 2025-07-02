@@ -8,7 +8,7 @@ import logging
 
 from idp_common import get_config, assessment
 from idp_common.models import Document, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configuration will be loaded in handler function
 
@@ -50,9 +50,9 @@ def handler(event, context):
         input_key=document.input_key,
         status=Status.ASSESSING,
     )
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {status.status}")
-    appsync_service.update_document(status)
+    document_service.update_document(status)
 
     # Initialize assessment service
     assessment_service = assessment.AssessmentService(config=config)

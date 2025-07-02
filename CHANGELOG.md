@@ -5,6 +5,12 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.6]
+
+### Fixed
+- update Athena/Glue table configuration to use Parquet format instead of JSON  
+
+
 ## [0.3.5]
 
 ### Added

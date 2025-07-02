@@ -13,6 +13,9 @@ def __getattr__(name):
     if name in [
         "bedrock",
         "s3",
+        "dynamodb",
+        "appsync",
+        "docs_service",
         "metrics",
         "image",
         "utils",
@@ -45,6 +48,9 @@ def __getattr__(name):
 __all__ = [
     "bedrock",
     "s3",
+    "dynamodb",
+    "appsync",
+    "docs_service",
     "metrics",
     "image",
     "utils",

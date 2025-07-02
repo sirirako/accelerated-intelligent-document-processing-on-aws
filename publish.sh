@@ -100,6 +100,20 @@ function check_prerequisites() {
     exit 1
   fi
   
+  # Check Python version
+  if command -v python3 &>/dev/null; then
+    local python_version=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    local min_python_version="3.12"
+    if [[ $(echo -e "$min_python_version\n$python_version" | sort -V | head -n1) != $min_python_version ]]; then
+      echo "Error: Python version >= $min_python_version is required. (Installed version is $python_version)" >&2
+      echo "Please upgrade your Python installation." >&2
+      exit 1
+    fi
+  else
+    echo "Error: Python 3 is not installed or not in PATH" >&2
+    exit 1
+  fi
+  
   # Set platform-specific commands
   if [[ $(uname -m) == "x86_64" ]]; then
     USE_CONTAINER_FLAG=""

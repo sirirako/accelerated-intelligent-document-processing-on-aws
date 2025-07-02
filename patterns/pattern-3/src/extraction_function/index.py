@@ -9,7 +9,7 @@ import logging
 
 from idp_common import metrics, get_config, extraction
 from idp_common.models import Document, Section, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configuration will be loaded in handler function
 
@@ -56,9 +56,9 @@ def handler(event, context):
     
     # Update document status to EXTRACTING
     full_document.status = Status.EXTRACTING
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {full_document.status}")
-    appsync_service.update_document(full_document)
+    document_service.update_document(full_document)
        
     # Create a section-specific document by modifying the original document
     section_document = full_document
