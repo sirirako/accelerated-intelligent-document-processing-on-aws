@@ -142,7 +142,7 @@ class DocumentConverter:
 
     def convert_excel_to_pages(self, file_bytes: bytes) -> List[Tuple[bytes, str]]:
         """
-        Convert Excel file to page images and text.
+        Convert Excel file to page images and text with enhanced formatting preservation.
 
         Args:
             file_bytes: Excel file bytes
@@ -158,23 +158,42 @@ class DocumentConverter:
                 tmp_file.write(file_bytes)
                 tmp_file.flush()
 
-                # Read all sheets
+                # Read all sheets and extract formatted data
                 excel_file = pd.ExcelFile(tmp_file.name)
-                all_text = []
+                formatted_elements = []
 
                 for sheet_name in excel_file.sheet_names:
                     df = pd.read_excel(tmp_file.name, sheet_name=sheet_name)
 
-                    # Add sheet header
-                    all_text.append(f"=== Sheet: {sheet_name} ===\n")
+                    if df.empty:
+                        continue
 
-                    # Convert DataFrame to string
-                    sheet_text = df.to_string(index=False)
-                    all_text.append(sheet_text)
-                    all_text.append("\n\n")
+                    # Add sheet header element
+                    formatted_elements.append(
+                        {
+                            "type": "sheet_header",
+                            "sheet_name": sheet_name,
+                            "space_before": 20,
+                            "space_after": 15,
+                        }
+                    )
 
-                combined_text = "\n".join(all_text)
-                return self.convert_text_to_pages(combined_text)
+                    # Convert DataFrame to formatted table data
+                    table_data = self._extract_excel_table_data(df)
+
+                    if table_data:
+                        formatted_elements.append(
+                            {
+                                "type": "excel_table",
+                                "data": table_data,
+                                "sheet_name": sheet_name,
+                                "space_before": 10,
+                                "space_after": 20,
+                            }
+                        )
+
+                # Render formatted Excel content
+                return self._render_formatted_excel_content(formatted_elements)
 
         except Exception as e:
             logger.error(f"Error converting Excel to pages: {str(e)}")
@@ -698,6 +717,545 @@ class DocumentConverter:
                 draw.text((x, table_y), row_text, fill="black", font=fonts["normal"])
                 table_y += 20
             return simple_height
+
+    def _extract_excel_table_data(self, df) -> List[List[dict]]:
+        """
+        Extract Excel DataFrame into formatted table data with type-aware formatting.
+
+        Args:
+            df: pandas DataFrame
+
+        Returns:
+            List of row data with cell formatting information
+        """
+        try:
+            import pandas as pd
+
+            if df.empty:
+                return []
+
+            table_data = []
+
+            # Create header row
+            header_row = []
+            for col_name in df.columns:
+                header_row.append(
+                    {
+                        "text": str(col_name),
+                        "is_header": True,
+                        "bold": True,
+                        "alignment": "center",
+                        "data_type": "text",
+                    }
+                )
+            table_data.append(header_row)
+
+            # Process data rows
+            for _, row in df.iterrows():
+                data_row = []
+                for col_idx, (col_name, value) in enumerate(row.items()):
+                    # Handle NaN/None values
+                    if pd.isna(value):
+                        cell_text = ""
+                        data_type = "text"
+                        alignment = "left"
+                    else:
+                        # Determine data type and formatting
+                        if pd.api.types.is_numeric_dtype(df[col_name]):
+                            # Format numbers appropriately
+                            if isinstance(value, float):
+                                if value.is_integer():
+                                    cell_text = f"{int(value):,}"
+                                else:
+                                    cell_text = f"{value:,.2f}"
+                            else:
+                                cell_text = f"{value:,}"
+                            data_type = "numeric"
+                            alignment = "right"
+                        elif pd.api.types.is_datetime64_any_dtype(df[col_name]):
+                            # Format dates
+                            try:
+                                cell_text = value.strftime("%Y-%m-%d")
+                            except:
+                                cell_text = str(value)
+                            data_type = "date"
+                            alignment = "center"
+                        else:
+                            # Text data
+                            cell_text = str(value)
+                            data_type = "text"
+                            alignment = "left"
+
+                            # Special handling for currency-like text
+                            if (
+                                cell_text.startswith("$")
+                                or "€" in cell_text
+                                or "£" in cell_text
+                            ):
+                                data_type = "currency"
+                                alignment = "right"
+
+                    data_row.append(
+                        {
+                            "text": cell_text,
+                            "is_header": False,
+                            "bold": False,
+                            "alignment": alignment,
+                            "data_type": data_type,
+                        }
+                    )
+
+                table_data.append(data_row)
+
+            return table_data
+
+        except Exception as e:
+            logger.error(f"Error extracting Excel table data: {str(e)}")
+            # Fallback to simple conversion
+            simple_data = []
+            try:
+                # Convert to simple string representation
+                for col in df.columns:
+                    simple_data.append(
+                        [
+                            {
+                                "text": str(col),
+                                "is_header": True,
+                                "bold": True,
+                                "alignment": "center",
+                                "data_type": "text",
+                            }
+                        ]
+                    )
+                    break
+
+                for _, row in df.iterrows():
+                    row_data = []
+                    for value in row:
+                        row_data.append(
+                            {
+                                "text": str(value) if not pd.isna(value) else "",
+                                "is_header": False,
+                                "bold": False,
+                                "alignment": "left",
+                                "data_type": "text",
+                            }
+                        )
+                    simple_data.append(row_data)
+                return simple_data
+            except:
+                return []
+
+    def _render_formatted_excel_content(
+        self, elements: List[dict]
+    ) -> List[Tuple[bytes, str]]:
+        """
+        Render formatted Excel content with enhanced table formatting.
+
+        Args:
+            elements: List of formatted Excel elements (sheet headers, tables)
+
+        Returns:
+            List of tuples (image_bytes, page_text)
+        """
+        try:
+            # Load fonts
+            fonts = self._load_fonts()
+
+            # Calculate layout for Excel elements
+            pages_content = self._calculate_excel_page_layout(elements)
+
+            # Render pages
+            pages = []
+            for page_elements in pages_content:
+                img_bytes, text = self._render_excel_page(page_elements, fonts)
+                pages.append((img_bytes, text))
+
+            return pages if pages else [(self._create_empty_page(), "")]
+
+        except Exception as e:
+            logger.error(f"Error rendering formatted Excel content: {str(e)}")
+            # Fallback to simple text rendering
+            text_content = []
+            for elem in elements:
+                if elem.get("type") == "sheet_header":
+                    text_content.append(
+                        f"=== Sheet: {elem.get('sheet_name', 'Unknown')} ==="
+                    )
+                elif elem.get("type") == "excel_table" and elem.get("data"):
+                    for row in elem["data"]:
+                        row_text = " | ".join([cell.get("text", "") for cell in row])
+                        text_content.append(row_text)
+
+            combined_text = "\n".join(text_content)
+            return self.convert_text_to_pages(combined_text)
+
+    def _calculate_excel_page_layout(self, elements: List[dict]) -> List[List[dict]]:
+        """
+        Calculate page breaks for Excel content.
+
+        Args:
+            elements: List of Excel elements
+
+        Returns:
+            List of page elements
+        """
+        pages = []
+        current_page = []
+        current_y = self.margin
+
+        # Usable page height
+        max_y = self.page_height - self.margin
+
+        for element in elements:
+            # Estimate element height
+            if element["type"] == "sheet_header":
+                element_height = (
+                    30 + element.get("space_before", 0) + element.get("space_after", 0)
+                )
+            elif element["type"] == "excel_table":
+                # Estimate table height based on number of rows
+                row_count = len(element.get("data", []))
+                element_height = (
+                    row_count * 30  # Slightly taller rows for Excel tables
+                    + element.get("space_before", 0)
+                    + element.get("space_after", 0)
+                )
+            else:
+                element_height = 20
+
+            # Check if we need a new page
+            if current_y + element_height > max_y and current_page:
+                pages.append(current_page)
+                current_page = []
+                current_y = self.margin
+
+            current_page.append(element)
+            current_y += element_height
+
+        # Add final page
+        if current_page:
+            pages.append(current_page)
+
+        return pages if pages else [[]]
+
+    def _render_excel_page(
+        self, elements: List[dict], fonts: dict
+    ) -> Tuple[bytes, str]:
+        """
+        Render a single Excel page with enhanced formatting.
+
+        Args:
+            elements: List of elements for this page
+            fonts: Font dictionary
+
+        Returns:
+            Tuple of (image_bytes, page_text)
+        """
+        try:
+            # Create image
+            img = Image.new("RGB", (self.page_width, self.page_height), "white")
+            draw = ImageDraw.Draw(img)
+
+            # Track position and collect text
+            y_pos = self.margin
+            page_text = []
+            text_width = self.page_width - (2 * self.margin)
+
+            for element in elements:
+                if element["type"] == "sheet_header":
+                    y_pos += element.get("space_before", 0)
+
+                    # Render sheet header with enhanced styling
+                    header_height = self._render_excel_sheet_header(
+                        draw, element, self.margin, y_pos, text_width, fonts
+                    )
+
+                    y_pos += header_height + element.get("space_after", 0)
+                    page_text.append(
+                        f"=== Sheet: {element.get('sheet_name', 'Unknown')} ==="
+                    )
+
+                elif element["type"] == "excel_table":
+                    y_pos += element.get("space_before", 0)
+
+                    # Render Excel table with enhanced formatting
+                    table_height = self._render_excel_table(
+                        draw, element["data"], self.margin, y_pos, text_width, fonts
+                    )
+
+                    y_pos += table_height + element.get("space_after", 0)
+
+                    # Add table text
+                    for row in element["data"]:
+                        row_text = " | ".join([cell.get("text", "") for cell in row])
+                        page_text.append(row_text)
+
+            # Convert to bytes
+            img_buffer = io.BytesIO()
+            img.save(img_buffer, format="JPEG", quality=95)
+            img_buffer.seek(0)
+            img_bytes = img_buffer.getvalue()
+
+            return img_bytes, "\n".join(page_text)
+
+        except Exception as e:
+            logger.error(f"Error rendering Excel page: {str(e)}")
+            return self._create_empty_page(), "\n".join(
+                [
+                    elem.get("sheet_name", "")
+                    for elem in elements
+                    if "sheet_name" in elem
+                ]
+            )
+
+    def _render_excel_sheet_header(
+        self, draw, element: dict, x: int, y: int, width: int, fonts: dict
+    ) -> int:
+        """
+        Render an Excel sheet header with enhanced styling.
+
+        Args:
+            draw: PIL ImageDraw object
+            element: Sheet header element
+            x, y: Position
+            width: Available width
+            fonts: Font dictionary
+
+        Returns:
+            Height of rendered header
+        """
+        try:
+            sheet_name = element.get("sheet_name", "Unknown Sheet")
+            header_text = f"Sheet: {sheet_name}"
+
+            # Use heading font
+            font = fonts.get("heading2", fonts["normal"])
+
+            # Calculate centered position
+            text_width = self._get_text_width(draw, header_text, font)
+            text_x = x + (width - text_width) // 2
+            text_y = y + 5
+
+            # Draw background rectangle
+            header_height = 30
+            draw.rectangle(
+                [x, y, x + width, y + header_height],
+                fill="#e6f3ff",  # Light blue background
+                outline="#4a90e2",  # Blue border
+                width=2,
+            )
+
+            # Draw header text with bold effect
+            for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+                draw.text(
+                    (text_x + offset[0], text_y + offset[1]),
+                    header_text,
+                    fill="#2c3e50",  # Dark blue text
+                    font=font,
+                )
+
+            return header_height
+
+        except Exception as e:
+            logger.error(f"Error rendering Excel sheet header: {str(e)}")
+            # Fallback to simple text
+            draw.text(
+                (x, y),
+                f"Sheet: {element.get('sheet_name', 'Unknown')}",
+                fill="black",
+                font=fonts["normal"],
+            )
+            return 20
+
+    def _render_excel_table(
+        self,
+        draw,
+        table_data: List[List[dict]],
+        x: int,
+        y: int,
+        width: int,
+        fonts: dict,
+    ) -> int:
+        """
+        Render an Excel table with enhanced formatting and data-type aware alignment.
+
+        Args:
+            draw: PIL ImageDraw object
+            table_data: Table data with formatting info
+            x, y: Position
+            width: Available width
+            fonts: Font dictionary
+
+        Returns:
+            Height of rendered table
+        """
+        try:
+            if not table_data:
+                return 0
+
+            # Calculate intelligent column widths based on content
+            col_widths = self._calculate_excel_column_widths(table_data, width)
+            row_height = 30  # Taller rows for better readability
+
+            current_y = y
+
+            for row_idx, row in enumerate(table_data):
+                current_x = x
+                is_header_row = row and row[0].get("is_header", False)
+
+                # Draw row background
+                if is_header_row:
+                    # Header with gradient-like effect
+                    draw.rectangle(
+                        [x, current_y, x + width, current_y + row_height],
+                        fill="#d5e8ff",  # Light blue header
+                        outline="#4a90e2",
+                        width=1,
+                    )
+                else:
+                    # Alternate row colors for better readability
+                    if row_idx % 2 == 0:
+                        fill_color = "#f8f9fa"  # Very light gray
+                    else:
+                        fill_color = "white"
+
+                    draw.rectangle(
+                        [x, current_y, x + width, current_y + row_height],
+                        fill=fill_color,
+                        outline="#dee2e6",
+                        width=1,
+                    )
+
+                for col_idx, cell in enumerate(row):
+                    if col_idx >= len(col_widths):
+                        break
+
+                    col_width = col_widths[col_idx]
+
+                    # Draw cell border
+                    cell_rect = [
+                        current_x,
+                        current_y,
+                        current_x + col_width,
+                        current_y + row_height,
+                    ]
+                    draw.rectangle(cell_rect, outline="#dee2e6", width=1)
+
+                    # Choose font
+                    font = fonts["normal"]
+                    if is_header_row:
+                        font = fonts.get("normal", fonts["normal"])
+
+                    # Calculate text position with better padding
+                    padding = 8
+                    text_y = current_y + (row_height - 16) // 2  # Center vertically
+
+                    # Handle data-type aware alignment
+                    cell_text = cell.get("text", "")
+                    alignment = cell.get("alignment", "left")
+
+                    if alignment == "center":
+                        text_width = self._get_text_width(draw, cell_text, font)
+                        text_x = current_x + (col_width - text_width) // 2
+                    elif alignment == "right":
+                        text_width = self._get_text_width(draw, cell_text, font)
+                        text_x = current_x + col_width - text_width - padding
+                    else:  # left alignment
+                        text_x = current_x + padding
+
+                    # Ensure text doesn't go outside cell bounds
+                    text_x = max(current_x + 2, min(text_x, current_x + col_width - 2))
+
+                    # Render cell text with formatting
+                    if cell.get("bold", False) or is_header_row:
+                        # Bold text for headers and explicitly bold cells
+                        for offset in [(0, 0), (1, 0), (0, 1)]:
+                            draw.text(
+                                (text_x + offset[0], text_y + offset[1]),
+                                cell_text,
+                                fill="#2c3e50" if is_header_row else "black",
+                                font=font,
+                            )
+                    else:
+                        # Regular text
+                        text_color = "#495057"  # Slightly softer black
+                        draw.text(
+                            (text_x, text_y), cell_text, fill=text_color, font=font
+                        )
+
+                    current_x += col_width
+
+                current_y += row_height
+
+            return current_y - y
+
+        except Exception as e:
+            logger.error(f"Error rendering Excel table: {str(e)}")
+            # Fallback to basic table rendering
+            return self._render_formatted_table(draw, table_data, x, y, width, fonts)
+
+    def _calculate_excel_column_widths(
+        self, table_data: List[List[dict]], total_width: int
+    ) -> List[int]:
+        """
+        Calculate intelligent column widths for Excel tables.
+
+        Args:
+            table_data: Table data
+            total_width: Total available width
+
+        Returns:
+            List of column widths
+        """
+        try:
+            if not table_data or not table_data[0]:
+                return []
+
+            col_count = len(table_data[0])
+
+            # Calculate content-based widths
+            col_content_widths = []
+            for col_idx in range(col_count):
+                max_content_length = 0
+                for row in table_data:
+                    if col_idx < len(row):
+                        cell_text = row[col_idx].get("text", "")
+                        # Weight header content more heavily
+                        weight = 1.2 if row[col_idx].get("is_header", False) else 1.0
+                        content_length = len(cell_text) * weight
+                        max_content_length = max(max_content_length, content_length)
+
+                col_content_widths.append(max_content_length)
+
+            # Calculate proportional widths
+            total_content = sum(col_content_widths) or 1  # Avoid division by zero
+            min_col_width = 60  # Minimum column width
+            available_width = total_width - (col_count * 2)  # Account for borders
+
+            col_widths = []
+            remaining_width = available_width
+
+            for i, content_width in enumerate(col_content_widths):
+                if i == len(col_content_widths) - 1:
+                    # Last column gets remaining width
+                    col_width = max(min_col_width, remaining_width)
+                else:
+                    # Proportional width based on content
+                    proportion = content_width / total_content
+                    col_width = max(min_col_width, int(available_width * proportion))
+                    remaining_width -= col_width
+
+                col_widths.append(col_width)
+
+            return col_widths
+
+        except Exception as e:
+            logger.error(f"Error calculating Excel column widths: {str(e)}")
+            # Fallback to equal widths
+            col_count = len(table_data[0]) if table_data and table_data[0] else 1
+            equal_width = total_width // col_count
+            return [equal_width] * col_count
 
     def _get_text_width(self, draw, text: str, font) -> int:
         """Get text width using the appropriate PIL method."""
