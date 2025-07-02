@@ -776,7 +776,7 @@ class DocumentConverter:
                             # Format dates
                             try:
                                 cell_text = value.strftime("%Y-%m-%d")
-                            except:
+                            except (AttributeError, ValueError, TypeError):
                                 cell_text = str(value)
                             data_type = "date"
                             alignment = "center"
@@ -843,7 +843,7 @@ class DocumentConverter:
                         )
                     simple_data.append(row_data)
                 return simple_data
-            except:
+            except Exception:
                 return []
 
     def _render_formatted_excel_content(
