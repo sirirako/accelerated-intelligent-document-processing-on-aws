@@ -5,6 +5,26 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+- **Extended Document Format Support in OCR Service**
+  - Added support for processing additional document formats beyond PDF and images:
+    - Plain text (.txt) files with automatic pagination for large documents
+    - CSV (.csv) files with table visualization and structured output
+    - Excel workbooks (.xlsx, .xls) with multi-sheet support (each sheet as a page)
+    - Word documents (.docx, .doc) with text extraction and visual representation
+  - **Key Features**:
+    - Consistent processing model across all document formats
+    - Standard page image generation for all formats
+    - Structured text output in formats compatible with existing extraction pipelines
+    - Confidence metrics for all document types
+    - Automatic format detection from file content and extension
+  - **Implementation Details**:
+    - Format-specific processing strategies for optimal results
+    - Enhanced text rendering for plain text documents
+    - Table visualization for CSV and Excel data
+    - Word document paragraph extraction with formatting preservation
+    - S3 storage integration matching existing PDF processing workflow
+
 ## [0.3.5]
 
 ### Added
