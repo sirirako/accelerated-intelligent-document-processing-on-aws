@@ -11,14 +11,11 @@ Unit tests for the ClassificationService class.
 import pytest
 
 # Import standard library modules first
-import sys
 import json
 from textwrap import dedent
 from unittest.mock import ANY, MagicMock, patch
 
-# Mock PIL before importing any modules that might depend on it
-sys.modules["PIL"] = MagicMock()
-sys.modules["PIL.Image"] = MagicMock()
+# PIL is now used directly - no mocking needed
 
 from botocore.exceptions import ClientError
 from idp_common.classification.models import (
