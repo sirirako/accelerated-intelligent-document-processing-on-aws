@@ -1272,35 +1272,42 @@ class DocumentConverter:
                 return len(text) * 8  # Rough estimation
 
     def _format_csv_as_table(self, rows: List[List[str]]) -> str:
-        """Format CSV rows as a readable table."""
+        """Format CSV rows as a readable table in proper markdown format."""
         if not rows:
             return ""
 
-        # Calculate column widths
+        # Calculate column widths without truncation
         col_widths = []
         for col_idx in range(len(rows[0])):
             max_width = 0
             for row in rows:
                 if col_idx < len(row):
                     max_width = max(max_width, len(str(row[col_idx])))
-            col_widths.append(min(max_width, 30))  # Cap at 30 characters
+            col_widths.append(max_width)  # No cap on characters
 
-        # Format rows
+        # Format rows as markdown table
         formatted_rows = []
         for row_idx, row in enumerate(rows):
             formatted_cells = []
             for col_idx, cell in enumerate(row):
                 if col_idx < len(col_widths):
-                    cell_str = str(cell)[: col_widths[col_idx]]
-                    formatted_cells.append(cell_str.ljust(col_widths[col_idx]))
+                    cell_str = str(cell)  # Include all text without truncation
+                    formatted_cells.append(cell_str)
 
-            formatted_row = " | ".join(formatted_cells)
+            # Proper markdown table format with leading and trailing pipes
+            formatted_row = "| " + " | ".join(formatted_cells) + " |"
             formatted_rows.append(formatted_row)
 
-            # Add separator after header
+            # Add markdown separator after header
             if row_idx == 0 and len(rows) > 1:
-                separator = "-+-".join("-" * width for width in col_widths)
-                formatted_rows.append(separator)
+                # Create separator line with proper markdown syntax
+                separators = []
+                for width in col_widths:
+                    # Use at least 3 dashes for markdown compliance
+                    separator = "-" * max(3, width)
+                    separators.append(separator)
+                separator_row = "| " + " | ".join(separators) + " |"
+                formatted_rows.append(separator_row)
 
         return "\n".join(formatted_rows)
 
