@@ -11,6 +11,7 @@ consistent with PDF processing.
 
 import io
 import logging
+import os
 import tempfile
 from typing import List, Tuple
 
@@ -181,7 +182,7 @@ class DocumentConverter:
 
     def convert_word_to_pages(self, file_bytes: bytes) -> List[Tuple[bytes, str]]:
         """
-        Convert Word document to page images and text.
+        Convert Word document to page images and text with enhanced formatting.
 
         Args:
             file_bytes: Word document bytes
@@ -199,27 +200,518 @@ class DocumentConverter:
 
                 doc = Document(tmp_file.name)
 
-                # Extract text from paragraphs
-                paragraphs = []
-                for paragraph in doc.paragraphs:
-                    if paragraph.text.strip():
-                        paragraphs.append(paragraph.text)
+                # Extract formatted elements
+                elements = self._extract_word_formatting(doc)
 
-                # Extract text from tables
-                for table in doc.tables:
-                    paragraphs.append("\n=== Table ===")
-                    for row in table.rows:
-                        row_text = " | ".join(cell.text.strip() for cell in row.cells)
-                        if row_text.strip():
-                            paragraphs.append(row_text)
-                    paragraphs.append("=== End Table ===\n")
-
-                combined_text = "\n\n".join(paragraphs)
-                return self.convert_text_to_pages(combined_text)
+                # Render with enhanced formatting
+                return self._render_formatted_word_content(elements)
 
         except Exception as e:
             logger.error(f"Error converting Word to pages: {str(e)}")
             return [(self._create_empty_page(), "Error reading Word document")]
+
+    def _extract_word_formatting(self, doc) -> List[dict]:
+        """Extract formatted content from Word document."""
+        elements = []
+
+        try:
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+            # Process paragraphs
+            for paragraph in doc.paragraphs:
+                if not paragraph.text.strip():
+                    elements.append({"type": "spacing", "height": 12})
+                    continue
+
+                # Determine if this is a heading
+                style_name = paragraph.style.name if paragraph.style else "Normal"
+                is_heading = "Heading" in style_name
+                heading_level = 0
+
+                if is_heading:
+                    try:
+                        heading_level = int(style_name.split()[-1])
+                    except (ValueError, IndexError):
+                        heading_level = 1
+
+                # Get alignment
+                alignment = "left"
+                if paragraph.alignment:
+                    if paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER:
+                        alignment = "center"
+                    elif paragraph.alignment == WD_ALIGN_PARAGRAPH.RIGHT:
+                        alignment = "right"
+                    elif paragraph.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY:
+                        alignment = "justify"
+
+                # Extract run-level formatting
+                formatted_runs = []
+                for run in paragraph.runs:
+                    if run.text.strip():
+                        run_info = {
+                            "text": run.text,
+                            "bold": bool(run.bold),
+                            "italic": bool(run.italic),
+                            "underline": bool(run.underline),
+                            "font_size": getattr(run.font.size, "pt", None)
+                            if run.font.size
+                            else None,
+                            "font_name": run.font.name if run.font.name else None,
+                        }
+                        formatted_runs.append(run_info)
+
+                if not formatted_runs:
+                    formatted_runs = [
+                        {
+                            "text": paragraph.text,
+                            "bold": False,
+                            "italic": False,
+                            "underline": False,
+                            "font_size": None,
+                            "font_name": None,
+                        }
+                    ]
+
+                para_element = {
+                    "type": "paragraph",
+                    "text": paragraph.text,
+                    "style": style_name,
+                    "is_heading": is_heading,
+                    "heading_level": heading_level,
+                    "alignment": alignment,
+                    "runs": formatted_runs,
+                    "space_before": 6 if is_heading else 3,
+                    "space_after": 6 if is_heading else 3,
+                }
+                elements.append(para_element)
+
+            # Process tables
+            for table in doc.tables:
+                table_data = []
+                for row in table.rows:
+                    row_data = []
+                    for cell in row.cells:
+                        cell_text = cell.text.strip()
+                        # Check if first row (likely header)
+                        is_header = table.rows[0] == row
+                        cell_info = {
+                            "text": cell_text,
+                            "is_header": is_header,
+                            "bold": is_header,  # Headers are typically bold
+                            "alignment": "center" if is_header else "left",
+                        }
+                        row_data.append(cell_info)
+                    table_data.append(row_data)
+
+                if table_data:
+                    elements.append(
+                        {
+                            "type": "table",
+                            "data": table_data,
+                            "space_before": 12,
+                            "space_after": 12,
+                        }
+                    )
+
+        except Exception as e:
+            logger.error(f"Error extracting Word formatting: {str(e)}")
+            # Fallback to simple text extraction
+            text_content = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+            elements = [
+                {
+                    "type": "paragraph",
+                    "text": text_content,
+                    "style": "Normal",
+                    "is_heading": False,
+                    "heading_level": 0,
+                    "alignment": "left",
+                    "runs": [
+                        {
+                            "text": text_content,
+                            "bold": False,
+                            "italic": False,
+                            "underline": False,
+                            "font_size": None,
+                            "font_name": None,
+                        }
+                    ],
+                }
+            ]
+
+        return elements
+
+    def _render_formatted_word_content(
+        self, elements: List[dict]
+    ) -> List[Tuple[bytes, str]]:
+        """Render formatted Word content with enhanced typography."""
+        try:
+            # Load fonts
+            fonts = self._load_fonts()
+
+            # Calculate layout
+            pages_content = self._calculate_word_page_layout(elements)
+
+            # Render pages
+            pages = []
+            for page_elements in pages_content:
+                img_bytes, text = self._render_word_page(page_elements, fonts)
+                pages.append((img_bytes, text))
+
+            return pages if pages else [(self._create_empty_page(), "")]
+
+        except Exception as e:
+            logger.error(f"Error rendering formatted Word content: {str(e)}")
+            # Fallback to simple text rendering
+            text_content = "\n".join(
+                [elem.get("text", "") for elem in elements if elem.get("text")]
+            )
+            return self.convert_text_to_pages(text_content)
+
+    def _load_fonts(self) -> dict:
+        """Load available fonts with fallbacks."""
+        fonts = {}
+
+        # Font size hierarchy
+        font_sizes = {
+            "heading1": 24,
+            "heading2": 20,
+            "heading3": 18,
+            "heading4": 16,
+            "heading5": 14,
+            "heading6": 13,
+            "normal": 12,
+            "small": 10,
+        }
+
+        # Try to load system fonts
+        font_paths = [
+            # Windows
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/calibri.ttf",
+            "C:/Windows/Fonts/times.ttf",
+            # macOS
+            "/System/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Times.ttc",
+            "/System/Library/Fonts/Helvetica.ttc",
+            # Linux
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        ]
+
+        loaded_font = None
+        for font_path in font_paths:
+            try:
+                if os.path.exists(font_path):
+                    loaded_font = font_path
+                    break
+            except OSError:
+                continue
+
+        # Create font dictionary
+        for name, size in font_sizes.items():
+            try:
+                if loaded_font:
+                    fonts[name] = ImageFont.truetype(loaded_font, size)
+                else:
+                    fonts[name] = ImageFont.load_default()
+            except (OSError, IOError):
+                fonts[name] = ImageFont.load_default()
+
+        return fonts
+
+    def _calculate_word_page_layout(self, elements: List[dict]) -> List[List[dict]]:
+        """Calculate page breaks for Word content."""
+        pages = []
+        current_page = []
+        current_y = self.margin
+
+        # Usable page height
+        max_y = self.page_height - self.margin
+
+        for element in elements:
+            # Estimate element height
+            if element["type"] == "spacing":
+                element_height = element["height"]
+            elif element["type"] == "paragraph":
+                # Estimate based on text length and heading level
+                base_height = 24 if element["is_heading"] else 16
+                lines = max(1, len(element["text"]) // 80 + 1)  # Rough estimate
+                element_height = (
+                    base_height * lines
+                    + element.get("space_before", 0)
+                    + element.get("space_after", 0)
+                )
+            elif element["type"] == "table":
+                # Estimate table height
+                row_count = len(element["data"])
+                element_height = (
+                    row_count * 25
+                    + element.get("space_before", 0)
+                    + element.get("space_after", 0)
+                )
+            else:
+                element_height = 20
+
+            # Check if we need a new page
+            if current_y + element_height > max_y and current_page:
+                pages.append(current_page)
+                current_page = []
+                current_y = self.margin
+
+            current_page.append(element)
+            current_y += element_height
+
+        # Add final page
+        if current_page:
+            pages.append(current_page)
+
+        return pages if pages else [[]]
+
+    def _render_word_page(self, elements: List[dict], fonts: dict) -> Tuple[bytes, str]:
+        """Render a single page with enhanced formatting."""
+        try:
+            # Create image
+            img = Image.new("RGB", (self.page_width, self.page_height), "white")
+            draw = ImageDraw.Draw(img)
+
+            # Track position and collect text
+            y_pos = self.margin
+            page_text = []
+            text_width = self.page_width - (2 * self.margin)
+
+            for element in elements:
+                if element["type"] == "spacing":
+                    y_pos += element["height"]
+
+                elif element["type"] == "paragraph":
+                    y_pos += element.get("space_before", 0)
+
+                    # Choose font based on heading level
+                    if element["is_heading"]:
+                        font_key = f"heading{min(element['heading_level'], 6)}"
+                    else:
+                        font_key = "normal"
+
+                    font = fonts.get(font_key, fonts["normal"])
+
+                    # Render paragraph with formatting
+                    para_height = self._render_formatted_paragraph(
+                        draw, element, self.margin, y_pos, text_width, font
+                    )
+
+                    y_pos += para_height + element.get("space_after", 0)
+                    page_text.append(element["text"])
+
+                elif element["type"] == "table":
+                    y_pos += element.get("space_before", 0)
+
+                    # Render table
+                    table_height = self._render_formatted_table(
+                        draw, element["data"], self.margin, y_pos, text_width, fonts
+                    )
+
+                    y_pos += table_height + element.get("space_after", 0)
+
+                    # Add table text
+                    for row in element["data"]:
+                        row_text = " | ".join([cell["text"] for cell in row])
+                        page_text.append(row_text)
+
+            # Convert to bytes
+            img_buffer = io.BytesIO()
+            img.save(img_buffer, format="JPEG", quality=95)
+            img_buffer.seek(0)
+            img_bytes = img_buffer.getvalue()
+
+            return img_bytes, "\n".join(page_text)
+
+        except Exception as e:
+            logger.error(f"Error rendering Word page: {str(e)}")
+            return self._create_empty_page(), "\n".join(
+                [elem.get("text", "") for elem in elements]
+            )
+
+    def _render_formatted_paragraph(
+        self, draw, element: dict, x: int, y: int, width: int, base_font
+    ) -> int:
+        """Render a paragraph with run-level formatting."""
+        try:
+            current_x = x
+            current_y = y
+            line_height = 20 if element["is_heading"] else 16
+
+            # Handle alignment for simple case
+            if element["alignment"] == "center":
+                # Simple center alignment - measure total text width
+                total_width = self._get_text_width(draw, element["text"], base_font)
+                if total_width < width:
+                    current_x = x + (width - total_width) // 2
+            elif element["alignment"] == "right":
+                total_width = self._get_text_width(draw, element["text"], base_font)
+                if total_width < width:
+                    current_x = x + width - total_width
+
+            # Render runs with formatting
+            for run in element["runs"]:
+                if not run["text"]:
+                    continue
+
+                # Apply formatting effects
+                if run["bold"]:
+                    # Simulate bold by drawing multiple times with slight offsets
+                    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+                        draw.text(
+                            (current_x + offset[0], current_y + offset[1]),
+                            run["text"],
+                            fill="black",
+                            font=base_font,
+                        )
+                else:
+                    draw.text(
+                        (current_x, current_y),
+                        run["text"],
+                        fill="black",
+                        font=base_font,
+                    )
+
+                # Handle underline
+                if run["underline"]:
+                    text_width = self._get_text_width(draw, run["text"], base_font)
+                    underline_y = current_y + line_height - 2
+                    draw.line(
+                        [
+                            (current_x, underline_y),
+                            (current_x + text_width, underline_y),
+                        ],
+                        fill="black",
+                        width=1,
+                    )
+
+                # Move x position for next run
+                run_width = self._get_text_width(draw, run["text"], base_font)
+                current_x += run_width
+
+                # Simple line wrapping
+                if current_x > x + width:
+                    current_x = x
+                    current_y += line_height
+
+            return max(line_height, current_y - y + line_height)
+
+        except Exception as e:
+            logger.error(f"Error rendering paragraph: {str(e)}")
+            # Fallback to simple rendering
+            draw.text((x, y), element["text"], fill="black", font=base_font)
+            return 20
+
+    def _render_formatted_table(
+        self,
+        draw,
+        table_data: List[List[dict]],
+        x: int,
+        y: int,
+        width: int,
+        fonts: dict,
+    ) -> int:
+        """Render a table with borders and formatting."""
+        try:
+            if not table_data:
+                return 0
+
+            # Calculate column widths
+            col_count = len(table_data[0])
+            col_width = width // col_count
+            row_height = 25
+
+            current_y = y
+
+            for row_idx, row in enumerate(table_data):
+                current_x = x
+
+                # Draw row background for headers
+                if row and row[0].get("is_header", False):
+                    draw.rectangle(
+                        [x, current_y, x + width, current_y + row_height],
+                        fill="#f0f0f0",
+                        outline="#cccccc",
+                    )
+
+                for col_idx, cell in enumerate(row):
+                    # Draw cell border
+                    cell_rect = [
+                        current_x,
+                        current_y,
+                        current_x + col_width,
+                        current_y + row_height,
+                    ]
+                    draw.rectangle(cell_rect, outline="#cccccc", width=1)
+
+                    # Choose font and formatting
+                    font = fonts["normal"]
+                    if cell.get("is_header", False):
+                        font = fonts[
+                            "normal"
+                        ]  # Will be made bold by rendering multiple times
+
+                    # Calculate text position with padding
+                    text_x = current_x + 5
+                    text_y = current_y + 5
+
+                    # Handle cell alignment
+                    if cell.get("alignment") == "center":
+                        text_width = self._get_text_width(draw, cell["text"], font)
+                        if text_width < col_width - 10:
+                            text_x = current_x + (col_width - text_width) // 2
+                    elif cell.get("alignment") == "right":
+                        text_width = self._get_text_width(draw, cell["text"], font)
+                        text_x = current_x + col_width - text_width - 5
+
+                    # Render cell text
+                    if cell.get("bold", False):
+                        # Simulate bold
+                        for offset in [(0, 0), (1, 0), (0, 1)]:
+                            draw.text(
+                                (text_x + offset[0], text_y + offset[1]),
+                                cell["text"],
+                                fill="black",
+                                font=font,
+                            )
+                    else:
+                        draw.text(
+                            (text_x, text_y), cell["text"], fill="black", font=font
+                        )
+
+                    current_x += col_width
+
+                current_y += row_height
+
+            return current_y - y
+
+        except Exception as e:
+            logger.error(f"Error rendering table: {str(e)}")
+            # Fallback to simple table rendering
+            simple_height = len(table_data) * 20
+            table_y = y
+            for row in table_data:
+                row_text = " | ".join([cell.get("text", "") for cell in row])
+                draw.text((x, table_y), row_text, fill="black", font=fonts["normal"])
+                table_y += 20
+            return simple_height
+
+    def _get_text_width(self, draw, text: str, font) -> int:
+        """Get text width using the appropriate PIL method."""
+        try:
+            # Try new textbbox method (PIL 8.0.0+)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            return bbox[2] - bbox[0]
+        except AttributeError:
+            try:
+                # Fallback to deprecated textsize method
+                return draw.textsize(text, font=font)[0]
+            except AttributeError:
+                # Ultimate fallback - estimate based on text length
+                return len(text) * 8  # Rough estimation
 
     def _format_csv_as_table(self, rows: List[List[str]]) -> str:
         """Format CSV rows as a readable table."""
