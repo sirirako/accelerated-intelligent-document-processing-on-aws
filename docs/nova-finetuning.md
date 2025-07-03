@@ -417,7 +417,7 @@ The inference script automatically calculates performance metrics when ground tr
 
 ```
 Model Results Summary:
-==================================================
+=
 Total Images: 100
 Successful Inferences: 98
 Success Rate: 98.00%

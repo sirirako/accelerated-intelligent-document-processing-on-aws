@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from idp_common import s3, utils
 from idp_common.models import Document, Page, Section, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -29,15 +29,18 @@ def handler(event, context):
     """
     logger.info(f"Processing event: {json.dumps(event)}")
     
-    # Get the base document from the original classification result
-    document = Document.from_dict(event.get("ClassificationResult", {}).get("document", {}))
+    # Get the base document from the original classification result - handle both compressed and uncompressed
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    classification_document_data = event.get("ClassificationResult", {}).get("document", {})
+    document = Document.load_document(classification_document_data, working_bucket, logger)
+    
     extraction_results = event.get("ExtractionResults", [])
     
     # Update document status to POSTPROCESSING
     document.status = Status.POSTPROCESSING
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
     # Clear sections list to rebuild from extraction results
     document.sections = []
@@ -46,9 +49,13 @@ def handler(event, context):
     for result in extraction_results:
         # Get section document from assessment result (if populated) 
         # or extraction result if assessment is disabled
-        section_document = Document.from_dict(result.get("AssessmentResult", {}).get("document", {}))
-        if not section_document:
-            section_document = Document.from_dict(result.get("document", {}))
+        assessment_document_data = result.get("AssessmentResult", {}).get("document", {})
+        if assessment_document_data:
+            section_document = Document.load_document(assessment_document_data, working_bucket, logger)
+        else:
+            # No assessment result, try extraction result
+            extraction_document_data = result.get("document", {})
+            section_document = Document.load_document(extraction_document_data, working_bucket, logger)
         if section_document:       
             # Add section to document if present
             if section_document.sections:
@@ -69,11 +76,11 @@ def handler(event, context):
         
     # Update final status in AppSync
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
-    # Return the completed document
+    # Return the completed document with compression
     response = {
-        "document": document.to_dict()
+        "document": document.serialize_document(working_bucket, "processresults", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

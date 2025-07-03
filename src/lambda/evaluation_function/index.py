@@ -13,30 +13,24 @@ import os
 import logging
 import time
 import boto3
-from typing import Dict, Any, Optional, List
 from enum import Enum
+from typing import Dict, Any, Optional
 
-# Import IDP common packages
-from idp_common.models import Document, Status
 from idp_common import get_config, evaluation
-from idp_common.appsync import DocumentAppSyncService
+from idp_common.models import Document, Status
+from idp_common.docs_service import create_document_service
 
-# Configure logging
-logger = logging.getLogger()
-logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
-logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
-# Get LOG_LEVEL from environment variable with INFO as default
-
-# Get bucket names from environment variables
-METRIC_NAMESPACE = os.environ.get('METRIC_NAMESPACE', 'GENAIDP')
-BASELINE_BUCKET = os.environ['BASELINE_BUCKET']
-REPORTING_BUCKET = os.environ['REPORTING_BUCKET']
+# Environment variables
+BASELINE_BUCKET = os.environ.get('BASELINE_BUCKET')
+REPORTING_BUCKET = os.environ.get('REPORTING_BUCKET')
 SAVE_REPORTING_FUNCTION_NAME = os.environ.get('SAVE_REPORTING_FUNCTION_NAME', 'SaveReportingData')
 
-# Configuration will be loaded in handler function
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
-# Create AppSync service
-appsync_service = DocumentAppSyncService()
+# Create document service
+document_service = create_document_service()
 
 # Define evaluation status constants
 class EvaluationStatus(Enum):
@@ -47,7 +41,7 @@ class EvaluationStatus(Enum):
 
 def update_document_evaluation_status(document: Document, status: EvaluationStatus) -> Document:
     """
-    Update document evaluation status via AppSync
+    Update document evaluation status via document service
     
     Args:
         document: The Document object to update
@@ -57,12 +51,12 @@ def update_document_evaluation_status(document: Document, status: EvaluationStat
         The updated Document object
         
     Raises:
-        AppSyncError: If the GraphQL operation fails
+        DocumentServiceError: If the operation fails
     """
     document.status = Status.COMPLETED
     document.evaluation_status = status.value
-    logger.info(f"Updating document via AppSync: {document.input_key} with status: {status.value}")
-    return appsync_service.update_document(document)
+    logger.info(f"Updating document via document service: {document.input_key} with status: {status.value}")
+    return document_service.update_document(document)
 
 def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
     """
@@ -89,8 +83,9 @@ def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
         if "document" not in processed_result:
             raise ValueError("No document found in Result")
             
-        # Get document from the final processing step
-        document = Document.from_dict(processed_result.get("document", {}))
+        # Get document from the final processing step - handle both compressed and uncompressed
+        working_bucket = os.environ.get('WORKING_BUCKET')
+        document = Document.load_document(processed_result.get("document", {}), working_bucket, logger)
         logger.info(f"Successfully loaded actual document with {len(document.pages)} pages and {len(document.sections)} sections")
         return document
     except Exception as e:

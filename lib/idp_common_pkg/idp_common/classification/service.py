@@ -30,6 +30,7 @@ from idp_common.classification.models import (
     PageClassification,
 )
 from idp_common.models import Document, Section, Status
+from idp_common.utils import extract_json_from_text, extract_structured_data_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -673,13 +674,21 @@ class ClassificationService:
                 "text", ""
             )
 
-            # Try to extract JSON from the response
+            # Try to extract structured data (JSON or YAML) from the response
             try:
-                classification_json = self._extract_json(classification_text)
-                classification_data = json.loads(classification_json)
-                doc_type = classification_data.get("class", "")
+                classification_data, detected_format = (
+                    extract_structured_data_from_text(classification_text)
+                )
+                if isinstance(classification_data, dict):
+                    doc_type = classification_data.get("class", "")
+                    logger.debug(
+                        f"Parsed classification response as {detected_format}: {classification_data}"
+                    )
+                else:
+                    # If parsing failed, try to extract classification directly from text
+                    doc_type = self._extract_class_from_text(classification_text)
             except Exception as e:
-                logger.warning(f"Failed to parse JSON from response: {e}")
+                logger.warning(f"Failed to parse structured data from response: {e}")
                 # Try to extract classification directly from text
                 doc_type = self._extract_class_from_text(classification_text)
 
@@ -959,31 +968,6 @@ class ClassificationService:
             text_uri=text_uri,
             raw_text_uri=raw_text_uri,
         )
-
-    def _extract_json(self, text: str) -> str:
-        """Extract JSON string from text."""
-        # Check for code block format
-        if "```json" in text:
-            start_idx = text.find("```json") + len("```json")
-            end_idx = text.find("```", start_idx)
-            if end_idx > start_idx:
-                return text[start_idx:end_idx].strip()
-
-        # Check for simple JSON
-        if "{" in text and "}" in text:
-            start_idx = text.find("{")
-            # Find matching closing brace
-            open_braces = 0
-            for i in range(start_idx, len(text)):
-                if text[i] == "{":
-                    open_braces += 1
-                elif text[i] == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        return text[start_idx : i + 1].strip()
-
-        # If we can't find JSON, return the text as-is
-        return text
 
     def _extract_class_from_text(self, text: str) -> str:
         """Extract class name from text if JSON parsing fails."""
@@ -1702,7 +1686,7 @@ class ClassificationService:
 
             # Try to extract JSON from the response
             try:
-                classification_json = self._extract_json(classification_text)
+                classification_json = extract_json_from_text(classification_text)
                 classification_data = json.loads(classification_json)
                 segments = classification_data.get("segments", [])
 

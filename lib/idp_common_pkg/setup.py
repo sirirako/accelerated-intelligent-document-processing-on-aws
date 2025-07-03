@@ -25,6 +25,8 @@ extras_require = {
         "amazon-textract-textractor[pandas]==1.9.2",
         "numpy==1.26.4",
         "pandas==2.2.3",
+        "openpyxl==3.1.5",
+        "python-docx==1.2.0",
     ],
     # Classification module dependencies
     "classification": [
@@ -51,6 +53,10 @@ extras_require = {
     "appsync": [
         "requests==2.32.4",
     ],
+    # Document service factory dependencies (includes both appsync and dynamodb support)
+    "docs_service": [
+        "requests==2.32.4",
+    ],
     # Testing dependencies
     "test": [
         "pytest>=7.4.0",
@@ -58,6 +64,9 @@ extras_require = {
         "pytest-xdist>=3.3.1",  # For parallel test execution
         "requests>=2.32.3,<3.0.0",
         "pyarrow==20.0.0",
+        "PyYAML==6.0.2",
+        "openpyxl==3.1.5",
+        "python-docx==1.2.0",
     ],
     # Development dependencies
     "dev": [
@@ -75,12 +84,14 @@ extras_require = {
         "pandas==2.2.3",
         "requests==2.32.4",
         "pyarrow==20.0.0",
+        "openpyxl==3.1.5",
+        "python-docx==1.2.0",
     ],
 }
 
 setup(
     name="idp_common",
-    version="0.3.4",
+    version="0.3.6",
     packages=find_packages(
         exclude=[
             "build",

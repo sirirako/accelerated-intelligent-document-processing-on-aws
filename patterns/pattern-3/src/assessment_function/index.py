@@ -8,7 +8,7 @@ import logging
 
 from idp_common import get_config, assessment
 from idp_common.models import Document, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configuration will be loaded in handler function
 
@@ -28,19 +28,20 @@ def handler(event, context):
     config = get_config()
     logger.info(f"Config: {json.dumps(config)}")
     
-    # Extract input from event
-    document_dict = event.get('document', {})
+    # Extract input from event - handle both compressed and uncompressed
+    document_data = event.get('document', {})
     section_id = event.get('section_id')
     
     # Validate inputs
-    if not document_dict:
+    if not document_data:
         raise ValueError("No document provided in event")
         
     if not section_id:
         raise ValueError("No section_id provided in event")
         
-    # Convert document dictionary to Document object
-    document = Document.from_dict(document_dict)
+    # Convert document data to Document object - handle compression
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    document = Document.load_document(document_data, working_bucket, logger)
     logger.info(f"Processing assessment for document {document.id}, section {section_id}")
 
     # Update document status to ASSESSING
@@ -49,9 +50,9 @@ def handler(event, context):
         input_key=document.input_key,
         status=Status.ASSESSING,
     )
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {status.status}")
-    appsync_service.update_document(status)
+    document_service.update_document(status)
 
     # Initialize assessment service
     assessment_service = assessment.AssessmentService(config=config)
@@ -69,12 +70,11 @@ def handler(event, context):
         logger.error(error_message)
         raise Exception(error_message)
     
-    # Return the updated document as a dictionary
+    # Prepare output with automatic compression if needed
     result = {
-        'document': updated_document.to_dict(),
+        'document': updated_document.serialize_document(working_bucket, f"assessment_{section_id}", logger),
         'section_id': section_id
     }
     
     logger.info("Assessment processing completed")
     return result
-

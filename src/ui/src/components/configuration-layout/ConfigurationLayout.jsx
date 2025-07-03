@@ -521,7 +521,18 @@ const ConfigurationLayout = () => {
 
         // Handle arrays
         if (Array.isArray(current)) {
-          if (!Array.isArray(defaultObj) || current.length !== defaultObj.length) {
+          if (!Array.isArray(defaultObj)) {
+            return { [path]: current };
+          }
+
+          // Special case: if current array is empty but default is not empty,
+          // we need to explicitly save the empty array to override the default
+          if (current.length === 0 && defaultObj.length > 0) {
+            return { [path]: current };
+          }
+
+          // If lengths are different, arrays are different
+          if (current.length !== defaultObj.length) {
             return { [path]: current };
           }
 

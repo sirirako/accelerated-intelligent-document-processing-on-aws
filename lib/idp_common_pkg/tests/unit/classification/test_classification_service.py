@@ -11,14 +11,11 @@ Unit tests for the ClassificationService class.
 import pytest
 
 # Import standard library modules first
-import sys
 import json
 from textwrap import dedent
 from unittest.mock import ANY, MagicMock, patch
 
-# Mock PIL before importing any modules that might depend on it
-sys.modules["PIL"] = MagicMock()
-sys.modules["PIL.Image"] = MagicMock()
+# PIL is now used directly - no mocking needed
 
 from botocore.exceptions import ClientError
 from idp_common.classification.models import (
@@ -403,24 +400,26 @@ class TestClassificationService:
 
     def test_extract_json(self, service):
         """Test extracting JSON from text."""
+        from idp_common.utils import extract_json_from_text
+
         # Test with code block format
         text = 'Here is the result:\n```json\n{"class": "invoice"}\n```\nEnd of result.'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"class": "invoice"}'
 
         # Test with simple JSON
         text = 'The classification is {"class": "receipt"} based on the content.'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"class": "receipt"}'
 
         # Test with nested JSON
         text = 'Result: {"class": "letter", "metadata": {"confidence": 0.9}}'
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == '{"class": "letter", "metadata": {"confidence": 0.9}}'
 
         # Test with no JSON
         text = "No JSON here"
-        result = service._extract_json(text)
+        result = extract_json_from_text(text)
         assert result == "No JSON here"
 
     def test_extract_class_from_text(self, service):

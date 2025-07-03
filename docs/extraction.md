@@ -70,7 +70,7 @@ extraction:
     }
 ```
 
-The extraction service parses the JSON response and makes it available for downstream processing.
+The extraction service automatically detects and parses both JSON and YAML responses from the LLM, making the structured data available for downstream processing.
 
 ## Image Placement with {DOCUMENT_IMAGE} Placeholder
 
@@ -447,6 +447,154 @@ extraction:
 - **Service-Specific Tuning**: Optimize image dimensions for different document types and extraction complexity
 - **Runtime Configuration**: Adjust image processing without code changes
 - **Resource Optimization**: Balance quality and performance based on extraction requirements
+
+## JSON and YAML Output Support
+
+The extraction service supports both JSON and YAML output formats from LLM responses, with automatic format detection and parsing:
+
+### Automatic Format Detection
+
+The system automatically detects whether the LLM response is in JSON or YAML format:
+
+```yaml
+# JSON response (traditional)
+extraction:
+  task_prompt: |
+    Extract the following fields and respond with JSON:
+    {
+      "invoice_number": "extracted value",
+      "total_amount": "extracted value"
+    }
+
+# YAML response (more token-efficient)
+extraction:
+  task_prompt: |
+    Extract the following fields and respond with YAML:
+    invoice_number: extracted value
+    total_amount: extracted value
+```
+
+### Token Efficiency Benefits
+
+YAML format provides significant token savings for extraction tasks:
+
+- **10-30% fewer tokens** than equivalent JSON
+- No quotes required around keys
+- More compact syntax for nested structures
+- Natural support for multiline content
+- Cleaner representation of complex extracted data
+
+### Example Prompt Configurations
+
+**JSON-focused extraction prompt:**
+```yaml
+extraction:
+  system_prompt: |
+    You are a document assistant. Respond only with JSON. Never make up data, only provide data found in the document being provided.
+  task_prompt: |
+    Extract the following fields from this {DOCUMENT_CLASS} document and return a JSON object:
+    
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    
+    Document text: {DOCUMENT_TEXT}
+    
+    JSON response:
+```
+
+**YAML-focused extraction prompt:**
+```yaml
+extraction:
+  system_prompt: |
+    You are a document assistant. Respond only with YAML. Never make up data, only provide data found in the document being provided.
+  task_prompt: |
+    Extract the following fields from this {DOCUMENT_CLASS} document and return YAML:
+    
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    
+    Document text: {DOCUMENT_TEXT}
+    
+    YAML response:
+```
+
+### Complex Data Structure Examples
+
+**JSON format for nested extraction:**
+```json
+{
+  "vendor_info": {
+    "name": "ACME Corporation",
+    "address": "123 Main St, City, State 12345"
+  },
+  "line_items": [
+    {
+      "description": "Widget A",
+      "quantity": 5,
+      "unit_price": 10.00
+    },
+    {
+      "description": "Widget B", 
+      "quantity": 2,
+      "unit_price": 25.00
+    }
+  ]
+}
+```
+
+**Equivalent YAML format (more compact):**
+```yaml
+vendor_info:
+  name: ACME Corporation
+  address: 123 Main St, City, State 12345
+line_items:
+  - description: Widget A
+    quantity: 5
+    unit_price: 10.00
+  - description: Widget B
+    quantity: 2
+    unit_price: 25.00
+```
+
+### Backward Compatibility
+
+- All existing JSON-based extraction prompts continue to work unchanged
+- The system automatically detects and parses both formats
+- No configuration changes required for existing deployments
+- Intelligent fallback between formats if parsing fails
+
+### Implementation Details
+
+The extraction service uses the new `extract_structured_data_from_text()` function which:
+
+- Automatically detects JSON vs YAML format
+- Provides robust parsing with multiple extraction strategies
+- Handles malformed content gracefully
+- Returns both parsed data and detected format for logging
+- Supports complex nested structures and arrays
+
+### Token Efficiency Example
+
+For a typical invoice extraction with 10 fields:
+
+**JSON format (traditional):**
+```json
+{"invoice_number": "INV-2024-001", "invoice_date": "2024-03-15", "vendor_name": "ACME Corp", "total_amount": "1,234.56", "tax_amount": "123.45", "subtotal": "1,111.11", "due_date": "2024-04-15", "payment_terms": "Net 30", "customer_name": "John Smith", "customer_address": "456 Oak Ave, City, State 67890"}
+```
+
+**YAML format (more efficient):**
+```yaml
+invoice_number: INV-2024-001
+invoice_date: 2024-03-15
+vendor_name: ACME Corp
+total_amount: 1,234.56
+tax_amount: 123.45
+subtotal: 1,111.11
+due_date: 2024-04-15
+payment_terms: Net 30
+customer_name: John Smith
+customer_address: 456 Oak Ave, City, State 67890
+```
+
+The YAML version uses approximately 25% fewer tokens while maintaining the same information content.
 
 ## Best Practices
 

@@ -74,7 +74,7 @@ After deployment, you can quickly process a document and view results:
 
 2. **Use Sample Documents**:
    - For Pattern 1 (BDA): Use [samples/lending_package.pdf](./samples/lending_package.pdf)
-   - For Patterns 2 and 3: Use [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf) 
+   - For Patterns 2 and 3: Use [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf)
 
 3. **Monitor Processing**:
    - **Via Web UI**: Track document status on the dashboard
@@ -98,7 +98,9 @@ To update an existing GenAIIDP stack to a new version:
 2. Select your existing stack
 3. Click "Update"
 4. Select "Replace current template"
-5. Enter the template URL: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml`
+5. Enter the template URL: 
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main.yaml`
 6. Follow the prompts to update your stack, reviewing any parameter changes
 7. For detailed instructions, see the [Deployment Guide](./docs/deployment.md#updating-an-existing-stack)
 
