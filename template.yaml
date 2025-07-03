@@ -420,7 +420,6 @@ Metadata:
           default: "Evaluation"
         Parameters:
           - EvaluationBaselineBucketName
-          - ReportingBucketName
           - EvaluationAutoEnabled
       - Label:
           default: "Reporting"
@@ -482,8 +481,6 @@ Metadata:
         default: "Post Processing Lambda Hook Function ARN"
       EvaluationBaselineBucketName:
         default: "Evaluation Baseline Bucket Name"
-      ReportingBucketName:
-        default: "Reporting Bucket Name"
       EvaluationAutoEnabled:
         default: "Evaluation Auto Enabled"
       ReportingBucketName:
