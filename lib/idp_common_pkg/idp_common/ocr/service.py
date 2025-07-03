@@ -21,6 +21,7 @@ from botocore.config import Config
 
 from idp_common import bedrock, image, s3, utils
 from idp_common.models import Document, Page, Status
+from idp_common.ocr.document_converter import DocumentConverter
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +154,13 @@ class OcrService:
         # Initialize S3 client (used by all backends for image storage)
         self.s3_client = boto3.client("s3")
 
+        # Initialize document converter for non-PDF formats
+        self.document_converter = DocumentConverter(dpi=self.dpi or 150)
+
     def process_document(self, document: Document) -> Document:
         """
-        Process a PDF document with OCR and update the Document model.
+        Process a document with OCR and update the Document model.
+        Supports PDF, images, text, CSV, Excel, and Word documents.
 
         Args:
             document: Document model object to update with OCR results
@@ -165,12 +170,12 @@ class OcrService:
         """
         t0 = time.time()
 
-        # Get the PDF from S3
+        # Get the document from S3
         try:
             response = self.s3_client.get_object(
                 Bucket=document.input_bucket, Key=document.input_key
             )
-            pdf_content = response["Body"].read()
+            file_content = response["Body"].read()
             t1 = time.time()
             logger.debug(f"Time taken for S3 GetObject: {t1 - t0:.6f} seconds")
         except Exception as e:
@@ -183,31 +188,27 @@ class OcrService:
             document.status = Status.FAILED
             return document
 
-        # Process the PDF content
+        # Detect file type and process accordingly
         try:
-            pdf_document = fitz.open(stream=pdf_content, filetype="pdf")
-            num_pages = len(pdf_document)
-            document.num_pages = num_pages
+            file_type = self._detect_file_type(document.input_key, file_content)
+            logger.info(f"Detected file type: {file_type}")
 
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.max_workers
-            ) as executor:
-                future_to_page = {
-                    executor.submit(
-                        self._process_single_page,
-                        i,
-                        pdf_document,
-                        document.output_bucket,
-                        document.input_key,
-                    ): i
-                    for i in range(num_pages)
-                }
+            if file_type in ["txt", "csv", "xlsx", "docx"]:
+                # Process non-PDF documents
+                pages_data = self._process_non_pdf_document(file_type, file_content)
+                document.num_pages = len(pages_data)
 
-                for future in concurrent.futures.as_completed(future_to_page):
-                    page_index = future_to_page[future]
+                # Process each page
+                for page_index, (image_bytes, page_text) in enumerate(pages_data):
                     page_id = str(page_index + 1)
                     try:
-                        ocr_result, page_metering = future.result()
+                        ocr_result, page_metering = self._process_converted_page(
+                            page_index,
+                            image_bytes,
+                            page_text,
+                            document.output_bucket,
+                            document.input_key,
+                        )
 
                         # Create Page object and add to document
                         document.pages[page_id] = Page(
@@ -230,8 +231,59 @@ class OcrService:
                         stack_trace = traceback.format_exc()
                         logger.error(f"{error_msg}\nStack trace:\n{stack_trace}")
                         document.errors.append(f"{error_msg} (see logs for full trace)")
+            else:
+                # Process PDF/image documents using existing logic
+                pdf_document = fitz.open(stream=file_content, filetype=file_type)
+                num_pages = len(pdf_document)
+                document.num_pages = num_pages
 
-            pdf_document.close()
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.max_workers
+                ) as executor:
+                    future_to_page = {
+                        executor.submit(
+                            self._process_single_page,
+                            i,
+                            pdf_document,
+                            document.output_bucket,
+                            document.input_key,
+                        ): i
+                        for i in range(num_pages)
+                    }
+
+                    for future in concurrent.futures.as_completed(future_to_page):
+                        page_index = future_to_page[future]
+                        page_id = str(page_index + 1)
+                        try:
+                            ocr_result, page_metering = future.result()
+
+                            # Create Page object and add to document
+                            document.pages[page_id] = Page(
+                                page_id=page_id,
+                                image_uri=ocr_result["image_uri"],
+                                raw_text_uri=ocr_result["raw_text_uri"],
+                                parsed_text_uri=ocr_result["parsed_text_uri"],
+                                text_confidence_uri=ocr_result["text_confidence_uri"],
+                            )
+
+                            # Merge metering data
+                            document.metering = utils.merge_metering_data(
+                                document.metering, page_metering
+                            )
+
+                        except Exception as e:
+                            import traceback
+
+                            error_msg = (
+                                f"Error processing page {page_index + 1}: {str(e)}"
+                            )
+                            stack_trace = traceback.format_exc()
+                            logger.error(f"{error_msg}\nStack trace:\n{stack_trace}")
+                            document.errors.append(
+                                f"{error_msg} (see logs for full trace)"
+                            )
+
+                pdf_document.close()
 
             # Sort the pages dictionary by ascending page number
             logger.info(f"Sorting {len(document.pages)} pages by page number")
@@ -865,3 +917,201 @@ class OcrService:
                 logger.info(f"Successfully extracted basic text{page_info}")
 
         return {"text": text}
+
+    def _detect_file_type(self, filename: str, content: bytes) -> str:
+        """
+        Detect file type based on filename extension and content.
+
+        Args:
+            filename: Name of the file
+            content: File content bytes
+
+        Returns:
+            File type string
+        """
+        # Get file extension
+        ext = filename.lower().split(".")[-1] if "." in filename else ""
+
+        # Check for specific document types
+        if ext == "txt":
+            return "txt"
+        elif ext == "csv":
+            return "csv"
+        elif ext in ["xlsx", "xls"]:
+            return "xlsx"
+        elif ext in ["docx", "doc"]:
+            return "docx"
+        elif ext in ["pdf"]:
+            return "pdf"
+        elif ext in ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp"]:
+            return ext
+        else:
+            # Try to detect based on content
+            if content.startswith(b"%PDF"):
+                return "pdf"
+            elif content.startswith(b"PK"):
+                # Could be Excel or Word (both are ZIP-based)
+                if b"xl/" in content[:1000]:
+                    return "xlsx"
+                elif b"word/" in content[:1000]:
+                    return "docx"
+
+            # Default to treating as text if we can decode it
+            try:
+                content.decode("utf-8")
+                return "txt"
+            except UnicodeDecodeError:
+                pass
+
+            # Default to PDF for unknown binary files
+            return "pdf"
+
+    def _process_non_pdf_document(
+        self, file_type: str, content: bytes
+    ) -> List[Tuple[bytes, str]]:
+        """
+        Process non-PDF documents and convert to pages.
+
+        Args:
+            file_type: Type of the file
+            content: File content bytes
+
+        Returns:
+            List of tuples (image_bytes, page_text)
+        """
+        try:
+            if file_type == "txt":
+                text_content = content.decode("utf-8")
+                return self.document_converter.convert_text_to_pages(text_content)
+
+            elif file_type == "csv":
+                text_content = content.decode("utf-8")
+                return self.document_converter.convert_csv_to_pages(text_content)
+
+            elif file_type == "xlsx":
+                return self.document_converter.convert_excel_to_pages(content)
+
+            elif file_type == "docx":
+                return self.document_converter.convert_word_to_pages(content)
+
+            else:
+                # Fallback to text
+                try:
+                    text_content = content.decode("utf-8")
+                    return self.document_converter.convert_text_to_pages(text_content)
+                except UnicodeDecodeError:
+                    return [
+                        (
+                            self.document_converter._create_empty_page(),
+                            "Error: Unable to process file",
+                        )
+                    ]
+
+        except Exception as e:
+            logger.error(f"Error processing {file_type} document: {str(e)}")
+            return [
+                (
+                    self.document_converter._create_empty_page(),
+                    f"Error processing {file_type} document",
+                )
+            ]
+
+    def _process_converted_page(
+        self,
+        page_index: int,
+        image_bytes: bytes,
+        page_text: str,
+        output_bucket: str,
+        prefix: str,
+    ) -> Tuple[Dict[str, str], Dict[str, Any]]:
+        """
+        Process a converted page (from non-PDF document).
+
+        Args:
+            page_index: Zero-based index of the page
+            image_bytes: Page image bytes
+            page_text: Extracted text for the page
+            output_bucket: S3 bucket to store results
+            prefix: S3 prefix for storing results
+
+        Returns:
+            Tuple of (page_result_dict, metering_data)
+        """
+        t0 = time.time()
+        page_id = page_index + 1
+
+        # Upload image to S3
+        image_key = f"{prefix}/pages/{page_id}/image.jpg"
+        s3.write_content(
+            image_bytes, output_bucket, image_key, content_type="image/jpeg"
+        )
+
+        # Create OCR response structure for compatibility
+        ocr_response = {
+            "DocumentMetadata": {"Pages": 1},
+            "Blocks": [
+                {
+                    "BlockType": "LINE",
+                    "Text": line,
+                    "Confidence": 99.0,
+                    "TextType": "PRINTED",
+                }
+                for line in page_text.split("\n")
+                if line.strip()
+            ],
+        }
+
+        # Store raw OCR response
+        raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
+        s3.write_content(
+            ocr_response,
+            output_bucket,
+            raw_text_key,
+            content_type="application/json",
+        )
+
+        # Generate text confidence data
+        text_confidence_data = {
+            "page_count": 1,
+            "text_blocks": [
+                {"text": line, "confidence": 99.0, "type": "PRINTED"}
+                for line in page_text.split("\n")
+                if line.strip()
+            ],
+        }
+
+        text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
+        s3.write_content(
+            text_confidence_data,
+            output_bucket,
+            text_confidence_key,
+            content_type="application/json",
+        )
+
+        # Store parsed text result
+        parsed_result = {"text": page_text}
+        parsed_text_key = f"{prefix}/pages/{page_id}/result.json"
+        s3.write_content(
+            parsed_result,
+            output_bucket,
+            parsed_text_key,
+            content_type="application/json",
+        )
+
+        t1 = time.time()
+        logger.debug(
+            f"Time for converted page processing (page {page_id}): {t1 - t0:.6f} seconds"
+        )
+
+        # Minimal metering for converted documents
+        metering = {"OCR/converted/document_conversion": {"pages": 1}}
+
+        # Create and return page result
+        result = {
+            "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
+            "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
+            "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "image_uri": f"s3://{output_bucket}/{image_key}",
+        }
+
+        return result, metering

@@ -25,6 +25,8 @@ extras_require = {
         "amazon-textract-textractor[pandas]==1.9.2",
         "numpy==1.26.4",
         "pandas==2.2.3",
+        "openpyxl==3.1.5",
+        "python-docx==1.2.0",
     ],
     # Classification module dependencies
     "classification": [
@@ -63,6 +65,8 @@ extras_require = {
         "requests>=2.32.3,<3.0.0",
         "pyarrow==20.0.0",
         "PyYAML==6.0.2",
+        "openpyxl==3.1.5",
+        "python-docx==1.2.0",
     ],
     # Development dependencies
     "dev": [
@@ -80,6 +84,8 @@ extras_require = {
         "pandas==2.2.3",
         "requests==2.32.4",
         "pyarrow==20.0.0",
+        "openpyxl==3.1.5",
+        "python-docx==1.2.0",
     ],
 }
 
