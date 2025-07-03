@@ -5,11 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ## [0.3.6]
 
 ### Fixed
 - update Athena/Glue table configuration to use Parquet format instead of JSON  
 
+=======
+>>>>>>> 011c42d7945a9859609d5f2f98f6a4dd22b4864c
 ### Added
 - **Extended Document Format Support in OCR Service**
   - Added support for processing additional document formats beyond PDF and images:
