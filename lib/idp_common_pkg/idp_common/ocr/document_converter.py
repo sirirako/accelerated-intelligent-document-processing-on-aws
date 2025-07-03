@@ -920,54 +920,17 @@ class DocumentConverter:
 
     def _format_csv_with_pandas(self, df, original_content: str) -> str:
         """
-        Format CSV using pandas with enhanced markdown generation and metadata.
+        Format CSV using pandas - just the clean table without metadata.
 
         Args:
             df: pandas DataFrame
             original_content: Original CSV content for fallback
 
         Returns:
-            Enhanced markdown formatted text
+            Clean markdown table formatted text
         """
         try:
             import pandas as pd
-
-            # Build comprehensive markdown output
-            markdown_parts = []
-
-            # Add CSV metadata header
-            markdown_parts.append("# CSV Data Analysis")
-            markdown_parts.append("")
-
-            # Add basic statistics
-            markdown_parts.append("## Dataset Overview")
-            markdown_parts.append(f"- **Rows**: {len(df):,}")
-            markdown_parts.append(f"- **Columns**: {len(df.columns):,}")
-            markdown_parts.append("")
-
-            # Add column information with data types
-            markdown_parts.append("## Column Information")
-            for col in df.columns:
-                non_null_count = df[col].count()
-                null_count = len(df) - non_null_count
-
-                # Determine data type category
-                if pd.api.types.is_numeric_dtype(df[col]):
-                    type_category = "Numeric"
-                elif pd.api.types.is_datetime64_any_dtype(df[col]):
-                    type_category = "Date/Time"
-                elif pd.api.types.is_bool_dtype(df[col]):
-                    type_category = "Boolean"
-                else:
-                    type_category = "Text"
-
-                markdown_parts.append(
-                    f"- **{col}** ({type_category}): {non_null_count:,} non-null values"
-                )
-                if null_count > 0:
-                    markdown_parts.append(f"  - Missing values: {null_count:,}")
-
-            markdown_parts.append("")
 
             # Format numeric columns with appropriate precision
             df_formatted = df.copy()
@@ -989,39 +952,12 @@ class DocumentConverter:
                     # Format dates consistently
                     df_formatted[col] = df_formatted[col].dt.strftime("%Y-%m-%d")
 
-            # Generate high-quality markdown table
-            markdown_parts.append("## Data Table")
-
-            # Use pandas to_markdown with enhanced options
+            # Generate clean markdown table only
             table_markdown = df_formatted.to_markdown(
                 index=False, tablefmt="pipe", stralign="left", numalign="right"
             )
-            markdown_parts.append(table_markdown)
 
-            # Add summary statistics for numeric columns
-            import numpy as np
-
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 0:
-                markdown_parts.append("")
-                markdown_parts.append("## Numeric Summary Statistics")
-
-                try:
-                    summary_stats = df[numeric_cols].describe()
-                    stats_markdown = summary_stats.to_markdown(
-                        tablefmt="pipe", floatfmt=".2f"
-                    )
-                    markdown_parts.append(stats_markdown)
-                except Exception:
-                    # Fallback summary
-                    for col in numeric_cols:
-                        series = df[col].dropna()
-                        if len(series) > 0:
-                            markdown_parts.append(
-                                f"- **{col}**: Mean={series.mean():.2f}, Min={series.min():.2f}, Max={series.max():.2f}"
-                            )
-
-            return "\n".join(markdown_parts)
+            return table_markdown
 
         except Exception as e:
             logger.error(f"Error in pandas CSV formatting: {str(e)}")
@@ -1034,52 +970,44 @@ class DocumentConverter:
 
     def _generate_enhanced_excel_markdown(self, elements: List[dict]) -> str:
         """
-        Generate enhanced markdown for Excel content with metadata and formatting.
+        Generate clean markdown for Excel content - just the table/sheet contents without metadata.
 
         Args:
             elements: List of Excel elements (sheet headers, tables)
 
         Returns:
-            Enhanced markdown formatted text
+            Clean markdown formatted text with just table contents
         """
         try:
-            import numpy as np
             import pandas as pd
 
             markdown_parts = []
-
-            # Add Excel document header
-            markdown_parts.append("# Excel Workbook Analysis")
-            markdown_parts.append("")
-
-            # Count sheets and tables
-            sheet_count = len(
-                [elem for elem in elements if elem.get("type") == "sheet_header"]
-            )
-            table_count = len(
-                [elem for elem in elements if elem.get("type") == "excel_table"]
-            )
-
-            markdown_parts.append("## Workbook Overview")
-            markdown_parts.append(f"- **Sheets**: {sheet_count}")
-            markdown_parts.append(f"- **Tables**: {table_count}")
-            markdown_parts.append("")
 
             # Process each element
             for element in elements:
                 if element.get("type") == "sheet_header":
                     sheet_name = element.get("sheet_name", "Unknown")
-                    markdown_parts.append(f"## Sheet: {sheet_name}")
-                    markdown_parts.append("")
+                    # Only add sheet name as a simple header if there are multiple sheets
+                    if (
+                        len(
+                            [
+                                elem
+                                for elem in elements
+                                if elem.get("type") == "sheet_header"
+                            ]
+                        )
+                        > 1
+                    ):
+                        markdown_parts.append(f"## {sheet_name}")
+                        markdown_parts.append("")
 
                 elif element.get("type") == "excel_table":
                     table_data = element.get("data", [])
-                    sheet_name = element.get("sheet_name", "Unknown")
 
                     if not table_data:
                         continue
 
-                    # Convert table data back to DataFrame for analysis
+                    # Convert table data back to DataFrame for clean formatting
                     try:
                         # Extract headers and data
                         headers = [
@@ -1095,7 +1023,7 @@ class DocumentConverter:
                                 cell_text = cell.get("text", "")
                                 data_type = cell.get("data_type", "text")
 
-                                # Convert back to appropriate type for analysis
+                                # Convert back to appropriate type for formatting
                                 if data_type == "numeric" and cell_text:
                                     try:
                                         # Remove commas and convert to number
@@ -1114,38 +1042,8 @@ class DocumentConverter:
                             data_rows.append(row_data)
 
                         if headers and data_rows:
-                            # Create DataFrame for analysis
+                            # Create DataFrame for clean table formatting
                             df = pd.DataFrame(data_rows, columns=headers)
-
-                            # Add table metadata
-                            markdown_parts.append(f"### Table Data ({sheet_name})")
-                            markdown_parts.append(f"- **Rows**: {len(df):,}")
-                            markdown_parts.append(f"- **Columns**: {len(df.columns):,}")
-                            markdown_parts.append("")
-
-                            # Add column information
-                            markdown_parts.append("#### Column Information")
-                            for col in df.columns:
-                                non_null_count = df[col].count()
-                                null_count = len(df) - non_null_count
-
-                                # Determine data type
-                                if pd.api.types.is_numeric_dtype(df[col]):
-                                    type_category = "Numeric"
-                                elif pd.api.types.is_datetime64_any_dtype(df[col]):
-                                    type_category = "Date/Time"
-                                else:
-                                    type_category = "Text"
-
-                                markdown_parts.append(
-                                    f"- **{col}** ({type_category}): {non_null_count:,} non-null values"
-                                )
-                                if null_count > 0:
-                                    markdown_parts.append(
-                                        f"  - Missing values: {null_count:,}"
-                                    )
-
-                            markdown_parts.append("")
 
                             # Format the DataFrame for display
                             df_display = df.copy()
@@ -1164,44 +1062,21 @@ class DocumentConverter:
                                             lambda x: f"{x:,}" if pd.notna(x) else ""
                                         )
 
+                            # Generate clean markdown table only
                             table_markdown = df_display.to_markdown(
                                 index=False,
                                 tablefmt="pipe",
                                 stralign="left",
                                 numalign="right",
                             )
-                            markdown_parts.append("#### Data Table")
                             markdown_parts.append(table_markdown)
-
-                            # Add summary statistics for numeric columns
-                            numeric_cols = df.select_dtypes(include=[np.number]).columns
-                            if len(numeric_cols) > 0:
-                                markdown_parts.append("")
-                                markdown_parts.append("#### Numeric Summary Statistics")
-
-                                try:
-                                    summary_stats = df[numeric_cols].describe()
-                                    stats_markdown = summary_stats.to_markdown(
-                                        tablefmt="pipe", floatfmt=".2f"
-                                    )
-                                    markdown_parts.append(stats_markdown)
-                                except Exception:
-                                    # Fallback summary
-                                    for col in numeric_cols:
-                                        series = df[col].dropna()
-                                        if len(series) > 0:
-                                            markdown_parts.append(
-                                                f"- **{col}**: Mean={series.mean():.2f}, Min={series.min():.2f}, Max={series.max():.2f}"
-                                            )
-
-                            markdown_parts.append("")
+                            markdown_parts.append("")  # Add spacing between tables
 
                     except Exception as e:
                         logger.warning(
-                            f"Error processing Excel table data for enhanced markdown: {str(e)}"
+                            f"Error processing Excel table data for clean markdown: {str(e)}"
                         )
                         # Fallback to simple table representation
-                        markdown_parts.append(f"### Table Data ({sheet_name})")
                         for row in table_data:
                             row_text = " | ".join(
                                 [cell.get("text", "") for cell in row]
@@ -1212,19 +1087,24 @@ class DocumentConverter:
             return "\n".join(markdown_parts)
 
         except Exception as e:
-            logger.error(f"Error generating enhanced Excel markdown: {str(e)}")
+            logger.error(f"Error generating clean Excel markdown: {str(e)}")
             # Fallback to simple representation
-            fallback_parts = ["# Excel Workbook", ""]
+            fallback_parts = []
             for elem in elements:
                 if elem.get("type") == "sheet_header":
-                    fallback_parts.append(
-                        f"## Sheet: {elem.get('sheet_name', 'Unknown')}"
-                    )
+                    sheet_name = elem.get("sheet_name", "Unknown")
+                    # Only add sheet name if there are multiple sheets
+                    if (
+                        len([e for e in elements if e.get("type") == "sheet_header"])
+                        > 1
+                    ):
+                        fallback_parts.append(f"## {sheet_name}")
+                        fallback_parts.append("")
                 elif elem.get("type") == "excel_table" and elem.get("data"):
                     for row in elem["data"]:
                         row_text = " | ".join([cell.get("text", "") for cell in row])
                         fallback_parts.append(f"| {row_text} |")
-                fallback_parts.append("")
+                    fallback_parts.append("")
             return "\n".join(fallback_parts)
 
     def _format_csv_as_table(self, rows: List[List[str]]) -> str:
