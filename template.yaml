@@ -1576,6 +1576,7 @@ Resources:
 
   EvaluationBaselineBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateEvaluationBaselineBucket
     Properties:
       Bucket: !Ref EvaluationBaselineBucket
       PolicyDocument:
@@ -1883,7 +1884,11 @@ Resources:
           - ShouldCreateReportingBucket
           - !Ref ReportingBucket
           - !Ref ReportingBucketName
-        EvaluationBaselineBucket: !Ref EvaluationBaselineBucket
+        EvaluationBaselineBucket: 
+          !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
         ShouldUseDocumentKnowledgeBase: !If
           - ShouldUseDocumentKnowledgeBase
           - True
@@ -4645,7 +4650,11 @@ Resources:
         - S3WritePolicy:
             BucketName: !Ref OutputBucket
         - S3WritePolicy:
-            BucketName: !Ref EvaluationBaselineBucket
+            BucketName: 
+              !If
+                - ShouldCreateEvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucketName
         - Statement:
             - Effect: Allow
               Action:
