@@ -8,7 +8,7 @@ exclude = ["build", "build.*", "*build", "*build.*", "*.build", "*.build.*", "**
 
 [project]
 name = "idp_common"
-version = "0.3.5"
+version = "0.3.6"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [
     {name = "AWS", email = "noreply@amazon.com"}

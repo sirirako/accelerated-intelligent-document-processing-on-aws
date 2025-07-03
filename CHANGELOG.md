@@ -9,7 +9,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 - Update Athena/Glue table configuration to use Parquet format instead of JSON #20
-- Unable to delete all features from textract features #18
 - Cloudformation Error when Changing Evaluation Bucket Name #19
 
 ### Added
