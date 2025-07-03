@@ -112,7 +112,7 @@ class DocumentConverter:
 
     def convert_csv_to_pages(self, content: str) -> List[Tuple[bytes, str]]:
         """
-        Convert CSV content to page images and text.
+        Convert CSV content to page images and text with enhanced pandas processing.
 
         Args:
             content: CSV content as string
@@ -123,18 +123,40 @@ class DocumentConverter:
         try:
             import csv
 
-            # Parse CSV
-            csv_reader = csv.reader(io.StringIO(content))
-            rows = list(csv_reader)
+            import pandas as pd
 
-            if not rows:
-                return [(self._create_empty_page(), "")]
+            # First try pandas for intelligent processing
+            try:
+                # Use pandas to read CSV with automatic type inference
+                df = pd.read_csv(
+                    io.StringIO(content),
+                    dtype_backend="numpy_nullable",  # Better null handling
+                    parse_dates=True,  # Automatic date parsing
+                    infer_datetime_format=True,
+                )
 
-            # Format as table text
-            formatted_text = self._format_csv_as_table(rows)
+                if df.empty:
+                    return [(self._create_empty_page(), "")]
 
-            # Convert formatted text to pages
-            return self.convert_text_to_pages(formatted_text)
+                # Generate high-quality markdown using pandas
+                formatted_text = self._format_csv_with_pandas(df, content)
+
+            except Exception as pandas_error:
+                logger.warning(
+                    f"Pandas CSV processing failed, falling back to basic parsing: {pandas_error}"
+                )
+                # Fallback to basic CSV parsing
+                csv_reader = csv.reader(io.StringIO(content))
+                rows = list(csv_reader)
+
+                if not rows:
+                    return [(self._create_empty_page(), "")]
+
+                # Format as table text using improved method
+                formatted_text = self._format_csv_as_table(rows)
+
+            # Convert the enhanced markdown text to clean page images
+            return self._convert_markdown_to_pages(formatted_text)
 
         except Exception as e:
             logger.error(f"Error converting CSV to pages: {str(e)}")
@@ -850,7 +872,7 @@ class DocumentConverter:
         self, elements: List[dict]
     ) -> List[Tuple[bytes, str]]:
         """
-        Render formatted Excel content with enhanced table formatting.
+        Render formatted Excel content as clean markdown pages.
 
         Args:
             elements: List of formatted Excel elements (sheet headers, tables)
@@ -859,19 +881,11 @@ class DocumentConverter:
             List of tuples (image_bytes, page_text)
         """
         try:
-            # Load fonts
-            fonts = self._load_fonts()
+            # Generate enhanced markdown text for Excel content
+            enhanced_text = self._generate_enhanced_excel_markdown(elements)
 
-            # Calculate layout for Excel elements
-            pages_content = self._calculate_excel_page_layout(elements)
-
-            # Render pages
-            pages = []
-            for page_elements in pages_content:
-                img_bytes, text = self._render_excel_page(page_elements, fonts)
-                pages.append((img_bytes, text))
-
-            return pages if pages else [(self._create_empty_page(), "")]
+            # Convert the enhanced markdown text to clean page images
+            return self._convert_markdown_to_pages(enhanced_text)
 
         except Exception as e:
             logger.error(f"Error rendering formatted Excel content: {str(e)}")
@@ -888,7 +902,7 @@ class DocumentConverter:
                         text_content.append(row_text)
 
             combined_text = "\n".join(text_content)
-            return self.convert_text_to_pages(combined_text)
+            return self._convert_markdown_to_pages(combined_text)
 
     def _calculate_excel_page_layout(self, elements: List[dict]) -> List[List[dict]]:
         """
@@ -1271,6 +1285,315 @@ class DocumentConverter:
                 # Ultimate fallback - estimate based on text length
                 return len(text) * 8  # Rough estimation
 
+    def _format_csv_with_pandas(self, df, original_content: str) -> str:
+        """
+        Format CSV using pandas with enhanced markdown generation and metadata.
+
+        Args:
+            df: pandas DataFrame
+            original_content: Original CSV content for fallback
+
+        Returns:
+            Enhanced markdown formatted text
+        """
+        try:
+            import pandas as pd
+
+            # Build comprehensive markdown output
+            markdown_parts = []
+
+            # Add CSV metadata header
+            markdown_parts.append("# CSV Data Analysis")
+            markdown_parts.append("")
+
+            # Add basic statistics
+            markdown_parts.append("## Dataset Overview")
+            markdown_parts.append(f"- **Rows**: {len(df):,}")
+            markdown_parts.append(f"- **Columns**: {len(df.columns):,}")
+            markdown_parts.append("")
+
+            # Add column information with data types
+            markdown_parts.append("## Column Information")
+            for col in df.columns:
+                non_null_count = df[col].count()
+                null_count = len(df) - non_null_count
+
+                # Determine data type category
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    type_category = "Numeric"
+                elif pd.api.types.is_datetime64_any_dtype(df[col]):
+                    type_category = "Date/Time"
+                elif pd.api.types.is_bool_dtype(df[col]):
+                    type_category = "Boolean"
+                else:
+                    type_category = "Text"
+
+                markdown_parts.append(
+                    f"- **{col}** ({type_category}): {non_null_count:,} non-null values"
+                )
+                if null_count > 0:
+                    markdown_parts.append(f"  - Missing values: {null_count:,}")
+
+            markdown_parts.append("")
+
+            # Format numeric columns with appropriate precision
+            df_formatted = df.copy()
+            for col in df_formatted.columns:
+                if pd.api.types.is_numeric_dtype(df_formatted[col]):
+                    if pd.api.types.is_float_dtype(df_formatted[col]):
+                        # Format floats with 2 decimal places, but remove trailing zeros
+                        df_formatted[col] = df_formatted[col].apply(
+                            lambda x: f"{x:,.2f}".rstrip("0").rstrip(".")
+                            if pd.notna(x)
+                            else ""
+                        )
+                    else:
+                        # Format integers with thousand separators
+                        df_formatted[col] = df_formatted[col].apply(
+                            lambda x: f"{x:,}" if pd.notna(x) else ""
+                        )
+                elif pd.api.types.is_datetime64_any_dtype(df_formatted[col]):
+                    # Format dates consistently
+                    df_formatted[col] = df_formatted[col].dt.strftime("%Y-%m-%d")
+
+            # Generate high-quality markdown table
+            markdown_parts.append("## Data Table")
+
+            # Use pandas to_markdown with enhanced options
+            table_markdown = df_formatted.to_markdown(
+                index=False, tablefmt="pipe", stralign="left", numalign="right"
+            )
+            markdown_parts.append(table_markdown)
+
+            # Add summary statistics for numeric columns
+            import numpy as np
+
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                markdown_parts.append("")
+                markdown_parts.append("## Numeric Summary Statistics")
+
+                try:
+                    summary_stats = df[numeric_cols].describe()
+                    stats_markdown = summary_stats.to_markdown(
+                        tablefmt="pipe", floatfmt=".2f"
+                    )
+                    markdown_parts.append(stats_markdown)
+                except Exception:
+                    # Fallback summary
+                    for col in numeric_cols:
+                        series = df[col].dropna()
+                        if len(series) > 0:
+                            markdown_parts.append(
+                                f"- **{col}**: Mean={series.mean():.2f}, Min={series.min():.2f}, Max={series.max():.2f}"
+                            )
+
+            return "\n".join(markdown_parts)
+
+        except Exception as e:
+            logger.error(f"Error in pandas CSV formatting: {str(e)}")
+            # Fallback to basic CSV parsing
+            import csv
+
+            csv_reader = csv.reader(io.StringIO(original_content))
+            rows = list(csv_reader)
+            return self._format_csv_as_table(rows)
+
+    def _generate_enhanced_excel_markdown(self, elements: List[dict]) -> str:
+        """
+        Generate enhanced markdown for Excel content with metadata and formatting.
+
+        Args:
+            elements: List of Excel elements (sheet headers, tables)
+
+        Returns:
+            Enhanced markdown formatted text
+        """
+        try:
+            import numpy as np
+            import pandas as pd
+
+            markdown_parts = []
+
+            # Add Excel document header
+            markdown_parts.append("# Excel Workbook Analysis")
+            markdown_parts.append("")
+
+            # Count sheets and tables
+            sheet_count = len(
+                [elem for elem in elements if elem.get("type") == "sheet_header"]
+            )
+            table_count = len(
+                [elem for elem in elements if elem.get("type") == "excel_table"]
+            )
+
+            markdown_parts.append("## Workbook Overview")
+            markdown_parts.append(f"- **Sheets**: {sheet_count}")
+            markdown_parts.append(f"- **Tables**: {table_count}")
+            markdown_parts.append("")
+
+            # Process each element
+            for element in elements:
+                if element.get("type") == "sheet_header":
+                    sheet_name = element.get("sheet_name", "Unknown")
+                    markdown_parts.append(f"## Sheet: {sheet_name}")
+                    markdown_parts.append("")
+
+                elif element.get("type") == "excel_table":
+                    table_data = element.get("data", [])
+                    sheet_name = element.get("sheet_name", "Unknown")
+
+                    if not table_data:
+                        continue
+
+                    # Convert table data back to DataFrame for analysis
+                    try:
+                        # Extract headers and data
+                        headers = [
+                            cell.get("text", "")
+                            for cell in table_data[0]
+                            if cell.get("is_header", False)
+                        ]
+                        data_rows = []
+
+                        for row in table_data[1:]:  # Skip header row
+                            row_data = []
+                            for cell in row:
+                                cell_text = cell.get("text", "")
+                                data_type = cell.get("data_type", "text")
+
+                                # Convert back to appropriate type for analysis
+                                if data_type == "numeric" and cell_text:
+                                    try:
+                                        # Remove commas and convert to number
+                                        numeric_value = float(
+                                            cell_text.replace(",", "")
+                                        )
+                                        if numeric_value.is_integer():
+                                            row_data.append(int(numeric_value))
+                                        else:
+                                            row_data.append(numeric_value)
+                                    except (ValueError, AttributeError):
+                                        row_data.append(cell_text)
+                                else:
+                                    row_data.append(cell_text if cell_text else None)
+
+                            data_rows.append(row_data)
+
+                        if headers and data_rows:
+                            # Create DataFrame for analysis
+                            df = pd.DataFrame(data_rows, columns=headers)
+
+                            # Add table metadata
+                            markdown_parts.append(f"### Table Data ({sheet_name})")
+                            markdown_parts.append(f"- **Rows**: {len(df):,}")
+                            markdown_parts.append(f"- **Columns**: {len(df.columns):,}")
+                            markdown_parts.append("")
+
+                            # Add column information
+                            markdown_parts.append("#### Column Information")
+                            for col in df.columns:
+                                non_null_count = df[col].count()
+                                null_count = len(df) - non_null_count
+
+                                # Determine data type
+                                if pd.api.types.is_numeric_dtype(df[col]):
+                                    type_category = "Numeric"
+                                elif pd.api.types.is_datetime64_any_dtype(df[col]):
+                                    type_category = "Date/Time"
+                                else:
+                                    type_category = "Text"
+
+                                markdown_parts.append(
+                                    f"- **{col}** ({type_category}): {non_null_count:,} non-null values"
+                                )
+                                if null_count > 0:
+                                    markdown_parts.append(
+                                        f"  - Missing values: {null_count:,}"
+                                    )
+
+                            markdown_parts.append("")
+
+                            # Format the DataFrame for display
+                            df_display = df.copy()
+                            for col in df_display.columns:
+                                if pd.api.types.is_numeric_dtype(df_display[col]):
+                                    if pd.api.types.is_float_dtype(df_display[col]):
+                                        df_display[col] = df_display[col].apply(
+                                            lambda x: f"{x:,.2f}".rstrip("0").rstrip(
+                                                "."
+                                            )
+                                            if pd.notna(x)
+                                            else ""
+                                        )
+                                    else:
+                                        df_display[col] = df_display[col].apply(
+                                            lambda x: f"{x:,}" if pd.notna(x) else ""
+                                        )
+
+                            table_markdown = df_display.to_markdown(
+                                index=False,
+                                tablefmt="pipe",
+                                stralign="left",
+                                numalign="right",
+                            )
+                            markdown_parts.append("#### Data Table")
+                            markdown_parts.append(table_markdown)
+
+                            # Add summary statistics for numeric columns
+                            numeric_cols = df.select_dtypes(include=[np.number]).columns
+                            if len(numeric_cols) > 0:
+                                markdown_parts.append("")
+                                markdown_parts.append("#### Numeric Summary Statistics")
+
+                                try:
+                                    summary_stats = df[numeric_cols].describe()
+                                    stats_markdown = summary_stats.to_markdown(
+                                        tablefmt="pipe", floatfmt=".2f"
+                                    )
+                                    markdown_parts.append(stats_markdown)
+                                except Exception:
+                                    # Fallback summary
+                                    for col in numeric_cols:
+                                        series = df[col].dropna()
+                                        if len(series) > 0:
+                                            markdown_parts.append(
+                                                f"- **{col}**: Mean={series.mean():.2f}, Min={series.min():.2f}, Max={series.max():.2f}"
+                                            )
+
+                            markdown_parts.append("")
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error processing Excel table data for enhanced markdown: {str(e)}"
+                        )
+                        # Fallback to simple table representation
+                        markdown_parts.append(f"### Table Data ({sheet_name})")
+                        for row in table_data:
+                            row_text = " | ".join(
+                                [cell.get("text", "") for cell in row]
+                            )
+                            markdown_parts.append(f"| {row_text} |")
+                        markdown_parts.append("")
+
+            return "\n".join(markdown_parts)
+
+        except Exception as e:
+            logger.error(f"Error generating enhanced Excel markdown: {str(e)}")
+            # Fallback to simple representation
+            fallback_parts = ["# Excel Workbook", ""]
+            for elem in elements:
+                if elem.get("type") == "sheet_header":
+                    fallback_parts.append(
+                        f"## Sheet: {elem.get('sheet_name', 'Unknown')}"
+                    )
+                elif elem.get("type") == "excel_table" and elem.get("data"):
+                    for row in elem["data"]:
+                        row_text = " | ".join([cell.get("text", "") for cell in row])
+                        fallback_parts.append(f"| {row_text} |")
+                fallback_parts.append("")
+            return "\n".join(fallback_parts)
+
     def _format_csv_as_table(self, rows: List[List[str]]) -> str:
         """Format CSV rows as a readable table in proper markdown format."""
         if not rows:
@@ -1310,6 +1633,557 @@ class DocumentConverter:
                 formatted_rows.append(separator_row)
 
         return "\n".join(formatted_rows)
+
+    def _convert_markdown_to_pages(
+        self, markdown_content: str
+    ) -> List[Tuple[bytes, str]]:
+        """
+        Convert markdown content to clean page images with proper formatting.
+        Returns original markdown as page_text to preserve proper markdown syntax.
+
+        Args:
+            markdown_content: Markdown formatted text
+
+        Returns:
+            List of tuples (image_bytes, page_text)
+        """
+        try:
+            # Use a monospace font for better markdown rendering
+            try:
+                font_normal = ImageFont.truetype("DejaVuSansMono.ttf", 12)
+                font_bold = ImageFont.truetype("DejaVuSansMono-Bold.ttf", 12)
+                font_heading = ImageFont.truetype("DejaVuSansMono-Bold.ttf", 16)
+            except OSError:
+                font_normal = ImageFont.load_default()
+                font_bold = ImageFont.load_default()
+                font_heading = ImageFont.load_default()
+
+            # Calculate text area dimensions
+            text_width = self.page_width - (2 * self.margin)
+            text_height = self.page_height - (2 * self.margin)
+
+            # Calculate lines per page with better spacing
+            line_height = 18  # Slightly more space for better readability
+            lines_per_page = text_height // line_height
+
+            # Split the original markdown into pages while preserving table structure
+            original_lines = markdown_content.split("\n")
+
+            # Find table headers and separators in the original markdown
+            table_info = self._analyze_table_structure(original_lines)
+
+            pages = []
+            original_line_idx = 0
+
+            while original_line_idx < len(original_lines):
+                # Get a chunk of original lines for this page
+                page_original_lines = original_lines[
+                    original_line_idx : original_line_idx + lines_per_page
+                ]
+
+                # Check if this page starts in the middle of a table
+                page_text_lines = self._ensure_table_headers(
+                    page_original_lines, table_info, original_line_idx
+                )
+
+                # Create the page text from processed markdown
+                page_text = "\n".join(page_text_lines)
+
+                # Now create the image by processing the same content
+                page_formatted_lines = self._parse_markdown_content_with_tables(
+                    page_text
+                )
+
+                # Create image
+                img = Image.new("RGB", (self.page_width, self.page_height), "white")
+                draw = ImageDraw.Draw(img)
+
+                # Render formatted lines for the image
+                y_pos = self.margin
+
+                for line_info in page_formatted_lines:
+                    text = line_info.get("text", "")
+                    line_type = line_info.get("type", "normal")
+
+                    # Choose font based on line type
+                    if line_type == "heading":
+                        font = font_heading
+                        color = "#2c3e50"  # Dark blue for headings
+                    elif line_info.get("bold", False):
+                        font = font_bold
+                        color = "black"
+                    else:
+                        font = font_normal
+                        color = "black"
+
+                    # Handle indentation for lists and nested content
+                    indent = line_info.get("indent", 0)
+                    x_pos = self.margin + (indent * 20)  # 20 pixels per indent level
+
+                    # Ensure text doesn't go beyond page width
+                    available_width = text_width - (indent * 20)
+                    if available_width < 100:  # Minimum width
+                        x_pos = self.margin
+                        available_width = text_width
+
+                    # Handle long lines by wrapping
+                    wrapped_lines = self._wrap_text_to_width(
+                        text, font, available_width, draw
+                    )
+
+                    for wrapped_line in wrapped_lines:
+                        if y_pos + line_height > self.page_height - self.margin:
+                            break  # Page is full
+
+                        # Draw the text
+                        draw.text((x_pos, y_pos), wrapped_line, fill=color, font=font)
+                        y_pos += line_height
+
+                    # Add extra spacing after headings and sections
+                    if line_type == "heading":
+                        y_pos += 6
+                    elif text.strip() == "":  # Empty line
+                        y_pos += line_height // 2
+
+                # Convert to bytes
+                img_buffer = io.BytesIO()
+                img.save(img_buffer, format="JPEG", quality=95)
+                img_bytes = img_buffer.getvalue()
+
+                pages.append((img_bytes, page_text))
+                original_line_idx += len(page_original_lines)
+
+            return pages if pages else [(self._create_empty_page(), markdown_content)]
+
+        except Exception as e:
+            logger.error(f"Error converting markdown to pages: {str(e)}")
+            # Fallback to basic text conversion
+            return self.convert_text_to_pages(markdown_content)
+
+    def _parse_markdown_content_with_tables(self, content: str) -> List[dict]:
+        """
+        Parse markdown content into structured line information with table detection.
+        Converts markdown tables into visual table structures.
+
+        Args:
+            content: Markdown content
+
+        Returns:
+            List of line dictionaries with formatting info and table metadata
+        """
+        lines = []
+        in_table = False
+        current_table_data = []
+
+        for line in content.split("\n"):
+            line_info = {"text": line, "type": "normal", "bold": False, "indent": 0}
+
+            # Detect headings
+            if line.startswith("#"):
+                # Finish any current table
+                if in_table and current_table_data:
+                    table_lines = self._render_table_as_visual(current_table_data)
+                    lines.extend(table_lines)
+                    current_table_data = []
+                    in_table = False
+
+                line_info["type"] = "heading"
+                line_info["bold"] = True
+                # Remove markdown syntax for display
+                line_info["text"] = line.lstrip("#").strip()
+
+            # Detect bold text (simple **text** pattern)
+            elif "**" in line:
+                line_info["bold"] = True
+                # Remove markdown syntax for display
+                line_info["text"] = line.replace("**", "")
+
+            # Detect list items
+            elif line.strip().startswith("-") or line.strip().startswith("*"):
+                # Finish any current table
+                if in_table and current_table_data:
+                    table_lines = self._render_table_as_visual(current_table_data)
+                    lines.extend(table_lines)
+                    current_table_data = []
+                    in_table = False
+
+                line_info["indent"] = 1
+                # Clean up list formatting
+                line_info["text"] = "• " + line.strip()[1:].strip()
+
+            # Detect nested list items (with spaces)
+            elif line.startswith("  -") or line.startswith("  *"):
+                line_info["indent"] = 2
+                line_info["text"] = "  • " + line.strip()[1:].strip()
+
+            # Detect table rows (simple pipe detection)
+            elif "|" in line and line.strip().startswith("|"):
+                # Parse table row
+                if "---" in line:
+                    # This is a table separator - skip it but mark that we're in table
+                    continue
+                else:
+                    # This is a table data row
+                    cells = [
+                        cell.strip() for cell in line.strip().split("|")[1:-1]
+                    ]  # Remove empty first/last
+
+                    if not in_table:
+                        # First row - this is the header
+                        current_table_data = [{"cells": cells, "is_header": True}]
+                        in_table = True
+                    else:
+                        # Data row
+                        current_table_data.append({"cells": cells, "is_header": False})
+                    continue  # Don't add the raw markdown line
+
+            else:
+                # Empty line or other content - finish any current table
+                if in_table and current_table_data:
+                    table_lines = self._render_table_as_visual(current_table_data)
+                    lines.extend(table_lines)
+                    current_table_data = []
+                    in_table = False
+
+            lines.append(line_info)
+
+        # Finish any remaining table
+        if in_table and current_table_data:
+            table_lines = self._render_table_as_visual(current_table_data)
+            lines.extend(table_lines)
+
+        return lines
+
+    def _render_table_as_visual(self, table_data: List[dict]) -> List[dict]:
+        """
+        Convert parsed table data into visual table lines for rendering.
+
+        Args:
+            table_data: List of table row dictionaries with cells and header info
+
+        Returns:
+            List of formatted line dictionaries representing the visual table
+        """
+        if not table_data:
+            return []
+
+        visual_lines = []
+
+        # Calculate column widths based on content
+        max_cols = max(len(row["cells"]) for row in table_data)
+        col_widths = []
+
+        for col_idx in range(max_cols):
+            max_width = 0
+            for row in table_data:
+                if col_idx < len(row["cells"]):
+                    cell_content = str(row["cells"][col_idx])
+                    max_width = max(max_width, len(cell_content))
+            col_widths.append(max(max_width, 8))  # Minimum width of 8
+
+        # Create visual table rows
+        for row_idx, row in enumerate(table_data):
+            cells = row["cells"]
+            is_header = row.get("is_header", False)
+
+            # Pad cells to match column count
+            while len(cells) < max_cols:
+                cells.append("")
+
+            # Create formatted cells with proper width
+            formatted_cells = []
+            for col_idx, cell in enumerate(cells):
+                if col_idx < len(col_widths):
+                    cell_str = str(cell)
+                    # Pad or truncate to fit column width
+                    if len(cell_str) > col_widths[col_idx]:
+                        cell_str = cell_str[: col_widths[col_idx] - 3] + "..."
+                    formatted_cells.append(cell_str.ljust(col_widths[col_idx]))
+
+            # Create the visual table row
+            if is_header:
+                # Header row with borders
+                border_line = (
+                    "+" + "+".join(["-" * (width + 2) for width in col_widths]) + "+"
+                )
+                header_line = "| " + " | ".join(formatted_cells) + " |"
+
+                # Add top border for first header
+                if row_idx == 0:
+                    visual_lines.append(
+                        {
+                            "text": border_line,
+                            "type": "table_border",
+                            "bold": False,
+                            "indent": 0,
+                        }
+                    )
+
+                visual_lines.append(
+                    {
+                        "text": header_line,
+                        "type": "table_header",
+                        "bold": True,
+                        "indent": 0,
+                        "is_table_header": True,
+                    }
+                )
+
+                # Add separator after header
+                visual_lines.append(
+                    {
+                        "text": border_line,
+                        "type": "table_separator",
+                        "bold": False,
+                        "indent": 0,
+                    }
+                )
+            else:
+                # Data row
+                data_line = "| " + " | ".join(formatted_cells) + " |"
+                visual_lines.append(
+                    {
+                        "text": data_line,
+                        "type": "table_row",
+                        "bold": False,
+                        "indent": 0,
+                        "table_header": None,  # Will be set by header detection logic
+                    }
+                )
+
+        # Add bottom border
+        if table_data:
+            border_line = (
+                "+" + "+".join(["-" * (width + 2) for width in col_widths]) + "+"
+            )
+            visual_lines.append(
+                {
+                    "text": border_line,
+                    "type": "table_border",
+                    "bold": False,
+                    "indent": 0,
+                }
+            )
+
+        return visual_lines
+
+    def _find_current_table_header(
+        self, formatted_lines: List[dict], current_idx: int
+    ) -> List[dict]:
+        """
+        Find the table header for the current position if we're in a table.
+
+        Args:
+            formatted_lines: List of formatted line dictionaries
+            current_idx: Current line index
+
+        Returns:
+            List of header line dictionaries or None
+        """
+        if current_idx == 0:
+            return None
+
+        # Look backwards to find the most recent table header
+        for i in range(current_idx - 1, -1, -1):
+            line = formatted_lines[i]
+
+            # If we hit a heading or non-table content, stop looking
+            if line.get("type") in ["heading", "normal"] and not line.get(
+                "text", ""
+            ).strip().startswith("|"):
+                break
+
+            # If we find a table header, return it and its separator
+            if line.get("is_table_header", False):
+                header_lines = [line]
+                # Look for the separator line that follows
+                if (
+                    i + 1 < len(formatted_lines)
+                    and formatted_lines[i + 1].get("type") == "table_separator"
+                ):
+                    header_lines.append(formatted_lines[i + 1])
+                return header_lines
+
+        # Check if current line is part of a table
+        if current_idx < len(formatted_lines):
+            current_line = formatted_lines[current_idx]
+            if current_line.get("type") == "table" and current_line.get("table_header"):
+                return current_line.get("table_header")
+
+        return None
+
+    def _parse_markdown_content(self, content: str) -> List[dict]:
+        """
+        Parse markdown content into structured line information.
+
+        Args:
+            content: Markdown content
+
+        Returns:
+            List of line dictionaries with formatting info
+        """
+        lines = []
+
+        for line in content.split("\n"):
+            line_info = {"text": line, "type": "normal", "bold": False, "indent": 0}
+
+            # Detect headings
+            if line.startswith("#"):
+                line_info["type"] = "heading"
+                line_info["bold"] = True
+                # Remove markdown syntax for display
+                line_info["text"] = line.lstrip("#").strip()
+
+            # Detect bold text (simple **text** pattern)
+            elif "**" in line:
+                line_info["bold"] = True
+                # Remove markdown syntax for display
+                line_info["text"] = line.replace("**", "")
+
+            # Detect list items
+            elif line.strip().startswith("-") or line.strip().startswith("*"):
+                line_info["indent"] = 1
+                # Clean up list formatting
+                line_info["text"] = "• " + line.strip()[1:].strip()
+
+            # Detect nested list items (with spaces)
+            elif line.startswith("  -") or line.startswith("  *"):
+                line_info["indent"] = 2
+                line_info["text"] = "  • " + line.strip()[1:].strip()
+
+            # Detect table rows (simple pipe detection)
+            elif "|" in line and line.strip().startswith("|"):
+                # Keep table formatting as-is but ensure proper spacing
+                line_info["text"] = line.strip()
+
+            lines.append(line_info)
+
+        return lines
+
+    def _wrap_text_to_width(self, text: str, font, max_width: int, draw) -> List[str]:
+        """
+        Wrap text to fit within specified width.
+
+        Args:
+            text: Text to wrap
+            font: Font to use for measurement
+            max_width: Maximum width in pixels
+            draw: PIL ImageDraw object for text measurement
+
+        Returns:
+            List of wrapped text lines
+        """
+        if not text.strip():
+            return [text]
+
+        words = text.split()
+        if not words:
+            return [text]
+
+        lines = []
+        current_line = []
+
+        for word in words:
+            # Test if adding this word would exceed width
+            test_line = " ".join(current_line + [word])
+            text_width = self._get_text_width(draw, test_line, font)
+
+            if text_width <= max_width or not current_line:
+                current_line.append(word)
+            else:
+                # Start new line
+                if current_line:
+                    lines.append(" ".join(current_line))
+                current_line = [word]
+
+        # Add remaining words
+        if current_line:
+            lines.append(" ".join(current_line))
+
+        return lines if lines else [text]
+
+    def _analyze_table_structure(self, lines: List[str]) -> dict:
+        """
+        Analyze the markdown content to find table headers and their positions.
+
+        Args:
+            lines: List of markdown lines
+
+        Returns:
+            Dictionary with table structure information
+        """
+        table_info = {
+            "headers": [],  # List of (line_idx, header_line, separator_line)
+            "table_ranges": [],  # List of (start_idx, end_idx) for each table
+        }
+
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+
+            # Check if this is a table header (line with | followed by separator)
+            if (
+                line.startswith("|")
+                and "|" in line[1:]
+                and i + 1 < len(lines)
+                and "---" in lines[i + 1]
+                and "|" in lines[i + 1]
+            ):
+                header_line = lines[i]
+                separator_line = lines[i + 1]
+
+                # Find the end of this table
+                table_start = i
+                table_end = i + 1
+
+                # Look for more table rows
+                j = i + 2
+                while j < len(lines):
+                    next_line = lines[j].strip()
+                    if next_line.startswith("|") and "|" in next_line[1:]:
+                        table_end = j
+                        j += 1
+                    else:
+                        break
+
+                table_info["headers"].append((i, header_line, separator_line))
+                table_info["table_ranges"].append((table_start, table_end))
+
+                i = table_end + 1
+            else:
+                i += 1
+
+        return table_info
+
+    def _ensure_table_headers(
+        self, page_lines: List[str], table_info: dict, start_line_idx: int
+    ) -> List[str]:
+        """
+        Ensure that if a page starts in the middle of a table, it includes the table header.
+
+        Args:
+            page_lines: Lines for this page
+            table_info: Table structure information
+            start_line_idx: Starting line index in the original document
+
+        Returns:
+            Modified page lines with table headers if needed
+        """
+        if not page_lines or not table_info["table_ranges"]:
+            return page_lines
+
+        # Check if this page starts in the middle of a table
+        for table_start, table_end in table_info["table_ranges"]:
+            if table_start < start_line_idx <= table_end:
+                # This page starts in the middle of a table
+                # Find the corresponding header
+                for header_idx, header_line, separator_line in table_info["headers"]:
+                    if table_start <= header_idx <= table_end:
+                        # Add the header and separator to the beginning of the page
+                        result_lines = [header_line, separator_line] + page_lines
+                        return result_lines
+
+        return page_lines
 
     def _create_empty_page(self) -> bytes:
         """Create an empty white page image."""
