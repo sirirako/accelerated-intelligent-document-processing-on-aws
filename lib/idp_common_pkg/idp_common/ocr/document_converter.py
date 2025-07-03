@@ -1689,46 +1689,47 @@ class DocumentConverter:
                 # Create the page text from processed markdown
                 page_text = "\n".join(page_text_lines)
 
-                # Now create the image by processing the same content
-                page_formatted_lines = self._parse_markdown_content_with_tables(
-                    page_text
-                )
-
-                # Create image
+                # Create image with simple but clean formatting
                 img = Image.new("RGB", (self.page_width, self.page_height), "white")
                 draw = ImageDraw.Draw(img)
 
-                # Render formatted lines for the image
+                # Render with simple text formatting (fast and preserves all content)
                 y_pos = self.margin
 
-                for line_info in page_formatted_lines:
-                    text = line_info.get("text", "")
-                    line_type = line_info.get("type", "normal")
+                for line in page_text_lines:
+                    if y_pos + line_height > self.page_height - self.margin:
+                        break  # Page is full
 
-                    # Choose font based on line type
-                    if line_type == "heading":
+                    # Simple formatting based on content
+                    if line.startswith("#"):
+                        # Heading - use bold font and remove markdown syntax
+                        text = line.lstrip("#").strip()
                         font = font_heading
-                        color = "#2c3e50"  # Dark blue for headings
-                    elif line_info.get("bold", False):
+                        color = "#2c3e50"
+                    elif line.startswith("- ") or line.startswith("* "):
+                        # List item - add bullet and indent
+                        text = "• " + line[2:].strip()
+                        font = font_normal
+                        color = "black"
+                        x_pos = self.margin + 20
+                    elif "**" in line:
+                        # Bold text - remove markdown and use bold font
+                        text = line.replace("**", "")
                         font = font_bold
                         color = "black"
                     else:
+                        # Regular text
+                        text = line
                         font = font_normal
                         color = "black"
 
-                    # Handle indentation for lists and nested content
-                    indent = line_info.get("indent", 0)
-                    x_pos = self.margin + (indent * 20)  # 20 pixels per indent level
-
-                    # Ensure text doesn't go beyond page width
-                    available_width = text_width - (indent * 20)
-                    if available_width < 100:  # Minimum width
+                    # Default x position
+                    if not line.startswith("- ") and not line.startswith("* "):
                         x_pos = self.margin
-                        available_width = text_width
 
                     # Handle long lines by wrapping
                     wrapped_lines = self._wrap_text_to_width(
-                        text, font, available_width, draw
+                        text, font, text_width - (x_pos - self.margin), draw
                     )
 
                     for wrapped_line in wrapped_lines:
@@ -1739,11 +1740,9 @@ class DocumentConverter:
                         draw.text((x_pos, y_pos), wrapped_line, fill=color, font=font)
                         y_pos += line_height
 
-                    # Add extra spacing after headings and sections
-                    if line_type == "heading":
+                    # Add small spacing after headings
+                    if line.startswith("#"):
                         y_pos += 6
-                    elif text.strip() == "":  # Empty line
-                        y_pos += line_height // 2
 
                 # Convert to bytes
                 img_buffer = io.BytesIO()
@@ -2184,6 +2183,339 @@ class DocumentConverter:
                         return result_lines
 
         return page_lines
+
+    def _render_markdown_visually(
+        self,
+        draw,
+        markdown_content: str,
+        x: int,
+        y: int,
+        width: int,
+        font_normal,
+        font_bold,
+        font_heading,
+        line_height: int,
+    ) -> int:
+        """
+        Render markdown content visually like Jupyter does (with proper tables, headings, etc.)
+        instead of showing raw markdown syntax.
+
+        Args:
+            draw: PIL ImageDraw object
+            markdown_content: Markdown content to render
+            x, y: Starting position
+            width: Available width
+            font_normal, font_bold, font_heading: Font objects
+            line_height: Line height for text
+
+        Returns:
+            Final y position after rendering
+        """
+        try:
+            current_y = y
+            lines = markdown_content.split("\n")
+            i = 0
+
+            while i < len(lines) and current_y < self.page_height - self.margin:
+                line = lines[i].strip()
+
+                # Handle headings
+                if line.startswith("#"):
+                    heading_level = len(line) - len(line.lstrip("#"))
+                    heading_text = line.lstrip("#").strip()
+
+                    # Choose font size based on heading level
+                    if heading_level == 1:
+                        font = font_heading
+                        color = "#1f4e79"  # Dark blue
+                        spacing_before = 20
+                        spacing_after = 15
+                    elif heading_level == 2:
+                        font = font_bold
+                        color = "#2c5aa0"  # Medium blue
+                        spacing_before = 15
+                        spacing_after = 10
+                    else:
+                        font = font_bold
+                        color = "#365f91"  # Lighter blue
+                        spacing_before = 10
+                        spacing_after = 8
+
+                    current_y += spacing_before
+
+                    # Render heading with bold effect
+                    for offset in [(0, 0), (1, 0), (0, 1)]:
+                        draw.text(
+                            (x + offset[0], current_y + offset[1]),
+                            heading_text,
+                            fill=color,
+                            font=font,
+                        )
+
+                    current_y += line_height + spacing_after
+                    i += 1
+
+                # Handle bullet lists
+                elif line.startswith("-") or line.startswith("*"):
+                    list_text = line[1:].strip()
+                    bullet_x = x + 10
+                    text_x = x + 25
+
+                    # Draw bullet point
+                    draw.text(
+                        (bullet_x, current_y), "•", fill="black", font=font_normal
+                    )
+
+                    # Draw list text with wrapping
+                    wrapped_lines = self._wrap_text_to_width(
+                        list_text, font_normal, width - 25, draw
+                    )
+                    for wrapped_line in wrapped_lines:
+                        draw.text(
+                            (text_x, current_y),
+                            wrapped_line,
+                            fill="black",
+                            font=font_normal,
+                        )
+                        current_y += line_height
+
+                    current_y += 5  # Small spacing after list item
+                    i += 1
+
+                # Handle tables
+                elif line.startswith("|") and "|" in line[1:]:
+                    # Find the complete table
+                    table_lines = []
+                    j = i
+
+                    # Collect all table lines
+                    while j < len(lines):
+                        table_line = lines[j].strip()
+                        if table_line.startswith("|") and "|" in table_line[1:]:
+                            if "---" not in table_line:  # Skip separator lines
+                                table_lines.append(table_line)
+                        elif table_line == "":
+                            # Empty line might be part of table formatting
+                            pass
+                        else:
+                            break
+                        j += 1
+
+                    if table_lines:
+                        table_height = self._render_visual_table(
+                            draw,
+                            table_lines,
+                            x,
+                            current_y,
+                            width,
+                            font_normal,
+                            font_bold,
+                        )
+                        current_y += table_height + 15  # Spacing after table
+
+                    i = j
+
+                # Handle bold text
+                elif "**" in line:
+                    # Simple bold text handling
+                    text = line.replace("**", "")
+                    for offset in [(0, 0), (1, 0)]:
+                        draw.text(
+                            (x + offset[0], current_y + offset[1]),
+                            text,
+                            fill="black",
+                            font=font_bold,
+                        )
+                    current_y += line_height + 3
+                    i += 1
+
+                # Handle regular text
+                elif line:
+                    wrapped_lines = self._wrap_text_to_width(
+                        line, font_normal, width, draw
+                    )
+                    for wrapped_line in wrapped_lines:
+                        draw.text(
+                            (x, current_y), wrapped_line, fill="black", font=font_normal
+                        )
+                        current_y += line_height
+                    current_y += 3  # Small spacing after paragraph
+                    i += 1
+
+                # Handle empty lines
+                else:
+                    current_y += line_height // 2  # Half line spacing for empty lines
+                    i += 1
+
+            return current_y
+
+        except Exception as e:
+            logger.error(f"Error in visual markdown rendering: {str(e)}")
+            # Fallback to simple text rendering
+            for line in markdown_content.split("\n"):
+                if current_y >= self.page_height - self.margin:
+                    break
+                draw.text((x, current_y), line, fill="black", font=font_normal)
+                current_y += line_height
+            return current_y
+
+    def _render_visual_table(
+        self,
+        draw,
+        table_lines: List[str],
+        x: int,
+        y: int,
+        width: int,
+        font_normal,
+        font_bold,
+    ) -> int:
+        """
+        Render a table visually like Jupyter does (with borders and proper formatting).
+
+        Args:
+            draw: PIL ImageDraw object
+            table_lines: List of table lines (without separators)
+            x, y: Starting position
+            width: Available width
+            font_normal, font_bold: Font objects
+
+        Returns:
+            Height of the rendered table
+        """
+        try:
+            if not table_lines:
+                return 0
+
+            # Parse table data
+            table_data = []
+            for line in table_lines:
+                cells = [
+                    cell.strip() for cell in line.split("|")[1:-1]
+                ]  # Remove empty first/last
+                table_data.append(cells)
+
+            if not table_data:
+                return 0
+
+            # Calculate column widths
+            col_count = max(len(row) for row in table_data)
+            col_widths = []
+
+            for col_idx in range(col_count):
+                max_width = 0
+                for row in table_data:
+                    if col_idx < len(row):
+                        cell_text = row[col_idx]
+                        text_width = self._get_text_width(draw, cell_text, font_normal)
+                        max_width = max(max_width, text_width)
+                col_widths.append(
+                    min(max_width + 16, width // col_count)
+                )  # Add padding, limit width
+
+            # Ensure columns fit within available width
+            total_width = sum(col_widths)
+            if total_width > width:
+                # Scale down proportionally
+                scale_factor = width / total_width
+                col_widths = [int(w * scale_factor) for w in col_widths]
+
+            row_height = 25
+            current_y = y
+
+            # Render table
+            for row_idx, row in enumerate(table_data):
+                current_x = x
+                is_header = row_idx == 0
+
+                # Draw row background
+                if is_header:
+                    # Header background
+                    draw.rectangle(
+                        [x, current_y, x + sum(col_widths), current_y + row_height],
+                        fill="#f0f8ff",  # Light blue background
+                        outline="#4a90e2",
+                        width=1,
+                    )
+                else:
+                    # Alternate row colors
+                    fill_color = "#f8f9fa" if row_idx % 2 == 0 else "white"
+                    draw.rectangle(
+                        [x, current_y, x + sum(col_widths), current_y + row_height],
+                        fill=fill_color,
+                        outline="#dee2e6",
+                        width=1,
+                    )
+
+                # Render cells
+                for col_idx, cell in enumerate(row):
+                    if col_idx >= len(col_widths):
+                        break
+
+                    col_width = col_widths[col_idx]
+
+                    # Draw cell border
+                    draw.rectangle(
+                        [
+                            current_x,
+                            current_y,
+                            current_x + col_width,
+                            current_y + row_height,
+                        ],
+                        outline="#dee2e6",
+                        width=1,
+                    )
+
+                    # Calculate text position (centered vertically, with padding)
+                    text_x = current_x + 8  # Left padding
+                    text_y = current_y + (row_height - 16) // 2  # Center vertically
+
+                    # Truncate text if too long
+                    cell_text = cell
+                    max_text_width = col_width - 16  # Account for padding
+                    if (
+                        self._get_text_width(draw, cell_text, font_normal)
+                        > max_text_width
+                    ):
+                        # Truncate with ellipsis
+                        while (
+                            len(cell_text) > 0
+                            and self._get_text_width(
+                                draw, cell_text + "...", font_normal
+                            )
+                            > max_text_width
+                        ):
+                            cell_text = cell_text[:-1]
+                        cell_text += "..."
+
+                    # Render cell text
+                    font = font_bold if is_header else font_normal
+                    color = "#2c3e50" if is_header else "#495057"
+
+                    if is_header:
+                        # Bold effect for headers
+                        for offset in [(0, 0), (1, 0)]:
+                            draw.text(
+                                (text_x + offset[0], text_y + offset[1]),
+                                cell_text,
+                                fill=color,
+                                font=font,
+                            )
+                    else:
+                        draw.text((text_x, text_y), cell_text, fill=color, font=font)
+
+                    current_x += col_width
+
+                current_y += row_height
+
+            return current_y - y
+
+        except Exception as e:
+            logger.error(f"Error rendering visual table: {str(e)}")
+            # Fallback to simple text rendering
+            for line in table_lines:
+                draw.text((x, y), line, fill="black", font=font_normal)
+                y += 20
+            return len(table_lines) * 20
 
     def _create_empty_page(self) -> bytes:
         """Create an empty white page image."""
