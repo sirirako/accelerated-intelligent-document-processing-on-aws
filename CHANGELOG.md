@@ -8,8 +8,9 @@ SPDX-License-Identifier: MIT-0
 ## [0.3.6]
 
 ### Fixed
-- update Athena/Glue table configuration to use Parquet format instead of JSON #20
-- unable to delete all features from textract features #18
+- Update Athena/Glue table configuration to use Parquet format instead of JSON #20
+- Unable to delete all features from textract features #18
+- Cloudformation Error when Changing Evaluation Bucket Name #19
 
 ### Added
 - **Extended Document Format Support in OCR Service**
