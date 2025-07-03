@@ -570,16 +570,10 @@ class OcrService:
         )
 
         # Generate and store text confidence data
-        # For Bedrock, we'll use a simplified confidence structure
+        # For Bedrock, we use empty confidence data since LLM OCR doesn't provide real confidence scores
         text_confidence_data = {
             "page_count": 1,
-            "text_blocks": [
-                {
-                    "text": extracted_text,
-                    "confidence": 0.95,  # Default confidence for Bedrock
-                    "type": "PRINTED",
-                }
-            ],
+            "text_blocks": [],  # Empty - no confidence data available from LLM OCR
         }
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
