@@ -51,7 +51,7 @@ SPDX-License-Identifier: MIT-0
   - Customizable system and task prompts for OCR optimization
   - Better handling of complex documents, tables, and forms
   - Layout preservation capabilities
-- **Image Preprocessing - Pattern 2 and 3**
+- **Image Preprocessing - Pattern 2**
   - Adaptive Binarization: Improves OCR accuracy on documents with:
     - Uneven lighting or shadows
     - Low contrast text
@@ -88,7 +88,7 @@ SPDX-License-Identifier: MIT-0
   - **Improved Image Resizing Algorithm**: Enhanced aspect-ratio preserving scaling that only downsizes when necessary (scale factor < 1.0) to prevent image distortion
   - **Configurable Image Dimensions**: All processing services (Assessment, Classification, Extraction, OCR) now support configurable image dimensions through configuration with default 951×1268 resolution
   - **Service-Specific Image Optimization**: Each service can use optimal image dimensions for performance and quality tuning
-  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion (default: 300) and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
+  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
   - **Runtime Configuration**: No code changes needed to adjust image processing - all configurable through service configuration
   - **Backward Compatibility**: Default values maintain existing behavior with no immediate action required for existing deployments
 - **Enhanced Configuration Management**
@@ -384,7 +384,7 @@ The `idp_common_pkg` introduces a unified Document model approach for consistent
 - **Section**: Represents logical document sections with classification and extraction results
 
 #### Service Classes
-- **OcrService**: Processes documents with AWS Textract and updates the Document with OCR results
+- **OcrService**: Processes documents with AWS Textract or Amazon Bedrock and updates the Document with OCR results
 - **ClassificationService**: Classifies document pages/sections using Bedrock or SageMaker backends
 - **ExtractionService**: Extracts structured information from document sections using Bedrock
 
