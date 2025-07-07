@@ -72,6 +72,10 @@ class ClassificationService:
         self.max_workers = max_workers
         self.document_types = self._load_document_types()
         self.valid_doc_types: Set[str] = {dt.type_name for dt in self.document_types}
+        self.has_single_class = len(self.document_types) == 1
+        self.single_class_name = (
+            self.document_types[0].type_name if self.has_single_class else None
+        )
         self.backend = backend.lower()
 
         # Initialize caching
@@ -1166,6 +1170,33 @@ class ClassificationService:
                 error_message="Document has no pages to classify",
             )
 
+        # If there's only one document class defined, automatically classify all pages as that class
+        # without calling any backend service
+        if self.has_single_class:
+            logger.info(
+                f"Only one document class '{self.single_class_name}' is defined. Automatically classifying all pages as this class without calling backend."
+            )
+
+            # Set all pages to the single class
+            for page_id, page in document.pages.items():
+                page.classification = self.single_class_name
+                page.confidence = 1.0
+
+            # Create a single section containing all pages
+            page_ids = list(document.pages.keys())
+            section = self._create_section(
+                section_id="1",
+                doc_type=self.single_class_name,
+                pages=page_ids,
+                confidence=1.0,
+            )
+            document.sections = [section]
+
+            # Update document status
+            document = self._update_document_status(document)
+
+            return document
+
         # Use the appropriate classification method based on configuration
         if self.classification_method == self.TEXTBASED_HOLISTIC:
             logger.info(
@@ -1630,6 +1661,33 @@ class ClassificationService:
                 success=False,
                 error_message="Document has no pages to classify",
             )
+
+        # If there's only one document class defined, automatically classify all pages as that class
+        # without calling any backend service
+        if self.has_single_class:
+            logger.info(
+                f"Only one document class '{self.single_class_name}' is defined. Automatically classifying all pages as this class without calling backend."
+            )
+
+            # Set all pages to the single class
+            for page_id, page in document.pages.items():
+                page.classification = self.single_class_name
+                page.confidence = 1.0
+
+            # Create a single section containing all pages
+            page_ids = list(document.pages.keys())
+            section = Section(
+                section_id="1",
+                classification=self.single_class_name,
+                confidence=1.0,
+                page_ids=page_ids,
+            )
+            document.sections = [section]
+
+            # Update document status
+            document = self._update_document_status(document)
+
+            return document
 
         t0 = time.time()
         logger.info(
