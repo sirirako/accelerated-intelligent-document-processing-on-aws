@@ -122,6 +122,9 @@ class TestExtractionService:
                     Document text:
                     {DOCUMENT_TEXT}
                     
+                    Document image:
+                    {DOCUMENT_IMAGE}
+                    
                     Respond with a JSON object containing each field name and its extracted value.
                 """),
             },
