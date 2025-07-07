@@ -5,6 +5,20 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.7]
+
+### Added
+- **Optimize the classification process for single class configurations**
+  - Detects when only a single document class is defined in the configuration
+  - Automatically classifies all document pages as that single class
+  - Creates a single section containing all pages
+  - Bypasses the backend service calls (Bedrock or SageMaker) completely
+  - Logs an INFO message indicating the optimization is active
+
+
+### Fixed
+- 
+
 ## [0.3.6]
 
 ### Fixed
