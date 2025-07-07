@@ -22,7 +22,8 @@ SPDX-License-Identifier: MIT-0
   - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
 
 ### Fixed
-- 
+- Improve structure and clarity for idp_common Python package documentation
+
 
 ## [0.3.6]
 
