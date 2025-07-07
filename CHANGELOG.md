@@ -8,13 +8,18 @@ SPDX-License-Identifier: MIT-0
 ## [0.3.7]
 
 ### Added
-- **Optimize the classification process for single class configurations**
+- **Optimize the classification process for single class configurations in Pattern-2**
   - Detects when only a single document class is defined in the configuration
   - Automatically classifies all document pages as that single class
   - Creates a single section containing all pages
   - Bypasses the backend service calls (Bedrock or SageMaker) completely
   - Logs an INFO message indicating the optimization is active
 
+### Changed
+- **Default behavior for image attachment in Pattern-2 and Pattern3**
+  - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
+  - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
+  - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
 
 ### Fixed
 - 

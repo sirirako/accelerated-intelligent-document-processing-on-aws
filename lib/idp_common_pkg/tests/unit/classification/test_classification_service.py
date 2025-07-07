@@ -51,6 +51,9 @@ class TestClassificationService:
                     Document text:
                     {DOCUMENT_TEXT}
                     
+                    Document image:
+                    {DOCUMENT_IMAGE}
+                    
                     Respond with a JSON object with a single field "class" containing the document type.
                 """),
                 "classificationMethod": "multimodalPageLevelClassification",
@@ -75,6 +78,9 @@ class TestClassificationService:
                     
                     Document text:
                     {DOCUMENT_TEXT}
+                    
+                    Document image:
+                    {DOCUMENT_IMAGE}
                     
                     Respond with a JSON object with a single field "class" containing the document type.
                 """),
