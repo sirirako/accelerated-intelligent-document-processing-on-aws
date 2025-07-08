@@ -72,20 +72,14 @@ def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
         ValueError: If document cannot be extracted from event
     """
     try:
-        input_data = json.loads(event['detail']['input'])
         output_data = json.loads(event['detail']['output'])
         
         if not output_data:
             raise ValueError("No output data found in event")
-            
-        # Get the processed document from the output data
-        processed_result = output_data.get("Result", {})
-        if "document" not in processed_result:
-            raise ValueError("No document found in Result")
-            
-        # Get document from the final processing step - handle both compressed and uncompressed
+                       
+        # Get document from the final processing step
         working_bucket = os.environ.get('WORKING_BUCKET')
-        document = Document.load_document(processed_result.get("document", {}), working_bucket, logger)
+        document = Document.load_document(output_data, working_bucket, logger)
         logger.info(f"Successfully loaded actual document with {len(document.pages)} pages and {len(document.sections)} sections")
         return document
     except Exception as e:

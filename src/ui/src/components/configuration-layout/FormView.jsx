@@ -457,11 +457,11 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   };
 
   const updateValue = (path, value) => {
-    // Don't create properties for empty/meaningless values
+    // Don't create properties for empty/meaningless values, BUT preserve empty arrays
+    // as they represent intentional user deletions of list items
     if (
       value === '' ||
       value === null ||
-      (Array.isArray(value) && value.length === 0) ||
       (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0)
     ) {
       // Instead of setting empty values, check if we should remove the property entirely
@@ -484,6 +484,33 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
         delete current[lastSegment];
         onChange(newValues);
       }
+      return;
+    }
+
+    // Special handling for empty arrays: preserve them to represent intentional list clearing
+    if (Array.isArray(value) && value.length === 0) {
+      // Check if this path represents a list field that the user has interacted with
+      // We always want to preserve empty arrays as they represent intentional deletions
+      const newValues = { ...formValues };
+      const segments = path.split(/[.[\]]+/).filter(Boolean);
+      let current = newValues;
+
+      segments.slice(0, -1).forEach((segment) => {
+        if (!current[segment]) {
+          // Initialize arrays for list items
+          const nextSegment = segments[segments.indexOf(segment) + 1];
+          if (nextSegment && !Number.isNaN(parseInt(nextSegment, 10))) {
+            current[segment] = [];
+          } else {
+            current[segment] = {};
+          }
+        }
+        current = current[segment];
+      });
+
+      const [lastSegment] = segments.slice(-1);
+      current[lastSegment] = value; // Preserve the empty array
+      onChange(newValues);
       return;
     }
 
