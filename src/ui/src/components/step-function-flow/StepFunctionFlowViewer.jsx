@@ -1,11 +1,19 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-
 import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { API, graphqlOperation, Logger } from 'aws-amplify';
-import { Container, Header, SpaceBetween, Box, Alert, Spinner, Button, Modal } from '@awsui/components-react';
-import { FaPlay, FaCheck, FaTimes, FaClock, FaRobot, FaFileAlt, FaEye, FaChartBar } from 'react-icons/fa';
+import { Container, Header, SpaceBetween, Box, Alert, Spinner, Button, Modal, Badge } from '@awsui/components-react';
+import {
+  FaPlay,
+  FaCheck,
+  FaTimes,
+  FaClock,
+  FaRobot,
+  FaFileAlt,
+  FaEye,
+  FaChartBar,
+  FaMap,
+  FaList,
+} from 'react-icons/fa';
 import getStepFunctionExecution from '../../graphql/queries/getStepFunctionExecution';
 import FlowDiagram from './FlowDiagram';
 import StepDetails from './StepDetails';
@@ -22,6 +30,217 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const autoRefreshIntervalRef = useRef(null);
   const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds
+  const [enhancedSteps, setEnhancedSteps] = useState([]);
+
+  // Function to enhance Step Function steps for better visualization
+  const enhanceStepFunctionSteps = (steps) => {
+    if (!steps || !Array.isArray(steps)) return [];
+
+    // Create a copy of the steps array
+    const processedSteps = [...steps];
+
+    // Find Map states
+    const mapStates = steps.filter((step) => step.name.includes('ProcessSections') || step.type === 'Parallel');
+
+    // Check if we have the complete flow or need to add synthetic steps
+    const hasProcessResultsStep = steps.some((step) => step.name === 'ProcessResultsStep');
+    const hasSummarizationChoice = steps.some((step) => step.name === 'SummarizationChoice');
+    const hasSummarizationStep = steps.some((step) => step.name === 'SummarizationStep');
+    const hasWorkflowComplete = steps.some((step) => step.name === 'WorkflowComplete');
+
+    // If we're missing steps after the Map state, add synthetic steps for the complete flow
+    if (
+      mapStates.length > 0 &&
+      (!hasProcessResultsStep || !hasSummarizationChoice || !hasSummarizationStep || !hasWorkflowComplete)
+    ) {
+      // Find the last step in the current flow
+      const lastStep = [...steps].sort((a, b) => {
+        if (!a.stopDate) return 1;
+        if (!b.stopDate) return -1;
+        return new Date(b.stopDate) - new Date(a.stopDate);
+      })[0];
+
+      // Add synthetic steps for the complete flow
+      if (!hasProcessResultsStep) {
+        processedSteps.push({
+          name: 'ProcessResultsStep',
+          type: 'Task',
+          status: lastStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
+          startDate: lastStep.stopDate,
+          stopDate:
+            lastStep.status === 'SUCCEEDED'
+              ? new Date(new Date(lastStep.stopDate).getTime() + 1000).toISOString()
+              : null,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isCompleteFlow: true,
+        });
+      }
+
+      if (!hasSummarizationChoice) {
+        const prevStep = hasProcessResultsStep
+          ? steps.find((step) => step.name === 'ProcessResultsStep')
+          : processedSteps.find((step) => step.name === 'ProcessResultsStep');
+
+        processedSteps.push({
+          name: 'SummarizationChoice',
+          type: 'Choice',
+          status: prevStep && prevStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
+          startDate: prevStep ? prevStep.stopDate : lastStep.stopDate,
+          stopDate:
+            prevStep && prevStep.status === 'SUCCEEDED'
+              ? new Date(new Date(prevStep.stopDate).getTime() + 1000).toISOString()
+              : null,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isCompleteFlow: true,
+        });
+      }
+
+      if (!hasSummarizationStep) {
+        const prevStep = hasSummarizationChoice
+          ? steps.find((step) => step.name === 'SummarizationChoice')
+          : processedSteps.find((step) => step.name === 'SummarizationChoice');
+
+        processedSteps.push({
+          name: 'SummarizationStep',
+          type: 'Task',
+          status: prevStep && prevStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
+          startDate: prevStep ? prevStep.stopDate : lastStep.stopDate,
+          stopDate:
+            prevStep && prevStep.status === 'SUCCEEDED'
+              ? new Date(new Date(prevStep.stopDate).getTime() + 1000).toISOString()
+              : null,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isCompleteFlow: true,
+        });
+      }
+
+      if (!hasWorkflowComplete) {
+        const prevStep = hasSummarizationStep
+          ? steps.find((step) => step.name === 'SummarizationStep')
+          : processedSteps.find((step) => step.name === 'SummarizationStep');
+
+        processedSteps.push({
+          name: 'WorkflowComplete',
+          type: 'Pass',
+          status: prevStep && prevStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
+          startDate: prevStep ? prevStep.stopDate : lastStep.stopDate,
+          stopDate:
+            prevStep && prevStep.status === 'SUCCEEDED'
+              ? new Date(new Date(prevStep.stopDate).getTime() + 1000).toISOString()
+              : null,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isCompleteFlow: true,
+        });
+      }
+    }
+
+    // For each Map state, add synthetic steps to represent the nested workflow
+    mapStates.forEach((mapState) => {
+      // Find the index of the Map state
+      const mapStateIndex = processedSteps.findIndex((step) => step.name === mapState.name);
+
+      // Create a synthetic step to represent the Map state completion
+      const syntheticStep = {
+        name: `${mapState.name} (Completed)`,
+        type: 'MapComplete',
+        status: mapState.status,
+        startDate: mapState.startDate,
+        stopDate: mapState.stopDate,
+        input: null,
+        output: null,
+        error: null,
+        isSynthetic: true,
+      };
+
+      // Insert the synthetic step after the Map state
+      if (mapStateIndex > -1 && mapStateIndex < processedSteps.length) {
+        processedSteps.splice(mapStateIndex + 1, 0, syntheticStep);
+      }
+    });
+
+    // Add synthetic steps for the nested workflow in the Map state
+    const finalSteps = [];
+
+    processedSteps.forEach((step) => {
+      // Add the step to the processed steps
+      finalSteps.push(step);
+
+      // If this is a Map state, add synthetic steps for the nested workflow
+      if (step.name === 'ProcessSections') {
+        // Add synthetic steps for the nested workflow
+        finalSteps.push({
+          name: 'ExtractionStep (Iterator)',
+          type: 'Task',
+          status: step.status,
+          startDate: step.startDate,
+          stopDate: step.stopDate,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isNested: true,
+        });
+
+        finalSteps.push({
+          name: 'AssessmentChoice (Iterator)',
+          type: 'Choice',
+          status: step.status,
+          startDate: step.startDate,
+          stopDate: step.stopDate,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isNested: true,
+        });
+
+        finalSteps.push({
+          name: 'AssessmentStep (Iterator)',
+          type: 'Task',
+          status: step.status,
+          startDate: step.startDate,
+          stopDate: step.stopDate,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isNested: true,
+        });
+
+        finalSteps.push({
+          name: 'SectionComplete (Iterator)',
+          type: 'Pass',
+          status: step.status,
+          startDate: step.startDate,
+          stopDate: step.stopDate,
+          input: null,
+          output: null,
+          error: null,
+          isSynthetic: true,
+          isNested: true,
+        });
+      }
+    });
+
+    // Sort steps by start date to ensure correct order
+    return finalSteps.sort((a, b) => {
+      if (!a.startDate) return 1;
+      if (!b.startDate) return -1;
+      return new Date(a.startDate) - new Date(b.startDate);
+    });
+  };
 
   const fetchStepFunctionExecution = async () => {
     if (!executionArn || !visible) return;
@@ -34,6 +253,12 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
       setData(result.data);
       setLastRefreshTime(new Date());
       logger.debug('Step Functions execution data:', result.data);
+
+      // Process the steps to enhance Map state visualization
+      if (result.data?.getStepFunctionExecution?.steps) {
+        const processedSteps = enhanceStepFunctionSteps(result.data.getStepFunctionExecution.steps);
+        setEnhancedSteps(processedSteps);
+      }
     } catch (err) {
       logger.error('Error fetching Step Functions execution:', err);
       setError(err);
@@ -137,6 +362,30 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     }
     if (stepName.toLowerCase().includes('result') || stepName.toLowerCase().includes('process')) {
       return <FaChartBar size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('map') || stepName.toLowerCase().includes('sections')) {
+      return <FaMap size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('iterator')) {
+      return <FaList size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('ocr')) {
+      return <FaFileAlt size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('classification')) {
+      return <FaRobot size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('extraction')) {
+      return <FaRobot size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('assessment')) {
+      return <FaEye size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('summarization')) {
+      return <FaChartBar size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('workflow')) {
+      return <FaCheck size={iconProps.size} className={iconProps.className} />;
     }
 
     // Default icons based on status
@@ -260,7 +509,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
         {/* Flow Diagram */}
         <Container header={<Header variant="h3">Processing Flow</Header>}>
           <FlowDiagram
-            steps={execution.steps || []}
+            steps={enhancedSteps.length > 0 ? enhancedSteps : execution.steps || []}
             onStepClick={setSelectedStep}
             selectedStep={selectedStep}
             getStepIcon={getStepIcon}
@@ -277,12 +526,12 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
         {/* Steps Timeline */}
         <Container header={<Header variant="h3">Steps Timeline</Header>}>
           <div className="steps-timeline">
-            {execution.steps?.map((step, index) => (
+            {(enhancedSteps.length > 0 ? enhancedSteps : execution.steps)?.map((step) => (
               <div
-                key={step.name || index}
+                key={`timeline-${step.name}-${step.type}-${step.status}`}
                 className={`timeline-step ${step.status.toLowerCase()} ${
                   selectedStep?.name === step.name ? 'selected' : ''
-                }`}
+                } ${step.isNested ? 'nested-step' : ''}`}
                 onClick={() => setSelectedStep(step)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -294,7 +543,11 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
               >
                 <div className="timeline-step-icon">{getStepIcon(step.name, step.type, step.status)}</div>
                 <div className="timeline-step-content">
-                  <div className="timeline-step-name">{step.name}</div>
+                  <div className="timeline-step-name">
+                    {step.name}
+                    {step.isSynthetic && <Badge color="blue">Synthetic</Badge>}
+                    {step.isNested && <Badge color="green">Nested</Badge>}
+                  </div>
                   <div className="timeline-step-meta">
                     <span className={`timeline-step-status status-${step.status.toLowerCase()}`}>{step.status}</span>
                     <span className="timeline-step-duration">{formatDuration(step.startDate, step.stopDate)}</span>
