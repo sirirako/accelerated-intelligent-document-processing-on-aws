@@ -42,17 +42,19 @@ def handler(event, context):
     # Convert document data to Document object - handle compression
     working_bucket = os.environ.get('WORKING_BUCKET')
     document = Document.load_document(document_data, working_bucket, logger)
+    document.status = Status.ASSESSING
     logger.info(f"Processing assessment for document {document.id}, section {section_id}")
 
-    # Update document status to ASSESSING
-    status = Document(
+    # Update document status to ASSESSING for UI only
+    # Create new 'shell' document since our input document has only 1 section. 
+    docStatus = Document(
         id=document.id,
         input_key=document.input_key,
         status=Status.ASSESSING,
     )
     document_service = create_document_service()
-    logger.info(f"Updating document status to {status.status}")
-    document_service.update_document(status)
+    logger.info(f"Updating document status to {docStatus.status}")
+    document_service.update_document(docStatus)
 
     # Initialize assessment service
     assessment_service = assessment.AssessmentService(config=config)
