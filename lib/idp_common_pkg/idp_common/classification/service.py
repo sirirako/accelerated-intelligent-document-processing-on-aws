@@ -72,6 +72,10 @@ class ClassificationService:
         self.max_workers = max_workers
         self.document_types = self._load_document_types()
         self.valid_doc_types: Set[str] = {dt.type_name for dt in self.document_types}
+        self.has_single_class = len(self.document_types) == 1
+        self.single_class_name = (
+            self.document_types[0].type_name if self.has_single_class else None
+        )
         self.backend = backend.lower()
 
         # Initialize caching
@@ -243,14 +247,17 @@ class ClassificationService:
         """
         Build content array, automatically deciding whether to use image placeholder processing.
 
+        If the prompt contains {DOCUMENT_IMAGE}, the image will be inserted at that location.
+        If the prompt does NOT contain {DOCUMENT_IMAGE}, the image will NOT be included at all.
+
         Args:
             prompt_template: The prompt template that may contain {DOCUMENT_IMAGE}
             document_text: The document text content
             class_names_and_descriptions: Formatted class names and descriptions
-            image_content: Optional image content to insert
+            image_content: Optional image content to insert (only used when {DOCUMENT_IMAGE} is present)
 
         Returns:
-            List of content items with text and image content properly ordered
+            List of content items with text and image content properly ordered based on presence of placeholder
         """
         if "{DOCUMENT_IMAGE}" in prompt_template:
             return self._build_content_with_image_placeholder(
@@ -357,14 +364,16 @@ class ClassificationService:
         """
         Build content array without DOCUMENT_IMAGE placeholder (standard processing).
 
+        Note: This method does NOT attach the image content when no placeholder is present.
+
         Args:
             prompt_template: The prompt template
             document_text: The document text content
             class_names_and_descriptions: Formatted class names and descriptions
-            image_content: Optional image content to append at the end
+            image_content: Optional image content (not used when no placeholder is present)
 
         Returns:
-            List of content items with text and image content
+            List of content items with text content only (no image)
         """
         # Prepare the full prompt
         task_prompt = self._prepare_prompt_from_template(
@@ -378,9 +387,7 @@ class ClassificationService:
 
         content = [{"text": task_prompt}]
 
-        # Add image at the end if available
-        if image_content:
-            content.append(image.prepare_bedrock_image_attachment(image_content))
+        # No longer adding image content when no placeholder is present
 
         return content
 
@@ -436,10 +443,7 @@ class ClassificationService:
         # Add the part after examples
         content.extend(after_examples_content)
 
-        # If no DOCUMENT_IMAGE placeholder was found in either part and we have image content,
-        # append it at the end (fallback behavior)
-        if image_content and "{DOCUMENT_IMAGE}" not in task_prompt_template:
-            content.append(image.prepare_bedrock_image_attachment(image_content))
+        # No longer appending image content when no placeholder is found
 
         return content
 
@@ -1166,6 +1170,33 @@ class ClassificationService:
                 error_message="Document has no pages to classify",
             )
 
+        # If there's only one document class defined, automatically classify all pages as that class
+        # without calling any backend service
+        if self.has_single_class:
+            logger.info(
+                f"Only one document class '{self.single_class_name}' is defined. Automatically classifying all pages as this class without calling backend."
+            )
+
+            # Set all pages to the single class
+            for page_id, page in document.pages.items():
+                page.classification = self.single_class_name
+                page.confidence = 1.0
+
+            # Create a single section containing all pages
+            page_ids = list(document.pages.keys())
+            section = self._create_section(
+                section_id="1",
+                doc_type=self.single_class_name,
+                pages=page_ids,
+                confidence=1.0,
+            )
+            document.sections = [section]
+
+            # Update document status
+            document = self._update_document_status(document)
+
+            return document
+
         # Use the appropriate classification method based on configuration
         if self.classification_method == self.TEXTBASED_HOLISTIC:
             logger.info(
@@ -1630,6 +1661,33 @@ class ClassificationService:
                 success=False,
                 error_message="Document has no pages to classify",
             )
+
+        # If there's only one document class defined, automatically classify all pages as that class
+        # without calling any backend service
+        if self.has_single_class:
+            logger.info(
+                f"Only one document class '{self.single_class_name}' is defined. Automatically classifying all pages as this class without calling backend."
+            )
+
+            # Set all pages to the single class
+            for page_id, page in document.pages.items():
+                page.classification = self.single_class_name
+                page.confidence = 1.0
+
+            # Create a single section containing all pages
+            page_ids = list(document.pages.keys())
+            section = Section(
+                section_id="1",
+                classification=self.single_class_name,
+                confidence=1.0,
+                page_ids=page_ids,
+            )
+            document.sections = [section]
+
+            # Update document status
+            document = self._update_document_status(document)
+
+            return document
 
         t0 = time.time()
         logger.info(

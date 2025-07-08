@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone
 import logging
 from idp_common.models import Document, Status, Page, Section
-from idp_common.appsync import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 from botocore.exceptions import ClientError
 from typing import Dict, Any, Optional
 
@@ -24,14 +24,14 @@ dynamodb = boto3.resource('dynamodb')
 cloudwatch = boto3.client('cloudwatch')
 s3 = boto3.client('s3')
 lambda_client = boto3.client('lambda')
-appsync_service = DocumentAppSyncService()
+document_service = create_document_service()
 concurrency_table = dynamodb.Table(os.environ['CONCURRENCY_TABLE'])
 COUNTER_ID = 'workflow_counter'
 
 
 def update_document_completion(object_key: str, workflow_status: str, output_data: Dict[str, Any]) -> Document:
     """
-    Update document completion status via AppSync
+    Update document completion status via document service
     
     Args:
         object_key: The document object key (ID)
@@ -72,9 +72,9 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
         except Exception as e:
             logger.warning(f"Could not extract document data: {e}")
     
-    # Update document in AppSync
-    logger.info(f"Updating document via AppSync: {document.to_json()}")
-    updated_doc = appsync_service.update_document(document)
+    # Update document in document service
+    logger.info(f"Updating document via document service: {document.to_json()}")
+    updated_doc = document_service.update_document(document)
     
     # Save metering data to reporting bucket if available
     if REPORTING_BUCKET and SAVE_REPORTING_FUNCTION_NAME and document.metering:

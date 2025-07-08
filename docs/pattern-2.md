@@ -68,7 +68,7 @@ Each step includes comprehensive retry logic for handling transient errors:
     - Amazon Bedrock LLMs (Claude, Nova)
   - Concurrent page processing with ThreadPoolExecutor
   - **Configurable Image Processing**: Enhanced image resizing with aspect-ratio preservation
-  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion (default: 300)
+  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion
   - **Dual Image Strategy**: Stores original high-DPI images while using resized images for OCR processing
   - **Smart Resizing**: Only downsizes images when necessary (scale factor < 1.0)
   - Image preprocessing and optimization
@@ -317,7 +317,6 @@ The OCR service supports optional image resizing for processing optimization:
 ```yaml
 # OCR configuration example
 ocr:
-  dpi: 300  # PDF-to-image conversion DPI
   image:
     resize_config:
       target_width: 951   # Target width for processing

@@ -5,6 +5,52 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.7]
+
+### Added
+- **Optimize the classification process for single class configurations in Pattern-2**
+  - Detects when only a single document class is defined in the configuration
+  - Automatically classifies all document pages as that single class
+  - Creates a single section containing all pages
+  - Bypasses the backend service calls (Bedrock or SageMaker) completely
+  - Logs an INFO message indicating the optimization is active
+
+### Changed
+- **Default behavior for image attachment in Pattern-2 and Pattern3**
+  - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
+  - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
+  - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
+
+### Fixed
+- Improve structure and clarity for idp_common Python package documentation
+
+
+## [0.3.6]
+
+### Fixed
+- Update Athena/Glue table configuration to use Parquet format instead of JSON #20
+- Cloudformation Error when Changing Evaluation Bucket Name #19
+
+### Added
+- **Extended Document Format Support in OCR Service**
+  - Added support for processing additional document formats beyond PDF and images:
+    - Plain text (.txt) files with automatic pagination for large documents
+    - CSV (.csv) files with table visualization and structured output
+    - Excel workbooks (.xlsx, .xls) with multi-sheet support (each sheet as a page)
+    - Word documents (.docx, .doc) with text extraction and visual representation
+  - **Key Features**:
+    - Consistent processing model across all document formats
+    - Standard page image generation for all formats
+    - Structured text output in formats compatible with existing extraction pipelines
+    - Confidence metrics for all document types
+    - Automatic format detection from file content and extension
+  - **Implementation Details**:
+    - Format-specific processing strategies for optimal results
+    - Enhanced text rendering for plain text documents
+    - Table visualization for CSV and Excel data
+    - Word document paragraph extraction with formatting preservation
+    - S3 storage integration matching existing PDF processing workflow
+
 ## [0.3.5]
 
 ### Added
@@ -45,7 +91,7 @@ SPDX-License-Identifier: MIT-0
   - Customizable system and task prompts for OCR optimization
   - Better handling of complex documents, tables, and forms
   - Layout preservation capabilities
-- **Image Preprocessing - Pattern 2 and 3**
+- **Image Preprocessing - Pattern 2**
   - Adaptive Binarization: Improves OCR accuracy on documents with:
     - Uneven lighting or shadows
     - Low contrast text
@@ -82,7 +128,7 @@ SPDX-License-Identifier: MIT-0
   - **Improved Image Resizing Algorithm**: Enhanced aspect-ratio preserving scaling that only downsizes when necessary (scale factor < 1.0) to prevent image distortion
   - **Configurable Image Dimensions**: All processing services (Assessment, Classification, Extraction, OCR) now support configurable image dimensions through configuration with default 951×1268 resolution
   - **Service-Specific Image Optimization**: Each service can use optimal image dimensions for performance and quality tuning
-  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion (default: 300) and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
+  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
   - **Runtime Configuration**: No code changes needed to adjust image processing - all configurable through service configuration
   - **Backward Compatibility**: Default values maintain existing behavior with no immediate action required for existing deployments
 - **Enhanced Configuration Management**
@@ -378,7 +424,7 @@ The `idp_common_pkg` introduces a unified Document model approach for consistent
 - **Section**: Represents logical document sections with classification and extraction results
 
 #### Service Classes
-- **OcrService**: Processes documents with AWS Textract and updates the Document with OCR results
+- **OcrService**: Processes documents with AWS Textract or Amazon Bedrock and updates the Document with OCR results
 - **ClassificationService**: Classifies document pages/sections using Bedrock or SageMaker backends
 - **ExtractionService**: Extracts structured information from document sections using Bedrock
 

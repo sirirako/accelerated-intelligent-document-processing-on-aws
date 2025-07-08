@@ -15,7 +15,7 @@ import boto3
 import fitz  # PyMuPDF
 from botocore.exceptions import ClientError
 from idp_common import metrics
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 from idp_common.config import get_config
 from idp_common.models import Document, HitlMetadata, Page, Section, Status
 from idp_common.s3 import get_s3_client, write_content
@@ -1036,9 +1036,9 @@ def handler(event, context):
     logger.info(f"Using confidence threshold: {confidence_threshold}")
 
     # Update document status
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
    
     # Create page images (only need to do this once)
     try:
@@ -1174,7 +1174,7 @@ def handler(event, context):
         document.completion_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
         logger.info(f"Document processing complete, setting status to {document.status}")
     
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
     # Prepare response using new serialization method
     # Use working bucket for document compression

@@ -420,7 +420,6 @@ Metadata:
           default: "Evaluation"
         Parameters:
           - EvaluationBaselineBucketName
-          - ReportingBucketName
           - EvaluationAutoEnabled
       - Label:
           default: "Reporting"
@@ -482,8 +481,6 @@ Metadata:
         default: "Post Processing Lambda Hook Function ARN"
       EvaluationBaselineBucketName:
         default: "Evaluation Baseline Bucket Name"
-      ReportingBucketName:
-        default: "Reporting Bucket Name"
       EvaluationAutoEnabled:
         default: "Evaluation Auto Enabled"
       ReportingBucketName:
@@ -1443,10 +1440,10 @@ Resources:
                 - ShouldCreateReportingBucket
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
-          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
-          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          InputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
           SerdeInfo:
-            SerializationLibrary: "org.openx.data.jsonserde.JsonSerDe"
+            SerializationLibrary: "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
           Columns:
             - Name: document_id
               Type: string
@@ -1579,6 +1576,7 @@ Resources:
 
   EvaluationBaselineBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateEvaluationBaselineBucket
     Properties:
       Bucket: !Ref EvaluationBaselineBucket
       PolicyDocument:
@@ -1886,7 +1884,11 @@ Resources:
           - ShouldCreateReportingBucket
           - !Ref ReportingBucket
           - !Ref ReportingBucketName
-        EvaluationBaselineBucket: !Ref EvaluationBaselineBucket
+        EvaluationBaselineBucket: 
+          !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
         ShouldUseDocumentKnowledgeBase: !If
           - ShouldUseDocumentKnowledgeBase
           - True
@@ -4890,7 +4892,11 @@ Resources:
         - S3WritePolicy:
             BucketName: !Ref OutputBucket
         - S3WritePolicy:
-            BucketName: !Ref EvaluationBaselineBucket
+            BucketName: 
+              !If
+                - ShouldCreateEvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucketName
         - Statement:
             - Effect: Allow
               Action:

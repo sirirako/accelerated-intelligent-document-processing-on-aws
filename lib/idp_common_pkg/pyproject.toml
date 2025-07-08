@@ -8,7 +8,7 @@ exclude = ["build", "build.*", "*build", "*build.*", "*.build", "*.build.*", "**
 
 [project]
 name = "idp_common"
-version = "0.3.5"
+version = "0.3.6"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [
     {name = "AWS", email = "noreply@amazon.com"}
@@ -47,7 +47,9 @@ ocr = [
     "PyMuPDF==1.25.5",
     "amazon-textract-textractor[pandas]==1.9.2",
     "numpy==1.26.4",
-    "pandas==2.2.3"
+    "pandas==2.2.3",
+    "openpyxl==3.1.5",
+    "python-docx==1.2.0",
 ]
 
 # Classification module dependencies
@@ -81,6 +83,12 @@ appsync = [
     "requests==2.32.4",
 ]
 
+# Document service factory dependencies (includes both appsync and dynamodb support)
+# This includes all dependencies needed for both backends
+docs_service = [
+    "requests==2.32.4",  # Required for appsync module (dynamodb only needs boto3 which is core)
+]
+
 # Testing dependencies
 test = [
     "pytest>=7.4.0",
@@ -89,6 +97,8 @@ test = [
     "requests (>=2.32.3,<3.0.0)",
     "pyarrow==20.0.0",
     "PyYAML==6.0.2",
+    "openpyxl==3.1.5",
+    "python-docx==1.2.0",
     "moto[s3]>=4.2.0"  # For mocking AWS services in tests
 ]
 
@@ -101,7 +111,9 @@ all = [
     "numpy==1.26.4",
     "pandas==2.2.3",
     "requests==2.32.4",
-    "pyarrow==20.0.0"
+    "pyarrow==20.0.0",
+    "openpyxl==3.1.5",
+    "python-docx==1.2.0",
 ]
 
 [project.urls]

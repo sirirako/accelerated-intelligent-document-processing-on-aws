@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Box } from '@awsui/components-react';
 import { API, Logger } from 'aws-amplify';
 import DOMPurify from 'dompurify';
+// Note: XLSX and mammoth imports removed since we're using download approach for Excel/Docx files
 import useSettingsContext from '../../contexts/settings';
 import generateS3PresignedUrl from '../common/generate-s3-presigned-url';
 import useAppContext from '../../contexts/app';
@@ -21,7 +22,13 @@ const createSafeDataUrl = (content, contentType) => {
       FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
       FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout'],
     });
+
     return `data:${contentType};charset=utf-8,${encodeURIComponent(sanitizedContent)}`;
+  }
+
+  // For CSV files, treat as plain text for better browser compatibility
+  if (contentType.includes('csv')) {
+    return `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
   }
 
   // For other text-based content, use as is
@@ -37,6 +44,8 @@ const detectFileType = (objectKey, contentType) => {
     if (contentType.includes('html')) return 'html';
     if (contentType.includes('text/')) return 'text';
     if (contentType.includes('json')) return 'json';
+    if (contentType.includes('spreadsheet') || contentType.includes('excel')) return 'excel';
+    if (contentType.includes('wordprocessingml') || contentType.includes('msword')) return 'docx';
   }
   // Fallback to checking file extension
   if (objectKey) {
@@ -46,6 +55,8 @@ const detectFileType = (objectKey, contentType) => {
     if (extension === 'html' || extension === 'htm') return 'html';
     if (['txt', 'md', 'csv', 'log'].includes(extension)) return 'text';
     if (extension === 'json') return 'json';
+    if (['xlsx', 'xls', 'xlsm', 'xlsb'].includes(extension)) return 'excel';
+    if (['docx', 'doc'].includes(extension)) return 'docx';
   }
   return 'unknown';
 };
@@ -60,7 +71,7 @@ const FileViewer = ({ objectKey }) => {
   const [error, setError] = useState(null);
   const [viewMethod, setViewMethod] = useState('presigned'); // 'presigned' or 'content'
 
-  // Fetch file contents via GraphQL API for HTML files
+  // Fetch file contents via GraphQL API and process special file types
   const fetchFileContents = async (s3Url) => {
     try {
       logger.info('Fetching file contents via GraphQL for:', s3Url);
@@ -72,25 +83,43 @@ const FileViewer = ({ objectKey }) => {
       const result = response.data.getFileContents;
       logger.info('Content type received:', result.contentType);
       logger.info('Binary content?', result.isBinary);
+      logger.info('Content length:', result.content ? result.content.length : 'null');
+      logger.info('Content type:', typeof result.content);
+      logger.info('Content preview:', result.content ? result.content.substring(0, 100) : 'null');
 
-      // Set content and type
-      setFileContent(result.content);
-      setContentType(result.contentType);
       // Get file type
       const fileType = detectFileType(objectKey, result.contentType);
       logger.info('Detected file type:', fileType);
 
+      // For Excel and Docx files, we always use presigned URL with download approach
+      if (fileType === 'excel' || fileType === 'docx') {
+        logger.info(`${fileType} file detected, using presigned URL with download approach`);
+      }
+
+      // Set content and type for other files
+      setFileContent(result.content);
+      setContentType(result.contentType);
+
       // Determine view method based on content type and binary flag
-      if (fileType === 'pdf' || result.isBinary === true) {
-        // Always use presigned URL for PDFs and binary content
-        setViewMethod('presigned');
-      } else if (fileType === 'html' || fileType === 'text') {
-        // Use content-based viewing for HTML and text content
-        setViewMethod('content');
+      let selectedViewMethod;
+      if (
+        fileType === 'pdf' ||
+        fileType === 'excel' ||
+        fileType === 'docx' ||
+        (result.isBinary === true && fileType !== 'html' && fileType !== 'text')
+      ) {
+        // Use presigned URL for PDFs, Excel, Docx, and other binary content
+        selectedViewMethod = 'presigned';
+      } else if (fileType === 'html' || fileType === 'text' || result.isBinary === false) {
+        // Use content-based viewing for HTML, text content, and non-binary files (like CSV)
+        selectedViewMethod = 'content';
       } else {
         // Use presigned URL for other content
-        setViewMethod('presigned');
+        selectedViewMethod = 'presigned';
       }
+
+      logger.info('Selected view method:', selectedViewMethod);
+      setViewMethod(selectedViewMethod);
 
       return result;
     } catch (err) {
@@ -112,13 +141,25 @@ const FileViewer = ({ objectKey }) => {
       const s3Url = `https://${settings.InputBucket}.s3.${region}.amazonaws.com/${objectKey}`;
 
       // First fetch the content via GraphQL to determine content type
-      await fetchFileContents(s3Url);
+      const result = await fetchFileContents(s3Url);
 
-      // If we're still using presigned URLs, generate one
-      if (viewMethod === 'presigned') {
+      // Get file type to determine if we need presigned URL
+      const fileType = detectFileType(objectKey, result.contentType);
+
+      // Determine if we need presigned URL based on the same logic as in fetchFileContents
+      const needsPresignedUrl =
+        fileType === 'pdf' ||
+        fileType === 'excel' ||
+        fileType === 'docx' ||
+        (result.isBinary === true && fileType !== 'html' && fileType !== 'text');
+
+      // Generate presigned URL only if needed
+      if (needsPresignedUrl) {
         logger.info('Generating presigned URL for:', s3Url);
         const url = await generateS3PresignedUrl(s3Url, currentCredentials);
         setPresignedUrl(url);
+      } else {
+        logger.info('Using content-based viewing, no presigned URL needed');
       }
     } catch (err) {
       logger.error('Error preparing document for viewing:', err);
@@ -149,9 +190,15 @@ const FileViewer = ({ objectKey }) => {
     );
   }
 
-  // Render content-based viewer (for HTML, etc.)
+  // Render content-based viewer (for HTML and text files)
   if (viewMethod === 'content' && fileContent && contentType) {
+    logger.info('Rendering content-based viewer');
+    logger.info('File content length:', fileContent.length);
+    logger.info('Content type for data URL:', contentType);
+
     const safeDataUrl = createSafeDataUrl(fileContent, contentType);
+    logger.info('Generated data URL length:', safeDataUrl.length);
+    logger.info('Data URL preview:', safeDataUrl.substring(0, 200));
 
     return (
       <Box className="document-container" padding={{ top: 's' }}>
@@ -173,6 +220,9 @@ const FileViewer = ({ objectKey }) => {
     // Get the file type
     const fileType = detectFileType(objectKey, contentType);
     const isPdf = fileType === 'pdf';
+    logger.info('Rendering presigned URL viewer for file type:', fileType);
+    logger.info('Presigned URL:', presignedUrl);
+
     if (isPdf) {
       // Special handling for PDFs - use object tag instead of iframe for better PDF support
       return (
@@ -189,7 +239,42 @@ const FileViewer = ({ objectKey }) => {
         </Box>
       );
     }
-    // For non-PDF content, use iframe with appropriate sandbox settings
+    // For Excel and Docx files, provide download link since browsers can't display them inline
+    if (fileType === 'excel' || fileType === 'docx') {
+      const fileTypeName = fileType === 'excel' ? 'Excel' : 'Word';
+      return (
+        <Box className="document-container" padding={{ top: 's' }} textAlign="center">
+          <Box padding="xl">
+            <h3>📄 {fileTypeName} Document</h3>
+            <p>This {fileTypeName} document cannot be displayed directly in the browser.</p>
+            <p>
+              <a
+                href={presignedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-block',
+                  padding: '12px 24px',
+                  backgroundColor: '#0073bb',
+                  color: 'white',
+                  textDecoration: 'none',
+                  borderRadius: '4px',
+                  fontWeight: 'bold',
+                  margin: '10px',
+                }}
+              >
+                📥 Download {fileTypeName} File
+              </a>
+            </p>
+            <p style={{ fontSize: '14px', color: '#666' }}>
+              The file will open in your default {fileTypeName} application.
+            </p>
+          </Box>
+        </Box>
+      );
+    }
+
+    // For other non-PDF content, use iframe with appropriate sandbox settings
     return (
       <Box className="document-container" padding={{ top: 's' }}>
         <iframe
