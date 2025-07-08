@@ -504,7 +504,7 @@ class TestGranularAssessmentService:
         assert "date" in enhanced_data
         assert enhanced_data["sender_name"]["confidence_threshold"] == 0.9
 
-        # Check metering aggregation
+        # Check metering aggregation (using utils.merge_metering_data)
         assert metering["model"]["input_tokens"] == 150
 
     def test_empty_extraction_results_handling(self, sample_config):

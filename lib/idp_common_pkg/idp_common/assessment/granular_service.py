@@ -881,15 +881,11 @@ class GranularAssessmentService:
                 logger.warning(f"Task {task.task_id} failed or missing result")
                 continue
 
-            # Aggregate metering data
+            # Aggregate metering data using the same pattern as classification service
             if result.metering:
-                for key, value in result.metering.items():
-                    if key not in aggregated_metering:
-                        aggregated_metering[key] = {}
-                    for metric, count in value.items():
-                        aggregated_metering[key][metric] = (
-                            aggregated_metering[key].get(metric, 0) + count
-                        )
+                aggregated_metering = utils.merge_metering_data(
+                    aggregated_metering, result.metering
+                )
 
             # Add confidence alerts
             all_confidence_alerts.extend(result.confidence_alerts)
