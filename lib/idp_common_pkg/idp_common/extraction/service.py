@@ -62,7 +62,12 @@ class ExtractionService:
             ),
             None,
         )
-        return class_config.get("attributes", []) if class_config else []
+        if class_config is None:
+            return []
+        
+        # Get attributes and ensure it's always a list, never None
+        attributes = class_config.get("attributes", [])
+        return attributes if attributes is not None else []
 
     def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
         """
@@ -74,6 +79,10 @@ class ExtractionService:
         Returns:
             Formatted attribute descriptions as a string
         """
+        # Defensive coding: handle None input
+        if attributes is None:
+            return ""
+        
         formatted_lines = []
 
         for attr in attributes:
@@ -640,6 +649,49 @@ class ExtractionService:
             # Get attributes for this document class
             attributes = self._get_class_attributes(class_label)
             attribute_descriptions = self._format_attribute_descriptions(attributes)
+
+            # Check if attributes list is empty - if so, skip LLM invocation entirely
+            if not attributes or not attribute_descriptions.strip():
+                logger.info(f"No attributes defined for class {class_label}, skipping LLM extraction")
+                
+                # Create empty result structure without invoking LLM
+                extracted_fields = {}
+                metering = {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "invocation_count": 0,
+                    "total_cost": 0.0
+                }
+                total_duration = 0.0
+                parsing_succeeded = True
+                
+                # Write to S3 with empty extraction result
+                output = {
+                    "document_class": {"type": class_label},
+                    "inference_result": extracted_fields,
+                    "metadata": {
+                        "parsing_succeeded": parsing_succeeded,
+                        "extraction_time_seconds": total_duration,
+                        "skipped_due_to_empty_attributes": True
+                    },
+                }
+                s3.write_content(
+                    output, output_bucket, output_key, content_type="application/json"
+                )
+
+                # Update the section with extraction result URI
+                section.extraction_result_uri = output_uri
+
+                # Update document with zero metering data
+                document.metering = utils.merge_metering_data(
+                    document.metering, metering
+                )
+
+                t3 = time.time()
+                logger.info(
+                    f"Skipped extraction for section {section_id} due to empty attributes: {t3 - t0:.2f} seconds"
+                )
+                return document
 
             # Prepare prompt
             prompt_template = extraction_config.get("task_prompt", "")
