@@ -513,11 +513,9 @@ const useConfiguration = () => {
 
       // Special case for arrays
       if (customValueExists && Array.isArray(customValue)) {
-        if (customValue.length === 0) return false; // Empty arrays aren't considered customized
-
         // Compare arrays for deep equality
         if (Array.isArray(defaultValue)) {
-          // Different lengths means customized
+          // Different lengths means customized (including empty vs non-empty)
           if (customValue.length !== defaultValue.length) return true;
 
           // Deep compare each element

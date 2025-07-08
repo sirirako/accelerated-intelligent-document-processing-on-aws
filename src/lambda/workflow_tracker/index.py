@@ -52,22 +52,17 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
     # Get sections, pages, and metering data if workflow succeeded
     if workflow_status == 'SUCCEEDED' and output_data:
         try:
-            # Get the processed document from the output data 
-            workflow_result = output_data.get("Result", {})
+           
+            # Get document from the final processing step - handle both compressed and uncompressed
+            working_bucket = os.environ.get('WORKING_BUCKET')
+            processed_doc = Document.load_document(output_data, working_bucket, logger)
             
-            if "document" in workflow_result:
-                # Get document from the final processing step - handle both compressed and uncompressed
-                working_bucket = os.environ.get('WORKING_BUCKET')
-                processed_doc = Document.load_document(workflow_result.get("document", {}), working_bucket, logger)
-                
-                # Copy data from processed document to our update document
-                document.num_pages = processed_doc.num_pages
-                document.pages = processed_doc.pages
-                document.sections = processed_doc.sections
-                document.metering = processed_doc.metering
-                document.summary_report_uri = processed_doc.summary_report_uri
-            else:
-                logger.warning("No document found in Result")
+            # Copy data from processed document to our update document
+            document.num_pages = processed_doc.num_pages
+            document.pages = processed_doc.pages
+            document.sections = processed_doc.sections
+            document.metering = processed_doc.metering
+            document.summary_report_uri = processed_doc.summary_report_uri
                 
         except Exception as e:
             logger.warning(f"Could not extract document data: {e}")
