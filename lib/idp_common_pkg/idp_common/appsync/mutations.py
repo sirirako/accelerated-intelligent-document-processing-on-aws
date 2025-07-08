@@ -52,6 +52,8 @@ mutation UpdateDocument($input: UpdateDocumentInput!) {
         EvaluationStatus
         SummaryReportUri
         ExpiresAfter
+        HITLStatus
+        HITLReviewURL
     }
 }
 """

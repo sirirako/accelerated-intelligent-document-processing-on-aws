@@ -102,6 +102,8 @@ input UpdateDocumentInput {
   EvaluationReportUri: String
   EvaluationStatus: String
   SummaryReportUri: String
+  HITLStatus: String
+  HITLReviewURL: String
 }
 
 input SectionInput {

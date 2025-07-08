@@ -8,7 +8,6 @@ import {
   ColumnLayout,
   Container,
   SpaceBetween,
-  Link,
   Button,
   Header,
   Table,
@@ -24,6 +23,7 @@ import PagesPanel from '../pages-panel';
 import { StepFunctionFlowViewer } from '../step-function-flow';
 import useConfiguration from '../../hooks/use-configuration';
 import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
+import { renderHitlStatus } from '../common/hitl-status-renderer';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
@@ -57,32 +57,6 @@ const parseServiceApiKey = (serviceApiKey) => {
   }
   // Fallback for keys that don't follow the new format (less than 3 parts) - set context to ''
   return { context: '', serviceApi: serviceApiKey };
-};
-
-// Helper function to render HITL status without nested ternaries
-const renderHitlStatus = (item) => {
-  if (!item.hitlTriggered) {
-    return 'N/A';
-  }
-
-  if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
-    return 'A2I Review Completed';
-  }
-
-  if (item.hitlReviewURL) {
-    return (
-      <Link href={item.hitlReviewURL} external>
-        A2I Review In Progress
-      </Link>
-    );
-  }
-
-  // If we have a status but no URL and not completed, show the status
-  if (item.hitlStatus) {
-    return item.hitlStatus === 'IN_PROGRESS' ? 'A2I Review In Progress' : item.hitlStatus;
-  }
-
-  return 'A2I Review Triggered';
 };
 
 // Helper function to format cost cells
