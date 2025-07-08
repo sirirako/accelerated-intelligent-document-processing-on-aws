@@ -892,10 +892,23 @@ assessment:
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
+  temperature: '0.0'
+  model: us.amazon.nova-pro-v1:0
+  system_prompt: >-
+    You are a document analysis assessment expert. Your task is to evaluate the confidence and accuracy of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores and reasoning for each extracted attribute.
+  
+  # Granular assessment configuration (optional)
+  granular:
+    enabled: false  # Set to true to enable granular assessment
+    max_workers: 20
+    simple_batch_size: 3
+    list_batch_size: 1
+  
   task_prompt: >-
     <background>
 
     You are an expert document analysis assessment system. Your task is to evaluate the confidence and accuracy of extraction results for a document of class {DOCUMENT_CLASS}.
+    {GRANULAR_CONTEXT}
 
     </background>
 
@@ -945,16 +958,6 @@ assessment:
     </attributes-definitions>
 
 
-    <<CACHEPOINT>>
-
-
-    <extraction-results>
-
-    {EXTRACTION_RESULTS}
-
-    </extraction-results>
-
-
     <document-image>
 
     {DOCUMENT_IMAGE}
@@ -967,6 +970,16 @@ assessment:
     {OCR_TEXT_CONFIDENCE}
 
     </ocr-text-confidence-results>
+
+
+    <<CACHEPOINT>>
+
+
+    <extraction-results>
+
+    {EXTRACTION_RESULTS}
+
+    </extraction-results>
 
 
     <final-instructions>
@@ -987,10 +1000,6 @@ assessment:
     Include assessments for ALL attributes present in the extraction results.
 
     </final-instructions>
-  temperature: '0.0'
-  model: us.amazon.nova-pro-v1:0
-  system_prompt: >-
-    You are a document analysis assessment expert. Your task is to evaluate the confidence and accuracy of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores and reasoning for each extracted attribute.
 evaluation:
   llm_method:
     top_p: '0.1'
@@ -1112,4 +1121,3 @@ summarization:
     concise summary.\n Your output MUST be in valid JSON format with markdown
     content. You MUST strictly adhere to the output format specified in the
     instructions.
-
