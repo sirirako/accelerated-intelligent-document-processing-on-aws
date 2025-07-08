@@ -5,14 +5,6 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
-### Added
-- **Enhanced State Machine Optimization for Very Large Documents**
-  - Improved document compression to store only section IDs rather than full section objects
-  - Modified state machine workflow to eliminate nested result structures and reduce payload size
-  - Added OutputPath filtering to remove intermediate results from state machine execution
-  - Streamlined assessment step to replace extraction results instead of nesting them
-  - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
-
 ## [0.3.7]
 
 ### Added
@@ -22,6 +14,17 @@ SPDX-License-Identifier: MIT-0
   - Creates a single section containing all pages
   - Bypasses the backend service calls (Bedrock or SageMaker) completely
   - Logs an INFO message indicating the optimization is active
+
+- **Skip the extraction process for classes with no attributes in Pattern 2/3**
+  - Add early detection logic in extraction class to check for empty/missing attributes
+  - Return zero metering data and empty JSON results when no attributes defined
+
+- **Enhanced State Machine Optimization for Very Large Documents**
+  - Improved document compression to store only section IDs rather than full section objects
+  - Modified state machine workflow to eliminate nested result structures and reduce payload size
+  - Added OutputPath filtering to remove intermediate results from state machine execution
+  - Streamlined assessment step to replace extraction results instead of nesting them
+  - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
 
 ### Changed
 - **Default behavior for image attachment in Pattern-2 and Pattern3**
