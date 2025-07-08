@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+- **Enhanced State Machine Optimization for Very Large Documents**
+  - Improved document compression to store only section IDs rather than full section objects
+  - Modified state machine workflow to eliminate nested result structures and reduce payload size
+  - Added OutputPath filtering to remove intermediate results from state machine execution
+  - Streamlined assessment step to replace extraction results instead of nesting them
+  - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
+
 ## [0.3.7]
 
 ### Added

@@ -35,9 +35,9 @@ def handler(event, context):
     working_bucket = os.environ.get('WORKING_BUCKET')
     full_document = Document.load_document(event.get("document", {}), working_bucket, logger)
     
-    # Get the section ID from the Map state input
-    section_input = event.get("section", {})
-    section_id = section_input.get("section_id")
+    # Get the section ID directly from the Map state input
+    # Now using the simplified array of section IDs format
+    section_id = event.get("section_id")
     
     if not section_id:
         raise ValueError("No section_id found in event")
