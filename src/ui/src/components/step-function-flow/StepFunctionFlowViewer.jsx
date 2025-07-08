@@ -1,13 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { API, graphqlOperation, Logger } from 'aws-amplify';
 import { Container, Header, SpaceBetween, Box, Alert, Spinner, Button, Modal } from '@awsui/components-react';
 import { FaPlay, FaCheck, FaTimes, FaClock, FaRobot, FaFileAlt, FaEye, FaChartBar } from 'react-icons/fa';
 import getStepFunctionExecution from '../../graphql/queries/getStepFunctionExecution';
-import onStepFunctionExecutionUpdate from '../../graphql/subscriptions/onStepFunctionExecutionUpdate';
 import FlowDiagram from './FlowDiagram';
 import StepDetails from './StepDetails';
 import './StepFunctionFlowViewer.css';
@@ -19,9 +18,10 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [subscription, setSubscription] = useState(null);
-  const [isRealTime, setIsRealTime] = useState(false);
-  const [subscriptionEnabled, setSubscriptionEnabled] = useState(true);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState(null);
+  const autoRefreshIntervalRef = useRef(null);
+  const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds
 
   const fetchStepFunctionExecution = async () => {
     if (!executionArn || !visible) return;
@@ -32,6 +32,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     try {
       const result = await API.graphql(graphqlOperation(getStepFunctionExecution, { executionArn }));
       setData(result.data);
+      setLastRefreshTime(new Date());
       logger.debug('Step Functions execution data:', result.data);
     } catch (err) {
       logger.error('Error fetching Step Functions execution:', err);
@@ -41,105 +42,85 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     }
   };
 
-  // Set up real-time subscription
-  const setupSubscription = () => {
-    if (!executionArn || subscription || !subscriptionEnabled) return;
+  // Set up auto-refresh functionality
+  const setupAutoRefresh = () => {
+    if (autoRefreshEnabled) {
+      // Clear any existing interval
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
 
-    try {
-      const sub = API.graphql(graphqlOperation(onStepFunctionExecutionUpdate, { executionArn })).subscribe({
-        next: ({ value }) => {
-          logger.debug('Received Step Functions update:', value);
-          if (value.data?.onStepFunctionExecutionUpdate) {
-            setData({ getStepFunctionExecution: value.data.onStepFunctionExecutionUpdate });
-            setIsRealTime(true);
-            logger.info('Real-time update received for execution:', executionArn);
-          }
-        },
-        error: (err) => {
-          logger.warn('Subscription failed:', err);
-          setIsRealTime(false);
-          // Don't fall back to polling - require manual refresh
-        },
-      });
+      // Set up new interval
+      autoRefreshIntervalRef.current = setInterval(() => {
+        logger.debug('Auto-refreshing Step Functions execution data');
+        fetchStepFunctionExecution();
+      }, AUTO_REFRESH_INTERVAL);
 
-      setSubscription(sub);
-      // Don't set isRealTime=true until we actually receive data
-      logger.debug('Step Functions subscription established (waiting for first update)');
-
-      // Set a timeout to detect if subscription is not working
-      setTimeout(() => {
-        if (!isRealTime) {
-          logger.warn('No real-time updates received, subscription may not be configured');
-          setIsRealTime(false);
-        }
-      }, 10000); // Wait 10 seconds for first update
-    } catch (err) {
-      logger.error('Failed to establish subscription:', err);
-      setIsRealTime(false);
+      logger.info('Auto-refresh enabled for execution:', executionArn);
+    } else if (autoRefreshIntervalRef.current) {
+      // Disable auto-refresh by clearing the interval
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+      logger.info('Auto-refresh disabled for execution:', executionArn);
     }
+  };
+
+  // Toggle auto-refresh
+  const toggleAutoRefresh = () => {
+    const newState = !autoRefreshEnabled;
+    setAutoRefreshEnabled(newState);
   };
 
   // Helper function to get status indicator
   const getStatusIndicator = () => {
-    if (isRealTime) {
+    if (autoRefreshEnabled) {
       return (
         <Box variant="small" color="text-status-success">
-          🔴 Live Updates
-        </Box>
-      );
-    }
-    if (subscriptionEnabled) {
-      return (
-        <Box variant="small" color="text-status-info">
-          🔔 Subscription Enabled
+          🔄 Auto-Refresh On
         </Box>
       );
     }
     return (
       <Box variant="small" color="text-status-inactive">
-        🔕 Subscription Disabled
+        ⏸️ Auto-Refresh Off
       </Box>
     );
   };
 
-  // Toggle subscription
-  const toggleSubscription = () => {
-    if (subscriptionEnabled) {
-      // Disable subscription
-      if (subscription) {
-        subscription.unsubscribe();
-        setSubscription(null);
-      }
-      setIsRealTime(false);
-      setSubscriptionEnabled(false);
-    } else {
-      // Enable subscription
-      setSubscriptionEnabled(true);
-      setupSubscription();
-    }
-  };
-
-  // Initial fetch and subscription setup
+  // Initial fetch and auto-refresh setup
   useEffect(() => {
     if (visible && executionArn) {
       fetchStepFunctionExecution();
-      if (subscriptionEnabled) {
-        setupSubscription();
-      }
+      setupAutoRefresh();
     }
 
     return () => {
-      if (subscription) {
-        subscription.unsubscribe();
-        setSubscription(null);
-        setIsRealTime(false);
+      // Clean up interval on unmount
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
       }
     };
-  }, [executionArn, visible, subscriptionEnabled]);
+  }, [executionArn, visible, autoRefreshEnabled]);
 
+  // Update auto-refresh when the toggle changes
   useEffect(() => {
-    // No need to disable subscription when execution completes
-    // Let the user control this with the toggle button
+    setupAutoRefresh();
+  }, [autoRefreshEnabled]);
+
+  // Disable auto-refresh when execution completes
+  useEffect(() => {
+    const execution = data?.getStepFunctionExecution;
+    if (
+      execution &&
+      (execution.status === 'SUCCEEDED' || execution.status === 'FAILED' || execution.status === 'ABORTED')
+    ) {
+      // If execution is complete, disable auto-refresh
+      if (autoRefreshEnabled) {
+        logger.info('Execution complete, disabling auto-refresh');
+        setAutoRefreshEnabled(false);
+      }
+    }
   }, [data]);
 
   const getStepIcon = (stepName, stepType, status) => {
@@ -227,15 +208,20 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
             <SpaceBetween direction="horizontal" size="xs">
               {getStatusIndicator()}
               <Button
-                variant={subscriptionEnabled ? 'primary' : 'normal'}
-                onClick={toggleSubscription}
-                iconName={subscriptionEnabled ? 'notification-on' : 'notification-off'}
+                variant={autoRefreshEnabled ? 'primary' : 'normal'}
+                onClick={toggleAutoRefresh}
+                iconName={autoRefreshEnabled ? 'refresh' : 'settings'}
               >
-                {subscriptionEnabled ? 'Disable' : 'Enable'} Subscription
+                {autoRefreshEnabled ? 'Disable' : 'Enable'} Auto-Refresh
               </Button>
               <Button onClick={() => fetchStepFunctionExecution()} iconName="refresh" loading={loading}>
-                Refresh
+                Refresh Now
               </Button>
+              {lastRefreshTime && (
+                <Box variant="small" color="text-body-secondary">
+                  Last updated: {lastRefreshTime.toLocaleTimeString()}
+                </Box>
+              )}
             </SpaceBetween>
           }
         >
