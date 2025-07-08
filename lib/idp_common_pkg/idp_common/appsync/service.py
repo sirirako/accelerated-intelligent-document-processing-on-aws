@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 
 from idp_common.appsync.client import AppSyncClient
 from idp_common.appsync.mutations import CREATE_DOCUMENT, UPDATE_DOCUMENT
-from idp_common.models import Document, Page, Section, Status
+from idp_common.models import Document, HitlMetadata, Page, Section, Status
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +175,21 @@ class DocumentAppSyncService:
         if document.summary_report_uri:
             input_data["SummaryReportUri"] = document.summary_report_uri
 
+        # Add HITL fields if available from hitl_metadata
+        if document.hitl_metadata:
+            # Get the most recent HITL metadata entry
+            latest_hitl = document.hitl_metadata[-1] if document.hitl_metadata else None
+            if latest_hitl:
+                # Always include review URL if available
+                if latest_hitl.review_portal_url:
+                    input_data["HITLReviewURL"] = latest_hitl.review_portal_url
+
+                # Determine HITL status - simple logic
+                if latest_hitl.hitl_completed:
+                    input_data["HITLStatus"] = "COMPLETED"
+                elif latest_hitl.hitl_triggered:
+                    input_data["HITLStatus"] = "IN_PROGRESS"
+
         return input_data
 
     def _appsync_to_document(self, appsync_data: Dict[str, Any]) -> Document:
@@ -199,6 +214,55 @@ class DocumentAppSyncService:
             evaluation_report_uri=appsync_data.get("EvaluationReportUri"),
             summary_report_uri=appsync_data.get("SummaryReportUri"),
         )
+
+        # Handle HITL fields - create HITL metadata if HITL fields are present
+        hitl_status = appsync_data.get("HITLStatus")
+        hitl_review_url = appsync_data.get("HITLReviewURL")
+        hitl_triggered = appsync_data.get("HITLTriggered")
+        hitl_completed = appsync_data.get("HITLCompleted")
+
+        if hitl_status or hitl_review_url or hitl_triggered or hitl_completed:
+            # Check if document already has detailed HITL metadata from Step Functions
+            has_detailed_metadata = (
+                hasattr(doc, "hitl_metadata")
+                and doc.hitl_metadata
+                and len(doc.hitl_metadata) > 0
+                and any(
+                    h.execution_id or h.record_number or h.bp_match
+                    for h in doc.hitl_metadata
+                )
+            )
+
+            if not has_detailed_metadata:
+                # Create or update HITL metadata based on the AppSync fields
+                hitl_metadata = HitlMetadata()
+
+                # Use explicit triggered/completed flags if available, otherwise infer from status
+                if hitl_triggered is not None:
+                    hitl_metadata.hitl_triggered = hitl_triggered
+                elif hitl_status in ["COMPLETED", "IN_PROGRESS", "TRIGGERED"]:
+                    hitl_metadata.hitl_triggered = True
+
+                if hitl_completed is not None:
+                    hitl_metadata.hitl_completed = hitl_completed
+                elif hitl_status == "COMPLETED":
+                    hitl_metadata.hitl_completed = True
+
+                if hitl_review_url:
+                    hitl_metadata.review_portal_url = hitl_review_url
+
+                # Add to document if it has meaningful data
+                if (
+                    hitl_metadata.hitl_triggered
+                    or hitl_metadata.review_portal_url
+                    or hitl_metadata.hitl_completed
+                ):
+                    doc.hitl_metadata = [hitl_metadata]
+            else:
+                # Document already has detailed HITL metadata - preserve it
+                logger.info(
+                    f"Preserving existing detailed HITL metadata with {len(doc.hitl_metadata)} objects"
+                )
 
         # Convert status
         object_status = appsync_data.get("ObjectStatus")

@@ -25,6 +25,7 @@ class Status(Enum):
     EXTRACTING = "EXTRACTING"  # Information extraction
     ASSESSING = "ASSESSING"  # Document assessment
     POSTPROCESSING = "POSTPROCESSING"  # Document summarization
+    HITL_IN_PROGRESS = "HITL_IN_PROGRESS"  # Human-in-the-loop review in progress
     SUMMARIZING = "SUMMARIZING"  # Document summarization
     COMPLETED = "COMPLETED"  # All processing completed
     FAILED = "FAILED"  # Processing failed
@@ -127,6 +128,12 @@ class HitlMetadata:
             extraction_bp_name=data.get("extraction_bp_name"),
             hitl_bp_change=data.get("hitl_bp_change"),
             hitl_triggered=data.get("hitl_triggered", False),
+            review_portal_url=data.get(
+                "review_portal_url"
+            ),  # Fix: Include review portal URL
+            hitl_completed=data.get(
+                "hitl_completed", False
+            ),  # Fix: Include completion status
             page_array=data.get("page_array", []),
         )
 
