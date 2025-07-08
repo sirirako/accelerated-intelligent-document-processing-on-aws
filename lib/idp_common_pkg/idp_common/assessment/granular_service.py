@@ -349,9 +349,6 @@ class GranularAssessmentService:
             if parts[0].strip():
                 content.append({"text": parts[0]})
 
-            # Add cache point before images for better caching
-            content.append({"text": "<<CACHEPOINT>>"})
-
             # Add the images if available
             if page_images:
                 if isinstance(page_images, list):
@@ -376,24 +373,6 @@ class GranularAssessmentService:
             content = []
             if base_prompt.strip():
                 content.append({"text": base_prompt})
-
-            # Add cache point
-            content.append({"text": "<<CACHEPOINT>>"})
-
-            # Add images at the end if available
-            if page_images:
-                if isinstance(page_images, list):
-                    # Multiple images (limit to 20 as per Bedrock constraints)
-                    if len(page_images) > 20:
-                        logger.warning(
-                            f"Found {len(page_images)} images, truncating to 20 due to Bedrock constraints. "
-                            f"{len(page_images) - 20} images will be dropped."
-                        )
-                    for img in page_images[:20]:
-                        content.append(image.prepare_bedrock_image_attachment(img))
-                else:
-                    # Single image
-                    content.append(image.prepare_bedrock_image_attachment(page_images))
 
         return content
 

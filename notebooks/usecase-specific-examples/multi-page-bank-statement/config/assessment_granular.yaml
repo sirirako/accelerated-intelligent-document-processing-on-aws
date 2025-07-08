@@ -66,37 +66,6 @@ assessment:
 
     </assessment-guidelines>
 
-    <attributes-definitions>
-
-    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
-
-    </attributes-definitions>
-
-
-    <<CACHEPOINT>>
-
-
-    <extraction-results>
-
-    {EXTRACTION_RESULTS}
-
-    </extraction-results>
-
-
-    <document-image>
-
-    {DOCUMENT_IMAGE}
-
-    </document-image>
-
-
-    <ocr-text-confidence-results>
-
-    {OCR_TEXT_CONFIDENCE}
-
-    </ocr-text-confidence-results>
-
-
     <final-instructions>
 
     Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
@@ -158,3 +127,33 @@ assessment:
     - Provide specific reasoning for each confidence score
 
     </final-instructions>
+
+    <attributes-definitions>
+
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+
+    </attributes-definitions>
+
+    <<CACHEPOINT>>
+
+    <document-image>
+
+    {DOCUMENT_IMAGE}
+
+    </document-image>
+
+
+    <ocr-text-confidence-results>
+
+    {OCR_TEXT_CONFIDENCE}
+
+    </ocr-text-confidence-results>
+
+    <<CACHEPOINT>>
+
+    <extraction-results>
+
+    {EXTRACTION_RESULTS}
+
+    </extraction-results>
+
