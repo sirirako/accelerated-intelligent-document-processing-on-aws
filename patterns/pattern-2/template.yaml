@@ -621,7 +621,7 @@ Resources:
                 type: object
                 sectionLabel: Granular Assessment Configuration
                 description: Configure granular assessment for improved accuracy and scalability with large documents
-                order: 2
+                order: 1
                 properties:
                   enabled:
                     type: boolean
