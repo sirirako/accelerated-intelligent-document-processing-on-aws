@@ -55,7 +55,7 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
            
             # Get document from the final processing step - handle both compressed and uncompressed
             working_bucket = os.environ.get('WORKING_BUCKET')
-            # look for document_data in either output_data.document or output_data
+            # look for document_data in either output_data.Result (Pattern-1) or output_data (others)
             document_data = output_data.get('Result', output_data)
             processed_doc = Document.load_document(document_data, working_bucket, logger)
             
