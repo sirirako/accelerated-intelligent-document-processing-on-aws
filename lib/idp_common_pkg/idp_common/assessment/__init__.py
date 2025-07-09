@@ -58,6 +58,24 @@ class AssessmentService:
         return self._service._format_attribute_descriptions(attributes)
 
 
+def _normalize_boolean_value(value: Any) -> bool:
+    """
+    Normalize a value to a boolean, handling string representations.
+
+    Args:
+        value: Value to normalize (can be bool, str, or other)
+
+    Returns:
+        Boolean value
+    """
+    if isinstance(value, bool):
+        return value
+    elif isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on")
+    else:
+        return bool(value)
+
+
 def create_assessment_service(region: str = None, config: Dict[str, Any] = None):
     """
     Factory function to create the appropriate assessment service based on configuration.
@@ -76,7 +94,14 @@ def create_assessment_service(region: str = None, config: Dict[str, Any] = None)
     # Check if granular assessment is enabled (default: False for backward compatibility)
     assessment_config = config.get("assessment", {})
     granular_config = assessment_config.get("granular", {})
-    granular_enabled = granular_config.get("enabled", False)
+    granular_enabled_raw = granular_config.get("enabled", False)
+
+    # Normalize the enabled value to handle both boolean and string values
+    granular_enabled = _normalize_boolean_value(granular_enabled_raw)
+
+    logger.info(
+        f"Granular assessment enabled check: raw_value={granular_enabled_raw} (type: {type(granular_enabled_raw)}), normalized={granular_enabled}"
+    )
 
     if granular_enabled:
         logger.info("Granular assessment enabled, using GranularAssessmentService")
