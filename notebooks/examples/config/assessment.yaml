@@ -8,7 +8,7 @@ assessment:
   temperature: '0.0'
   model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
   system_prompt: >-
-    You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores and reasoning for each extracted attribute.
+    You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   
   # Granular assessment configuration (optional)
   granular:
@@ -21,7 +21,6 @@ assessment:
     <background>
 
     You are an expert document analysis assessment system. Your task is to evaluate the confidence of extraction results for a document of class {DOCUMENT_CLASS}.
-    {GRANULAR_CONTEXT}
 
     </background>
 
@@ -58,12 +57,67 @@ assessment:
 
     </assessment-guidelines>
 
+    <final-instructions>
+
+    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
+
+    For SIMPLE attributes:
+    {
+      "simple_attribute_name": {
+        "confidence": 0.85,
+      }
+    }
+
+    For GROUP attributes (nested object structure):
+    {
+      "group_attribute_name": {
+        "sub_attribute_1": {
+          "confidence": 0.90,
+        },
+        "sub_attribute_2": {
+          "confidence": 0.75,
+        }
+      }
+    }
+
+    For LIST attributes (array of assessed items):
+    {
+      "list_attribute_name": [
+        {
+          "item_attribute_1": {
+            "confidence": 0.95,
+          },
+          "item_attribute_2": {
+            "confidence": 0.88,
+          }
+        },
+        {
+          "item_attribute_1": {
+            "confidence": 0.92,
+          },
+          "item_attribute_2": {
+            "confidence": 0.70,
+          }
+        }
+      ]
+    }
+
+    IMPORTANT: 
+    - For LIST attributes like "Transactions", assess EACH individual item in the list separately
+    - Each transaction should be assessed as a separate object in the array
+    - Do NOT provide aggregate assessments for list items - assess each one individually
+    - Include assessments for ALL attributes present in the extraction results
+    - Match the exact structure of the extracted data
+
+    </final-instructions>
+
     <attributes-definitions>
 
     {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
 
     </attributes-definitions>
 
+    <<CACHEPOINT>>
 
     <document-image>
 
@@ -78,75 +132,10 @@ assessment:
 
     </ocr-text-confidence-results>
 
-
     <<CACHEPOINT>>
-
 
     <extraction-results>
 
     {EXTRACTION_RESULTS}
 
     </extraction-results>
-
-
-    <final-instructions>
-
-    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
-
-    For SIMPLE attributes:
-    {
-      "simple_attribute_name": {
-        "confidence": 0.85,
-        "confidence_reason": "Clear evidence found in document with high OCR confidence"
-      }
-    }
-
-    For GROUP attributes (nested object structure):
-    {
-      "group_attribute_name": {
-        "sub_attribute_1": {
-          "confidence": 0.90,
-          "confidence_reason": "Clear evidence found in document"
-        },
-        "sub_attribute_2": {
-          "confidence": 0.75,
-          "confidence_reason": "Some ambiguity in source text"
-        }
-      }
-    }
-
-    For LIST attributes (array of assessed items):
-    {
-      "list_attribute_name": [
-        {
-          "item_attribute_1": {
-            "confidence": 0.95,
-            "confidence_reason": "Clear evidence found in document"
-          },
-          "item_attribute_2": {
-            "confidence": 0.88,
-            "confidence_reason": "Good evidence with minor uncertainty"
-          }
-        },
-        {
-          "item_attribute_1": {
-            "confidence": 0.92,
-            "confidence_reason": "Clear evidence found in document"
-          },
-          "item_attribute_2": {
-            "confidence": 0.70,
-            "confidence_reason": "Some ambiguity in source text"
-          }
-        }
-      ]
-    }
-
-    IMPORTANT: 
-    - For LIST attributes like "Transactions", assess EACH individual item in the list separately
-    - Each transaction should be assessed as a separate object in the array
-    - Do NOT provide aggregate assessments for list items - assess each one individually
-    - Include assessments for ALL attributes present in the extraction results
-    - Match the exact structure of the extracted data
-    - Provide specific reasoning for each confidence score
-
-    </final-instructions>

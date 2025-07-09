@@ -632,7 +632,7 @@ Resources:
                   enabled:
                     type: boolean
                     description: Enable granular assessment approach. When enabled, assessments are broken down into smaller, focused tasks for better accuracy and performance.
-                    default: false
+                    default: true
                     order: 0
                   max_workers:
                     type: integer

@@ -74,7 +74,6 @@ assessment:
     {
       "simple_attribute_name": {
         "confidence": 0.85,
-        "confidence_reason": "Clear evidence found in document with high OCR confidence"
       }
     }
 
@@ -83,11 +82,9 @@ assessment:
       "group_attribute_name": {
         "sub_attribute_1": {
           "confidence": 0.90,
-          "confidence_reason": "Clear evidence found in document"
         },
         "sub_attribute_2": {
           "confidence": 0.75,
-          "confidence_reason": "Some ambiguity in source text"
         }
       }
     }
@@ -98,21 +95,17 @@ assessment:
         {
           "item_attribute_1": {
             "confidence": 0.95,
-            "confidence_reason": "Clear evidence found in document"
           },
           "item_attribute_2": {
             "confidence": 0.88,
-            "confidence_reason": "Good evidence with minor uncertainty"
           }
         },
         {
           "item_attribute_1": {
             "confidence": 0.92,
-            "confidence_reason": "Clear evidence found in document"
           },
           "item_attribute_2": {
             "confidence": 0.70,
-            "confidence_reason": "Some ambiguity in source text"
           }
         }
       ]
@@ -124,7 +117,6 @@ assessment:
     - Do NOT provide aggregate assessments for list items - assess each one individually
     - Include assessments for ALL attributes present in the extraction results
     - Match the exact structure of the extracted data
-    - Provide specific reasoning for each confidence score
 
     </final-instructions>
 
