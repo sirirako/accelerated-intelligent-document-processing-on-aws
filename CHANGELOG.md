@@ -34,6 +34,9 @@ SPDX-License-Identifier: MIT-0
   - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
   - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
   - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
+- **Modified default assessment prompt for token efficiency**
+  - Removed `confidence_reason` from output to avoid consuming unnecessary output tokens
+  - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled  
 
 ### Fixed
 - Fixed UI list deletion issue where empty lists were not saved correctly - #18
