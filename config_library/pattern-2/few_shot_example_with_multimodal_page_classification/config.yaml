@@ -898,9 +898,9 @@ assessment:
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   granular:
     enabled: true
-    max_workers: 20
-    simple_batch_size: 3
-    list_batch_size: 1
+    max_workers: "20"
+    simple_batch_size: "3"
+    list_batch_size: "1"
   task_prompt: >-
     <background>
 

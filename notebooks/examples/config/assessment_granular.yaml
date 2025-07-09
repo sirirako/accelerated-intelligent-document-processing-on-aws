@@ -18,13 +18,13 @@ assessment:
     enabled: true
     
     # Maximum number of parallel workers for concurrent processing
-    max_workers: 20
+    max_workers: '20'
     
     # Batch size for simple attributes (how many simple attributes to assess together)
-    simple_batch_size: 3
+    simple_batch_size: '3'
     
     # Batch size for list items (how many list items to assess together, usually 1 for best accuracy)
-    list_batch_size: 1
+    list_batch_size: '1'
   
   task_prompt: >-
     <background>

@@ -83,11 +83,11 @@ assessment:
     enabled: true
     
     # Parallel processing settings
-    max_workers: 6
+    max_workers: '6'
     
     # Batching configuration
-    simple_batch_size: 3    # How many simple attributes per batch
-    list_batch_size: 1      # How many list items per batch (usually 1)
+    simple_batch_size: '3'    # How many simple attributes per batch
+    list_batch_size: '1'      # How many list items per batch (usually 1)
     
 ```
 
