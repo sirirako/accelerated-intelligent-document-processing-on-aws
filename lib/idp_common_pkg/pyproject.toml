@@ -99,7 +99,8 @@ test = [
     "PyYAML==6.0.2",
     "openpyxl==3.1.5",
     "python-docx==1.2.0",
-    "moto[s3]>=4.2.0"  # For mocking AWS services in tests
+    "moto[s3]>=4.2.0",  # For mocking AWS services in tests
+    "Pillow==11.2.1",  # Required for image processing in assessment tests
 ]
 
 # Full package with all dependencies
