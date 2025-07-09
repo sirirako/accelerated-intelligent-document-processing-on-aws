@@ -105,3 +105,10 @@
   border-radius: 4px;
   border: 1px solid #f5c6cb;
 }
+/* Iteration metadata styling */
+.iteration-metadata {
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border-left: 3px solid #007dbc;
+}

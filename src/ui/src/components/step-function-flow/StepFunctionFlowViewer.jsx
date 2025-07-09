@@ -30,212 +30,37 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const autoRefreshIntervalRef = useRef(null);
   const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds
-  const [enhancedSteps, setEnhancedSteps] = useState([]);
+  const [processedSteps, setProcessedSteps] = useState([]);
 
-  // Function to enhance Step Function steps for better visualization
-  const enhanceStepFunctionSteps = (steps) => {
+  // Function to process Step Function steps for better visualization
+  const processStepFunctionStepsData = (steps) => {
     if (!steps || !Array.isArray(steps)) return [];
 
-    // Create a copy of the steps array
-    const processedSteps = [...steps];
+    // Create a flattened list of all steps including Map iterations
+    const allSteps = [];
 
-    // Find Map states
-    const mapStates = steps.filter((step) => step.name.includes('ProcessSections') || step.type === 'Parallel');
+    steps.forEach((step) => {
+      // Add the main step
+      allSteps.push({
+        ...step,
+        isMainStep: true,
+      });
 
-    // Check if we have the complete flow or need to add synthetic steps
-    const hasProcessResultsStep = steps.some((step) => step.name === 'ProcessResultsStep');
-    const hasSummarizationChoice = steps.some((step) => step.name === 'SummarizationChoice');
-    const hasSummarizationStep = steps.some((step) => step.name === 'SummarizationStep');
-    const hasWorkflowComplete = steps.some((step) => step.name === 'WorkflowComplete');
-
-    // If we're missing steps after the Map state, add synthetic steps for the complete flow
-    if (
-      mapStates.length > 0 &&
-      (!hasProcessResultsStep || !hasSummarizationChoice || !hasSummarizationStep || !hasWorkflowComplete)
-    ) {
-      // Find the last step in the current flow
-      const lastStep = [...steps].sort((a, b) => {
-        if (!a.stopDate) return 1;
-        if (!b.stopDate) return -1;
-        return new Date(b.stopDate) - new Date(a.stopDate);
-      })[0];
-
-      // Add synthetic steps for the complete flow
-      if (!hasProcessResultsStep) {
-        processedSteps.push({
-          name: 'ProcessResultsStep',
-          type: 'Task',
-          status: lastStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
-          startDate: lastStep.stopDate,
-          stopDate:
-            lastStep.status === 'SUCCEEDED'
-              ? new Date(new Date(lastStep.stopDate).getTime() + 1000).toISOString()
-              : null,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isCompleteFlow: true,
-        });
-      }
-
-      if (!hasSummarizationChoice) {
-        const prevStep = hasProcessResultsStep
-          ? steps.find((step) => step.name === 'ProcessResultsStep')
-          : processedSteps.find((step) => step.name === 'ProcessResultsStep');
-
-        processedSteps.push({
-          name: 'SummarizationChoice',
-          type: 'Choice',
-          status: prevStep && prevStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
-          startDate: prevStep ? prevStep.stopDate : lastStep.stopDate,
-          stopDate:
-            prevStep && prevStep.status === 'SUCCEEDED'
-              ? new Date(new Date(prevStep.stopDate).getTime() + 1000).toISOString()
-              : null,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isCompleteFlow: true,
-        });
-      }
-
-      if (!hasSummarizationStep) {
-        const prevStep = hasSummarizationChoice
-          ? steps.find((step) => step.name === 'SummarizationChoice')
-          : processedSteps.find((step) => step.name === 'SummarizationChoice');
-
-        processedSteps.push({
-          name: 'SummarizationStep',
-          type: 'Task',
-          status: prevStep && prevStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
-          startDate: prevStep ? prevStep.stopDate : lastStep.stopDate,
-          stopDate:
-            prevStep && prevStep.status === 'SUCCEEDED'
-              ? new Date(new Date(prevStep.stopDate).getTime() + 1000).toISOString()
-              : null,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isCompleteFlow: true,
-        });
-      }
-
-      if (!hasWorkflowComplete) {
-        const prevStep = hasSummarizationStep
-          ? steps.find((step) => step.name === 'SummarizationStep')
-          : processedSteps.find((step) => step.name === 'SummarizationStep');
-
-        processedSteps.push({
-          name: 'WorkflowComplete',
-          type: 'Pass',
-          status: prevStep && prevStep.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'PENDING',
-          startDate: prevStep ? prevStep.stopDate : lastStep.stopDate,
-          stopDate:
-            prevStep && prevStep.status === 'SUCCEEDED'
-              ? new Date(new Date(prevStep.stopDate).getTime() + 1000).toISOString()
-              : null,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isCompleteFlow: true,
-        });
-      }
-    }
-
-    // For each Map state, add synthetic steps to represent the nested workflow
-    mapStates.forEach((mapState) => {
-      // Find the index of the Map state
-      const mapStateIndex = processedSteps.findIndex((step) => step.name === mapState.name);
-
-      // Create a synthetic step to represent the Map state completion
-      const syntheticStep = {
-        name: `${mapState.name} (Completed)`,
-        type: 'MapComplete',
-        status: mapState.status,
-        startDate: mapState.startDate,
-        stopDate: mapState.stopDate,
-        input: null,
-        output: null,
-        error: null,
-        isSynthetic: true,
-      };
-
-      // Insert the synthetic step after the Map state
-      if (mapStateIndex > -1 && mapStateIndex < processedSteps.length) {
-        processedSteps.splice(mapStateIndex + 1, 0, syntheticStep);
-      }
-    });
-
-    // Add synthetic steps for the nested workflow in the Map state
-    const finalSteps = [];
-
-    processedSteps.forEach((step) => {
-      // Add the step to the processed steps
-      finalSteps.push(step);
-
-      // If this is a Map state, add synthetic steps for the nested workflow
-      if (step.name === 'ProcessSections') {
-        // Add synthetic steps for the nested workflow
-        finalSteps.push({
-          name: 'ExtractionStep (Iterator)',
-          type: 'Task',
-          status: step.status,
-          startDate: step.startDate,
-          stopDate: step.stopDate,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isNested: true,
-        });
-
-        finalSteps.push({
-          name: 'AssessmentChoice (Iterator)',
-          type: 'Choice',
-          status: step.status,
-          startDate: step.startDate,
-          stopDate: step.stopDate,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isNested: true,
-        });
-
-        finalSteps.push({
-          name: 'AssessmentStep (Iterator)',
-          type: 'Task',
-          status: step.status,
-          startDate: step.startDate,
-          stopDate: step.stopDate,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isNested: true,
-        });
-
-        finalSteps.push({
-          name: 'SectionComplete (Iterator)',
-          type: 'Pass',
-          status: step.status,
-          startDate: step.startDate,
-          stopDate: step.stopDate,
-          input: null,
-          output: null,
-          error: null,
-          isSynthetic: true,
-          isNested: true,
+      // If this is a Map state with iterations, add them as separate steps
+      if (step.type === 'Map' && step.mapIterationDetails && step.mapIterationDetails.length > 0) {
+        step.mapIterationDetails.forEach((iteration, index) => {
+          allSteps.push({
+            ...iteration,
+            isMapIteration: true,
+            parentMapName: step.name,
+            iterationIndex: index,
+          });
         });
       }
     });
 
-    // Sort steps by start date to ensure correct order
-    return finalSteps.sort((a, b) => {
+    // Sort by start date to maintain chronological order
+    return allSteps.sort((a, b) => {
       if (!a.startDate) return 1;
       if (!b.startDate) return -1;
       return new Date(a.startDate) - new Date(b.startDate);
@@ -254,10 +79,10 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
       setLastRefreshTime(new Date());
       logger.debug('Step Functions execution data:', result.data);
 
-      // Process the steps to enhance Map state visualization
+      // Process the steps to handle Map state visualization
       if (result.data?.getStepFunctionExecution?.steps) {
-        const processedSteps = enhanceStepFunctionSteps(result.data.getStepFunctionExecution.steps);
-        setEnhancedSteps(processedSteps);
+        const enhancedSteps = processStepFunctionStepsData(result.data.getStepFunctionExecution.steps);
+        setProcessedSteps(enhancedSteps);
       }
     } catch (err) {
       logger.error('Error fetching Step Functions execution:', err);
@@ -509,7 +334,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
         {/* Flow Diagram */}
         <Container header={<Header variant="h3">Processing Flow</Header>}>
           <FlowDiagram
-            steps={enhancedSteps.length > 0 ? enhancedSteps : execution.steps || []}
+            steps={processedSteps.length > 0 ? processedSteps : execution.steps || []}
             onStepClick={setSelectedStep}
             selectedStep={selectedStep}
             getStepIcon={getStepIcon}
@@ -526,12 +351,12 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
         {/* Steps Timeline */}
         <Container header={<Header variant="h3">Steps Timeline</Header>}>
           <div className="steps-timeline">
-            {(enhancedSteps.length > 0 ? enhancedSteps : execution.steps)?.map((step) => (
+            {(processedSteps.length > 0 ? processedSteps : execution.steps)?.map((step, index) => (
               <div
-                key={`timeline-${step.name}-${step.type}-${step.status}`}
+                key={`timeline-${step.name}-${step.type}-${step.status}-${step.startDate || index}`}
                 className={`timeline-step ${step.status.toLowerCase()} ${
                   selectedStep?.name === step.name ? 'selected' : ''
-                } ${step.isNested ? 'nested-step' : ''}`}
+                } ${step.isMapIteration ? 'map-iteration-step' : ''}`}
                 onClick={() => setSelectedStep(step)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -545,8 +370,10 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
                 <div className="timeline-step-content">
                   <div className="timeline-step-name">
                     {step.name}
-                    {step.isSynthetic && <Badge color="blue">Synthetic</Badge>}
-                    {step.isNested && <Badge color="green">Nested</Badge>}
+                    {step.isMapIteration && <Badge color="green">Map Iteration</Badge>}
+                    {step.type === 'Map' && step.mapIterations && (
+                      <Badge color="blue">{step.mapIterations} iterations</Badge>
+                    )}
                   </div>
                   <div className="timeline-step-meta">
                     <span className={`timeline-step-status status-${step.status.toLowerCase()}`}>{step.status}</span>

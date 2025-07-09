@@ -30,17 +30,31 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Get execution details
         execution_response = stepfunctions.describe_execution(executionArn=execution_arn)
         
-        # Get execution history
-        history_response = stepfunctions.get_execution_history(
-            executionArn=execution_arn,
-            maxResults=100,
-            reverseOrder=False
-        )
+        # Get execution history with pagination to capture all events
+        all_events = []
+        next_token = None
         
-        logger.info(f"Retrieved {len(history_response['events'])} events for execution {execution_arn}")
+        while True:
+            history_params = {
+                'executionArn': execution_arn,
+                'maxResults': 1000,  # Increased to capture more events
+                'reverseOrder': False
+            }
+            
+            if next_token:
+                history_params['nextToken'] = next_token
+                
+            history_response = stepfunctions.get_execution_history(**history_params)
+            all_events.extend(history_response['events'])
+            
+            next_token = history_response.get('nextToken')
+            if not next_token:
+                break
+        
+        logger.info(f"Retrieved {len(all_events)} events for execution {execution_arn}")
         
         # Log event types for debugging
-        event_types = [event['type'] for event in history_response['events']]
+        event_types = [event['type'] for event in all_events]
         logger.debug(f"Event types found: {set(event_types)}")
         
         # Process execution details
@@ -51,7 +65,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'stopDate': execution_response.get('stopDate').isoformat() if execution_response.get('stopDate') else None,
             'input': execution_response.get('input'),
             'output': execution_response.get('output'),
-            'steps': parse_execution_history(history_response['events'])
+            'steps': parse_execution_history(all_events)
         }
         
         logger.info(f"Successfully retrieved execution details for {execution_arn}")
@@ -63,29 +77,34 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def parse_execution_history(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Parse Step Functions execution history events into step details
+    Parse Step Functions execution history events into step details with enhanced Map state support
     
     Args:
         events: List of execution history events
         
     Returns:
-        List of step details
+        List of step details including Map state iterations
     """
     steps = []
     step_map = {}
     event_id_to_step = {}  # Map event IDs to step names for correlation
+    map_iterations = {}  # Track Map state iterations
     
+    # First pass: identify all states and their basic information
     for event in events:
         event_type = event['type']
         event_id = event['id']
         timestamp = event['timestamp'].isoformat()
         
         # Handle state entered events
-        if event_type in ['TaskStateEntered', 'ChoiceStateEntered', 'PassStateEntered', 'WaitStateEntered', 'ParallelStateEntered']:
+        if event_type in ['TaskStateEntered', 'ChoiceStateEntered', 'PassStateEntered', 'WaitStateEntered', 'ParallelStateEntered', 'MapStateEntered']:
             step_name = event['stateEnteredEventDetails']['name']
-            step_type = event_type.replace('StateEntered', '').replace('Task', 'Task').replace('Choice', 'Choice').replace('Pass', 'Pass').replace('Wait', 'Wait').replace('Parallel', 'Parallel')
+            step_type = event_type.replace('StateEntered', '')
             
-            step_map[step_name] = {
+            # Create unique key for this step instance
+            step_key = f"{step_name}_{event_id}"
+            
+            step_map[step_key] = {
                 'name': step_name,
                 'type': step_type,
                 'status': 'RUNNING',
@@ -93,21 +112,85 @@ def parse_execution_history(events: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 'stopDate': None,
                 'input': event['stateEnteredEventDetails'].get('input'),
                 'output': None,
-                'error': None
+                'error': None,
+                'eventId': event_id,
+                'isMapState': step_type == 'Map'
             }
-            event_id_to_step[event_id] = step_name
+            event_id_to_step[event_id] = step_key
             
         # Handle state exited events (successful completion)
-        elif event_type in ['TaskStateExited', 'ChoiceStateExited', 'PassStateExited', 'WaitStateExited', 'ParallelStateExited']:
+        elif event_type in ['TaskStateExited', 'ChoiceStateExited', 'PassStateExited', 'WaitStateExited', 'ParallelStateExited', 'MapStateExited']:
             step_name = event['stateExitedEventDetails']['name']
-            if step_name in step_map:
-                step_map[step_name]['status'] = 'SUCCEEDED'
-                step_map[step_name]['stopDate'] = timestamp
-                step_map[step_name]['output'] = event['stateExitedEventDetails'].get('output')
-                
+            
+            # Find the corresponding step by name and update it
+            for step_key, step_data in step_map.items():
+                if step_data['name'] == step_name and step_data['status'] == 'RUNNING':
+                    step_data['status'] = 'SUCCEEDED'
+                    step_data['stopDate'] = timestamp
+                    step_data['output'] = event['stateExitedEventDetails'].get('output')
+                    break
+                    
+        # Handle Map iteration events
+        elif event_type == 'MapIterationStarted':
+            iteration_details = event.get('mapIterationStartedEventDetails', {})
+            map_name = iteration_details.get('name', 'Unknown')
+            iteration_index = iteration_details.get('index', 0)
+            
+            # Create a unique key for this iteration
+            iteration_key = f"{map_name}_iteration_{iteration_index}_{event_id}"
+            
+            step_map[iteration_key] = {
+                'name': f"{map_name} (Iteration {iteration_index + 1})",
+                'type': 'MapIteration',
+                'status': 'RUNNING',
+                'startDate': timestamp,
+                'stopDate': None,
+                'input': iteration_details.get('input'),
+                'output': None,
+                'error': None,
+                'eventId': event_id,
+                'isMapIteration': True,
+                'iterationIndex': iteration_index,
+                'parentMapName': map_name
+            }
+            
+            # Track iterations for the parent Map state
+            if map_name not in map_iterations:
+                map_iterations[map_name] = []
+            map_iterations[map_name].append(iteration_key)
+            
+        elif event_type == 'MapIterationSucceeded':
+            iteration_details = event.get('mapIterationSucceededEventDetails', {})
+            map_name = iteration_details.get('name', 'Unknown')
+            iteration_index = iteration_details.get('index', 0)
+            
+            # Find and update the corresponding iteration
+            for step_key, step_data in step_map.items():
+                if (step_data.get('parentMapName') == map_name and 
+                    step_data.get('iterationIndex') == iteration_index and 
+                    step_data['status'] == 'RUNNING'):
+                    step_data['status'] = 'SUCCEEDED'
+                    step_data['stopDate'] = timestamp
+                    step_data['output'] = iteration_details.get('output')
+                    break
+                    
+        elif event_type == 'MapIterationFailed':
+            iteration_details = event.get('mapIterationFailedEventDetails', {})
+            map_name = iteration_details.get('name', 'Unknown')
+            iteration_index = iteration_details.get('index', 0)
+            
+            # Find and update the corresponding iteration
+            for step_key, step_data in step_map.items():
+                if (step_data.get('parentMapName') == map_name and 
+                    step_data.get('iterationIndex') == iteration_index and 
+                    step_data['status'] == 'RUNNING'):
+                    step_data['status'] = 'FAILED'
+                    step_data['stopDate'] = timestamp
+                    step_data['error'] = iteration_details.get('error', 'Map iteration failed')
+                    break
+                    
         # Handle task failure events
         elif event_type == 'TaskFailed':
-            # Find the corresponding step by looking at previous events
             step_name = find_step_name_for_failure_event(event, events, event_id_to_step)
             if step_name and step_name in step_map:
                 step_map[step_name]['status'] = 'FAILED'
@@ -169,9 +252,24 @@ def parse_execution_history(events: List[Dict[str, Any]]) -> List[Dict[str, Any]
                     
                 step_map[step_name]['error'] = error_message
     
+    # Second pass: enhance Map states with iteration information
+    for step_key, step_data in step_map.items():
+        if step_data.get('isMapState') and step_data['name'] in map_iterations:
+            iterations = map_iterations[step_data['name']]
+            step_data['mapIterations'] = len(iterations)
+            step_data['mapIterationDetails'] = [step_map[iter_key] for iter_key in iterations if iter_key in step_map]
+    
     # Convert to list and sort by start time
     steps = list(step_map.values())
     steps.sort(key=lambda x: x['startDate'] if x['startDate'] else '')
+    
+    # Clean up internal fields that shouldn't be exposed
+    for step in steps:
+        step.pop('eventId', None)
+        step.pop('isMapState', None)
+        step.pop('isMapIteration', None)
+        step.pop('iterationIndex', None)
+        step.pop('parentMapName', None)
     
     return steps
 

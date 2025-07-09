@@ -383,3 +383,143 @@
 .error-icon {
   margin-right: 4px;
 }
+/* Map iterations inline display */
+.map-iterations-inline {
+  margin: 16px 0;
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #007dbc;
+}
+
+.map-iterations-header h5 {
+  margin: 0 0 12px 0;
+  color: #232f3e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.map-iterations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.iteration-step {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: white;
+  border-radius: 6px;
+  border: 1px solid #e1e4e8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.iteration-step:hover {
+  border-color: #007dbc;
+  box-shadow: 0 2px 4px rgba(0, 125, 188, 0.1);
+}
+
+.iteration-step.selected {
+  border-color: #007dbc;
+  background-color: #f0f8ff;
+}
+
+.iteration-step.succeeded {
+  border-left: 3px solid #28a745;
+}
+
+.iteration-step.failed {
+  border-left: 3px solid #dc3545;
+}
+
+.iteration-step.running {
+  border-left: 3px solid #ffc107;
+}
+
+.iteration-icon {
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.iteration-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.iteration-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #232f3e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iteration-status {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.more-iterations {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background-color: #e9ecef;
+  border-radius: 6px;
+  color: #6c757d;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Map iteration step in timeline */
+.timeline-step.map-iteration-step {
+  margin-left: 20px;
+  border-left: 2px solid #007dbc;
+  background-color: #f8f9fa;
+}
+
+.timeline-step.map-iteration-step::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 2px;
+  background-color: #007dbc;
+}
+
+/* Map step styling */
+.flow-step.map-step {
+  border: 2px solid #007dbc;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+}
+
+.flow-step.map-step .step-name {
+  font-weight: 600;
+}
+
+/* Enhanced step icons for Map iterations */
+.step-icon.step-icon-mapiteration {
+  color: #007dbc;
+}
+
+/* Status text colors for iterations */
+.status-text-succeeded {
+  color: #28a745;
+}
+
+.status-text-failed {
+  color: #dc3545;
+}
+
+.status-text-running {
+  color: #ffc107;
+}
+
+.status-text-pending {
+  color: #6c757d;
+}

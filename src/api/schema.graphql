@@ -148,6 +148,8 @@ type StepFunctionExecutionStep @aws_cognito_user_pools @aws_iam {
   input: AWSJSON
   output: AWSJSON
   error: String
+  mapIterations: Int
+  mapIterationDetails: [StepFunctionExecutionStep]
 }
 
 type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {

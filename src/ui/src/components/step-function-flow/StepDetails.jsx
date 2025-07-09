@@ -174,6 +174,49 @@ const StepDetails = ({ step, formatDuration, getStepIcon }) => {
           </Box>
         )}
 
+        {/* Map Iterations */}
+        {step.type === 'Map' && step.mapIterationDetails && step.mapIterationDetails.length > 0 && (
+          <ExpandableSection headerText={`Map Iterations (${step.mapIterationDetails.length})`} expanded={false}>
+            <SpaceBetween size="m">
+              {step.mapIterationDetails.map((iteration, index) => (
+                <Container key={`iteration-${iteration.name}-${iteration.startDate || index}`} header={iteration.name}>
+                  <SpaceBetween size="s">
+                    <div className="iteration-metadata">
+                      <SpaceBetween direction="horizontal" size="m">
+                        <Box>
+                          <Box variant="awsui-key-label">Status</Box>
+                          <Box className={`step-status step-status-${iteration.status.toLowerCase()}`}>
+                            {iteration.status}
+                          </Box>
+                        </Box>
+                        <Box>
+                          <Box variant="awsui-key-label">Duration</Box>
+                          <Box>{formatDuration(iteration.startDate, iteration.stopDate)}</Box>
+                        </Box>
+                        <Box>
+                          <Box variant="awsui-key-label">Started</Box>
+                          <Box>{iteration.startDate ? new Date(iteration.startDate).toLocaleString() : 'N/A'}</Box>
+                        </Box>
+                        {iteration.stopDate && (
+                          <Box>
+                            <Box variant="awsui-key-label">Completed</Box>
+                            <Box>{new Date(iteration.stopDate).toLocaleString()}</Box>
+                          </Box>
+                        )}
+                      </SpaceBetween>
+                    </div>
+                    {iteration.error && (
+                      <Alert type="error" header="Iteration Error">
+                        <pre className="error-message">{iteration.error}</pre>
+                      </Alert>
+                    )}
+                  </SpaceBetween>
+                </Container>
+              ))}
+            </SpaceBetween>
+          </ExpandableSection>
+        )}
+
         {/* Output Data */}
         {step.output ? (
           <ExpandableSection
@@ -211,6 +254,17 @@ StepDetails.propTypes = {
     input: PropTypes.string,
     output: PropTypes.string,
     error: PropTypes.string,
+    mapIterations: PropTypes.number,
+    mapIterationDetails: PropTypes.arrayOf(
+      PropTypes.shape({
+        name: PropTypes.string.isRequired,
+        type: PropTypes.string.isRequired,
+        status: PropTypes.string.isRequired,
+        startDate: PropTypes.string,
+        stopDate: PropTypes.string,
+        error: PropTypes.string,
+      }),
+    ),
   }).isRequired,
   formatDuration: PropTypes.func.isRequired,
   getStepIcon: PropTypes.func.isRequired,

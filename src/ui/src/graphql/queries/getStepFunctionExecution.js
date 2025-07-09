@@ -21,6 +21,17 @@ const getStepFunctionExecution = gql`
         input
         output
         error
+        mapIterations
+        mapIterationDetails {
+          name
+          type
+          status
+          startDate
+          stopDate
+          input
+          output
+          error
+        }
       }
     }
   }
