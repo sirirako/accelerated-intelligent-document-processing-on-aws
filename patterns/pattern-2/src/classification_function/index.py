@@ -30,7 +30,8 @@ def handler(event, context):
     logger.info(f"Event: {json.dumps(event)}")
     # Load configuration
     config = get_config()
-    logger.info(f"Config: {json.dumps(config)}")
+    # Use default=str to handle Decimal and other non-serializable types
+    logger.info(f"Config: {json.dumps(config, default=str)}")
     
     # Extract document from the OCR result - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
