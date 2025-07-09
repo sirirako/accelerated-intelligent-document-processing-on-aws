@@ -79,8 +79,8 @@ def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
                        
         # Get document from the final processing step
         working_bucket = os.environ.get('WORKING_BUCKET')
-        # look for document_data in either output_data.Result (Pattern-1) or output_data (others)
-        document_data = output_data.get('Result', output_data)
+        # look for document_data in either output_data.Result.document (Pattern-1) or output_data (others)
+        document_data = output_data.get('Result',{}).get('document', output_data)
         document = Document.load_document(document_data, working_bucket, logger)
         logger.info(f"Successfully loaded actual document with {len(document.pages)} pages and {len(document.sections)} sections")
         return document
