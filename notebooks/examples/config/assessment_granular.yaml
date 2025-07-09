@@ -1,5 +1,7 @@
-# Assessment Service Configuration
-# This configuration works with both original and granular assessment approaches
+# Granular Assessment Service Configuration
+# This configuration enables the new granular assessment approach for improved
+# accuracy and scalability when assessing document extraction confidence.
+
 assessment:
   default_confidence_threshold: '0.9'
   top_p: '0.1'
@@ -10,11 +12,18 @@ assessment:
   system_prompt: >-
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   
-  # Granular assessment configuration (optional)
+  # Granular assessment configuration
   granular:
-    enabled: false  # Set to true to enable granular assessment
+    # Enable granular assessment (set to false to use original approach)
+    enabled: true
+    
+    # Maximum number of parallel workers for concurrent processing
     max_workers: 20
+    
+    # Batch size for simple attributes (how many simple attributes to assess together)
     simple_batch_size: 3
+    
+    # Batch size for list items (how many list items to assess together, usually 1 for best accuracy)
     list_batch_size: 1
   
   task_prompt: >-
@@ -139,3 +148,4 @@ assessment:
     {EXTRACTION_RESULTS}
 
     </extraction-results>
+

@@ -534,43 +534,87 @@ Resources:
                     minimum: 100
                     maximum: 3500
                     order: 1
+              granular:
+                type: object
+                sectionLabel: Granular Assessment Configuration
+                description: Configure granular assessment for improved accuracy and scalability with large documents
+                order: 1
+                properties:
+                  enabled:
+                    type: boolean
+                    description: Enable granular assessment approach. When enabled, assessments are broken down into smaller, focused tasks for better accuracy and performance.
+                    default: true
+                    order: 0
+                  max_workers:
+                    type: integer
+                    description: Maximum number of parallel workers for concurrent assessment tasks. Higher values increase throughput but consume more resources.
+                    minimum: 1
+                    maximum: 20
+                    default: 4
+                    order: 1
+                    dependsOn: {
+                      field: "enabled",
+                      value: true
+                    }
+                  simple_batch_size:
+                    type: integer
+                    description: Number of simple attributes to group together in each assessment task. Smaller batches provide more focused assessments.
+                    minimum: 1
+                    maximum: 10
+                    default: 3
+                    order: 2
+                    dependsOn: {
+                      field: "enabled",
+                      value: true
+                    }
+                  list_batch_size:
+                    type: integer
+                    description: Number of list items to process in each assessment task. Usually 1 for best accuracy, can be increased for speed.
+                    minimum: 1
+                    maximum: 5
+                    default: 1
+                    order: 3
+                    dependsOn: {
+                      field: "enabled",
+                      value: true
+                    }
               default_confidence_threshold:
                 type: number
                 description: Default confidence threshold for all attributes (0.0 to 1.0). If an attribute doesn't have its own threshold, this default will be used for confidence threshold alerts.
                 minimum: 0
                 maximum: 1
-                order: 1
+                order: 2
               model:
                 type: string
                 description: Bedrock model ID
                 enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-opus-4-20250514-v1:0"]
-                order: 2
+                order: 3
               temperature:
                 type: number
                 description: Sampling temperature
-                order: 3
+                order: 4
               top_k:
                 type: number
                 description: Sampling Top K
-                order: 4
+                order: 5
               top_p:
                 type: number
                 description: Sampling Top P
-                order: 5
+                order: 6
               max_tokens:
                 type: number
                 description: Max tokens
-                order: 6
+                order: 7
               system_prompt:
                 type: string
                 format: textarea
                 description: System prompt
-                order: 7
+                order: 8
               task_prompt:
                 type: string
                 format: textarea
-                description: Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
-                order: 8
+                description: Task prompt - supports placeholders {DOCUMENT_TEXT} (markdown text), {OCR_TEXT_CONFIDENCE} (OCR text blocks with confidence), {DOCUMENT_CLASS}, {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}, {EXTRACTION_RESULTS}, {GRANULAR_CONTEXT} and {DOCUMENT_IMAGE}. Use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
+                order: 9
           summarization:
             order: 6
             type: object

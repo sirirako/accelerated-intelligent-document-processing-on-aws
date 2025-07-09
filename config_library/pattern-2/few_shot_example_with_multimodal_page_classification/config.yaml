@@ -888,14 +888,23 @@ pricing:
       - name: cacheWriteInputTokens
         price: '3.75E-6'
 assessment:
-  default_confidence_threshold: '0.8'
+  default_confidence_threshold: '0.9'
   top_p: '0.1'
-  max_tokens: '4096'
+  max_tokens: '10000'
   top_k: '5'
+  temperature: '0.0'
+  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  system_prompt: >-
+    You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
+  granular:
+    enabled: true
+    max_workers: 20
+    simple_batch_size: 3
+    list_batch_size: 1
   task_prompt: >-
     <background>
 
-    You are an expert document analysis assessment system. Your task is to evaluate the confidence and accuracy of extraction results for a document of class {DOCUMENT_CLASS}.
+    You are an expert document analysis assessment system. Your task is to evaluate the confidence of extraction results for a document of class {DOCUMENT_CLASS}.
 
     </background>
 
@@ -916,18 +925,12 @@ assessment:
     <assessment-guidelines>
 
     For each attribute, provide:
-    1. A confidence score between 0.0 and 1.0 where:
+    A confidence score between 0.0 and 1.0 where:
        - 1.0 = Very high confidence, clear and unambiguous evidence
        - 0.8-0.9 = High confidence, strong evidence with minor uncertainty
        - 0.6-0.7 = Medium confidence, reasonable evidence but some ambiguity
        - 0.4-0.5 = Low confidence, weak or unclear evidence
        - 0.0-0.3 = Very low confidence, little to no supporting evidence
-
-    2. A clear reason explaining the confidence score, including:
-       - What evidence supports or contradicts the extraction
-       - Any OCR quality issues that affect confidence
-       - Clarity of the source document in relevant areas
-       - Any ambiguity or uncertainty factors
 
     Guidelines:
     - Base assessments on actual document content and OCR quality
@@ -938,22 +941,67 @@ assessment:
 
     </assessment-guidelines>
 
+    <final-instructions>
+
+    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
+
+    For SIMPLE attributes:
+    {
+      "simple_attribute_name": {
+        "confidence": 0.85,
+      }
+    }
+
+    For GROUP attributes (nested object structure):
+    {
+      "group_attribute_name": {
+        "sub_attribute_1": {
+          "confidence": 0.90,
+        },
+        "sub_attribute_2": {
+          "confidence": 0.75,
+        }
+      }
+    }
+
+    For LIST attributes (array of assessed items):
+    {
+      "list_attribute_name": [
+        {
+          "item_attribute_1": {
+            "confidence": 0.95,
+          },
+          "item_attribute_2": {
+            "confidence": 0.88,
+          }
+        },
+        {
+          "item_attribute_1": {
+            "confidence": 0.92,
+          },
+          "item_attribute_2": {
+            "confidence": 0.70,
+          }
+        }
+      ]
+    }
+
+    IMPORTANT: 
+    - For LIST attributes like "Transactions", assess EACH individual item in the list separately
+    - Each transaction should be assessed as a separate object in the array
+    - Do NOT provide aggregate assessments for list items - assess each one individually
+    - Include assessments for ALL attributes present in the extraction results
+    - Match the exact structure of the extracted data
+
+    </final-instructions>
+
     <attributes-definitions>
 
     {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
 
     </attributes-definitions>
 
-
     <<CACHEPOINT>>
-
-
-    <extraction-results>
-
-    {EXTRACTION_RESULTS}
-
-    </extraction-results>
-
 
     <document-image>
 
@@ -968,29 +1016,13 @@ assessment:
 
     </ocr-text-confidence-results>
 
+    <<CACHEPOINT>>
 
-    <final-instructions>
+    <extraction-results>
 
-    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure:
+    {EXTRACTION_RESULTS}
 
-      {
-        "attribute_name_1": {
-          "confidence": 0.85,
-          "confidence_reason": "Clear text evidence found in document header with high OCR confidence (0.98). Value matches exactly."
-        },
-        "attribute_name_2": {
-          "confidence": 0.65,
-          "confidence_reason": "Text is partially unclear due to poor scan quality. OCR confidence low (0.72) in this region."
-        }
-      }
-
-    Include assessments for ALL attributes present in the extraction results.
-
-    </final-instructions>
-  temperature: '0.0'
-  model: us.amazon.nova-pro-v1:0
-  system_prompt: >-
-    You are a document analysis assessment expert. Your task is to evaluate the confidence and accuracy of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores and reasoning for each extracted attribute.
+    </extraction-results>
 evaluation:
   llm_method:
     top_p: '0.1'
@@ -1112,4 +1144,3 @@ summarization:
     concise summary.\n Your output MUST be in valid JSON format with markdown
     content. You MUST strictly adhere to the output format specified in the
     instructions.
-
