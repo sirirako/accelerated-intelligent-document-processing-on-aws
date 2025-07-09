@@ -17,6 +17,9 @@ The Assessment feature provides automated confidence evaluation of document extr
 - **Enhanced Visual Feedback**: Real-time confidence assessment with green/red/black color coding in all data viewing interfaces
 - **Optional Deployment**: Controlled by `IsAssessmentEnabled` parameter (defaults to false for cost optimization)
 - **Flexible Image Usage**: Images only processed when explicitly requested via `{DOCUMENT_IMAGE}` placeholder
+- **Granular Assessment**: Advanced scalable approach for complex documents with many attributes or list items
+- **Parallel Processing**: Multi-threaded assessment execution for improved performance
+- **Prompt Caching**: Leverages LLM caching capabilities to reduce costs for repeated assessments
 
 ## Architecture
 
@@ -577,6 +580,199 @@ assessment:
 - **Service-Specific Tuning**: Optimize image dimensions for different assessment complexity levels
 - **Resource Optimization**: Balance assessment quality and processing costs
 
+## Granular Assessment
+
+### Overview
+
+For complex documents with many attributes or large lists (such as bank statements with hundreds of transactions), the standard assessment approach can become inefficient and less accurate. The **Granular Assessment** feature addresses these challenges by breaking down the assessment process into smaller, focused tasks that can be processed in parallel.
+
+### When to Use Granular Assessment
+
+Consider granular assessment for:
+- **Documents with many attributes** (10+ simple attributes)
+- **Large list structures** (bank transactions, line items, etc.)
+- **Complex nested data** (multiple group attributes)
+- **Performance-critical scenarios** where parallel processing provides benefits
+- **Cost optimization** when prompt caching is available
+
+### Key Benefits
+
+1. **Improved Accuracy**: Smaller, focused prompts lead to better LLM performance
+2. **Cost Optimization**: Leverages prompt caching to reduce token usage significantly
+3. **Reduced Latency**: Parallel processing of independent assessment tasks
+4. **Better Scalability**: Handles documents with hundreds of attributes or list items
+
+### Configuration
+
+Enable granular assessment by adding the `granular` section to your assessment configuration:
+
+```yaml
+assessment:
+  # Standard assessment configuration
+  model: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  temperature: 0
+  system_prompt: "You are an expert document analyst..."
+  task_prompt: |
+    Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
+    
+    Attributes to assess:
+    {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    
+    Extraction results:
+    {EXTRACTION_RESULTS}
+    
+    Document context:
+    {DOCUMENT_TEXT}
+    {OCR_TEXT_CONFIDENCE}
+    {DOCUMENT_IMAGE}
+    
+    Provide confidence assessments in JSON format.
+  
+  # Granular assessment configuration
+  granular:
+    max_workers: 6              # Number of parallel threads
+    simple_batch_size: 3        # Attributes per simple batch
+    list_batch_size: 1          # List items per batch (usually 1)
+```
+
+### How It Works
+
+The granular assessment service automatically:
+
+1. **Analyzes attribute structure** to determine optimal task breakdown
+2. **Creates focused tasks**:
+   - **Simple batches**: Groups of 3-5 simple attributes
+   - **Group tasks**: Individual group attributes with their sub-attributes
+   - **List item tasks**: Individual items from list attributes
+3. **Builds cached base content** with document context and images
+4. **Processes tasks in parallel** using configurable thread pool
+5. **Aggregates results** into the same format as standard assessment
+
+### Task Types
+
+#### Simple Batch Tasks
+Groups simple attributes together for efficient processing:
+```yaml
+# Configuration with 10 simple attributes
+attributes:
+  - name: "StatementDate"
+  - name: "AccountNumber"
+  - name: "RoutingNumber"
+  # ... 7 more attributes
+
+# Results in 4 tasks: [3, 3, 3, 1] attributes each
+```
+
+#### Group Tasks
+Processes complex nested structures as single units:
+```yaml
+# Each group becomes one focused task
+attributes:
+  - name: "AccountDetails"
+    attributeType: "group"
+    groupAttributes:
+      - name: "AccountNumber"
+      - name: "RoutingNumber"
+      - name: "AccountType"
+```
+
+#### List Item Tasks
+Assesses each list item individually for maximum accuracy:
+```yaml
+# 100 transactions = 100 individual assessment tasks
+attributes:
+  - name: "Transactions"
+    attributeType: "list"
+    listItemTemplate:
+      itemAttributes:
+        - name: "Date"
+        - name: "Description"
+        - name: "Amount"
+```
+
+### Performance Tuning
+
+#### Batch Size Configuration
+```yaml
+granular:
+  simple_batch_size: 3    # Smaller = more accurate, larger = faster
+  list_batch_size: 1      # Usually keep at 1 for best accuracy
+  max_workers: 6          # Balance between speed and resource usage
+```
+
+#### Model Selection
+Granular assessment works best with models supporting prompt caching:
+- `us.anthropic.claude-3-7-sonnet-20250219-v1:0` (recommended)
+- `us.anthropic.claude-3-5-haiku-20241022-v1:0` (cost-effective)
+- `us.amazon.nova-lite-v1:0` or `us.amazon.nova-pro-v1:0`
+
+### Cost Optimization with Caching
+
+The granular approach leverages prompt caching for significant cost savings:
+
+```
+First Task:  [Full document context] + [3 attributes] = Full cost
+Second Task: [Cached context] + [3 different attributes] = Cache read + new content only
+Third Task:  [Cached context] + [3 different attributes] = Cache read + new content only
+...
+```
+
+**Typical savings**: 60-80% reduction in token costs for documents with many attributes.
+
+### Usage Example
+
+```python
+from idp_common.assessment import create_assessment_service
+
+# Load configuration with granular settings
+config = {
+    "assessment": {
+        "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        "granular": {
+            "max_workers": 6,
+            "simple_batch_size": 3,
+            "list_batch_size": 1
+        }
+        # ... other assessment config
+    }
+}
+
+# Factory function automatically selects granular service
+assessment_service = create_assessment_service(
+    region="us-west-2",
+    config=config
+)
+
+# Same interface as standard assessment
+document = assessment_service.assess_document(document)
+```
+
+### Monitoring Granular Assessment
+
+Granular assessment provides additional metadata:
+
+```json
+{
+  "metadata": {
+    "granular_assessment_used": true,
+    "assessment_tasks_total": 25,
+    "assessment_tasks_successful": 24,
+    "assessment_tasks_failed": 1,
+    "assessment_time_seconds": 8.5
+  }
+}
+```
+
+### Migration from Standard Assessment
+
+1. **Add granular configuration** to existing assessment config
+2. **Test with small documents** first to validate behavior
+3. **Tune batch sizes** based on your document complexity
+4. **Monitor performance** and cost metrics
+5. **Gradually roll out** to production workloads
+
+The granular service maintains full backward compatibility - existing configurations continue to work without changes.
+
 ## Cost Optimization
 
 ### Token Reduction Strategy
@@ -588,24 +784,29 @@ The assessment feature implements several cost optimization techniques:
 3. **Optional Deployment**: Assessment infrastructure only deployed when `IsAssessmentEnabled=true`
 4. **Efficient Prompting**: Optimized prompt templates minimize token usage while maintaining accuracy
 5. **Configurable Image Dimensions**: Adjust image resolution to balance assessment quality and processing costs
+6. **Granular Assessment with Caching**: For complex documents, use granular assessment with prompt caching for 60-80% cost reduction
 
 
 ## Testing and Validation
 
 ### End-to-End Testing
 
-Use the provided notebook for comprehensive testing:
+Use the provided notebooks for comprehensive testing:
 
 ```bash
-# Open the assessment testing notebook
+# Standard assessment testing
 jupyter notebook notebooks/e2e-example-with-assessment.ipynb
+
+# Granular assessment testing
+jupyter notebook notebooks/examples/step4_assessment_granular.ipynb
 ```
 
-The notebook demonstrates:
+The notebooks demonstrate:
 - Document processing with assessment enabled
 - Confidence score interpretation
 - Integration with existing extraction workflows
 - Performance and cost analysis
+- Granular assessment configuration and usage
 
 ### Configuration Validation
 

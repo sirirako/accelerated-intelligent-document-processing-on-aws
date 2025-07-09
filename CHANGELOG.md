@@ -11,6 +11,16 @@ SPDX-License-Identifier: MIT-0
 ## [0.3.7]
 
 ### Added
+- **Granular Assessment Service for Scalable Confidence Evaluation**
+  - New granular assessment approach that breaks down assessment into smaller, focused tasks for improved accuracy and performance
+  - **Key Benefits**: Better accuracy through focused prompts, cost optimization via prompt caching, reduced latency through parallel processing, and scalability for complex documents
+  - **Task Types**: Simple batch tasks (groups 3-5 simple attributes), group tasks (individual group attributes), and list item tasks (individual list items for maximum accuracy)
+  - **Configuration**: Configurable batch sizes (`simple_batch_size`, `list_batch_size`) and parallel processing (`max_workers`) for performance tuning
+  - **Prompt Caching**: Leverages LLM caching capabilities with cached base content (document context, images, OCR data) and dynamic task-specific content
+  - **Use Cases**: Ideal for bank statements with hundreds of transactions, documents with 10+ attributes, complex nested structures, and performance-critical scenarios
+  - **Backward Compatibility**: Maintains same interface as standard assessment service with seamless migration path
+  - **Enhanced Documentation**: Comprehensive documentation in `docs/assessment.md` and example notebooks for both standard and granular approaches
+
 - **Optimize the classification process for single class configurations in Pattern-2**
   - Detects when only a single document class is defined in the configuration
   - Automatically classifies all document pages as that single class

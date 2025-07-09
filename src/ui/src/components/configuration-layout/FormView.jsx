@@ -539,7 +539,26 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   // Define renderField first as a function declaration
   function renderField(key, property, path = '') {
     const currentPath = path ? `${path}.${key}` : key;
-    const value = getValueAtPath(formValues, currentPath);
+    let value = getValueAtPath(formValues, currentPath);
+
+    // For objects with properties, ensure the object exists in formValues
+    if (property.type === 'object' && property.properties && value === undefined) {
+      // Initialize the object
+      const newObj = {};
+
+      // Initialize any properties with default values
+      Object.entries(property.properties).forEach(([propKey, propSchema]) => {
+        if (propSchema.default !== undefined) {
+          newObj[propKey] = propSchema.default;
+        }
+      });
+
+      // Only update if we have defaults to set
+      if (Object.keys(newObj).length > 0) {
+        updateValue(currentPath, newObj);
+        value = newObj;
+      }
+    }
 
     // Check dependencies FIRST, before any rendering - applies to all field types
     if (property.dependsOn) {
@@ -581,21 +600,60 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       // Get the current value of the dependency field
       const dependencyValue = getValueAtPath(formValues, dependencyPath);
 
-      // Debug logging for dependency checking
+      // Enhanced debug logging for dependency checking
       console.log(`DEBUG renderField dependency check for ${key}:`, {
         key,
         currentPath,
         dependencyField,
         dependencyPath,
         dependencyValue,
+        dependencyValueType: typeof dependencyValue,
         dependencyValues,
+        dependencyValuesTypes: dependencyValues.map((v) => typeof v),
         isNestedAttribute:
           currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
         shouldHide: dependencyValue === undefined || !dependencyValues.includes(dependencyValue),
       });
 
+      // Special handling for boolean dependencies
+      let normalizedDependencyValue = dependencyValue;
+      let normalizedDependencyValues = dependencyValues;
+
+      // If the dependency field is expected to be boolean, normalize the values
+      if (dependencyValues.some((v) => typeof v === 'boolean') || typeof dependencyValue === 'boolean') {
+        // Convert string representations to boolean
+        if (typeof dependencyValue === 'string') {
+          if (dependencyValue === 'true') {
+            normalizedDependencyValue = true;
+          } else if (dependencyValue === 'false') {
+            normalizedDependencyValue = false;
+          } else {
+            normalizedDependencyValue = dependencyValue;
+          }
+        }
+
+        // Normalize the expected values array
+        normalizedDependencyValues = dependencyValues.map((v) => {
+          if (typeof v === 'string') {
+            if (v === 'true') {
+              return true;
+            }
+            if (v === 'false') {
+              return false;
+            }
+            return v;
+          }
+          return v;
+        });
+      }
+
       // If dependency value doesn't match any required values, hide this field
-      if (dependencyValue === undefined || !dependencyValues.includes(dependencyValue)) {
+      if (normalizedDependencyValue === undefined || !normalizedDependencyValues.includes(normalizedDependencyValue)) {
+        console.log(`Hiding field ${key} due to dependency mismatch:`, {
+          normalizedDependencyValue,
+          normalizedDependencyValues,
+          includes: normalizedDependencyValues.includes(normalizedDependencyValue),
+        });
         return null; // Don't render this field
       }
     }
@@ -1184,13 +1242,20 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   }
 
   function renderInputField(key, property, value, path) {
-    // Special handling for attributeType field to provide default value BEFORE dependency checking
+    // Special handling for fields with default values
     let displayValue = value;
+
+    // Handle attributeType field default
     if (key === 'attributeType' && (value === undefined || value === null || value === '')) {
-      // Set default value to 'simple' for backward compatibility - do this synchronously
       displayValue = 'simple';
-      // Update the form values immediately to ensure dependency checking works
       updateValue(path, 'simple');
+    }
+
+    // Handle boolean fields with default values
+    if (property.type === 'boolean' && property.default !== undefined && (value === undefined || value === null)) {
+      displayValue = property.default;
+      // Update the form values immediately to ensure dependency checking works
+      updateValue(path, property.default);
     }
 
     // Dependencies are now checked in the main renderField function
