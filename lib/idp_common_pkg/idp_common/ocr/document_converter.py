@@ -132,7 +132,6 @@ class DocumentConverter:
                     io.StringIO(content),
                     dtype_backend="numpy_nullable",  # Better null handling
                     parse_dates=True,  # Automatic date parsing
-                    infer_datetime_format=True,
                 )
 
                 if df.empty:
