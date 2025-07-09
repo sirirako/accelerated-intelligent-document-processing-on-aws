@@ -126,9 +126,10 @@
             "Resource": "${SummarizationLambdaArn}",
             "Parameters": {
                 "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.Result.document"
+                "document.$": "$"
             },
             "ResultPath": "$.Result",
+            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [
