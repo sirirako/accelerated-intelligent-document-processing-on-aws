@@ -459,6 +459,7 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   const updateValue = (path, value) => {
     // Don't create properties for empty/meaningless values, BUT preserve empty arrays
     // as they represent intentional user deletions of list items
+    // IMPORTANT: Don't filter out boolean false values - they are meaningful!
     if (
       value === '' ||
       value === null ||
@@ -540,6 +541,15 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   function renderField(key, property, path = '') {
     const currentPath = path ? `${path}.${key}` : key;
     let value = getValueAtPath(formValues, currentPath);
+
+    // Add debugging for granular assessment
+    if (currentPath.includes('granular')) {
+      console.log(`DEBUG: Rendering granular field '${key}' at path '${currentPath}':`, {
+        property,
+        value,
+        formValues: getValueAtPath(formValues, 'assessment'),
+      });
+    }
 
     // For objects with properties, ensure the object exists in formValues
     if (property.type === 'object' && property.properties && value === undefined) {
@@ -1251,7 +1261,7 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       updateValue(path, 'simple');
     }
 
-    // Handle boolean fields with default values
+    // Handle boolean fields with default values - ONLY when value is truly undefined/null, NOT false
     if (property.type === 'boolean' && property.default !== undefined && (value === undefined || value === null)) {
       displayValue = property.default;
       // Update the form values immediately to ensure dependency checking works

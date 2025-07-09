@@ -8,6 +8,51 @@ import updateConfigurationMutation from '../graphql/queries/updateConfiguration'
 
 const logger = new Logger('useConfiguration');
 
+// Utility function to normalize boolean values from strings
+const normalizeBooleans = (obj, schema) => {
+  if (!obj || !schema) return obj;
+
+  const normalizeValue = (value, propertySchema) => {
+    // Handle boolean fields that might be strings
+    if (propertySchema?.type === 'boolean') {
+      if (typeof value === 'string') {
+        if (value.toLowerCase() === 'true') return true;
+        if (value.toLowerCase() === 'false') return false;
+      }
+      return value;
+    }
+
+    // Handle objects recursively
+    if (value && typeof value === 'object' && !Array.isArray(value) && propertySchema?.properties) {
+      const normalized = { ...value };
+      Object.keys(normalized).forEach((key) => {
+        if (propertySchema.properties[key]) {
+          normalized[key] = normalizeValue(normalized[key], propertySchema.properties[key]);
+        }
+      });
+      return normalized;
+    }
+
+    // Handle arrays
+    if (Array.isArray(value) && propertySchema?.items) {
+      return value.map((item) => normalizeValue(item, propertySchema.items));
+    }
+
+    return value;
+  };
+
+  const normalized = { ...obj };
+  if (schema.properties) {
+    Object.keys(normalized).forEach((key) => {
+      if (schema.properties[key]) {
+        normalized[key] = normalizeValue(normalized[key], schema.properties[key]);
+      }
+    });
+  }
+
+  return normalized;
+};
+
 // Deep merge function for combining default and custom configurations
 const deepMerge = (target, source) => {
   const result = { ...target };
@@ -114,11 +159,16 @@ const useConfiguration = () => {
       }
 
       setSchema(schemaObj);
-      setDefaultConfig(defaultObj);
-      setCustomConfig(customObj);
+
+      // Normalize boolean values in both default and custom configs
+      const normalizedDefaultObj = normalizeBooleans(defaultObj, schemaObj);
+      const normalizedCustomObj = normalizeBooleans(customObj, schemaObj);
+
+      setDefaultConfig(normalizedDefaultObj);
+      setCustomConfig(normalizedCustomObj);
 
       // Merge default and custom configurations
-      const merged = deepMerge(defaultObj, customObj);
+      const merged = deepMerge(normalizedDefaultObj, normalizedCustomObj);
       console.log('Merged configuration result:', merged);
       // Double check the classification and extraction sections
       if (merged.classification) {
