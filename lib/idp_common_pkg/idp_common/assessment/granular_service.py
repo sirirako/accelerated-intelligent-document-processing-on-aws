@@ -874,23 +874,45 @@ class GranularAssessmentService:
                 for attr_name in task.attributes:
                     if attr_name in result.assessment_data:
                         # Add confidence threshold to the assessment
-                        assessment = result.assessment_data[attr_name].copy()
-                        threshold = task.confidence_thresholds.get(attr_name, 0.9)
-                        assessment["confidence_threshold"] = threshold
-                        enhanced_assessment_data[attr_name] = assessment
+                        assessment_value = result.assessment_data[attr_name]
+                        if isinstance(assessment_value, dict):
+                            assessment = assessment_value.copy()
+                            threshold = task.confidence_thresholds.get(attr_name, 0.9)
+                            assessment["confidence_threshold"] = threshold
+                            enhanced_assessment_data[attr_name] = assessment
+                        else:
+                            logger.warning(
+                                f"Unexpected assessment data type for {attr_name}: {type(assessment_value)}"
+                            )
 
             elif task.task_type == "group":
                 attr_name = task.attributes[0]
                 if attr_name in result.assessment_data:
-                    group_assessment = {}
-                    for sub_attr_name, sub_assessment in result.assessment_data[
-                        attr_name
-                    ].items():
-                        enhanced_sub_assessment = sub_assessment.copy()
-                        threshold = task.confidence_thresholds.get(sub_attr_name, 0.9)
-                        enhanced_sub_assessment["confidence_threshold"] = threshold
-                        group_assessment[sub_attr_name] = enhanced_sub_assessment
-                    enhanced_assessment_data[attr_name] = group_assessment
+                    assessment_value = result.assessment_data[attr_name]
+                    if isinstance(assessment_value, dict):
+                        group_assessment = {}
+                        for sub_attr_name, sub_assessment in assessment_value.items():
+                            if isinstance(sub_assessment, dict):
+                                enhanced_sub_assessment = sub_assessment.copy()
+                                threshold = task.confidence_thresholds.get(
+                                    sub_attr_name, 0.9
+                                )
+                                enhanced_sub_assessment["confidence_threshold"] = (
+                                    threshold
+                                )
+                                group_assessment[sub_attr_name] = (
+                                    enhanced_sub_assessment
+                                )
+                            else:
+                                logger.warning(
+                                    f"Unexpected sub-assessment data type for {attr_name}.{sub_attr_name}: {type(sub_assessment)}"
+                                )
+                                group_assessment[sub_attr_name] = sub_assessment
+                        enhanced_assessment_data[attr_name] = group_assessment
+                    else:
+                        logger.warning(
+                            f"Unexpected group assessment data type for {attr_name}: {type(assessment_value)}"
+                        )
 
             elif task.task_type == "list_item":
                 attr_name = task.attributes[0]
@@ -912,10 +934,16 @@ class GranularAssessmentService:
                     item_attr_name,
                     item_assessment_data,
                 ) in result.assessment_data.items():
-                    enhanced_item_assessment = item_assessment_data.copy()
-                    threshold = task.confidence_thresholds.get(item_attr_name, 0.9)
-                    enhanced_item_assessment["confidence_threshold"] = threshold
-                    item_assessment[item_attr_name] = enhanced_item_assessment
+                    if isinstance(item_assessment_data, dict):
+                        enhanced_item_assessment = item_assessment_data.copy()
+                        threshold = task.confidence_thresholds.get(item_attr_name, 0.9)
+                        enhanced_item_assessment["confidence_threshold"] = threshold
+                        item_assessment[item_attr_name] = enhanced_item_assessment
+                    else:
+                        logger.warning(
+                            f"Unexpected list item assessment data type for {attr_name}[{item_index}].{item_attr_name}: {type(item_assessment_data)}"
+                        )
+                        item_assessment[item_attr_name] = item_assessment_data
 
                 enhanced_assessment_data[attr_name][item_index] = item_assessment
 
