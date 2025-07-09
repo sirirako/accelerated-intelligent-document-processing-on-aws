@@ -51,7 +51,6 @@
                 "BDAResponse.$": "$.BDAResponse"
             },
             "ResultPath": "$.Result",
-            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -127,10 +126,9 @@
             "Resource": "${SummarizationLambdaArn}",
             "Parameters": {
                 "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$"
+                "document.$": "$.Result.document"
             },
             "ResultPath": "$.Result",
-            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [
