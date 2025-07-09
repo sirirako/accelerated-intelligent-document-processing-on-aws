@@ -646,6 +646,9 @@ classes:
         imagePath: config_library/pattern-2/few_shot_example_with_multimodal_page_classification/example-images/bank-statement-pages/
 
 classification:
+  image:
+    target_height: '1268'
+    target_width: '951'
   classificationMethod: multimodalPageLevelClassification
   model: us.amazon.nova-pro-v1:0
   temperature: '0.0'
@@ -706,6 +709,9 @@ classification:
     Respond only with a JSON object containing the class label. For example:
     {{"class": "letter"}}
 extraction:
+  image:
+    target_height: '1268'
+    target_width: '951'
   model: us.amazon.nova-pro-v1:0
   temperature: '0.0'
   top_p: '0.1'
@@ -888,6 +894,14 @@ pricing:
       - name: cacheWriteInputTokens
         price: '3.75E-6'
 assessment:
+  image:
+    target_height: '1268'
+    target_width: '951'
+  granular:
+    enabled: true
+    max_workers: "20"
+    simple_batch_size: "3"
+    list_batch_size: "1"
   default_confidence_threshold: '0.9'
   top_p: '0.1'
   max_tokens: '10000'
@@ -896,11 +910,6 @@ assessment:
   model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
   system_prompt: >-
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
-  granular:
-    enabled: true
-    max_workers: "20"
-    simple_batch_size: "3"
-    list_batch_size: "1"
   task_prompt: >-
     <background>
 
