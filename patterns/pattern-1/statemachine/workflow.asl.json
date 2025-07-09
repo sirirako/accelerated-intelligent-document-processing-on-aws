@@ -51,6 +51,7 @@
                 "BDAResponse.$": "$.BDAResponse"
             },
             "ResultPath": "$.Result",
+            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [
