@@ -774,7 +774,9 @@ class ClassificationService:
 
         while retry_count < self.MAX_RETRIES:
             try:
-                logger.info(f"Classifying page {page_id} with SageMaker UDOP model")
+                logger.info(
+                    f"Classifying page {page_id} with SageMaker UDOP model. Payload: {json.dumps(payload)}"
+                )
                 t0 = time.time()
 
                 # Invoke endpoint
@@ -792,7 +794,7 @@ class ClassificationService:
 
                 # Log success metrics
                 logger.info(
-                    f"Page {page_id} classification successful in {duration:.2f}s"
+                    f"Page {page_id} classification successful in {duration:.2f}s. Response: {response_body}"
                 )
 
                 # Add some metering data for consistency with Bedrock
