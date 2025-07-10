@@ -30,6 +30,7 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 s3_client = get_s3_client()
 ssm_client = boto3.client('ssm')
 bedrock_client = boto3.client('bedrock-data-automation')
+SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
 
 def get_confidence_threshold_from_config(document: Document) -> float:
     """
@@ -888,7 +889,8 @@ def process_segments(
                 bp_match=segment.get('custom_output_status'),
                 extraction_bp_name=blueprint_name,
                 hitl_triggered=low_confidence,
-                page_array=page_indices
+                page_array=page_indices,
+                review_portal_url=SAGEMAKER_A2I_REVIEW_PORTAL_URL
             )
 
             if low_confidence:
@@ -940,7 +942,8 @@ def process_segments(
                 bp_match=segment.get('custom_output_status'),
                 extraction_bp_name="None",
                 hitl_triggered=True,
-                page_array=page_array
+                page_array=page_array,
+                review_portal_url=SAGEMAKER_A2I_REVIEW_PORTAL_URL
             )
             
             hitl_triggered = True
@@ -1165,8 +1168,8 @@ def handler(event, context):
     
     # Update document status based on HITL requirement
     if hitl_triggered == "true":
-        # Keep as RUNNING until HITL completes
-        document.status = Status.RUNNING
+        # Set status to HITL_IN_PROGRESS when HITL is triggered
+        document.status = Status.HITL_IN_PROGRESS
         logger.info(f"Document requires human review, setting status to {document.status}")
     else:
         # Only mark as COMPLETED if no human review is needed
