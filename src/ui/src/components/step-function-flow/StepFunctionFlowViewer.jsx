@@ -75,7 +75,14 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     setError(null);
 
     try {
+      // Add detailed logging for debugging
+      logger.info('Fetching Step Function execution with ARN:', executionArn);
+      console.log('Fetching Step Function execution with ARN:', executionArn);
+
       const result = await API.graphql(graphqlOperation(getStepFunctionExecution, { executionArn }));
+      logger.info('GraphQL response received:', result);
+      console.log('GraphQL response received:', result);
+
       setData(result.data);
       setLastRefreshTime(new Date());
       logger.debug('Step Functions execution data:', result.data);
@@ -96,6 +103,16 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
       }
     } catch (err) {
       logger.error('Error fetching Step Functions execution:', err);
+      console.error('Error fetching Step Functions execution:', err);
+
+      // Enhanced error details for debugging
+      if (err.errors) {
+        err.errors.forEach((errorItem, index) => {
+          logger.error(`GraphQL Error ${index + 1}:`, errorItem);
+          console.error(`GraphQL Error ${index + 1}:`, errorItem);
+        });
+      }
+
       setError(err);
     } finally {
       setLoading(false);
