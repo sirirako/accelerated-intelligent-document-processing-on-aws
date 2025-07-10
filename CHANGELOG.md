@@ -46,11 +46,13 @@ SPDX-License-Identifier: MIT-0
   - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
 - **Modified default assessment prompt for token efficiency**
   - Removed `confidence_reason` from output to avoid consuming unnecessary output tokens
-  - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled  
+  - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled
 
 ### Fixed
 - Fixed UI list deletion issue where empty lists were not saved correctly - #18
 - Improve structure and clarity for idp_common Python package documentation
+- Improved UI in View/Edit Configuration to clarify that Class and Attribute descriptions are used in the classification and extraction prompts
+
 
 ## [0.3.6]
 

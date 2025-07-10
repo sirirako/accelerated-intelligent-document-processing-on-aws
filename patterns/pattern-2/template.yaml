@@ -243,7 +243,7 @@ Resources:
                   description: Class name
                 description:
                   type: string
-                  description: Class description
+                  description: Class description - instructs LLM how to identify the class from the context provided in the classification prompt.
                 examples:
                   type: array
                   description: Class few-shot examples
@@ -290,7 +290,7 @@ Resources:
                         order: 0
                       description:
                         type: string
-                        description: Attribute description
+                        description: Attribute description - instructs the LLM how to identify the attribute from the context provided in the classification prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.
                         order: 1
                       attributeType:
                         type: string
