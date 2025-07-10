@@ -36,7 +36,7 @@ results = reporter.save(document, data_to_save=["evaluation_results"])
 
 ### Evaluation Results
 
-The module currently supports saving document evaluation results, which include:
+The module supports saving document evaluation results, which include:
 
 1. **Document-level metrics**: Overall accuracy, precision, recall, F1 score, etc.
 2. **Section-level metrics**: Metrics for each document section
@@ -46,6 +46,88 @@ The module currently supports saving document evaluation results, which include:
 # Save evaluation results for a document
 result = reporter.save_evaluation_results(document)
 ```
+
+### Metering Data
+
+The module supports saving document processing metering data for cost tracking and analytics:
+
+```python
+# Save metering data for a document
+result = reporter.save_metering_data(document)
+```
+
+### Document Sections
+
+The module supports saving document section extraction results as Parquet files with dynamic schema inference. This functionality processes each section in the document, loads the extraction results from S3, and saves them in a structured, partitioned format suitable for analytics.
+
+#### Key Features
+
+- **Dynamic Schema Inference**: Automatically constructs PyArrow schemas from JSON data without requiring predefined schemas
+- **Flexible Data Handling**: Supports various JSON structures (objects, arrays, primitives)
+- **Nested JSON Flattening**: Converts nested objects to flat structure using dot notation
+- **Partition Structure**: Organizes data with section_type and date-based partitioning
+- **Error Resilience**: Continues processing other sections if individual sections fail
+- **Comprehensive Logging**: Detailed logging for monitoring and debugging
+
+#### Usage
+
+```python
+# Save document sections along with other data types
+data_to_save = ["sections"]  # New option
+results = reporter.save(document, data_to_save)
+
+# Or combine with existing functionality
+data_to_save = ["evaluation_results", "metering", "sections"]
+results = reporter.save(document, data_to_save)
+```
+
+#### Requirements
+
+For the sections functionality to work, your `Document` object must have:
+
+1. **Sections**: A list of `Section` objects in `document.sections`
+2. **Extraction Results**: Each section should have `extraction_result_uri` pointing to S3 JSON file
+3. **Classification**: Each section should have a `classification` field for partitioning
+
+#### Data Processing
+
+**Schema Inference**: The method dynamically infers PyArrow schemas by analyzing the JSON data:
+- **Strings**: Mapped to `pa.string()`
+- **Integers**: Mapped to `pa.int64()`
+- **Floats**: Mapped to `pa.float64()`
+- **Booleans**: Mapped to `pa.bool_()`
+- **Lists/Objects**: Converted to JSON strings and mapped to `pa.string()`
+- **Mixed Types**: Defaults to `pa.string()`
+
+**JSON Flattening**: Nested JSON structures are flattened using dot notation:
+
+```json
+// Input JSON
+{
+  "customer": {
+    "name": "John Doe",
+    "address": {
+      "street": "123 Main St",
+      "city": "Anytown"
+    }
+  },
+  "items": ["item1", "item2"]
+}
+
+// Flattened Output
+{
+  "customer.name": "John Doe",
+  "customer.address.street": "123 Main St", 
+  "customer.address.city": "Anytown",
+  "items": "[\"item1\", \"item2\"]"  // Arrays become JSON strings
+}
+```
+
+**Metadata Fields**: Each record includes the following metadata fields:
+- `section_id`: The unique identifier of the section
+- `document_id`: The document identifier
+- `section_classification`: The section's classification/type
+- `section_confidence`: The confidence score for the section
 
 ## Storage Structure
 
@@ -72,9 +154,35 @@ reporting-bucket/
 │               └── day=DD/
 │                   └── document=doc-id/
 │                       └── results.parquet
+├── metering/
+│   └── year=YYYY/
+│       └── month=MM/
+│           └── day=DD/
+│               └── document=doc-id/
+│                   └── results.parquet
+└── document_sections/
+    ├── section_type=invoice/
+    │   └── year=YYYY/
+    │       └── month=MM/
+    │           └── day=DD/
+    │               └── document=doc-id/
+    │                   ├── section_section_1.parquet
+    │                   └── section_section_4.parquet
+    ├── section_type=receipt/
+    │   └── year=YYYY/
+    │       └── month=MM/
+    │           └── day=DD/
+    │               └── document=doc-id/
+    │                   └── section_section_2.parquet
+    └── section_type=bank_statement/
+        └── year=YYYY/
+            └── month=MM/
+                └── day=DD/
+                    └── document=doc-id/
+                        └── section_section_3.parquet
 ```
 
-This structure is designed to be compatible with AWS Glue and Amazon Athena for analytics.
+This structure is designed to be compatible with AWS Glue and Amazon Athena for analytics. The document sections are partitioned by `section_type` (classification) as the first partition level, followed by date-based partitioning.
 
 ## Extending the Module
 
