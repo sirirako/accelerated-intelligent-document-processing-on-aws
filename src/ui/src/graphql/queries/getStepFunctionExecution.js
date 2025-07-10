@@ -12,6 +12,7 @@ const getStepFunctionExecution = gql`
       stopDate
       input
       output
+      error
       steps {
         name
         type

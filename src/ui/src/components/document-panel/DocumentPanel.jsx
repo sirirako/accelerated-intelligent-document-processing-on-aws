@@ -479,7 +479,11 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
                   <Button
                     iconName="status-positive"
                     variant={isFlowViewerVisible ? 'primary' : 'normal'}
-                    onClick={() => setIsFlowViewerVisible(true)}
+                    onClick={() => {
+                      console.log('Execution ARN:', item.executionArn);
+                      logger.info('Opening flow viewer with execution ARN:', item.executionArn);
+                      setIsFlowViewerVisible(true);
+                    }}
                   >
                     View Processing Flow
                   </Button>

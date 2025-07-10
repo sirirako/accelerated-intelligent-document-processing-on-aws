@@ -144,11 +144,15 @@
 
 .timeline-step-error {
   margin-top: 8px;
-  padding: 8px;
+  padding: 8px 12px;
   background-color: #f8d7da;
   color: #721c24;
   border-radius: 4px;
   font-size: 14px;
+  border-left: 4px solid #dc3545;
+  display: flex;
+  align-items: flex-start;
+  line-height: 1.4;
 }
 
 .step-icon {
