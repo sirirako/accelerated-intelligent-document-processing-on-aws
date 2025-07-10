@@ -349,7 +349,7 @@ Resources:
                               order: 0
                             description:
                               type: string
-                              description: Attribute description
+                              description: Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.
                               order: 1
                             evaluation_method:
                               type: string
@@ -387,7 +387,7 @@ Resources:
                         properties:
                           itemDescription:
                             type: string
-                            description: Description of each list item
+                            description: Description of each list item. Instruct the LLM how to identify the list item (e.g. a transaction in a bank statement). 
                             order: 0
                           itemAttributes:
                             type: array
@@ -406,7 +406,7 @@ Resources:
                                   order: 0
                                 description:
                                   type: string
-                                  description: Attribute description
+                                  description: Attribute description. Instruct the LLM how to identify the attribute from the context provided in the extraction prompt. Include synonyms and positional infomation where it might help the LLM to resolve ambiquities.
                                   order: 1
                                 evaluation_method:
                                   type: string
