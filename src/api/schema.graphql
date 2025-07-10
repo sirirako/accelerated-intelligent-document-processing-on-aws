@@ -159,6 +159,7 @@ type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
   stopDate: AWSDateTime
   input: AWSJSON
   output: AWSJSON
+  error: String
   steps: [StepFunctionExecutionStep]
 }
 
