@@ -24,6 +24,18 @@ SPDX-License-Identifier: MIT-0
 ### Fixed
 - Improve structure and clarity for idp_common Python package documentation
 
+- **Document Process Flow Visualization**
+  - Added interactive visualization of Step Functions workflow execution for document processing
+  - Visual representation of processing steps with status indicators and execution details
+  - Detailed step information including inputs, outputs, and error messages
+  - Timeline view showing chronological execution of all processing steps
+  - Auto-refresh capability for monitoring active executions in real-time
+  - Support for Map state visualization with iteration details
+  - Error diagnostics with detailed error messages for troubleshooting
+  - Automatic selection of failed steps for quick issue identification
+
+- **Fix the subscriotion issue for HITL Status update**
+  - Fix the issue of Subscription for field "HITL (A2I) Status" in the Document list and document details section of the UI. 
 
 ## [0.3.6]
 
