@@ -13,6 +13,7 @@ import {
   FaChartBar,
   FaMap,
   FaList,
+  FaExclamationTriangle,
 } from 'react-icons/fa';
 import getStepFunctionExecution from '../../graphql/queries/getStepFunctionExecution';
 import FlowDiagram from './FlowDiagram';
@@ -83,6 +84,15 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
       if (result.data?.getStepFunctionExecution?.steps) {
         const enhancedSteps = processStepFunctionStepsData(result.data.getStepFunctionExecution.steps);
         setProcessedSteps(enhancedSteps);
+
+        // If there's a failed step and no step is currently selected, select the first failed step
+        if (!selectedStep) {
+          const failedStep = enhancedSteps.find((step) => step.status === 'FAILED');
+          if (failedStep) {
+            setSelectedStep(failedStep);
+            logger.info('Auto-selected failed step:', failedStep.name);
+          }
+        }
       }
     } catch (err) {
       logger.error('Error fetching Step Functions execution:', err);
@@ -237,7 +247,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <Modal visible={visible} onDismiss={onDismiss} header="Document Processing Flow" size="max">
         <Box textAlign="center" padding="xxl">
@@ -254,7 +264,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
     return (
       <Modal visible={visible} onDismiss={onDismiss} header="Document Processing Flow" size="max">
         <Alert type="error" header="Error loading processing flow">
-          {error.message}
+          {error.message || 'An error occurred while loading the processing flow.'}
         </Alert>
       </Modal>
     );
@@ -270,6 +280,9 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
       </Modal>
     );
   }
+
+  // Check if execution has a top-level error
+  const hasExecutionError = execution.status === 'FAILED' && execution.error;
 
   return (
     <Modal
@@ -307,26 +320,40 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
       <SpaceBetween size="l">
         {/* Execution Overview */}
         <Container header={<Header variant="h3">Execution Overview</Header>}>
-          <SpaceBetween direction="horizontal" size="l">
-            <Box>
-              <Box variant="awsui-key-label">Status</Box>
-              <Box className={`execution-status execution-status-${execution.status.toLowerCase()}`}>
-                {execution.status}
-              </Box>
-            </Box>
-            <Box>
-              <Box variant="awsui-key-label">Duration</Box>
-              <Box>{formatDuration(execution.startDate, execution.stopDate)}</Box>
-            </Box>
-            <Box>
-              <Box variant="awsui-key-label">Started</Box>
-              <Box>{execution.startDate ? new Date(execution.startDate).toLocaleString() : 'N/A'}</Box>
-            </Box>
-            {execution.stopDate && (
+          <SpaceBetween size="l">
+            <SpaceBetween direction="horizontal" size="l">
               <Box>
-                <Box variant="awsui-key-label">Completed</Box>
-                <Box>{new Date(execution.stopDate).toLocaleString()}</Box>
+                <Box variant="awsui-key-label">Status</Box>
+                <Box className={`execution-status execution-status-${execution.status.toLowerCase()}`}>
+                  {execution.status}
+                </Box>
               </Box>
+              <Box>
+                <Box variant="awsui-key-label">Duration</Box>
+                <Box>{formatDuration(execution.startDate, execution.stopDate)}</Box>
+              </Box>
+              <Box>
+                <Box variant="awsui-key-label">Started</Box>
+                <Box>{execution.startDate ? new Date(execution.startDate).toLocaleString() : 'N/A'}</Box>
+              </Box>
+              {execution.stopDate && (
+                <Box>
+                  <Box variant="awsui-key-label">Completed</Box>
+                  <Box>{new Date(execution.stopDate).toLocaleString()}</Box>
+                </Box>
+              )}
+            </SpaceBetween>
+
+            {/* Display execution-level error if present */}
+            {hasExecutionError && (
+              <Alert type="error" header="Execution Failed">
+                <SpaceBetween size="s">
+                  <Box>
+                    <FaExclamationTriangle size={20} style={{ marginRight: '8px', color: '#d13212' }} />
+                    <strong>Error:</strong> {execution.error}
+                  </Box>
+                </SpaceBetween>
+              </Alert>
             )}
           </SpaceBetween>
         </Container>
@@ -381,6 +408,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss }) => {
                   </div>
                   {step.error && (
                     <div className="timeline-step-error">
+                      <FaExclamationTriangle size={14} style={{ marginRight: '4px', color: '#d13212' }} />
                       <strong>Error:</strong>{' '}
                       {step.error.length > 100 ? `${step.error.substring(0, 100)}...` : step.error}
                     </div>
