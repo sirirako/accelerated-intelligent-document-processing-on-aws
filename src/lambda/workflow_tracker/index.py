@@ -73,29 +73,45 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
     logger.info(f"Updating document via document service: {document.to_json()}")
     updated_doc = document_service.update_document(document)
     
-    # Save metering data to reporting bucket if available
-    if REPORTING_BUCKET and SAVE_REPORTING_FUNCTION_NAME and document.metering:
-        try:
-            logger.info(f"Saving metering data to {REPORTING_BUCKET} by calling Lambda {SAVE_REPORTING_FUNCTION_NAME}")
-            lambda_response = lambda_client.invoke(
-                FunctionName=SAVE_REPORTING_FUNCTION_NAME,
-                InvocationType='RequestResponse',
-                Payload=json.dumps({
-                    'document': document.to_dict(),
-                    'reporting_bucket': REPORTING_BUCKET,
-                    'data_to_save': ['metering']
-                })
-            )
+    # Save reporting data to reporting bucket if available
+    if REPORTING_BUCKET and SAVE_REPORTING_FUNCTION_NAME:
+        # Determine what data to save based on what's available in the document
+        data_to_save = []
+        
+        if document.metering:
+            data_to_save.append('metering')
             
-            # Check the response
-            response_payload = json.loads(lambda_response['Payload'].read().decode('utf-8'))
-            if response_payload.get('statusCode') != 200:
-                logger.warning(f"SaveReportingData Lambda returned non-200 status: {response_payload}")
-            else:
-                logger.info("SaveReportingData Lambda executed successfully")
-        except Exception as e:
-            logger.error(f"Error invoking SaveReportingData Lambda: {str(e)}")
-            # Continue execution - don't fail the entire function if reporting fails
+        if document.sections:
+            # Check if any sections have extraction results
+            sections_with_results = [s for s in document.sections if s.extraction_result_uri]
+            if sections_with_results:
+                data_to_save.append('sections')
+                logger.info(f"Found {len(sections_with_results)} sections with extraction results")
+        
+        if data_to_save:
+            try:
+                logger.info(f"Saving reporting data ({', '.join(data_to_save)}) to {REPORTING_BUCKET} by calling Lambda {SAVE_REPORTING_FUNCTION_NAME}")
+                lambda_response = lambda_client.invoke(
+                    FunctionName=SAVE_REPORTING_FUNCTION_NAME,
+                    InvocationType='RequestResponse',
+                    Payload=json.dumps({
+                        'document': document.to_dict(),
+                        'reporting_bucket': REPORTING_BUCKET,
+                        'data_to_save': data_to_save
+                    })
+                )
+                
+                # Check the response
+                response_payload = json.loads(lambda_response['Payload'].read().decode('utf-8'))
+                if response_payload.get('statusCode') != 200:
+                    logger.warning(f"SaveReportingData Lambda returned non-200 status: {response_payload}")
+                else:
+                    logger.info("SaveReportingData Lambda executed successfully")
+            except Exception as e:
+                logger.error(f"Error invoking SaveReportingData Lambda: {str(e)}")
+                # Continue execution - don't fail the entire function if reporting fails
+        else:
+            logger.info("No reporting data available to save (no metering data or sections with extraction results)")
     
     return updated_doc
 
