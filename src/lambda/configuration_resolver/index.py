@@ -14,6 +14,7 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 
 # Get the DynamoDB table name from the environment variable
 CONFIGURATION_TABLE_NAME = os.environ['CONFIGURATION_TABLE_NAME']
+
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(CONFIGURATION_TABLE_NAME)
 
@@ -72,10 +73,10 @@ def handle_get_configuration():
         result = {
             'Schema': schema_config,
             'Default': default_config,
-            'Custom': custom_config if custom_config else None
+            'Custom': custom_config
         }
         
-        logger.info(f"Returning configuration: {json.dumps(result)}")
+        logger.info(f"Returning configuration")
         return result
         
     except Exception as e:
@@ -163,7 +164,7 @@ def handle_update_configuration(custom_config):
                 }
             )
             
-            logger.info(f"Updated Default configuration and cleared Custom: {json.dumps(stringified_default)}")
+            logger.info(f"Updated Default configuration and cleared Custom")
         else:
             # Normal custom config update
             stringified_config = stringify_values(custom_config_obj)
@@ -175,7 +176,7 @@ def handle_update_configuration(custom_config):
                 }
             )
             
-            logger.info(f"Updated Custom configuration: {json.dumps(stringified_config)}")
+            logger.info(f"Updated Custom configuration")
         
         return True
         

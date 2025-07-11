@@ -5,6 +5,162 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+
+## [0.3.7]
+
+### Added
+
+- **Document Process Flow Visualization**
+  - Added interactive visualization of Step Functions workflow execution for document processing
+  - Visual representation of processing steps with status indicators and execution details
+  - Detailed step information including inputs, outputs, and error messages
+  - Timeline view showing chronological execution of all processing steps
+  - Auto-refresh capability for monitoring active executions in real-time
+  - Support for Map state visualization with iteration details
+  - Error diagnostics with detailed error messages for troubleshooting
+  - Automatic selection of failed steps for quick issue identification
+
+- **Granular Assessment Service for Scalable Confidence Evaluation**
+  - New granular assessment approach that breaks down assessment into smaller, focused tasks for improved accuracy and performance
+  - **Key Benefits**: Better accuracy through focused prompts, cost optimization via prompt caching, reduced latency through parallel processing, and scalability for complex documents
+  - **Task Types**: Simple batch tasks (groups 3-5 simple attributes), group tasks (individual group attributes), and list item tasks (individual list items for maximum accuracy)
+  - **Configuration**: Configurable batch sizes (`simple_batch_size`, `list_batch_size`) and parallel processing (`max_workers`) for performance tuning
+  - **Prompt Caching**: Leverages LLM caching capabilities with cached base content (document context, images, OCR data) and dynamic task-specific content
+  - **Use Cases**: Ideal for bank statements with hundreds of transactions, documents with 10+ attributes, complex nested structures, and performance-critical scenarios
+  - **Backward Compatibility**: Maintains same interface as standard assessment service with seamless migration path
+  - **Enhanced Documentation**: Comprehensive documentation in `docs/assessment.md` and example notebooks for both standard and granular approaches
+
+- **Optimize the classification process for single class configurations in Pattern-2**
+  - Detects when only a single document class is defined in the configuration
+  - Automatically classifies all document pages as that single class
+  - Creates a single section containing all pages
+  - Bypasses the backend service calls (Bedrock or SageMaker) completely
+  - Logs an INFO message indicating the optimization is active
+
+- **Skip the extraction process for classes with no attributes in Pattern 2/3**
+  - Add early detection logic in extraction class to check for empty/missing attributes
+  - Return zero metering data and empty JSON results when no attributes defined
+
+- **Enhanced State Machine Optimization for Very Large Documents**
+  - Improved document compression to store only section IDs rather than full section objects
+  - Modified state machine workflow to eliminate nested result structures and reduce payload size
+  - Added OutputPath filtering to remove intermediate results from state machine execution
+  - Streamlined assessment step to replace extraction results instead of nesting them
+  - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
+
+### Changed
+- **Default behavior for image attachment in Pattern-2 and Pattern3**
+  - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
+  - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
+  - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
+- **Modified default assessment prompt for token efficiency**
+  - Removed `confidence_reason` from output to avoid consuming unnecessary output tokens
+  - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled
+
+### Fixed
+- Fixed UI list deletion issue where empty lists were not saved correctly - #18
+- Improve structure and clarity for idp_common Python package documentation
+- Improved UI in View/Edit Configuration to clarify that Class and Attribute descriptions are used in the classification and extraction prompts
+- Automate UI updates for field "HITL (A2I) Status" in the Document list and document details section. 
+
+## [0.3.6]
+
+### Fixed
+- Update Athena/Glue table configuration to use Parquet format instead of JSON #20
+- Cloudformation Error when Changing Evaluation Bucket Name #19
+
+### Added
+- **Extended Document Format Support in OCR Service**
+  - Added support for processing additional document formats beyond PDF and images:
+    - Plain text (.txt) files with automatic pagination for large documents
+    - CSV (.csv) files with table visualization and structured output
+    - Excel workbooks (.xlsx, .xls) with multi-sheet support (each sheet as a page)
+    - Word documents (.docx, .doc) with text extraction and visual representation
+  - **Key Features**:
+    - Consistent processing model across all document formats
+    - Standard page image generation for all formats
+    - Structured text output in formats compatible with existing extraction pipelines
+    - Confidence metrics for all document types
+    - Automatic format detection from file content and extension
+  - **Implementation Details**:
+    - Format-specific processing strategies for optimal results
+    - Enhanced text rendering for plain text documents
+    - Table visualization for CSV and Excel data
+    - Word document paragraph extraction with formatting preservation
+    - S3 storage integration matching existing PDF processing workflow
+
+## [0.3.5]
+
+### Added
+- **Human-in-the-Loop (HITL) Support - Pattern 1**
+  - Added comprehensive Human-in-the-Loop review capabilities using Amazon SageMaker Augmented AI (A2I)
+  - **Key Features**:
+    - Automatic triggering when extraction confidence falls below configurable threshold
+    - Integration with SageMaker A2I Review Portal for human validation and correction
+    - Configurable confidence threshold through Web UI Portal Configuration tab (0.0-1.0 range)
+    - Seamless result integration with human-verified data automatically updating source results
+  - **Workflow Integration**: 
+    - HITL tasks created automatically when confidence thresholds are not met
+    - Reviewers can validate correct extractions or make necessary corrections through the Review Portal
+    - Document processing continues with human-verified data after review completion
+  - **Configuration Management**:
+    - `EnableHITL` parameter for feature toggle
+    - Confidence threshold configurable via Web UI without stack redeployment
+    - Support for existing private workforce work teams via input parameter
+  - **CloudFormation Output**: Added `SageMakerA2IReviewPortalURL` for easy access to review portal
+  - **Known Limitations**: Current A2I version cannot provide direct hyperlinks to specific document tasks; template updates require resource recreation
+- **Document Compression for Large Documents - all patterns**
+  - Added automatic compression support to handle large documents and avoid exceeding Step Functions payload limits (256KB)
+  - **Key Features**:
+    - Automatic compression (default trigger threshold of 0KB enables compression by default)
+    - Transparent handling of both compressed and uncompressed documents in Lambda functions
+    - Temporary S3 storage for compressed document state with automatic cleanup via lifecycle policies
+  - **New Utility Methods**:
+    - `Document.load_document()`: Automatically detects and decompresses document input from Lambda events
+    - `Document.serialize_document()`: Automatically compresses large documents for Lambda responses
+    - `Document.compress()` and `Document.decompress()`: Compression/decompression methods
+  - **Lambda Function Integration**: All relevant Lambda functions updated to use compression utilities
+  - **Resolves Step Functions Errors**: Eliminates "result with a size exceeding the maximum number of bytes service limit" errors for large multi-page documents
+- **Multi-Backend OCR Support - Pattern 2 and 3**
+  - Textract Backend (default): Existing AWS Textract functionality
+  - Bedrock Backend: New LLM-based OCR using Claude/Nova models
+  - None Backend: Image-only processing without OCR
+- **Bedrock OCR Integration - Pattern 2 and 3**
+  - Customizable system and task prompts for OCR optimization
+  - Better handling of complex documents, tables, and forms
+  - Layout preservation capabilities
+- **Image Preprocessing - Pattern 2**
+  - Adaptive Binarization: Improves OCR accuracy on documents with:
+    - Uneven lighting or shadows
+    - Low contrast text
+    - Background noise or gradients
+  - Optional feature with configurable enable/disable
+- **YAML Parsing Support for LLM Responses - Pattern 2 and 3**
+  - Added comprehensive YAML parsing capabilities to complement existing JSON parsing functionality
+  - New `extract_yaml_from_text()` function with robust multi-strategy YAML extraction:
+    - YAML in ```yaml and ```yml code blocks
+    - YAML with document markers (---)
+    - Pattern-based YAML detection using indentation and key indicators
+  - New `detect_format()` function for automatic format detection returning 'json', 'yaml', or 'unknown'
+  - New unified `extract_structured_data_from_text()` wrapper function that automatically detects and parses both JSON and YAML formats
+  - **Token Efficiency**: YAML typically uses 10-30% fewer tokens than equivalent JSON due to more compact syntax
+  - **Service Integration**: Updated classification service to use the new unified parsing function with automatic fallback between formats
+  - **Comprehensive Testing**: Added 39 new unit tests covering all YAML extraction strategies, format detection, and edge cases
+  - **Backward Compatibility**: All existing JSON functionality preserved unchanged, new functionality is purely additive
+  - **Intelligent Fallback**: Robust fallback mechanism handles cases where preferred format fails (e.g., JSON requested as YAML falls back to JSON)
+  - **Production Ready**: Handles malformed content gracefully, comprehensive error handling and logging
+  - **Example Notebook**: Added `notebooks/examples/step3_extraction_using_yaml.ipynb` demonstrating YAML-based extraction with automatic format detection and token efficiency benefits
+
+### Fixed
+- **Enhanced JSON Extraction from LLM Responses (Issue #16)**
+  - Modularized duplicate `_extract_json()` functions across classification, extraction, summarization, and assessment services into a common `extract_json_from_text()` utility function
+  - Improved multi-line JSON handling with literal newlines in string values that previously caused parsing failures
+  - Added robust JSON validation and multiple fallback strategies for better extraction reliability
+  - Enhanced string parsing with proper escape sequence handling for quotes and newlines
+  - Added comprehensive unit tests covering various JSON formats including multi-line scenarios
+
 ## [0.3.4]
 
 ### Added
@@ -12,7 +168,7 @@ SPDX-License-Identifier: MIT-0
   - **Improved Image Resizing Algorithm**: Enhanced aspect-ratio preserving scaling that only downsizes when necessary (scale factor < 1.0) to prevent image distortion
   - **Configurable Image Dimensions**: All processing services (Assessment, Classification, Extraction, OCR) now support configurable image dimensions through configuration with default 951×1268 resolution
   - **Service-Specific Image Optimization**: Each service can use optimal image dimensions for performance and quality tuning
-  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion (default: 300) and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
+  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
   - **Runtime Configuration**: No code changes needed to adjust image processing - all configurable through service configuration
   - **Backward Compatibility**: Default values maintain existing behavior with no immediate action required for existing deployments
 - **Enhanced Configuration Management**
@@ -308,7 +464,7 @@ The `idp_common_pkg` introduces a unified Document model approach for consistent
 - **Section**: Represents logical document sections with classification and extraction results
 
 #### Service Classes
-- **OcrService**: Processes documents with AWS Textract and updates the Document with OCR results
+- **OcrService**: Processes documents with AWS Textract or Amazon Bedrock and updates the Document with OCR results
 - **ClassificationService**: Classifies document pages/sections using Bedrock or SageMaker backends
 - **ExtractionService**: Extracts structured information from document sections using Bedrock
 

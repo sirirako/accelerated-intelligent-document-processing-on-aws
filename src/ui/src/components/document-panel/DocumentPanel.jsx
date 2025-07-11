@@ -12,16 +12,40 @@ import {
   Header,
   Table,
   ExpandableSection,
+  StatusIndicator,
 } from '@awsui/components-react';
 import { Logger } from 'aws-amplify';
 import './DocumentPanel.css';
 import DocumentViewers from '../document-viewers/DocumentViewers';
 import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
-import ChatPanel from '../chat-panel';
+// import ChatPanel from '../chat-panel';
+import { StepFunctionFlowViewer } from '../step-function-flow';
 import useConfiguration from '../../hooks/use-configuration';
+import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
+import { renderHitlStatus } from '../common/hitl-status-renderer';
+// Uncomment the line below to enable debugging
+// import { debugDocumentStructure } from '../common/debug-utils';
 
 const logger = new Logger('DocumentPanel');
+
+// Component to display confidence alerts count only
+const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
+  // Uncomment the line below to enable debugging
+  // debugDocumentStructure({ sections, mergedConfig });
+
+  if (!sections || !Array.isArray(sections) || !mergedConfig) {
+    return <StatusIndicator type="success">0</StatusIndicator>;
+  }
+
+  const totalAlertCount = getDocumentConfidenceAlertCount(sections, mergedConfig);
+
+  if (totalAlertCount === 0) {
+    return <StatusIndicator type="success">0</StatusIndicator>;
+  }
+
+  return <StatusIndicator type="warning">{totalAlertCount}</StatusIndicator>;
+};
 
 // Helper function to parse serviceApi key into context and service
 const parseServiceApiKey = (serviceApiKey) => {
@@ -400,9 +424,18 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>HITL (A2I) Status</strong>
+            </Box>
+            <div>{renderHitlStatus(item)}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
               <strong>Confidence Alerts</strong>
             </Box>
-            <div>{item.confidenceAlertCount || 0}</div>
+            <ConfidenceAlertsSection sections={item.sections} mergedConfig={item.mergedConfig} />
           </div>
         </SpaceBetween>
 
@@ -422,6 +455,18 @@ const DocumentAttributes = ({ item }) => {
 export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess }) => {
   logger.debug('DocumentPanel item', item);
 
+  // State for Step Function flow viewer
+  const [isFlowViewerVisible, setIsFlowViewerVisible] = useState(false);
+
+  // Fetch configuration for dynamic confidence threshold
+  const { mergedConfig } = useConfiguration();
+
+  // Create enhanced item with configuration
+  const enhancedItem = {
+    ...item,
+    mergedConfig,
+  };
+
   return (
     <SpaceBetween size="s">
       <Container
@@ -430,6 +475,19 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
             variant="h2"
             actions={
               <SpaceBetween direction="horizontal" size="xs">
+                {item?.executionArn && (
+                  <Button
+                    iconName="status-positive"
+                    variant={isFlowViewerVisible ? 'primary' : 'normal'}
+                    onClick={() => {
+                      console.log('Execution ARN:', item.executionArn);
+                      logger.info('Opening flow viewer with execution ARN:', item.executionArn);
+                      setIsFlowViewerVisible(true);
+                    }}
+                  >
+                    View Processing Flow
+                  </Button>
+                )}
                 {onReprocess && (
                   <Button iconName="arrow-right" variant="normal" onClick={onReprocess}>
                     Reprocess
@@ -449,7 +507,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       >
         <SpaceBetween size="l">
           <DocumentAttributes
-            item={item}
+            item={enhancedItem}
             setToolsOpen={setToolsOpen}
             getDocumentDetailsFromIds={getDocumentDetailsFromIds}
           />
@@ -466,9 +524,18 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         evaluationReportUri={item.evaluationReportUri}
         summaryReportUri={item.summaryReportUri}
       />
-      <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} />
+      <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
-      <ChatPanel objectKey={item.objectKey} />
+      {/* <ChatPanel objectKey={item.objectKey} /> */}
+
+      {/* Step Function Flow Viewer */}
+      {item?.executionArn && (
+        <StepFunctionFlowViewer
+          executionArn={item.executionArn}
+          visible={isFlowViewerVisible}
+          onDismiss={() => setIsFlowViewerVisible(false)}
+        />
+      )}
     </SpaceBetween>
   );
 };

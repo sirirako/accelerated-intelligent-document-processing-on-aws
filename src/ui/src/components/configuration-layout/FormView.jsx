@@ -457,11 +457,12 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   };
 
   const updateValue = (path, value) => {
-    // Don't create properties for empty/meaningless values
+    // Don't create properties for empty/meaningless values, BUT preserve empty arrays
+    // as they represent intentional user deletions of list items
+    // IMPORTANT: Don't filter out boolean false values - they are meaningful!
     if (
       value === '' ||
       value === null ||
-      (Array.isArray(value) && value.length === 0) ||
       (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0)
     ) {
       // Instead of setting empty values, check if we should remove the property entirely
@@ -484,6 +485,33 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
         delete current[lastSegment];
         onChange(newValues);
       }
+      return;
+    }
+
+    // Special handling for empty arrays: preserve them to represent intentional list clearing
+    if (Array.isArray(value) && value.length === 0) {
+      // Check if this path represents a list field that the user has interacted with
+      // We always want to preserve empty arrays as they represent intentional deletions
+      const newValues = { ...formValues };
+      const segments = path.split(/[.[\]]+/).filter(Boolean);
+      let current = newValues;
+
+      segments.slice(0, -1).forEach((segment) => {
+        if (!current[segment]) {
+          // Initialize arrays for list items
+          const nextSegment = segments[segments.indexOf(segment) + 1];
+          if (nextSegment && !Number.isNaN(parseInt(nextSegment, 10))) {
+            current[segment] = [];
+          } else {
+            current[segment] = {};
+          }
+        }
+        current = current[segment];
+      });
+
+      const [lastSegment] = segments.slice(-1);
+      current[lastSegment] = value; // Preserve the empty array
+      onChange(newValues);
       return;
     }
 
@@ -512,7 +540,35 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   // Define renderField first as a function declaration
   function renderField(key, property, path = '') {
     const currentPath = path ? `${path}.${key}` : key;
-    const value = getValueAtPath(formValues, currentPath);
+    let value = getValueAtPath(formValues, currentPath);
+
+    // Add debugging for granular assessment
+    if (currentPath.includes('granular')) {
+      console.log(`DEBUG: Rendering granular field '${key}' at path '${currentPath}':`, {
+        property,
+        value,
+        formValues: getValueAtPath(formValues, 'assessment'),
+      });
+    }
+
+    // For objects with properties, ensure the object exists in formValues
+    if (property.type === 'object' && property.properties && value === undefined) {
+      // Initialize the object
+      const newObj = {};
+
+      // Initialize any properties with default values
+      Object.entries(property.properties).forEach(([propKey, propSchema]) => {
+        if (propSchema.default !== undefined) {
+          newObj[propKey] = propSchema.default;
+        }
+      });
+
+      // Only update if we have defaults to set
+      if (Object.keys(newObj).length > 0) {
+        updateValue(currentPath, newObj);
+        value = newObj;
+      }
+    }
 
     // Check dependencies FIRST, before any rendering - applies to all field types
     if (property.dependsOn) {
@@ -554,21 +610,60 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       // Get the current value of the dependency field
       const dependencyValue = getValueAtPath(formValues, dependencyPath);
 
-      // Debug logging for dependency checking
+      // Enhanced debug logging for dependency checking
       console.log(`DEBUG renderField dependency check for ${key}:`, {
         key,
         currentPath,
         dependencyField,
         dependencyPath,
         dependencyValue,
+        dependencyValueType: typeof dependencyValue,
         dependencyValues,
+        dependencyValuesTypes: dependencyValues.map((v) => typeof v),
         isNestedAttribute:
           currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
         shouldHide: dependencyValue === undefined || !dependencyValues.includes(dependencyValue),
       });
 
+      // Special handling for boolean dependencies
+      let normalizedDependencyValue = dependencyValue;
+      let normalizedDependencyValues = dependencyValues;
+
+      // If the dependency field is expected to be boolean, normalize the values
+      if (dependencyValues.some((v) => typeof v === 'boolean') || typeof dependencyValue === 'boolean') {
+        // Convert string representations to boolean
+        if (typeof dependencyValue === 'string') {
+          if (dependencyValue === 'true') {
+            normalizedDependencyValue = true;
+          } else if (dependencyValue === 'false') {
+            normalizedDependencyValue = false;
+          } else {
+            normalizedDependencyValue = dependencyValue;
+          }
+        }
+
+        // Normalize the expected values array
+        normalizedDependencyValues = dependencyValues.map((v) => {
+          if (typeof v === 'string') {
+            if (v === 'true') {
+              return true;
+            }
+            if (v === 'false') {
+              return false;
+            }
+            return v;
+          }
+          return v;
+        });
+      }
+
       // If dependency value doesn't match any required values, hide this field
-      if (dependencyValue === undefined || !dependencyValues.includes(dependencyValue)) {
+      if (normalizedDependencyValue === undefined || !normalizedDependencyValues.includes(normalizedDependencyValue)) {
+        console.log(`Hiding field ${key} due to dependency mismatch:`, {
+          normalizedDependencyValue,
+          normalizedDependencyValues,
+          includes: normalizedDependencyValues.includes(normalizedDependencyValue),
+        });
         return null; // Don't render this field
       }
     }
@@ -1157,13 +1252,20 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
   }
 
   function renderInputField(key, property, value, path) {
-    // Special handling for attributeType field to provide default value BEFORE dependency checking
+    // Special handling for fields with default values
     let displayValue = value;
+
+    // Handle attributeType field default
     if (key === 'attributeType' && (value === undefined || value === null || value === '')) {
-      // Set default value to 'simple' for backward compatibility - do this synchronously
       displayValue = 'simple';
-      // Update the form values immediately to ensure dependency checking works
       updateValue(path, 'simple');
+    }
+
+    // Handle boolean fields with default values - ONLY when value is truly undefined/null, NOT false
+    if (property.type === 'boolean' && property.default !== undefined && (value === undefined || value === null)) {
+      displayValue = property.default;
+      // Update the form values immediately to ensure dependency checking works
+      updateValue(path, property.default);
     }
 
     // Dependencies are now checked in the main renderField function
@@ -1276,6 +1378,8 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
         <Input
           value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
           type={property.type === 'number' ? 'number' : 'text'}
+          min={property.minimum}
+          max={property.maximum}
           onChange={({ detail }) => {
             let finalValue = detail.value;
             if (property.type === 'number' && detail.value !== '') {
@@ -1283,6 +1387,7 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
             }
             updateValue(path, finalValue);
           }}
+          placeholder={undefined}
         />
       );
     }
@@ -1303,10 +1408,13 @@ const FormView = ({ schema, formValues, defaultConfig, isCustomized, onResetToDe
       input
     );
 
+    // Use standard constraints
+    const finalConstraints = constraints.length > 0 ? constraints : undefined;
+
     return (
       <FormField
         label={displayText}
-        constraintText={constraints.length > 0 ? constraints : undefined}
+        constraintText={finalConstraints}
         stretch
         className={`compact-form-field ${isFieldCustomized ? 'modified-field' : ''}`}
       >

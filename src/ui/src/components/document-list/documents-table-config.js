@@ -5,6 +5,7 @@ import { Button, ButtonDropdown, CollectionPreferences, Link, SpaceBetween } fro
 
 import { TableHeader } from '../common/table';
 import { DOCUMENTS_PATH } from '../../routes/constants';
+import { renderHitlStatus } from '../common/hitl-status-renderer';
 
 export const KEY_COLUMN_ID = 'objectKey';
 
@@ -25,6 +26,13 @@ export const COLUMN_DEFINITIONS_MAIN = [
     header: 'Status',
     cell: (item) => item.objectStatus,
     sortingField: 'objectStatus',
+    width: 150,
+  },
+  {
+    id: 'hitlStatus',
+    header: 'HITL (A2I) Status',
+    cell: (item) => renderHitlStatus(item),
+    sortingField: 'hitlStatus',
     width: 150,
   },
   {
@@ -65,7 +73,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
 ];
 
-export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[2];
+export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[3]; // initialEventTime
 
 export const SELECTION_LABELS = {
   itemSelectionLabel: (data, row) => `select ${row.objectKey}`,
@@ -85,6 +93,7 @@ const VISIBLE_CONTENT_OPTIONS = [
     options: [
       { id: 'objectKey', label: 'Document ID', editable: false },
       { id: 'objectStatus', label: 'Status' },
+      { id: 'hitlStatus', label: 'HITL (A2I) Status' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
@@ -97,6 +106,7 @@ const VISIBLE_CONTENT_OPTIONS = [
 const VISIBLE_CONTENT = [
   'objectKey',
   'objectStatus',
+  'hitlStatus',
   'initialEventTime',
   'completionTime',
   'duration',

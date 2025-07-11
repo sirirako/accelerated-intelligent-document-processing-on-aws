@@ -6,15 +6,164 @@
  */
 
 /**
- * Calculate the total count of confidence threshold alerts for a document
+ * Get the HITL confidence threshold from configuration
+ * @param {Object} mergedConfig - Merged configuration object
+ * @returns {number} HITL confidence threshold as decimal (0.0-1.0)
+ */
+export const getHitlConfidenceThreshold = (mergedConfig) => {
+  if (!mergedConfig || !mergedConfig.assessment || !mergedConfig.assessment.hitl_confidence_score) {
+    return 0.8; // Default threshold of 80%
+  }
+
+  const threshold = parseFloat(mergedConfig.assessment.hitl_confidence_score);
+  // Convert from percentage (1-100) to decimal (0.0-1.0)
+  return threshold / 100;
+};
+
+/**
+ * Enhanced function to find explainability data in various possible locations within a section
+ * @param {Object} section - Document section
+ * @returns {Object|null} Explainability data if found, null otherwise
+ */
+const findExplainabilityData = (section) => {
+  if (!section || typeof section !== 'object') {
+    return null;
+  }
+
+  // Check direct explainabilityData property
+  if (section.explainabilityData) {
+    return section.explainabilityData;
+  }
+
+  // Check Output.explainabilityData
+  if (section.Output && section.Output.explainabilityData) {
+    return section.Output.explainabilityData;
+  }
+
+  // Check if Output itself contains confidence data
+  if (section.Output && typeof section.Output === 'object') {
+    // Look for any key that might contain explainability data
+    const outputKeys = Object.keys(section.Output);
+
+    // Check for keys that might contain explainability data
+    const explainabilityKey = outputKeys.find(
+      (key) =>
+        key.toLowerCase().includes('explainability') ||
+        key.toLowerCase().includes('confidence') ||
+        key.toLowerCase().includes('assessment'),
+    );
+
+    if (explainabilityKey && section.Output[explainabilityKey]) {
+      return section.Output[explainabilityKey];
+    }
+
+    // If no specific explainability key found, check if Output contains field-level confidence data
+    // Look for nested objects that might contain confidence scores
+    const outputKeysArray = Object.keys(section.Output);
+    // eslint-disable-next-line no-restricted-syntax
+    for (const key of outputKeysArray) {
+      const value = section.Output[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        // Check if this object contains fields with confidence scores
+        const hasConfidenceData = Object.values(value).some(
+          (fieldValue) => fieldValue && typeof fieldValue === 'object' && typeof fieldValue.confidence === 'number',
+        );
+
+        if (hasConfidenceData) {
+          return value;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Get fields that are below the HITL confidence threshold from explainability data
+ * @param {Object} explainabilityData - Explainability data containing confidence scores
+ * @param {number} hitlThreshold - HITL confidence threshold (0.0-1.0)
+ * @param {string} path - Current path in the data structure
+ * @returns {Array} Array of field objects with confidence below threshold
+ */
+export const getFieldsBelowThreshold = (explainabilityData, hitlThreshold, path = '') => {
+  const fieldsBelow = [];
+
+  if (!explainabilityData || typeof explainabilityData !== 'object') {
+    return fieldsBelow;
+  }
+
+  Object.entries(explainabilityData).forEach(([fieldName, fieldData]) => {
+    if (fieldData && typeof fieldData === 'object') {
+      const { confidence } = fieldData;
+
+      if (typeof confidence === 'number') {
+        const fieldPath = path ? `${path}.${fieldName}` : fieldName;
+
+        if (confidence < hitlThreshold) {
+          fieldsBelow.push({
+            fieldName,
+            fieldPath,
+            confidence,
+            confidenceThreshold: hitlThreshold,
+          });
+        }
+      }
+
+      // Recursively check nested objects and arrays
+      if (Array.isArray(fieldData)) {
+        fieldData.forEach((item, index) => {
+          if (item && typeof item === 'object') {
+            const nestedPath = path ? `${path}.${fieldName}[${index}]` : `${fieldName}[${index}]`;
+            const nestedFields = getFieldsBelowThreshold(item, hitlThreshold, nestedPath);
+            fieldsBelow.push(...nestedFields);
+          }
+        });
+      } else if (typeof fieldData === 'object' && fieldData !== null && !('confidence' in fieldData)) {
+        // This is a nested object without confidence, recurse into it
+        const nestedPath = path ? `${path}.${fieldName}` : fieldName;
+        const nestedFields = getFieldsBelowThreshold(fieldData, hitlThreshold, nestedPath);
+        fieldsBelow.push(...nestedFields);
+      }
+    }
+  });
+
+  return fieldsBelow;
+};
+
+/**
+ * Calculate the total count of confidence threshold alerts for a document using dynamic threshold
  * @param {Array} sections - Array of document sections
+ * @param {Object} mergedConfig - Merged configuration object
  * @returns {number} Total count of confidence threshold alerts
  */
-export const getDocumentConfidenceAlertCount = (sections) => {
+export const getDocumentConfidenceAlertCount = (sections, mergedConfig = null) => {
   if (!sections || !Array.isArray(sections)) {
     return 0;
   }
 
+  // If mergedConfig is provided, use dynamic threshold calculation
+  if (mergedConfig) {
+    const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
+
+    return sections.reduce((total, section) => {
+      const explainabilityData = findExplainabilityData(section);
+
+      if (explainabilityData) {
+        const fieldsBelow = getFieldsBelowThreshold(explainabilityData, hitlThreshold);
+        return total + fieldsBelow.length;
+      }
+
+      // Fallback to existing ConfidenceThresholdAlerts if no explainability data
+      if (section.ConfidenceThresholdAlerts && Array.isArray(section.ConfidenceThresholdAlerts)) {
+        return total + section.ConfidenceThresholdAlerts.length;
+      }
+
+      return total;
+    }, 0);
+  }
+
+  // Fallback to original logic for backward compatibility
   return sections.reduce((total, section) => {
     if (section.ConfidenceThresholdAlerts && Array.isArray(section.ConfidenceThresholdAlerts)) {
       return total + section.ConfidenceThresholdAlerts.length;
@@ -24,15 +173,67 @@ export const getDocumentConfidenceAlertCount = (sections) => {
 };
 
 /**
- * Calculate the count of confidence threshold alerts for a specific section
+ * Calculate the count of confidence threshold alerts for a specific section using dynamic threshold
  * @param {Object} section - Document section
+ * @param {Object} mergedConfig - Merged configuration object
  * @returns {number} Count of confidence threshold alerts for the section
  */
-export const getSectionConfidenceAlertCount = (section) => {
-  if (!section || !section.ConfidenceThresholdAlerts || !Array.isArray(section.ConfidenceThresholdAlerts)) {
+export const getSectionConfidenceAlertCount = (section, mergedConfig = null) => {
+  if (!section) {
+    return 0;
+  }
+
+  // If mergedConfig is provided, use dynamic threshold calculation
+  if (mergedConfig) {
+    const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
+    const explainabilityData = findExplainabilityData(section);
+
+    if (explainabilityData) {
+      const fieldsBelow = getFieldsBelowThreshold(explainabilityData, hitlThreshold);
+      return fieldsBelow.length;
+    }
+  }
+
+  // Fallback to existing ConfidenceThresholdAlerts
+  if (!section.ConfidenceThresholdAlerts || !Array.isArray(section.ConfidenceThresholdAlerts)) {
     return 0;
   }
   return section.ConfidenceThresholdAlerts.length;
+};
+
+/**
+ * Get detailed confidence alerts for a section using dynamic threshold
+ * @param {Object} section - Document section
+ * @param {Object} mergedConfig - Merged configuration object
+ * @returns {Array} Array of detailed confidence alert objects
+ */
+export const getSectionConfidenceAlerts = (section, mergedConfig = null) => {
+  if (!section) {
+    return [];
+  }
+
+  // If mergedConfig is provided, use dynamic threshold calculation
+  if (mergedConfig) {
+    const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
+    const explainabilityData = findExplainabilityData(section);
+
+    if (explainabilityData) {
+      const fieldsBelow = getFieldsBelowThreshold(explainabilityData, hitlThreshold);
+      return fieldsBelow;
+    }
+  }
+
+  // Fallback to existing ConfidenceThresholdAlerts
+  if (!section.ConfidenceThresholdAlerts || !Array.isArray(section.ConfidenceThresholdAlerts)) {
+    return [];
+  }
+
+  return section.ConfidenceThresholdAlerts.map((alert) => ({
+    fieldName: alert.attributeName,
+    fieldPath: alert.attributeName,
+    confidence: alert.confidence,
+    confidenceThreshold: alert.confidenceThreshold,
+  }));
 };
 
 /**
@@ -62,13 +263,14 @@ export const getFieldHighlightInfo = (fieldName, fieldConfidence, confidenceThre
 };
 
 /**
- * Get confidence information for a field from explainability data
+ * Get confidence information for a field from explainability data with dynamic threshold support
  * @param {string} fieldName - Name of the field
  * @param {Object} explainabilityInfo - Explainability info object containing confidence data for all fields
  * @param {Array} path - Optional path array for nested fields (e.g., ['FederalTaxes', 0, 'YTD'])
+ * @param {Object} mergedConfig - Merged configuration object for dynamic threshold
  * @returns {Object} Object with confidence info and display properties
  */
-export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = []) => {
+export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [], mergedConfig = null) => {
   if (!explainabilityInfo || !fieldName) {
     return { hasConfidenceInfo: false };
   }
@@ -115,15 +317,21 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [])
   }
 
   const { confidence } = fieldData;
-  const confidenceThreshold = fieldData.confidence_threshold;
+  let confidenceThreshold = fieldData.confidence_threshold;
 
   // Check if we have confidence data
   const hasConfidence = typeof confidence === 'number';
-  const hasThreshold = typeof confidenceThreshold === 'number';
 
   if (!hasConfidence) {
     return { hasConfidenceInfo: false };
   }
+
+  // Use dynamic threshold from configuration if available and no field-specific threshold
+  if (mergedConfig && (confidenceThreshold === undefined || confidenceThreshold === null)) {
+    confidenceThreshold = getHitlConfidenceThreshold(mergedConfig);
+  }
+
+  const hasThreshold = typeof confidenceThreshold === 'number';
 
   // Case 1: Both confidence and threshold available
   if (hasConfidence && hasThreshold) {

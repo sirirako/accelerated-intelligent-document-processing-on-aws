@@ -22,6 +22,12 @@ This pattern implements an intelligent document processing workflow that uses Am
     - [Lambda Function Metrics](#lambda-function-metrics)
   - [Template Outputs](#template-outputs)
   - [Configuration](#configuration)
+- [Bedrock OCR Feature](#bedrock-ocr-feature)
+  - [Overview](#overview)
+  - [Configuration](#configuration-1)
+  - [Enabling Bedrock OCR](#enabling-bedrock-ocr)
+  - [Benefits](#benefits)
+  - [Cost Considerations](#cost-considerations)
 - [Customizing Classification](#customizing-classification)
 - [Few Shot Example Feature](#few-shot-example-feature)
 - [Customizing Extraction](#customizing-extraction)
@@ -55,11 +61,14 @@ Each step includes comprehensive retry logic for handling transient errors:
 ### Lambda Functions
 
 #### OCR Function
-- **Purpose**: Processes input PDFs using Amazon Textract
+- **Purpose**: Processes input PDFs using Amazon Textract or Amazon Bedrock
 - **Key Features**:
+  - Supports two OCR backends:
+    - Amazon Textract (default)
+    - Amazon Bedrock LLMs (Claude, Nova)
   - Concurrent page processing with ThreadPoolExecutor
   - **Configurable Image Processing**: Enhanced image resizing with aspect-ratio preservation
-  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion (default: 300)
+  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion
   - **Dual Image Strategy**: Stores original high-DPI images while using resized images for OCR processing
   - **Smart Resizing**: Only downsizes images when necessary (scale factor < 1.0)
   - Image preprocessing and optimization
@@ -216,6 +225,72 @@ The pattern exports these outputs to the parent stack:
 - Configuration can be updated through the Web UI without stack redeployment
 - Model choices are constrained through enum constraints in the configuration schema
 
+## Bedrock OCR Feature
+
+### Overview
+
+Pattern 2 now supports Amazon Bedrock LLMs (Claude, Nova) as an alternative OCR backend alongside the traditional Amazon Textract service. This feature enables multimodal document processing where large language models can extract text from document images using their vision capabilities.
+
+### Configuration
+
+Bedrock OCR is configured through the pattern's configuration files. The OCR backend can be selected using the `backend` parameter:
+
+```yaml
+ocr:
+  backend: "bedrock"  # Options: "textract", "bedrock", "none"
+  model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
+  task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
+```
+
+### Enabling Bedrock OCR
+
+To use Bedrock OCR:
+
+1. **Set the backend**: Configure `backend: "bedrock"` in your OCR configuration
+2. **Choose a model**: Select from supported vision-capable models:
+   - `us.amazon.nova-lite-v1:0`
+   - `us.amazon.nova-pro-v1:0` 
+   - `us.amazon.nova-premier-v1:0`
+   - `us.anthropic.claude-3-haiku-20240307-v1:0`
+   - `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
+   - `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
+   - `us.anthropic.claude-sonnet-4-20250514-v1:0`
+   - `us.anthropic.claude-opus-4-20250514-v1:0`
+3. **Configure prompts**: Customize system and task prompts for your specific use case
+4. **Deploy**: The configuration can be updated through the Web UI without stack redeployment
+
+### Benefits
+
+**Advantages of Bedrock OCR:**
+- **Multimodal Understanding**: LLMs can understand both visual layout and textual content
+- **Context Awareness**: Better handling of complex document structures and relationships
+- **Flexibility**: Customizable prompts for domain-specific terminology and formats
+- **Advanced Reasoning**: Can handle challenging cases like handwritten text, poor quality scans, or complex layouts
+- **Unified Processing**: Same models used for OCR, classification, and extraction provide consistency
+
+**When to Use Bedrock OCR:**
+- Documents with complex layouts or mixed content types
+- Handwritten or low-quality documents where Textract struggles
+- Domain-specific documents requiring contextual understanding
+- When you want unified processing across the entire pipeline
+- For experimental or specialized use cases requiring prompt customization
+
+### Cost Considerations
+
+**Bedrock OCR Pricing:**
+- Charged per input/output token rather than per page
+- Typically higher cost per page than Textract for standard documents
+- Cost varies significantly by model (Nova Lite < Nova Pro < Claude models)
+- Image tokens are more expensive than text tokens
+
+**Cost Optimization Tips:**
+1. **Model Selection**: Use Nova Lite for cost-sensitive applications, Claude for quality-critical use cases
+2. **Image Preprocessing**: Enable image resizing and preprocessing to reduce token consumption
+3. **Prompt Optimization**: Use concise, focused prompts to minimize token usage
+4. **Hybrid Approach**: Use Textract for standard documents, Bedrock for complex cases
+5. **Batch Processing**: Process multiple pages efficiently with concurrent processing
+
 ## OCR Configuration
 
 The OCR service in Pattern 2 supports enhanced image processing capabilities for optimal text extraction:
@@ -242,10 +317,11 @@ The OCR service supports optional image resizing for processing optimization:
 ```yaml
 # OCR configuration example
 ocr:
-  dpi: 300  # PDF-to-image conversion DPI
-  resize_config:
-    target_width: 951   # Target width for processing
-    target_height: 1268 # Target height for processing
+  image:
+    resize_config:
+      target_width: 951   # Target width for processing
+      target_height: 1268 # Target height for processing
+    preprocessing: true   # Enable adaptive binarization preprocessing
 ```
 
 ### OCR Image Processing Features
@@ -256,13 +332,39 @@ ocr:
   - Uses resized images for OCR processing to optimize performance
 - **Aspect Ratio Preservation**: Images are resized proportionally without distortion
 - **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
+- **Image Preprocessing**: Optional adaptive binarization to improve OCR accuracy on challenging documents
 - **Enhanced Logging**: Detailed logging for DPI and resize operations
+
+### Image Preprocessing Configuration
+
+The OCR service supports optional adaptive binarization preprocessing to improve OCR accuracy on challenging documents:
+
+```yaml
+# Enable preprocessing for improved OCR accuracy
+ocr:
+  image:
+    preprocessing: true  # Enable adaptive binarization
+```
+
+**Adaptive Binarization Benefits:**
+- **Improved OCR Accuracy**: Significantly enhances text extraction on documents with uneven lighting, shadows, or low contrast
+- **Background Noise Reduction**: Removes background gradients and noise that can interfere with OCR
+- **Enhanced Edge Detection**: Sharpens text boundaries for better character recognition
+- **Robust Processing**: Handles challenging document conditions like poor scans or faded text
+
+**When to Enable Preprocessing:**
+- Documents with uneven lighting or shadows
+- Low contrast text or faded documents
+- Scanned documents with background noise
+- Handwritten or mixed content documents
+- When standard OCR accuracy is insufficient
 
 ### Configuration Benefits
 
 - **Quality Control**: Higher DPI settings improve OCR accuracy for complex documents
 - **Performance Optimization**: Resized images reduce processing time and memory usage
 - **Storage Efficiency**: Dual strategy balances quality preservation with processing efficiency
+- **Preprocessing Enhancement**: Adaptive binarization improves OCR accuracy on challenging documents
 - **Flexibility**: Runtime configuration allows adjustment without code changes
 - **Backward Compatibility**: Default values maintain existing behavior
 
@@ -512,6 +614,7 @@ The assessment feature runs after successful extraction and provides:
 - **Explanatory Reasoning**: Human-readable explanations for each confidence score
 - **UI Integration**: Automatic display in the web interface visual editor
 - **Cost Optimization**: Optional deployment and efficient token usage
+- **Granular Assessment**: Advanced scalable approach for complex documents with many attributes
 
 ### Enabling Assessment
 
@@ -531,138 +634,104 @@ OCRStep → ClassificationStep → ProcessPageGroups (Map State):
   ExtractSection → AssessSection (if enabled)
 ```
 
-### Configuration
+### State Machine Integration
 
-Add an assessment section to your configuration YAML:
-
-```yaml
-assessment:
-  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
-  temperature: 0
-  top_k: 5
-  top_p: 0.1
-  max_tokens: 4096
-  system_prompt: |
-    You are an expert document analyst specializing in assessing extraction confidence.
-    Analyze extraction results against source documents and provide confidence scores.
-  task_prompt: |
-    Assess the confidence of these extraction results:
-    
-    Document Class: {DOCUMENT_CLASS}
-    Extraction Results: {EXTRACTION_RESULTS}
-    Attribute Definitions: {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
-    
-    Source Document Text:
-    {DOCUMENT_TEXT}
-    
-    OCR Confidence Data:
-    {OCR_TEXT_CONFIDENCE}
-    
-    Provide confidence assessment as JSON:
-    {
-      "attribute_name": {
-        "confidence": 0.85,
-        "confidence_reason": "Clear text match with high OCR confidence"
-      }
-    }
-```
-
-### Assessment Placeholders
-
-Assessment prompts support all extraction placeholders plus assessment-specific ones:
-
-| Placeholder | Description |
-|-------------|-------------|
-| `{EXTRACTION_RESULTS}` | JSON string of extraction results to assess |
-| `{OCR_TEXT_CONFIDENCE}` | Condensed OCR confidence data (80-90% token reduction) |
-| `{DOCUMENT_IMAGE}` | **Optional** - Document images at specified position |
-| `{DOCUMENT_CLASS}` | The classified document type |
-| `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` | List of attributes being assessed |
-| `{DOCUMENT_TEXT}` | Full document text from OCR |
-
-### Multimodal Assessment
-
-Use the `{DOCUMENT_IMAGE}` placeholder for visual assessment:
-
-```yaml
-task_prompt: |
-  Assess extraction confidence by analyzing both text and visual content:
-  
-  Document Text: {DOCUMENT_TEXT}
-  
-  {DOCUMENT_IMAGE}
-  
-  Review the above document image and assess these extractions:
-  {EXTRACTION_RESULTS}
-  
-  Provide confidence scores based on visual and textual evidence.
-```
-
-**Important**: Images are only processed when the `{DOCUMENT_IMAGE}` placeholder is explicitly present.
-
-### Output Integration
-
-Assessment results are automatically integrated into extraction outputs:
+The assessment step integrates seamlessly into Pattern-2's ProcessSections map state:
 
 ```json
 {
-  "inference_result": {
-    "invoice_number": "INV-2024-001",
-    "total_amount": "$1,250.00"
-  },
-  "explainability_info": [
-    {
-      "invoice_number": {
-        "success": true,
-        "confidence": 0.92,
-        "type": "string",
-        "value": "INV-2024-001"
-      },
-      "total_amount": {
-        "confidence": 0.88,
-        "type": "string", 
-        "value": "$1,250.00"
+  "AssessSection": {
+    "Type": "Task",
+    "Resource": "arn:aws:states:::lambda:invoke",
+    "Parameters": {
+      "FunctionName": "${AssessmentFunction}",
+      "Payload": {
+        "document.$": "$.document",
+        "section_id.$": "$.section_id"
       }
-    }
-  ],
-  "metadata": {
-    "assessment_time_seconds": 2.34,
-    "assessment_parsing_succeeded": true
+    },
+    "End": true
   }
 }
 ```
 
-### Cost Optimization
+### Configuration Options
 
-Assessment implements several cost-saving techniques:
+Pattern 2 supports both standard and granular assessment approaches:
 
-1. **Optional Deployment**: Only deploys resources when `IsAssessmentEnabled=true`
-2. **Text Confidence Data**: Uses condensed OCR data for 80-90% token reduction
-3. **Conditional Images**: Images only processed with explicit `{DOCUMENT_IMAGE}` placeholder
-4. **Efficient Prompting**: Optimized templates minimize unnecessary tokens
+#### Standard Assessment
+For documents with moderate complexity:
+```yaml
+assessment:
+  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  temperature: 0
+  system_prompt: "You are an expert document analyst..."
+  task_prompt: |
+    Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
+    
+    Extraction Results: {EXTRACTION_RESULTS}
+    Attributes: {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    Document Text: {DOCUMENT_TEXT}
+    OCR Confidence: {OCR_TEXT_CONFIDENCE}
+    {DOCUMENT_IMAGE}
+```
 
-### Expected Costs
+#### Granular Assessment
+For complex documents with many attributes or large lists:
+```yaml
+assessment:
+  model: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  temperature: 0
+  system_prompt: "You are an expert document analyst..."
+  task_prompt: |
+    Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
+    
+    Attributes to assess: {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    Extraction results: {EXTRACTION_RESULTS}
+    Document context: {DOCUMENT_TEXT}
+    {OCR_TEXT_CONFIDENCE}
+    {DOCUMENT_IMAGE}
+  
+  # Granular assessment configuration
+  granular:
+    max_workers: 6              # Parallel processing threads
+    simple_batch_size: 3        # Attributes per batch
+    list_batch_size: 1          # List items per batch
+```
 
-- **Text-Only Assessment**: ~500-1,000 tokens per page
-- **Multimodal Assessment**: ~1,500-2,500 tokens per page
-- **Processing Time**: ~2-5 seconds per document section
-- **Recommended Model**: Claude 3.5 Sonnet for balanced cost/performance
+### When to Use Granular Assessment
+
+Consider granular assessment for:
+- **Bank statements** with hundreds of transactions
+- **Documents with 10+ attributes** requiring individual attention
+- **Complex nested structures** (group and list attributes)
+- **Performance-critical scenarios** where parallel processing helps
+- **Cost optimization** when prompt caching is available
 
 ### Testing Assessment
 
-Use the provided assessment notebook:
+Use the provided assessment notebooks:
 
 ```bash
+# Standard assessment testing
 jupyter notebook notebooks/e2e-example-with-assessment.ipynb
+
+# Granular assessment testing  
+jupyter notebook notebooks/examples/step4_assessment_granular.ipynb
 ```
 
-The notebook demonstrates:
-- End-to-end workflow with assessment enabled
-- Confidence score interpretation
-- Cost and performance analysis
-- Integration with existing extraction results
+### Comprehensive Documentation
 
-For detailed information about the assessment feature, see the [Assessment Documentation](./assessment.md).
+For detailed information about assessment configuration, output formats, confidence thresholds, UI integration, cost optimization, and troubleshooting, see the [Assessment Documentation](./assessment.md).
+
+The assessment documentation covers:
+- Complete configuration examples and placeholders
+- Attribute types and assessment formats (simple, group, list)
+- Confidence threshold configuration and UI integration
+- Granular assessment architecture and performance tuning
+- Cost optimization strategies and token reduction techniques
+- Multimodal assessment with image processing
+- Testing procedures and best practices
 
 ## Testing
 

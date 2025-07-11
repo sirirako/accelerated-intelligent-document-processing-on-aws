@@ -13,7 +13,7 @@ import time
 
 from idp_common import classification, metrics, get_config
 from idp_common.models import Document, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configuration will be loaded in handler function
 region = os.environ['AWS_REGION']
@@ -30,17 +30,19 @@ def handler(event, context):
     logger.info(f"Event: {json.dumps(event)}")
     # Load configuration
     config = get_config()
-    logger.info(f"Config: {json.dumps(config)}")
+    # Use default=str to handle Decimal and other non-serializable types
+    logger.info(f"Config: {json.dumps(config, default=str)}")
     
-    # Extract document from the OCR result
-    document = Document.from_dict(event["OCRResult"]["document"])
+    # Extract document from the OCR result - handle both compressed and uncompressed
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    document = Document.load_document(event["OCRResult"]["document"], working_bucket, logger)
     
     # Update document status to CLASSIFYING
     document.status = Status.CLASSIFYING
     document.workflow_execution_arn = event.get("execution_arn")
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
     if not document.pages:
         error_message = "Document has no pages to classify"
@@ -88,7 +90,7 @@ def handler(event, context):
         
         logger.error(error_message)
         # Update document status in AppSync before raising exception
-        appsync_service.update_document(document)
+        document_service.update_document(document)
         
         # Raise the original exception type if available, otherwise raise generic exception
         if primary_exception:
@@ -100,9 +102,9 @@ def handler(event, context):
     t1 = time.time()
     logger.info(f"Time taken for classification: {t1-t0:.2f} seconds")
     
-    # Return document in a consistent envelope
+    # Prepare output with automatic compression if needed
     response = {
-        "document": document.to_dict()
+        "document": document.serialize_document(working_bucket, "classification", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")

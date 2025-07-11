@@ -502,13 +502,27 @@ const ConfigurationLayout = () => {
 
       // Helper function to compare values - returns a new object
       const compareWithDefault = (current, defaultObj, path = '') => {
+        // Add debugging for granular assessment
+        if (path.includes('granular')) {
+          console.log(`DEBUG: compareWithDefault called with path '${path}':`, {
+            current,
+            currentType: typeof current,
+            defaultObj,
+            defaultType: typeof defaultObj,
+            currentIsNull: current === null,
+            currentIsUndefined: current === undefined,
+            defaultIsNull: defaultObj === null,
+            defaultIsUndefined: defaultObj === undefined,
+          });
+        }
+
         // Make a new result object each time to avoid mutation
         const newResult = {};
 
-        // Skip comparison for null objects
-        if (!current || !defaultObj) {
+        // Skip comparison for null/undefined objects (but not false values!)
+        if (current === null || current === undefined || defaultObj === null || defaultObj === undefined) {
           // If current exists but default doesn't, this is a customization
-          if (current && !defaultObj) {
+          if (current !== null && current !== undefined && (defaultObj === null || defaultObj === undefined)) {
             return { [path]: current };
           }
           return {};
@@ -521,7 +535,18 @@ const ConfigurationLayout = () => {
 
         // Handle arrays
         if (Array.isArray(current)) {
-          if (!Array.isArray(defaultObj) || current.length !== defaultObj.length) {
+          if (!Array.isArray(defaultObj)) {
+            return { [path]: current };
+          }
+
+          // Special case: if current array is empty but default is not empty,
+          // we need to explicitly save the empty array to override the default
+          if (current.length === 0 && defaultObj.length > 0) {
+            return { [path]: current };
+          }
+
+          // If lengths are different, arrays are different
+          if (current.length !== defaultObj.length) {
             return { [path]: current };
           }
 
@@ -566,6 +591,16 @@ const ConfigurationLayout = () => {
           keys.forEach((key) => {
             const newPath = path ? `${path}.${key}` : key;
 
+            // Add debugging for granular assessment
+            if (newPath.includes('granular')) {
+              console.log(`DEBUG: Comparing object key '${key}' at path '${newPath}':`, {
+                currentValue: current[key],
+                defaultValue: defaultObj[key],
+                keyInCurrent: key in current,
+                keyInDefault: key in defaultObj,
+              });
+            }
+
             // If key exists in current but not in default
             if (!(key in defaultObj) && key in current) {
               allResults = { ...allResults, [newPath]: current[key] };
@@ -573,6 +608,16 @@ const ConfigurationLayout = () => {
             // If key exists in both, compare recursively
             else if (key in defaultObj && key in current) {
               const nestedResults = compareWithDefault(current[key], defaultObj[key], newPath);
+
+              // Add debugging for granular assessment
+              if (newPath.includes('granular')) {
+                console.log(`DEBUG: Recursive call result for '${newPath}':`, {
+                  nestedResults,
+                  nestedResultsKeys: Object.keys(nestedResults),
+                  nestedResultsLength: Object.keys(nestedResults).length,
+                });
+              }
+
               allResults = { ...allResults, ...nestedResults };
             }
           });
@@ -582,7 +627,17 @@ const ConfigurationLayout = () => {
 
         // Handle primitive values
         if (current !== defaultObj) {
-          return { [path]: current };
+          console.log(`DEBUG: Primitive difference detected at path '${path}':`, {
+            current,
+            currentType: typeof current,
+            defaultObj,
+            defaultType: typeof defaultObj,
+            areEqual: current === defaultObj,
+            areStrictEqual: current !== defaultObj,
+          });
+          const result = { [path]: current };
+          console.log(`DEBUG: Returning primitive difference result:`, result);
+          return result;
         }
 
         return newResult;
@@ -596,7 +651,14 @@ const ConfigurationLayout = () => {
         console.log('Saving entire config as new default:', configToSave);
       } else {
         // Create our customized config by comparing with defaults
+        console.log('DEBUG: About to compare formValues with defaultConfig:', {
+          formValues,
+          defaultConfig,
+          granularInFormValues: formValues?.assessment?.granular,
+          granularInDefaultConfig: defaultConfig?.assessment?.granular,
+        });
         const differences = compareWithDefault(formValues, defaultConfig);
+        console.log('DEBUG: Differences found by compareWithDefault:', differences);
 
         // Flatten path results into a proper object structure - revised to avoid ESLint errors
         const buildObjectFromPaths = (paths) => {
@@ -640,7 +702,7 @@ const ConfigurationLayout = () => {
                   current = current[parts[i]];
                 }
 
-                // Set the value at the final path
+                // Set the value at the final path - IMPORTANT: preserve boolean false values!
                 current[parts[parts.length - 1]] = value;
 
                 // Deep merge this into result
@@ -655,6 +717,7 @@ const ConfigurationLayout = () => {
                         output[key] = { ...source[key] };
                       }
                     } else {
+                      // CRITICAL FIX: Always set the value, including boolean false
                       output[key] = source[key];
                     }
                   });
@@ -675,7 +738,9 @@ const ConfigurationLayout = () => {
         };
 
         // Convert the difference paths to a proper nested structure
-        Object.assign(customConfigToSave, buildObjectFromPaths(differences));
+        const builtObject = buildObjectFromPaths(differences);
+        console.log('DEBUG: Built object from paths:', builtObject);
+        Object.assign(customConfigToSave, builtObject);
         configToSave = customConfigToSave;
         console.log('Saving customized config:', configToSave);
       }

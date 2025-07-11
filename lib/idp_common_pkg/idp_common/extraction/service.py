@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.models import Document
+from idp_common.utils import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,12 @@ class ExtractionService:
             ),
             None,
         )
-        return class_config.get("attributes", []) if class_config else []
+        if class_config is None:
+            return []
+
+        # Get attributes and ensure it's always a list, never None
+        attributes = class_config.get("attributes", [])
+        return attributes if attributes is not None else []
 
     def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
         """
@@ -73,6 +79,10 @@ class ExtractionService:
         Returns:
             Formatted attribute descriptions as a string
         """
+        # Defensive coding: handle None input
+        if attributes is None:
+            return ""
+
         formatted_lines = []
 
         for attr in attributes:
@@ -144,15 +154,18 @@ class ExtractionService:
         """
         Build content array, automatically deciding whether to use image placeholder processing.
 
+        If the prompt contains {DOCUMENT_IMAGE}, the image will be inserted at that location.
+        If the prompt does NOT contain {DOCUMENT_IMAGE}, the image will NOT be included at all.
+
         Args:
             prompt_template: The prompt template that may contain {DOCUMENT_IMAGE}
             document_text: The document text content
             class_label: The document class label
             attribute_descriptions: Formatted attribute names and descriptions
-            image_content: Optional image content to insert
+            image_content: Optional image content to insert (only used when {DOCUMENT_IMAGE} is present)
 
         Returns:
-            List of content items with text and image content properly ordered
+            List of content items with text and image content properly ordered based on presence of placeholder
         """
         if "{DOCUMENT_IMAGE}" in prompt_template:
             return self._build_content_with_image_placeholder(
@@ -268,15 +281,17 @@ class ExtractionService:
         """
         Build content array without DOCUMENT_IMAGE placeholder (standard processing).
 
+        Note: This method does NOT attach the image content when no placeholder is present.
+
         Args:
             prompt_template: The prompt template
             document_text: The document text content
             class_label: The document class label
             attribute_descriptions: Formatted attribute names and descriptions
-            image_content: Optional image content to append at the end
+            image_content: Optional image content (not used when no placeholder is present)
 
         Returns:
-            List of content items with text and image content
+            List of content items with text content only (no image)
         """
         # Prepare the full prompt
         task_prompt = self._prepare_prompt_from_template(
@@ -291,20 +306,7 @@ class ExtractionService:
 
         content = [{"text": task_prompt}]
 
-        # Add image at the end if available
-        if image_content:
-            if isinstance(image_content, list):
-                # Multiple images (limit to 20 as per Bedrock constraints)
-                if len(image_content) > 20:
-                    logger.warning(
-                        f"Found {len(image_content)} images, truncating to 20 due to Bedrock constraints. "
-                        f"{len(image_content) - 20} images will be dropped."
-                    )
-                for img in image_content[:20]:
-                    content.append(image.prepare_bedrock_image_attachment(img))
-            else:
-                # Single image
-                content.append(image.prepare_bedrock_image_attachment(image_content))
+        # No longer adding image content when no placeholder is present
 
         return content
 
@@ -373,21 +375,7 @@ class ExtractionService:
         # Add the part after examples (may include image if DOCUMENT_IMAGE was in the second part)
         content.extend(after_examples_content)
 
-        # If no DOCUMENT_IMAGE placeholder was found in either part and we have image content,
-        # append it at the end (fallback behavior)
-        if image_content and "{DOCUMENT_IMAGE}" not in task_prompt_template:
-            if isinstance(image_content, list):
-                # Multiple images (limit to 20 as per Bedrock constraints)
-                if len(image_content) > 20:
-                    logger.warning(
-                        f"Found {len(image_content)} images, truncating to 20 due to Bedrock constraints. "
-                        f"{len(image_content) - 20} images will be dropped."
-                    )
-                for img in image_content[:20]:
-                    content.append(image.prepare_bedrock_image_attachment(img))
-            else:
-                # Single image
-                content.append(image.prepare_bedrock_image_attachment(image_content))
+        # No longer appending image content when no placeholder is found
 
         return content
 
@@ -662,6 +650,51 @@ class ExtractionService:
             attributes = self._get_class_attributes(class_label)
             attribute_descriptions = self._format_attribute_descriptions(attributes)
 
+            # Check if attributes list is empty - if so, skip LLM invocation entirely
+            if not attributes or not attribute_descriptions.strip():
+                logger.info(
+                    f"No attributes defined for class {class_label}, skipping LLM extraction"
+                )
+
+                # Create empty result structure without invoking LLM
+                extracted_fields = {}
+                metering = {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "invocation_count": 0,
+                    "total_cost": 0.0,
+                }
+                total_duration = 0.0
+                parsing_succeeded = True
+
+                # Write to S3 with empty extraction result
+                output = {
+                    "document_class": {"type": class_label},
+                    "inference_result": extracted_fields,
+                    "metadata": {
+                        "parsing_succeeded": parsing_succeeded,
+                        "extraction_time_seconds": total_duration,
+                        "skipped_due_to_empty_attributes": True,
+                    },
+                }
+                s3.write_content(
+                    output, output_bucket, output_key, content_type="application/json"
+                )
+
+                # Update the section with extraction result URI
+                section.extraction_result_uri = output_uri
+
+                # Update document with zero metering data
+                document.metering = utils.merge_metering_data(
+                    document.metering, metering
+                )
+
+                t3 = time.time()
+                logger.info(
+                    f"Skipped extraction for section {section_id} due to empty attributes: {t3 - t0:.2f} seconds"
+                )
+                return document
+
             # Prepare prompt
             prompt_template = extraction_config.get("task_prompt", "")
 
@@ -767,7 +800,7 @@ class ExtractionService:
 
             try:
                 # Try to parse the extracted text as JSON
-                extracted_fields = json.loads(self._extract_json(extracted_text))
+                extracted_fields = json.loads(extract_json_from_text(extracted_text))
             except Exception as e:
                 # Handle parsing error
                 logger.error(
@@ -810,41 +843,3 @@ class ExtractionService:
             raise
 
         return document
-
-    def _extract_json(self, text: str) -> str:
-        """
-        Extract JSON string from text response.
-
-        Args:
-            text: The text response from the model
-
-        Returns:
-            Extracted JSON string
-        """
-        # Check for code block format
-        if "```json" in text:
-            start_idx = text.find("```json") + len("```json")
-            end_idx = text.find("```", start_idx)
-            if end_idx > start_idx:
-                return text[start_idx:end_idx].strip()
-        elif "```" in text:
-            start_idx = text.find("```") + len("```")
-            end_idx = text.find("```", start_idx)
-            if end_idx > start_idx:
-                return text[start_idx:end_idx].strip()
-
-        # Check for simple JSON
-        if "{" in text and "}" in text:
-            start_idx = text.find("{")
-            # Find matching closing brace
-            open_braces = 0
-            for i in range(start_idx, len(text)):
-                if text[i] == "{":
-                    open_braces += 1
-                elif text[i] == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        return text[start_idx : i + 1].strip()
-
-        # If we can't find JSON, return the text as-is
-        return text

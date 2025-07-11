@@ -7,7 +7,34 @@ This module provides OCR (Optical Character Recognition) capabilities for proces
 
 ## Overview
 
-The OCR service is designed to process PDF documents and extract text using AWS Textract. It supports both basic text detection and enhanced document analysis with tables and forms recognition. The service works directly with the Document model from the common data model.
+The OCR service is designed to process PDF documents and extract text using multiple backend options. It supports AWS Textract for traditional OCR with confidence scores, Amazon Bedrock for LLM-based text extraction, and image-only processing. The service works directly with the Document model from the common data model.
+
+## OCR Backend Options
+
+The service supports three OCR backends, each with different capabilities and use cases:
+
+### 1. Textract Backend (Default - Recommended for Assessment)
+- **Technology**: AWS Textract OCR service
+- **Confidence Data**: ✅ Full granular confidence scores per text block
+- **Features**: Basic text detection + enhanced document analysis (tables, forms, signatures, layout)
+- **Assessment Quality**: ⭐⭐⭐ Optimal - Real OCR confidence enables accurate assessment
+- **Use Cases**: Standard document processing, when assessment is enabled, production workflows
+
+### 2. Bedrock Backend (LLM-based OCR)
+- **Technology**: Amazon Bedrock LLMs (Claude, Nova) for text extraction
+- **Confidence Data**: ❌ No confidence data (empty text_blocks array)
+- **Features**: Advanced text understanding, better handling of challenging/degraded documents
+- **Assessment Quality**: ❌ No confidence data for assessment
+- **Use Cases**: Challenging documents where traditional OCR fails, specialized text extraction needs
+
+### 3. None Backend (Image-only)
+- **Technology**: No OCR processing
+- **Confidence Data**: ❌ Empty confidence data
+- **Features**: Image extraction and storage only
+- **Assessment Quality**: ❌ No text confidence for assessment
+- **Use Cases**: Image-only workflows, custom OCR integration
+
+> ⚠️ **CRITICAL for Assessment**: When assessment functionality is enabled, use `backend="textract"` (default) to preserve granular confidence data. Using `backend="bedrock"` results in empty confidence data that eliminates assessment capability.
 
 ## Features
 
@@ -72,8 +99,9 @@ For each page, the OCR service creates:
 
 ### Text Confidence Data Format
 
-The condensed format includes only essential information:
+The format varies by OCR backend:
 
+**Textract Backend (with confidence data):**
 ```json
 {
   "page_count": 1,
@@ -89,6 +117,14 @@ The condensed format includes only essential information:
       "type": "PRINTED"
     }
   ]
+}
+```
+
+**Bedrock/None Backend (no confidence data):**
+```json
+{
+  "page_count": 1,
+  "text_blocks": []
 }
 ```
 

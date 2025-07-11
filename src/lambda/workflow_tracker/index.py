@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone
 import logging
 from idp_common.models import Document, Status, Page, Section
-from idp_common.appsync import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 from botocore.exceptions import ClientError
 from typing import Dict, Any, Optional
 
@@ -24,14 +24,14 @@ dynamodb = boto3.resource('dynamodb')
 cloudwatch = boto3.client('cloudwatch')
 s3 = boto3.client('s3')
 lambda_client = boto3.client('lambda')
-appsync_service = DocumentAppSyncService()
+document_service = create_document_service()
 concurrency_table = dynamodb.Table(os.environ['CONCURRENCY_TABLE'])
 COUNTER_ID = 'workflow_counter'
 
 
 def update_document_completion(object_key: str, workflow_status: str, output_data: Dict[str, Any]) -> Document:
     """
-    Update document completion status via AppSync
+    Update document completion status via document service
     
     Args:
         object_key: The document object key (ID)
@@ -52,28 +52,26 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
     # Get sections, pages, and metering data if workflow succeeded
     if workflow_status == 'SUCCEEDED' and output_data:
         try:
-            # Get the processed document from the output data 
-            workflow_result = output_data.get("Result", {})
+           
+            # Get document from the final processing step - handle both compressed and uncompressed
+            working_bucket = os.environ.get('WORKING_BUCKET')
+            # look for document_data in either output_data.Result.document (Pattern-1) or output_data (others)
+            document_data = output_data.get('Result',{}).get('document', output_data)
+            processed_doc = Document.load_document(document_data, working_bucket, logger)
             
-            if "document" in workflow_result:
-                # Get document from the final processing step - this contains all data
-                processed_doc = Document.from_dict(workflow_result.get("document", {}))
-                
-                # Copy data from processed document to our update document
-                document.num_pages = processed_doc.num_pages
-                document.pages = processed_doc.pages
-                document.sections = processed_doc.sections
-                document.metering = processed_doc.metering
-                document.summary_report_uri = processed_doc.summary_report_uri
-            else:
-                logger.warning("No document found in Result")
+            # Copy data from processed document to our update document
+            document.num_pages = processed_doc.num_pages
+            document.pages = processed_doc.pages
+            document.sections = processed_doc.sections
+            document.metering = processed_doc.metering
+            document.summary_report_uri = processed_doc.summary_report_uri
                 
         except Exception as e:
             logger.warning(f"Could not extract document data: {e}")
     
-    # Update document in AppSync
-    logger.info(f"Updating document via AppSync: {document.to_json()}")
-    updated_doc = appsync_service.update_document(document)
+    # Update document in document service
+    logger.info(f"Updating document via document service: {document.to_json()}")
+    updated_doc = document_service.update_document(document)
     
     # Save metering data to reporting bucket if available
     if REPORTING_BUCKET and SAVE_REPORTING_FUNCTION_NAME and document.metering:

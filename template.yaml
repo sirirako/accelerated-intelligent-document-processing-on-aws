@@ -60,6 +60,23 @@ Parameters:
     AllowedPattern: "^(|^arn:aws:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
     Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
 
+  Pattern1EnableHITL:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: false
+    Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction and classification of BDA is less than configured Confidence Threshold
+
+  ExistingPrivateWorkforceArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^(|arn:aws:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
+    Description: >-
+      (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
+      If provided, the template will use this existing workteam instead of creating a new one.
+      Format: arn:aws:sagemaker:region:account-id:workteam/private-crowd/workteam-name
+      Leave blank to create a new private workteam.
 
   Pattern1Configuration:
     Type: String
@@ -297,6 +314,15 @@ Parameters:
 
 Rules:
   # Pattern 1 rules
+  ValidateExistingPrivateWorkforceArn:
+    RuleCondition:
+      !And [
+        !Equals [!Ref Pattern1EnableHITL, "true"],
+        !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+      ]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+        AssertDescription: ExistingPrivateWorkforceArn must be a valid ARN when provided and HITL is enabled.
 
   Pattern3UDOPModelArtifactPath:
     RuleCondition:
@@ -307,6 +333,9 @@ Rules:
     Assertions:
       - Assert: !Not [!Equals [!Ref Pattern3UDOPModelArtifactPath, ""]]
         AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
+
+  # Pattern 2 rules - Custom model validation now handled in pattern templates
+
 
 Conditions:
   IsPattern1:
@@ -330,6 +359,11 @@ Conditions:
       !Equals [!Ref Pattern1BDAProjectArn, ""]
     ]
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
+  
+  # HITL and Private Workforce conditions
+  IsPattern1HITLEnabled: !And [!Condition IsPattern1, !Equals [!Ref Pattern1EnableHITL, "true"]]
+  ShouldCreatePrivateWorkteam: !And [!Condition IsPattern1HITLEnabled, !Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+  ShouldUseExistingPrivateWorkteam: !And [!Condition IsPattern1HITLEnabled, !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]]
 
   # General rules
   ShouldAllowSignUpEmailDomain:
@@ -361,6 +395,8 @@ Metadata:
         Parameters:
           - Pattern1Configuration
           - Pattern1BDAProjectArn
+          - Pattern1EnableHITL
+          - ExistingPrivateWorkforceArn
       - Label:
           default: "Pattern 2 Configuration"
         Parameters:
@@ -431,6 +467,10 @@ Metadata:
         default: "Pattern2 - Custom Extraction Model ARN"
       Pattern1Configuration:
         default: "Pattern1 - Configuration Preset"
+      Pattern1EnableHITL:
+        default: "Pattern1 - Enable Human In The Loop"
+      ExistingPrivateWorkforceArn:
+        default: "Pattern1 - Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
       Pattern3UDOPModelArtifactPath:
@@ -731,8 +771,13 @@ Resources:
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
+        EnableHITL: !Ref Pattern1EnableHITL
         ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-1/${Pattern1Configuration}/config.yaml"
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        SageMakerA2IReviewPortalURL: !If
+          - IsPattern1HITLEnabled
+          - !GetAtt WorkforceURLResource.PortalURL
+          - ""
 
   PATTERN2STACK:
     DependsOn:
@@ -748,6 +793,7 @@ Resources:
         InputBucket: !Ref InputBucket
         ConfigurationBucket: !Ref ConfigurationBucket
         OutputBucket: !Ref OutputBucket
+        WorkingBucket: !Ref WorkingBucket
         TrackingTable: !Ref TrackingTable
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         LogRetentionDays: !Ref LogRetentionDays
@@ -780,6 +826,7 @@ Resources:
         InputBucket: !Ref InputBucket
         ConfigurationBucket: !Ref ConfigurationBucket
         OutputBucket: !Ref OutputBucket
+        WorkingBucket: !Ref WorkingBucket
         TrackingTable: !Ref TrackingTable
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         LogRetentionDays: !Ref LogRetentionDays
@@ -1435,6 +1482,7 @@ Resources:
           - Name: document
             Type: string
 
+
   MeteringTable:
     Type: AWS::Glue::Table
     Properties:
@@ -1528,6 +1576,7 @@ Resources:
 
   EvaluationBaselineBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateEvaluationBaselineBucket
     Properties:
       Bucket: !Ref EvaluationBaselineBucket
       PolicyDocument:
@@ -1835,7 +1884,11 @@ Resources:
           - ShouldCreateReportingBucket
           - !Ref ReportingBucket
           - !Ref ReportingBucketName
-        EvaluationBaselineBucket: !Ref EvaluationBaselineBucket
+        EvaluationBaselineBucket: 
+          !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
         ShouldUseDocumentKnowledgeBase: !If
           - ShouldUseDocumentKnowledgeBase
           - True
@@ -2136,11 +2189,14 @@ Resources:
           OUTPUT_BUCKET: !Ref OutputBucket
           REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
           SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
+          WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConcurrencyTable
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - Statement:
             - Effect: Allow
               Action:
@@ -2206,6 +2262,112 @@ Resources:
       FunctionName: !Ref WorkflowTracker
       Principal: events.amazonaws.com
       SourceArn: !GetAtt WorkflowStateChangeRule.Arn
+
+  ##########################################################################
+  # Step Functions Subscription Publisher
+  ##########################################################################
+  StepFunctionSubscriptionPublisher:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for subscription publisher function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      CodeUri: src/lambda/stepfunction_subscription_publisher/
+      Handler: index.handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 256
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref StepFunctionSubscriptionPublisherLogGroup
+      Environment:
+        Variables:
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          LOG_LEVEL: !Ref LogLevel
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource: 
+                - !Sub
+                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - StateMachineName: !If
+                    - IsPattern3
+                    - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+                    - !If
+                      - IsPattern2
+                      - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+                      - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Subscription/*"
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  StepFunctionSubscriptionPublisherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  StepFunctionSubscriptionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.states
+        detail-type:
+          - Step Functions Execution Status Change
+        detail:
+          stateMachineArn:
+            - !If
+              - IsPattern3
+              - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
+              - !If
+                - IsPattern2
+                - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
+                - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+          status:
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - TIMED_OUT
+            - ABORTED
+      Targets:
+        - Arn: !GetAtt StepFunctionSubscriptionPublisher.Arn
+          Id: "StepFunctionSubscriptionPublisher"
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+
+  StepFunctionSubscriptionPublisherPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref StepFunctionSubscriptionPublisher
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StepFunctionSubscriptionRule.Arn
 
   ##########################################################################
   # Optional Post Processing Lambda Hook
@@ -2357,6 +2519,7 @@ Resources:
             - !Ref EvaluationBaselineBucketName
           SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
@@ -2369,6 +2532,8 @@ Resources:
             - !Ref EvaluationBaselineBucketName
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - LambdaInvokePolicy:
             FunctionName: !Ref SaveReportingDataFunction
         - Statement:
@@ -3320,6 +3485,364 @@ Resources:
       SourceArn: !GetAtt UserPool.Arn
 
   ##########################################################################
+  # HITL resource deployment (SageMaker A2I)
+  ##########################################################################
+
+  # Cognito user pool client with generate secret as true (HITL)
+  UserPoolClienta2i:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: IsPattern1HITLEnabled
+    Properties:
+      ClientName:
+        Fn::Sub: ${AWS::StackName}-A2I-Client
+      GenerateSecret: true
+      UserPoolId: 
+        Ref: UserPool
+
+  #SageMaker A2I (HITL) Labelling workforce Private Work Team
+  PrivateWorkteam:
+    Type: AWS::SageMaker::Workteam
+    Condition: ShouldCreatePrivateWorkteam
+    Properties:
+      WorkteamName: 
+        Fn::Sub: ${AWS::StackName}-Private-WorkTeam
+      Description: "Private workteam for working on A2I tasks"
+      MemberDefinitions:
+        - CognitoMemberDefinition:
+            CognitoUserPool: 
+              Ref: UserPool
+            CognitoUserGroup: 
+              Ref: AdminGroup
+            CognitoClientId: 
+              Ref: UserPoolClienta2i
+  
+  # Cognito Client Update with lambda function to resolve circular dependency with SageMaker A2I resources
+  CognitoClientUpdaterRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldCreatePrivateWorkteam
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Write access required for Cognito client updates and SageMaker workteam integration - resource constraints not applicable for these service operations"
+    # checkov:skip=CKV_AWS_111: "Write access required for Cognito client updates and SageMaker workteam integration"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CognitoClientUpdaterPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:UpdateUserPoolClient
+                  - cognito-idp:DescribeUserPoolClient
+                  - sagemaker:DescribeWorkteam
+                Resource: '*'
+
+  CognitoClientUpdaterFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: ShouldCreatePrivateWorkteam
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      LogGroupName:
+        Fn::Sub: /${AWS::StackName}/lambda/CognitoClientUpdaterFunction
+      RetentionInDays:
+        Ref: LogRetentionDays  
+
+  CognitoClientUpdaterFunction:
+    DependsOn:
+      - UserPoolClienta2i
+    Type: AWS::Serverless::Function
+    Condition: ShouldCreatePrivateWorkteam
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
+      CodeUri: src/lambda/cognito_updater_hitl
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 4096
+      LoggingConfig:
+        LogGroup: !Ref CognitoClientUpdaterFunctionLogGroup
+      Role: !GetAtt CognitoClientUpdaterRole.Arn
+      Environment:
+        Variables:
+          USER_POOL_ID: 
+            Ref: UserPool
+          CLIENT_ID: 
+            Ref: UserPoolClienta2i
+          WORKTEAM_NAME: 
+            Fn::GetAtt: PrivateWorkteam.WorkteamName
+  
+  CognitoClientCustomResource:
+    Type: Custom::CognitoClientUpdater
+    Condition: ShouldCreatePrivateWorkteam
+    Properties:
+      ServiceToken: !GetAtt CognitoClientUpdaterFunction.Arn
+      SourceCodeHash: <COGNITO_CLIENT_HASH_TOKEN>
+    DependsOn:
+      - UserPoolClienta2i
+      - PrivateWorkteam
+      - CognitoClientUpdaterFunction
+
+  ##########################################################################
+  # SageMaker A2I (HITL) Resources with Comprehensive Cleanup
+  # 
+  # Resource Responsibilities:
+  # - CreateA2IResourcesLambda: Handles complete A2I lifecycle
+  #   * Create: Flow Definition and Human Task UI
+  #   * Update: Flow Definition and Human Task UI (delete old, create new)
+  #   * Delete: Flow Definition, Human Task UI, AND comprehensive workforce cleanup
+  # 
+  # Benefits of Single Function Approach:
+  # - Simpler architecture with fewer resources
+  # - No inter-function dependencies
+  # - Comprehensive cleanup in single operation
+  # - Reduced complexity and maintenance overhead
+  ##########################################################################
+
+  # Separate role for SageMaker Flow Definition with minimal permissions
+  A2IFlowDefinitionRole:
+    Type: AWS::IAM::Role
+    Condition: IsPattern1HITLEnabled
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: A2IFlowDefinitionAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub '${OutputBucket.Arn}/*'
+                  - !Sub '${InputBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource:
+                  - !GetAtt OutputBucket.Arn
+                  - !GetAtt InputBucket.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                  - kms:DescribeKey
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  A2IHumanTaskUILambdaRole:
+    Type: AWS::IAM::Role
+    Condition: IsPattern1HITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for SageMaker A2I operations as resource name is not available"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SageMakerA2IAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:CreateHumanTaskUi
+                  - sagemaker:DeleteHumanTaskUi
+                  - sagemaker:DescribeHumanTaskUi
+                  - sagemaker:CreateFlowDefinition
+                  - sagemaker:DeleteFlowDefinition
+                  - sagemaker:DescribeFlowDefinition
+                  - sagemaker:ListHumanLoops
+                  - sagemaker:StopHumanLoop
+                  - sagemaker:DescribeWorkteam
+                  - sagemaker:DeleteWorkteam
+                  - sagemaker:ListWorkforces
+                  - sagemaker:DescribeWorkforce
+                  - sagemaker:DeleteWorkforce
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt A2IFlowDefinitionRole.Arn
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                Resource:
+                  - Fn::Sub: arn:aws:s3:::${OutputBucket}
+                  - Fn::Sub: arn:aws:s3:::${OutputBucket}/*
+                  - Fn::Sub: arn:aws:s3:::${InputBucket}
+                  - Fn::Sub: arn:aws:s3:::${InputBucket}/*
+        - PolicyName: LambdaSSMAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                  - kms:DescribeKey
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+        - PolicyName: CFNCustomAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*'
+                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*/*'
+  
+  CreateA2IResourcesLambda:
+    Type: AWS::Serverless::Function
+    Condition: IsPattern1HITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      CodeUri: src/lambda/create_a2i_resources
+      Handler: index.handler
+      Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
+      Runtime: python3.12
+      Timeout: 900  # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
+      Environment:
+        Variables:
+          STACK_NAME: !Ref AWS::StackName
+          A2I_WORKTEAM_ARN: !If
+            - ShouldCreatePrivateWorkteam
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Ref AWS::NoValue
+          A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
+          BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
+      
+  A2IResourcesCustomResource:
+    Type: Custom::A2IResources
+    Condition: IsPattern1HITLEnabled
+    Properties:
+      ServiceToken: 
+        Fn::GetAtt: CreateA2IResourcesLambda.Arn
+      StackName: !Ref AWS::StackName
+      SourceCodeHash: <A2I_RESOURCES_HASH_TOKEN>
+  
+  GetWorkforceURLFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsPattern1HITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: src/lambda/get-workforce-url
+      Description: Lambda function to get the SageMaker Ground Truth workforce portal URL
+      MemorySize: 128
+      Timeout: 30
+      Environment:
+        Variables:
+          REGION:
+            Ref: AWS::Region
+          LOG_LEVEL: INFO
+      Policies:
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - sagemaker:DescribeWorkteam
+          Resource: !If
+            - ShouldCreatePrivateWorkteam
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Ref ExistingPrivateWorkforceArn
+  
+  WorkforceURLResource:
+    Type: Custom::WorkforceURL
+    Condition: IsPattern1HITLEnabled
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - GetWorkforceURLFunction
+        - Arn
+      WorkteamName: !If
+        - ShouldCreatePrivateWorkteam
+        - !GetAtt PrivateWorkteam.WorkteamName
+        - !Select [2, !Split ['/', !Ref ExistingPrivateWorkforceArn]]
+      SourceCodeHash: <WORKFORCE_URL_HASH_TOKEN>
+        
+  ##########################################################################
   # AppSync GraphQL API 
   ##########################################################################
 
@@ -3547,6 +4070,7 @@ Resources:
                   - lambda:InvokeFunction
                 Resource: 
                   - !GetAtt GetFileContentsResolverFunction.Arn
+                  - !GetAtt GetStepFunctionExecutionResolverFunction.Arn
                   - !GetAtt ConfigurationResolverFunction.Arn
                   - !GetAtt UploadResolverFunction.Arn
                   - !GetAtt CopyToBaselineResolverFunction.Arn
@@ -3892,6 +4416,155 @@ Resources:
       TypeName: Query
       FieldName: getFileContents
 
+  GetStepFunctionExecutionResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for AppSync resolver function as GraphQL handles retries"
+      BuildMethod: python3.12
+      BuildProperties:
+        Lambda:
+          LayerVersions:
+            - !Ref CommonLibraryLayer
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function as GraphQL handles retries"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      CodeUri: src/lambda/get_stepfunction_execution_resolver/
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 512
+      Timeout: 60
+      LoggingConfig:
+        LogGroup: !Ref GetStepFunctionExecutionResolverFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource: 
+                - !Sub
+                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - StateMachineName: !If
+                      - IsPattern3
+                      - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+                      - !If
+                        - IsPattern2
+                        - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+                        - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+        - KMSDecryptPolicy:
+            KeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  GetStepFunctionExecutionResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  GetStepFunctionExecutionDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: GetStepFunctionExecution
+      Description: Lambda function to return Step Functions execution details via GraphQL API
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GetStepFunctionExecutionResolverFunction.Arn
+
+  GetStepFunctionExecutionResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt GetStepFunctionExecutionDataSource.Name
+      TypeName: Query
+      FieldName: getStepFunctionExecution
+
+  PublishStepFunctionUpdateResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      CodeUri: src/lambda/publish_stepfunction_update_resolver/
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 256
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref PublishStepFunctionUpdateResolverFunctionLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  PublishStepFunctionUpdateResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  PublishStepFunctionUpdateDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: PublishStepFunctionUpdate
+      Description: Lambda function to publish Step Functions execution updates via GraphQL API
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt PublishStepFunctionUpdateResolverFunction.Arn
+
+  PublishStepFunctionUpdateResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt PublishStepFunctionUpdateDataSource.Name
+      TypeName: Mutation
+      FieldName: publishStepFunctionExecutionUpdate
+
   ConfigurationResolverFunction:
       Type: AWS::Serverless::Function
       Metadata:
@@ -3918,6 +4591,7 @@ Resources:
           Variables:
             LOG_LEVEL: !Ref LogLevel
             CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+            STACK_NAME: !Ref AWS::StackName
         LoggingConfig:
           LogGroup: !Ref ConfigurationResolverFunctionLogGroup
         Policies:
@@ -3932,6 +4606,11 @@ Resources:
                   - kms:GenerateDataKey*
                   - kms:DescribeKey
                 Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -4234,7 +4913,11 @@ Resources:
         - S3WritePolicy:
             BucketName: !Ref OutputBucket
         - S3WritePolicy:
-            BucketName: !Ref EvaluationBaselineBucket
+            BucketName: 
+              !If
+                - ShouldCreateEvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucketName
         - Statement:
             - Effect: Allow
               Action:
@@ -4709,6 +5392,20 @@ Outputs:
   ApplicationWebURL:
     Description: Application Web URL
     Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
+  SageMakerA2IReviewPortalURL:
+    Description: SageMaker HITL Review portal URL
+    Condition: IsPattern1HITLEnabled
+    Value:
+      Fn::GetAtt:
+      - WorkforceURLResource
+      - PortalURL
+  LabelingConsoleURL:
+    Description: SageMaker Ground Truth console URL
+    Condition: IsPattern1HITLEnabled
+    Value:
+      Fn::GetAtt:
+      - WorkforceURLResource
+      - ConsoleURL
   S3InstallBucket:
     Description: Install S3 bucket name
     Value: !Ref InputBucket
