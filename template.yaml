@@ -1607,7 +1607,7 @@ Resources:
             "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
             "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
           },
-          "Grouping": { "TableLevelConfiguration": 2 },
+          "Grouping": { "TableLevelConfiguration": 3 },
           "CreatePartitionIndex": true
         }
       Schedule: !If

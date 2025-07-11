@@ -147,18 +147,47 @@ class SaveReportingData:
         else:
             return pa.string()  # Default to string for unknown types
 
+    def _convert_value_to_string(self, value: Any) -> Optional[str]:
+        """
+        Convert any value to string, handling special cases for robust type compatibility.
+
+        Args:
+            value: The value to convert
+
+        Returns:
+            String representation of the value, or None if input is None
+        """
+        if value is None:
+            return None
+        elif isinstance(value, bytes):
+            # Handle binary data
+            try:
+                return value.decode("utf-8")
+            except UnicodeDecodeError:
+                # If can't decode, convert to hex string
+                return value.hex()
+        elif isinstance(value, (list, dict)):
+            return json.dumps(value)
+        elif isinstance(value, datetime.datetime):
+            return value.isoformat()
+        elif isinstance(value, (int, float, bool)):
+            return str(value)
+        else:
+            return str(value)
+
     def _flatten_json_data(
         self, data: Dict[str, Any], prefix: str = ""
     ) -> Dict[str, Any]:
         """
-        Flatten nested JSON data with dot notation.
+        Flatten nested JSON data with dot notation and convert all values to strings
+        for robust type compatibility.
 
         Args:
             data: The JSON data to flatten
             prefix: Prefix for nested keys
 
         Returns:
-            Flattened dictionary
+            Flattened dictionary with all values converted to strings
         """
         flattened = {}
 
@@ -172,7 +201,8 @@ class SaveReportingData:
                 # Convert lists to JSON strings
                 flattened[new_key] = json.dumps(value) if value else None
             else:
-                flattened[new_key] = value
+                # Convert all values to strings for type consistency
+                flattened[new_key] = self._convert_value_to_string(value)
 
         return flattened
 
@@ -216,6 +246,64 @@ class SaveReportingData:
             schema_fields.append((field_name, pa_type))
 
         return pa.schema(schema_fields)
+
+    def _sanitize_records_for_schema(
+        self, records: List[Dict[str, Any]], schema: pa.Schema
+    ) -> List[Dict[str, Any]]:
+        """
+        Sanitize records to ensure they conform to the schema and handle type compatibility issues.
+
+        Args:
+            records: List of record dictionaries
+            schema: PyArrow schema to conform to
+
+        Returns:
+            List of sanitized records
+        """
+        sanitized_records = []
+
+        for record in records:
+            sanitized_record = {}
+
+            # Process each field in the schema
+            for field in schema:
+                field_name = field.name
+                value = record.get(field_name)
+
+                if value is None:
+                    sanitized_record[field_name] = None
+                elif field.type == pa.string():
+                    # Convert all values to strings for string fields
+                    sanitized_record[field_name] = self._convert_value_to_string(value)
+                elif field.type == pa.timestamp("ms"):
+                    # Handle timestamp fields
+                    if isinstance(value, datetime.datetime):
+                        sanitized_record[field_name] = value
+                    else:
+                        # Try to parse string timestamps
+                        try:
+                            if isinstance(value, str):
+                                sanitized_record[field_name] = (
+                                    datetime.datetime.fromisoformat(
+                                        value.replace("Z", "+00:00")
+                                    )
+                                )
+                            else:
+                                sanitized_record[field_name] = None
+                        except (ValueError, TypeError):
+                            sanitized_record[field_name] = None
+                else:
+                    # For any other types, convert to string as fallback
+                    sanitized_record[field_name] = self._convert_value_to_string(value)
+
+            # Add any fields from the record that aren't in the schema (shouldn't happen with dynamic schema)
+            for field_name, value in record.items():
+                if field_name not in sanitized_record:
+                    sanitized_record[field_name] = self._convert_value_to_string(value)
+
+            sanitized_records.append(sanitized_record)
+
+        return sanitized_records
 
     def save(self, document: Document, data_to_save: List[str]) -> List[Dict[str, Any]]:
         """
@@ -747,40 +835,10 @@ class SaveReportingData:
                 # Create dynamic schema for this section's data
                 schema = self._create_dynamic_schema(section_records)
 
-                # Ensure all records conform to the schema by filling missing fields and converting types
-                # With conservative typing, most fields will be strings to prevent type conflicts
-                for record in section_records:
-                    for field in schema:
-                        field_name = field.name
-                        if field_name not in record:
-                            record[field_name] = None
-                        else:
-                            # Convert values to match the expected schema types
-                            value = record[field_name]
-                            if value is not None:
-                                if field.type == pa.string():
-                                    # Convert all values to strings for consistency
-                                    record[field_name] = str(value)
-                                elif field.type == pa.timestamp("ms"):
-                                    # Keep timestamps as datetime objects
-                                    if isinstance(value, datetime.datetime):
-                                        record[field_name] = value
-                                    else:
-                                        # Try to parse string timestamps
-                                        try:
-                                            if isinstance(value, str):
-                                                record[field_name] = (
-                                                    datetime.datetime.fromisoformat(
-                                                        value.replace("Z", "+00:00")
-                                                    )
-                                                )
-                                            else:
-                                                record[field_name] = None
-                                        except (ValueError, TypeError):
-                                            record[field_name] = None
-                                else:
-                                    # For any other types, convert to string as fallback
-                                    record[field_name] = str(value)
+                # Sanitize all records to ensure robust type compatibility
+                section_records = self._sanitize_records_for_schema(
+                    section_records, schema
+                )
 
                 # Create S3 key with separate tables for each section type
                 # document_sections/{section_type}/date={date}/{escaped_doc_id}_section_{section_id}.parquet

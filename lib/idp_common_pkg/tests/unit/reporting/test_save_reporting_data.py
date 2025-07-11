@@ -275,7 +275,7 @@ class TestSaveReportingDataSections:
             "customer.address.street": "123 Main St",
             "customer.address.city": "Anytown",
             "items": '["item1", "item2"]',
-            "total": 150.75,
+            "total": "150.75",  # Now converted to string for type consistency
         }
 
         assert flattened == expected
