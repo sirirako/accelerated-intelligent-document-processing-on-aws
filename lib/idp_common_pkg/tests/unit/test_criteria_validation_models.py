@@ -5,9 +5,8 @@
 Unit tests for criteria validation models after Pydantic to dataclasses migration.
 """
 
-import pytest
-
 import idp_common.criteria_validation.models as models
+import pytest
 
 BedrockInput = models.BedrockInput
 LLMResponse = models.LLMResponse

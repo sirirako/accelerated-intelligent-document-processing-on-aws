@@ -12,6 +12,15 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Criteria Validation Service Class**
+  - New  document validation service that evaluates documents against dynamic business rules using Large Language Models (LLMs)
+  - **Key Capabilities**: Dynamic business rules configuration, asynchronous processing with concurrent criteria evaluation, intelligent text chunking for large documents, multi-file processing with summarization, comprehensive cost and performance tracking
+  - **Primary Use Cases**: Healthcare prior authorization workflows, compliance validation, business rule enforcement, quality assurance, and audit preparation
+  - **Architecture Features**: Seamless integration with IDP pipeline using common Bedrock client, unified metering with automatic token usage tracking, S3 operations using standardized file operations, configuration compatibility with existing IDP config system
+  - **Advanced Features**: Configurable criteria questions without code changes, robust error handling with graceful degradation, Pydantic-based input/output validation with automatic data cleaning, comprehensive timing metrics and token usage tracking
+  - **Limitation**: Python idp_common support only, not yet implemented within deployed pattern workflows.
+
+
 - **Document Process Flow Visualization**
   - Added interactive visualization of Step Functions workflow execution for document processing
   - Visual representation of processing steps with status indicators and execution details
@@ -58,6 +67,8 @@ SPDX-License-Identifier: MIT-0
 - **Modified default assessment prompt for token efficiency**
   - Removed `confidence_reason` from output to avoid consuming unnecessary output tokens
   - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled
+- **Enhanced .clinerules with comprehensive memory bank workflows**
+  - Enhanced Plan Mode workflow with requirements gathering, reasoning, and user approval loop
 
 ### Fixed
 - Fixed UI list deletion issue where empty lists were not saved correctly - #18
