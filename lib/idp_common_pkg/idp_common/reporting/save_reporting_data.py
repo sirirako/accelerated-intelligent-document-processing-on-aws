@@ -179,49 +179,39 @@ class SaveReportingData:
     def _create_dynamic_schema(self, records: List[Dict[str, Any]]) -> pa.Schema:
         """
         Create a PyArrow schema dynamically from a list of records.
+        Uses conservative typing - all fields default to string unless whitelisted.
+        This prevents Athena type compatibility issues.
 
         Args:
             records: List of dictionaries to analyze
 
         Returns:
-            PyArrow schema
+            PyArrow schema with conservative string typing
         """
+        # Define fields that should maintain specific types
+        TIMESTAMP_FIELDS = {
+            "timestamp",
+            "evaluation_date",
+        }
+
         if not records:
             # Return a minimal schema with just section_id
             return pa.schema([("section_id", pa.string())])
 
-        # Collect all unique keys and their types
-        field_types = {}
-
+        # Collect all unique field names
+        all_fields = set()
         for record in records:
-            for key, value in record.items():
-                if key not in field_types:
-                    field_types[key] = []
-                field_types[key].append(self._infer_pyarrow_type(value))
+            all_fields.update(record.keys())
 
-        # Create schema fields
+        # Create schema with conservative typing
         schema_fields = []
-        for field_name, types in field_types.items():
-            # Use the most common type, defaulting to string if mixed types
-            type_counts = {}
-            for pa_type in types:
-                type_str = str(pa_type)
-                type_counts[type_str] = type_counts.get(type_str, 0) + 1
-
-            # Get the most frequent type
-            most_common_type_str = max(type_counts, key=type_counts.get)
-
-            # Convert back to PyArrow type (simplified approach)
-            if most_common_type_str == "string":
-                pa_type = pa.string()
-            elif most_common_type_str == "int64":
-                pa_type = pa.int64()
-            elif most_common_type_str == "float64":
-                pa_type = pa.float64()
-            elif most_common_type_str == "bool":
-                pa_type = pa.bool_()
+        for field_name in sorted(all_fields):  # Sort for consistent ordering
+            if field_name in TIMESTAMP_FIELDS:
+                # Keep timestamps as timestamps for proper time-based queries
+                pa_type = pa.timestamp("ms")
             else:
-                pa_type = pa.string()  # Default to string
+                # Default everything else to string to prevent type conflicts
+                pa_type = pa.string()
 
             schema_fields.append((field_name, pa_type))
 
@@ -758,6 +748,7 @@ class SaveReportingData:
                 schema = self._create_dynamic_schema(section_records)
 
                 # Ensure all records conform to the schema by filling missing fields and converting types
+                # With conservative typing, most fields will be strings to prevent type conflicts
                 for record in section_records:
                     for field in schema:
                         field_name = field.name
@@ -768,19 +759,28 @@ class SaveReportingData:
                             value = record[field_name]
                             if value is not None:
                                 if field.type == pa.string():
+                                    # Convert all values to strings for consistency
                                     record[field_name] = str(value)
-                                elif field.type == pa.int64():
-                                    try:
-                                        record[field_name] = int(value)
-                                    except (ValueError, TypeError):
-                                        record[field_name] = None
-                                elif field.type == pa.float64():
-                                    try:
-                                        record[field_name] = float(value)
-                                    except (ValueError, TypeError):
-                                        record[field_name] = None
-                                elif field.type == pa.bool_():
-                                    record[field_name] = bool(value)
+                                elif field.type == pa.timestamp("ms"):
+                                    # Keep timestamps as datetime objects
+                                    if isinstance(value, datetime.datetime):
+                                        record[field_name] = value
+                                    else:
+                                        # Try to parse string timestamps
+                                        try:
+                                            if isinstance(value, str):
+                                                record[field_name] = (
+                                                    datetime.datetime.fromisoformat(
+                                                        value.replace("Z", "+00:00")
+                                                    )
+                                                )
+                                            else:
+                                                record[field_name] = None
+                                        except (ValueError, TypeError):
+                                            record[field_name] = None
+                                else:
+                                    # For any other types, convert to string as fallback
+                                    record[field_name] = str(value)
 
                 # Create S3 key with separate tables for each section type
                 # document_sections/{section_type}/date={date}/{escaped_doc_id}_section_{section_id}.parquet

@@ -1585,7 +1585,7 @@ Resources:
     Type: AWS::Glue::Crawler
     Properties:
       Name: !Sub "${AWS::StackName}-document-sections-crawler"
-      Description: "Crawler to discover document section tables in the reporting bucket"
+      Description: "Crawler to discover document section tables in the reporting bucket with conservative schema handling"
       Role: !GetAtt DocumentSectionsCrawlerRole.Arn
       DatabaseName: !Ref ReportingDatabase
       Targets:
@@ -1605,9 +1605,10 @@ Resources:
           "Version": 1.0,
           "CrawlerOutput": {
             "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
-            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" },
-            "Grouping": { "TableLevelConfiguration": 2 }
-          }
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": { "TableLevelConfiguration": 2 },
+          "CreatePartitionIndex": true
         }
       Schedule: !If
         - DocumentSectionsCrawlerScheduleEnabled

@@ -111,7 +111,7 @@ The document sections tables store the actual extracted data from document secti
 
 ### Dynamic Section Tables
 
-Document sections are stored in dynamically created tables based on the section classification. Each section type gets its own table (e.g., `invoice`, `receipt`, `bank_statement`, etc.) with the following characteristics:
+Document sections are stored in dynamically created tables based on the section classification. Each section type gets its own table (e.g., `document_sections_invoice`, `document_sections_receipt`, `document_sections_bank_statement`, etc.) with the following characteristics:
 
 **Common Metadata Columns:**
 | Column | Type | Description |
