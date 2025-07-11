@@ -75,7 +75,7 @@ evaluation = [
 
 # Criteria validation module dependencies
 criteria_validation = [
-    "s3fs>=2023.12.0",  # For S3 file system operations
+    "s3fs==2025.5.1",  # For S3 file system operations
 ]
 
 # Reporting module dependencies
@@ -104,9 +104,9 @@ test = [
     "PyYAML==6.0.2",
     "openpyxl==3.1.5",
     "python-docx==1.2.0",
-    "moto[s3]>=4.2.0",  # For mocking AWS services in tests
+    "moto[s3]==5.1.8",  # For mocking AWS services in tests
     "Pillow==11.2.1",  # Required for image processing in assessment tests
-    "s3fs>=2023.12.0",  # Required for criteria validation tests
+    "s3fs==2025.5.1",  # Required for criteria validation tests
 ]
 
 # Full package with all dependencies
