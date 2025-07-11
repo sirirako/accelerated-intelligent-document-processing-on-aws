@@ -90,7 +90,8 @@ SPDX-License-Identifier: MIT-0
 - Fixed UI list deletion issue where empty lists were not saved correctly - #18
 - Improve structure and clarity for idp_common Python package documentation
 - Improved UI in View/Edit Configuration to clarify that Class and Attribute descriptions are used in the classification and extraction prompts
-- Automate UI updates for field "HITL (A2I) Status" in the Document list and document details section. 
+- Automate UI updates for field "HITL (A2I) Status" in the Document list and document details section.
+- Fixed image display issue in PagesPanel where URLs containing special characters (commas, spaces) would fail to load by properly URL-encoding S3 object keys in presigned URL generation
 
 ## [0.3.6]
 
