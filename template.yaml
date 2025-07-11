@@ -151,7 +151,7 @@ Parameters:
 
   DocumentSectionsCrawlerFrequency:
     Type: String
-    Default: "EveryHour"
+    Default: "EveryDay"
     AllowedValues:
       - "Manual"
       - "Every15m"

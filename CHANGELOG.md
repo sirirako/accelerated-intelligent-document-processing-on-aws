@@ -46,7 +46,7 @@ SPDX-License-Identifier: MIT-0
 - **Reporting Database now has Document Sections Tables to enable querying across document fields**
   - Added comprehensive document sections storage system that automatically creates tables for each section type (classification)
   - **Dynamic Table Creation**: AWS Glue Crawler automatically discovers new section types and creates corresponding tables (e.g., `invoice`, `receipt`, `bank_statement`)
-  - **Configurable Crawler Schedule**: Support for manual, every 15 minutes, hourly (default), or daily crawler execution via `DocumentSectionsCrawlerFrequency` parameter
+  - **Configurable Crawler Schedule**: Support for manual, every 15 minutes, hourly, or daily (default) crawler execution via `DocumentSectionsCrawlerFrequency` parameter
   - **Partitioned Storage**: Data organized by section type and date for efficient querying with Amazon Athena
 
 - **Partition Projections for Evaluation and Metering tables**

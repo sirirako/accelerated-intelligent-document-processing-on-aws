@@ -151,8 +151,8 @@ document_sections/
 The AWS Glue Crawler automatically discovers new section types and creates corresponding tables. The crawler can be configured to run:
 - Manually (on-demand)
 - Every 15 minutes
-- Every hour (default)
-- Daily
+- Every hour 
+- Daily (default)
 
 This ensures that new section types are automatically available for querying without manual intervention.
 
