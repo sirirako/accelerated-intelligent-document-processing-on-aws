@@ -28,7 +28,7 @@ results = reporter.save(document, data_to_save=["evaluation_results"])
 
 - **Modular Design**: Each data type has its own processing method, making it easy to add support for new data types
 - **Parquet Format**: Data is saved in Parquet format, which is optimized for analytics workloads
-- **Hierarchical Storage**: Data is organized in a hierarchical structure by year/month/day/document
+- **Hierarchical Storage**: Data is organized in a hierarchical structure by date/document
 - **Flexible Schema**: Each data type has its own schema definition, allowing for specialized data structures
 - **Error Handling**: Comprehensive error handling with detailed logging
 
@@ -137,52 +137,45 @@ Data is stored in S3 with the following structure:
 reporting-bucket/
 ├── evaluation_metrics/
 │   ├── document_metrics/
-│   │   └── year=YYYY/
-│   │       └── month=MM/
-│   │           └── day=DD/
-│   │               └── document=doc-id/
-│   │                   └── results.parquet
+│   │   └── date=YYYY-MM-DD/
+│   │       ├── doc-id_results.parquet
+│   │       └── another-doc-id_results.parquet
 │   ├── section_metrics/
-│   │   └── year=YYYY/
-│   │       └── month=MM/
-│   │           └── day=DD/
-│   │               └── document=doc-id/
-│   │                   └── results.parquet
+│   │   └── date=YYYY-MM-DD/
+│   │       ├── doc-id_results.parquet
+│   │       └── another-doc-id_results.parquet
 │   └── attribute_metrics/
-│       └── year=YYYY/
-│           └── month=MM/
-│               └── day=DD/
-│                   └── document=doc-id/
-│                       └── results.parquet
+│       └── date=YYYY-MM-DD/
+│           ├── doc-id_results.parquet
+│           └── another-doc-id_results.parquet
 ├── metering/
-│   └── year=YYYY/
-│       └── month=MM/
-│           └── day=DD/
-│               └── document=doc-id/
-│                   └── results.parquet
+│   └── date=YYYY-MM-DD/
+│       ├── doc-id_results.parquet
+│       └── another-doc-id_results.parquet
 └── document_sections/
-    ├── section_type=invoice/
-    │   └── year=YYYY/
-    │       └── month=MM/
-    │           └── day=DD/
-    │               └── document=doc-id/
-    │                   ├── section_section_1.parquet
-    │                   └── section_section_4.parquet
-    ├── section_type=receipt/
-    │   └── year=YYYY/
-    │       └── month=MM/
-    │           └── day=DD/
-    │               └── document=doc-id/
-    │                   └── section_section_2.parquet
-    └── section_type=bank_statement/
-        └── year=YYYY/
-            └── month=MM/
-                └── day=DD/
-                    └── document=doc-id/
-                        └── section_section_3.parquet
+    ├── invoice/
+    │   └── date=YYYY-MM-DD/
+    │       ├── doc-id_section_1.parquet
+    │       └── doc-id_section_4.parquet
+    ├── receipt/
+    │   └── date=YYYY-MM-DD/
+    │       └── doc-id_section_2.parquet
+    └── bank_statement/
+        └── date=YYYY-MM-DD/
+            └── doc-id_section_3.parquet
 ```
 
-This structure is designed to be compatible with AWS Glue and Amazon Athena for analytics. The document sections are partitioned by `section_type` (classification) as the first partition level, followed by date-based partitioning.
+This structure is designed to be compatible with AWS Glue and Amazon Athena for analytics. The document sections are partitioned by `section_type` (classification) as the first partition level, followed by a single date-based partition using the format `YYYY-MM-DD`. Each file is uniquely named with the document ID and section ID to avoid conflicts, and the document ID is included as a column in the Parquet data for filtering and analysis.
+
+### Partition Structure Benefits
+
+The new single date partition structure provides several advantages:
+
+- **Simplified Queries**: Natural date range queries like `WHERE date BETWEEN '2024-01-01' AND '2024-01-31'`
+- **Efficient Pruning**: Athena can efficiently prune partitions based on date ranges
+- **Cleaner Organization**: Single date partition is easier to understand and maintain
+- **Better Performance**: Reduced partition overhead compared to three-level partitioning
+- **Future-Proof**: Easier to extend and modify partition strategies
 
 ## Extending the Module
 

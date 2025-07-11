@@ -359,11 +359,7 @@ class SaveReportingData:
                     document.initial_event_time.replace("Z", "+00:00")
                 )
                 evaluation_date = doc_time
-                year, month, day = (
-                    doc_time.strftime("%Y"),
-                    doc_time.strftime("%Y-%m"),
-                    doc_time.strftime("%Y-%m-%d"),
-                )
+                date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
                 )
@@ -372,21 +368,13 @@ class SaveReportingData:
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
                 evaluation_date = datetime.datetime.now()
-                year, month, day = (
-                    evaluation_date.strftime("%Y"),
-                    evaluation_date.strftime("%Y-%m"),
-                    evaluation_date.strftime("%Y-%m-%d"),
-                )
+                date_partition = evaluation_date.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
             evaluation_date = datetime.datetime.now()
-            year, month, day = (
-                evaluation_date.strftime("%Y"),
-                evaluation_date.strftime("%Y-%m"),
-                evaluation_date.strftime("%Y-%m-%d"),
-            )
+            date_partition = evaluation_date.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
         document_id = document.id
@@ -411,7 +399,7 @@ class SaveReportingData:
         }
 
         # Save document metrics in Parquet format
-        doc_key = f"evaluation_metrics/document_metrics/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+        doc_key = f"evaluation_metrics/document_metrics/date={date_partition}/{escaped_doc_id}_results.parquet"
         self._save_records_as_parquet([document_record], doc_key, document_schema)
 
         # 2. Section level metrics
@@ -487,14 +475,14 @@ class SaveReportingData:
 
         # Save section metrics in Parquet format
         if section_records:
-            section_key = f"evaluation_metrics/section_metrics/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+            section_key = f"evaluation_metrics/section_metrics/date={date_partition}/{escaped_doc_id}_results.parquet"
             self._save_records_as_parquet(section_records, section_key, section_schema)
         else:
             logger.warning("No section records to save")
 
         # Save attribute metrics in Parquet format
         if attribute_records:
-            attr_key = f"evaluation_metrics/attribute_metrics/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+            attr_key = f"evaluation_metrics/attribute_metrics/date={date_partition}/{escaped_doc_id}_results.parquet"
             self._save_records_as_parquet(attribute_records, attr_key, attribute_schema)
         else:
             logger.warning("No attribute records to save")
@@ -544,11 +532,7 @@ class SaveReportingData:
                     document.initial_event_time.replace("Z", "+00:00")
                 )
                 timestamp = doc_time
-                year, month, day = (
-                    doc_time.strftime("%Y"),
-                    doc_time.strftime("%Y-%m"),
-                    doc_time.strftime("%Y-%m-%d"),
-                )
+                date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
                 )
@@ -557,21 +541,13 @@ class SaveReportingData:
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
                 timestamp = datetime.datetime.now()
-                year, month, day = (
-                    timestamp.strftime("%Y"),
-                    timestamp.strftime("%Y-%m"),
-                    timestamp.strftime("%Y-%m-%d"),
-                )
+                date_partition = timestamp.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
             timestamp = datetime.datetime.now()
-            year, month, day = (
-                timestamp.strftime("%Y"),
-                timestamp.strftime("%Y-%m"),
-                timestamp.strftime("%Y-%m-%d"),
-            )
+            date_partition = timestamp.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
         document_id = document.id
@@ -617,7 +593,9 @@ class SaveReportingData:
 
         # Save metering data in Parquet format
         if metering_records:
-            metering_key = f"metering/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+            metering_key = (
+                f"metering/date={date_partition}/{escaped_doc_id}_results.parquet"
+            )
             self._save_records_as_parquet(
                 metering_records, metering_key, metering_schema
             )
@@ -656,11 +634,7 @@ class SaveReportingData:
                 doc_time = datetime.datetime.fromisoformat(
                     document.initial_event_time.replace("Z", "+00:00")
                 )
-                year, month, day = (
-                    doc_time.strftime("%Y"),
-                    doc_time.strftime("%Y-%m"),
-                    doc_time.strftime("%Y-%m-%d"),
-                )
+                date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
                 )
@@ -669,21 +643,13 @@ class SaveReportingData:
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
                 current_time = datetime.datetime.now()
-                year, month, day = (
-                    current_time.strftime("%Y"),
-                    current_time.strftime("%Y-%m"),
-                    current_time.strftime("%Y-%m-%d"),
-                )
+                date_partition = current_time.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
             current_time = datetime.datetime.now()
-            year, month, day = (
-                current_time.strftime("%Y"),
-                current_time.strftime("%Y-%m"),
-                current_time.strftime("%Y-%m-%d"),
-            )
+            date_partition = current_time.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
         document_id = document.id
@@ -804,8 +770,8 @@ class SaveReportingData:
                                 elif field.type == pa.bool_():
                                     record[field_name] = bool(value)
 
-                # Create S3 key with the specified partition structure
-                # document_sections/section_type={classification}/year={year}/month={month}/day={day}/document={escaped_doc_id}/section_{section_id}.parquet
+                # Create S3 key with separate tables for each section type
+                # document_sections/{section_type}/date={date}/{escaped_doc_id}_section_{section_id}.parquet
                 section_type = (
                     section.classification if section.classification else "unknown"
                 )
@@ -814,12 +780,9 @@ class SaveReportingData:
 
                 s3_key = (
                     f"document_sections/"
-                    f"section_type={escaped_section_type}/"
-                    f"year={year}/"
-                    f"month={month}/"
-                    f"day={day}/"
-                    f"document={escaped_doc_id}/"
-                    f"section_{section.section_id}.parquet"
+                    f"{escaped_section_type}/"
+                    f"date={date_partition}/"
+                    f"{escaped_doc_id}_section_{section.section_id}.parquet"
                 )
 
                 # Save the section data as Parquet
