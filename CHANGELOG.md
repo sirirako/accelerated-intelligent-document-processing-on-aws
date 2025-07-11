@@ -43,6 +43,10 @@ SPDX-License-Identifier: MIT-0
 - **Partition Projections for Evaluation and Metering tables**
   - **Automated Partition Management**: Eliminates need for `MSCK REPAIR TABLE` operations with projection-based partition discovery
   - **Performance Benefits**: Athena can efficiently prune partitions based on date ranges without manual partition loading
+  - **Backward Compatibility Warning**: The partition structure change from `year=2024/month=03/day=15/` to `date=2024-03-15/` means that data saved in the evaluation or metering tables prior to v0.3.7 will not be visible in Athena queries after updating. To retain access to historical data, you can either:
+    - Manually reorganize existing S3 data to match the new partition structure
+    - Create separate Athena tables pointing to the old partition structure for historical queries
+
 
 - **Optimize the classification process for single class configurations in Pattern-2**
   - Detects when only a single document class is defined in the configuration
