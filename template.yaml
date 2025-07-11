@@ -158,7 +158,7 @@ Parameters:
       - "EveryHour"
       - "EveryDay"
     Description: >-
-      Frequency for the Glue Crawler to run and discover new document section tables.
+      Frequency for the Glue Crawler to run and discover new document section tables and partitions.
       Manual requires manual execution, other options run automatically at the specified interval.
 
 
