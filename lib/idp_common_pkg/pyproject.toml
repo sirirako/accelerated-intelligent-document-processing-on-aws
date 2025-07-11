@@ -73,6 +73,11 @@ evaluation = [
     "numpy==1.26.4",   # For numeric operations
 ]
 
+# Criteria validation module dependencies
+criteria_validation = [
+    "s3fs>=2023.12.0",  # For S3 file system operations
+]
+
 # Reporting module dependencies
 reporting = [
     "pyarrow==20.0.0",  # For Parquet conversion
@@ -101,6 +106,7 @@ test = [
     "python-docx==1.2.0",
     "moto[s3]>=4.2.0",  # For mocking AWS services in tests
     "Pillow==11.2.1",  # Required for image processing in assessment tests
+    "s3fs>=2023.12.0",  # Required for criteria validation tests
 ]
 
 # Full package with all dependencies
@@ -115,6 +121,7 @@ all = [
     "pyarrow==20.0.0",
     "openpyxl==3.1.5",
     "python-docx==1.2.0",
+    "s3fs>=2023.12.0",
 ]
 
 [project.urls]

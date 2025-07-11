@@ -94,7 +94,7 @@ def get_binary_content(s3_uri: str) -> bytes:
         logger.error(f"Error reading binary content from {s3_uri}: {e}")
         raise
 
-def write_content(content: Union[str, bytes, Dict[str, Any]], 
+def write_content(content: Union[str, bytes, Dict[str, Any], List[Any]], 
                  bucket: str, key: str, 
                  content_type: Optional[str] = None) -> None:
     """
@@ -110,8 +110,8 @@ def write_content(content: Union[str, bytes, Dict[str, Any]],
         s3 = get_s3_client()
         
         # Handle different content types
-        if isinstance(content, dict):
-            body = json.dumps(content)
+        if isinstance(content, (dict, list)):
+            body = json.dumps(content).encode('utf-8')
             if content_type is None:
                 content_type = 'application/json'
         elif isinstance(content, str):

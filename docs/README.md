@@ -16,6 +16,7 @@ This folder contains detailed documentation on various aspects of the GenAI Inte
 - [Configuration](./configuration.md) - Configuration and customization options
 - [Classification](./classification.md) - Customizing document classification
 - [Extraction](./extraction.md) - Customizing information extraction
+- [Criteria Validation](./criteria-validation.md) - Document validation against business rules using LLMs
 - [Monitoring](./monitoring.md) - Monitoring and logging capabilities
 - [Troubleshooting](./troubleshooting.md) - Troubleshooting and performance guides
 
