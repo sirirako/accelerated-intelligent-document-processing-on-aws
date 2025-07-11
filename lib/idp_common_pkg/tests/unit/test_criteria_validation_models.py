@@ -5,18 +5,13 @@
 Unit tests for criteria validation models after Pydantic to dataclasses migration.
 """
 
-import sys
-from unittest.mock import MagicMock
+import pytest
 
 import idp_common.criteria_validation.models as models
-import pytest
 
 BedrockInput = models.BedrockInput
 LLMResponse = models.LLMResponse
 CriteriaValidationResult = models.CriteriaValidationResult
-
-# Mock s3fs to prevent import errors during testing
-sys.modules["s3fs"] = MagicMock()
 
 
 class TestBedrockInput:
