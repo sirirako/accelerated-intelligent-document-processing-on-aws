@@ -5,6 +5,94 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+### Fixed
+
+
+## [0.3.7]
+
+### Added
+
+- **Criteria Validation Service Class**
+  - New  document validation service that evaluates documents against dynamic business rules using Large Language Models (LLMs)
+  - **Key Capabilities**: Dynamic business rules configuration, asynchronous processing with concurrent criteria evaluation, intelligent text chunking for large documents, multi-file processing with summarization, comprehensive cost and performance tracking
+  - **Primary Use Cases**: Healthcare prior authorization workflows, compliance validation, business rule enforcement, quality assurance, and audit preparation
+  - **Architecture Features**: Seamless integration with IDP pipeline using common Bedrock client, unified metering with automatic token usage tracking, S3 operations using standardized file operations, configuration compatibility with existing IDP config system
+  - **Advanced Features**: Configurable criteria questions without code changes, robust error handling with graceful degradation, Pydantic-based input/output validation with automatic data cleaning, comprehensive timing metrics and token usage tracking
+  - **Limitation**: Python idp_common support only, not yet implemented within deployed pattern workflows.
+
+
+- **Document Process Flow Visualization**
+  - Added interactive visualization of Step Functions workflow execution for document processing
+  - Visual representation of processing steps with status indicators and execution details
+  - Detailed step information including inputs, outputs, and error messages
+  - Timeline view showing chronological execution of all processing steps
+  - Auto-refresh capability for monitoring active executions in real-time
+  - Support for Map state visualization with iteration details
+  - Error diagnostics with detailed error messages for troubleshooting
+  - Automatic selection of failed steps for quick issue identification
+
+- **Granular Assessment Service for Scalable Confidence Evaluation**
+  - New granular assessment approach that breaks down assessment into smaller, focused tasks for improved accuracy and performance
+  - **Key Benefits**: Better accuracy through focused prompts, cost optimization via prompt caching, reduced latency through parallel processing, and scalability for complex documents
+  - **Task Types**: Simple batch tasks (groups 3-5 simple attributes), group tasks (individual group attributes), and list item tasks (individual list items for maximum accuracy)
+  - **Configuration**: Configurable batch sizes (`simple_batch_size`, `list_batch_size`) and parallel processing (`max_workers`) for performance tuning
+  - **Prompt Caching**: Leverages LLM caching capabilities with cached base content (document context, images, OCR data) and dynamic task-specific content
+  - **Use Cases**: Ideal for bank statements with hundreds of transactions, documents with 10+ attributes, complex nested structures, and performance-critical scenarios
+  - **Backward Compatibility**: Maintains same interface as standard assessment service with seamless migration path
+  - **Enhanced Documentation**: Comprehensive documentation in `docs/assessment.md` and example notebooks for both standard and granular approaches
+
+- **Reporting Database now has Document Sections Tables to enable querying across document fields**
+  - Added comprehensive document sections storage system that automatically creates tables for each section type (classification)
+  - **Dynamic Table Creation**: AWS Glue Crawler automatically discovers new section types and creates corresponding tables (e.g., `invoice`, `receipt`, `bank_statement`)
+  - **Configurable Crawler Schedule**: Support for manual, every 15 minutes, hourly, or daily (default) crawler execution via `DocumentSectionsCrawlerFrequency` parameter
+  - **Partitioned Storage**: Data organized by section type and date for efficient querying with Amazon Athena
+
+- **Partition Projections for Evaluation and Metering tables**
+  - **Automated Partition Management**: Eliminates need for `MSCK REPAIR TABLE` operations with projection-based partition discovery
+  - **Performance Benefits**: Athena can efficiently prune partitions based on date ranges without manual partition loading
+  - **Backward Compatibility Warning**: The partition structure change from `year=2024/month=03/day=15/` to `date=2024-03-15/` means that data saved in the evaluation or metering tables prior to v0.3.7 will not be visible in Athena queries after updating. To retain access to historical data, you can either:
+    - Manually reorganize existing S3 data to match the new partition structure
+    - Create separate Athena tables pointing to the old partition structure for historical queries
+
+
+- **Optimize the classification process for single class configurations in Pattern-2**
+  - Detects when only a single document class is defined in the configuration
+  - Automatically classifies all document pages as that single class
+  - Creates a single section containing all pages
+  - Bypasses the backend service calls (Bedrock or SageMaker) completely
+  - Logs an INFO message indicating the optimization is active
+
+- **Skip the extraction process for classes with no attributes in Pattern 2/3**
+  - Add early detection logic in extraction class to check for empty/missing attributes
+  - Return zero metering data and empty JSON results when no attributes defined
+
+- **Enhanced State Machine Optimization for Very Large Documents**
+  - Improved document compression to store only section IDs rather than full section objects
+  - Modified state machine workflow to eliminate nested result structures and reduce payload size
+  - Added OutputPath filtering to remove intermediate results from state machine execution
+  - Streamlined assessment step to replace extraction results instead of nesting them
+  - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
+
+### Changed
+- **Default behavior for image attachment in Pattern-2 and Pattern3**
+  - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
+  - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
+  - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
+- **Modified default assessment prompt for token efficiency**
+  - Removed `confidence_reason` from output to avoid consuming unnecessary output tokens
+  - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled
+- **Enhanced .clinerules with comprehensive memory bank workflows**
+  - Enhanced Plan Mode workflow with requirements gathering, reasoning, and user approval loop
+
+### Fixed
+- Fixed UI list deletion issue where empty lists were not saved correctly - #18
+- Improve structure and clarity for idp_common Python package documentation
+- Improved UI in View/Edit Configuration to clarify that Class and Attribute descriptions are used in the classification and extraction prompts
+- Automate UI updates for field "HITL (A2I) Status" in the Document list and document details section.
+- Fixed image display issue in PagesPanel where URLs containing special characters (commas, spaces) would fail to load by properly URL-encoding S3 object keys in presigned URL generation
+
 ## [0.3.6]
 
 ### Fixed

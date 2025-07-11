@@ -63,8 +63,12 @@ const generateS3PresignedUrl = async (url, credentials) => {
     // Extract region from env
     const region = process.env.REACT_APP_AWS_REGION;
 
-    // Construct the canonical S3 URL
-    const newUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+    // Construct the canonical S3 URL with properly encoded key
+    const encodedKey = key
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const newUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${encodedKey}`;
 
     // Parse the URL for the presigner
     const s3ObjectUrl = parseUrl(newUrl);

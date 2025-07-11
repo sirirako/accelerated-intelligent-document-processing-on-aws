@@ -47,15 +47,9 @@ def handler(event, context):
     
     # Combine all section results
     for result in extraction_results:
-        # Get section document from assessment result (if populated) 
-        # or extraction result if assessment is disabled
-        assessment_document_data = result.get("AssessmentResult", {}).get("document", {})
-        if assessment_document_data:
-            section_document = Document.load_document(assessment_document_data, working_bucket, logger)
-        else:
-            # No assessment result, try extraction result
-            extraction_document_data = result.get("document", {})
-            section_document = Document.load_document(extraction_document_data, working_bucket, logger)
+        # New optimized format - document is at the top level
+        document_data = result.get("document", {})
+        section_document = Document.load_document(document_data, working_bucket, logger)
         if section_document:       
             # Add section to document if present
             if section_document.sections:
@@ -74,7 +68,7 @@ def handler(event, context):
         if page.raw_text_uri:
             create_metadata_file(page.raw_text_uri, page.classification, 'page')
         
-    # Update final status in AppSync
+    # Update final status in AppSync / Document Service
     logger.info(f"Updating document status to {document.status}")
     document_service.update_document(document)
     

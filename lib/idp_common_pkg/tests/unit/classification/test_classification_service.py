@@ -51,6 +51,37 @@ class TestClassificationService:
                     Document text:
                     {DOCUMENT_TEXT}
                     
+                    Document image:
+                    {DOCUMENT_IMAGE}
+                    
+                    Respond with a JSON object with a single field "class" containing the document type.
+                """),
+                "classificationMethod": "multimodalPageLevelClassification",
+            },
+        }
+
+    @pytest.fixture
+    def single_class_config(self):
+        """Fixture providing a mock configuration with only one class defined."""
+        return {
+            "classes": [
+                {"name": "invoice", "description": "An invoice document"},
+            ],
+            "classification": {
+                "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "temperature": 0.0,
+                "top_k": 5,
+                "system_prompt": "You are a document classification assistant.",
+                "task_prompt": dedent("""
+                    Classify the following document text into one of the available classes:
+                    {CLASS_NAMES_AND_DESCRIPTIONS}
+                    
+                    Document text:
+                    {DOCUMENT_TEXT}
+                    
+                    Document image:
+                    {DOCUMENT_IMAGE}
+                    
                     Respond with a JSON object with a single field "class" containing the document type.
                 """),
                 "classificationMethod": "multimodalPageLevelClassification",
@@ -531,6 +562,50 @@ class TestClassificationService:
         assert result.sections[2].classification == "invoice"
         assert result.sections[2].page_ids == ["3"]
 
+    def test_classify_document_single_class_optimization(self, single_class_config):
+        """Test document classification optimization when only one class is defined."""
+        with (
+            patch("boto3.Session"),
+            patch("logging.Logger.info") as mock_log_info,
+        ):
+            # Create service with single class config
+            service = ClassificationService(
+                region="us-west-2", config=single_class_config, backend="bedrock"
+            )
+
+            # Create a test document
+            doc = Document(
+                id="test-doc", input_key="test-document.pdf", status=Status.CLASSIFYING
+            )
+
+            # Add pages
+            doc.pages["1"] = Page(page_id="1", image_uri="s3://bucket/image1.jpg")
+            doc.pages["2"] = Page(page_id="2", image_uri="s3://bucket/image2.jpg")
+            doc.pages["3"] = Page(page_id="3", image_uri="s3://bucket/image3.jpg")
+
+            # Use a spy to verify that classify_page is never called
+            with patch.object(
+                service, "classify_page", wraps=service.classify_page
+            ) as spy_classify_page:
+                # Call the method
+                result = service.classify_document(doc)
+
+                # Verify classify_page was never called
+                spy_classify_page.assert_not_called()
+
+            # Verify results
+            assert len(result.sections) == 1
+            assert result.sections[0].classification == "invoice"
+            assert result.sections[0].page_ids == ["1", "2", "3"]
+            assert result.pages["1"].classification == "invoice"
+            assert result.pages["2"].classification == "invoice"
+            assert result.pages["3"].classification == "invoice"
+
+            # Verify log message was emitted
+            mock_log_info.assert_any_call(
+                "Only one document class 'invoice' is defined. Automatically classifying all pages as this class without calling backend."
+            )
+
     @patch("idp_common.s3.get_text_content")
     @patch(
         "idp_common.classification.service.ClassificationService._invoke_bedrock_model"
@@ -603,6 +678,55 @@ class TestClassificationService:
 
         # Verify Bedrock was called once for the whole document
         mock_invoke.assert_called_once()
+
+    def test_holistic_classify_document_single_class_optimization(
+        self, single_class_config
+    ):
+        """Test holistic document classification optimization when only one class is defined."""
+        with (
+            patch("boto3.Session"),
+            patch("logging.Logger.info") as mock_log_info,
+        ):
+            # Create service with single class config
+            service = ClassificationService(
+                region="us-west-2", config=single_class_config, backend="bedrock"
+            )
+
+            # Set classification method to holistic
+            service.classification_method = service.TEXTBASED_HOLISTIC
+
+            # Create a test document
+            doc = Document(
+                id="test-doc", input_key="test-document.pdf", status=Status.CLASSIFYING
+            )
+
+            # Add pages
+            doc.pages["1"] = Page(page_id="1", parsed_text_uri="s3://bucket/text1.txt")
+            doc.pages["2"] = Page(page_id="2", parsed_text_uri="s3://bucket/text2.txt")
+            doc.pages["3"] = Page(page_id="3", parsed_text_uri="s3://bucket/text3.txt")
+
+            # Use a spy to verify that holistic_classify_document is never fully executed
+            with patch.object(
+                service, "_invoke_bedrock_model", wraps=service._invoke_bedrock_model
+            ) as spy_invoke:
+                # Call the method
+                result = service.holistic_classify_document(doc)
+
+                # Verify invoke_bedrock_model was never called
+                spy_invoke.assert_not_called()
+
+            # Verify results
+            assert len(result.sections) == 1
+            assert result.sections[0].classification == "invoice"
+            assert result.sections[0].page_ids == ["1", "2", "3"]
+            assert result.pages["1"].classification == "invoice"
+            assert result.pages["2"].classification == "invoice"
+            assert result.pages["3"].classification == "invoice"
+
+            # Verify log message was emitted
+            mock_log_info.assert_any_call(
+                "Only one document class 'invoice' is defined. Automatically classifying all pages as this class without calling backend."
+            )
 
     @patch("idp_common.s3.get_text_content")
     @patch(

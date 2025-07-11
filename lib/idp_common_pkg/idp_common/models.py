@@ -25,6 +25,7 @@ class Status(Enum):
     EXTRACTING = "EXTRACTING"  # Information extraction
     ASSESSING = "ASSESSING"  # Document assessment
     POSTPROCESSING = "POSTPROCESSING"  # Document summarization
+    HITL_IN_PROGRESS = "HITL_IN_PROGRESS"  # Human-in-the-loop review in progress
     SUMMARIZING = "SUMMARIZING"  # Document summarization
     COMPLETED = "COMPLETED"  # All processing completed
     FAILED = "FAILED"  # Processing failed
@@ -127,6 +128,12 @@ class HitlMetadata:
             extraction_bp_name=data.get("extraction_bp_name"),
             hitl_bp_change=data.get("hitl_bp_change"),
             hitl_triggered=data.get("hitl_triggered", False),
+            review_portal_url=data.get(
+                "review_portal_url"
+            ),  # Fix: Include review portal URL
+            hitl_completed=data.get(
+                "hitl_completed", False
+            ),  # Fix: Include completion status
             page_array=data.get("page_array", []),
         )
 
@@ -545,33 +552,9 @@ class Document:
             s3_uri = f"s3://{bucket}/{s3_key}"
             logger.info(f"Compressed document {self.id} to {s3_uri}")
 
-            # Create lightweight wrapper preserving section IDs for Map step
-            # Include minimal sections array for Step Functions Map state compatibility
-            # Add metadata for troubleshooting and monitoring
-            sections_for_map = []
-            for section in self.sections:
-                # Calculate page range for this section
-                if section.page_ids:
-                    page_numbers = [
-                        int(pid) for pid in section.page_ids if pid.isdigit()
-                    ]
-                    if page_numbers:
-                        min_page = min(page_numbers)
-                        max_page = max(page_numbers)
-                        page_range = {"min": min_page, "max": max_page}
-                    else:
-                        page_range = {"min": 0, "max": 0}
-                else:
-                    page_range = {"min": 0, "max": 0}
-
-                sections_for_map.append(
-                    {
-                        "section_id": section.section_id,
-                        "classification": section.classification,
-                        "num_pages": len(section.page_ids),
-                        "page_range": page_range,
-                    }
-                )
+            # Create lightweight wrapper with just section IDs for Map step
+            # This significantly reduces payload size for large documents
+            sections_for_map = [section.section_id for section in self.sections]
 
             return {
                 "document_id": self.id,
