@@ -380,6 +380,11 @@ class SaveReportingData:
         document_id = document.id
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
 
+        # Create timestamp string for unique filenames (to avoid overwrites if same doc processed multiple times)
+        timestamp_str = evaluation_date.strftime("%Y%m%d_%H%M%S_%f")[
+            :-3
+        ]  # Include milliseconds
+
         # 1. Document level metrics
         document_record = {
             "document_id": document_id,
@@ -399,7 +404,7 @@ class SaveReportingData:
         }
 
         # Save document metrics in Parquet format
-        doc_key = f"evaluation_metrics/document_metrics/date={date_partition}/{escaped_doc_id}_results.parquet"
+        doc_key = f"evaluation_metrics/document_metrics/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
         self._save_records_as_parquet([document_record], doc_key, document_schema)
 
         # 2. Section level metrics
@@ -475,14 +480,14 @@ class SaveReportingData:
 
         # Save section metrics in Parquet format
         if section_records:
-            section_key = f"evaluation_metrics/section_metrics/date={date_partition}/{escaped_doc_id}_results.parquet"
+            section_key = f"evaluation_metrics/section_metrics/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
             self._save_records_as_parquet(section_records, section_key, section_schema)
         else:
             logger.warning("No section records to save")
 
         # Save attribute metrics in Parquet format
         if attribute_records:
-            attr_key = f"evaluation_metrics/attribute_metrics/date={date_partition}/{escaped_doc_id}_results.parquet"
+            attr_key = f"evaluation_metrics/attribute_metrics/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
             self._save_records_as_parquet(attribute_records, attr_key, attribute_schema)
         else:
             logger.warning("No attribute records to save")
@@ -553,6 +558,11 @@ class SaveReportingData:
         document_id = document.id
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
 
+        # Create timestamp string for unique filenames (to avoid overwrites if same doc processed multiple times)
+        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")[
+            :-3
+        ]  # Include milliseconds
+
         # Process metering data
         metering_records = []
 
@@ -593,9 +603,7 @@ class SaveReportingData:
 
         # Save metering data in Parquet format
         if metering_records:
-            metering_key = (
-                f"metering/date={date_partition}/{escaped_doc_id}_results.parquet"
-            )
+            metering_key = f"metering/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
             self._save_records_as_parquet(
                 metering_records, metering_key, metering_schema
             )
@@ -634,6 +642,7 @@ class SaveReportingData:
                 doc_time = datetime.datetime.fromisoformat(
                     document.initial_event_time.replace("Z", "+00:00")
                 )
+                timestamp = doc_time
                 date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
@@ -643,12 +652,14 @@ class SaveReportingData:
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
                 current_time = datetime.datetime.now()
+                timestamp = current_time
                 date_partition = current_time.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
             current_time = datetime.datetime.now()
+            timestamp = current_time
             date_partition = current_time.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
@@ -704,6 +715,7 @@ class SaveReportingData:
                     flattened_data["document_id"] = document_id
                     flattened_data["section_classification"] = section.classification
                     flattened_data["section_confidence"] = section.confidence
+                    flattened_data["timestamp"] = timestamp
 
                     section_records.append(flattened_data)
 

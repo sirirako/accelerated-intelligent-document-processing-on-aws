@@ -120,6 +120,7 @@ Document sections are stored in dynamically created tables based on the section 
 | document_id | string | Unique identifier for the document |
 | section_classification | string | Type/class of the section |
 | section_confidence | double | Confidence score for the section classification |
+| timestamp | timestamp | When the document was processed |
 
 **Dynamic Data Columns:**
 The remaining columns are dynamically inferred from the JSON extraction results and vary by section type. Common patterns include:

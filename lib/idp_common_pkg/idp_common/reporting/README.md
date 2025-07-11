@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT-0
 
 ## Overview
 
-The Reporting module provides functionality for saving document data to reporting storage in structured formats for analytics and reporting purposes. It currently supports saving evaluation results as Parquet files in S3, with a flexible architecture that can be extended to support additional data types in the future.
+The Reporting module provides comprehensive functionality for saving document processing data to reporting storage in structured formats for analytics and reporting purposes. It supports saving evaluation results, metering data, and document sections as Parquet files in S3, with automatic AWS Glue table creation and partition projection for efficient querying with Amazon Athena.
 
 ## Key Components
 
@@ -28,9 +28,14 @@ results = reporter.save(document, data_to_save=["evaluation_results"])
 
 - **Modular Design**: Each data type has its own processing method, making it easy to add support for new data types
 - **Parquet Format**: Data is saved in Parquet format, which is optimized for analytics workloads
-- **Hierarchical Storage**: Data is organized in a hierarchical structure by date/document
+- **Hierarchical Storage**: Data is organized in a hierarchical structure by date/document with unique timestamped filenames
 - **Flexible Schema**: Each data type has its own schema definition, allowing for specialized data structures
-- **Error Handling**: Comprehensive error handling with detailed logging
+- **Dynamic Schema Inference**: Automatically infers schemas for document sections without predefined structures
+- **Partition Projection**: Uses AWS Glue partition projection for efficient querying without MSCK REPAIR operations
+- **Automatic Table Discovery**: AWS Glue Crawler automatically discovers new section types and creates tables
+- **Unique File Naming**: Timestamp-based filenames prevent overwrites when documents are reprocessed
+- **Error Handling**: Comprehensive error handling with detailed logging and graceful failure recovery
+- **AWS Athena Ready**: All data is immediately queryable through Amazon Athena with optimized partition pruning
 
 ## Supported Data Types
 
@@ -128,6 +133,7 @@ For the sections functionality to work, your `Document` object must have:
 - `document_id`: The document identifier
 - `section_classification`: The section's classification/type
 - `section_confidence`: The confidence score for the section
+- `timestamp`: The timestamp when the document was processed
 
 ## Storage Structure
 
@@ -138,20 +144,21 @@ reporting-bucket/
 ├── evaluation_metrics/
 │   ├── document_metrics/
 │   │   └── date=YYYY-MM-DD/
-│   │       ├── doc-id_results.parquet
-│   │       └── another-doc-id_results.parquet
+│   │       ├── doc-id_20240115_143052_123_results.parquet
+│   │       ├── doc-id_20240115_143127_456_results.parquet  # Same doc, reprocessed
+│   │       └── another-doc-id_20240115_144001_789_results.parquet
 │   ├── section_metrics/
 │   │   └── date=YYYY-MM-DD/
-│   │       ├── doc-id_results.parquet
-│   │       └── another-doc-id_results.parquet
+│   │       ├── doc-id_20240115_143052_123_results.parquet
+│   │       └── another-doc-id_20240115_144001_789_results.parquet
 │   └── attribute_metrics/
 │       └── date=YYYY-MM-DD/
-│           ├── doc-id_results.parquet
-│           └── another-doc-id_results.parquet
+│           ├── doc-id_20240115_143052_123_results.parquet
+│           └── another-doc-id_20240115_144001_789_results.parquet
 ├── metering/
 │   └── date=YYYY-MM-DD/
-│       ├── doc-id_results.parquet
-│       └── another-doc-id_results.parquet
+│       ├── doc-id_20240115_143052_123_results.parquet
+│       └── another-doc-id_20240115_144001_789_results.parquet
 └── document_sections/
     ├── invoice/
     │   └── date=YYYY-MM-DD/
@@ -165,6 +172,15 @@ reporting-bucket/
             └── doc-id_section_3.parquet
 ```
 
+### File Naming Convention
+
+All files use a unique timestamp-based naming convention to prevent overwrites:
+- **Format**: `{escaped_doc_id}_{timestamp}_results.parquet`
+- **Timestamp**: `YYYYMMDD_HHMMSS_mmm` (includes milliseconds)
+- **Example**: `invoice-123_20240115_143052_123_results.parquet`
+
+This ensures that if the same document is processed multiple times in the same day, each processing attempt creates a separate file, preserving all data for analysis and debugging.
+
 This structure is designed to be compatible with AWS Glue and Amazon Athena for analytics. The document sections are partitioned by `section_type` (classification) as the first partition level, followed by a single date-based partition using the format `YYYY-MM-DD`. Each file is uniquely named with the document ID and section ID to avoid conflicts, and the document ID is included as a column in the Parquet data for filtering and analysis.
 
 ### Partition Structure Benefits
@@ -176,6 +192,49 @@ The new single date partition structure provides several advantages:
 - **Cleaner Organization**: Single date partition is easier to understand and maintain
 - **Better Performance**: Reduced partition overhead compared to three-level partitioning
 - **Future-Proof**: Easier to extend and modify partition strategies
+
+## AWS Glue Integration
+
+The reporting module is designed to work seamlessly with AWS Glue and Amazon Athena:
+
+### Automatic Table Creation
+
+AWS Glue tables are automatically created via CloudFormation with the following features:
+
+- **Predefined Tables**: `document_evaluations`, `section_evaluations`, `attribute_evaluations`, and `metering` tables
+- **Dynamic Tables**: Document sections tables are automatically discovered by AWS Glue Crawler
+- **Partition Projection**: All tables use partition projection for efficient querying
+
+### Partition Projection Configuration
+
+All tables use AWS Glue partition projection to eliminate the need for `MSCK REPAIR TABLE` operations:
+
+```yaml
+# Example partition projection for date-based partitioning
+projection.enabled: "true"
+projection.date.type: "date"
+projection.date.format: "yyyy-MM-dd"
+projection.date.range: "2024-01-01,2030-12-31"
+projection.date.interval: "1"
+projection.date.interval.unit: "DAYS"
+storage.location.template: "s3://bucket/path/date=${date}/"
+```
+
+### AWS Glue Crawler for Document Sections
+
+The document sections crawler automatically:
+
+- **Discovers New Section Types**: Creates tables for new document classifications
+- **Updates Schemas**: Adapts to changes in extraction result structures
+- **Configurable Schedule**: Runs manually, every 15 minutes, hourly, or daily
+- **Partition Discovery**: Automatically discovers new date partitions
+
+### Benefits
+
+- **No Manual Maintenance**: Tables and partitions are automatically managed
+- **Immediate Availability**: New data is queryable immediately without manual intervention
+- **Optimized Performance**: Partition projection provides efficient query performance
+- **Schema Evolution**: Automatic adaptation to changing data structures
 
 ## Extending the Module
 

@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
 ### Fixed
 
 
@@ -31,6 +33,16 @@ SPDX-License-Identifier: MIT-0
   - **Use Cases**: Ideal for bank statements with hundreds of transactions, documents with 10+ attributes, complex nested structures, and performance-critical scenarios
   - **Backward Compatibility**: Maintains same interface as standard assessment service with seamless migration path
   - **Enhanced Documentation**: Comprehensive documentation in `docs/assessment.md` and example notebooks for both standard and granular approaches
+
+- **Reporting Database now has Document Sections Tables to enable querying across document fields**
+  - Added comprehensive document sections storage system that automatically creates tables for each section type (classification)
+  - **Dynamic Table Creation**: AWS Glue Crawler automatically discovers new section types and creates corresponding tables (e.g., `invoice`, `receipt`, `bank_statement`)
+  - **Configurable Crawler Schedule**: Support for manual, every 15 minutes, hourly (default), or daily crawler execution via `DocumentSectionsCrawlerFrequency` parameter
+  - **Partitioned Storage**: Data organized by section type and date for efficient querying with Amazon Athena
+
+- **Partition Projections for Evaluation and Metering tables**
+  - **Automated Partition Management**: Eliminates need for `MSCK REPAIR TABLE` operations with projection-based partition discovery
+  - **Performance Benefits**: Athena can efficiently prune partitions based on date ranges without manual partition loading
 
 - **Optimize the classification process for single class configurations in Pattern-2**
   - Detects when only a single document class is defined in the configuration
