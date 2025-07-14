@@ -871,12 +871,15 @@ def process_segments(
             bp_confidence = custom_output["matched_blueprint"]["confidence"]
 
             # Check if any key-value or blueprint confidence is below threshold
-            low_confidence = (any(
-                kv['confidence'] < confidence_threshold
-                for page_num in page_indices
-                for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
-            ) or float(bp_confidence) < confidence_threshold) and enable_hitl=='true'
+            if enable_hitl: 
 
+                low_confidence = any(
+                    kv['confidence'] < confidence_threshold
+                    for page_num in page_indices
+                    for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
+                ) or float(bp_confidence) < confidence_threshold
+            else:
+                low_confidence = 'false'
             logger.info(f"HITL STatus Low confidence {low_confidence}")
 
             item.update({
