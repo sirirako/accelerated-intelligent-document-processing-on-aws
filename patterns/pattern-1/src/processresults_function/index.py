@@ -31,7 +31,7 @@ s3_client = get_s3_client()
 ssm_client = boto3.client('ssm')
 bedrock_client = boto3.client('bedrock-data-automation')
 SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
-enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower() == 'true'
+enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower()
 
 def get_confidence_threshold_from_config(document: Document) -> float:
     """
@@ -871,16 +871,13 @@ def process_segments(
             bp_confidence = custom_output["matched_blueprint"]["confidence"]
 
             # Check if any key-value or blueprint confidence is below threshold
-            if enable_hitl: 
-
+            if enable_hitl == 'true': 
                 low_confidence = any(
                     kv['confidence'] < confidence_threshold
                     for page_num in page_indices
                     for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
                 ) or float(bp_confidence) < confidence_threshold
-            else:
-                low_confidence = 'false'
-            logger.info(f"HITL STatus Low confidence {low_confidence}")
+            logger.info(f"HITL Status Low confidence {low_confidence}")
 
             item.update({
                 "page_array": page_indices,
@@ -900,7 +897,7 @@ def process_segments(
             )
 
             if low_confidence:
-                hitl_triggered = True
+                hitl_triggered = low_confidence
                 metrics.put_metric('HITLTriggered', 1)
                 for page_number in page_indices:
                     page_str = str(page_number)
@@ -953,7 +950,7 @@ def process_segments(
             )
             
             hitl_triggered = enable_hitl
-            if enable_hitl:
+            if enable_hitl == 'true':
                 for page_number in range(start_page, end_page + 1):
                     ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
                     try:
