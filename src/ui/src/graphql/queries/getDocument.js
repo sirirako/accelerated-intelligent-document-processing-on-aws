@@ -30,6 +30,7 @@ export default gql`
         Class
         ImageUri
         TextUri
+        TextConfidenceUri
       }
       Metering
       EvaluationReportUri

@@ -96,10 +96,17 @@ const TextEditorView = ({ fileContent, onChange, isReadOnly, fileType }) => {
   );
 };
 
-const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = 'text' }) => {
+const FileEditorView = ({
+  fileContent,
+  onChange,
+  isReadOnly = true,
+  fileType = 'text',
+  viewMode,
+  onViewModeChange,
+  textConfidenceUri,
+}) => {
   const [isValid, setIsValid] = useState(true);
   const [jsonData, setJsonData] = useState(null);
-  const [viewMode, setViewMode] = useState('markdown');
 
   useEffect(() => {
     if (fileType === 'json') {
@@ -132,19 +139,16 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
     }
   };
 
-  const handleViewModeChange = ({ detail }) => {
-    setViewMode(detail.selectedId);
-  };
-
   return (
     <Box>
       <SpaceBetween direction="vertical" size="xs">
         <SegmentedControl
           selectedId={viewMode}
-          onChange={handleViewModeChange}
+          onChange={onViewModeChange}
           options={[
             { id: 'markdown', text: 'Markdown View' },
             { id: 'text', text: 'Text View' },
+            ...(textConfidenceUri ? [{ id: 'confidence', text: 'Text Confidence View' }] : []),
           ]}
         />
 
@@ -155,7 +159,7 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
         )}
       </SpaceBetween>
 
-      {viewMode === 'markdown' ? (
+      {viewMode === 'markdown' || viewMode === 'confidence' ? (
         <MarkdownViewer
           simple
           content={
@@ -185,23 +189,25 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
   );
 };
 
-const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View File' }) => {
+const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', buttonText = 'View File' }) => {
   const [fileContent, setFileContent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(null);
+  const [viewMode, setViewMode] = useState('markdown');
 
   const fetchContent = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      logger.info('Fetching content:', fileUri);
+      const uriToFetch = viewMode === 'confidence' && textConfidenceUri ? textConfidenceUri : fileUri;
+      logger.info('Fetching content:', uriToFetch);
 
       const response = await API.graphql({
         query: getFileContents,
-        variables: { s3Uri: fileUri },
+        variables: { s3Uri: uriToFetch },
       });
 
       // Handle the updated response structure
@@ -321,6 +327,13 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
     );
   }
 
+  const handleViewModeChange = ({ detail }) => {
+    setViewMode(detail.selectedId);
+    // Clear content when switching views to force re-fetch
+    setFileContent(null);
+    setEditedContent(null);
+  };
+
   return (
     <Box className="w-full">
       {!fileContent && (
@@ -366,6 +379,9 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
               onChange={handleContentChange}
               isReadOnly={!isEditing}
               fileType={fileType}
+              viewMode={viewMode}
+              onViewModeChange={handleViewModeChange}
+              textConfidenceUri={textConfidenceUri}
             />
           </div>
         </SpaceBetween>

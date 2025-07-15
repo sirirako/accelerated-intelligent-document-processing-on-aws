@@ -88,7 +88,11 @@ const mapDocumentsAttributes = (documents) => {
       workflowStatus,
       duration: getDuration(completionTime, initialEventTime),
       sections,
-      pages,
+      pages:
+        pages?.map((page) => ({
+          ...page,
+          TextConfidenceUri: page.TextConfidenceUri || null,
+        })) || [],
       pageCount,
       metering,
       evaluationReportUri,
