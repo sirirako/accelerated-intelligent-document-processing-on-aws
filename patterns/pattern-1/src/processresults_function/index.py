@@ -53,7 +53,6 @@ def get_confidence_threshold_from_config(document: Document) -> float:
             return 0.80
             
         logger.info(f"Retrieved confidence threshold from configuration: {threshold_value}")
-        threshold_value=0.8
         return threshold_value
     except Exception as e:
         logger.warning(f"Failed to retrieve confidence threshold from configuration: {e}")
