@@ -7,6 +7,11 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Text Confidence View for Document Pages**
+  - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field
+  - New "Text Confidence View" option in the UI pages panel alongside existing Markdown and Text views
+
+
 ### Fixed
 
 
