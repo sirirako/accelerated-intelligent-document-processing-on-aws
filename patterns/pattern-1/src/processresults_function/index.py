@@ -877,8 +877,11 @@ def process_segments(
                     for page_num in page_indices
                     for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
                 ) or float(bp_confidence) < confidence_threshold
-            logger.info(f"HITL Status Low confidence {low_confidence}")
+            else:
+                low_confidence = None
 
+            logger.info(f"low_confidence: {low_confidence}")
+            
             item.update({
                 "page_array": page_indices,
                 "hitl_triggered": low_confidence,
@@ -925,6 +928,10 @@ def process_segments(
                     "hitl_corrected_result": custom_decimal_output
                 })
         else:
+            if enable_hitl == 'true':
+                std_hitl = 'true'
+            else:
+                std_hitl = None 
             # Process standard output if no custom output match
             std_bucket, std_key = parse_s3_path(segment['standard_output_path'])
             std_output = download_decimal(std_bucket, std_key)
@@ -934,7 +941,7 @@ def process_segments(
             page_array = list(range(start_page, end_page + 1))
             item.update({
                 "page_array": page_array,
-                "hitl_triggered": enable_hitl,
+                "hitl_triggered": std_hitl,
                 "extraction_bp_name": "None",
                 "extracted_result": std_output
             })
@@ -944,12 +951,12 @@ def process_segments(
                 record_number=record_number,
                 bp_match=segment.get('custom_output_status'),
                 extraction_bp_name="None",
-                hitl_triggered=enable_hitl,
+                hitl_triggered=std_hitl,
                 page_array=page_array,
                 review_portal_url=SAGEMAKER_A2I_REVIEW_PORTAL_URL
             )
             
-            hitl_triggered = enable_hitl
+            hitl_triggered = std_hitl
             if enable_hitl == 'true':
                 for page_number in range(start_page, end_page + 1):
                     ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
