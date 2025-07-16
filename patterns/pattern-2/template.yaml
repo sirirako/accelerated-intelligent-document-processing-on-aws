@@ -147,15 +147,13 @@ Resources:
                 properties:
                   target_width:
                     type: number
-                    description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
+                    description: "Target image width in pixels. Images larger than this will be resized."
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
-                    description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
+                    description: "Target image height in pixels. Images larger than this will be resized."
                     minimum: 100
                     maximum: 3500
                     order: 1
@@ -454,14 +452,12 @@ Resources:
                   target_width:
                     type: number
                     description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
                     description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
                     minimum: 100
                     maximum: 3500
                     order: 1
@@ -537,14 +533,12 @@ Resources:
                   target_width:
                     type: number
                     description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
                     description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
                     minimum: 100
                     maximum: 3500
                     order: 1
@@ -606,14 +600,12 @@ Resources:
                   target_width:
                     type: number
                     description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
                     description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
                     minimum: 100
                     maximum: 3500
                     order: 1

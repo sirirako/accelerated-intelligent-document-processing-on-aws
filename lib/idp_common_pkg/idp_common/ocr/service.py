@@ -379,7 +379,13 @@ class OcrService:
         Returns:
             Tuple of (page_result_dict, metering_data)
         """
-        # Use the appropriate backend
+        # Check if this is an image file (not a PDF)
+        # PyMuPDF loads images as single-page documents
+        if not pdf_document.is_pdf and page_index == 0:
+            # This is an image file - process it directly
+            return self._process_image_file_direct(pdf_document, output_bucket, prefix)
+
+        # Use the appropriate backend for PDFs
         if self.backend == "none":
             return self._process_single_page_none(
                 page_index, pdf_document, output_bucket, prefix
@@ -393,6 +399,385 @@ class OcrService:
             return self._process_single_page_textract(
                 page_index, pdf_document, output_bucket, prefix
             )
+
+    def _process_image_file_direct(
+        self,
+        pdf_document: fitz.Document,
+        output_bucket: str,
+        prefix: str,
+    ) -> Tuple[Dict[str, str], Dict[str, Any]]:
+        """
+        Process an image file directly without PyMuPDF conversion.
+
+        Args:
+            pdf_document: PyMuPDF document object (contains the image)
+            output_bucket: S3 bucket to store results
+            prefix: S3 prefix for storing results
+
+        Returns:
+            Tuple of (page_result_dict, metering_data)
+        """
+        t0 = time.time()
+        page_id = 1
+
+        # Get the page (images are loaded as single-page documents)
+        page = pdf_document.load_page(0)
+
+        # Get the original image data from the page
+        # PyMuPDF stores the original image in the page's image list
+        img_list = page.get_images()
+
+        if img_list:
+            # Extract the original image
+            xref = img_list[0][0]  # Get the xref of the first image
+            pix = fitz.Pixmap(pdf_document, xref)
+
+            # Get original format info
+            img_data = pix.tobytes()
+            img_ext = pix.extension  # Get original extension (png, jpg, etc.)
+
+            # Determine content type
+            content_type_map = {
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "gif": "image/gif",
+                "bmp": "image/bmp",
+                "tiff": "image/tiff",
+                "tif": "image/tiff",
+                "webp": "image/webp",
+            }
+            original_content_type = content_type_map.get(img_ext, "image/jpeg")
+
+            # Apply resize if configured
+            if self.resize_config and (
+                self.resize_config.get("target_width")
+                or self.resize_config.get("target_height")
+            ):
+                target_width = self.resize_config.get("target_width")
+                target_height = self.resize_config.get("target_height")
+
+                # Only resize if dimensions are provided
+                if target_width or target_height:
+                    # The resize_image function now preserves format
+                    img_data = image.resize_image(img_data, target_width, target_height)
+
+                    # Check if format changed after resize
+                    import io
+
+                    from PIL import Image as PILImage
+
+                    resized_img = PILImage.open(io.BytesIO(img_data))
+                    if resized_img.format and resized_img.format != img_ext.upper():
+                        # Format changed during resize
+                        new_format = resized_img.format.lower()
+                        img_ext = new_format if new_format != "jpeg" else "jpg"
+                        content_type = content_type_map.get(img_ext, "image/jpeg")
+                        logger.debug(f"Image format changed during resize to {img_ext}")
+                    else:
+                        content_type = original_content_type
+
+                    logger.debug(f"Resized image to {target_width}x{target_height}")
+            else:
+                content_type = original_content_type
+
+            # Store image with appropriate format
+            image_key = f"{prefix}/pages/{page_id}/image.{img_ext}"
+
+            # Upload image to S3
+            s3.write_content(
+                img_data, output_bucket, image_key, content_type=content_type
+            )
+
+            # Clean up pixmap
+            pix = None
+        else:
+            # Fallback: extract as rendered image
+            # For non-PDF images, we need to preserve original resolution
+            # PyMuPDF uses 72 DPI by default which can downsample images
+
+            # Try to detect original image dimensions
+            # First, check if we can get the original dimensions from the page
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+
+            # Common image resolutions - try to detect if this looks like a downsampled image
+            # If page dimensions in points suggest this is an image (not a PDF page)
+            if (
+                page_width < 1000 and page_height < 1000
+            ):  # Likely an image, not a PDF page
+                # Calculate zoom factor to preserve common resolutions
+                # PyMuPDF default is 72 DPI, but images are often 96, 120, or 150 DPI
+
+                # Try to detect the original resolution by checking common ratios
+                # For a 612x792 image displayed as 367.2x475.2 points, the ratio is ~1.667
+                zoom_factor = 1.0
+
+                # Check if dimensions suggest 120 DPI image displayed at 72 DPI
+                if abs(page_width * 1.667 - round(page_width * 1.667)) < 0.1:
+                    zoom_factor = 1.667  # 120/72
+                    logger.debug(
+                        f"Detected 120 DPI image, using zoom factor {zoom_factor}"
+                    )
+                # Check if dimensions suggest 96 DPI image displayed at 72 DPI
+                elif abs(page_width * 1.333 - round(page_width * 1.333)) < 0.1:
+                    zoom_factor = 1.333  # 96/72
+                    logger.debug(
+                        f"Detected 96 DPI image, using zoom factor {zoom_factor}"
+                    )
+                # Check if dimensions suggest 150 DPI image displayed at 72 DPI
+                elif abs(page_width * 2.083 - round(page_width * 2.083)) < 0.1:
+                    zoom_factor = 2.083  # 150/72
+                    logger.debug(
+                        f"Detected 150 DPI image, using zoom factor {zoom_factor}"
+                    )
+                else:
+                    # Default to preserving the image at a reasonable resolution
+                    # Use 120 DPI as a good default for images
+                    zoom_factor = 120.0 / 72.0  # 1.667
+                    logger.debug(
+                        f"Using default zoom factor {zoom_factor} for better image quality"
+                    )
+
+                # Apply zoom factor using matrix
+                matrix = fitz.Matrix(zoom_factor, zoom_factor)
+                pix = page.get_pixmap(matrix=matrix)
+                logger.debug(
+                    f"Rendered image at {pix.width}x{pix.height} (zoom: {zoom_factor})"
+                )
+            else:
+                # Large dimensions suggest this is a PDF page, use default rendering
+                pix = page.get_pixmap()
+                logger.debug(
+                    f"Rendered PDF page at default resolution: {pix.width}x{pix.height}"
+                )
+
+            img_data = pix.tobytes("png")
+            img_ext = "png"
+            content_type = "image/png"
+
+            # Apply resize if configured
+            if self.resize_config and (
+                self.resize_config.get("target_width")
+                or self.resize_config.get("target_height")
+            ):
+                target_width = self.resize_config.get("target_width")
+                target_height = self.resize_config.get("target_height")
+
+                if target_width or target_height:
+                    # The resize_image function now preserves format
+                    img_data = image.resize_image(img_data, target_width, target_height)
+
+                    # Check if format changed after resize
+                    import io
+
+                    from PIL import Image as PILImage
+
+                    resized_img = PILImage.open(io.BytesIO(img_data))
+                    if resized_img.format and resized_img.format.lower() != img_ext:
+                        # Format changed during resize
+                        new_format = resized_img.format.lower()
+                        img_ext = new_format if new_format != "jpeg" else "jpg"
+                        content_type_map = {
+                            "png": "image/png",
+                            "jpg": "image/jpeg",
+                            "jpeg": "image/jpeg",
+                            "gif": "image/gif",
+                            "bmp": "image/bmp",
+                            "tiff": "image/tiff",
+                            "tif": "image/tiff",
+                            "webp": "image/webp",
+                        }
+                        content_type = content_type_map.get(img_ext, "image/png")
+                        logger.debug(f"Image format changed during resize to {img_ext}")
+
+                    logger.debug(f"Resized image to {target_width}x{target_height}")
+
+            # Store image with appropriate format
+            image_key = f"{prefix}/pages/{page_id}/image.{img_ext}"
+            s3.write_content(
+                img_data, output_bucket, image_key, content_type=content_type
+            )
+
+        t1 = time.time()
+        logger.debug(
+            f"Time for image processing (page {page_id}): {t1 - t0:.6f} seconds"
+        )
+
+        # Process with OCR based on backend
+        if self.backend == "none":
+            # No OCR processing
+            metering = {}
+
+            # Create empty OCR response structure for compatibility
+            empty_ocr_response = {"DocumentMetadata": {"Pages": 1}, "Blocks": []}
+
+            # Store empty raw OCR response
+            raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
+            s3.write_content(
+                empty_ocr_response,
+                output_bucket,
+                raw_text_key,
+                content_type="application/json",
+            )
+
+            # Generate minimal text confidence data
+            text_confidence_data = {
+                "text": "| Text | Confidence |\n|:-----|:------------|\n| *No OCR performed* | N/A |"
+            }
+
+            text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
+            s3.write_content(
+                text_confidence_data,
+                output_bucket,
+                text_confidence_key,
+                content_type="application/json",
+            )
+
+            # Store empty parsed text result
+            parsed_result = {"text": ""}
+            parsed_text_key = f"{prefix}/pages/{page_id}/result.json"
+            s3.write_content(
+                parsed_result,
+                output_bucket,
+                parsed_text_key,
+                content_type="application/json",
+            )
+
+        elif self.backend == "bedrock":
+            # Process with Bedrock
+            # Apply preprocessing if enabled
+            ocr_img_data = img_data
+            if self.preprocessing_config and self.preprocessing_config.get("enabled"):
+                from idp_common.image import apply_adaptive_binarization
+
+                ocr_img_data = apply_adaptive_binarization(ocr_img_data)
+                logger.debug(
+                    "Applied adaptive binarization preprocessing for Bedrock OCR"
+                )
+
+            # Prepare image for Bedrock
+            image_content = image.prepare_bedrock_image_attachment(ocr_img_data)
+
+            # Prepare content for Bedrock
+            content = [{"text": self.bedrock_config["task_prompt"]}, image_content]
+
+            # Invoke Bedrock
+            response_with_metering = bedrock.invoke_model(
+                model_id=self.bedrock_config["model_id"],
+                system_prompt=self.bedrock_config["system_prompt"],
+                content=content,
+                temperature=0.0,
+                top_p=0.1,
+                top_k=5,
+                max_tokens=4096,
+                context="OCR",
+            )
+
+            # Extract text from response
+            extracted_text = bedrock.extract_text_from_response(response_with_metering)
+            metering = response_with_metering.get("metering", {})
+
+            # Store raw Bedrock response
+            raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
+            s3.write_content(
+                response_with_metering["response"],
+                output_bucket,
+                raw_text_key,
+                content_type="application/json",
+            )
+
+            # Generate text confidence data
+            text_confidence_data = {
+                "text": "| Text | Confidence |\n|:-----|:------------|\n| *No confidence data available from LLM OCR* | N/A |"
+            }
+
+            text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
+            s3.write_content(
+                text_confidence_data,
+                output_bucket,
+                text_confidence_key,
+                content_type="application/json",
+            )
+
+            # Store parsed text result
+            parsed_result = {"text": extracted_text}
+            parsed_text_key = f"{prefix}/pages/{page_id}/result.json"
+            s3.write_content(
+                parsed_result,
+                output_bucket,
+                parsed_text_key,
+                content_type="application/json",
+            )
+
+        else:
+            # Process with Textract (default)
+            # Apply preprocessing if enabled
+            ocr_img_data = img_data
+            if self.preprocessing_config and self.preprocessing_config.get("enabled"):
+                from idp_common.image import apply_adaptive_binarization
+
+                ocr_img_data = apply_adaptive_binarization(ocr_img_data)
+                logger.debug("Applied adaptive binarization preprocessing for OCR")
+
+            # Process with OCR
+            if isinstance(self.enhanced_features, list) and self.enhanced_features:
+                textract_result = self._analyze_document(ocr_img_data, page_id)
+            else:
+                textract_result = self.textract_client.detect_document_text(
+                    Document={"Bytes": ocr_img_data}
+                )
+
+            # Extract metering data
+            feature_combo = self._feature_combo()
+            metering = {
+                f"OCR/textract/{self._get_api_name()}{feature_combo}": {
+                    "pages": textract_result["DocumentMetadata"]["Pages"]
+                }
+            }
+
+            # Store raw Textract response
+            raw_text_key = f"{prefix}/pages/{page_id}/rawText.json"
+            s3.write_content(
+                textract_result,
+                output_bucket,
+                raw_text_key,
+                content_type="application/json",
+            )
+
+            # Generate and store text confidence data
+            text_confidence_data = self._generate_text_confidence_data(textract_result)
+            text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
+            s3.write_content(
+                text_confidence_data,
+                output_bucket,
+                text_confidence_key,
+                content_type="application/json",
+            )
+
+            # Parse and store text content
+            parsed_result = self._parse_textract_response(textract_result, page_id)
+            parsed_text_key = f"{prefix}/pages/{page_id}/result.json"
+            s3.write_content(
+                parsed_result,
+                output_bucket,
+                parsed_text_key,
+                content_type="application/json",
+            )
+
+        t2 = time.time()
+        logger.debug(f"Total processing time for image file: {t2 - t0:.6f} seconds")
+
+        # Create and return page result
+        result = {
+            "raw_text_uri": f"s3://{output_bucket}/{raw_text_key}",
+            "parsed_text_uri": f"s3://{output_bucket}/{parsed_text_key}",
+            "text_confidence_uri": f"s3://{output_bucket}/{text_confidence_key}",
+            "image_uri": f"s3://{output_bucket}/{image_key}",
+        }
+
+        return result, metering
 
     def _process_single_page_textract(
         self,

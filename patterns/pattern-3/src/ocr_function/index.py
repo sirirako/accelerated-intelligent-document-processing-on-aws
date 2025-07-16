@@ -56,13 +56,27 @@ def handler(event, context):
         target_width = image_config.get("target_width")
         target_height = image_config.get("target_height")
         if target_width is not None and target_height is not None:
-            target_width = int(target_width)
-            target_height = int(target_height)
-            resize_config = {
-                "target_width": target_width,
-                "target_height": target_height
-            }
-            logger.info(f"Image resize configuration found: {resize_config}")
+            # Handle empty strings and convert to int
+            if isinstance(target_width, str) and not target_width.strip():
+                target_width = None
+            if isinstance(target_height, str) and not target_height.strip():
+                target_height = None
+            
+            # Only proceed if we have valid values after cleaning
+            if target_width is not None and target_height is not None:
+                try:
+                    target_width = int(target_width)
+                    target_height = int(target_height)
+                    resize_config = {
+                        "target_width": target_width,
+                        "target_height": target_height
+                    }
+                    logger.info(f"Image resize configuration found: {resize_config}")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid resize configuration values: {e}")
+                    logger.info("Skipping image resize due to invalid values")
+            else:
+                logger.info("No valid image resize configuration found in ocr.image config")
         else:
             logger.info("No image resize configuration found in ocr.image config")
     else:
