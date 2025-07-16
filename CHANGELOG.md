@@ -13,6 +13,7 @@ SPDX-License-Identifier: MIT-0
   - Fixed issues with view persistence - Text Confidence View button now always visible with appropriate messaging when content unavailable
   - Fixed view toggle behavior - switching between views no longer closes the viewer window
   - Reordered view buttons to: Markdown View, Text Confidence View, Text View for better user experience
+  - OCR confidence values now rounded to 1 decimal point (e.g., 99.1, 87.3) for cleaner display
 
 
 ### Fixed

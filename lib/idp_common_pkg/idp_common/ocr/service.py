@@ -809,7 +809,7 @@ class OcrService:
 
         This method transforms verbose Textract output into a minimal format containing:
         - Essential text content (LINE blocks only)
-        - OCR confidence scores
+        - OCR confidence scores (rounded to 1 decimal point)
         - Text type (PRINTED/HANDWRITING)
         - Page count
 
@@ -833,7 +833,7 @@ class OcrService:
             if block.get("BlockType") == "LINE" and block.get("Text"):
                 text_block = {
                     "text": block.get("Text", ""),
-                    "confidence": block.get("Confidence"),
+                    "confidence": round(block.get("Confidence", 0.0), 1),
                 }
 
                 # Include text type if available (PRINTED vs HANDWRITING)
