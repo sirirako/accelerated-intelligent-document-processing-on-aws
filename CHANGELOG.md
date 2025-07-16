@@ -25,6 +25,12 @@ SPDX-License-Identifier: MIT-0
 
 
 ### Fixed
+- **OCR Service Image Processing for PNG/JPG Files**
+  - Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized
+  - PNG and JPG files now preserve their original format when stored in S3
+  - Image resolution is preserved by default unless explicitly configured via `resize_config`
+  - DPI settings now only apply to PDF files, not to image files
+  - Resolves issue where PNG files were being converted to lower resolution JPG files
 
 
 ## [0.3.7]
