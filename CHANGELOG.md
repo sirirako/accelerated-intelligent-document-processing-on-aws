@@ -10,6 +10,9 @@ SPDX-License-Identifier: MIT-0
 - **Text Confidence View for Document Pages**
   - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field
   - New "Text Confidence View" option in the UI pages panel alongside existing Markdown and Text views
+  - Fixed issues with view persistence - Text Confidence View button now always visible with appropriate messaging when content unavailable
+  - Fixed view toggle behavior - switching between views no longer closes the viewer window
+  - Reordered view buttons to: Markdown View, Text Confidence View, Text View for better user experience
 
 
 ### Fixed

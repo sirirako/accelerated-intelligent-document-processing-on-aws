@@ -103,7 +103,7 @@ const FileEditorView = ({
   fileType = 'text',
   viewMode,
   onViewModeChange,
-  textConfidenceUri,
+  isConfidenceAvailable,
 }) => {
   const [isValid, setIsValid] = useState(true);
   const [jsonData, setJsonData] = useState(null);
@@ -147,8 +147,8 @@ const FileEditorView = ({
           onChange={onViewModeChange}
           options={[
             { id: 'markdown', text: 'Markdown View' },
+            { id: 'confidence', text: 'Text Confidence View' },
             { id: 'text', text: 'Text View' },
-            ...(textConfidenceUri ? [{ id: 'confidence', text: 'Text Confidence View' }] : []),
           ]}
         />
 
@@ -159,7 +159,11 @@ const FileEditorView = ({
         )}
       </SpaceBetween>
 
-      {viewMode === 'markdown' || viewMode === 'confidence' ? (
+      {viewMode === 'confidence' && !isConfidenceAvailable ? (
+        <Box color="text-status-inactive" padding="l" textAlign="center">
+          Text confidence content is not available for this page.
+        </Box>
+      ) : viewMode === 'markdown' || viewMode === 'confidence' ? (
         <MarkdownViewer
           simple
           content={
@@ -197,12 +201,28 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(null);
   const [viewMode, setViewMode] = useState('markdown');
+  const [loadedUri, setLoadedUri] = useState(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
-  const fetchContent = async () => {
+  const fetchContent = async (forceRefetch = false) => {
+    // Determine which URI to fetch based on view mode
+    const uriToFetch = viewMode === 'confidence' ? textConfidenceUri : fileUri;
+
+    // If confidence view is selected but no URI available, don't fetch
+    if (viewMode === 'confidence' && !textConfidenceUri) {
+      setFileContent(null);
+      setLoadedUri(null);
+      return;
+    }
+
+    // Skip fetch if we already have the content for this URI (unless forced)
+    if (!forceRefetch && loadedUri === uriToFetch && fileContent) {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
-      const uriToFetch = viewMode === 'confidence' && textConfidenceUri ? textConfidenceUri : fileUri;
       logger.info('Fetching content:', uriToFetch);
 
       const response = await API.graphql({
@@ -221,6 +241,7 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
       }
       logger.debug('Received content:', `${fetchedContent.substring(0, 100)}...`);
       setFileContent(fetchedContent);
+      setLoadedUri(uriToFetch);
     } catch (err) {
       logger.error('Error fetching content:', err);
       setError(`Failed to load ${fileType} content. Please try again.`);
@@ -317,6 +338,8 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
     setFileContent(null);
     setEditedContent(null);
     setIsEditing(false);
+    setIsViewerOpen(false);
+    setLoadedUri(null);
   };
 
   if (!fileUri) {
@@ -328,16 +351,33 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
   }
 
   const handleViewModeChange = ({ detail }) => {
-    setViewMode(detail.selectedId);
-    // Clear content when switching views to force re-fetch
-    setFileContent(null);
-    setEditedContent(null);
+    const newMode = detail.selectedId;
+    setViewMode(newMode);
+
+    // Determine if we need to fetch new content
+    const newUri = newMode === 'confidence' ? textConfidenceUri : fileUri;
+
+    // Only fetch if switching to a different URI
+    if (newUri && newUri !== loadedUri) {
+      fetchContent();
+    }
+  };
+
+  // Effect to fetch content when viewer opens or view mode changes
+  React.useEffect(() => {
+    if (isViewerOpen) {
+      fetchContent();
+    }
+  }, [isViewerOpen, viewMode]);
+
+  const openViewer = () => {
+    setIsViewerOpen(true);
   };
 
   return (
     <Box className="w-full">
-      {!fileContent && (
-        <Button onClick={fetchContent} loading={isLoading} disabled={isLoading}>
+      {!isViewerOpen && (
+        <Button onClick={openViewer} loading={isLoading} disabled={isLoading}>
           {buttonText}
         </Button>
       )}
@@ -354,7 +394,7 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
         </Box>
       )}
 
-      {fileContent && (
+      {isViewerOpen && (
         <SpaceBetween size="s" className="json-viewer-container" style={{ width: '100%', minWidth: '700px' }}>
           <Box>
             <SpaceBetween direction="horizontal" size="xs">
@@ -375,13 +415,13 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
           </Box>
           <div style={{ width: '100%' }}>
             <FileEditorView
-              fileContent={isEditing ? editedContent : fileContent}
+              fileContent={isLoading ? null : isEditing ? editedContent : fileContent}
               onChange={handleContentChange}
               isReadOnly={!isEditing}
               fileType={fileType}
               viewMode={viewMode}
               onViewModeChange={handleViewModeChange}
-              textConfidenceUri={textConfidenceUri}
+              isConfidenceAvailable={!!textConfidenceUri}
             />
           </div>
         </SpaceBetween>
