@@ -46,6 +46,7 @@ type Page @aws_cognito_user_pools @aws_iam {
   Class: String
   ImageUri: String
   TextUri: String
+  TextConfidenceUri: String
 }
 
 type DocumentList @aws_cognito_user_pools @aws_iam {
@@ -125,6 +126,7 @@ input PageInput {
   Class: String
   ImageUri: String
   TextUri: String
+  TextConfidenceUri: String
 }
 
 type CopyToBaselineResponse @aws_cognito_user_pools {

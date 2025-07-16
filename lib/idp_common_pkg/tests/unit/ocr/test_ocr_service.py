@@ -528,20 +528,22 @@ class TestOcrService:
             service = OcrService()
             result = service._generate_text_confidence_data(mock_textract_response)
 
-            # Verify structure
-            assert "page_count" in result
-            assert "text_blocks" in result
-            assert result["page_count"] == 1
-            assert len(result["text_blocks"]) == 2  # Two LINE blocks
+            # Verify structure - now returns markdown table in 'text' field
+            assert "text" in result
+            assert "page_count" not in result  # Removed in new format
+            assert "text_blocks" not in result  # Replaced with markdown table
 
-            # Verify text blocks
-            assert result["text_blocks"][0]["text"] == "Sample text line 1"
-            assert result["text_blocks"][0]["confidence"] == 98.5
-            assert result["text_blocks"][0]["type"] == "PRINTED"
+            # Verify markdown table content
+            markdown_table = result["text"]
+            lines = markdown_table.split("\n")
 
-            assert result["text_blocks"][1]["text"] == "Sample text line 2"
-            assert result["text_blocks"][1]["confidence"] == 97.2
-            assert result["text_blocks"][1]["type"] == "PRINTED"
+            # Check header
+            assert lines[0] == "| Text | Confidence |"
+            assert lines[1] == "|:-----|:-----------|"
+
+            # Check data rows
+            assert lines[2] == "| Sample text line 1 | 98.5 |"
+            assert lines[3] == "| Sample text line 2 | 97.2 |"
 
     def test_parse_textract_response_markdown_success(self):
         """Test parsing Textract response to markdown successfully."""

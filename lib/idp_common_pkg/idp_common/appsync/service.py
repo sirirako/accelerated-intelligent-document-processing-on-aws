@@ -117,6 +117,7 @@ class DocumentAppSyncService:
                     "Class": page.classification or "",
                     "ImageUri": page.image_uri or "",
                     "TextUri": page.parsed_text_uri or page.raw_text_uri or "",
+                    "TextConfidenceUri": page.text_confidence_uri or "",
                 }
                 pages_data.append(page_data)
 
@@ -290,6 +291,7 @@ class DocumentAppSyncService:
                     page_id=page_id,
                     image_uri=page_data.get("ImageUri"),
                     raw_text_uri=page_data.get("TextUri"),
+                    text_confidence_uri=page_data.get("TextConfidenceUri"),
                     classification=page_data.get("Class"),
                 )
 

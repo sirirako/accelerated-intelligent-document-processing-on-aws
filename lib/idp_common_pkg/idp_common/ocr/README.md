@@ -15,21 +15,21 @@ The service supports three OCR backends, each with different capabilities and us
 
 ### 1. Textract Backend (Default - Recommended for Assessment)
 - **Technology**: AWS Textract OCR service
-- **Confidence Data**: ✅ Full granular confidence scores per text block
+- **Confidence Data**: ✅ Full granular confidence scores per text line (displayed as markdown table)
 - **Features**: Basic text detection + enhanced document analysis (tables, forms, signatures, layout)
 - **Assessment Quality**: ⭐⭐⭐ Optimal - Real OCR confidence enables accurate assessment
 - **Use Cases**: Standard document processing, when assessment is enabled, production workflows
 
 ### 2. Bedrock Backend (LLM-based OCR)
 - **Technology**: Amazon Bedrock LLMs (Claude, Nova) for text extraction
-- **Confidence Data**: ❌ No confidence data (empty text_blocks array)
+- **Confidence Data**: ❌ No confidence data (displays "No confidence data available from LLM OCR")
 - **Features**: Advanced text understanding, better handling of challenging/degraded documents
 - **Assessment Quality**: ❌ No confidence data for assessment
 - **Use Cases**: Challenging documents where traditional OCR fails, specialized text extraction needs
 
 ### 3. None Backend (Image-only)
 - **Technology**: No OCR processing
-- **Confidence Data**: ❌ Empty confidence data
+- **Confidence Data**: ❌ No confidence data (displays "No OCR performed")
 - **Features**: Image extraction and storage only
 - **Assessment Quality**: ❌ No text confidence for assessment
 - **Use Cases**: Image-only workflows, custom OCR integration
@@ -104,36 +104,37 @@ The format varies by OCR backend:
 **Textract Backend (with confidence data):**
 ```json
 {
-  "page_count": 1,
-  "text_blocks": [
-    {
-      "text": "WESTERN DARK FIRED TOBACCO GROWERS' ASSOCIATION",
-      "confidence": 99.35,
-      "type": "PRINTED"
-    },
-    {
-      "text": "206 Maple Street",
-      "confidence": 91.41,
-      "type": "PRINTED"
-    }
-  ]
+  "text": "| Text | Confidence |\n|------|------------|\n| WESTERN DARK FIRED TOBACCO GROWERS' ASSOCIATION | 99.4 |\n| 206 Maple Street | 91.4 |\n| Murray, KY 42071 | 98.7 |"
 }
 ```
 
-**Bedrock/None Backend (no confidence data):**
+The `text` field contains a markdown table with two columns:
+- **Text**: The extracted text content (with pipe characters escaped as `\|`)
+- **Confidence**: OCR confidence score rounded to 1 decimal point
+- Handwriting is indicated with "(HANDWRITING)" suffix in the text column
+
+**Bedrock Backend (no confidence data):**
 ```json
 {
-  "page_count": 1,
-  "text_blocks": []
+  "text": "| Text | Confidence |\n|------|------------|\n| *No confidence data available from LLM OCR* | N/A |"
+}
+```
+
+**None Backend (no OCR):**
+```json
+{
+  "text": "| Text | Confidence |\n|------|------------|\n| *No OCR performed* | N/A |"
 }
 ```
 
 ### Benefits
 
-- **80-90% token reduction** compared to raw Textract output
-- **Preserved assessment data**: Text content, OCR confidence scores, text type (PRINTED/HANDWRITING)
-- **Removed overhead**: Geometric data, relationships, block IDs, and verbose metadata
+- **85-95% token reduction** compared to raw Textract output (markdown table format is more compact than JSON)
+- **Preserved assessment data**: Text content, OCR confidence scores (rounded to 1 decimal), text type (PRINTED/HANDWRITING)
+- **Removed overhead**: Geometric data, relationships, block IDs, verbose metadata, and unnecessary JSON syntax
+- **Improved readability**: Markdown table format is human-readable in both UI and assessment prompts
 - **Cost efficiency**: Significantly reduced LLM inference costs for assessment workflows
+- **UI compatibility**: Displays beautifully in the Text Confidence View using existing markdown rendering
 - **Automated generation**: Created during initial OCR processing, not repeatedly during assessment
 
 ### Usage in Assessment Prompts
