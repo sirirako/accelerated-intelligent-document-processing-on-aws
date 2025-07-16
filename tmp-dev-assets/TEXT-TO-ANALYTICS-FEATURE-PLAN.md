@@ -11,7 +11,7 @@ This document outlines the implementation plan for adding a natural language ana
 3. **Request Handler Lambda**: Fast Lambda to create analytics jobs
 4. **Analytics Processor Lambda**: Long-running Lambda to process analytics queries
 5. **DynamoDB Table**: For tracking analytics job status
-6. **AI Agent**: Powered by the Strands package to interpret queries and generate responses
+6. **AI Agent**: Powered by Amazon Bedrock AgentCore Runtime to interpret queries and generate responses
 7. **Data Source**: Amazon Athena for querying the reporting database
 
 ### Asynchronous Processing Pattern
@@ -35,7 +35,7 @@ This approach serves as a reference architecture for future agentic developments
    - Returns job ID to the frontend
 5. Analytics Processor Lambda:
    - Updates job status to "PROCESSING"
-   - Uses Strands to interpret the query and generate Athena SQL
+   - Uses Amazon Bedrock AgentCore Runtime to interpret the query and generate Athena SQL
    - Executes the query against the reporting database
    - Formats results as interactive visualization data
    - Updates job record with results and status "COMPLETED"
@@ -44,12 +44,48 @@ This approach serves as a reference architecture for future agentic developments
 
 ## Data Formats
 
+### GraphQL Schema Extension
+```graphql
+type AnalyticsResponse {
+  responseType: String!  # "composite", "text", "table", "plotData", "dashboard"
+  content: String        # Text response if applicable
+  tableData: [AWSJSON]   # For table responses (array to support multiple tables)
+  plotData: [AWSJSON]    # For interactive plot data (array to support multiple plots)
+  dashboardData: AWSJSON # For composite dashboard layouts
+  metadata: AWSJSON      # Query context, timestamps, etc.
+}
 
+type AnalyticsJob {
+  jobId: ID!
+  status: String!  # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
+  query: String!
+  createdAt: AWSDateTime!
+  completedAt: AWSDateTime
+  result: AnalyticsResponse
+  error: String
+}
+
+extend type Query {
+  submitAnalyticsQuery(query: String!): AnalyticsJob
+  getAnalyticsJobStatus(jobId: ID!): AnalyticsJob
+}
+
+extend type Subscription {
+  onAnalyticsJobComplete(jobId: ID!): AnalyticsJob
+    @aws_subscribe(mutations: ["updateAnalyticsJobStatus"])
+}
+
+extend type Mutation {
+  updateAnalyticsJobStatus(jobId: ID!, status: String!, result: AWSJSON): AnalyticsJob
+}
+```
 
 ### Response Types
 1. **Text**: Simple text responses for questions with scalar answers
-2. **Table**: Structured data for tabular results
-3. **PlotData**: JSON structure containing data series, labels, and visualization parameters
+2. **Table**: Structured data for tabular results (supports multiple tables)
+3. **PlotData**: JSON structure containing data series, labels, and visualization parameters (supports multiple plots)
+4. **Dashboard**: Composite layout combining multiple visualization elements
+5. **Composite**: Mixed response types combining any of the above elements
 
 ## Code Modifications
 
@@ -60,7 +96,16 @@ This approach serves as a reference architecture for future agentic developments
 2. **GraphQL Schema Extension**: Update to `/src/api/schema.graphql`
 3. **DynamoDB Table**: New table for analytics job tracking
 4. **Frontend Components**:
-   - `/src/ui/src/components/analytics-panel/*`
+   - `/src/ui/src/components/analytics-panel/AnalyticsLayout.jsx`
+   - `/src/ui/src/components/analytics-panel/AnalyticsQueryInput.jsx`
+   - `/src/ui/src/components/analytics-panel/AnalyticsJobStatus.jsx`
+   - `/src/ui/src/components/analytics-panel/AnalyticsResultDisplay.jsx`
+   - `/src/ui/src/components/analytics-panel/visualization-components/`
+     - `TextDisplay.jsx`
+     - `TableDisplay.jsx`
+     - `ChartDisplay.jsx`
+     - `DashboardDisplay.jsx`
+     - `CompositeDisplay.jsx`
 
 ### Files to Modify
 1. **CloudFormation Template**: Add new Lambda functions, DynamoDB table, and AppSync resources
@@ -69,6 +114,7 @@ This approach serves as a reference architecture for future agentic developments
 4. **GraphQL Queries and Subscriptions**: Add new definitions
 
 ## Dependencies
+- **Amazon Bedrock AgentCore Runtime**: For hosting the AI agent ([Documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html))
 - **Strands**: AI agent framework for query interpretation and visualization generation
 - **React Charting Library**: For frontend visualization (Recharts, Plotly.js, or similar)
 - **AWS SDK**: For Athena, Bedrock, and DynamoDB integration
@@ -81,19 +127,22 @@ This approach serves as a reference architecture for future agentic developments
    - Add AppSync resolvers and schema extensions
 
 2. **AI Agent Development**:
-   - Integrate Strands package
+   - Set up Amazon Bedrock AgentCore Runtime
+   - Configure agent with Athena query capabilities
    - Implement query interpretation (prompt engineering etc)
-   - Build Athena query generation
-   - Create visualization data formatters
+   - Build visualization data formatters
+   - Create dashboard layout generator for composite responses
 
 3. **Frontend Development**:
    - Create analytics UI components
    - Implement job status tracking
-   - Add visualization rendering
+   - Add visualization rendering for multiple charts and tables
+   - Implement dashboard layout system
    - Add navigation and routing
 
 4. **Testing & Refinement**:
    - Test with various query types and complexities
+   - Test composite responses with multiple visualization elements
    - Optimize performance
    - Refine visualization options
 
@@ -102,10 +151,13 @@ This approach serves as a reference architecture for future agentic developments
 - Maintain existing authentication through Cognito
 - Scope Athena permissions to only the reporting database
 - Implement job ownership validation to prevent unauthorized access to job results
+- Configure appropriate permissions for Amazon Bedrock AgentCore Runtime
 
 ## User Experience
 - Provide immediate feedback when queries are submitted
 - Show job status and estimated completion time
 - Include query suggestions and examples
 - Support visualization customization where appropriate
+- Enable interactive dashboard layouts with multiple visualization elements
+- Allow users to save and share analytics results
 - Maintain responsive design for all device types
