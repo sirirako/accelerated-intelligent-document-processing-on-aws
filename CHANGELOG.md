@@ -8,12 +8,15 @@ SPDX-License-Identifier: MIT-0
 ### Added
 
 - **Text Confidence View for Document Pages**
-  - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field
-  - New "Text Confidence View" option in the UI pages panel alongside existing Markdown and Text views
-  - Fixed issues with view persistence - Text Confidence View button now always visible with appropriate messaging when content unavailable
-  - Fixed view toggle behavior - switching between views no longer closes the viewer window
-  - Reordered view buttons to: Markdown View, Text Confidence View, Text View for better user experience
+  - Added support for displaying OCR text confidence data in the UI
+
+### Changed
+- **Converted text confidence data format from JSON to markdown table for improved readability and reduced token usage**
+  - Removed unnecessary "page_count" field
+  - Changed "text_blocks" array to "text" field containing a markdown table with Text and Confidence columns
+  - Reduces prompt size for assessment service while improving UI readability
   - OCR confidence values now rounded to 1 decimal point (e.g., 99.1, 87.3) for cleaner display
+
 
 
 ### Fixed

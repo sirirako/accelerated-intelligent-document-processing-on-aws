@@ -622,10 +622,9 @@ class OcrService:
         )
 
         # Generate and store text confidence data
-        # For Bedrock, we use empty confidence data since LLM OCR doesn't provide real confidence scores
+        # For Bedrock, we use empty markdown table since LLM OCR doesn't provide real confidence scores
         text_confidence_data = {
-            "page_count": 1,
-            "text_blocks": [],  # Empty - no confidence data available from LLM OCR
+            "text": "| Text | Confidence |\n|------|------------|\n| *No confidence data available from LLM OCR* | N/A |"
         }
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
@@ -703,8 +702,10 @@ class OcrService:
             content_type="application/json",
         )
 
-        # Generate minimal text confidence data (empty)
-        text_confidence_data = {"page_count": 1, "text_blocks": []}
+        # Generate minimal text confidence data (empty markdown table)
+        text_confidence_data = {
+            "text": "| Text | Confidence |\n|------|------------|\n| *No OCR performed* | N/A |"
+        }
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
         s3.write_content(
@@ -807,11 +808,9 @@ class OcrService:
         """
         Generate text confidence data from raw OCR to reduce token usage while preserving essential information.
 
-        This method transforms verbose Textract output into a minimal format containing:
+        This method transforms verbose Textract output into a markdown table format containing:
         - Essential text content (LINE blocks only)
         - OCR confidence scores (rounded to 1 decimal point)
-        - Text type (PRINTED/HANDWRITING)
-        - Page count
 
         Removes geometric data, relationships, block IDs, and other verbose metadata
         that aren't needed for assessment purposes.
@@ -820,29 +819,30 @@ class OcrService:
             raw_ocr_data: Raw Textract API response
 
         Returns:
-            Text confidence data with ~80-90% token reduction
+            Text confidence data as markdown table with ~80-90% token reduction
         """
-        text_confidence_data = {
-            "page_count": raw_ocr_data.get("DocumentMetadata", {}).get("Pages", 1),
-            "text_blocks": [],
-        }
+        # Start building the markdown table
+        markdown_lines = ["| Text | Confidence |", "|------|------------|"]
 
         blocks = raw_ocr_data.get("Blocks", [])
 
         for block in blocks:
             if block.get("BlockType") == "LINE" and block.get("Text"):
-                text_block = {
-                    "text": block.get("Text", ""),
-                    "confidence": round(block.get("Confidence", 0.0), 1),
-                }
+                text = block.get("Text", "").replace(
+                    "|", "\\|"
+                )  # Escape pipe characters
+                confidence = round(block.get("Confidence", 0.0), 1)
 
-                # Include text type if available (PRINTED vs HANDWRITING)
-                if "TextType" in block:
-                    text_block["type"] = block["TextType"]
+                # Add text type indicator if it's handwriting
+                if block.get("TextType") == "HANDWRITING":
+                    markdown_lines.append(f"| {text} (HANDWRITING) | {confidence} |")
+                else:
+                    markdown_lines.append(f"| {text} | {confidence} |")
 
-                text_confidence_data["text_blocks"].append(text_block)
+        # Join all lines into a single markdown string
+        markdown_table = "\n".join(markdown_lines)
 
-        return text_confidence_data
+        return {"text": markdown_table}
 
     def _parse_textract_response(
         self, response: Dict[str, Any], page_id: int = None
@@ -1070,15 +1070,16 @@ class OcrService:
             content_type="application/json",
         )
 
-        # Generate text confidence data
-        text_confidence_data = {
-            "page_count": 1,
-            "text_blocks": [
-                {"text": line, "confidence": 99.0, "type": "PRINTED"}
-                for line in page_text.split("\n")
-                if line.strip()
-            ],
-        }
+        # Generate text confidence data as markdown table
+        markdown_lines = ["| Text | Confidence |", "|------|------------|"]
+        for line in page_text.split("\n"):
+            if line.strip():
+                # Escape pipe characters in text
+                escaped_line = line.replace("|", "\\|")
+                markdown_lines.append(f"| {escaped_line} | 99.0 |")
+
+        markdown_table = "\n".join(markdown_lines)
+        text_confidence_data = {"text": markdown_table}
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
         s3.write_content(
