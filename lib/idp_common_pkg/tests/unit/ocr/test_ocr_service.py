@@ -539,7 +539,7 @@ class TestOcrService:
 
             # Check header
             assert lines[0] == "| Text | Confidence |"
-            assert lines[1] == "|------|------------|"
+            assert lines[1] == "|:-----|:-----------|"
 
             # Check data rows
             assert lines[2] == "| Sample text line 1 | 98.5 |"

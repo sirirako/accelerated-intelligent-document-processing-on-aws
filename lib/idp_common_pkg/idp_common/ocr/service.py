@@ -624,7 +624,7 @@ class OcrService:
         # Generate and store text confidence data
         # For Bedrock, we use empty markdown table since LLM OCR doesn't provide real confidence scores
         text_confidence_data = {
-            "text": "| Text | Confidence |\n|------|------------|\n| *No confidence data available from LLM OCR* | N/A |"
+            "text": "| Text | Confidence |\n|:-----|:------------|\n| *No confidence data available from LLM OCR* | N/A |"
         }
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
@@ -704,7 +704,7 @@ class OcrService:
 
         # Generate minimal text confidence data (empty markdown table)
         text_confidence_data = {
-            "text": "| Text | Confidence |\n|------|------------|\n| *No OCR performed* | N/A |"
+            "text": "| Text | Confidence |\n|:-----|:------------|\n| *No OCR performed* | N/A |"
         }
 
         text_confidence_key = f"{prefix}/pages/{page_id}/textConfidence.json"
@@ -821,8 +821,8 @@ class OcrService:
         Returns:
             Text confidence data as markdown table with ~80-90% token reduction
         """
-        # Start building the markdown table
-        markdown_lines = ["| Text | Confidence |", "|------|------------|"]
+        # Start building the markdown table with explicit left alignment
+        markdown_lines = ["| Text | Confidence |", "|:-----|:-----------|"]
 
         blocks = raw_ocr_data.get("Blocks", [])
 
@@ -1070,8 +1070,8 @@ class OcrService:
             content_type="application/json",
         )
 
-        # Generate text confidence data as markdown table
-        markdown_lines = ["| Text | Confidence |", "|------|------------|"]
+        # Generate text confidence data as markdown table with explicit left alignment
+        markdown_lines = ["| Text | Confidence |", "|:-----|:-----------|"]
         for line in page_text.split("\n"):
             if line.strip():
                 # Escape pipe characters in text
