@@ -457,7 +457,7 @@ Resources:
               image:
                 type: object
                 sectionLabel: Image Processing Settings
-                description: Configure image resolution and processing options for extraction
+                description: Configure image resolution and processing options for for image attachments in extraction
                 order: 0
                 properties:
                   target_width:
@@ -520,7 +520,7 @@ Resources:
               image:
                 type: object
                 sectionLabel: Image Processing Settings
-                description: Configure image resolution and processing options for assessment
+                description: Configure image resolution and processing options for for image attachments in assessment
                 order: 0
                 properties:
                   target_width:
