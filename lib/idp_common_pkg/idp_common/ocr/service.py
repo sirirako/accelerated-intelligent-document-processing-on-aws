@@ -96,8 +96,11 @@ class OcrService:
             # Extract max_workers
             self.max_workers = max_workers or ocr_config.get("max_workers", 20)
 
-            # Extract DPI
-            self.dpi = ocr_config.get("dpi")
+            # Extract DPI from image configuration
+            image_config = ocr_config.get("image", {})
+            self.dpi = image_config.get(
+                "dpi", 150
+            )  # Default to 150 DPI if not specified
 
             # Extract enhanced features
             features_config = ocr_config.get("features", [])
