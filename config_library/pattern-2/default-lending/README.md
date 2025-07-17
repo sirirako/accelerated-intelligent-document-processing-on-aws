@@ -48,6 +48,7 @@ The configuration defines 6 specialized lending document classes, each with comp
 - **Temperature**: 0 (deterministic outputs)
 - **Top-k**: 5
 - **OCR Backend**: Amazon Textract with LAYOUT, TABLES, and SIGNATURES features
+- **OCR Model**: Amazon Claude 3.7 Sonnet for enhanced text extraction and layout understanding
 
 The classification component analyzes document content and structure to accurately identify lending document types and establish proper page boundaries within multi-document packages.
 
