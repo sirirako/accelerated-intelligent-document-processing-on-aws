@@ -32,44 +32,136 @@ class OcrService:
     def __init__(
         self,
         region: Optional[str] = None,
-        max_workers: int = 20,
-        enhanced_features: Union[bool, List[str]] = False,
+        config: Optional[Dict[str, Any]] = None,
+        backend: Optional[str] = None,
+        max_workers: Optional[int] = None,
+        # Deprecated parameters for backward compatibility
+        enhanced_features: Optional[Union[bool, List[str]]] = None,
         dpi: Optional[int] = None,
         resize_config: Optional[Dict[str, Any]] = None,
-        bedrock_config: Dict[str, Any] = None,
-        backend: str = "textract",  # New parameter: "textract" or "bedrock"
-        preprocessing_config: Optional[
-            Dict[str, Any]
-        ] = None,  # New parameter for preprocessing
+        bedrock_config: Optional[Dict[str, Any]] = None,
+        preprocessing_config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the OCR service.
 
         Args:
             region: AWS region for services
+            config: Configuration dictionary containing all OCR settings
+            backend: OCR backend to use ("textract", "bedrock", or "none")
             max_workers: Maximum number of concurrent workers for page processing
-            enhanced_features: Controls Textract FeatureTypes for analyze_document API:
-                           - If False: Uses basic detect_document_text (faster, no features)
-                           - If List[str]: Uses analyze_document with specified features
-                              Valid features: TABLES, FORMS, SIGNATURES, LAYOUT
+
+            Deprecated parameters (use config instead):
+            enhanced_features: Controls Textract FeatureTypes for analyze_document API
             dpi: DPI (dots per inch) for image generation from PDF pages
-            resize_config: Optional dictionary containing image resizing configuration
-                          with 'target_width' and 'target_height' keys
-            backend: OCR backend to use ("textract" or "bedrock")
-            bedrock_config: Optional dictionary containing bedrock configuration if backend is "bedrock"
-            config: Configuration dictionary
+            resize_config: Image resizing configuration
+            bedrock_config: Bedrock configuration if backend is "bedrock"
+            preprocessing_config: Preprocessing configuration
 
         Raises:
-            ValueError: If invalid features are specified in enhanced_features
-                       or if an invalid backend is specified
+            ValueError: If invalid features are specified or if an invalid backend is specified
         """
-        self.region = region or os.environ.get("AWS_REGION", "us-east-1")
-        self.max_workers = max_workers
-        self.dpi = dpi
-        self.resize_config = resize_config
-        self.backend = backend.lower()
-        self.bedrock_config = bedrock_config
-        self.preprocessing_config = preprocessing_config
+        # Handle backward compatibility
+        if config is None and any(
+            [
+                enhanced_features is not None,
+                dpi is not None,
+                resize_config is not None,
+                bedrock_config is not None,
+                preprocessing_config is not None,
+            ]
+        ):
+            logger.warning(
+                "Using deprecated parameter pattern. Please migrate to using 'config' parameter. "
+                "See OCR README for migration guide."
+            )
+            # Use old parameters
+            self.region = region or os.environ.get("AWS_REGION", "us-east-1")
+            self.max_workers = max_workers or 20
+            self.dpi = dpi
+            self.resize_config = resize_config
+            self.backend = (backend or "textract").lower()
+            self.bedrock_config = bedrock_config
+            self.preprocessing_config = preprocessing_config
+            self.enhanced_features = enhanced_features
+        else:
+            # New pattern - extract from config
+            self.region = region or os.environ.get("AWS_REGION", "us-east-1")
+            self.config = config or {}
+            ocr_config = self.config.get("ocr", {})
+
+            # Extract backend
+            self.backend = (backend or ocr_config.get("backend", "textract")).lower()
+
+            # Extract max_workers
+            self.max_workers = max_workers or ocr_config.get("max_workers", 20)
+
+            # Extract DPI
+            self.dpi = ocr_config.get("dpi")
+
+            # Extract enhanced features
+            features_config = ocr_config.get("features", [])
+            if features_config:
+                self.enhanced_features = [
+                    feature["name"] for feature in features_config
+                ]
+            else:
+                self.enhanced_features = False
+
+            # Extract image configuration
+            image_config = ocr_config.get("image", {})
+
+            # Extract resize configuration
+            target_width = image_config.get("target_width")
+            target_height = image_config.get("target_height")
+            if target_width is not None and target_height is not None:
+                # Handle empty strings
+                if isinstance(target_width, str) and not target_width.strip():
+                    target_width = None
+                if isinstance(target_height, str) and not target_height.strip():
+                    target_height = None
+
+                if target_width is not None and target_height is not None:
+                    try:
+                        self.resize_config = {
+                            "target_width": int(target_width),
+                            "target_height": int(target_height),
+                        }
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Invalid resize configuration values: width={target_width}, height={target_height}"
+                        )
+                        self.resize_config = None
+                else:
+                    self.resize_config = None
+            else:
+                self.resize_config = None
+
+            # Extract preprocessing configuration
+            preprocessing_value = image_config.get("preprocessing")
+            if preprocessing_value is True or (
+                isinstance(preprocessing_value, str)
+                and preprocessing_value.lower() == "true"
+            ):
+                self.preprocessing_config = {"enabled": True}
+            else:
+                self.preprocessing_config = None
+
+            # Extract Bedrock configuration
+            if self.backend == "bedrock":
+                if all(
+                    key in ocr_config
+                    for key in ["model_id", "system_prompt", "task_prompt"]
+                ):
+                    self.bedrock_config = {
+                        "model_id": ocr_config["model_id"],
+                        "system_prompt": ocr_config["system_prompt"],
+                        "task_prompt": ocr_config["task_prompt"],
+                    }
+                else:
+                    self.bedrock_config = None
+            else:
+                self.bedrock_config = None
 
         # Log DPI setting for debugging
         logger.info(f"OCR Service initialized with DPI: {self.dpi}")
@@ -92,11 +184,11 @@ class OcrService:
             VALID_FEATURES = ["TABLES", "FORMS", "SIGNATURES", "LAYOUT"]
 
             # Validate features if provided as a list
-            if isinstance(enhanced_features, list):
+            if isinstance(self.enhanced_features, list):
                 # Check for invalid features
                 invalid_features = [
                     feature
-                    for feature in enhanced_features
+                    for feature in self.enhanced_features
                     if feature not in VALID_FEATURES
                 ]
                 if invalid_features:
@@ -106,15 +198,13 @@ class OcrService:
 
                 # Log the validated features
                 logger.info(
-                    f"OCR Service initialized with features: {enhanced_features}"
+                    f"OCR Service initialized with features: {self.enhanced_features}"
                 )
-
-            self.enhanced_features = enhanced_features
 
             # Initialize Textract client with adaptive retries
             adaptive_config = Config(
                 retries={"max_attempts": 100, "mode": "adaptive"},
-                max_pool_connections=max_workers * 3,
+                max_pool_connections=self.max_workers * 3,
             )
             self.textract_client = boto3.client(
                 "textract", region_name=self.region, config=adaptive_config
