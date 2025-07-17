@@ -108,11 +108,11 @@ When using the new pattern, the OCR service expects configuration in the followi
 ocr:
   backend: "textract"  # Options: "textract", "bedrock", "none"
   max_workers: 20
-  dpi: 150
   features:
     - name: "TABLES"
     - name: "FORMS"
   image:
+    dpi: 150  # DPI for PDF page extraction (default: 150)
     target_width: 1024
     target_height: 1024
     preprocessing: false  # Enable adaptive binarization
@@ -121,6 +121,20 @@ ocr:
   system_prompt: "You are an OCR system..."
   task_prompt: "Extract all text from this image..."
 ```
+
+### DPI Configuration
+
+The DPI (dots per inch) setting controls the resolution when extracting images from PDF pages:
+- **Default**: 150 DPI (good balance of quality and file size)
+- **Range**: 72-300 DPI
+- **Location**: `ocr.image.dpi` in the configuration
+- **Behavior**: 
+  - Only applies to PDF files (image files maintain their original resolution)
+  - Higher DPI = better quality but larger file sizes
+  - 150 DPI is recommended for most OCR use cases
+  - 300 DPI for documents with small text or fine details
+  - 100 DPI for simple documents to reduce processing time
+
 
 ## Migration Guide
 

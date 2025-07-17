@@ -341,49 +341,75 @@ For comprehensive details on configuring few-shot examples, including multimodal
 
 The classification service supports configurable image dimensions for optimal performance and quality:
 
-### Default Configuration
+### New Default Behavior (Preserves Original Resolution)
+
+**Important Change**: Empty strings or unspecified image dimensions now preserve the original document resolution for maximum classification accuracy:
 
 ```yaml
 classification:
   model: us.amazon.nova-pro-v1:0
-  # Image processing settings
+  # Image processing settings - preserves original resolution
   image:
-    target_width: 951    # Default width in pixels
-    target_height: 1268  # Default height in pixels
+    target_width: ""     # Empty string = no resizing (recommended)
+    target_height: ""    # Empty string = no resizing (recommended)
 ```
 
 ### Custom Image Dimensions
 
-Configure image dimensions based on your specific requirements:
+Configure specific dimensions when performance optimization is needed:
 
 ```yaml
-# For high-accuracy classification
+# For high-accuracy classification with controlled dimensions
 classification:
   image:
-    target_width: 1200
-    target_height: 1600
+    target_width: "1200"   # Resize to 1200 pixels wide
+    target_height: "1600"  # Resize to 1600 pixels tall
 
 # For fast processing with lower resolution
 classification:
   image:
-    target_width: 600
-    target_height: 800
+    target_width: "600"    # Smaller for faster processing
+    target_height: "800"   # Maintains reasonable quality
 ```
 
 ### Image Resizing Features
 
-- **Aspect Ratio Preservation**: Images are resized proportionally without distortion
+- **Original Resolution Preservation**: Empty strings preserve full document resolution for maximum accuracy
+- **Aspect Ratio Preservation**: Images are resized proportionally without distortion when dimensions are specified
 - **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
 - **High-Quality Resampling**: Better visual quality after resizing
-- **Performance Optimization**: Smaller, optimized images process faster with lower memory usage
+- **Performance Optimization**: Configurable dimensions allow balancing accuracy vs. speed
 
 ### Configuration Benefits
 
+- **Maximum Classification Accuracy**: Empty strings preserve full document resolution for best results
 - **Service-Specific Tuning**: Each service can use optimal image dimensions
 - **Runtime Configuration**: No code changes needed to adjust image processing
-- **Backward Compatibility**: Default values maintain existing behavior
-- **Memory Optimization**: Configurable dimensions allow memory optimization
-- **Better Resource Utilization**: Service-specific sizing reduces unnecessary processing
+- **Backward Compatibility**: Existing numeric values continue to work as before
+- **Memory Optimization**: Configurable dimensions allow resource optimization
+- **Better Resource Utilization**: Choose between accuracy (original resolution) and performance (smaller dimensions)
+
+### Migration from Previous Versions
+
+**Previous Behavior**: Empty strings defaulted to 951x1268 pixel resizing
+**New Behavior**: Empty strings preserve original image resolution
+
+If you were relying on the previous default resizing behavior, explicitly set dimensions:
+
+```yaml
+# To maintain previous default behavior
+classification:
+  image:
+    target_width: "951"
+    target_height: "1268"
+```
+
+### Best Practices for Classification
+
+1. **Use Empty Strings for High Accuracy**: For critical document classification, use empty strings to preserve original resolution
+2. **Consider Document Types**: Complex layouts benefit from higher resolution, simple text documents may work well with smaller dimensions
+3. **Test Performance Impact**: Higher resolution images provide better accuracy but consume more resources
+4. **Monitor Processing Time**: Balance classification accuracy with processing speed based on your requirements
 
 ## JSON and YAML Output Support
 

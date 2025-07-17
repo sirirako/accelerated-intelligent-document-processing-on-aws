@@ -14,6 +14,11 @@ SPDX-License-Identifier: MIT-0
   - Fixed view toggle behavior - switching between views no longer closes the viewer window
   - Reordered view buttons to: Markdown View, Text Confidence View, Text View for better user experience
 
+- **Enhanced OCR DPI Configuration for PDF files**
+  - DPI for PDF image conversion is now configurable in the configuration editor under OCR image processing settings
+  - Default DPI improved from 96 to 150 DPI for better default quality and OCR accuracy
+  - Configurable through Web UI without requiring code changes or redeployment
+
 ### Changed
 - **Converted text confidence data format from JSON to markdown table for improved readability and reduced token usage**
   - Removed unnecessary "page_count" field
@@ -26,8 +31,13 @@ SPDX-License-Identifier: MIT-0
   - Aligned with classification service pattern for better consistency across IDP services
   - Backward compatibility maintained - old parameter pattern still supported with deprecation warning
   - Updated all lambda functions and notebooks to use new simplified pattern
+- Removed fixed image target_height and target_width from default configurations, so images are processed in original resolution by default.
+
 
 ### Fixed
+- **Fixed Image Resizing Behavior for High-Resolution Documents**
+  - Fixed issue where empty strings in image configuration were incorrectly resizing images to default 951x1268 pixels instead of preserving original resolution
+  - Empty strings (`""`) in `target_width` and `target_height` configuration now preserve original document resolution for maximum processing accuracy
 - Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized to lower resolution with lost quality
 - Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
 - Fixed issue where PDF files were being downloaded instead of displayed inline
