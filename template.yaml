@@ -1589,12 +1589,6 @@ Resources:
         S3Encryptions:
           - S3EncryptionMode: SSE-KMS
             KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        CloudWatchEncryption:
-          CloudWatchEncryptionMode: SSE-KMS
-          KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        JobBookmarksEncryption:
-          JobBookmarksEncryptionMode: CSE-KMS
-          KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
 
   DocumentSectionsCrawler:
     Type: AWS::Glue::Crawler
