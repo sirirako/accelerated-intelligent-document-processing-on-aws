@@ -44,82 +44,15 @@ def handler(event, context):
     
     t0 = time.time()
     
-    # Load configuration and initialize the OCR service
+    # Load configuration and initialize the OCR service using new simplified pattern
     config = get_config()
-    ocr_config = config.get("ocr", {})
-    features = [feature['name'] for feature in ocr_config.get("features", [])]
-    image_config = ocr_config.get("image", {})
+    backend = config.get("ocr", {}).get("backend", "textract")
     
-    # Extract resize configuration if present
-    resize_config = None
-    if image_config:
-        target_width = image_config.get("target_width")
-        target_height = image_config.get("target_height")
-        if target_width is not None and target_height is not None:
-            # Handle empty strings and convert to int
-            if isinstance(target_width, str) and not target_width.strip():
-                target_width = None
-            if isinstance(target_height, str) and not target_height.strip():
-                target_height = None
-            
-            # Only proceed if we have valid values after cleaning
-            if target_width is not None and target_height is not None:
-                try:
-                    target_width = int(target_width)
-                    target_height = int(target_height)
-                    resize_config = {
-                        "target_width": target_width,
-                        "target_height": target_height
-                    }
-                    logger.info(f"Image resize configuration found: {resize_config}")
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Invalid resize configuration values: {e}")
-                    logger.info("Skipping image resize due to invalid values")
-            else:
-                logger.info("No valid image resize configuration found in ocr.image config")
-        else:
-            logger.info("No image resize configuration found in ocr.image config")
-    else:
-        logger.info("No image configuration found in ocr config")
-
-    # Extract preprocessing configuration if present
-    preprocessing_config = None
-    if image_config:
-        preprocessing_value = image_config.get("preprocessing")
-        # Handle both boolean and string values
-        if preprocessing_value is True or (isinstance(preprocessing_value, str) and preprocessing_value.lower() == 'true'):
-            preprocessing_config = {"enabled": True}
-            logger.info("Image preprocessing (adaptive binarization) enabled")
-        else:
-            logger.info("Image preprocessing disabled")
-    else:
-        logger.info("Image preprocessing disabled")
-
-    # Extract Bedrock configuration if present
-    bedrock_config = None
-    # Check if bedrock configuration exists directly in ocr_config
-    if ocr_config.get("model_id") and ocr_config.get("system_prompt") and ocr_config.get("task_prompt"):
-        bedrock_config = {
-            "model_id": ocr_config.get("model_id"),
-            "system_prompt": ocr_config.get("system_prompt"),
-            "task_prompt": ocr_config.get("task_prompt"),
-        }
-        logger.info(f"Bedrock OCR configuration found: model_id={bedrock_config['model_id']}")
-    else:
-        logger.info("No Bedrock configuration found in ocr config (model_id, system_prompt, or task_prompt missing)")
-    
-    # Get OCR backend from config (default to "textract" if not specified)
-    backend = ocr_config.get("backend", "textract")
-    
-    logger.info(f"Initializing OCR with backend: {backend}, MAX_WORKERS: {MAX_WORKERS}, enhanced_features: {features}")
+    logger.info(f"Initializing OCR with backend: {backend}")
     service = ocr.OcrService(
         region=region,
-        max_workers=MAX_WORKERS,
-        enhanced_features=features,
-        resize_config=resize_config,
-        bedrock_config=bedrock_config,
-        backend=backend,
-        preprocessing_config=preprocessing_config,
+        config=config,
+        backend=backend
     )
     
     # Process the document - the service will read the PDF content directly

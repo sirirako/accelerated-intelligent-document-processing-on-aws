@@ -14,6 +14,14 @@ SPDX-License-Identifier: MIT-0
   - Fixed view toggle behavior - switching between views no longer closes the viewer window
   - Reordered view buttons to: Markdown View, Text Confidence View, Text View for better user experience
 
+- **Simplified OCR Service Initialization**
+  - OCR service now accepts a single `config` dictionary parameter for cleaner, more consistent API
+  - Aligned with classification service pattern for better consistency across IDP services
+  - Automatic extraction of all OCR settings from configuration dictionary
+  - Backward compatibility maintained - old parameter pattern still supported with deprecation warning
+  - Updated all lambda functions and notebooks to use new simplified pattern
+  - Comprehensive migration guide added to OCR README
+
 ### Changed
 - **Converted text confidence data format from JSON to markdown table for improved readability and reduced token usage**
   - Removed unnecessary "page_count" field
