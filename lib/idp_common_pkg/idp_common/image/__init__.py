@@ -11,8 +11,8 @@ from ..utils import parse_s3_uri
 logger = logging.getLogger(__name__)
 
 def resize_image(image_data: bytes, 
-                target_width: int = 951, 
-                target_height: int = 1268,
+                target_width: Optional[int] = None, 
+                target_height: Optional[int] = None,
                 allow_upscale: bool = False) -> bytes:
     """
     Resize an image to fit within target dimensions while preserving aspect ratio.
@@ -21,13 +21,31 @@ def resize_image(image_data: bytes,
     
     Args:
         image_data: Raw image bytes
-        target_width: Target width in pixels
-        target_height: Target height in pixels
+        target_width: Target width in pixels (None or empty string = no resize)
+        target_height: Target height in pixels (None or empty string = no resize)
         allow_upscale: Whether to allow making the image larger than original
         
     Returns:
         Resized image bytes in original format (or JPEG if format cannot be preserved)
     """
+    # Handle empty strings - convert to None
+    if isinstance(target_width, str) and not target_width.strip():
+        target_width = None
+    if isinstance(target_height, str) and not target_height.strip():
+        target_height = None
+    
+    # If either dimension is None, return original image unchanged
+    if target_width is None or target_height is None:
+        logger.info("No resize requested (width or height is None/empty), returning original image")
+        return image_data
+    
+    # Convert to int if needed
+    try:
+        target_width = int(target_width)
+        target_height = int(target_height)
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid resize dimensions: width={target_width}, height={target_height}, returning original image")
+        return image_data
     image = Image.open(io.BytesIO(image_data))
     current_width, current_height = image.size
     original_format = image.format  # Store original format
@@ -78,16 +96,16 @@ def resize_image(image_data: bytes,
         return image_data
 
 def prepare_image(image_source: Union[str, bytes],
-                 target_width: int = 951, 
-                 target_height: int = 1268,
+                 target_width: Optional[int] = None, 
+                 target_height: Optional[int] = None,
                  allow_upscale: bool = False) -> bytes:
     """
     Prepare an image for model input from either S3 URI or raw bytes
     
     Args:
         image_source: Either an S3 URI (s3://bucket/key) or raw image bytes
-        target_width: Target width in pixels
-        target_height: Target height in pixels
+        target_width: Target width in pixels (None or empty string = no resize)
+        target_height: Target height in pixels (None or empty string = no resize)
         allow_upscale: Whether to allow making the image larger than original
         
     Returns:

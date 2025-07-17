@@ -617,31 +617,10 @@ class ClassificationService:
                 target_width = image_config.get("target_width")
                 target_height = image_config.get("target_height")
 
-                if target_width is not None and target_height is not None:
-                    # Handle empty strings and convert to int
-                    if isinstance(target_width, str) and not target_width.strip():
-                        target_width = None
-                    if isinstance(target_height, str) and not target_height.strip():
-                        target_height = None
-
-                    # Only proceed if we have valid values after cleaning
-                    if target_width is not None and target_height is not None:
-                        try:
-                            target_width = int(target_width)
-                            target_height = int(target_height)
-                            image_content = image.prepare_image(
-                                image_uri, target_width, target_height
-                            )
-                        except (ValueError, TypeError) as e:
-                            logger.warning(f"Invalid resize configuration values: {e}")
-                            # Fall back to default image preparation
-                            image_content = image.prepare_image(image_uri)
-                    else:
-                        image_content = image.prepare_image(image_uri)
-                else:
-                    image_content = image.prepare_image(
-                        image_uri
-                    )  # Uses function defaults
+                # Just pass the values directly - prepare_image handles empty strings/None
+                image_content = image.prepare_image(
+                    image_uri, target_width, target_height
+                )
             except Exception as e:
                 logger.warning(f"Failed to load image content from {image_uri}: {e}")
                 # Continue without image content
