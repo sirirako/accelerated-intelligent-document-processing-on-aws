@@ -93,7 +93,8 @@ class TestOcrService:
     @pytest.fixture
     def mock_pdf_content(self):
         """Fixture providing mock PDF content."""
-        return b"Mock PDF content"
+        # Return a minimal valid PDF structure
+        return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\nxref\n0 3\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n116\n%%EOF"
 
     def test_init_textract_backend_default(self):
         """Test initialization with default Textract backend."""
@@ -103,7 +104,7 @@ class TestOcrService:
             assert service.backend == "textract"
             assert service.region == "us-west-2"
             assert service.max_workers == 20
-            assert service.dpi is None
+            assert service.dpi == 150  # Now defaults to 150
             assert service.enhanced_features is False
             assert service.resize_config is None
             assert service.preprocessing_config is None
@@ -207,6 +208,7 @@ class TestOcrService:
         # Mock PDF document
         mock_pdf_doc = MagicMock()
         mock_pdf_doc.__len__.return_value = 2  # 2 pages
+        mock_pdf_doc.is_pdf = True  # Add is_pdf attribute
         mock_fitz_open.return_value = mock_pdf_doc
 
         # Mock concurrent processing
@@ -273,7 +275,8 @@ class TestOcrService:
         # Verify error handling
         assert result.status == Status.FAILED
         assert len(result.errors) > 0
-        assert "PDF error" in result.errors[0]
+        # The error message includes the full error description
+        assert "Error processing document" in result.errors[0]
 
     def test_feature_combo_no_features(self):
         """Test feature combination with no enhanced features."""

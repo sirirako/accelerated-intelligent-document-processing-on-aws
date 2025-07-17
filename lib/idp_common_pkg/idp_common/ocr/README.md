@@ -51,9 +51,14 @@ The service supports three OCR backends, each with different capabilities and us
 
 ## Usage Example
 
+### New Simplified Pattern (Recommended)
+
 ```python
-from idp_common import ocr
+from idp_common import ocr, get_config
 from idp_common.models import Document
+
+# Load configuration (typically from DynamoDB)
+config = get_config()
 
 # Create or retrieve a Document object with input/output details
 document = Document(
@@ -63,14 +68,11 @@ document = Document(
     output_bucket="output-bucket"
 )
 
-# Initialize OCR service
+# Initialize OCR service with config dictionary
 ocr_service = ocr.OcrService(
     region='us-east-1',
-    max_workers=20,
-    enhanced_features=False  # Default: basic text detection (faster)
-    # enhanced_features=["TABLES", "FORMS"]  # For table and form recognition
-    # enhanced_features=["LAYOUT"]  # For layout analysis
-    # enhanced_features=["TABLES", "FORMS", "SIGNATURES"]  # Multiple features
+    config=config,  # Pass entire config dictionary
+    backend='textract'  # Optional: override backend from config
 )
 
 # Process document - this will automatically get the PDF from S3
@@ -83,6 +85,102 @@ for page_id, page in processed_document.pages.items():
     print(f"Page {page_id}: Text and Markdown at {page.parsed_text_uri}")
     print(f"Page {page_id}: Text confidence data at {page.text_confidence_uri}")
 ```
+
+### Legacy Pattern (Deprecated)
+
+```python
+# The old pattern with individual parameters is still supported but deprecated
+ocr_service = ocr.OcrService(
+    region='us-east-1',
+    max_workers=20,
+    enhanced_features=False,  # or ["TABLES", "FORMS"]
+    dpi=150,
+    resize_config={"target_width": 1024, "target_height": 1024},
+    backend='textract'
+)
+```
+
+## Configuration Structure
+
+When using the new pattern, the OCR service expects configuration in the following structure:
+
+```yaml
+ocr:
+  backend: "textract"  # Options: "textract", "bedrock", "none"
+  max_workers: 20
+  features:
+    - name: "TABLES"
+    - name: "FORMS"
+  image:
+    dpi: 150  # DPI for PDF page extraction (default: 150)
+    target_width: 1024
+    target_height: 1024
+    preprocessing: false  # Enable adaptive binarization
+  # For Bedrock backend only:
+  model_id: "anthropic.claude-3-sonnet-20240229-v1:0"
+  system_prompt: "You are an OCR system..."
+  task_prompt: "Extract all text from this image..."
+```
+
+### DPI Configuration
+
+The DPI (dots per inch) setting controls the resolution when extracting images from PDF pages:
+- **Default**: 150 DPI (good balance of quality and file size)
+- **Range**: 72-300 DPI
+- **Location**: `ocr.image.dpi` in the configuration
+- **Behavior**: 
+  - Only applies to PDF files (image files maintain their original resolution)
+  - Higher DPI = better quality but larger file sizes
+  - 150 DPI is recommended for most OCR use cases
+  - 300 DPI for documents with small text or fine details
+  - 100 DPI for simple documents to reduce processing time
+
+
+## Migration Guide
+
+To migrate from the old pattern to the new pattern:
+
+1. **In Lambda functions:**
+   ```python
+   # Old pattern
+   features = [feature['name'] for feature in ocr_config.get("features", [])]
+   service = ocr.OcrService(
+       region=region,
+       max_workers=MAX_WORKERS,
+       enhanced_features=features,
+       resize_config=resize_config,
+       backend=backend
+   )
+   
+   # New pattern
+   config = get_config()
+   service = ocr.OcrService(
+       region=region,
+       config=config,
+       backend=config.get("ocr", {}).get("backend", "textract")
+   )
+   ```
+
+2. **In notebooks:**
+   ```python
+   # Old pattern
+   ocr_service = ocr.OcrService(
+       region=region,
+       enhanced_features=features
+   )
+   
+   # New pattern
+   ocr_service = ocr.OcrService(
+       region=region,
+       config=CONFIG  # Where CONFIG is your loaded configuration
+   )
+   ```
+
+The new pattern provides:
+- Cleaner, more consistent API across all IDP services
+- Easier configuration management
+- No need to extract individual parameters
+- Future-proof design for adding new features
 
 ## Text Confidence Data
 
