@@ -23,21 +23,11 @@ SPDX-License-Identifier: MIT-0
   - Markdown table headers now explicitly left-aligned using `|:-----|:-----------|` format for consistent appearance
 
 
-
 ### Fixed
-- **OCR Service Image Processing for PNG/JPG Files**
-  - Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized
-  - PNG and JPG files now preserve their original format when stored in S3
-  - Image resolution is preserved by default unless explicitly configured via `resize_config`
-  - DPI settings now only apply to PDF files, not to image files
-  - Resolves issue where PNG files were being converted to lower resolution JPG files
-- **Image File Display in Document Viewer**
-  - Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
-  - Images were incorrectly loaded in iframes which caused browsers to download them instead of displaying
-  - Added specific handling for image file types to use `<img>` tag instead of iframe
-  - Images now display inline with responsive sizing (max-width: 100%, max-height: 800px)
-  - Added error handling with fallback download link if image fails to load
-  - Maintains consistent UI with other document types (PDF, Excel, Word)
+- Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized to lower resolution with lost quality
+- Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
+- Fixed issue where PDF files were being downloaded instead of displayed inline
+
 
 
 ## [0.3.7]
