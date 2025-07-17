@@ -668,66 +668,11 @@ class OcrService:
                 pix = None
             else:
                 # Fallback: extract as rendered image
-                # PyMuPDF may downsample images when loading them
-                # We need to detect this and apply appropriate zoom to restore original resolution
-
-                # First, check with PIL what the original dimensions should be
-                try:
-                    import io
-
-                    from PIL import Image as PILImage
-
-                    # Read the original file to get true dimensions
-                    # We need to get the file content from S3 or local path
-                    # For now, let's get a default pixmap and check if we need to zoom
-                    test_pix = page.get_pixmap()
-                    test_width = test_pix.width
-                    test_height = test_pix.height
-
-                    # Common original resolutions for images that get downsampled
-                    # If the image appears to be downsampled (small dimensions), apply zoom
-                    if test_width < 1000 and test_height < 1000:
-                        # This appears to be downsampled
-                        # Try to detect the original resolution by checking common ratios
-                        # For a 460x594 image that should be 1913x2475, the ratio is ~4.16
-
-                        # Calculate zoom based on common patterns
-                        # If dimensions are around 460x594, it's likely from a ~1900x2500 original
-                        if 450 <= test_width <= 470 and 580 <= test_height <= 610:
-                            # More precise zoom factor for this specific pattern
-                            # 1913/460 ≈ 4.159, 2475/594 ≈ 4.167
-                            zoom_factor = 4.159  # Specific for this resolution pattern
-                        elif (
-                            test_width < 500
-                        ):  # Very small, likely needs significant zoom
-                            zoom_factor = 4.0  # Default high zoom for small images
-                        elif test_width < 800:  # Medium small
-                            zoom_factor = 2.5
-                        else:
-                            zoom_factor = 1.0  # Already reasonable size
-
-                        if zoom_factor > 1.0:
-                            matrix = fitz.Matrix(zoom_factor, zoom_factor)
-                            pix = page.get_pixmap(matrix=matrix)
-                            logger.debug(
-                                f"Applied zoom factor {zoom_factor} to restore resolution: {pix.width}x{pix.height}"
-                            )
-                        else:
-                            pix = test_pix
-                            logger.debug(
-                                f"No zoom needed, using resolution: {pix.width}x{pix.height}"
-                            )
-                    else:
-                        # Already at reasonable resolution
-                        pix = test_pix
-                        logger.debug(
-                            f"Image already at good resolution: {pix.width}x{pix.height}"
-                        )
-
-                except Exception as e:
-                    # If anything fails, just use default
-                    logger.debug(f"Error detecting resolution, using default: {e}")
-                    pix = page.get_pixmap()
+                # This path should rarely be used since we pass original_file_content for images
+                pix = page.get_pixmap()
+                logger.debug(
+                    f"Using PyMuPDF fallback for image extraction: {pix.width}x{pix.height}"
+                )
 
                 img_data = pix.tobytes("png")
                 img_ext = "png"
