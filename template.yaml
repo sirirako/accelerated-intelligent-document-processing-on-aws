@@ -1581,20 +1581,14 @@ Resources:
           - Name: date
             Type: string
 
-  DocumentSectionsCrawlerSecurityConfiguration:
+  DocumentSectionsCrawlerSecurityConfigurationV2:
     Type: AWS::Glue::SecurityConfiguration
     Properties:
-      Name: !Sub "${AWS::StackName}-document-sections-crawler-security-config"
+      Name: !Sub "${AWS::StackName}-document-sections-crawler-security-config-v2"
       EncryptionConfiguration:
         S3Encryptions:
           - S3EncryptionMode: SSE-KMS
             KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        CloudWatchEncryption:
-          CloudWatchEncryptionMode: SSE-KMS
-          KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        JobBookmarksEncryption:
-          JobBookmarksEncryptionMode: CSE-KMS
-          KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
 
   DocumentSectionsCrawler:
     Type: AWS::Glue::Crawler
@@ -1603,7 +1597,7 @@ Resources:
       Description: "Crawler to discover document section tables in the reporting bucket with conservative schema handling"
       Role: !GetAtt DocumentSectionsCrawlerRole.Arn
       DatabaseName: !Ref ReportingDatabase
-      CrawlerSecurityConfiguration: !Ref DocumentSectionsCrawlerSecurityConfiguration
+      CrawlerSecurityConfiguration: !Ref DocumentSectionsCrawlerSecurityConfigurationV2
       Targets:
         S3Targets:
           - Path: !Sub 
