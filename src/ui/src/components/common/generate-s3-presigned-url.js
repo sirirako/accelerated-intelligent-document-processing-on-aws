@@ -34,7 +34,7 @@ const parseS3Url = (s3Url) => {
   return { bucket, key };
 };
 
-const generateS3PresignedUrl = async (url, credentials) => {
+const generateS3PresignedUrl = async (url, credentials, options = {}) => {
   // If it's already a special URL (like detailType), return as is
   if (url.includes('detailType')) {
     return url;
@@ -72,7 +72,24 @@ const generateS3PresignedUrl = async (url, credentials) => {
 
     // Parse the URL for the presigner
     const s3ObjectUrl = parseUrl(newUrl);
+
+    // Determine file type from key to set appropriate content disposition
+    const fileExtension = key.split('.').pop().toLowerCase();
+    const isDisplayableFile = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(fileExtension);
+
+    // Add query parameters for inline display if it's a displayable file type
+    if (isDisplayableFile && options.forceInline !== false) {
+      s3ObjectUrl.query = s3ObjectUrl.query || {};
+      s3ObjectUrl.query['response-content-disposition'] = 'inline';
+
+      // Set appropriate content type for PDFs to ensure proper display
+      if (fileExtension === 'pdf') {
+        s3ObjectUrl.query['response-content-type'] = 'application/pdf';
+      }
+    }
+
     logger.debug('Canonical URL:', newUrl);
+    logger.debug('Query parameters:', s3ObjectUrl.query);
 
     // Create presigner instance
     const presigner = new S3RequestPresigner({

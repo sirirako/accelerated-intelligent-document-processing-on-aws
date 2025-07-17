@@ -239,6 +239,44 @@ const FileViewer = ({ objectKey }) => {
         </Box>
       );
     }
+    // For image files, display them inline using img tag
+    if (fileType === 'image') {
+      return (
+        <Box className="document-container" padding={{ top: 's' }}>
+          <Box textAlign="center">
+            <img
+              src={presignedUrl}
+              alt="Document preview"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '800px',
+                height: 'auto',
+                objectFit: 'contain',
+              }}
+              onError={(e) => {
+                // On error, replace the image with a download link
+                const container = e.target.parentElement;
+                container.innerHTML = `
+                  <div style="padding: 48px;">
+                    <h3>🖼️ Image Document</h3>
+                    <p>Unable to display this image.</p>
+                    <p>
+                      <a href="${presignedUrl}" target="_blank" rel="noopener noreferrer" 
+                         style="display: inline-block; padding: 12px 24px; background-color: #0073bb; 
+                                color: white; text-decoration: none; border-radius: 4px; 
+                                font-weight: bold; margin: 10px;">
+                        📥 Download Image
+                      </a>
+                    </p>
+                  </div>
+                `;
+              }}
+            />
+          </Box>
+        </Box>
+      );
+    }
+
     // For Excel and Docx files, provide download link since browsers can't display them inline
     if (fileType === 'excel' || fileType === 'docx') {
       const fileTypeName = fileType === 'excel' ? 'Excel' : 'Word';

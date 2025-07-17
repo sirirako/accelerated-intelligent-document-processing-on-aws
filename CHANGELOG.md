@@ -21,10 +21,17 @@ SPDX-License-Identifier: MIT-0
   - Reduces prompt size for assessment service while improving UI readability
   - OCR confidence values now rounded to 1 decimal point (e.g., 99.1, 87.3) for cleaner display
   - Markdown table headers now explicitly left-aligned using `|:-----|:-----------|` format for consistent appearance
-
-
+- **Simplified OCR Service Initialization**
+  - OCR service now accepts a single `config` dictionary parameter for cleaner, more consistent API
+  - Aligned with classification service pattern for better consistency across IDP services
+  - Backward compatibility maintained - old parameter pattern still supported with deprecation warning
+  - Updated all lambda functions and notebooks to use new simplified pattern
 
 ### Fixed
+- Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized to lower resolution with lost quality
+- Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
+- Fixed issue where PDF files were being downloaded instead of displayed inline
+
 
 
 ## [0.3.7]
