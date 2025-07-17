@@ -28,6 +28,7 @@ SPDX-License-Identifier: MIT-0
   - Updated all lambda functions and notebooks to use new simplified pattern
 
 ### Fixed
+- Fixed issue where empty image configuration were incorrectly resizing images to default 951x1268 pixels instead of preserving original resolution
 - Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized to lower resolution with lost quality
 - Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
 - Fixed issue where PDF files were being downloaded instead of displayed inline

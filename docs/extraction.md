@@ -403,50 +403,77 @@ Examples are class-specific - only examples from the same document class being p
 
 The extraction service supports configurable image dimensions for optimal performance and quality:
 
-### Default Configuration
+### New Default Behavior (Preserves Original Resolution)
+
+**Important Change**: Empty strings or unspecified image dimensions now preserve the original document resolution for maximum extraction accuracy:
 
 ```yaml
 extraction:
   model: us.amazon.nova-pro-v1:0
-  # Image processing settings
+  # Image processing settings - preserves original resolution
   image:
-    target_width: 951    # Default width in pixels
-    target_height: 1268  # Default height in pixels
+    target_width: ""     # Empty string = no resizing (recommended)
+    target_height: ""    # Empty string = no resizing (recommended)
 ```
 
 ### Custom Image Dimensions
 
-Configure image dimensions based on your extraction requirements:
+Configure specific dimensions when performance optimization is needed:
 
 ```yaml
-# For high-accuracy extraction with detailed visual analysis
+# For high-accuracy extraction with controlled dimensions
 extraction:
   image:
-    target_width: 1200
-    target_height: 1600
+    target_width: "1200"   # Resize to 1200 pixels wide
+    target_height: "1600"  # Resize to 1600 pixels tall
 
 # For fast processing with standard resolution
 extraction:
   image:
-    target_width: 800
-    target_height: 1000
+    target_width: "800"    # Smaller for faster processing
+    target_height: "1000"  # Maintains good quality
 ```
 
 ### Image Resizing Features
 
-- **Aspect Ratio Preservation**: Images are resized proportionally without distortion
+- **Original Resolution Preservation**: Empty strings preserve full document resolution for maximum extraction accuracy
+- **Aspect Ratio Preservation**: Images are resized proportionally without distortion when dimensions are specified
 - **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
 - **High-Quality Resampling**: Better visual quality after resizing for improved field detection
-- **Performance Optimization**: Optimized images reduce processing time and memory usage
+- **Performance Optimization**: Configurable dimensions allow balancing accuracy vs. speed
 
 ### Configuration Benefits for Extraction
 
-- **Enhanced Field Detection**: Appropriate image resolution improves accuracy for table and form extraction
-- **Visual Element Processing**: Better handling of signatures, stamps, checkboxes, and visual indicators
+- **Maximum Extraction Accuracy**: Empty strings preserve full document resolution for best field detection
+- **Enhanced Field Detection**: Original resolution improves accuracy for table and form extraction
+- **Visual Element Processing**: Better handling of signatures, stamps, checkboxes, and visual indicators at full resolution
 - **OCR Error Correction**: Higher quality images help verify and correct text extraction results
 - **Service-Specific Tuning**: Optimize image dimensions for different document types and extraction complexity
 - **Runtime Configuration**: Adjust image processing without code changes
-- **Resource Optimization**: Balance quality and performance based on extraction requirements
+- **Resource Optimization**: Choose between accuracy (original resolution) and performance (smaller dimensions)
+
+### Migration from Previous Versions
+
+**Previous Behavior**: Empty strings defaulted to 951x1268 pixel resizing
+**New Behavior**: Empty strings preserve original image resolution
+
+If you were relying on the previous default resizing behavior, explicitly set dimensions:
+
+```yaml
+# To maintain previous default behavior
+extraction:
+  image:
+    target_width: "951"
+    target_height: "1268"
+```
+
+### Best Practices for Extraction
+
+1. **Use Empty Strings for High Accuracy**: For critical data extraction, use empty strings to preserve original resolution
+2. **Consider Document Complexity**: Forms and tables benefit significantly from higher resolution
+3. **Test with Representative Documents**: Evaluate extraction accuracy with your specific document types
+4. **Monitor Resource Usage**: Higher resolution images consume more memory and processing time
+5. **Balance Accuracy vs Performance**: Choose appropriate settings based on your accuracy requirements and processing volume
 
 ## JSON and YAML Output Support
 
