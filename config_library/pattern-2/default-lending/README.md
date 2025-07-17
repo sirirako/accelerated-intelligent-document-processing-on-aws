@@ -34,12 +34,12 @@ It includes specialized settings for document classification, detailed financial
 
 The configuration defines 6 specialized lending document classes, each with comprehensive attributes for detailed financial data extraction:
 
-- **payslip**: Employee wage statements with detailed earnings, deductions, taxes, and year-to-date totals (24 attributes)
-- **driver-licenses**: Government-issued identification documents with personal information and driving privileges (22 attributes)
-- **bank-checks**: Written financial instruments with payment details and account information (11 attributes)
-- **bank-statement**: Periodic financial reports with account activity and transaction details (10 attributes)
-- **w2**: Annual tax documents with comprehensive wage and tax withholding information (26 attributes)
-- **homeowners-insurance-application**: Insurance coverage applications with detailed applicant and property information (37 attributes)
+- **Payslip**: Employee wage statements with detailed earnings, deductions, taxes, and year-to-date totals (21 simple attributes, 3 group attributes, 3 list attributes)
+- **US-drivers-licenses**: Government-issued identification documents with personal information and driving privileges (7 simple attributes, 3 group attributes, 2 list attributes)
+- **Bank-checks**: Written financial instruments with payment details and account information (11 simple attributes)
+- **Bank-Statement**: Periodic financial reports with account activity and transaction details (8 simple attributes, 2 list attributes)
+- **W2**: Annual tax documents with comprehensive wage and tax withholding information (2 simple attributes, 5 group attributes, 2 list attributes)
+- **Homeowners-Insurance-Application**: Insurance coverage applications with detailed applicant and property information (10 simple attributes, 3 group attributes)
 
 ### Classification Settings
 
