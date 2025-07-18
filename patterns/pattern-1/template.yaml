@@ -599,6 +599,7 @@ Resources:
           BDA_PROJECT_ARN: !Ref BDAProjectArn
           WORKING_BUCKET: !Ref WorkingBucket
           SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
       Policies:
@@ -611,6 +612,8 @@ Resources:
             BucketName: !Ref OutputBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref BDAMetadataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData

@@ -145,31 +145,36 @@ Resources:
                 description: Configure image resolution and processing options for OCR
                 order: 0
                 properties:
+                  dpi:
+                    type: number
+                    description: "DPI (dots per inch) for extracting images from PDF pages. Higher values produce better quality but larger images. Default: 150"
+                    minimum: 72
+                    maximum: 300
+                    default: 150
+                    order: 0
                   target_width:
                     type: number
-                    description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
-                    minimum: 100
-                    maximum: 3500
-                    order: 0
-                  target_height:
-                    type: number
-                    description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
+                    description: "Target image width in pixels. Images larger than this will be resized."
                     minimum: 100
                     maximum: 3500
                     order: 1
+                  target_height:
+                    type: number
+                    description: "Target image height in pixels. Images larger than this will be resized."
+                    minimum: 100
+                    maximum: 3500
+                    order: 2
                   preprocessing:
                     type: boolean
                     description: "Apply adaptive binarization preprocessing to improve OCR accuracy on documents with uneven lighting or low contrast. Warning: May slightly increase processing time."
                     default: false
-                    order: 2
+                    order: 3
               backend:
                 type: string
                 description: "OCR backend to use: 'textract' for AWS Textract, 'bedrock' for LLM-based OCR, 'none' for image-only processing without OCR"
                 enum: ["textract", "bedrock", "none"]
                 default: "textract"
-                order: 1
+                order: 3
               model_id:
                 type: string
                 description: "Bedrock model ID (only used if backend is 'bedrock')"
@@ -448,20 +453,18 @@ Resources:
               image:
                 type: object
                 sectionLabel: Image Processing Settings
-                description: Configure image resolution and processing options for classification
+                description: Configure image resolution and processing options for image attachments in classification
                 order: 0
                 properties:
                   target_width:
                     type: number
                     description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
                     description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
                     minimum: 100
                     maximum: 3500
                     order: 1
@@ -531,20 +534,18 @@ Resources:
               image:
                 type: object
                 sectionLabel: Image Processing Settings
-                description: Configure image resolution and processing options for extraction
+                description: Configure image resolution and processing options for for image attachments in extraction
                 order: 0
                 properties:
                   target_width:
                     type: number
                     description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
                     description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
                     minimum: 100
                     maximum: 3500
                     order: 1
@@ -600,20 +601,18 @@ Resources:
               image:
                 type: object
                 sectionLabel: Image Processing Settings
-                description: Configure image resolution and processing options for assessment
+                description: Configure image resolution and processing options for for image attachments in assessment
                 order: 0
                 properties:
                   target_width:
                     type: number
                     description: "Target image width in pixels. Images larger than this will be resized. Default: 951"
-                    default: 951
                     minimum: 100
                     maximum: 3500
                     order: 0
                   target_height:
                     type: number
                     description: "Target image height in pixels. Images larger than this will be resized. Default: 1268"
-                    default: 1268
                     minimum: 100
                     maximum: 3500
                     order: 1

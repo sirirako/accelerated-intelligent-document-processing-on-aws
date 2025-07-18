@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-notes: Default settings
+notes: Default settings for the rvl-cdip-sample-with-few-shot-examples config
 ocr:
   backend: "textract"  # Default to Textract for backward compatibility
   model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
@@ -12,8 +12,9 @@ ocr:
     - name: TABLES
     - name: SIGNATURES
   image:
-    target_width: '951'
-    target_height: '1268'
+    dpi: '150'
+    target_width: ''
+    target_height: ''
 classes:
   - name: letter
     description: >-
@@ -647,8 +648,8 @@ classes:
 
 classification:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   classificationMethod: multimodalPageLevelClassification
   model: us.amazon.nova-pro-v1:0
   temperature: '0.0'
@@ -656,62 +657,53 @@ classification:
   top_k: '5'
   max_tokens: '4096'
   system_prompt: >-
-    You are a document classification system that analyzes business documents,
-    forms, and publications. Your sole task is to classify documents into
-    categories based on their visual layout and textual content. You must:
+    You are a multimodal document classification expert that analyzes business documents using both visual layout and textual content. Your task is to classify single-page documents into predefined categories based on their structural patterns, visual features, and text content. Your output must be valid JSON according to the requested format.
 
-    1. Output only a JSON object containing a single "class" field with the
-    classification label
-
-    2. Use exactly one of the predefined categories, using the exact spelling
-    and case provided
-
-    3. Never include explanations, reasoning, or additional text in your
-    response
-
-    4. Respond with nothing but the JSON containing the classification
-
-
-    Example correct response:
-
-    {"class": "letter"}
+    <variables>
+    DOCUMENT_TEXT: OCR-extracted text content from the document page that provides textual information for classification
+    DOCUMENT_IMAGE: Visual representation of the document page that provides layout, formatting, and visual structure information
+    CLASS_NAMES_AND_DESCRIPTIONS: List of valid document types with their descriptions that the document must be classified into
+    </variables>
   task_prompt: >-
-    Classify this document into exactly one of these categories:
+    <reasoning-guidelines>
+    When determining the document type:
+    - First identify the document's primary purpose and function
+    - Note specific visual elements (letterhead, forms, tables, signatures)
+    - Identify key textual indicators (terminology, phrases, structure)
+    - Consider the document's intended audience and use case
+    - Provide specific evidence from both visual and textual analysis
+    </reasoning-guidelines>
 
-
-    {CLASS_NAMES_AND_DESCRIPTIONS}
-
-
-    <few_shot_example_with_multimodal_page_classifications> 
-
-    {few_shot_example_with_multimodal_page_classificationS}
-
-    </few_shot_example_with_multimodal_page_classifications>
-
+    <output-format>
+    Return your classification as valid JSON following this exact structure:
+    {
+      "classification_reason": "Detailed reasoning including specific visual and textual evidence that led to this classification",
+      "class": "exact_document_type_from_list"
+    }
+    </output-format>
 
     <<CACHEPOINT>>
 
+    <document-ocr-data>
+    {DOCUMENT_TEXT}
+    </document-ocr-data>
 
-    <document_ocr_data> 
+    <document-image>
+    {DOCUMENT_IMAGE}
+    </document-image>
 
-    {DOCUMENT_TEXT} 
-
-    </document_ocr_data>
-
-
-    <document_image> 
-
-    {DOCUMENT_IMAGE} 
-
-    </document_image>
-
-
-    Respond only with a JSON object containing the class label. For example:
-    {{"class": "letter"}}
+    <final-instructions>
+    Analyze the document above by:
+    1. Applying the <classification-instructions> to examine both visual and textual features
+    2. Following the <reasoning-guidelines> to build your classification rationale
+    3. Selecting ONLY from document types in <document-types>
+    4. Providing clear reasoning with specific evidence before the classification
+    5. Outputting in the exact JSON format specified in <output-format>
+    </final-instructions>
 extraction:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   model: us.amazon.nova-pro-v1:0
   temperature: '0.0'
   top_p: '0.1'
@@ -840,7 +832,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '1.5E-8'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '6.0E-8'
   - name: bedrock/us.amazon.nova-pro-v1:0
     units:
       - name: inputTokens
@@ -850,7 +842,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '2.0E-7'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '8.0E-7'
   - name: bedrock/us.amazon.nova-premier-v1:0
     units:
       - name: inputTokens
@@ -895,19 +887,19 @@ pricing:
         price: '3.75E-6'
 assessment:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   granular:
     enabled: true
     max_workers: "20"
     simple_batch_size: "3"
     list_batch_size: "1"
-  default_confidence_threshold: '0.9'
+  default_confidence_threshold: '0.8'
   top_p: '0.1'
   max_tokens: '10000'
   top_k: '5'
   temperature: '0.0'
-  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  model: us.amazon.nova-lite-v1:0
   system_prompt: >-
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   task_prompt: >-

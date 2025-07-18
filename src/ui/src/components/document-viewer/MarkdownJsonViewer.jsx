@@ -96,10 +96,17 @@ const TextEditorView = ({ fileContent, onChange, isReadOnly, fileType }) => {
   );
 };
 
-const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = 'text' }) => {
+const FileEditorView = ({
+  fileContent,
+  onChange,
+  isReadOnly = true,
+  fileType = 'text',
+  viewMode,
+  onViewModeChange,
+  isConfidenceAvailable,
+}) => {
   const [isValid, setIsValid] = useState(true);
   const [jsonData, setJsonData] = useState(null);
-  const [viewMode, setViewMode] = useState('markdown');
 
   useEffect(() => {
     if (fileType === 'json') {
@@ -132,18 +139,15 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
     }
   };
 
-  const handleViewModeChange = ({ detail }) => {
-    setViewMode(detail.selectedId);
-  };
-
   return (
     <Box>
       <SpaceBetween direction="vertical" size="xs">
         <SegmentedControl
           selectedId={viewMode}
-          onChange={handleViewModeChange}
+          onChange={onViewModeChange}
           options={[
             { id: 'markdown', text: 'Markdown View' },
+            { id: 'confidence', text: 'Text Confidence View' },
             { id: 'text', text: 'Text View' },
           ]}
         />
@@ -155,7 +159,11 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
         )}
       </SpaceBetween>
 
-      {viewMode === 'markdown' ? (
+      {viewMode === 'confidence' && !isConfidenceAvailable ? (
+        <Box color="text-status-inactive" padding="l" textAlign="center">
+          Text confidence content is not available for this page.
+        </Box>
+      ) : viewMode === 'markdown' || viewMode === 'confidence' ? (
         <MarkdownViewer
           simple
           content={
@@ -185,23 +193,41 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
   );
 };
 
-const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View File' }) => {
+const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', buttonText = 'View File' }) => {
   const [fileContent, setFileContent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(null);
+  const [viewMode, setViewMode] = useState('markdown');
+  const [loadedUri, setLoadedUri] = useState(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
-  const fetchContent = async () => {
+  const fetchContent = async (forceRefetch = false) => {
+    // Determine which URI to fetch based on view mode
+    const uriToFetch = viewMode === 'confidence' ? textConfidenceUri : fileUri;
+
+    // If confidence view is selected but no URI available, don't fetch
+    if (viewMode === 'confidence' && !textConfidenceUri) {
+      setFileContent(null);
+      setLoadedUri(null);
+      return;
+    }
+
+    // Skip fetch if we already have the content for this URI (unless forced)
+    if (!forceRefetch && loadedUri === uriToFetch && fileContent) {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
-      logger.info('Fetching content:', fileUri);
+      logger.info('Fetching content:', uriToFetch);
 
       const response = await API.graphql({
         query: getFileContents,
-        variables: { s3Uri: fileUri },
+        variables: { s3Uri: uriToFetch },
       });
 
       // Handle the updated response structure
@@ -215,6 +241,7 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
       }
       logger.debug('Received content:', `${fetchedContent.substring(0, 100)}...`);
       setFileContent(fetchedContent);
+      setLoadedUri(uriToFetch);
     } catch (err) {
       logger.error('Error fetching content:', err);
       setError(`Failed to load ${fileType} content. Please try again.`);
@@ -311,6 +338,8 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
     setFileContent(null);
     setEditedContent(null);
     setIsEditing(false);
+    setIsViewerOpen(false);
+    setLoadedUri(null);
   };
 
   if (!fileUri) {
@@ -321,10 +350,34 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
     );
   }
 
+  const handleViewModeChange = ({ detail }) => {
+    const newMode = detail.selectedId;
+    setViewMode(newMode);
+
+    // Determine if we need to fetch new content
+    const newUri = newMode === 'confidence' ? textConfidenceUri : fileUri;
+
+    // Only fetch if switching to a different URI
+    if (newUri && newUri !== loadedUri) {
+      fetchContent();
+    }
+  };
+
+  // Effect to fetch content when viewer opens or view mode changes
+  React.useEffect(() => {
+    if (isViewerOpen) {
+      fetchContent();
+    }
+  }, [isViewerOpen, viewMode]);
+
+  const openViewer = () => {
+    setIsViewerOpen(true);
+  };
+
   return (
     <Box className="w-full">
-      {!fileContent && (
-        <Button onClick={fetchContent} loading={isLoading} disabled={isLoading}>
+      {!isViewerOpen && (
+        <Button onClick={openViewer} loading={isLoading} disabled={isLoading}>
           {buttonText}
         </Button>
       )}
@@ -341,7 +394,7 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
         </Box>
       )}
 
-      {fileContent && (
+      {isViewerOpen && (
         <SpaceBetween size="s" className="json-viewer-container" style={{ width: '100%', minWidth: '700px' }}>
           <Box>
             <SpaceBetween direction="horizontal" size="xs">
@@ -362,10 +415,13 @@ const MarkdownJsonViewer = ({ fileUri, fileType = 'text', buttonText = 'View Fil
           </Box>
           <div style={{ width: '100%' }}>
             <FileEditorView
-              fileContent={isEditing ? editedContent : fileContent}
+              fileContent={isLoading ? null : isEditing ? editedContent : fileContent}
               onChange={handleContentChange}
               isReadOnly={!isEditing}
               fileType={fileType}
+              viewMode={viewMode}
+              onViewModeChange={handleViewModeChange}
+              isConfidenceAvailable={!!textConfidenceUri}
             />
           </div>
         </SpaceBetween>

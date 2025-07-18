@@ -31,6 +31,7 @@ s3_client = get_s3_client()
 ssm_client = boto3.client('ssm')
 bedrock_client = boto3.client('bedrock-data-automation')
 SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
+enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower()
 
 def get_confidence_threshold_from_config(document: Document) -> float:
     """
@@ -43,9 +44,8 @@ def get_confidence_threshold_from_config(document: Document) -> float:
         float: The confidence threshold as a decimal (0.0-1.0)
     """
     try:
-        config = get_config(document)
-        assessment_config = config.get('assessment', {})
-        threshold_value = float(assessment_config.get('default_confidence_threshold', 0.8))
+        config = get_config()
+        threshold_value = float(config['assessment']['default_confidence_threshold'])
         
         # Validate that the threshold is in the expected 0.0-1.0 range
         if threshold_value < 0.0 or threshold_value > 1.0:
@@ -870,12 +870,17 @@ def process_segments(
             bp_confidence = custom_output["matched_blueprint"]["confidence"]
 
             # Check if any key-value or blueprint confidence is below threshold
-            low_confidence = any(
-                kv['confidence'] < confidence_threshold
-                for page_num in page_indices
-                for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
-            ) or float(bp_confidence) < confidence_threshold
+            if enable_hitl == 'true': 
+                low_confidence = any(
+                    kv['confidence'] < confidence_threshold
+                    for page_num in page_indices
+                    for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
+                ) or float(bp_confidence) < confidence_threshold
+            else:
+                low_confidence = None
 
+            logger.info(f"low_confidence: {low_confidence}")
+            
             item.update({
                 "page_array": page_indices,
                 "hitl_triggered": low_confidence,
@@ -894,7 +899,7 @@ def process_segments(
             )
 
             if low_confidence:
-                hitl_triggered = True
+                hitl_triggered = low_confidence
                 metrics.put_metric('HITLTriggered', 1)
                 for page_number in page_indices:
                     page_str = str(page_number)
@@ -922,6 +927,10 @@ def process_segments(
                     "hitl_corrected_result": custom_decimal_output
                 })
         else:
+            if enable_hitl == 'true':
+                std_hitl = 'true'
+            else:
+                std_hitl = None 
             # Process standard output if no custom output match
             std_bucket, std_key = parse_s3_path(segment['standard_output_path'])
             std_output = download_decimal(std_bucket, std_key)
@@ -931,7 +940,7 @@ def process_segments(
             page_array = list(range(start_page, end_page + 1))
             item.update({
                 "page_array": page_array,
-                "hitl_triggered": True,
+                "hitl_triggered": std_hitl,
                 "extraction_bp_name": "None",
                 "extracted_result": std_output
             })
@@ -941,30 +950,31 @@ def process_segments(
                 record_number=record_number,
                 bp_match=segment.get('custom_output_status'),
                 extraction_bp_name="None",
-                hitl_triggered=True,
+                hitl_triggered=std_hitl,
                 page_array=page_array,
                 review_portal_url=SAGEMAKER_A2I_REVIEW_PORTAL_URL
             )
             
-            hitl_triggered = True
-            for page_number in range(start_page, end_page + 1):
-                ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
-                try:
-                    human_loop_response = start_human_loop(
-                        execution_id=execution_id,
-                        kv_pairs=[],
-                        source_image_uri=ImageUri,
-                        bounding_boxes=[],
-                        blueprintName="",
-                        bp_confidence=0.00,
-                        confidenceThreshold=confidence_threshold,
-                        page_id=page_number,
-                        page_indices=page_array,
-                        record_number=record_number
-                    )
-                    logger.info(f"Triggered human loop for page {page_number}: {human_loop_response}")
-                except Exception as e:
-                    logger.error(f"Failed to start human loop for page {page_number}: {str(e)}")
+            hitl_triggered = std_hitl
+            if enable_hitl == 'true':
+                for page_number in range(start_page, end_page + 1):
+                    ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
+                    try:
+                        human_loop_response = start_human_loop(
+                            execution_id=execution_id,
+                            kv_pairs=[],
+                            source_image_uri=ImageUri,
+                            bounding_boxes=[],
+                            blueprintName="",
+                            bp_confidence=0.00,
+                            confidenceThreshold=confidence_threshold,
+                            page_id=page_number,
+                            page_indices=page_array,
+                            record_number=record_number
+                        )
+                        logger.info(f"Triggered human loop for page {page_number}: {human_loop_response}")
+                    except Exception as e:
+                        logger.error(f"Failed to start human loop for page {page_number}: {str(e)}")
         
         document.hitl_metadata.append(hitl_metadata)
 
@@ -1102,53 +1112,51 @@ def handler(event, context):
 
     # Process HITL if enabled
     hitl_triggered = "false"
-    enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower() == 'true'
     
-    if enable_hitl:
-        try:
-            # Use the confidence threshold already calculated above
-            metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
-            job_metadata_key = f'{metdatafile_path}/job_metadata.json'
-            execution_id = event.get("execution_arn", "").split(':')[-1]
-            logger.info(f"HITL execution ID: {execution_id}")
+    try:
+        # Use the confidence threshold already calculated above
+        metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
+        job_metadata_key = f'{metdatafile_path}/job_metadata.json'
+        execution_id = event.get("execution_arn", "").split(':')[-1]
+        logger.info(f"HITL execution ID: {execution_id}")
 
-            try:
-                jobmetadata_file = s3_client.get_object(Bucket=bda_result_bucket, Key=job_metadata_key)
-                job_metadata = json.loads(jobmetadata_file['Body'].read())
-                if 'output_metadata' in job_metadata:
-                    output_metadata = job_metadata['output_metadata']
-                    if isinstance(output_metadata, list):
-                        for asset in output_metadata:
-                            document, hitl_result = process_segments(
-                                input_bucket,
-                                output_bucket,
-                                object_key,
-                                asset.get('segment_metadata', []),
-                                confidence_threshold,
-                                execution_id,
-                                document
-                            )
-                            if hitl_result:
-                                hitl_triggered = "true"
-                    elif isinstance(output_metadata, dict):
-                        for asset_id, asset in output_metadata.items():
-                            document, hitl_result = process_segments(
-                                input_bucket,
-                                output_bucket,
-                                object_key,
-                                asset.get('segment_metadata', []),
-                                confidence_threshold,
-                                execution_id,
-                                document
-                            )
-                            if hitl_result:
-                                hitl_triggered = "true"
-                    else:
-                        logger.error("Unexpected output_metadata format in job_metadata.json")
-            except Exception as e:
-                logger.error(f"Error processing job_metadata.json: {str(e)}")
+        try:
+            jobmetadata_file = s3_client.get_object(Bucket=bda_result_bucket, Key=job_metadata_key)
+            job_metadata = json.loads(jobmetadata_file['Body'].read())
+            if 'output_metadata' in job_metadata:
+                output_metadata = job_metadata['output_metadata']
+                if isinstance(output_metadata, list):
+                    for asset in output_metadata:
+                        document, hitl_result = process_segments(
+                            input_bucket,
+                            output_bucket,
+                            object_key,
+                            asset.get('segment_metadata', []),
+                            confidence_threshold,
+                            execution_id,
+                            document
+                        )
+                        if hitl_result:
+                            hitl_triggered = "true"
+                elif isinstance(output_metadata, dict):
+                    for asset_id, asset in output_metadata.items():
+                        document, hitl_result = process_segments(
+                            input_bucket,
+                            output_bucket,
+                            object_key,
+                            asset.get('segment_metadata', []),
+                            confidence_threshold,
+                            execution_id,
+                            document
+                        )
+                        if hitl_result:
+                            hitl_triggered = "true"
+                else:
+                    logger.error("Unexpected output_metadata format in job_metadata.json")
         except Exception as e:
-            logger.error(f"Error in HITL processing: {str(e)}")
+            logger.error(f"Error processing job_metadata.json: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in HITL processing: {str(e)}")
     
     # Record metrics for processed pages
     metrics.put_metric('ProcessedDocuments', 1)

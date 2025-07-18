@@ -1,7 +1,7 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# Default Configuration
+# Default Configuration (lending-package-sample)
 
 This directory contains the default configuration for the GenAI IDP Accelerator. This configuration serves as the baseline for all document processing tasks and can be used as a starting point for creating custom configurations.
 
