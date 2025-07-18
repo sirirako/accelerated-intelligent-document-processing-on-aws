@@ -186,22 +186,6 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   return (
     <form onSubmit={handleSubmit}>
       <SpaceBetween size="s">
-        <FormField label="Previous queries">
-          <Select
-            placeholder="Select a previous query"
-            options={historyOptions}
-            selectedOption={selectedOption}
-            onChange={handleHistorySelection}
-            onFocus={() => fetchQueryHistory()}
-            expandToViewport
-            loadingText="Loading query history..."
-            statusType={isLoadingHistory ? 'loading' : 'finished'}
-            empty="No previous queries found"
-            disabled={isSubmitting}
-            onExpandableItemClick={handleDropdownOpen}
-          />
-        </FormField>
-
         <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
           <FormField label="Enter your analytics query">
             <Input
@@ -219,6 +203,22 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
             </Button>
           </Box>
         </Grid>
+
+        <FormField label="Previous queries">
+          <Select
+            placeholder="Select a previous query"
+            options={historyOptions}
+            selectedOption={selectedOption}
+            onChange={handleHistorySelection}
+            onFocus={() => fetchQueryHistory()}
+            expandToViewport
+            loadingText="Loading query history..."
+            statusType={isLoadingHistory ? 'loading' : 'finished'}
+            empty="No previous queries found"
+            disabled={isSubmitting}
+            onExpandableItemClick={handleDropdownOpen}
+          />
+        </FormField>
       </SpaceBetween>
     </form>
   );
