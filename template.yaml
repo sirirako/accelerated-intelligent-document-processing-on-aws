@@ -3544,6 +3544,28 @@ Resources:
       RequestMappingTemplate: |
         ## Use the userId provided in the mutation arguments instead of from the context
         #set($userId = $ctx.args.userId)
+        
+        #set($updateExpression = "SET #status = :status, #completedAt = :completedAt, #query = :query, #createdAt = :createdAt")
+        #set($expressionNames = {
+          "#status": "status",
+          "#completedAt": "completedAt",
+          "#query": "query",
+          "#createdAt": "createdAt"
+        })
+        #set($expressionValues = {
+          ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status),
+          ":completedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601()),
+          ":query": $util.dynamodb.toDynamoDBJson($ctx.args.query),
+          ":createdAt": $util.dynamodb.toDynamoDBJson($ctx.args.createdAt)
+        })
+        
+        ## Add result to update expression if provided
+        #if($ctx.args.result)
+          #set($updateExpression = "${updateExpression}, #result = :result")
+          $util.qr($expressionNames.put("#result", "result"))
+          $util.qr($expressionValues.put(":result", $util.dynamodb.toDynamoDBJson($ctx.args.result)))
+        #end
+        
         {
           "version": "2018-05-29",
           "operation": "UpdateItem",
@@ -3552,15 +3574,9 @@ Resources:
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           },
           "update": {
-            "expression": "SET #status = :status, #completedAt = :completedAt",
-            "expressionNames": {
-              "#status": "status",
-              "#completedAt": "completedAt"
-            },
-            "expressionValues": {
-              ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status),
-              ":completedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
-            }
+            "expression": "${updateExpression}",
+            "expressionNames": $util.toJson($expressionNames),
+            "expressionValues": $util.toJson($expressionValues)
           },
           "condition": {
             "expression": "attribute_exists(PK)"
@@ -3572,7 +3588,10 @@ Resources:
         #end
         {
           "jobId": $util.toJson($ctx.args.jobId),
-          "status": $util.toJson($ctx.args.status)
+          "status": $util.toJson($ctx.args.status),
+          "query": $util.toJson($ctx.args.query),
+          "createdAt": $util.toJson($ctx.args.createdAt),
+          "result": $util.toJson($ctx.args.result)
         }
 
   AnalyticsTableDataSource:

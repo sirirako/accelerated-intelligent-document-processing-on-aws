@@ -128,12 +128,14 @@ def update_job_status_in_appsync(job_id, status, result=None, error=None):
         error: The error message (optional)
     """
     try:
-        # Prepare the mutation with userId parameter
+        # Prepare the mutation with userId parameter and all required fields
         mutation = """
-        mutation UpdateAnalyticsJobStatus($jobId: ID!, $status: String!, $userId: String!, $result: AWSJSON) {
-            updateAnalyticsJobStatus(jobId: $jobId, status: $status, userId: $userId, result: $result) {
+        mutation UpdateAnalyticsJobStatus($jobId: ID!, $status: String!, $userId: String!, $query: String!, $createdAt: AWSDateTime!, $result: AWSJSON) {
+            updateAnalyticsJobStatus(jobId: $jobId, status: $status, userId: $userId, query: $query, createdAt: $createdAt, result: $result) {
                 jobId
                 status
+                query
+                createdAt
             }
         }
         """
@@ -154,16 +156,22 @@ def update_job_status_in_appsync(job_id, status, result=None, error=None):
             logger.error(f"Job not found in DynamoDB: {job_id}")
             return
             
-        # Extract the user_id from the PK
-        pk = items[0].get("PK", "")
+        # Extract the user_id from the PK and get other required fields
+        job_record = items[0]
+        pk = job_record.get("PK", "")
         user_id = pk.replace("analytics#", "") if pk.startswith("analytics#") else "anonymous"
+        query = job_record.get("query", "")
+        created_at = job_record.get("createdAt", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"))
+        
         logger.info(f"Found job {job_id} for user {user_id}")
         
-        # Prepare the variables with userId
+        # Prepare the variables with all required fields
         variables = {
             "jobId": job_id,
             "status": status,
-            "userId": user_id
+            "userId": user_id,
+            "query": query,
+            "createdAt": created_at
         }
         
         if result:
@@ -192,6 +200,7 @@ def update_job_status_in_appsync(job_id, status, result=None, error=None):
         }
         
         logger.info(f"Publishing analytics job update to AppSync for job: {job_id}")
+        logger.debug(f"Mutation payload: {json.dumps(payload)}")
         
         # Make the request
         response = requests.post(
@@ -276,7 +285,7 @@ def handler(event, context):
         # Generate a dummy plot for Phase 1
         try:
             # Simulate processing time
-            time.sleep(2)
+            time.sleep(10)
             
             # Generate the dummy plot
             plot_data = generate_dummy_plot()
