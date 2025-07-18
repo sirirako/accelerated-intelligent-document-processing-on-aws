@@ -3296,9 +3296,303 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+  ##########################################################################
+  # Analytics resources for text-to-analytics feature
+  ##########################################################################
+
+  # DynamoDB table for analytics job tracking
+  AnalyticsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAfter
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  # Lambda function for analytics request handler
+  AnalyticsRequestHandlerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      CodeUri: src/lambda/analytics_request_handler/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 30
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          ANALYTICS_TABLE: !Ref AnalyticsTable
+          ANALYTICS_PROCESSOR_FUNCTION: !Ref AnalyticsProcessorFunction
+          DATA_RETENTION_DAYS: !Ref DataRetentionInDays
+      LoggingConfig:
+        LogGroup: !Ref AnalyticsRequestHandlerLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalyticsTable
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AnalyticsProcessorFunction
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  AnalyticsRequestHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+  # Lambda function for analytics processor
+  AnalyticsProcessorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      CodeUri: src/lambda/analytics_processor/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          ANALYTICS_TABLE: !Ref AnalyticsTable
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+      LoggingConfig:
+        LogGroup: !Ref AnalyticsProcessorLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalyticsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
 
+  AnalyticsProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # AppSync resolvers for analytics operations
+  SubmitAnalyticsQueryResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: submitAnalyticsQuery
+      DataSourceName: !GetAtt AnalyticsRequestHandlerDataSource.Name
+
+  AnalyticsRequestHandlerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AnalyticsRequestHandlerDataSource
+      Description: Lambda function for handling analytics query requests
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AnalyticsRequestHandlerFunction.Arn
+
+  GetAnalyticsJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getAnalyticsJobStatus
+      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      RequestMappingTemplate: |
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "GetItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      ResponseMappingTemplate: |
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        #if(!$ctx.result)
+          null
+        #else
+          {
+            "jobId": $util.toJson($ctx.result.SK),
+            "status": $util.toJson($ctx.result.status),
+            "query": $util.toJson($ctx.result.query),
+            "createdAt": $util.toJson($ctx.result.createdAt),
+            "completedAt": $util.toJson($ctx.result.completedAt),
+            "result": $util.toJson($ctx.result.result),
+            "error": $util.toJson($ctx.result.error)
+          }
+        #end
+
+  ListAnalyticsJobsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listAnalyticsJobs
+      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      RequestMappingTemplate: |
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "Query",
+          "query": {
+            "expression": "PK = :pk",
+            "expressionValues": {
+              ":pk": $util.dynamodb.toDynamoDBJson("analytics#${userId}")
+            }
+          },
+          #if($ctx.args.limit)
+            "limit": $ctx.args.limit,
+          #end
+          #if($ctx.args.nextToken)
+            "nextToken": "$ctx.args.nextToken",
+          #end
+          "scanIndexForward": false
+        }
+      ResponseMappingTemplate: |
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        {
+          "items": [
+            #foreach($item in $ctx.result.items)
+              {
+                "jobId": $util.toJson($item.SK),
+                "status": $util.toJson($item.status),
+                "query": $util.toJson($item.query),
+                "createdAt": $util.toJson($item.createdAt),
+                "completedAt": $util.toJson($item.completedAt),
+                "result": $util.toJson($item.result),
+                "error": $util.toJson($item.error)
+              }#if($foreach.hasNext),#end
+            #end
+          ],
+          "nextToken": $util.toJson($ctx.result.nextToken)
+        }
+
+  UpdateAnalyticsJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: updateAnalyticsJobStatus
+      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      RequestMappingTemplate: |
+        ## Use the userId provided in the mutation arguments instead of from the context
+        #set($userId = $ctx.args.userId)
+        {
+          "version": "2018-05-29",
+          "operation": "UpdateItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          },
+          "update": {
+            "expression": "SET #status = :status, #completedAt = :completedAt",
+            "expressionNames": {
+              "#status": "status",
+              "#completedAt": "completedAt"
+            },
+            "expressionValues": {
+              ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status),
+              ":completedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+            }
+          },
+          "condition": {
+            "expression": "attribute_exists(PK)"
+          }
+        }
+      ResponseMappingTemplate: |
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        {
+          "jobId": $util.toJson($ctx.args.jobId),
+          "status": $util.toJson($ctx.args.status)
+        }
+
+  AnalyticsTableDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AnalyticsTableDataSource
+      Description: DynamoDB table for analytics job tracking
+      Type: AMAZON_DYNAMODB
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      DynamoDBConfig:
+        TableName: !Ref AnalyticsTable
+        AwsRegion: !Ref AWS::Region
+        
   ##########################################################################
   # Cognoito user authentication for AppSync API and WebUI 
   ##########################################################################
@@ -3827,26 +4121,26 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - sagemaker:CreateHumanTaskUi
-                  - sagemaker:DeleteHumanTaskUi
-                  - sagemaker:DescribeHumanTaskUi
-                  - sagemaker:CreateFlowDefinition
-                  - sagemaker:DeleteFlowDefinition
-                  - sagemaker:DescribeFlowDefinition
-                  - sagemaker:ListHumanLoops
-                  - sagemaker:StopHumanLoop
-                  - sagemaker:DescribeWorkteam
-                  - sagemaker:DeleteWorkteam
-                  - sagemaker:ListWorkforces
-                  - sagemaker:DescribeWorkforce
-                  - sagemaker:DeleteWorkforce
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
-                Resource: !GetAtt A2IFlowDefinitionRole.Arn
+            - Effect: Allow
+              Action:
+                - sagemaker:CreateHumanTaskUi
+                - sagemaker:DeleteHumanTaskUi
+                - sagemaker:DescribeHumanTaskUi
+                - sagemaker:CreateFlowDefinition
+                - sagemaker:DeleteFlowDefinition
+                - sagemaker:DescribeFlowDefinition
+                - sagemaker:ListHumanLoops
+                - sagemaker:StopHumanLoop
+                - sagemaker:DescribeWorkteam
+                - sagemaker:DeleteWorkteam
+                - sagemaker:ListWorkforces
+                - sagemaker:DescribeWorkforce
+                - sagemaker:DeleteWorkforce
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: !GetAtt A2IFlowDefinitionRole.Arn
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -4196,6 +4490,7 @@ Resources:
                   - dynamodb:Scan
                 Resource:
                   - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AnalyticsTable}
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -4217,6 +4512,7 @@ Resources:
                   - !GetAtt DeleteDocumentResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
+                  - !GetAtt AnalyticsRequestHandlerFunction.Arn
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
@@ -5640,6 +5936,12 @@ Outputs:
   DynamoDBConfigurationTableConsoleURL:
     Description: DynamoDB table console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${ConfigurationTable}
+  AnalyticsTableName:
+    Description: Name of the DynamoDB table for analytics job tracking
+    Value: !Ref AnalyticsTable
+  AnalyticsTableConsoleURL:
+    Description: DynamoDB table console URL for analytics job tracking
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AnalyticsTable}
   LambdaLookupFunctionName:
     Description: Name of the Lookup function
     Value: !Ref LookupFunction
