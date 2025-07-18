@@ -12,8 +12,8 @@ ocr:
     - name: TABLES
     - name: SIGNATURES
   image:
-    target_width: '951'
-    target_height: '1268'
+    target_width: ''
+    target_height: ''
 classes:
   - name: Payslip
     description: >-
@@ -986,8 +986,8 @@ classification:
   classificationMethod: multimodalPageLevelClassification
 extraction:
   image:
-    target_width: '951'
-    target_height: '1268'
+    target_width: ''
+    target_height: ''
   top_p: '0.1'
   max_tokens: '10000'
   top_k: '5'
