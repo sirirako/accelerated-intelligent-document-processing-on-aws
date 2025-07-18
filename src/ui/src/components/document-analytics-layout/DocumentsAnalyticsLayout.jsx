@@ -22,6 +22,7 @@ const DocumentsAnalyticsLayout = () => {
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subscription, setSubscription] = useState(null);
+  const [selectedHistoryItem] = useState(null);
 
   const subscribeToJobCompletion = (id) => {
     try {
@@ -76,10 +77,38 @@ const DocumentsAnalyticsLayout = () => {
     };
   }, [subscription]);
 
-  const handleSubmitQuery = async (query) => {
+  const handleSubmitQuery = async (query, existingJobId = null) => {
     try {
-      setIsSubmitting(true);
       setQueryText(query);
+
+      // If an existing job ID is provided, fetch that job's result instead of creating a new job
+      if (existingJobId) {
+        logger.debug('Using existing job:', existingJobId);
+        setJobId(existingJobId);
+
+        // Fetch the job status and result
+        const response = await API.graphql({
+          query: getAnalyticsJobStatus,
+          variables: { jobId: existingJobId },
+        });
+
+        const job = response?.data?.getAnalyticsJobStatus;
+        if (job) {
+          setJobStatus(job.status);
+          if (job.status === 'COMPLETED') {
+            setJobResult(job.result);
+          } else if (job.status === 'FAILED') {
+            setError(job.error || 'Job processing failed');
+          } else {
+            // If job is still processing, subscribe to updates
+            subscribeToJobCompletion(existingJobId);
+          }
+        }
+        return;
+      }
+
+      // Otherwise, create a new job
+      setIsSubmitting(true);
       setJobResult(null);
       setError(null);
 
@@ -159,7 +188,11 @@ const DocumentsAnalyticsLayout = () => {
   return (
     <Container header={<Header variant="h1">Document Analytics</Header>}>
       <SpaceBetween size="l">
-        <AnalyticsQueryInput onSubmit={handleSubmitQuery} isSubmitting={isSubmitting} />
+        <AnalyticsQueryInput
+          onSubmit={handleSubmitQuery}
+          isSubmitting={isSubmitting}
+          selectedResult={selectedHistoryItem}
+        />
 
         {isSubmitting && (
           <Box textAlign="center" padding={{ vertical: 'l' }}>
