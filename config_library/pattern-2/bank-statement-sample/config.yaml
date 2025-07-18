@@ -381,7 +381,7 @@ assessment:
   max_tokens: '10000'
   top_k: '5'
   temperature: '0.0'
-  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  model: us.amazon.nova-pro-v1:0
   system_prompt: >-
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   task_prompt: >-
@@ -579,7 +579,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '1.5E-8'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '6.0E-8'
   - name: bedrock/us.amazon.nova-pro-v1:0
     units:
       - name: inputTokens
@@ -589,7 +589,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '2.0E-7'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '8.0E-7'
   - name: bedrock/us.amazon.nova-premier-v1:0
     units:
       - name: inputTokens
