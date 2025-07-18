@@ -96,8 +96,21 @@ class OcrService:
             # Extract max_workers
             self.max_workers = max_workers or ocr_config.get("max_workers", 20)
 
-            # Extract DPI
-            self.dpi = ocr_config.get("dpi")
+            # Extract DPI from image configuration
+            image_config = ocr_config.get("image", {})
+            dpi_value = image_config.get("dpi", 150)
+
+            # Convert DPI to integer if it's a string
+            if isinstance(dpi_value, str):
+                try:
+                    self.dpi = int(dpi_value) if dpi_value.strip() else 150
+                except (ValueError, AttributeError):
+                    logger.warning(
+                        f"Invalid DPI value '{dpi_value}', using default 150"
+                    )
+                    self.dpi = 150
+            else:
+                self.dpi = int(dpi_value) if dpi_value is not None else 150
 
             # Extract enhanced features
             features_config = ocr_config.get("features", [])

@@ -12,8 +12,9 @@ ocr:
     - name: TABLES
     - name: SIGNATURES
   image:
-    target_width: '951'
-    target_height: '1268'
+    dpi: '150'
+    target_width: ''
+    target_height: ''
 classes:
   - name: letter
     description: >-
@@ -647,8 +648,8 @@ classes:
 
 classification:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   classificationMethod: multimodalPageLevelClassification
   model: us.amazon.nova-pro-v1:0
   temperature: '0.0'
@@ -710,8 +711,8 @@ classification:
     {{"class": "letter"}}
 extraction:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   model: us.amazon.nova-pro-v1:0
   temperature: '0.0'
   top_p: '0.1'
@@ -895,8 +896,8 @@ pricing:
         price: '3.75E-6'
 assessment:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   granular:
     enabled: true
     max_workers: "20"
