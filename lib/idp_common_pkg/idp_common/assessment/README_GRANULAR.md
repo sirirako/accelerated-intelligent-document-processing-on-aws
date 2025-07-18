@@ -72,7 +72,7 @@ The granular service uses the same `task_prompt` template as the original servic
 ```yaml
 assessment:
   # Standard assessment configuration
-  default_confidence_threshold: '0.9'
+  default_confidence_threshold: '0.8'
   model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
   system_prompt: "Your assessment system prompt..."
   task_prompt: "Your assessment task prompt with <<CACHEPOINT>>..."

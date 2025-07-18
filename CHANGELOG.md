@@ -49,7 +49,7 @@ SPDX-License-Identifier: MIT-0
   - Maintains backward compatibility for stack updates by keeping the parameter value "default" mapped to the rvl-cdip-sample for pattern-2.
 
 - **Reduce assessment step costs**
-  - Default model for granular assessment is now `us.amazon.nova-pro-v1:0` 
+  - Default model for granular assessment is now `us.amazon.nova-lite-v1:0` - experimentation recommended
   - Improved placement of <<CACHEPOINT>> tags in assessment prompt to improve utilization of prompt caching
 
 ### Fixed

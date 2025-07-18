@@ -915,8 +915,8 @@ classes:
         attributeType: group
 classification:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
@@ -1144,19 +1144,19 @@ summarization:
     You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \nSummarization Style: Balanced\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.
 assessment:
   image:
-    target_height: '1268'
-    target_width: '951'
+    target_height: ''
+    target_width: ''
   granular:
     enabled: true
     max_workers: "20"
     simple_batch_size: "3"
     list_batch_size: "1"
-  default_confidence_threshold: '0.9'
+  default_confidence_threshold: '0.8'
   top_p: '0.1'
   max_tokens: '10000'
   top_k: '5'
   temperature: '0.0'
-  model: us.amazon.nova-pro-v1:0
+  model: us.amazon.nova-lite-v1:0
   system_prompt: >-
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   task_prompt: >-
