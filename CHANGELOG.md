@@ -7,6 +7,15 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+## [0.3.8]
+
+### Added
+
+- **Lending Package Configuration Support for Pattern-2**
+  - Added new `lending-package-sample` configuration to Pattern-2, providing comprehensive support for lending and financial document processing workflows
+  - New default configuration for Pattern-2 stack deployments, optimized for loan applications, mortgage processing, and financial verification documents
+  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip-package-sample` for the `Pattern2Configuration` parameter when deploying or updating stacks
+
 - **Text Confidence View for Document Pages**
   - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field
   - New "Text Confidence View" option in the UI pages panel alongside existing Markdown and Text views
@@ -20,26 +29,31 @@ SPDX-License-Identifier: MIT-0
   - Configurable through Web UI without requiring code changes or redeployment
 
 ### Changed
+
 - **Converted text confidence data format from JSON to markdown table for improved readability and reduced token usage**
   - Removed unnecessary "page_count" field
   - Changed "text_blocks" array to "text" field containing a markdown table with Text and Confidence columns
   - Reduces prompt size for assessment service while improving UI readability
   - OCR confidence values now rounded to 1 decimal point (e.g., 99.1, 87.3) for cleaner display
   - Markdown table headers now explicitly left-aligned using `|:-----|:-----------|` format for consistent appearance
+
 - **Simplified OCR Service Initialization**
   - OCR service now accepts a single `config` dictionary parameter for cleaner, more consistent API
   - Aligned with classification service pattern for better consistency across IDP services
   - Backward compatibility maintained - old parameter pattern still supported with deprecation warning
   - Updated all lambda functions and notebooks to use new simplified pattern
 - Removed fixed image target_height and target_width from default configurations, so images are processed in original resolution by default.
+
 - **Updated Default Configuration for Pattern1 and Pattern2**
   - Changed default configuration for new stacks from "default" to "lending-package-sample" for both Pattern1 and Pattern2
   - Maintains backward compatibility for stack updates by keeping the parameter value "default" mapped to the rvl-cdip-sample for pattern-2.
+
 - **Reduce assessment step costs**
   - Default model for granular assessment is now `us.amazon.nova-pro-v1:0` 
   - Improved placement of <<CACHEPOINT>> tags in assessment prompt to improve utilization of prompt caching
 
 ### Fixed
+
 - **Fixed Image Resizing Behavior for High-Resolution Documents**
   - Fixed issue where empty strings in image configuration were incorrectly resizing images to default 951x1268 pixels instead of preserving original resolution
   - Empty strings (`""`) in `target_width` and `target_height` configuration now preserve original document resolution for maximum processing accuracy

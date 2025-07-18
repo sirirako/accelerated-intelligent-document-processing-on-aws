@@ -11,9 +11,9 @@ This directory contains the default-lending configuration for the GenAI IDP Acce
 
 ## Validation Level
 
-**Level**: 2 - Comprehensive Testing
+**Level**: 2 - Minimal Testing
 
-- **Testing Evidence**: This configuration has been tested with lending sample document including payslips, driver's licenses, bank statements, checks, W2 forms, and insurance applications. It demonstrates robust performance in classifying and extracting detailed financial information from standard lending documents.
+- **Testing Evidence**: This configuration has been lightly tested with lending sample document including payslips, driver's licenses, bank statements, checks, W2 forms, and insurance applications. 
 - **Known Limitations**: Performance may vary with non-standard document formats, heavily redacted financial documents, or documents with poor image quality that affect OCR accuracy.
 
 ## Overview
@@ -44,11 +44,10 @@ The configuration defines 6 specialized lending document classes, each with comp
 ### Classification Settings
 
 - **Model**: Amazon Nova Pro
-- **Method**: Text-based holistic classification
+- **Method**: Multimodal Page Level Classification
 - **Temperature**: 0 (deterministic outputs)
 - **Top-k**: 5
 - **OCR Backend**: Amazon Textract with LAYOUT, TABLES, and SIGNATURES features
-- **OCR Model**: Amazon Claude 3.7 Sonnet for enhanced text extraction and layout understanding
 
 The classification component analyzes document content and structure to accurately identify lending document types and establish proper page boundaries within multi-document packages.
 
@@ -68,7 +67,7 @@ The extraction component performs comprehensive attribute extraction tailored to
 
 ### Assessment Settings
 
-- **Model**: Amazon Claude 3.7 Sonnet
+- **Model**: us.amazon.nova-pro-v1:0
 - **Granular Assessment**: Enabled with parallel processing
 - **Default Confidence Threshold**: 0.9
 - **Max Workers**: 20 for improved performance
@@ -77,7 +76,7 @@ Enhanced confidence assessment ensures high accuracy for financial data extracti
 
 ### Summarization Settings
 
-- **Model**: Amazon Claude 3.7 Sonnet
+- **Model**: us.amazon.nova-premier-v1:0
 - **Temperature**: 0 (deterministic outputs)
 - **Top-k**: 5
 
@@ -97,20 +96,14 @@ This configuration is optimized for processing lending document packages that ty
 
 To use this default-lending configuration:
 
-1. **Direct Deployment**: Deploy the GenAI IDP Accelerator with this configuration for lending document processing workflows:
-   ```bash
-   # Deploy with lending configuration
-   ./deploy.sh --config config_library/pattern-2/default-lending/config.yaml
-   ```
+1. **Direct Deployment**: Deploy the GenAI IDP Accelerator with this Pattern-2 configuration for lending document processing workflows.
 
 2. **Loan Processing Integration**: Integrate with existing loan origination systems for automated document processing and data extraction.
 
 3. **Compliance Workflows**: Use for regulatory compliance documentation and audit trail generation.
 
 4. **Custom Lending Workflows**: Adapt for specific lending scenarios:
-   ```bash
-   cp -r config_library/pattern-2/default-lending config_library/pattern-2/mortgage-processing
-   ```
+
 
 ## Common Customization Scenarios
 
