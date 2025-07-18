@@ -678,7 +678,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '1.5E-8'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '6.0E-8'
   - name: bedrock/us.amazon.nova-pro-v1:0
     units:
       - name: inputTokens
@@ -688,7 +688,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '2.0E-7'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '8.0E-7'
   - name: bedrock/us.amazon.nova-premier-v1:0
     units:
       - name: inputTokens
