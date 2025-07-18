@@ -35,7 +35,9 @@ SPDX-License-Identifier: MIT-0
 - **Updated Default Configuration for Pattern1 and Pattern2**
   - Changed default configuration for new stacks from "default" to "lending-package-sample" for both Pattern1 and Pattern2
   - Maintains backward compatibility for stack updates by keeping the parameter value "default" mapped to the rvl-cdip-sample for pattern-2.
-
+- **Reduce assessment step costs**
+  - Default model for granular assessment is now `us.amazon.nova-pro-v1:0` 
+  - Improved placement of <<CACHEPOINT>> tags in assessment prompt to improve utilization of prompt caching
 
 ### Fixed
 - **Fixed Image Resizing Behavior for High-Resolution Documents**
@@ -44,7 +46,7 @@ SPDX-License-Identifier: MIT-0
 - Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized to lower resolution with lost quality
 - Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
 - Fixed issue where PDF files were being downloaded instead of displayed inline
-
+- Fixed pricing data for cacheWrite tokens for Amazon Nova models to resolve innacurate cost estimation in UI.
 
 
 ## [0.3.7]
