@@ -8,6 +8,7 @@ import useSettingsContext from '../../contexts/settings';
 import {
   DOCUMENTS_PATH,
   DOCUMENTS_KB_QUERY_PATH,
+  DOCUMENTS_ANALYTICS_PATH,
   DEFAULT_PATH,
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
@@ -17,6 +18,7 @@ export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
 export const documentsNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
+  { type: 'link', text: 'Document Analytics', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
   {
@@ -66,6 +68,8 @@ const Navigation = ({
     activeHref = `#${CONFIGURATION_PATH}`;
   } else if (path.includes(DOCUMENTS_KB_QUERY_PATH)) {
     activeHref = `#${DOCUMENTS_KB_QUERY_PATH}`;
+  } else if (path.includes(DOCUMENTS_ANALYTICS_PATH)) {
+    activeHref = `#${DOCUMENTS_ANALYTICS_PATH}`;
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
   } else if (path.includes(DOCUMENTS_PATH)) {
