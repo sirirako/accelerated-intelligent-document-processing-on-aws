@@ -23,6 +23,9 @@ SPDX-License-Identifier: MIT-0
 
 A scalable, serverless solution for automated document processing and information extraction using AWS services. This system combines OCR capabilities with generative AI to convert unstructured documents into structured data at scale.
 
+https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
+
+
 ## Key Features
 
 - **Serverless Architecture**: Built entirely on AWS serverless technologies including Lambda, Step Functions, SQS, and DynamoDB
