@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-notes: Default settings
+notes: Default settings for lending-package-sample configuration
 ocr:
   backend: "textract"  # Default to Textract for backward compatibility
   model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
@@ -983,7 +983,7 @@ classification:
     DOCUMENT_IMAGE: Visual representation of the document page that provides layout, formatting, and visual structure information
     CLASS_NAMES_AND_DESCRIPTIONS: List of valid document types with their descriptions that the document must be classified into
     </variables>
-  classificationMethod: textbasedHolisticClassification
+  classificationMethod: multimodalPageLevelClassification
 extraction:
   image:
     target_width: '951'

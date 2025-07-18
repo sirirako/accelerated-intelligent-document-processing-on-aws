@@ -32,6 +32,9 @@ SPDX-License-Identifier: MIT-0
   - Backward compatibility maintained - old parameter pattern still supported with deprecation warning
   - Updated all lambda functions and notebooks to use new simplified pattern
 - Removed fixed image target_height and target_width from default configurations, so images are processed in original resolution by default.
+- **Updated Default Configuration for Pattern1 and Pattern2**
+  - Changed default configuration for new stacks from "default" to "lending-package-sample" for both Pattern1 and Pattern2
+  - Maintains backward compatibility for stack updates by keeping the parameter value "default" mapped to the rvl-cdip-sample for pattern-2.
 
 
 ### Fixed
