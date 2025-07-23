@@ -29,6 +29,30 @@ Mappings:
     EveryDay:
       ScheduleExpression: "cron(0 0 * * ? *)"
 
+  Pattern1ConfigurationMap:
+    lending-package-sample:
+      ConfigPath: "lending-package-sample"
+    default:
+      ConfigPath: "lending-package-sample"
+
+  Pattern2ConfigurationMap:
+    lending-package-sample:
+      ConfigPath: "lending-package-sample"
+    rvl-cdip-package-sample:
+      ConfigPath: "rvl-cdip-package-sample"
+    rvl-cdip-package-sample-with-few-shot-examples:
+      ConfigPath: "rvl-cdip-package-sample-with-few-shot-examples"
+    bank-statement-sample:
+      ConfigPath: "bank-statement-sample"
+    default:
+      ConfigPath: "rvl-cdip-package-sample"
+
+  Pattern3ConfigurationMap:
+    rvl-cdip-package-sample:
+      ConfigPath: "rvl-cdip-package-sample"
+    default:
+      ConfigPath: "rvl-cdip-package-sample"
+
 Parameters:
 
   # Authorization params
@@ -90,8 +114,9 @@ Parameters:
 
   Pattern1Configuration:
     Type: String
-    Default: "default"
+    Default: "lending-package-sample"
     AllowedValues:
+      - "lending-package-sample"
       - "default"
     Description: Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
@@ -99,11 +124,13 @@ Parameters:
 
   Pattern2Configuration:
     Type: String
-    Default: "default"
+    Default: "lending-package-sample"
     AllowedValues:
-      - "default"
+      - "lending-package-sample"
+      - "rvl-cdip-package-sample"
+      - "rvl-cdip-package-sample-with-few-shot-examples"
       - "bank-statement-sample"
-      - "few_shot_example_with_multimodal_page_classification"
+      - "default"
     Description: Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
   Pattern2CustomClassificationModelARN:
@@ -126,8 +153,9 @@ Parameters:
 
   Pattern3Configuration:
     Type: String
-    Default: "default"
+    Default: "rvl-cdip-package-sample"
     AllowedValues:
+      - "rvl-cdip-package-sample"
       - "default"
     Description: Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
@@ -796,7 +824,9 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         EnableHITL: !Ref Pattern1EnableHITL
-        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-1/${Pattern1Configuration}/config.yaml"
+        ConfigurationDefaultS3Uri: !Sub 
+          - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
+          - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         SageMakerA2IReviewPortalURL: !If
           - IsPattern1HITLEnabled
@@ -833,7 +863,9 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-2/${Pattern2Configuration}/config.yaml"
+        ConfigurationDefaultS3Uri: !Sub 
+          - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
+          - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
 
   PATTERN3STACK:
@@ -865,7 +897,9 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-3/${Pattern3Configuration}/config.yaml"
+        ConfigurationDefaultS3Uri: !Sub 
+          - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
+          - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
 
   ##########################################################################

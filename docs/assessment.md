@@ -542,7 +542,7 @@ The assessment service supports configurable image dimensions for optimal confid
 
 ```yaml
 assessment:
-  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  model: "us.amazon.nova-lite-v1:0"
   # Image processing settings - preserves original resolution
   image:
     target_width: ""     # Empty string = no resizing (recommended)

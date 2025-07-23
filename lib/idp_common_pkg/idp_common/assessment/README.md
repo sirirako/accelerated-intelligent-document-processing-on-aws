@@ -63,7 +63,7 @@ The assessment service uses configuration-driven prompts and model parameters:
 
 ```yaml
 assessment:
-  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  model: "us.amazon.nova-pro-v1:0"
   temperature: 0
   top_k: 5
   top_p: 0.1

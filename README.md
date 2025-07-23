@@ -23,6 +23,10 @@ SPDX-License-Identifier: MIT-0
 
 A scalable, serverless solution for automated document processing and information extraction using AWS services. This system combines OCR capabilities with generative AI to convert unstructured documents into structured data at scale.
 
+https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
+
+White-glove customization, deployment, and integration support for production use cases is also available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
+
 ## Key Features
 
 - **Serverless Architecture**: Built entirely on AWS serverless technologies including Lambda, Step Functions, SQS, and DynamoDB
@@ -73,8 +77,8 @@ After deployment, you can quickly process a document and view results:
    - **Via S3**: Upload directly to the S3 input bucket (find the bucket URL in CloudFormation stack Outputs)
 
 2. **Use Sample Documents**:
-   - For Pattern 1 (BDA): Use [samples/lending_package.pdf](./samples/lending_package.pdf)
-   - For Patterns 2 and 3: Use [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf)
+   - For Patterns 1 (BDA) and Pattern 2: Use [samples/lending_package.pdf](./samples/lending_package.pdf)
+   - For Pattern 3 (UDOP): Use [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf)
 
 3. **Monitor Processing**:
    - **Via Web UI**: Track document status on the dashboard
@@ -105,8 +109,8 @@ To update an existing GenAIIDP stack to a new version:
 7. For detailed instructions, see the [Deployment Guide](./docs/deployment.md#updating-an-existing-stack)
 
 For testing, use these sample files:
-- Pattern-1 BDA default project: `samples/lending_package.pdf`
-- Patterns 2 and 3 default configurations: `samples/rvl_cdip_package.pdf`
+   - For Patterns 1 (BDA) and Pattern 2: Use [samples/lending_package.pdf](./samples/lending_package.pdf)
+   - For Pattern 3 (UDOP): Use [samples/rvl_cdip_package.pdf](./samples/rvl_cdip_package.pdf)
 
 For detailed deployment and testing instructions, see the [Deployment Guide](./docs/deployment.md).
 
