@@ -3383,19 +3383,49 @@ Resources:
       CodeUri: src/lambda/analytics_processor/
       Handler: index.handler
       Runtime: python3.12
-      Timeout: 300
+      Timeout: 900
       MemorySize: 1024
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           ANALYTICS_TABLE: !Ref AnalyticsTable
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          ATHENA_DATABASE: !Ref ReportingDatabase
+          ATHENA_OUTPUT_LOCATION: !Sub 
+            - "s3://${Bucket}/athena-results/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
       LoggingConfig:
         LogGroup: !Ref AnalyticsProcessorLogGroup
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AnalyticsTable
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateReportingBucket
+              - !Ref ReportingBucket
+              - !Ref ReportingBucketName
         - Statement:
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - glue:GetTable
+                - glue:GetTables
+                - glue:GetDatabase
+                - glue:GetDatabases
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: "*"
             - Effect: Allow
               Action:
                 - appsync:GraphQL
@@ -3541,30 +3571,13 @@ Resources:
       TypeName: Mutation
       FieldName: updateAnalyticsJobStatus
       DataSourceName: !GetAtt AnalyticsTableDataSource.Name
-      RequestMappingTemplate: |
-        ## Use the userId provided in the mutation arguments instead of from the context
+      RequestMappingTemplate: |-
         #set($userId = $ctx.args.userId)
+        #set($expNames = {})
+        #set($expValues = {})
         
-        #set($updateExpression = "SET #status = :status, #completedAt = :completedAt, #query = :query, #createdAt = :createdAt")
-        #set($expressionNames = {
-          "#status": "status",
-          "#completedAt": "completedAt",
-          "#query": "query",
-          "#createdAt": "createdAt"
-        })
-        #set($expressionValues = {
-          ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status),
-          ":completedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601()),
-          ":query": $util.dynamodb.toDynamoDBJson($ctx.args.query),
-          ":createdAt": $util.dynamodb.toDynamoDBJson($ctx.args.createdAt)
-        })
-        
-        ## Add result to update expression if provided
-        #if($ctx.args.result)
-          #set($updateExpression = "${updateExpression}, #result = :result")
-          $util.qr($expressionNames.put("#result", "result"))
-          $util.qr($expressionValues.put(":result", $util.dynamodb.toDynamoDBJson($ctx.args.result)))
-        #end
+        $util.qr($expNames.put("#status", "status"))
+        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
         
         {
           "version": "2018-05-29",
@@ -3574,12 +3587,9 @@ Resources:
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           },
           "update": {
-            "expression": "${updateExpression}",
-            "expressionNames": $util.toJson($expressionNames),
-            "expressionValues": $util.toJson($expressionValues)
-          },
-          "condition": {
-            "expression": "attribute_exists(PK)"
+            "expression": "SET #status = :status",
+            "expressionNames": $utils.toJson($expNames),
+            "expressionValues": $utils.toJson($expValues)
           }
         }
       ResponseMappingTemplate: |

@@ -88,6 +88,16 @@ appsync = [
     "requests==2.32.4",
 ]
 
+# Agents module dependencies
+agents = [
+    "strands-agents>=1.0.0",
+]
+
+# Analytics agent dependencies
+analytics = [
+    "pandas>=2.0.0",
+]
+
 # Document service factory dependencies (includes both appsync and dynamodb support)
 # This includes all dependencies needed for both backends
 docs_service = [
@@ -121,6 +131,7 @@ all = [
     "pyarrow==20.0.0",
     "openpyxl==3.1.5",
     "python-docx==1.2.0",
+    "strands-agents>=1.0.0",
     # "s3fs==2023.12.2" - - disabled till we fix package dependencies
 ]
 

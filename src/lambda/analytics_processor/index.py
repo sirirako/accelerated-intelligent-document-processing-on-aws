@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 """
-Lambda function to process analytics queries.
-For Phase 1, this function generates a dummy plot and updates the job status.
+Lambda function to process analytics queries using Strands agents.
 """
 
 import json
@@ -17,9 +16,16 @@ import requests
 from aws_requests_auth.aws_auth import AWSRequestsAuth
 from botocore.exceptions import ClientError
 
-# Configure logging
-logger = logging.getLogger()
-logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+# Import the analytics agent and configuration utilities from idp_common
+from idp_common.agents.analytics import create_analytics_agent, get_analytics_config, parse_agent_response
+from idp_common.agents.common.config import configure_logging
+
+# Configure logging for both application and Strands framework
+# This will respect both LOG_LEVEL and STRANDS_LOG_LEVEL environment variables
+configure_logging()
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 # Initialize AWS clients
 dynamodb = boto3.resource("dynamodb")
@@ -69,52 +75,50 @@ def validate_job_ownership(table, user_id, job_id):
         raise ValueError(error_msg)
 
 
-def generate_dummy_plot():
+def process_analytics_query(query: str) -> dict:
     """
-    Generate a dummy plot for Phase 1.
+    Process an analytics query using the Strands agent.
     
+    Args:
+        query: The natural language query to process
+        
     Returns:
-        A dictionary with plot data
+        Dict containing the analytics result
     """
-    # Sample bar chart data
-    return {
-        "type": "bar",
-        "data": {
-            "labels": ["Document Type A", "Document Type B", "Document Type C", "Document Type D"],
-            "datasets": [
-                {
-                    "label": "Document Count",
-                    "data": [65, 59, 80, 81],
-                    "backgroundColor": [
-                        "rgba(255, 99, 132, 0.2)",
-                        "rgba(54, 162, 235, 0.2)",
-                        "rgba(255, 206, 86, 0.2)",
-                        "rgba(75, 192, 192, 0.2)"
-                    ],
-                    "borderColor": [
-                        "rgba(255, 99, 132, 1)",
-                        "rgba(54, 162, 235, 1)",
-                        "rgba(255, 206, 86, 1)",
-                        "rgba(75, 192, 192, 1)"
-                    ],
-                    "borderWidth": 1
-                }
-            ]
-        },
-        "options": {
-            "scales": {
-                "y": {
-                    "beginAtZero": True
-                }
-            },
-            "responsive": True,
-            "maintainAspectRatio": False,
-            "title": {
-                "display": True,
-                "text": "Document Distribution by Type"
+    try:
+        # Get analytics configuration
+        config = get_analytics_config()
+        logger.info("Analytics configuration loaded successfully")
+        
+        # Create the analytics agent
+        agent = create_analytics_agent(config, session)
+        logger.info("Analytics agent created successfully")
+        
+        # Process the query
+        logger.info(f"Processing query: {query}")
+        response = agent(query)
+        logger.info("Query processed successfully")
+        
+        # Parse the response using the new parsing function
+        try:
+            result = parse_agent_response(response)
+            logger.info(f"Parsed response with type: {result.get('responseType', 'unknown')}")
+            return result
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse agent response: {e}")
+            logger.error(f"Raw response: {response}")
+            # Return a text response with the raw output
+            return {
+                "responseType": "text",
+                "content": f"Error parsing response: {response}"
             }
+            
+    except Exception as e:
+        logger.exception(f"Error processing analytics query: {str(e)}")
+        return {
+            "responseType": "text",
+            "content": f"Error processing query: {str(e)}"
         }
-    }
 
 
 def update_job_status_in_appsync(job_id, status, result=None, error=None):
@@ -168,14 +172,18 @@ def update_job_status_in_appsync(job_id, status, result=None, error=None):
         # Prepare the variables with all required fields
         variables = {
             "jobId": job_id,
-            "status": status,
+            "status": status,  # Simple string, not a DynamoDB object
             "userId": user_id,
             "query": query,
             "createdAt": created_at
         }
         
+        # Serialize result to JSON string if it's provided
         if result:
-            variables["result"] = json.dumps(result)
+            if isinstance(result, str):
+                variables["result"] = result
+            else:
+                variables["result"] = json.dumps(result)
         
         # Set up AWS authentication
         region = session.region_name or os.environ.get('AWS_REGION', 'us-east-1')
@@ -216,9 +224,11 @@ def update_job_status_in_appsync(job_id, status, result=None, error=None):
             response_json = response.json()
             if "errors" not in response_json:
                 logger.info(f"Successfully published analytics job update for: {job_id}, user: {user_id}")
-                logger.info(f"Response: {response.text}")
+                logger.debug(f"Response: {response.text}")
             else:
                 logger.error(f"GraphQL errors in response: {json.dumps(response_json.get('errors'))}")
+                # Log the full payload for debugging
+                logger.error(f"Full mutation payload: {json.dumps(payload)}")
         else:
             logger.error(f"Failed to publish analytics job update. Status: {response.status_code}, Response: {response.text}")
         
@@ -282,26 +292,40 @@ def handler(event, context):
         )
         logger.info(f"Updated job status to PROCESSING: {job_id}")
         
-        # Generate a dummy plot for Phase 1
+        # Process the analytics query using the agent
         try:
-            # Simulate processing time
-            time.sleep(10)
+            # Simulate processing time for now (can be removed later)
+            time.sleep(2)
             
-            # Generate the dummy plot
-            plot_data = generate_dummy_plot()
+            # Process the query using the analytics agent
+            result = process_analytics_query(job_record.get("query"))
             
-            # Prepare the result
-            result = {
-                "responseType": "plotData",
-                "plotData": [plot_data],
+            # Prepare the result with metadata
+            analytics_result = {
+                "responseType": result.get("responseType", "text"),
                 "metadata": {
                     "generatedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
                     "query": job_record.get("query")
                 }
             }
             
+            # Add the appropriate data field based on response type
+            if result.get("responseType") == "plotData":
+                analytics_result["plotData"] = [result]  # Wrap in array for consistency
+            elif result.get("responseType") == "table":
+                analytics_result["tableData"] = result
+            else:  # text or fallback
+                analytics_result["content"] = result.get("content", "No content available")
+            
             # Update the job record with the result
             completed_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            
+            # Serialize the analytics_result to a JSON string to avoid DynamoDB type issues
+            analytics_result_json = json.dumps(analytics_result)
+            
+            # Define the status explicitly
+            job_status = "COMPLETED"
+            
             table.update_item(
                 Key={
                     "PK": f"analytics#{user_id}",
@@ -314,24 +338,28 @@ def handler(event, context):
                     "#completedAt": "completedAt"
                 },
                 ExpressionAttributeValues={
-                    ":status": "COMPLETED",
-                    ":result": result,
+                    ":status": job_status,  # Use the explicitly defined status
+                    ":result": analytics_result_json,  # Store as JSON string
                     ":completedAt": completed_at
                 }
             )
-            logger.info(f"Updated job status to COMPLETED with result: {job_id}")
+            logger.info(f"Updated job status to {job_status} with result: {job_id}")
             
             # Update the job status in AppSync to trigger the subscription
-            update_job_status_in_appsync(job_id, "COMPLETED", result)
+            # Pass the analytics_result directly (not the JSON string)
+            update_job_status_in_appsync(job_id, job_status, analytics_result)
             
             # Return the updated job record (without exposing userId)
+            # If the result is stored as a JSON string, deserialize it for the response
+            result_to_return = analytics_result
+            
             return {
                 "jobId": job_id,
                 "status": "COMPLETED",
                 "query": job_record.get("query"),
                 "createdAt": job_record.get("createdAt"),
                 "completedAt": completed_at,
-                "result": result
+                "result": result_to_return
             }
             
         except Exception as e:
@@ -341,6 +369,8 @@ def handler(event, context):
             
             # Update the job record with the error
             completed_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            job_status = "FAILED"
+            
             table.update_item(
                 Key={
                     "PK": f"analytics#{user_id}",
@@ -353,15 +383,15 @@ def handler(event, context):
                     "#completedAt": "completedAt"
                 },
                 ExpressionAttributeValues={
-                    ":status": "FAILED",
-                    ":error": error_msg,
+                    ":status": job_status,  # Use the explicitly defined status
+                    ":error": str(error_msg),  # Ensure error is stored as a string
                     ":completedAt": completed_at
                 }
             )
-            logger.info(f"Updated job status to FAILED with error: {job_id}")
+            logger.info(f"Updated job status to {job_status} with error: {job_id}")
             
             # Update the job status in AppSync to trigger the subscription
-            update_job_status_in_appsync(job_id, "FAILED", error=error_msg)
+            update_job_status_in_appsync(job_id, job_status, error=str(error_msg))
             
             return {
                 "statusCode": 500,
