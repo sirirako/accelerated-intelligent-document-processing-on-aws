@@ -24,23 +24,23 @@ class TestRunAthenaQuery:
             "QueryExecutionId": "test-execution-id"
         }
         mock_athena_client.get_query_execution.return_value = {
-            "QueryExecution": {
-                "Status": {"State": "SUCCEEDED"}
-            }
+            "QueryExecution": {"Status": {"State": "SUCCEEDED"}}
         }
         mock_athena_client.get_query_results.return_value = {
             "ResultSet": {
                 "ResultSetMetadata": {
-                    "ColumnInfo": [
-                        {"Label": "column1"},
-                        {"Label": "column2"}
-                    ]
+                    "ColumnInfo": [{"Label": "column1"}, {"Label": "column2"}]
                 },
                 "Rows": [
-                    {"Data": [{"VarCharValue": "header1"}, {"VarCharValue": "header2"}]},  # Header row
+                    {
+                        "Data": [
+                            {"VarCharValue": "header1"},
+                            {"VarCharValue": "header2"},
+                        ]
+                    },  # Header row
                     {"Data": [{"VarCharValue": "value1"}, {"VarCharValue": "value2"}]},
-                    {"Data": [{"VarCharValue": "value3"}, {}]}  # Test null value
-                ]
+                    {"Data": [{"VarCharValue": "value3"}, {}]},  # Test null value
+                ],
             }
         }
 
@@ -48,7 +48,7 @@ class TestRunAthenaQuery:
             "aws_region": "us-east-1",
             "athena_database": "test_db",
             "athena_output_location": "s3://test-bucket/results/",
-            "max_polling_attempts": 3
+            "max_polling_attempts": 3,
         }
 
         with patch("boto3.client", return_value=mock_athena_client):
@@ -70,7 +70,7 @@ class TestRunAthenaQuery:
                 "Status": {
                     "State": "FAILED",
                     "StateChangeReason": "Syntax error in query",
-                    "AthenaError": "SYNTAX_ERROR"
+                    "AthenaError": "SYNTAX_ERROR",
                 }
             }
         }
@@ -79,7 +79,7 @@ class TestRunAthenaQuery:
             "aws_region": "us-east-1",
             "athena_database": "test_db",
             "athena_output_location": "s3://test-bucket/results/",
-            "max_polling_attempts": 3
+            "max_polling_attempts": 3,
         }
 
         with patch("boto3.client", return_value=mock_athena_client):
@@ -94,7 +94,7 @@ class TestRunAthenaQuery:
         config = {
             "aws_region": "us-east-1",
             "athena_database": "test_db",
-            "athena_output_location": "s3://test-bucket/results/"
+            "athena_output_location": "s3://test-bucket/results/",
         }
 
         with patch("boto3.client", side_effect=Exception("Connection error")):
@@ -116,7 +116,7 @@ result = {"test": "value"}
 print(json.dumps(result))
 """
         result = execute_python(code)
-        
+
         assert result["success"] is True
         assert '{"test": "value"}' in result["stdout"]
         assert result["stderr"] == ""
@@ -128,7 +128,7 @@ print(json.dumps(result))
 print(undefined_variable)
 """
         result = execute_python(code)
-        
+
         assert result["success"] is False
         assert result["stdout"] == ""
         assert "undefined_variable" in result["stderr"]
@@ -145,7 +145,7 @@ except ImportError:
     print("pandas not available")
 """
         result = execute_python(code)
-        
+
         assert result["success"] is True
         # Should work regardless of whether pandas is installed
         assert "available" in result["stdout"]
@@ -159,7 +159,7 @@ import sys
 print("Error line", file=sys.stderr)
 """
         result = execute_python(code)
-        
+
         # Should capture stderr but still be successful since no exception
         assert result["success"] is False  # Because stderr has content
         assert "Line 1" in result["stdout"]

@@ -36,7 +36,7 @@ class TestGetEnvironmentConfig:
         env_vars = {
             "AWS_REGION": "us-west-2",
             "TEST_KEY": "test_value",
-            "ANOTHER_KEY": "another_value"
+            "ANOTHER_KEY": "another_value",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             config = get_environment_config(["TEST_KEY", "ANOTHER_KEY"])
@@ -49,22 +49,21 @@ class TestGetEnvironmentConfig:
         with patch.dict(os.environ, {"AWS_REGION": "us-west-2"}, clear=True):
             with pytest.raises(ValueError) as exc_info:
                 get_environment_config(["MISSING_KEY", "ANOTHER_MISSING_KEY"])
-            
+
             assert "Missing required environment variables" in str(exc_info.value)
             assert "MISSING_KEY" in str(exc_info.value)
             assert "ANOTHER_MISSING_KEY" in str(exc_info.value)
 
     def test_partial_missing_required_keys(self):
         """Test that partially missing required keys raise ValueError."""
-        env_vars = {
-            "AWS_REGION": "us-west-2",
-            "PRESENT_KEY": "present_value"
-        }
+        env_vars = {"AWS_REGION": "us-west-2", "PRESENT_KEY": "present_value"}
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(ValueError) as exc_info:
                 get_environment_config(["PRESENT_KEY", "MISSING_KEY"])
-            
-            assert "Missing required environment variables: MISSING_KEY" in str(exc_info.value)
+
+            assert "Missing required environment variables: MISSING_KEY" in str(
+                exc_info.value
+            )
 
 
 @pytest.mark.unit
@@ -75,16 +74,14 @@ class TestValidateAwsCredentials:
         """Test validation when explicit AWS credentials are available."""
         env_vars = {
             "AWS_ACCESS_KEY_ID": "test_key",
-            "AWS_SECRET_ACCESS_KEY": "test_secret"
+            "AWS_SECRET_ACCESS_KEY": "test_secret",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             assert validate_aws_credentials() is True
 
     def test_lambda_environment(self):
         """Test validation in Lambda environment."""
-        env_vars = {
-            "AWS_LAMBDA_FUNCTION_NAME": "test_function"
-        }
+        env_vars = {"AWS_LAMBDA_FUNCTION_NAME": "test_function"}
         with patch.dict(os.environ, env_vars, clear=True):
             assert validate_aws_credentials() is True
 

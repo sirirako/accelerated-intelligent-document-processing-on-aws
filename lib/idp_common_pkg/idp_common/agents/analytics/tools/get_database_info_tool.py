@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 def get_database_info() -> str:
     """
     Retrieves information about the database schema, tables, and columns.
-    
+
     This tool returns a detailed description of the database structure,
     including table names, column definitions, and example queries.
-    
+
     Returns:
         str: A markdown-formatted description of the database schema
     """

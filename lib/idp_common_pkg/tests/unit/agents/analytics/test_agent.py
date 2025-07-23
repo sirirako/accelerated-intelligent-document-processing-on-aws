@@ -17,11 +17,13 @@ class TestCreateAnalyticsAgent:
     @patch("idp_common.agents.analytics.agent.load_db_description")
     @patch("idp_common.agents.analytics.agent.load_result_format_description")
     @patch("idp_common.agents.analytics.agent.Agent")
-    def test_create_analytics_agent_success(self, mock_agent_class, mock_load_result, mock_load_db):
+    def test_create_analytics_agent_success(
+        self, mock_agent_class, mock_load_result, mock_load_db
+    ):
         """Test successful creation of analytics agent."""
         # Import here to avoid issues with mocking
         from idp_common.agents.analytics.agent import create_analytics_agent
-        
+
         # Setup mocks
         mock_load_db.return_value = "Test database description"
         mock_load_result.return_value = "Test result format"
@@ -31,7 +33,7 @@ class TestCreateAnalyticsAgent:
         config = {
             "aws_region": "us-east-1",
             "athena_database": "test_db",
-            "athena_output_location": "s3://test-bucket/results/"
+            "athena_output_location": "s3://test-bucket/results/",
         }
 
         # Call the function
@@ -40,12 +42,12 @@ class TestCreateAnalyticsAgent:
         # Verify the agent was created
         assert result == mock_agent_instance
         mock_agent_class.assert_called_once()
-        
+
         # Verify the system prompt contains expected content
         call_args = mock_agent_class.call_args
         assert "tools" in call_args.kwargs
         assert "system_prompt" in call_args.kwargs
-        
+
         system_prompt = call_args.kwargs["system_prompt"]
         assert "Test database description" in system_prompt
         assert "Test result format" in system_prompt
@@ -55,10 +57,12 @@ class TestCreateAnalyticsAgent:
     @patch("idp_common.agents.analytics.agent.load_db_description")
     @patch("idp_common.agents.analytics.agent.load_result_format_description")
     @patch("idp_common.agents.analytics.agent.Agent")
-    def test_create_analytics_agent_tools_configured(self, mock_agent_class, mock_load_result, mock_load_db):
+    def test_create_analytics_agent_tools_configured(
+        self, mock_agent_class, mock_load_result, mock_load_db
+    ):
         """Test that analytics agent tools are properly configured."""
         from idp_common.agents.analytics.agent import create_analytics_agent
-        
+
         mock_load_db.return_value = "Test database description"
         mock_load_result.return_value = "Test result format"
         mock_agent_instance = MagicMock()
@@ -67,7 +71,7 @@ class TestCreateAnalyticsAgent:
         config = {
             "aws_region": "us-east-1",
             "athena_database": "test_db",
-            "athena_output_location": "s3://test-bucket/results/"
+            "athena_output_location": "s3://test-bucket/results/",
         }
 
         create_analytics_agent(config)
@@ -77,16 +81,21 @@ class TestCreateAnalyticsAgent:
         tools = call_args.kwargs["tools"]
         assert len(tools) == 2  # configured_athena_tool and execute_python
 
-    @patch("idp_common.agents.analytics.agent.load_db_description", side_effect=Exception("File error"))
+    @patch(
+        "idp_common.agents.analytics.agent.load_db_description",
+        side_effect=Exception("File error"),
+    )
     @patch("idp_common.agents.analytics.agent.load_result_format_description")
-    def test_create_analytics_agent_handles_asset_loading_error(self, mock_load_result, mock_load_db):
+    def test_create_analytics_agent_handles_asset_loading_error(
+        self, mock_load_result, mock_load_db
+    ):
         """Test that agent creation handles asset loading errors gracefully."""
         from idp_common.agents.analytics.agent import create_analytics_agent
-        
+
         config = {
             "aws_region": "us-east-1",
             "athena_database": "test_db",
-            "athena_output_location": "s3://test-bucket/results/"
+            "athena_output_location": "s3://test-bucket/results/",
         }
 
         # Should raise the exception since we don't handle it in the function

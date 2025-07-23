@@ -25,11 +25,11 @@ class TestGetAnalyticsConfig:
         env_vars = {
             "AWS_REGION": "us-west-2",
             "ATHENA_DATABASE": "test_database",
-            "ATHENA_OUTPUT_LOCATION": "s3://test-bucket/results/"
+            "ATHENA_OUTPUT_LOCATION": "s3://test-bucket/results/",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             config = get_analytics_config()
-            
+
             assert config["aws_region"] == "us-west-2"
             assert config["athena_database"] == "test_database"
             assert config["athena_output_location"] == "s3://test-bucket/results/"
@@ -40,13 +40,13 @@ class TestGetAnalyticsConfig:
         """Test that missing required configuration raises ValueError."""
         env_vars = {
             "AWS_REGION": "us-west-2",
-            "ATHENA_DATABASE": "test_database"
+            "ATHENA_DATABASE": "test_database",
             # Missing ATHENA_OUTPUT_LOCATION
         }
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(ValueError) as exc_info:
                 get_analytics_config()
-            
+
             assert "Missing required environment variables" in str(exc_info.value)
             assert "ATHENA_OUTPUT_LOCATION" in str(exc_info.value)
 
@@ -55,7 +55,7 @@ class TestGetAnalyticsConfig:
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
                 get_analytics_config()
-            
+
             error_msg = str(exc_info.value)
             assert "Missing required environment variables" in error_msg
             assert "ATHENA_DATABASE" in error_msg
@@ -66,7 +66,9 @@ class TestGetAnalyticsConfig:
 class TestLoadDbDescription:
     """Tests for the load_db_description function."""
 
-    @patch("builtins.open", new_callable=mock_open, read_data="Test database description")
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="Test database description"
+    )
     def test_load_db_description_success(self, mock_file):
         """Test successful loading of database description."""
         result = load_db_description()
@@ -85,7 +87,11 @@ class TestLoadDbDescription:
 class TestLoadResultFormatDescription:
     """Tests for the load_result_format_description function."""
 
-    @patch("builtins.open", new_callable=mock_open, read_data="Test result format description")
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data="Test result format description",
+    )
     def test_load_result_format_description_success(self, mock_file):
         """Test successful loading of result format description."""
         result = load_result_format_description()

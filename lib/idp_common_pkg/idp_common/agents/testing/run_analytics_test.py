@@ -12,13 +12,16 @@ from pathlib import Path
 # Try to load .env file if it exists
 try:
     from dotenv import load_dotenv
+
     env_file = Path(__file__).parent / ".env"
     if env_file.exists():
         load_dotenv(env_file)
         print(f"Loaded environment variables from {env_file}")
     else:
         print(f"No .env file found at {env_file}")
-        print("You can create one by copying .env.example to .env and updating the values")
+        print(
+            "You can create one by copying .env.example to .env and updating the values"
+        )
 except ImportError:
     print("python-dotenv not available, using system environment variables")
 

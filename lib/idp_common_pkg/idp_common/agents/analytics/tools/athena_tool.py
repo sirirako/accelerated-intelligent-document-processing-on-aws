@@ -61,7 +61,9 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
                 logger.error(f"Query {state.lower()}.")
                 break
             else:
-                logger.debug(f"Query state: {state}, sleeping for 2 seconds (attempt {attempts+1}/{max_polling_attempts})")
+                logger.debug(
+                    f"Query state: {state}, sleeping for 2 seconds (attempt {attempts + 1}/{max_polling_attempts})"
+                )
                 time.sleep(2)
                 attempts += 1
 
@@ -94,24 +96,23 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": True, "data": data, "query": query}
         elif state == "RUNNING":
             # Query is still running after max polling attempts
-            logger.warning(f"Query still running after {max_polling_attempts} polling attempts. Query execution ID: {query_execution_id}")
+            logger.warning(
+                f"Query still running after {max_polling_attempts} polling attempts. Query execution ID: {query_execution_id}"
+            )
             return {
                 "success": False,
                 "error": f"Query timed out after {max_polling_attempts} polling attempts. The query is still running in Athena and may complete later.",
                 "query": query,
                 "query_execution_id": query_execution_id,
-                "state": "RUNNING"
+                "state": "RUNNING",
             }
         else:
             # Query failed
             error_message = response["QueryExecution"]["Status"].get(
                 "StateChangeReason", "Query failed with an Unknown error"
             )
-            error_details = response["QueryExecution"]["Status"].get(
-                "AthenaError", {})
-            logger.error(
-                f"Query failed with state {state}. Reason: {error_message}"
-            )
+            error_details = response["QueryExecution"]["Status"].get("AthenaError", {})
+            logger.error(f"Query failed with state {state}. Reason: {error_message}")
 
             return {
                 "success": False,
