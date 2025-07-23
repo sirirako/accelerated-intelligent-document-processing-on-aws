@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated lending_package.pdf sample with more realistic driver's license image
+
 ### Added
 
 ## [0.3.8]
