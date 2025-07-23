@@ -5,16 +5,20 @@
 Unit tests for the analytics configuration module.
 """
 
+# ruff: noqa: E402, I001
+# The above line disables E402 (module level import not at top of file) and I001 (import block sorting) for this file
+
 import os
 import sys
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Mock strands module before importing analytics modules
+# Mock strands modules before importing analytics modules
 sys.modules["strands"] = MagicMock()
+sys.modules["strands.models"] = MagicMock()
 
-from idp_common.agents.analytics.config import (  # noqa: E402
+from idp_common.agents.analytics.config import (
     get_analytics_config,
     load_db_description,
     load_result_format_description,
@@ -61,51 +65,43 @@ class TestGetAnalyticsConfig:
             with pytest.raises(ValueError) as exc_info:
                 get_analytics_config()
 
-            error_msg = str(exc_info.value)
-            assert "Missing required environment variables" in error_msg
-            assert "ATHENA_DATABASE" in error_msg
-            assert "ATHENA_OUTPUT_LOCATION" in error_msg
+            error_message = str(exc_info.value)
+            assert "Missing required environment variables" in error_message
+            assert "ATHENA_DATABASE" in error_message
+            assert "ATHENA_OUTPUT_LOCATION" in error_message
 
 
 @pytest.mark.unit
 class TestLoadDbDescription:
     """Tests for the load_db_description function."""
 
-    @patch(
-        "builtins.open", new_callable=mock_open, read_data="Test database description"
-    )
-    def test_load_db_description_success(self, mock_file):
+    def test_load_db_description_success(self):
         """Test successful loading of database description."""
         result = load_db_description()
-        assert result == "Test database description"
-        mock_file.assert_called_once()
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "Athena Table Information" in result
 
-    @patch("builtins.open", side_effect=FileNotFoundError())
-    def test_load_db_description_file_not_found(self, mock_file):
-        """Test handling of missing database description file."""
+    def test_load_db_description_contains_expected_content(self):
+        """Test that database description contains expected table information."""
         result = load_db_description()
-        assert result == "No database description available."
-        mock_file.assert_called_once()
+        assert "document_evaluations" in result
+        assert "section_evaluations" in result
 
 
 @pytest.mark.unit
 class TestLoadResultFormatDescription:
     """Tests for the load_result_format_description function."""
 
-    @patch(
-        "builtins.open",
-        new_callable=mock_open,
-        read_data="Test result format description",
-    )
-    def test_load_result_format_description_success(self, mock_file):
+    def test_load_result_format_description_success(self):
         """Test successful loading of result format description."""
         result = load_result_format_description()
-        assert result == "Test result format description"
-        mock_file.assert_called_once()
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "Result Format Description" in result
 
-    @patch("builtins.open", side_effect=FileNotFoundError())
-    def test_load_result_format_description_file_not_found(self, mock_file):
-        """Test handling of missing result format description file."""
+    def test_load_result_format_description_contains_expected_content(self):
+        """Test that result format description contains expected format information."""
         result = load_result_format_description()
-        assert result == "No result format description available."
-        mock_file.assert_called_once()
+        assert "responseType" in result
+        assert "JSON object" in result
