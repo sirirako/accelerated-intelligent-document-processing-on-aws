@@ -5,10 +5,18 @@
 Integration tests for the analytics agent functionality.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
+
+# Mock strands module before importing analytics modules
+sys.modules["strands"] = MagicMock()
+
+from idp_common.agents.analytics import (  # noqa: E402
+    create_analytics_agent,
+    get_analytics_config,
+)
 
 
 @pytest.mark.unit

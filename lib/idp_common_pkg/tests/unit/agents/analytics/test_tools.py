@@ -5,11 +5,18 @@
 Unit tests for the analytics tools module.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from idp_common.agents.analytics.tools.athena_tool import run_athena_query
-from idp_common.agents.analytics.tools.python_tool import execute_python
+
+# Mock strands module before importing analytics modules
+sys.modules["strands"] = MagicMock()
+
+from idp_common.agents.analytics.tools.athena_tool import run_athena_query  # noqa: E402
+from idp_common.agents.analytics.tools.generate_plot_tool import (  # noqa: E402
+    generate_plot,  # noqa: E402
+)
 
 
 @pytest.mark.unit
@@ -105,8 +112,8 @@ class TestRunAthenaQuery:
 
 
 @pytest.mark.unit
-class TestExecutePython:
-    """Tests for the execute_python tool."""
+class TestGeneratePlot:
+    """Tests for the generate_plot tool."""
 
     def test_successful_python_execution(self):
         """Test successful Python code execution."""
@@ -115,7 +122,7 @@ import json
 result = {"test": "value"}
 print(json.dumps(result))
 """
-        result = execute_python(code)
+        result = generate_plot(code)
 
         assert result["success"] is True
         assert '{"test": "value"}' in result["stdout"]
@@ -127,7 +134,7 @@ print(json.dumps(result))
 # This will cause a NameError
 print(undefined_variable)
 """
-        result = execute_python(code)
+        result = generate_plot(code)
 
         assert result["success"] is False
         assert result["stdout"] == ""
@@ -144,7 +151,7 @@ try:
 except ImportError:
     print("pandas not available")
 """
-        result = execute_python(code)
+        result = generate_plot(code)
 
         assert result["success"] is True
         # Should work regardless of whether pandas is installed
@@ -158,7 +165,7 @@ print("Line 2")
 import sys
 print("Error line", file=sys.stderr)
 """
-        result = execute_python(code)
+        result = generate_plot(code)
 
         # Should capture stderr but still be successful since no exception
         assert result["success"] is False  # Because stderr has content

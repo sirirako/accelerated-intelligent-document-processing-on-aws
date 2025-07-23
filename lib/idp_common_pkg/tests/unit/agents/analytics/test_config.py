@@ -6,10 +6,15 @@ Unit tests for the analytics configuration module.
 """
 
 import os
-from unittest.mock import mock_open, patch
+import sys
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-from idp_common.agents.analytics.config import (
+
+# Mock strands module before importing analytics modules
+sys.modules["strands"] = MagicMock()
+
+from idp_common.agents.analytics.config import (  # noqa: E402
     get_analytics_config,
     load_db_description,
     load_result_format_description,

@@ -5,9 +5,13 @@
 Unit tests for the analytics agent module.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Mock strands module before importing analytics modules
+sys.modules["strands"] = MagicMock()
 
 
 @pytest.mark.unit
