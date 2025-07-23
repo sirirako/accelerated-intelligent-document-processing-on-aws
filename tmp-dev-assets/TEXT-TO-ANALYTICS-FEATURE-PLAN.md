@@ -131,13 +131,13 @@ extend type Mutation {
    - Configure agent with Athena query capabilities
    - Implement query interpretation (prompt engineering etc)
    - Build visualization data formatters
-   - Create dashboard layout generator for composite responses
+   - Create dashboard layout generator for composite responses [SKIP THIS FOR NOW]
 
 3. **Frontend Development**:
    - Create analytics UI components
    - Implement job status tracking
    - Add visualization rendering for multiple charts and tables
-   - Implement dashboard layout system
+   - Implement dashboard layout system [SKIP THIS FOR NOW]
    - Add navigation and routing
 
 4. **Testing & Refinement**:
