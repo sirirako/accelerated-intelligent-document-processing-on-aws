@@ -5,8 +5,9 @@
 Integration tests for the analytics agent functionality.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
 
 

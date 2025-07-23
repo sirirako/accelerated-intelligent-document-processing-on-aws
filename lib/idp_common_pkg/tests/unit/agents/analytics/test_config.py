@@ -6,12 +6,13 @@ Unit tests for the analytics configuration module.
 """
 
 import os
+from unittest.mock import mock_open, patch
+
 import pytest
-from unittest.mock import patch, mock_open
 from idp_common.agents.analytics.config import (
     get_analytics_config,
     load_db_description,
-    load_result_format_description
+    load_result_format_description,
 )
 
 

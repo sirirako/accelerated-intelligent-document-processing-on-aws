@@ -6,7 +6,6 @@
 Wrapper script that loads .env file and runs the analytics test.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -27,8 +26,8 @@ except ImportError:
 pkg_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(pkg_root))
 
-# Import and run the main test
-from idp_common.agents.testing.test_analytics import main
+# Import after path modification to avoid E402 linting error
+from idp_common.agents.testing.test_analytics import main  # noqa: E402
 
 if __name__ == "__main__":
     main()

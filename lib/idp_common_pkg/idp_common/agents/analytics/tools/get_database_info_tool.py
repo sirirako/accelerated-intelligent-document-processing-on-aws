@@ -6,7 +6,9 @@ Tool for retrieving database schema information for the analytics agent.
 """
 
 import logging
+
 from strands import tool
+
 from ..config import load_db_description
 
 logger = logging.getLogger(__name__)

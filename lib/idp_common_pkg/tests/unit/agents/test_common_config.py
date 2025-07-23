@@ -6,9 +6,13 @@ Unit tests for the agents common configuration module.
 """
 
 import os
-import pytest
 from unittest.mock import patch
-from idp_common.agents.common.config import get_environment_config, validate_aws_credentials
+
+import pytest
+from idp_common.agents.common.config import (
+    get_environment_config,
+    validate_aws_credentials,
+)
 
 
 @pytest.mark.unit

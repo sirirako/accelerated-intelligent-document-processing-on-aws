@@ -5,8 +5,9 @@
 Unit tests for the analytics tools module.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from idp_common.agents.analytics.tools.athena_tool import run_athena_query
 from idp_common.agents.analytics.tools.python_tool import execute_python
 

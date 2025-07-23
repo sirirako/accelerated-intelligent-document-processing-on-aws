@@ -5,8 +5,9 @@
 Unit tests for the analytics agent module.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, mock_open, MagicMock
 
 
 @pytest.mark.unit

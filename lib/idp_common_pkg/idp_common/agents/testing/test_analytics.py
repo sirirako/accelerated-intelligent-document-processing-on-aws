@@ -18,8 +18,13 @@ from pathlib import Path
 pkg_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(pkg_root))
 
-from idp_common.agents.analytics import create_analytics_agent, get_analytics_config, parse_agent_response
-from idp_common.agents.common.config import configure_logging
+# Import after path modification to avoid E402 linting error
+from idp_common.agents.analytics import (  # noqa: E402
+    create_analytics_agent,
+    get_analytics_config,
+    parse_agent_response,
+)
+from idp_common.agents.common.config import configure_logging  # noqa: E402
 
 
 def main():

@@ -5,10 +5,11 @@
 Athena Query Tool for executing SQL queries using Strands framework.
 """
 
-import boto3
-import time
 import logging
-from typing import Dict, Any
+import time
+from typing import Any, Dict
+
+import boto3
 from strands import tool
 
 logger = logging.getLogger(__name__)
