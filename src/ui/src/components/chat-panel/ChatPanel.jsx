@@ -56,11 +56,6 @@ const ChatPanel = (item) => {
       // logger.debug('cResponse:', cResponse);
       // logger.debug('content', cResponse.cr.content[0].text);
 
-      const chatResponseData = {
-        role: 'ai',
-        content: cResponse.cr.content[0].text,
-      };
-
       setChatQueries((prevChatQueries) => [...prevChatQueries, chatResponseData]);
 
       const maxScrollHeight = document.documentElement.scrollHeight;
