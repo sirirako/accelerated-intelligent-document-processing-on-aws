@@ -23,6 +23,40 @@ The solution includes a responsive web-based user interface built with React tha
 - Document upload from local computer
 - Knowledge base querying for document collections
 - **Document Process Flow visualization** for detailed workflow execution monitoring and troubleshooting
+- **Document Analytics** for querying and visualizing processed document data
+
+## Document Analytics
+
+The Document Analytics feature allows users to query their processed documents using natural language and receive results in various formats including charts, tables, and text responses.
+
+### Key Capabilities
+
+- **Natural Language Queries**: Ask questions about your processed documents in plain English
+- **Multiple Response Types**: Results can be displayed as:
+  - Interactive charts and graphs (using Chart.js)
+  - Structured data tables with pagination and sorting
+  - Text-based responses and summaries
+- **Real-time Processing**: Query processing status updates with visual indicators
+- **Query History**: Track and review previous analytics queries
+
+### Technical Implementation Notes
+
+The analytics feature uses a combination of real-time subscriptions and polling for status updates:
+
+- **Primary Method**: GraphQL subscriptions via AWS AppSync for immediate notifications when queries complete
+- **Fallback Method**: Polling every 5 seconds to ensure status updates are received even if subscriptions fail
+- **Current Limitation**: The AppSync subscription currently returns a Boolean completion status rather than full job details, requiring a separate query to fetch results when notified
+
+**TODO**: Implement proper AppSync subscriptions that return complete AnalyticsJob objects to eliminate the need for additional queries and improve real-time user experience.
+
+### How to Use
+
+1. Navigate to the "Document Analytics" section in the web UI
+2. Enter your question in natural language (e.g., "How many documents were processed last week?")
+3. Click "Submit Query" to start processing
+4. Monitor the status indicator as your query is processed
+5. View results in the appropriate format (chart, table, or text)
+6. Use the debug information toggle to inspect raw response data if needed
 
 ## Document Process Flow Visualization
 
