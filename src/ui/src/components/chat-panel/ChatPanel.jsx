@@ -10,20 +10,26 @@ import './ChatPanel.css';
 
 const logger = new Logger('chatWithDocument');
 
-const getChatResponse = async (s3Uri, prompt) => {
+const getChatResponse = async (s3Uri, prompt, modelId) => {
   logger.debug('s3URI:', s3Uri);
-  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt } });
+  logger.debug('modelId:', modelId);
+  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt, modelId } });
   // logger.debug('response:', response);
   return response;
 };
 
 const modelOptions = [
-  { value: 'vanilla', label: 'Nova Pro' },
-  { value: 'strawberry', label: 'Claude 3.7' },
+  { value: 'us.amazon.nova-lite-v1:0', label: 'Nova Lite' },
+  { value: 'us.amazon.nova-pro-v1:0', label: 'Nova Pro' },
+  { value: 'us.amazon.nova-premier-v1:0', label: 'Nova Premier' },
+  { value: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', label: 'Claude 3.7 Sonnet' },
+  { value: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4' },
+  { value: 'us.anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4' },
 ];
 
 const ChatPanel = (item) => {
   const [error, setError] = useState(null);
+  const [modelId, setModelId] = useState(modelOptions[0].value);
   const [chatQueries, setChatQueries] = useState([]);
   const textareaRef = useRef(null);
   const { objectKey } = item;
@@ -34,33 +40,66 @@ const ChatPanel = (item) => {
     return rowId;
   }
 
+  function handleModelIdChange(e) {
+    setModelId(e.target.value);
+  }
+
   const handlePromptSubmit = () => {
     const prompt = textareaRef.current.value;
+
+    logger.debug('selectedModelId:', modelId);
 
     const chatRequestData = {
       role: 'user',
       content: prompt,
+      dt: new Date().toLocaleTimeString(),
+      type: 'msg',
     };
 
-    setChatQueries((prevChatQueries) => [...prevChatQueries, chatRequestData]);
+    const loadingData = {
+      role: 'loader',
+      content: 'loader',
+    };
+
+    setChatQueries((prevChatQueries) => [...prevChatQueries, chatRequestData, loadingData]);
 
     textareaRef.current.value = '';
 
-    // logger.debug('key:', objectKey);
+    const chatResponse = getChatResponse(objectKey, prompt, modelId);
 
-    const chatResponse = getChatResponse(objectKey, prompt);
+    let chatResponseData = {};
 
-    chatResponse.then((r) => {
-      // logger.debug('r:', r);
-      const cResponse = JSON.parse(r.data.chatWithDocument);
-      // logger.debug('cResponse:', cResponse);
-      // logger.debug('content', cResponse.cr.content[0].text);
+    chatResponse
+      .then((r) => {
+        if (r.data.chatWithDocument && r.data.chatWithDocument != null) {
+          console.log('in the chat with doc response');
+          const cResponse = JSON.parse(r.data.chatWithDocument);
+          chatResponseData = {
+            role: 'ai',
+            content: cResponse.cr.content[0].text,
+            dt: new Date().toLocaleTimeString(),
+            type: 'msg',
+          };
+        }
+      })
+      .catch((r) => {
+        if (r.errors) {
+          chatResponseData = {
+            role: 'ai',
+            content: r.errors[0].message,
+            dt: new Date().toLocaleTimeString(),
+            type: 'error',
+          };
+        }
+      })
+      .finally(() => {
+        // remove loader from the chat queries
+        setChatQueries((prevChatQueries) => prevChatQueries.filter((data) => data.role !== 'loader'));
 
-      setChatQueries((prevChatQueries) => [...prevChatQueries, chatResponseData]);
-
-      const maxScrollHeight = document.documentElement.scrollHeight;
-      window.scrollTo(0, maxScrollHeight);
-    });
+        setChatQueries((prevChatQueries) => [...prevChatQueries, chatResponseData]);
+        const maxScrollHeight = document.documentElement.scrollHeight;
+        window.scrollTo(0, maxScrollHeight);
+      });
 
     setError(null);
   };
@@ -78,15 +117,34 @@ const ChatPanel = (item) => {
           {chatQueries.length > 0 ? (
             chatQueries.map((post) => (
               <div className="chat-message-container" key={generateId()}>
-                {post.role === 'user' ? (
-                  <div className="chat-user">
-                    <p>{post.content}</p>
-                  </div>
-                ) : (
-                  <div className="chat-assistant">
-                    <p>{post.content}</p>
-                  </div>
-                )}
+                {(() => {
+                  switch (post.role) {
+                    case 'user':
+                      return (
+                        <div className="chat-user">
+                          <p>
+                            {post.content}
+                            <br />
+                            <span className="time">{post.dt}</span>
+                          </p>
+                        </div>
+                      );
+                    case 'loader':
+                      return <div className="loader" />;
+                    case 'ai':
+                      return (
+                        <div className={`chat-assistant ${post.type === 'error' ? 'error' : ''}`}>
+                          <p>
+                            {post.content}
+                            <br />
+                            <span className="time">{post.dt}</span>
+                          </p>
+                        </div>
+                      );
+                    default:
+                      return '';
+                  }
+                })()}
               </div>
             ))
           ) : (
@@ -98,7 +156,7 @@ const ChatPanel = (item) => {
           </FormField>
 
           <FormField label="Model">
-            <select name="model" id="modelSelect">
+            <select name="model" id="modelSelect" onChange={handleModelIdChange}>
               {modelOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
