@@ -9,7 +9,10 @@ SPDX-License-Identifier: MIT-0
 
 - Updated lending_package.pdf sample with more realistic driver's license image
 
-### Added
+### Fixed
+- Issue #27 - removed idp_common bedrock client region default to us-west-2 - PR #28
+
+
 
 ## [0.3.8]
 
