@@ -10,14 +10,7 @@ export default gql`
       query
       createdAt
       completedAt
-      result {
-        responseType
-        content
-        tableData
-        plotData
-        dashboardData
-        metadata
-      }
+      result
       error
     }
   }

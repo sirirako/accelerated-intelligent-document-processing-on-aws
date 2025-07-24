@@ -119,41 +119,52 @@ def process_analytics_query(query: str) -> dict:
         raise
 
 
-def update_job_status_in_appsync(job_id, status, user_id, query, created_at, result=None, error=None):
+def update_job_status_in_appsync(job_id, status, user_id, result=None):
     """
     Update the job status in AppSync via GraphQL mutation.
+    
+    NOTE: This function uses AppSync GraphQL mutations instead of direct DynamoDB updates
+    for a specific reason: to enable real-time subscriptions in the frontend. The original
+    plan was to have the frontend subscribe to job completion events so users wouldn't
+    need to wait for polling intervals to see results.
+    
+    However, implementing proper AppSync subscriptions proved more complex than anticipated.
+    The current implementation returns a Boolean from the mutation rather than the full
+    AnalyticsJob object, which means subscriptions receive a simple true/false notification
+    rather than the complete job data. This requires the frontend to make a separate query
+    to fetch the actual job details when notified.
+    
+    TODO: Implement proper AppSync subscriptions that return the full AnalyticsJob object
+    so the frontend can receive complete job data in real-time without additional queries.
+    This would require:
+    1. Changing the mutation return type from Boolean to AnalyticsJob
+    2. Updating the AppSync resolver to return the updated DynamoDB item
+    3. Ensuring the subscription properly receives and handles the job data
+    
+    For now, the frontend relies on polling every 30 seconds as a fallback mechanism,
+    with the subscription serving as a potential optimization that isn't fully utilized.
     
     Args:
         job_id: The ID of the job to update
         status: The new status of the job
         user_id: The user ID who owns the job
-        query: The original query string
-        created_at: The job creation timestamp
         result: The result data (optional)
-        error: The error message (optional)
     """
     try:
-        # Prepare the mutation with userId parameter and all required fields
+        # Prepare the simplified mutation
         mutation = """
-        mutation UpdateAnalyticsJobStatus($jobId: ID!, $status: String!, $userId: String!, $query: String!, $createdAt: AWSDateTime!, $result: AWSJSON) {
-            updateAnalyticsJobStatus(jobId: $jobId, status: $status, userId: $userId, query: $query, createdAt: $createdAt, result: $result) {
-                jobId
-                status
-                query
-                createdAt
-            }
+        mutation UpdateAnalyticsJobStatus($jobId: ID!, $status: String!, $userId: String!, $result: String) {
+            updateAnalyticsJobStatus(jobId: $jobId, status: $status, userId: $userId, result: $result)
         }
         """
         
         logger.info(f"Updating AppSync for job {job_id}, user {user_id}, status {status}")
         
-        # Prepare the variables with all required fields (passed as parameters)
+        # Prepare the variables
         variables = {
             "jobId": job_id,
             "status": status,
-            "userId": user_id,
-            "query": query,
-            "createdAt": created_at
+            "userId": user_id
         }
         
         # Serialize result to JSON string if it's provided
@@ -203,17 +214,20 @@ def update_job_status_in_appsync(job_id, status, user_id, query, created_at, res
             if "errors" not in response_json:
                 logger.info(f"Successfully published analytics job update for: {job_id}, user: {user_id}")
                 logger.debug(f"Response: {response.text}")
+                return True
             else:
                 logger.error(f"GraphQL errors in response: {json.dumps(response_json.get('errors'))}")
-                # Log the full payload for debugging
                 logger.error(f"Full mutation payload: {json.dumps(payload)}")
+                return False
         else:
             logger.error(f"Failed to publish analytics job update. Status: {response.status_code}, Response: {response.text}")
+            return False
         
     except Exception as e:
         logger.error(f"Error updating job status in AppSync: {str(e)}")
         import traceback
         logger.error(f"Error traceback: {traceback.format_exc()}")
+        return False
 
 
 def handler(event, context):
@@ -255,19 +269,7 @@ def handler(event, context):
             }
         
         # Update the job status to PROCESSING
-        table.update_item(
-            Key={
-                "PK": f"analytics#{user_id}",
-                "SK": job_id
-            },
-            UpdateExpression="SET #status = :status",
-            ExpressionAttributeNames={
-                "#status": "status"
-            },
-            ExpressionAttributeValues={
-                ":status": "PROCESSING"
-            }
-        )
+        update_job_status_in_appsync(job_id, "PROCESSING", user_id)
         logger.info(f"Updated job status to PROCESSING: {job_id}")
         
         # Process the analytics query using the agent with retry logic
@@ -319,56 +321,30 @@ def handler(event, context):
                 else:  # text or fallback
                     analytics_result["content"] = result.get("content", "No content available")
                 
-                # Update the job record with the result
-                completed_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-                
-                # Serialize the analytics_result to a JSON string to avoid DynamoDB type issues
+                # Serialize the analytics_result to a JSON string
                 analytics_result_json = json.dumps(analytics_result)
                 
-                # Define the status explicitly
-                job_status = "COMPLETED"
-                
-                table.update_item(
-                    Key={
-                        "PK": f"analytics#{user_id}",
-                        "SK": job_id
-                    },
-                    UpdateExpression="SET #status = :status, #result = :result, #completedAt = :completedAt",
-                    ExpressionAttributeNames={
-                        "#status": "status",
-                        "#result": "result",
-                        "#completedAt": "completedAt"
-                    },
-                    ExpressionAttributeValues={
-                        ":status": job_status,  # Use the explicitly defined status
-                        ":result": analytics_result_json,  # Store as JSON string
-                        ":completedAt": completed_at
-                    }
-                )
-                logger.info(f"Updated job status to {job_status} with result: {job_id}")
-                
-                # Update the job status in AppSync to trigger the subscription
-                # Pass the required data directly instead of re-querying DynamoDB
-                update_job_status_in_appsync(
+                # Update the job status to COMPLETED with result via AppSync
+                # This will handle DynamoDB update, completedAt timestamp, and subscription notification
+                success = update_job_status_in_appsync(
                     job_id=job_id, 
-                    status=job_status, 
+                    status="COMPLETED", 
                     user_id=user_id,
-                    query=job_record.get("query"),
-                    created_at=job_record.get("createdAt"),
-                    result=analytics_result
+                    result=analytics_result_json
                 )
+                
+                if success:
+                    logger.info(f"Successfully updated job status to COMPLETED with result: {job_id}")
+                else:
+                    logger.error(f"Failed to update job status via AppSync for job: {job_id}")
                 
                 # Return the updated job record (without exposing userId)
-                # If the result is stored as a JSON string, deserialize it for the response
-                result_to_return = analytics_result
-                
                 return {
                     "jobId": job_id,
                     "status": "COMPLETED",
                     "query": job_record.get("query"),
                     "createdAt": job_record.get("createdAt"),
-                    "completedAt": completed_at,
-                    "result": result_to_return
+                    "result": analytics_result
                 }
                 
             except Exception as e:
@@ -382,38 +358,18 @@ def handler(event, context):
             error_msg = f"Analytics query processing failed: {str(processing_error)}"
             logger.error(error_msg)
             
-            # Update the job record with the error
-            completed_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-            job_status = "FAILED"
-            
-            table.update_item(
-                Key={
-                    "PK": f"analytics#{user_id}",
-                    "SK": job_id
-                },
-                UpdateExpression="SET #status = :status, #error = :error, #completedAt = :completedAt",
-                ExpressionAttributeNames={
-                    "#status": "status",
-                    "#error": "error",
-                    "#completedAt": "completedAt"
-                },
-                ExpressionAttributeValues={
-                    ":status": job_status,  # Use the explicitly defined status
-                    ":error": str(error_msg),  # Ensure error is stored as a string
-                    ":completedAt": completed_at
-                }
-            )
-            logger.info(f"Updated job status to {job_status} with error: {job_id}")
-            
-            # Update the job status in AppSync to trigger the subscription
-            update_job_status_in_appsync(
+            # Update the job status to FAILED via AppSync
+            # This will handle DynamoDB update, completedAt timestamp, and subscription notification
+            success = update_job_status_in_appsync(
                 job_id=job_id, 
-                status=job_status, 
-                user_id=user_id,
-                query=job_record.get("query"),
-                created_at=job_record.get("createdAt"),
-                error=str(error_msg)
+                status="FAILED", 
+                user_id=user_id
             )
+            
+            if success:
+                logger.info(f"Successfully updated job status to FAILED: {job_id}")
+            else:
+                logger.error(f"Failed to update job status via AppSync for job: {job_id}")
             
             return {
                 "statusCode": 500,

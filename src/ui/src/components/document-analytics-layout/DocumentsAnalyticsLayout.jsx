@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 import React, { useState, useEffect } from 'react';
 import { API, Logger } from 'aws-amplify';
-import { Container, Header, SpaceBetween, Spinner, Box } from '@awsui/components-react';
+import { Container, Header, SpaceBetween, Spinner, Box, Button } from '@awsui/components-react';
 
 import submitAnalyticsQuery from '../../graphql/queries/submitAnalyticsQuery';
 import getAnalyticsJobStatus from '../../graphql/queries/getAnalyticsJobStatus';
@@ -14,6 +14,85 @@ import AnalyticsResultDisplay from './AnalyticsResultDisplay';
 
 const logger = new Logger('DocumentsAnalyticsLayout');
 
+// Sample data for testing
+const sampleResponses = {
+  plot: {
+    responseType: 'plotData',
+    data: {
+      datasets: [
+        {
+          backgroundColor: 'rgba(54, 162, 235, 0.2)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          data: [1, 1, 1],
+          borderWidth: 1,
+          label: 'Documents Processed',
+        },
+      ],
+      labels: ['Jul 17', 'Jul 18', 'Jul 21'],
+    },
+    options: {
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Number of Documents',
+          },
+        },
+      },
+      responsive: true,
+      title: {
+        display: true,
+        text: 'Daily Document Processing Count (Last Week)',
+      },
+      maintainAspectRatio: false,
+    },
+    type: 'bar',
+  },
+  table: {
+    responseType: 'table',
+    headers: [
+      {
+        id: 'processing_date',
+        label: 'Processing Date',
+        sortable: true,
+      },
+      {
+        id: 'documents_processed',
+        label: 'Documents Processed',
+        sortable: true,
+      },
+    ],
+    rows: [
+      {
+        id: '2025-07-17',
+        data: {
+          processing_date: '2025-07-17',
+          documents_processed: 1,
+        },
+      },
+      {
+        id: '2025-07-18',
+        data: {
+          processing_date: '2025-07-18',
+          documents_processed: 1,
+        },
+      },
+      {
+        id: '2025-07-21',
+        data: {
+          processing_date: '2025-07-21',
+          documents_processed: 1,
+        },
+      },
+    ],
+  },
+  text: {
+    content: 'You have processed a total of 1 document.',
+    responseType: 'text',
+  },
+};
+
 const DocumentsAnalyticsLayout = () => {
   const [queryText, setQueryText] = useState('');
   const [jobId, setJobId] = useState(null);
@@ -23,6 +102,7 @@ const DocumentsAnalyticsLayout = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [selectedHistoryItem] = useState(null);
+  const [testMode, setTestMode] = useState(false);
 
   const subscribeToJobCompletion = (id) => {
     try {
@@ -31,24 +111,44 @@ const DocumentsAnalyticsLayout = () => {
         query: onAnalyticsJobComplete,
         variables: { jobId: id },
       }).subscribe({
-        next: ({ value }) => {
+        next: async ({ value }) => {
           // Log the entire subscription response
           logger.debug('Subscription response value:', JSON.stringify(value, null, 2));
 
-          const job = value?.data?.onAnalyticsJobComplete;
-          logger.debug('Extracted job data:', job);
+          const jobCompleted = value?.data?.onAnalyticsJobComplete;
+          logger.debug('Job completion notification:', jobCompleted);
 
-          if (job) {
-            setJobStatus(job.status);
+          if (jobCompleted) {
+            // Job completed, now fetch the actual job details
+            try {
+              logger.debug('Fetching job details after completion notification');
+              const jobResponse = await API.graphql({
+                query: getAnalyticsJobStatus,
+                variables: { jobId: id },
+              });
 
-            if (job.status === 'COMPLETED') {
-              setJobResult(job.result);
-            } else if (job.status === 'FAILED') {
-              setError(job.error || 'Job processing failed');
+              const job = jobResponse?.data?.getAnalyticsJobStatus;
+              logger.debug('Fetched job details:', job);
+
+              if (job) {
+                setJobStatus(job.status);
+
+                if (job.status === 'COMPLETED') {
+                  setJobResult(job.result);
+                } else if (job.status === 'FAILED') {
+                  setError(job.error || 'Job processing failed');
+                }
+              } else {
+                logger.error('Failed to fetch job details after completion notification');
+                setError('Failed to fetch job details after completion');
+              }
+            } catch (fetchError) {
+              logger.error('Error fetching job details:', fetchError);
+              setError(`Failed to fetch job details: ${fetchError.message || 'Unknown error'}`);
             }
           } else {
-            logger.error('Received null job data in subscription. Full response:', JSON.stringify(value, null, 2));
-            setError(`Received invalid data from subscription. Check console logs for details.`);
+            logger.error('Received invalid completion notification. Full response:', JSON.stringify(value, null, 2));
+            setError(`Received invalid completion notification. Check console logs for details.`);
           }
         },
         error: (err) => {
@@ -144,6 +244,20 @@ const DocumentsAnalyticsLayout = () => {
     }
   };
 
+  const handleTestResponse = (responseType) => {
+    const testQueries = {
+      plot: 'Show me daily document processing count for the last week',
+      table: 'Show me processing data in table format',
+      text: 'How many documents have been processed?',
+    };
+
+    setQueryText(testQueries[responseType]);
+    setJobResult(sampleResponses[responseType]);
+    setJobStatus('COMPLETED');
+    setJobId(`test-${responseType}-${Date.now()}`);
+    setError(null);
+  };
+
   // Poll for job status as a fallback in case subscription fails
   useEffect(() => {
     let intervalId;
@@ -175,7 +289,7 @@ const DocumentsAnalyticsLayout = () => {
           logger.error('Error polling job status:', err);
           // Don't set error here to avoid overriding subscription errors
         }
-      }, 5000); // Poll every 5 seconds
+      }, 30000); // Poll every 30 seconds
     }
 
     return () => {
@@ -188,6 +302,38 @@ const DocumentsAnalyticsLayout = () => {
   return (
     <Container header={<Header variant="h1">Document Analytics</Header>}>
       <SpaceBetween size="l">
+        <Box>
+          <SpaceBetween size="s" direction="horizontal">
+            <Button variant="link" onClick={() => setTestMode(!testMode)}>
+              {testMode ? 'Hide' : 'Show'} Test Mode
+            </Button>
+          </SpaceBetween>
+        </Box>
+
+        {testMode && (
+          <Container header={<Header variant="h2">Test Response Types</Header>}>
+            <SpaceBetween size="m">
+              <Box>Use these buttons to test the different response display types:</Box>
+              <SpaceBetween size="s" direction="horizontal">
+                <Button onClick={() => handleTestResponse('plot')}>Test Plot Response</Button>
+                <Button onClick={() => handleTestResponse('table')}>Test Table Response</Button>
+                <Button onClick={() => handleTestResponse('text')}>Test Text Response</Button>
+                <Button
+                  onClick={() => {
+                    setJobResult(null);
+                    setQueryText('');
+                    setJobStatus(null);
+                    setJobId(null);
+                    setError(null);
+                  }}
+                >
+                  Clear Results
+                </Button>
+              </SpaceBetween>
+            </SpaceBetween>
+          </Container>
+        )}
+
         <AnalyticsQueryInput
           onSubmit={handleSubmitQuery}
           isSubmitting={isSubmitting}
