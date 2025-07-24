@@ -3526,9 +3526,6 @@ Resources:
           }
         }
       ResponseMappingTemplate: |
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #end
         #if(!$ctx.result)
           null
         #else
@@ -3577,9 +3574,6 @@ Resources:
           "scanIndexForward": false
         }
       ResponseMappingTemplate: |
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #end
         {
           "items": [
             #foreach($item in $ctx.result.items)
@@ -3613,6 +3607,26 @@ Resources:
         $util.qr($expNames.put("#status", "status"))
         $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
         
+        #set($updateExpression = "SET #status = :status")
+        
+        #if($ctx.args.result)
+          $util.qr($expNames.put("#result", "result"))
+          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
+          #set($updateExpression = "${updateExpression}, #result = :result")
+        #end
+        
+        #if($ctx.args.completedAt)
+          $util.qr($expNames.put("#completedAt", "completedAt"))
+          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($ctx.args.completedAt)))
+          #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
+        #end
+        
+        #if($ctx.args.error)
+          $util.qr($expNames.put("#error", "error"))
+          $util.qr($expValues.put(":error", $util.dynamodb.toDynamoDB($ctx.args.error)))
+          #set($updateExpression = "${updateExpression}, #error = :error")
+        #end
+        
         {
           "version": "2018-05-29",
           "operation": "UpdateItem",
@@ -3621,22 +3635,14 @@ Resources:
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           },
           "update": {
-            "expression": "SET #status = :status",
+            "expression": "$updateExpression",
             "expressionNames": $utils.toJson($expNames),
             "expressionValues": $utils.toJson($expValues)
-          }
+          },
+          "returnValues": "ALL_NEW"
         }
       ResponseMappingTemplate: |
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #end
-        {
-          "jobId": $util.toJson($ctx.args.jobId),
-          "status": $util.toJson($ctx.args.status),
-          "query": $util.toJson($ctx.args.query),
-          "createdAt": $util.toJson($ctx.args.createdAt),
-          "result": $util.toJson($ctx.args.result)
-        }
+        $util.toJson($ctx.result.Attributes)
 
   AnalyticsTableDataSource:
     Type: AWS::AppSync::DataSource

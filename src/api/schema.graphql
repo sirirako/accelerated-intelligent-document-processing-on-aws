@@ -165,14 +165,6 @@ type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
   steps: [StepFunctionExecutionStep]
 }
 
-type AnalyticsResponse @aws_cognito_user_pools @aws_iam {
-  responseType: String!  # "composite", "text", "table", "plotData", "dashboard"
-  content: String        # Text response if applicable
-  tableData: [AWSJSON]   # For table responses (array to support multiple tables)
-  plotData: [AWSJSON]    # For interactive plot data (array to support multiple plots)
-  dashboardData: AWSJSON # For composite dashboard layouts
-  metadata: AWSJSON      # Query context, timestamps, etc.
-}
 
 type AnalyticsJob @aws_cognito_user_pools @aws_iam {
   jobId: ID!
@@ -180,7 +172,7 @@ type AnalyticsJob @aws_cognito_user_pools @aws_iam {
   query: String!
   createdAt: AWSDateTime!
   completedAt: AWSDateTime
-  result: AnalyticsResponse
+  result: AWSJSON
   error: String
 }
 

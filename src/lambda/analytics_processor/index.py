@@ -115,19 +115,20 @@ def process_analytics_query(query: str) -> dict:
             
     except Exception as e:
         logger.exception(f"Error processing analytics query: {str(e)}")
-        return {
-            "responseType": "text",
-            "content": f"Error processing query: {str(e)}"
-        }
+        # Re-raise the exception so the retry logic can handle it properly
+        raise
 
 
-def update_job_status_in_appsync(job_id, status, result=None, error=None):
+def update_job_status_in_appsync(job_id, status, user_id, query, created_at, result=None, error=None):
     """
     Update the job status in AppSync via GraphQL mutation.
     
     Args:
         job_id: The ID of the job to update
         status: The new status of the job
+        user_id: The user ID who owns the job
+        query: The original query string
+        created_at: The job creation timestamp
         result: The result data (optional)
         error: The error message (optional)
     """
@@ -144,35 +145,12 @@ def update_job_status_in_appsync(job_id, status, result=None, error=None):
         }
         """
         
-        # Extract user_id from the job_id's PK in DynamoDB
-        table = dynamodb.Table(ANALYTICS_TABLE)
-        # We need to query the table to find the job and get the user_id
-        # Scan with a filter since we don't know the PK
-        response = table.scan(
-            FilterExpression="SK = :jobId",
-            ExpressionAttributeValues={
-                ":jobId": job_id
-            }
-        )
+        logger.info(f"Updating AppSync for job {job_id}, user {user_id}, status {status}")
         
-        items = response.get("Items", [])
-        if not items:
-            logger.error(f"Job not found in DynamoDB: {job_id}")
-            return
-            
-        # Extract the user_id from the PK and get other required fields
-        job_record = items[0]
-        pk = job_record.get("PK", "")
-        user_id = pk.replace("analytics#", "") if pk.startswith("analytics#") else "anonymous"
-        query = job_record.get("query", "")
-        created_at = job_record.get("createdAt", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"))
-        
-        logger.info(f"Found job {job_id} for user {user_id}")
-        
-        # Prepare the variables with all required fields
+        # Prepare the variables with all required fields (passed as parameters)
         variables = {
             "jobId": job_id,
-            "status": status,  # Simple string, not a DynamoDB object
+            "status": status,
             "userId": user_id,
             "query": query,
             "createdAt": created_at
@@ -292,79 +270,116 @@ def handler(event, context):
         )
         logger.info(f"Updated job status to PROCESSING: {job_id}")
         
-        # Process the analytics query using the agent
-        try:
-            # Simulate processing time for now (can be removed later)
-            time.sleep(2)
-            
-            # Process the query using the analytics agent
-            result = process_analytics_query(job_record.get("query"))
-            
-            # Prepare the result with metadata
-            analytics_result = {
-                "responseType": result.get("responseType", "text"),
-                "metadata": {
-                    "generatedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                    "query": job_record.get("query")
+        # Process the analytics query using the agent with retry logic
+        # This retries the entire workflow -- if something dies, it restarts
+        # from scratch with the initial query.
+        max_retries = 3
+        retry_delay = 10  # seconds
+        result = None
+        processing_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Processing analytics query (attempt {attempt + 1}/{max_retries}): {job_id}")
+                
+                # Process the query using the analytics agent
+                result = process_analytics_query(job_record.get("query"))
+                logger.info(f"Successfully processed analytics query on attempt {attempt + 1}: {job_id}")
+                break  # Success, exit retry loop
+                
+            except Exception as e:
+                logger.warning(f"Analytics query processing failed on attempt {attempt + 1}/{max_retries} for job {job_id}: {str(e)}")
+                processing_error = e
+                
+                if attempt < max_retries - 1:  # Not the last attempt
+                    logger.info(f"Waiting {retry_delay} seconds before retry {attempt + 2}/{max_retries} for job {job_id}")
+                    time.sleep(retry_delay)
+                else:
+                    # Last attempt failed
+                    logger.error(f"All {max_retries} attempts failed for analytics query processing, job {job_id}: {str(e)}")
+        
+        # Check if processing was successful
+        if result is not None:
+            # Success path - process the result
+            try:
+                # Prepare the result with metadata
+                analytics_result = {
+                    "responseType": result.get("responseType", "text"),
+                    "metadata": {
+                        "generatedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                        "query": job_record.get("query")
+                    }
                 }
-            }
-            
-            # Add the appropriate data field based on response type
-            if result.get("responseType") == "plotData":
-                analytics_result["plotData"] = [result]  # Wrap in array for consistency
-            elif result.get("responseType") == "table":
-                analytics_result["tableData"] = result
-            else:  # text or fallback
-                analytics_result["content"] = result.get("content", "No content available")
-            
-            # Update the job record with the result
-            completed_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-            
-            # Serialize the analytics_result to a JSON string to avoid DynamoDB type issues
-            analytics_result_json = json.dumps(analytics_result)
-            
-            # Define the status explicitly
-            job_status = "COMPLETED"
-            
-            table.update_item(
-                Key={
-                    "PK": f"analytics#{user_id}",
-                    "SK": job_id
-                },
-                UpdateExpression="SET #status = :status, #result = :result, #completedAt = :completedAt",
-                ExpressionAttributeNames={
-                    "#status": "status",
-                    "#result": "result",
-                    "#completedAt": "completedAt"
-                },
-                ExpressionAttributeValues={
-                    ":status": job_status,  # Use the explicitly defined status
-                    ":result": analytics_result_json,  # Store as JSON string
-                    ":completedAt": completed_at
+                
+                # Add the appropriate data field based on response type
+                if result.get("responseType") == "plotData":
+                    analytics_result["plotData"] = [result]  # Wrap in array for consistency
+                elif result.get("responseType") == "table":
+                    analytics_result["tableData"] = result
+                else:  # text or fallback
+                    analytics_result["content"] = result.get("content", "No content available")
+                
+                # Update the job record with the result
+                completed_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                
+                # Serialize the analytics_result to a JSON string to avoid DynamoDB type issues
+                analytics_result_json = json.dumps(analytics_result)
+                
+                # Define the status explicitly
+                job_status = "COMPLETED"
+                
+                table.update_item(
+                    Key={
+                        "PK": f"analytics#{user_id}",
+                        "SK": job_id
+                    },
+                    UpdateExpression="SET #status = :status, #result = :result, #completedAt = :completedAt",
+                    ExpressionAttributeNames={
+                        "#status": "status",
+                        "#result": "result",
+                        "#completedAt": "completedAt"
+                    },
+                    ExpressionAttributeValues={
+                        ":status": job_status,  # Use the explicitly defined status
+                        ":result": analytics_result_json,  # Store as JSON string
+                        ":completedAt": completed_at
+                    }
+                )
+                logger.info(f"Updated job status to {job_status} with result: {job_id}")
+                
+                # Update the job status in AppSync to trigger the subscription
+                # Pass the required data directly instead of re-querying DynamoDB
+                update_job_status_in_appsync(
+                    job_id=job_id, 
+                    status=job_status, 
+                    user_id=user_id,
+                    query=job_record.get("query"),
+                    created_at=job_record.get("createdAt"),
+                    result=analytics_result
+                )
+                
+                # Return the updated job record (without exposing userId)
+                # If the result is stored as a JSON string, deserialize it for the response
+                result_to_return = analytics_result
+                
+                return {
+                    "jobId": job_id,
+                    "status": "COMPLETED",
+                    "query": job_record.get("query"),
+                    "createdAt": job_record.get("createdAt"),
+                    "completedAt": completed_at,
+                    "result": result_to_return
                 }
-            )
-            logger.info(f"Updated job status to {job_status} with result: {job_id}")
-            
-            # Update the job status in AppSync to trigger the subscription
-            # Pass the analytics_result directly (not the JSON string)
-            update_job_status_in_appsync(job_id, job_status, analytics_result)
-            
-            # Return the updated job record (without exposing userId)
-            # If the result is stored as a JSON string, deserialize it for the response
-            result_to_return = analytics_result
-            
-            return {
-                "jobId": job_id,
-                "status": "COMPLETED",
-                "query": job_record.get("query"),
-                "createdAt": job_record.get("createdAt"),
-                "completedAt": completed_at,
-                "result": result_to_return
-            }
-            
-        except Exception as e:
-            # Handle processing error
-            error_msg = f"Error processing analytics query: {str(e)}"
+                
+            except Exception as e:
+                # Handle result processing error (this is different from query processing error)
+                error_msg = f"Error processing analytics result: {str(e)}"
+                logger.error(error_msg)
+                processing_error = e
+        
+        # Failure path - all retries failed or result processing failed
+        if processing_error:
+            error_msg = f"Analytics query processing failed: {str(processing_error)}"
             logger.error(error_msg)
             
             # Update the job record with the error
@@ -391,7 +406,14 @@ def handler(event, context):
             logger.info(f"Updated job status to {job_status} with error: {job_id}")
             
             # Update the job status in AppSync to trigger the subscription
-            update_job_status_in_appsync(job_id, job_status, error=str(error_msg))
+            update_job_status_in_appsync(
+                job_id=job_id, 
+                status=job_status, 
+                user_id=user_id,
+                query=job_record.get("query"),
+                created_at=job_record.get("createdAt"),
+                error=str(error_msg)
+            )
             
             return {
                 "statusCode": 500,
