@@ -11,9 +11,9 @@ This directory contains the default-lending configuration for the GenAI IDP Acce
 
 ## Validation Level
 
-**Level**: 2 - Comprehensive Testing
+**Level**: 2 - Minimal Testing
 
-- **Testing Evidence**: This configuration has been tested with lending sample document including payslips, driver's licenses, bank statements, checks, W2 forms, and insurance applications. It demonstrates robust performance in classifying and extracting detailed financial information from standard lending documents.
+- **Testing Evidence**: This configuration has been lightly tested with lending sample document including payslips, driver's licenses, bank statements, checks, W2 forms, and insurance applications. 
 - **Known Limitations**: Performance may vary with non-standard document formats, heavily redacted financial documents, or documents with poor image quality that affect OCR accuracy.
 
 ## Overview
@@ -34,17 +34,17 @@ It includes specialized settings for document classification, detailed financial
 
 The configuration defines 6 specialized lending document classes, each with comprehensive attributes for detailed financial data extraction:
 
-- **payslip**: Employee wage statements with detailed earnings, deductions, taxes, and year-to-date totals (24 attributes)
-- **driver-licenses**: Government-issued identification documents with personal information and driving privileges (22 attributes)
-- **bank-checks**: Written financial instruments with payment details and account information (11 attributes)
-- **bank-statement**: Periodic financial reports with account activity and transaction details (10 attributes)
-- **w2**: Annual tax documents with comprehensive wage and tax withholding information (26 attributes)
-- **homeowners-insurance-application**: Insurance coverage applications with detailed applicant and property information (37 attributes)
+- **Payslip**: Employee wage statements with detailed earnings, deductions, taxes, and year-to-date totals (21 simple attributes, 3 group attributes, 3 list attributes)
+- **US-drivers-licenses**: Government-issued identification documents with personal information and driving privileges (7 simple attributes, 3 group attributes, 2 list attributes)
+- **Bank-checks**: Written financial instruments with payment details and account information (11 simple attributes)
+- **Bank-Statement**: Periodic financial reports with account activity and transaction details (8 simple attributes, 2 list attributes)
+- **W2**: Annual tax documents with comprehensive wage and tax withholding information (2 simple attributes, 5 group attributes, 2 list attributes)
+- **Homeowners-Insurance-Application**: Insurance coverage applications with detailed applicant and property information (10 simple attributes, 3 group attributes)
 
 ### Classification Settings
 
 - **Model**: Amazon Nova Pro
-- **Method**: Text-based holistic classification
+- **Method**: Multimodal Page Level Classification
 - **Temperature**: 0 (deterministic outputs)
 - **Top-k**: 5
 - **OCR Backend**: Amazon Textract with LAYOUT, TABLES, and SIGNATURES features
@@ -67,7 +67,7 @@ The extraction component performs comprehensive attribute extraction tailored to
 
 ### Assessment Settings
 
-- **Model**: Amazon Claude 3.7 Sonnet
+- **Model**: us.amazon.nova-pro-v1:0
 - **Granular Assessment**: Enabled with parallel processing
 - **Default Confidence Threshold**: 0.9
 - **Max Workers**: 20 for improved performance
@@ -76,7 +76,7 @@ Enhanced confidence assessment ensures high accuracy for financial data extracti
 
 ### Summarization Settings
 
-- **Model**: Amazon Claude 3.7 Sonnet
+- **Model**: us.amazon.nova-premier-v1:0
 - **Temperature**: 0 (deterministic outputs)
 - **Top-k**: 5
 
@@ -96,20 +96,14 @@ This configuration is optimized for processing lending document packages that ty
 
 To use this default-lending configuration:
 
-1. **Direct Deployment**: Deploy the GenAI IDP Accelerator with this configuration for lending document processing workflows:
-   ```bash
-   # Deploy with lending configuration
-   ./deploy.sh --config config_library/pattern-2/default-lending/config.yaml
-   ```
+1. **Direct Deployment**: Deploy the GenAI IDP Accelerator with this Pattern-2 configuration for lending document processing workflows.
 
 2. **Loan Processing Integration**: Integrate with existing loan origination systems for automated document processing and data extraction.
 
 3. **Compliance Workflows**: Use for regulatory compliance documentation and audit trail generation.
 
 4. **Custom Lending Workflows**: Adapt for specific lending scenarios:
-   ```bash
-   cp -r config_library/pattern-2/default-lending config_library/pattern-2/mortgage-processing
-   ```
+
 
 ## Common Customization Scenarios
 
