@@ -3604,27 +3604,23 @@ Resources:
         #set($expNames = {})
         #set($expValues = {})
         
+        ## Set status (required)
         $util.qr($expNames.put("#status", "status"))
         $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
-        
         #set($updateExpression = "SET #status = :status")
         
+        ## Set result (optional)
         #if($ctx.args.result)
           $util.qr($expNames.put("#result", "result"))
           $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
           #set($updateExpression = "${updateExpression}, #result = :result")
         #end
         
-        #if($ctx.args.completedAt)
+        ## Set completedAt to current timestamp when status is COMPLETED or FAILED
+        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
           $util.qr($expNames.put("#completedAt", "completedAt"))
-          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($ctx.args.completedAt)))
+          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
           #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
-        #end
-        
-        #if($ctx.args.error)
-          $util.qr($expNames.put("#error", "error"))
-          $util.qr($expValues.put(":error", $util.dynamodb.toDynamoDB($ctx.args.error)))
-          #set($updateExpression = "${updateExpression}, #error = :error")
         #end
         
         {
@@ -3638,11 +3634,10 @@ Resources:
             "expression": "$updateExpression",
             "expressionNames": $utils.toJson($expNames),
             "expressionValues": $utils.toJson($expValues)
-          },
-          "returnValues": "ALL_NEW"
+          }
         }
-      ResponseMappingTemplate: |
-        $util.toJson($ctx.result.Attributes)
+      ResponseMappingTemplate: |-
+        true
 
   AnalyticsTableDataSource:
     Type: AWS::AppSync::DataSource
