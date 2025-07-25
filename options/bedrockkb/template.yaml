@@ -123,6 +123,17 @@ Parameters:
     Type: String
     Default: AMAZON_BEDROCK_TEXT_CHUNK
 
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
+      Required by some organizations with Service Control Policies (SCPs).
+      Format: arn:aws:iam::account-id:policy/policy-name
+      Leave blank if no Permissions Boundary is required.
+    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    ConstraintDescription: Must be empty or a valid IAM policy ARN
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -228,6 +239,7 @@ Conditions:
     Fn::Or:
       - Condition: IsChunkingStrategyFixed
       - Condition: IsChunkingStrategyDefault
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
 
 Resources:
   # Custom resource to transform input to lowercase.
@@ -388,6 +400,7 @@ Resources:
             - lambda.amazonaws.com
           Action:
           - sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
       - PolicyName: OSSLambdaRoleDefaultPolicy # Reference: https://docs.aws.amazon.com/service-authorization/latest/reference/list_awsx-ray.html
         PolicyDocument:
@@ -515,6 +528,7 @@ Resources:
                 aws:SourceAccount: !Sub ${AWS::AccountId}
               ArnLike:
                 aws:SourceArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: bedrock-invoke-model
           PolicyDocument:
@@ -711,6 +725,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyDocument:
             Version: 2012-10-17
@@ -812,6 +827,7 @@ Resources:
             Principal:
               Service: scheduler.amazonaws.com
             Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: BedrockAgentStartIngestionPolicy
           PolicyDocument:
