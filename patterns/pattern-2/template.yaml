@@ -846,7 +846,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
-      CodeUri: src/ocr_function/
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]      CodeUri: src/ocr_function/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -926,7 +926,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
-      CodeUri: src/classification_function/
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]      CodeUri: src/classification_function/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -1016,7 +1016,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
-      CodeUri: src/extraction_function/
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]      CodeUri: src/extraction_function/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -1101,7 +1101,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
-      CodeUri: src/assessment_function/
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]      CodeUri: src/assessment_function/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -1181,7 +1181,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
-      CodeUri: src/processresults_function/
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]      CodeUri: src/processresults_function/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -1244,7 +1244,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
-      CodeUri: src/summarization_function/
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]      CodeUri: src/summarization_function/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
