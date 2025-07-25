@@ -5,6 +5,11 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.8]
+
+### Added
+- IDP Configuration and Prompting Best Practices documentation [doc](./docs/idp-configuration-best-practices.md)
+
 ### Changed
 
 - Updated lending_package.pdf sample with more realistic driver's license image
