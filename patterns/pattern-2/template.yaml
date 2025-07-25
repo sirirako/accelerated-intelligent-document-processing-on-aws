@@ -1315,6 +1315,7 @@ Resources:
   DocumentProcessingStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Name: !Sub "${AWS::StackName}-DocumentProcessingWorkflow"
       DefinitionUri: statemachine/workflow.asl.json
       DefinitionSubstitutions:
