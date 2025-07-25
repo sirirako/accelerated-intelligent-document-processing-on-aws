@@ -794,6 +794,8 @@ Resources:
         ProjectName: !Sub '${AWS::StackName}-BDA-Lending-Sample-Project'
         ProjectDescription: !Sub '${AWS::StackName}-BDA-Lending-Sample-Project'
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
 
   DOCUMENTBEDROCKKB:
     DependsOn:
@@ -809,6 +811,8 @@ Resources:
         pCustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         pChunkingStrategy: 'No chunking'
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
 
   ##########################################################################
   # Nested stack for selected pattern
