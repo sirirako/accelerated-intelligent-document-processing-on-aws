@@ -85,27 +85,36 @@ class DynamoDBMessageLogger:
                 response = self.table.get_item(Key={"PK": pk, "SK": sk})
                 item = response.get("Item", {})
                 existing_messages_str = item.get("agent_messages", "[]")
-                
+
                 # Parse existing messages
                 try:
                     existing_messages = json.loads(existing_messages_str)
                     if not isinstance(existing_messages, list):
                         existing_messages = []
                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON in agent_messages for job {job_id}, starting fresh")
+                    logger.warning(
+                        f"Invalid JSON in agent_messages for job {job_id}, starting fresh"
+                    )
                     existing_messages = []
-                    
+
             except ClientError as e:
-                if e.response.get('Error', {}).get('Code') == 'ResourceNotFoundException':
-                    logger.warning(f"Job record not found for job {job_id}, user {user_id}")
+                if (
+                    e.response.get("Error", {}).get("Code")
+                    == "ResourceNotFoundException"
+                ):
+                    logger.warning(
+                        f"Job record not found for job {job_id}, user {user_id}"
+                    )
                     return
                 else:
-                    logger.error(f"Error getting existing messages for job {job_id}: {e}")
+                    logger.error(
+                        f"Error getting existing messages for job {job_id}: {e}"
+                    )
                     existing_messages = []
 
             # Append the new message
             existing_messages.append(message_data)
-            
+
             # Serialize back to JSON string
             updated_messages_str = json.dumps(existing_messages)
 
@@ -113,9 +122,7 @@ class DynamoDBMessageLogger:
             self.table.update_item(
                 Key={"PK": pk, "SK": sk},
                 UpdateExpression="SET agent_messages = :messages",
-                ExpressionAttributeValues={
-                    ":messages": updated_messages_str
-                },
+                ExpressionAttributeValues={":messages": updated_messages_str},
                 ReturnValues="NONE",
             )
 
