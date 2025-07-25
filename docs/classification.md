@@ -71,10 +71,13 @@ classification:
 
 Despite its strengths in handling full-document context, this method has several limitations:
 
-- **Context Limitations**: Passing the full document text to the model can exceed the context window, especially for long documents. This restricts use to models that support large context sizes.
-- **Hallucination Risk**: When processing lengthy inputs, the model may generate inaccurate or inconsistent classifications due to diluted focus across pages.
-- **Model Dependency**: Requires high-context models such as Amazon Nova Premier supports up to 1 million tokens. Smaller models are not suitable for processing long document packages effectively.
-- **Scalability Challenges**: Not ideal for very large or visually complex document sets. In such cases, the Multi-Modal Page-Level Classification method is more appropriate.
+**Context & Model Constraints:**: 
+- Long documents can exceed the context window of smaller models, resulting in request failure.
+- Lengthy inputs may dilute the model’s focus, leading to inaccurate or inconsistent classifications.
+- Requires high-context models such as Amazon Nova Premier, which supports up to 1 million tokens. Smaller models are not suitable for this method.
+- For more details on supported models and their context limits, refer to the [Amazon Bedrock Supported Models documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html).
+
+**Scalability Challenges**: Not ideal for very large or visually complex document sets. In such cases, the Multi-Modal Page-Level Classification method is more appropriate.
 
 #### MultiModal Page-Level Classification with Few-Shot Examples
 
