@@ -3896,6 +3896,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: SageMakerA2IAccess
           PolicyDocument:
@@ -5390,6 +5391,7 @@ Resources:
             Effect: Allow
             Principal:
               Service: codebuild.amazonaws.com
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: ecs-service
           PolicyDocument:
@@ -5535,6 +5537,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: "/"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: root
           PolicyDocument:
