@@ -67,6 +67,15 @@ classification:
     </document-text>
   ```
 
+## Limitations of Text-Based Holistic Classification
+
+Despite its strengths in handling full-document context, this method has several limitations:
+
+- **Context Limitations**: Passing the full document text to the model can exceed the context window, especially for long documents. This restricts use to models that support large context sizes.
+- **Hallucination Risk**: When processing lengthy inputs, the model may generate inaccurate or inconsistent classifications due to diluted focus across pages.
+- **Model Dependency**: Requires high-context models such as Amazon Nova Premier supports up to 1 million tokens. Smaller models are not suitable for processing long document packages effectively.
+- **Scalability Challenges**: Not ideal for very large or visually complex document sets. In such cases, the Multi-Modal Page-Level Classification method is more appropriate.
+
 #### MultiModal Page-Level Classification with Few-Shot Examples
 
 - Classifies each page independently using both text and image data
