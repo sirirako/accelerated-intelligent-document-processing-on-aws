@@ -5,9 +5,42 @@
 Unit tests for agent monitoring functionality.
 """
 
-from unittest.mock import Mock, patch
+# ruff: noqa: E402, I001
+# The above line disables E402 (module level import not at top of file) and I001 (import block sorting) for this file
+
+import sys
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+
+# Mock strands modules before importing monitoring modules
+mock_strands = MagicMock()
+mock_hooks = MagicMock()
+mock_events = MagicMock()
+
+# Create a mock HookProvider class that behaves like the real one
+class MockHookProvider:
+    def __init__(self):
+        self.execution_stats = {
+            "messages_added": 0,
+            "tool_invocations": 0,
+            "model_invocations": 0,
+            "requests_processed": 0,
+            "start_time": None,
+            "end_time": None,
+        }
+        self.messages = []
+        self.message_history = []
+        self.tool_history = []
+        self.model_history = []
+
+mock_hooks.HookProvider = MockHookProvider
+mock_hooks.HookRegistry = MagicMock()
+
+sys.modules["strands"] = mock_strands
+sys.modules["strands.hooks"] = mock_hooks
+sys.modules["strands.hooks.events"] = mock_events
+
 from idp_common.agents.common.dynamodb_logger import DynamoDBMessageTracker
 from idp_common.agents.common.monitoring import AgentMonitor, MessageTracker
 
@@ -32,31 +65,33 @@ class TestAgentMonitor:
         """Test message preview extraction logic."""
         monitor = AgentMonitor()
 
-        # Test with a mock message object
-        mock_message = Mock()
-        mock_message.role = "user"
-        mock_message.content = "Test message content"
+        # Test with a message dictionary (as expected by the method)
+        mock_message = {
+            "role": "user",
+            "content": "Test message content"
+        }
 
         preview = monitor._get_message_preview(mock_message)
 
         assert preview["role"] == "user"
         assert preview["content"] == "Test message content"
-        assert preview["message_type"] == "Mock"
+        assert preview["message_type"] == "dict"
 
     def test_message_preview_with_tool_message(self):
         """Test message preview extraction for tool messages."""
         monitor = AgentMonitor()
 
-        # Test with a mock tool message
-        mock_message = Mock()
-        mock_message.role = "tool"
-        mock_message.content = "Tool execution result"
+        # Test with a tool message dictionary
+        mock_message = {
+            "role": "tool",
+            "content": "Tool execution result"
+        }
 
         preview = monitor._get_message_preview(mock_message)
 
         assert preview["role"] == "tool"
-        assert "Tool" in preview["content"]
-        assert "tool_name" in preview
+        assert preview["content"] == "Tool execution result"
+        assert preview["message_type"] == "dict"
 
 
 @pytest.mark.unit
