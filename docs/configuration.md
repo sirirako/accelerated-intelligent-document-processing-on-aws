@@ -241,6 +241,87 @@ The solution includes built-in cost tracking capabilities:
 
 For detailed cost analysis and optimization strategies, see [cost-calculator.md](cost-calculator.md).
 
+## Image Processing Configuration
+
+The solution supports configurable image dimensions across all processing services (OCR, classification, extraction, and assessment) to optimize performance and accuracy for different document types.
+
+### New Default Behavior (Preserves Original Resolution)
+
+**Important Change**: As of the latest version, empty strings or unspecified image dimensions now preserve the original document resolution instead of resizing to default dimensions.
+
+```yaml
+# Preserves original image resolution (recommended for high-accuracy processing)
+classification:
+  image:
+    target_width: ""     # Empty string = no resizing
+    target_height: ""    # Empty string = no resizing
+
+extraction:
+  image:
+    target_width: ""     # Preserves original resolution
+    target_height: ""    # Preserves original resolution
+
+assessment:
+  image:
+    target_width: ""     # No resizing applied
+    target_height: ""    # No resizing applied
+```
+
+### Custom Image Dimensions
+
+You can still specify exact dimensions when needed for performance optimization:
+
+```yaml
+# Custom dimensions for specific requirements
+classification:
+  image:
+    target_width: "1200"   # Resize to 1200 pixels wide
+    target_height: "1600"  # Resize to 1600 pixels tall
+
+# Performance-optimized dimensions
+extraction:
+  image:
+    target_width: "800"    # Smaller for faster processing
+    target_height: "1000"  # Maintains good quality
+```
+
+### Image Resizing Features
+
+- **Aspect Ratio Preservation**: Images are resized proportionally without distortion
+- **Smart Scaling**: Only downsizes images when necessary (scale factor < 1.0)
+- **High-Quality Resampling**: Better visual quality after resizing
+- **Original Format Preservation**: Maintains PNG, JPEG, and other formats when possible
+
+### Configuration Benefits
+
+- **High-Resolution Processing**: Empty strings preserve full document resolution for maximum OCR accuracy
+- **Service-Specific Tuning**: Each service can use optimal image dimensions
+- **Runtime Configuration**: No code changes needed to adjust image processing
+- **Backward Compatibility**: Existing numeric values continue to work as before
+- **Memory Optimization**: Configurable dimensions allow resource optimization
+
+### Best Practices
+
+1. **Use Empty Strings for High Accuracy**: For critical documents requiring maximum OCR accuracy, use empty strings to preserve original resolution
+2. **Specify Dimensions for Performance**: For high-volume processing, consider smaller dimensions to improve speed
+3. **Test Different Settings**: Evaluate the trade-off between accuracy and performance for your specific document types
+4. **Monitor Resource Usage**: Higher resolution images consume more memory and processing time
+
+### Migration from Previous Versions
+
+**Previous Behavior**: Empty strings defaulted to 951x1268 pixel resizing
+**New Behavior**: Empty strings preserve original image resolution
+
+If you were relying on the previous default resizing behavior, explicitly set dimensions:
+
+```yaml
+# To maintain previous default behavior
+classification:
+  image:
+    target_width: "951"
+    target_height: "1268"
+```
+
 ## Additional Configuration Resources
 
 The solution provides additional configuration options through:

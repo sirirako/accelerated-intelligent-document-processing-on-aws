@@ -126,8 +126,8 @@ To update an existing GenAIIDP deployment to a new version:
 1. Open the `S3InputBucketConsoleURL` and `S3OutputBucketConsoleURL` from the stack Outputs tab
 2. Open the `StateMachineConsoleURL` from the stack Outputs tab
 3. Upload a PDF form to the Input bucket (sample files are in the `./samples` folder):
-   - For Pattern-1 BDA default project: use [samples/lending_package.pdf](../samples/lending_package.pdf)
-   - For Patterns 2 and 3 default configurations: use [samples/rvl_cdip_package.pdf](../samples/rvl_cdip_package.pdf)
+   - For Patterns 1 (BDA) and Pattern 2: Use [samples/lending_package.pdf](../samples/lending_package.pdf)
+   - For Pattern 3 (UDOP): Use [samples/rvl_cdip_package.pdf](../samples/rvl_cdip_package.pdf)
 4. Monitor the Step Functions execution to observe the workflow
 5. When complete, check the Output bucket for the structured JSON file with extracted fields
 

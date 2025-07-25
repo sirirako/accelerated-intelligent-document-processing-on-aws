@@ -11,55 +11,105 @@ from ..utils import parse_s3_uri
 logger = logging.getLogger(__name__)
 
 def resize_image(image_data: bytes, 
-                target_width: int = 951, 
-                target_height: int = 1268) -> bytes:
+                target_width: Optional[int] = None, 
+                target_height: Optional[int] = None,
+                allow_upscale: bool = False) -> bytes:
     """
     Resize an image to fit within target dimensions while preserving aspect ratio.
     No padding, no distortion - pure proportional scaling.
+    Preserves original format when possible.
     
     Args:
         image_data: Raw image bytes
-        target_width: Target width in pixels
-        target_height: Target height in pixels
+        target_width: Target width in pixels (None or empty string = no resize)
+        target_height: Target height in pixels (None or empty string = no resize)
+        allow_upscale: Whether to allow making the image larger than original
         
     Returns:
-        Resized image as JPEG bytes
+        Resized image bytes in original format (or JPEG if format cannot be preserved)
     """
+    # Handle empty strings - convert to None
+    if isinstance(target_width, str) and not target_width.strip():
+        target_width = None
+    if isinstance(target_height, str) and not target_height.strip():
+        target_height = None
+    
+    # If either dimension is None, return original image unchanged
+    if target_width is None or target_height is None:
+        logger.info("No resize requested (width or height is None/empty), returning original image")
+        return image_data
+    
+    # Convert to int if needed
+    try:
+        target_width = int(target_width)
+        target_height = int(target_height)
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid resize dimensions: width={target_width}, height={target_height}, returning original image")
+        return image_data
     image = Image.open(io.BytesIO(image_data))
     current_width, current_height = image.size
+    original_format = image.format  # Store original format
     
     # Calculate scaling factor to fit within bounds while preserving aspect ratio
     width_ratio = target_width / current_width
     height_ratio = target_height / current_height
     scale_factor = min(width_ratio, height_ratio)  # Fit within bounds
     
-    # Only resize if we're making it smaller
-    if scale_factor < 1.0:
+    # Determine if resizing is needed
+    needs_resize = (scale_factor < 1.0) or (allow_upscale and scale_factor > 1.0)
+    
+    if needs_resize:
         new_width = int(current_width * scale_factor)
         new_height = int(current_height * scale_factor)
         logger.info(f"Resizing image from {current_width}x{current_height} to {new_width}x{new_height} (scale: {scale_factor:.3f})")
         image = image.resize((new_width, new_height), Image.LANCZOS)
+        
+        # Save in original format if possible
+        img_byte_array = io.BytesIO()
+        
+        # Determine save format - use original if available, otherwise JPEG
+        if original_format and original_format in ['JPEG', 'PNG', 'GIF', 'BMP', 'TIFF', 'WEBP']:
+            save_format = original_format
+        else:
+            save_format = 'JPEG'
+            logger.info(f"Converting from {original_format or 'unknown'} to JPEG")
+        
+        # Prepare save parameters
+        save_kwargs = {"format": save_format}
+        
+        # Add quality parameters for JPEG
+        if save_format in ['JPEG', 'JPG']:
+            save_kwargs["quality"] = 95  # High quality
+            save_kwargs["optimize"] = True
+        
+        # Handle format-specific requirements
+        if save_format == 'PNG' and image.mode not in ['RGBA', 'LA', 'L', 'P']:
+            # PNG requires specific modes
+            if image.mode == 'CMYK':
+                image = image.convert('RGB')
+        
+        image.save(img_byte_array, **save_kwargs)
+        return img_byte_array.getvalue()
     else:
-        logger.debug(f"Image {current_width}x{current_height} already fits within {target_width}x{target_height}, no resizing needed")
-    
-    # Convert to JPEG bytes
-    img_byte_array = io.BytesIO()
-    image.save(img_byte_array, format="JPEG")
-    return img_byte_array.getvalue()
+        # No resizing needed - return original data unchanged
+        logger.info(f"Image {current_width}x{current_height} already fits within {target_width}x{target_height}, returning original")
+        return image_data
 
 def prepare_image(image_source: Union[str, bytes],
-                 target_width: int = 951, 
-                 target_height: int = 1268) -> bytes:
+                 target_width: Optional[int] = None, 
+                 target_height: Optional[int] = None,
+                 allow_upscale: bool = False) -> bytes:
     """
     Prepare an image for model input from either S3 URI or raw bytes
     
     Args:
         image_source: Either an S3 URI (s3://bucket/key) or raw image bytes
-        target_width: Target width in pixels
-        target_height: Target height in pixels
+        target_width: Target width in pixels (None or empty string = no resize)
+        target_height: Target height in pixels (None or empty string = no resize)
+        allow_upscale: Whether to allow making the image larger than original
         
     Returns:
-        Processed image as JPEG bytes ready for model input
+        Processed image bytes ready for model input (preserves format when possible)
     """
     # Get the image data
     if isinstance(image_source, str) and image_source.startswith('s3://'):
@@ -70,7 +120,7 @@ def prepare_image(image_source: Union[str, bytes],
         raise ValueError(f"Invalid image source: {type(image_source)}. Must be S3 URI or bytes.")
         
     # Resize and process
-    return resize_image(image_data, target_width, target_height)
+    return resize_image(image_data, target_width, target_height, allow_upscale)
 
 def apply_adaptive_binarization(image_data: bytes) -> bytes:
     """

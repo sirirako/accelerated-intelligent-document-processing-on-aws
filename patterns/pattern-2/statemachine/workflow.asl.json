@@ -63,7 +63,7 @@
             "ItemSelector": {
                 "execution_arn.$": "$$.Execution.Id",
                 "document.$": "$.ClassificationResult.document",
-                "section.$": "$$.Map.Item.Value"
+                "section_id.$": "$$.Map.Item.Value"
             },
             "MaxConcurrency": 10,
             "Iterator": {
@@ -111,7 +111,7 @@
                             "document.$": "$.document",
                             "section_id.$": "$.section_id"
                         },
-                        "ResultPath": "$.AssessmentResult",
+                        "ResultPath": "$",
                         "Retry": [
                             {
                                 "ErrorEquals": [
@@ -150,6 +150,7 @@
                 "ExtractionResults.$": "$.ExtractionResults"
             },
             "ResultPath": "$.Result",
+            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -186,9 +187,10 @@
             "Resource": "${SummarizationLambdaArn}",
             "Parameters": {
                 "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.Result.document"
+                "document.$": "$"
             },
             "ResultPath": "$.Result",
+            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [

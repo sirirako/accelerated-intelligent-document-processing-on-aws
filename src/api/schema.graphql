@@ -46,6 +46,7 @@ type Page @aws_cognito_user_pools @aws_iam {
   Class: String
   ImageUri: String
   TextUri: String
+  TextConfidenceUri: String
 }
 
 type DocumentList @aws_cognito_user_pools @aws_iam {
@@ -102,6 +103,8 @@ input UpdateDocumentInput {
   EvaluationReportUri: String
   EvaluationStatus: String
   SummaryReportUri: String
+  HITLStatus: String
+  HITLReviewURL: String
 }
 
 input SectionInput {
@@ -123,6 +126,7 @@ input PageInput {
   Class: String
   ImageUri: String
   TextUri: String
+  TextConfidenceUri: String
 }
 
 type CopyToBaselineResponse @aws_cognito_user_pools {
@@ -137,6 +141,30 @@ type FileContentsResponse @aws_cognito_user_pools @aws_iam {
   isBinary: Boolean
 }
 
+type StepFunctionExecutionStep @aws_cognito_user_pools @aws_iam {
+  name: String!
+  type: String!
+  status: String!
+  startDate: AWSDateTime
+  stopDate: AWSDateTime
+  input: AWSJSON
+  output: AWSJSON
+  error: String
+  mapIterations: Int
+  mapIterationDetails: [StepFunctionExecutionStep]
+}
+
+type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
+  executionArn: String!
+  status: String!
+  startDate: AWSDateTime
+  stopDate: AWSDateTime
+  input: AWSJSON
+  output: AWSJSON
+  error: String
+  steps: [StepFunctionExecutionStep]
+}
+
 type Mutation  {
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
@@ -145,6 +173,7 @@ type Mutation  {
   uploadDocument(fileName: String!, contentType: String, prefix: String, bucket: String): PresignedUrlResponse! @aws_cognito_user_pools
   copyToBaseline(objectKey: String!): CopyToBaselineResponse! @aws_cognito_user_pools
   reprocessDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
+  publishStepFunctionExecutionUpdate(executionArn: String!, data: AWSJSON!): StepFunctionExecutionResponse @aws_iam
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -156,6 +185,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   getConfiguration: ConfigurationResponse
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(s3Uri: String!, prompt: String!): String
+  getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
@@ -163,6 +193,8 @@ type Subscription @aws_cognito_user_pools @aws_iam {
 	@aws_subscribe(mutations: ["createDocument"])
   onUpdateDocument: Document
     @aws_subscribe(mutations: ["updateDocument"])
+  onStepFunctionExecutionUpdate(executionArn: String!): StepFunctionExecutionResponse
+    @aws_subscribe(mutations: ["publishStepFunctionExecutionUpdate"])
 }
 
 schema {

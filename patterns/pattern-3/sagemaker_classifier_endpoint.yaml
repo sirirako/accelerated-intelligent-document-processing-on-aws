@@ -61,10 +61,25 @@ Parameters:
     Default: 60
     MinValue: 0
 
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
+      Required by some organizations with Service Control Policies (SCPs).
+      Format: arn:aws:iam::account-id:policy/policy-name
+      Leave blank if no Permissions Boundary is required.
+    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    ConstraintDescription: Must be empty or a valid IAM policy ARN
+
+Conditions:
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
+
 Resources:
   UDOPExecutionRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

@@ -101,9 +101,21 @@ Parameters:
     Type: String
     Description: "SageMaker A2I Review Portal URL for HITL tasks"
 
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
+      Required by some organizations with Service Control Policies (SCPs).
+      Format: arn:aws:iam::account-id:policy/policy-name
+      Leave blank if no Permissions Boundary is required.
+    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    ConstraintDescription: Must be empty or a valid IAM policy ARN
+
 Conditions:
   IsSummarizationEnabled: !Equals [!Ref IsSummarizationEnabled, "true"]
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
 
 Resources:
 
@@ -463,12 +475,14 @@ Resources:
   DocumentProcessingStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Name: !Sub "${AWS::StackName}-DocumentProcessingWorkflow"
       DefinitionUri: statemachine/workflow.asl.json
       DefinitionSubstitutions:
         InvokeBDALambdaArn: !GetAtt InvokeBDAFunction.Arn
         ProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
         HITLWaitFunctionArn: !GetAtt HITLWaitFunction.Arn
+        HITLStatusUpdateFunctionArn: !GetAtt HITLStatusUpdateFunction.Arn
         IsSummarizationEnabled: !If [IsSummarizationEnabled, "true", "false"]
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
         EnableHITL: !Ref EnableHITL
@@ -489,6 +503,8 @@ Resources:
             FunctionName: !Ref SummarizationFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref HITLWaitFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HITLStatusUpdateFunction
         - CloudWatchLogsFullAccess
 
   StateMachineLogGroup:
@@ -514,6 +530,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/bda_invoke_function/
       Handler: index.handler
       Runtime: python3.12
@@ -581,6 +598,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/processresults_function/
       Handler: index.handler
       Runtime: python3.12
@@ -595,6 +613,8 @@ Resources:
           DB_NAME: !Ref BDAMetadataTable
           BDA_PROJECT_ARN: !Ref BDAProjectArn
           WORKING_BUCKET: !Ref WorkingBucket
+          SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
       Policies:
@@ -607,6 +627,8 @@ Resources:
             BucketName: !Ref OutputBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref BDAMetadataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -667,6 +689,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/summarization_function/
       Handler: index.handler
       Runtime: python3.12
@@ -751,6 +774,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/bda_completion_function/
       Handler: index.handler
       Runtime: python3.12
@@ -885,6 +909,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.lambda_handler
       LoggingConfig:
         LogGroup: !Ref HITLProcessLambdaLogGroup
@@ -896,7 +921,6 @@ Resources:
         Variables:
           DYNAMODB_TABLE: !Ref BDAMetadataTable
           TRACKING_TABLE: !Ref TrackingTable
-          # SQS_QUEUE_URL: !Ref SQSQueue
           LOG_LEVEL: !Ref LogLevel
 
   HITLProcessLambdaRole:
@@ -911,6 +935,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: HITLProcessLambdaPolicy
           PolicyDocument:
@@ -984,6 +1009,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/hitl-wait-function/
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -1020,6 +1046,57 @@ Resources:
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLWaitFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
+  HITLStatusUpdateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+          - id: W58
+            reason: "DLQ not required for EventBridge triggered function as it handles A2I status updates"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for EventBridge triggered function as it handles A2I status updates"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/hitl-status-update-function/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          WORKING_BUCKET: !Ref WorkingBucket
+      LoggingConfig:
+        LogGroup: !Ref HITLStatusUpdateFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !Ref CustomerManagedEncryptionKeyArn
+
+  HITLStatusUpdateFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLStatusUpdateFunction"
       RetentionInDays: !Ref LogRetentionDays
 
   #Event Bridge permissions to invoke Lambda function during HITL change 

@@ -64,7 +64,7 @@ class BedrockClient:
             max_backoff: Maximum backoff time in seconds
             metrics_enabled: Whether to publish metrics
         """
-        self.region = region or os.environ.get('AWS_REGION', 'us-west-2')
+        self.region = region or os.environ.get('AWS_REGION')
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
         self.max_backoff = max_backoff

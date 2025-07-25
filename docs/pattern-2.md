@@ -68,7 +68,7 @@ Each step includes comprehensive retry logic for handling transient errors:
     - Amazon Bedrock LLMs (Claude, Nova)
   - Concurrent page processing with ThreadPoolExecutor
   - **Configurable Image Processing**: Enhanced image resizing with aspect-ratio preservation
-  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion (default: 300)
+  - **Configurable DPI**: Adjustable DPI for PDF-to-image conversion
   - **Dual Image Strategy**: Stores original high-DPI images while using resized images for OCR processing
   - **Smart Resizing**: Only downsizes images when necessary (scale factor < 1.0)
   - Image preprocessing and optimization
@@ -317,7 +317,6 @@ The OCR service supports optional image resizing for processing optimization:
 ```yaml
 # OCR configuration example
 ocr:
-  dpi: 300  # PDF-to-image conversion DPI
   image:
     resize_config:
       target_width: 951   # Target width for processing
@@ -615,6 +614,7 @@ The assessment feature runs after successful extraction and provides:
 - **Explanatory Reasoning**: Human-readable explanations for each confidence score
 - **UI Integration**: Automatic display in the web interface visual editor
 - **Cost Optimization**: Optional deployment and efficient token usage
+- **Granular Assessment**: Advanced scalable approach for complex documents with many attributes
 
 ### Enabling Assessment
 
@@ -634,138 +634,104 @@ OCRStep → ClassificationStep → ProcessPageGroups (Map State):
   ExtractSection → AssessSection (if enabled)
 ```
 
-### Configuration
+### State Machine Integration
 
-Add an assessment section to your configuration YAML:
-
-```yaml
-assessment:
-  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
-  temperature: 0
-  top_k: 5
-  top_p: 0.1
-  max_tokens: 4096
-  system_prompt: |
-    You are an expert document analyst specializing in assessing extraction confidence.
-    Analyze extraction results against source documents and provide confidence scores.
-  task_prompt: |
-    Assess the confidence of these extraction results:
-    
-    Document Class: {DOCUMENT_CLASS}
-    Extraction Results: {EXTRACTION_RESULTS}
-    Attribute Definitions: {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
-    
-    Source Document Text:
-    {DOCUMENT_TEXT}
-    
-    OCR Confidence Data:
-    {OCR_TEXT_CONFIDENCE}
-    
-    Provide confidence assessment as JSON:
-    {
-      "attribute_name": {
-        "confidence": 0.85,
-        "confidence_reason": "Clear text match with high OCR confidence"
-      }
-    }
-```
-
-### Assessment Placeholders
-
-Assessment prompts support all extraction placeholders plus assessment-specific ones:
-
-| Placeholder | Description |
-|-------------|-------------|
-| `{EXTRACTION_RESULTS}` | JSON string of extraction results to assess |
-| `{OCR_TEXT_CONFIDENCE}` | Condensed OCR confidence data (80-90% token reduction) |
-| `{DOCUMENT_IMAGE}` | **Optional** - Document images at specified position |
-| `{DOCUMENT_CLASS}` | The classified document type |
-| `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` | List of attributes being assessed |
-| `{DOCUMENT_TEXT}` | Full document text from OCR |
-
-### Multimodal Assessment
-
-Use the `{DOCUMENT_IMAGE}` placeholder for visual assessment:
-
-```yaml
-task_prompt: |
-  Assess extraction confidence by analyzing both text and visual content:
-  
-  Document Text: {DOCUMENT_TEXT}
-  
-  {DOCUMENT_IMAGE}
-  
-  Review the above document image and assess these extractions:
-  {EXTRACTION_RESULTS}
-  
-  Provide confidence scores based on visual and textual evidence.
-```
-
-**Important**: Images are only processed when the `{DOCUMENT_IMAGE}` placeholder is explicitly present.
-
-### Output Integration
-
-Assessment results are automatically integrated into extraction outputs:
+The assessment step integrates seamlessly into Pattern-2's ProcessSections map state:
 
 ```json
 {
-  "inference_result": {
-    "invoice_number": "INV-2024-001",
-    "total_amount": "$1,250.00"
-  },
-  "explainability_info": [
-    {
-      "invoice_number": {
-        "success": true,
-        "confidence": 0.92,
-        "type": "string",
-        "value": "INV-2024-001"
-      },
-      "total_amount": {
-        "confidence": 0.88,
-        "type": "string", 
-        "value": "$1,250.00"
+  "AssessSection": {
+    "Type": "Task",
+    "Resource": "arn:aws:states:::lambda:invoke",
+    "Parameters": {
+      "FunctionName": "${AssessmentFunction}",
+      "Payload": {
+        "document.$": "$.document",
+        "section_id.$": "$.section_id"
       }
-    }
-  ],
-  "metadata": {
-    "assessment_time_seconds": 2.34,
-    "assessment_parsing_succeeded": true
+    },
+    "End": true
   }
 }
 ```
 
-### Cost Optimization
+### Configuration Options
 
-Assessment implements several cost-saving techniques:
+Pattern 2 supports both standard and granular assessment approaches:
 
-1. **Optional Deployment**: Only deploys resources when `IsAssessmentEnabled=true`
-2. **Text Confidence Data**: Uses condensed OCR data for 80-90% token reduction
-3. **Conditional Images**: Images only processed with explicit `{DOCUMENT_IMAGE}` placeholder
-4. **Efficient Prompting**: Optimized templates minimize unnecessary tokens
+#### Standard Assessment
+For documents with moderate complexity:
+```yaml
+assessment:
+  model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  temperature: 0
+  system_prompt: "You are an expert document analyst..."
+  task_prompt: |
+    Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
+    
+    Extraction Results: {EXTRACTION_RESULTS}
+    Attributes: {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    Document Text: {DOCUMENT_TEXT}
+    OCR Confidence: {OCR_TEXT_CONFIDENCE}
+    {DOCUMENT_IMAGE}
+```
 
-### Expected Costs
+#### Granular Assessment
+For complex documents with many attributes or large lists:
+```yaml
+assessment:
+  model: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  temperature: 0
+  system_prompt: "You are an expert document analyst..."
+  task_prompt: |
+    Assess the confidence of extraction results for this {DOCUMENT_CLASS} document.
+    
+    Attributes to assess: {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+    Extraction results: {EXTRACTION_RESULTS}
+    Document context: {DOCUMENT_TEXT}
+    {OCR_TEXT_CONFIDENCE}
+    {DOCUMENT_IMAGE}
+  
+  # Granular assessment configuration
+  granular:
+    max_workers: 6              # Parallel processing threads
+    simple_batch_size: 3        # Attributes per batch
+    list_batch_size: 1          # List items per batch
+```
 
-- **Text-Only Assessment**: ~500-1,000 tokens per page
-- **Multimodal Assessment**: ~1,500-2,500 tokens per page
-- **Processing Time**: ~2-5 seconds per document section
-- **Recommended Model**: Claude 3.5 Sonnet for balanced cost/performance
+### When to Use Granular Assessment
+
+Consider granular assessment for:
+- **Bank statements** with hundreds of transactions
+- **Documents with 10+ attributes** requiring individual attention
+- **Complex nested structures** (group and list attributes)
+- **Performance-critical scenarios** where parallel processing helps
+- **Cost optimization** when prompt caching is available
 
 ### Testing Assessment
 
-Use the provided assessment notebook:
+Use the provided assessment notebooks:
 
 ```bash
+# Standard assessment testing
 jupyter notebook notebooks/e2e-example-with-assessment.ipynb
+
+# Granular assessment testing  
+jupyter notebook notebooks/examples/step4_assessment_granular.ipynb
 ```
 
-The notebook demonstrates:
-- End-to-end workflow with assessment enabled
-- Confidence score interpretation
-- Cost and performance analysis
-- Integration with existing extraction results
+### Comprehensive Documentation
 
-For detailed information about the assessment feature, see the [Assessment Documentation](./assessment.md).
+For detailed information about assessment configuration, output formats, confidence thresholds, UI integration, cost optimization, and troubleshooting, see the [Assessment Documentation](./assessment.md).
+
+The assessment documentation covers:
+- Complete configuration examples and placeholders
+- Attribute types and assessment formats (simple, group, list)
+- Confidence threshold configuration and UI integration
+- Granular assessment architecture and performance tuning
+- Cost optimization strategies and token reduction techniques
+- Multimodal assessment with image processing
+- Testing procedures and best practices
 
 ## Testing
 

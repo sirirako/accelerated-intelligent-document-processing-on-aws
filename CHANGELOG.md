@@ -5,11 +5,190 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+- **Optional Permissions Boundary Support for Enterprise Deployments**
+  - Added `PermissionsBoundaryArn` parameter to all CloudFormation templates for organizations with Service Control Policies (SCPs) requiring permissions boundaries
+  - Comprehensive support for both explicit IAM roles and implicit roles created by AWS SAM functions and statemachines`
+  - Conditional implementation ensures backward compatibility - when no permissions boundary is provided, roles deploy normally
+
+## [0.3.8]
+
+### Added
+- IDP Configuration and Prompting Best Practices documentation [doc](./docs/idp-configuration-best-practices.md)
+
+### Changed
+
+- Updated lending_package.pdf sample with more realistic driver's license image
+
+### Fixed
+- Issue #27 - removed idp_common bedrock client region default to us-west-2 - PR #28
+
+
+
+## [0.3.8]
+
+### Added
+
+- **Lending Package Configuration Support for Pattern-2**
+  - Added new `lending-package-sample` configuration to Pattern-2, providing comprehensive support for lending and financial document processing workflows
+  - New default configuration for Pattern-2 stack deployments, optimized for loan applications, mortgage processing, and financial verification documents
+  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip-package-sample` for the `Pattern2Configuration` parameter when deploying or updating stacks
+
+- **Text Confidence View for Document Pages**
+  - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field
+  - New "Text Confidence View" option in the UI pages panel alongside existing Markdown and Text views
+  - Fixed issues with view persistence - Text Confidence View button now always visible with appropriate messaging when content unavailable
+  - Fixed view toggle behavior - switching between views no longer closes the viewer window
+  - Reordered view buttons to: Markdown View, Text Confidence View, Text View for better user experience
+
+- **Enhanced OCR DPI Configuration for PDF files**
+  - DPI for PDF image conversion is now configurable in the configuration editor under OCR image processing settings
+  - Default DPI improved from 96 to 150 DPI for better default quality and OCR accuracy
+  - Configurable through Web UI without requiring code changes or redeployment
+
+### Changed
+
+- **Converted text confidence data format from JSON to markdown table for improved readability and reduced token usage**
+  - Removed unnecessary "page_count" field
+  - Changed "text_blocks" array to "text" field containing a markdown table with Text and Confidence columns
+  - Reduces prompt size for assessment service while improving UI readability
+  - OCR confidence values now rounded to 1 decimal point (e.g., 99.1, 87.3) for cleaner display
+  - Markdown table headers now explicitly left-aligned using `|:-----|:-----------|` format for consistent appearance
+
+- **Simplified OCR Service Initialization**
+  - OCR service now accepts a single `config` dictionary parameter for cleaner, more consistent API
+  - Aligned with classification service pattern for better consistency across IDP services
+  - Backward compatibility maintained - old parameter pattern still supported with deprecation warning
+  - Updated all lambda functions and notebooks to use new simplified pattern
+- Removed fixed image target_height and target_width from default configurations, so images are processed in original resolution by default.
+
+- **Updated Default Configuration for Pattern1 and Pattern2**
+  - Changed default configuration for new stacks from "default" to "lending-package-sample" for both Pattern1 and Pattern2
+  - Maintains backward compatibility for stack updates by keeping the parameter value "default" mapped to the rvl-cdip-sample for pattern-2.
+
+- **Reduce assessment step costs**
+  - Default model for granular assessment is now `us.amazon.nova-lite-v1:0` - experimentation recommended
+  - Improved placement of <<CACHEPOINT>> tags in assessment prompt to improve utilization of prompt caching
+
+### Fixed
+
+- **Fixed Image Resizing Behavior for High-Resolution Documents**
+  - Fixed issue where empty strings in image configuration were incorrectly resizing images to default 951x1268 pixels instead of preserving original resolution
+  - Empty strings (`""`) in `target_width` and `target_height` configuration now preserve original document resolution for maximum processing accuracy
+- Fixed issue where PNG files were being unnecessarily converted to JPEG format and resized to lower resolution with lost quality
+- Fixed issue where PNG and JPG image files were not rendering inline in the Document Details page
+- Fixed issue where PDF files were being downloaded instead of displayed inline
+- Fixed pricing data for cacheWrite tokens for Amazon Nova models to resolve innacurate cost estimation in UI.
+
+
+## [0.3.7]
+
+### Added
+
+- **Criteria Validation Service Class**
+  - New  document validation service that evaluates documents against dynamic business rules using Large Language Models (LLMs)
+  - **Key Capabilities**: Dynamic business rules configuration, asynchronous processing with concurrent criteria evaluation, intelligent text chunking for large documents, multi-file processing with summarization, comprehensive cost and performance tracking
+  - **Primary Use Cases**: Healthcare prior authorization workflows, compliance validation, business rule enforcement, quality assurance, and audit preparation
+  - **Architecture Features**: Seamless integration with IDP pipeline using common Bedrock client, unified metering with automatic token usage tracking, S3 operations using standardized file operations, configuration compatibility with existing IDP config system
+  - **Advanced Features**: Configurable criteria questions without code changes, robust error handling with graceful degradation, Pydantic-based input/output validation with automatic data cleaning, comprehensive timing metrics and token usage tracking
+  - **Limitation**: Python idp_common support only, not yet implemented within deployed pattern workflows.
+
+
+- **Document Process Flow Visualization**
+  - Added interactive visualization of Step Functions workflow execution for document processing
+  - Visual representation of processing steps with status indicators and execution details
+  - Detailed step information including inputs, outputs, and error messages
+  - Timeline view showing chronological execution of all processing steps
+  - Auto-refresh capability for monitoring active executions in real-time
+  - Support for Map state visualization with iteration details
+  - Error diagnostics with detailed error messages for troubleshooting
+  - Automatic selection of failed steps for quick issue identification
+
+- **Granular Assessment Service for Scalable Confidence Evaluation**
+  - New granular assessment approach that breaks down assessment into smaller, focused tasks for improved accuracy and performance
+  - **Key Benefits**: Better accuracy through focused prompts, cost optimization via prompt caching, reduced latency through parallel processing, and scalability for complex documents
+  - **Task Types**: Simple batch tasks (groups 3-5 simple attributes), group tasks (individual group attributes), and list item tasks (individual list items for maximum accuracy)
+  - **Configuration**: Configurable batch sizes (`simple_batch_size`, `list_batch_size`) and parallel processing (`max_workers`) for performance tuning
+  - **Prompt Caching**: Leverages LLM caching capabilities with cached base content (document context, images, OCR data) and dynamic task-specific content
+  - **Use Cases**: Ideal for bank statements with hundreds of transactions, documents with 10+ attributes, complex nested structures, and performance-critical scenarios
+  - **Backward Compatibility**: Maintains same interface as standard assessment service with seamless migration path
+  - **Enhanced Documentation**: Comprehensive documentation in `docs/assessment.md` and example notebooks for both standard and granular approaches
+
+- **Reporting Database now has Document Sections Tables to enable querying across document fields**
+  - Added comprehensive document sections storage system that automatically creates tables for each section type (classification)
+  - **Dynamic Table Creation**: AWS Glue Crawler automatically discovers new section types and creates corresponding tables (e.g., `invoice`, `receipt`, `bank_statement`)
+  - **Configurable Crawler Schedule**: Support for manual, every 15 minutes, hourly, or daily (default) crawler execution via `DocumentSectionsCrawlerFrequency` parameter
+  - **Partitioned Storage**: Data organized by section type and date for efficient querying with Amazon Athena
+
+- **Partition Projections for Evaluation and Metering tables**
+  - **Automated Partition Management**: Eliminates need for `MSCK REPAIR TABLE` operations with projection-based partition discovery
+  - **Performance Benefits**: Athena can efficiently prune partitions based on date ranges without manual partition loading
+  - **Backward Compatibility Warning**: The partition structure change from `year=2024/month=03/day=15/` to `date=2024-03-15/` means that data saved in the evaluation or metering tables prior to v0.3.7 will not be visible in Athena queries after updating. To retain access to historical data, you can either:
+    - Manually reorganize existing S3 data to match the new partition structure
+    - Create separate Athena tables pointing to the old partition structure for historical queries
+
+
+- **Optimize the classification process for single class configurations in Pattern-2**
+  - Detects when only a single document class is defined in the configuration
+  - Automatically classifies all document pages as that single class
+  - Creates a single section containing all pages
+  - Bypasses the backend service calls (Bedrock or SageMaker) completely
+  - Logs an INFO message indicating the optimization is active
+
+- **Skip the extraction process for classes with no attributes in Pattern 2/3**
+  - Add early detection logic in extraction class to check for empty/missing attributes
+  - Return zero metering data and empty JSON results when no attributes defined
+
+- **Enhanced State Machine Optimization for Very Large Documents**
+  - Improved document compression to store only section IDs rather than full section objects
+  - Modified state machine workflow to eliminate nested result structures and reduce payload size
+  - Added OutputPath filtering to remove intermediate results from state machine execution
+  - Streamlined assessment step to replace extraction results instead of nesting them
+  - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
+
+### Changed
+- **Default behavior for image attachment in Pattern-2 and Pattern3**
+  - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
+  - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
+  - Previously, if the (classification or extraction) prompt did NOT contain a `{DOCUMENT_IMAGE}` placeholder, the image was appended at the end of the content array anyway
+- **Modified default assessment prompt for token efficiency**
+  - Removed `confidence_reason` from output to avoid consuming unnecessary output tokens
+  - Refactored task_prompt layout to improve <<CACHEPOINT>> placement for efficiency when granular mode is enabled or disabled
+- **Enhanced .clinerules with comprehensive memory bank workflows**
+  - Enhanced Plan Mode workflow with requirements gathering, reasoning, and user approval loop
+
+### Fixed
+- Fixed UI list deletion issue where empty lists were not saved correctly - #18
+- Improve structure and clarity for idp_common Python package documentation
+- Improved UI in View/Edit Configuration to clarify that Class and Attribute descriptions are used in the classification and extraction prompts
+- Automate UI updates for field "HITL (A2I) Status" in the Document list and document details section.
+- Fixed image display issue in PagesPanel where URLs containing special characters (commas, spaces) would fail to load by properly URL-encoding S3 object keys in presigned URL generation
+
 ## [0.3.6]
 
 ### Fixed
-- update Athena/Glue table configuration to use Parquet format instead of JSON  
+- Update Athena/Glue table configuration to use Parquet format instead of JSON #20
+- Cloudformation Error when Changing Evaluation Bucket Name #19
 
+### Added
+- **Extended Document Format Support in OCR Service**
+  - Added support for processing additional document formats beyond PDF and images:
+    - Plain text (.txt) files with automatic pagination for large documents
+    - CSV (.csv) files with table visualization and structured output
+    - Excel workbooks (.xlsx, .xls) with multi-sheet support (each sheet as a page)
+    - Word documents (.docx, .doc) with text extraction and visual representation
+  - **Key Features**:
+    - Consistent processing model across all document formats
+    - Standard page image generation for all formats
+    - Structured text output in formats compatible with existing extraction pipelines
+    - Confidence metrics for all document types
+    - Automatic format detection from file content and extension
+  - **Implementation Details**:
+    - Format-specific processing strategies for optimal results
+    - Enhanced text rendering for plain text documents
+    - Table visualization for CSV and Excel data
+    - Word document paragraph extraction with formatting preservation
+    - S3 storage integration matching existing PDF processing workflow
 
 ## [0.3.5]
 
@@ -51,7 +230,7 @@ SPDX-License-Identifier: MIT-0
   - Customizable system and task prompts for OCR optimization
   - Better handling of complex documents, tables, and forms
   - Layout preservation capabilities
-- **Image Preprocessing - Pattern 2 and 3**
+- **Image Preprocessing - Pattern 2**
   - Adaptive Binarization: Improves OCR accuracy on documents with:
     - Uneven lighting or shadows
     - Low contrast text
@@ -88,7 +267,7 @@ SPDX-License-Identifier: MIT-0
   - **Improved Image Resizing Algorithm**: Enhanced aspect-ratio preserving scaling that only downsizes when necessary (scale factor < 1.0) to prevent image distortion
   - **Configurable Image Dimensions**: All processing services (Assessment, Classification, Extraction, OCR) now support configurable image dimensions through configuration with default 951×1268 resolution
   - **Service-Specific Image Optimization**: Each service can use optimal image dimensions for performance and quality tuning
-  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion (default: 300) and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
+  - **Enhanced OCR Service**: Added configurable DPI for PDF-to-image conversion and optional image resizing with dual image strategy (stores original high-DPI images while using resized images for processing)
   - **Runtime Configuration**: No code changes needed to adjust image processing - all configurable through service configuration
   - **Backward Compatibility**: Default values maintain existing behavior with no immediate action required for existing deployments
 - **Enhanced Configuration Management**
@@ -384,7 +563,7 @@ The `idp_common_pkg` introduces a unified Document model approach for consistent
 - **Section**: Represents logical document sections with classification and extraction results
 
 #### Service Classes
-- **OcrService**: Processes documents with AWS Textract and updates the Document with OCR results
+- **OcrService**: Processes documents with AWS Textract or Amazon Bedrock and updates the Document with OCR results
 - **ClassificationService**: Classifies document pages/sections using Bedrock or SageMaker backends
 - **ExtractionService**: Extracts structured information from document sections using Bedrock
 

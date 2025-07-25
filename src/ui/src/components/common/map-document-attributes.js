@@ -72,14 +72,9 @@ const mapDocumentsAttributes = (documents) => {
     // Calculate confidence alert count
     const confidenceAlertCount = getDocumentConfidenceAlertCount(sections);
 
-    // Extract HITL metadata
+    // Extract HITL metadata - use original working logic
     const hitlTriggered = hitlStatus && hitlStatus !== 'N/A';
     const hitlCompleted = isHitlCompleted(hitlStatus);
-
-    // Debug logging for HITL status
-    console.log('HITL Status from backend:', hitlStatus);
-    console.log('HITL Triggered:', hitlTriggered);
-    console.log('HITL Completed:', hitlCompleted);
 
     const mapping = {
       objectKey,
@@ -89,10 +84,15 @@ const mapDocumentsAttributes = (documents) => {
       workflowStartTime: formatDate(workflowStartTime),
       completionTime: formatDate(completionTime),
       workflowExecutionArn,
+      executionArn: workflowExecutionArn, // Add executionArn for Step Functions flow viewer
       workflowStatus,
       duration: getDuration(completionTime, initialEventTime),
       sections,
-      pages,
+      pages:
+        pages?.map((page) => ({
+          ...page,
+          TextConfidenceUri: page.TextConfidenceUri || null,
+        })) || [],
       pageCount,
       metering,
       evaluationReportUri,

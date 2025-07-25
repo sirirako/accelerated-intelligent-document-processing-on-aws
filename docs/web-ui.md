@@ -22,6 +22,46 @@ The solution includes a responsive web-based user interface built with React tha
 - **Confidence threshold configuration** for HITL (Human-in-the-Loop) triggering through the Assessment & HITL Configuration section
 - Document upload from local computer
 - Knowledge base querying for document collections
+- **Document Process Flow visualization** for detailed workflow execution monitoring and troubleshooting
+
+## Document Process Flow Visualization
+
+The Document Process Flow feature provides a visual representation of the Step Functions workflow execution for each document:
+
+![Document Process Flow](../images/DocumentProcessFlow.png)
+
+*The Document Process Flow visualization showing the execution steps, status, and details.*
+
+### Key Capabilities
+
+- **Interactive Flow Diagram**: Visual representation of the document processing workflow with color-coded status indicators
+- **Step Details**: Detailed information about each processing step including inputs, outputs, and execution time
+- **Error Diagnostics**: Clear visualization of failed steps with detailed error messages for troubleshooting
+- **Timeline View**: Chronological view of all processing steps with duration information
+- **Auto-Refresh**: Option to automatically refresh the flow data for active executions
+- **Map State Support**: Visualization of Map state iterations for parallel processing workflows
+
+### How to Use
+
+1. Navigate to a document's detail page
+2. Click the "View Processing Flow" button in the document details header
+3. The flow diagram will display all steps in the document's processing workflow
+4. Click on any step to view its detailed information including:
+   - Input/output data
+   - Execution duration
+   - Error messages (if applicable)
+   - Start and completion times
+5. For active executions, toggle the auto-refresh option to monitor progress in real-time
+
+### Troubleshooting with Process Flow
+
+The Document Process Flow visualization is particularly useful for troubleshooting processing issues:
+
+- Quickly identify which step in the workflow failed
+- View detailed error messages and stack traces
+- Understand the sequence of processing steps
+- Analyze execution times to identify performance bottlenecks
+- Inspect the input and output of each step to verify data transformation
 
 ## Authentication Features
 

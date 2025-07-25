@@ -19,6 +19,40 @@ Mappings:
     CRITICAL:
       FieldLogLevel: ERROR
 
+  CrawlerScheduleMap:
+    Manual:
+      ScheduleExpression: ""
+    Every15m:
+      ScheduleExpression: "cron(0/15 * * * ? *)"
+    EveryHour:
+      ScheduleExpression: "cron(0 * * * ? *)"
+    EveryDay:
+      ScheduleExpression: "cron(0 0 * * ? *)"
+
+  Pattern1ConfigurationMap:
+    lending-package-sample:
+      ConfigPath: "lending-package-sample"
+    default:
+      ConfigPath: "lending-package-sample"
+
+  Pattern2ConfigurationMap:
+    lending-package-sample:
+      ConfigPath: "lending-package-sample"
+    rvl-cdip-package-sample:
+      ConfigPath: "rvl-cdip-package-sample"
+    rvl-cdip-package-sample-with-few-shot-examples:
+      ConfigPath: "rvl-cdip-package-sample-with-few-shot-examples"
+    bank-statement-sample:
+      ConfigPath: "bank-statement-sample"
+    default:
+      ConfigPath: "rvl-cdip-package-sample"
+
+  Pattern3ConfigurationMap:
+    rvl-cdip-package-sample:
+      ConfigPath: "rvl-cdip-package-sample"
+    default:
+      ConfigPath: "rvl-cdip-package-sample"
+
 Parameters:
 
   # Authorization params
@@ -80,8 +114,9 @@ Parameters:
 
   Pattern1Configuration:
     Type: String
-    Default: "default"
+    Default: "lending-package-sample"
     AllowedValues:
+      - "lending-package-sample"
       - "default"
     Description: Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
@@ -89,11 +124,13 @@ Parameters:
 
   Pattern2Configuration:
     Type: String
-    Default: "default"
+    Default: "lending-package-sample"
     AllowedValues:
-      - "default"
+      - "lending-package-sample"
+      - "rvl-cdip-package-sample"
+      - "rvl-cdip-package-sample-with-few-shot-examples"
       - "bank-statement-sample"
-      - "few_shot_example_with_multimodal_page_classification"
+      - "default"
     Description: Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
   Pattern2CustomClassificationModelARN:
@@ -116,8 +153,9 @@ Parameters:
 
   Pattern3Configuration:
     Type: String
-    Default: "default"
+    Default: "rvl-cdip-package-sample"
     AllowedValues:
+      - "rvl-cdip-package-sample"
       - "default"
     Description: Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
@@ -138,6 +176,19 @@ Parameters:
     Description: >-
       (Optional) Existing bucket used for analytics. (Currently used for evaluation analytics)
       Provide the name of an existing bucket here or leave blank to automatically create a new bucket.
+
+  DocumentSectionsCrawlerFrequency:
+    Type: String
+    Default: "EveryDay"
+    AllowedValues:
+      - "Manual"
+      - "Every15m"
+      - "EveryHour"
+      - "EveryDay"
+    Description: >-
+      Frequency for the Glue Crawler to run and discover new document section tables and partitions.
+      Manual requires manual execution, other options run automatically at the specified interval.
+
 
   EvaluationAutoEnabled:
     Type: String
@@ -238,6 +289,18 @@ Parameters:
     Default: 300000
     Description: Maximum acceptable execution time in milliseconds before alerting (default 300000 = 300 seconds)
     MinValue: 1000
+
+  # Security Configuration
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
+      Required by some organizations with Service Control Policies (SCPs).
+      Format: arn:aws:iam::account-id:policy/policy-name
+      Leave blank if no Permissions Boundary is required.
+    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    ConstraintDescription: Must be empty or a valid IAM policy ARN
 
   # Logging configuration
   LogLevel:
@@ -376,6 +439,8 @@ Conditions:
   IsWafEnabled: !Not [!Equals [!Ref WAFAllowedIPv4Ranges, "0.0.0.0/0"]]
   ShouldCreateDocumentKnowledgeBase: !Equals [!Ref DocumentKnowledgeBase, "BEDROCK_KNOWLEDGE_BASE (Create)"]
   ShouldUseDocumentKnowledgeBase: !Condition ShouldCreateDocumentKnowledgeBase
+  DocumentSectionsCrawlerScheduleEnabled: !Not [!Equals [!Ref DocumentSectionsCrawlerFrequency, "Manual"]]
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
 
 
 Metadata:
@@ -420,12 +485,12 @@ Metadata:
           default: "Evaluation"
         Parameters:
           - EvaluationBaselineBucketName
-          - ReportingBucketName
           - EvaluationAutoEnabled
       - Label:
           default: "Reporting"
         Parameters:
           - ReportingBucketName
+          - DocumentSectionsCrawlerFrequency
       - Label:
           default: "Document Knowledge Base"
         Parameters:
@@ -441,6 +506,11 @@ Metadata:
           - BedrockGuardrailId
           - BedrockGuardrailVersion
       - Label:
+          default: "Security Configuration"
+        Parameters:
+          - PermissionsBoundaryArn
+          - WAFAllowedIPv4Ranges
+      - Label:
           default: "General Configuration"
         Parameters:
           - MaxConcurrentWorkflows
@@ -451,7 +521,6 @@ Metadata:
           - LogRetentionDays
           - CloudFrontPriceClass
           - CloudFrontAllowedGeos
-          - WAFAllowedIPv4Ranges
 
     ParameterLabels:
       AdminEmail:
@@ -482,8 +551,6 @@ Metadata:
         default: "Post Processing Lambda Hook Function ARN"
       EvaluationBaselineBucketName:
         default: "Evaluation Baseline Bucket Name"
-      ReportingBucketName:
-        default: "Reporting Bucket Name"
       EvaluationAutoEnabled:
         default: "Evaluation Auto Enabled"
       ReportingBucketName:
@@ -500,6 +567,8 @@ Metadata:
         default: "Bedrock Guardrail Id"
       BedrockGuardrailVersion:
         default: "Bedrock Guardrail Version"
+      PermissionsBoundaryArn:
+        default: "Permissions Boundary ARN"
       MaxConcurrentWorkflows:
         default: "Maximum Concurrent Workflows"
       DataRetentionInDays:
@@ -536,6 +605,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       InlineCode: |
@@ -594,6 +664,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 300
@@ -723,6 +794,8 @@ Resources:
         ProjectName: !Sub '${AWS::StackName}-BDA-Lending-Sample-Project'
         ProjectDescription: !Sub '${AWS::StackName}-BDA-Lending-Sample-Project'
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
 
   DOCUMENTBEDROCKKB:
     DependsOn:
@@ -738,6 +811,8 @@ Resources:
         pCustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         pChunkingStrategy: 'No chunking'
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
 
   ##########################################################################
   # Nested stack for selected pattern
@@ -750,7 +825,6 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: IsPattern1
     Properties:
-      # yamllint disable rule:line-length
       TemplateURL: ./patterns/pattern-1/.aws-sam/packaged.yaml
       Parameters:
         StackName: !Ref AWS::StackName
@@ -775,8 +849,11 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         EnableHITL: !Ref Pattern1EnableHITL
-        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-1/${Pattern1Configuration}/config.yaml"
+        ConfigurationDefaultS3Uri: !Sub 
+          - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
+          - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         SageMakerA2IReviewPortalURL: !If
           - IsPattern1HITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -812,8 +889,11 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-2/${Pattern2Configuration}/config.yaml"
+        ConfigurationDefaultS3Uri: !Sub 
+          - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
+          - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   PATTERN3STACK:
     DependsOn:
@@ -844,8 +924,11 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !Sub "s3://${ConfigurationBucket}/config_library/pattern-3/${Pattern3Configuration}/config.yaml"
+        ConfigurationDefaultS3Uri: !Sub 
+          - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
+          - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   ##########################################################################
   # Encryption key
@@ -1320,10 +1403,22 @@ Resources:
         Name: "document_evaluations"
         Description: "Table for document-level evaluation metrics"
         TableType: "EXTERNAL_TABLE"
-        Parameters: {
-          "classification": "parquet",
-          "typeOfData": "file"
-        }
+        Parameters:
+          classification: "parquet"
+          typeOfData: "file"
+          projection.enabled: "true"
+          projection.date.type: "date"
+          projection.date.format: "yyyy-MM-dd"
+          projection.date.range: "2024-01-01,2030-12-31"
+          projection.date.interval: "1"
+          projection.date.interval.unit: "DAYS"
+          storage.location.template: !Sub
+            - "s3://${Bucket}/evaluation_metrics/document_metrics/date=${date}/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
+              date: "${date}"
         StorageDescriptor:
           Location: !Sub 
             - "s3://${Bucket}/evaluation_metrics/document_metrics/"
@@ -1358,13 +1453,7 @@ Resources:
               Type: double
           Compressed: true
         PartitionKeys:
-          - Name: year
-            Type: string
-          - Name: month
-            Type: string
-          - Name: day
-            Type: string
-          - Name: document
+          - Name: date
             Type: string
 
   SectionEvaluationsTable:
@@ -1376,10 +1465,22 @@ Resources:
         Name: "section_evaluations"
         Description: "Table for section-level evaluation metrics"
         TableType: "EXTERNAL_TABLE"
-        Parameters: {
-          "classification": "parquet",
-          "typeOfData": "file"
-        }
+        Parameters:
+          classification: "parquet"
+          typeOfData: "file"
+          projection.enabled: "true"
+          projection.date.type: "date"
+          projection.date.format: "yyyy-MM-dd"
+          projection.date.range: "2024-01-01,2030-12-31"
+          projection.date.interval: "1"
+          projection.date.interval.unit: "DAYS"
+          storage.location.template: !Sub
+            - "s3://${Bucket}/evaluation_metrics/section_metrics/date=${date}/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
+              date: "${date}"
         StorageDescriptor:
           Location: !Sub 
             - "s3://${Bucket}/evaluation_metrics/section_metrics/"
@@ -1414,13 +1515,7 @@ Resources:
               Type: timestamp
           Compressed: true
         PartitionKeys:
-          - Name: year
-            Type: string
-          - Name: month
-            Type: string
-          - Name: day
-            Type: string
-          - Name: document
+          - Name: date
             Type: string
 
   AttributeEvaluationsTable:
@@ -1432,10 +1527,22 @@ Resources:
         Name: "attribute_evaluations"
         Description: "Table for attribute-level evaluation metrics"
         TableType: "EXTERNAL_TABLE"
-        Parameters: {
-          "classification": "parquet",
-          "typeOfData": "file"
-        }
+        Parameters:
+          classification: "parquet"
+          typeOfData: "file"
+          projection.enabled: "true"
+          projection.date.type: "date"
+          projection.date.format: "yyyy-MM-dd"
+          projection.date.range: "2024-01-01,2030-12-31"
+          projection.date.interval: "1"
+          projection.date.interval.unit: "DAYS"
+          storage.location.template: !Sub
+            - "s3://${Bucket}/evaluation_metrics/attribute_metrics/date=${date}/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
+              date: "${date}"
         StorageDescriptor:
           Location: !Sub 
             - "s3://${Bucket}/evaluation_metrics/attribute_metrics/"
@@ -1476,13 +1583,7 @@ Resources:
               Type: timestamp
           Compressed: true
         PartitionKeys:
-          - Name: year
-            Type: string
-          - Name: month
-            Type: string
-          - Name: day
-            Type: string
-          - Name: document
+          - Name: date
             Type: string
 
 
@@ -1495,10 +1596,22 @@ Resources:
         Name: "metering"
         Description: "Table for document metering data"
         TableType: "EXTERNAL_TABLE"
-        Parameters: {
-          "classification": "parquet",
-          "typeOfData": "file"
-        }
+        Parameters:
+          classification: "parquet"
+          typeOfData: "file"
+          projection.enabled: "true"
+          projection.date.type: "date"
+          projection.date.format: "yyyy-MM-dd"
+          projection.date.range: "2024-01-01,2030-12-31"
+          projection.date.interval: "1"
+          projection.date.interval.unit: "DAYS"
+          storage.location.template: !Sub
+            - "s3://${Bucket}/metering/date=${date}/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
+              date: "${date}"
         StorageDescriptor:
           Location: !Sub 
             - "s3://${Bucket}/metering/"
@@ -1527,14 +1640,94 @@ Resources:
               Type: timestamp
           Compressed: true
         PartitionKeys:
-          - Name: year
+          - Name: date
             Type: string
-          - Name: month
-            Type: string
-          - Name: day
-            Type: string
-          - Name: document
-            Type: string
+
+  DocumentSectionsCrawlerSecurityConfigurationV2:
+    Type: AWS::Glue::SecurityConfiguration
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-sections-crawler-security-config-v2"
+      EncryptionConfiguration:
+        S3Encryptions:
+          - S3EncryptionMode: SSE-KMS
+            KmsKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  DocumentSectionsCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub "${AWS::StackName}-document-sections-crawler"
+      Description: "Crawler to discover document section tables in the reporting bucket with conservative schema handling"
+      Role: !GetAtt DocumentSectionsCrawlerRole.Arn
+      DatabaseName: !Ref ReportingDatabase
+      CrawlerSecurityConfiguration: !Ref DocumentSectionsCrawlerSecurityConfigurationV2
+      Targets:
+        S3Targets:
+          - Path: !Sub 
+              - "s3://${Bucket}/document_sections/"
+              - Bucket: !If
+                  - ShouldCreateReportingBucket
+                  - !Ref ReportingBucket
+                  - !Ref ReportingBucketName
+      SchemaChangePolicy:
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "LOG"
+      TablePrefix: "document_sections_"
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": { "TableLevelConfiguration": 3 },
+          "CreatePartitionIndex": true
+        }
+      Schedule: !If
+        - DocumentSectionsCrawlerScheduleEnabled
+        - ScheduleExpression: !FindInMap [CrawlerScheduleMap, !Ref DocumentSectionsCrawlerFrequency, ScheduleExpression]
+        - !Ref AWS::NoValue
+
+  DocumentSectionsCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: DocumentSectionsCrawlerS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 
+                    - "arn:aws:s3:::${Bucket}"
+                    - Bucket: !If
+                        - ShouldCreateReportingBucket
+                        - !Ref ReportingBucket
+                        - !Ref ReportingBucketName
+                  - !Sub 
+                    - "arn:aws:s3:::${Bucket}/document_sections/*"
+                    - Bucket: !If
+                        - ShouldCreateReportingBucket
+                        - !Ref ReportingBucket
+                        - !Ref ReportingBucketName
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
 
   EvaluationBaselineBucket:
     Type: AWS::S3::Bucket
@@ -1579,6 +1772,7 @@ Resources:
 
   EvaluationBaselineBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateEvaluationBaselineBucket
     Properties:
       Bucket: !Ref EvaluationBaselineBucket
       PolicyDocument:
@@ -1708,6 +1902,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
@@ -1774,6 +1969,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for Custom Resource function"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
@@ -1848,6 +2044,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Custom Resource function"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
@@ -1886,7 +2083,11 @@ Resources:
           - ShouldCreateReportingBucket
           - !Ref ReportingBucket
           - !Ref ReportingBucketName
-        EvaluationBaselineBucket: !Ref EvaluationBaselineBucket
+        EvaluationBaselineBucket: 
+          !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
         ShouldUseDocumentKnowledgeBase: !If
           - ShouldUseDocumentKnowledgeBase
           - True
@@ -1991,6 +2192,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_sender/
       Handler: index.handler
       Runtime: python3.12
@@ -2058,6 +2260,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_processor/
       Handler: index.handler
       Runtime: python3.12
@@ -2169,6 +2372,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/workflow_tracker/
       Handler: index.handler
       Runtime: python3.12
@@ -2262,6 +2466,113 @@ Resources:
       SourceArn: !GetAtt WorkflowStateChangeRule.Arn
 
   ##########################################################################
+  # Step Functions Subscription Publisher
+  ##########################################################################
+  StepFunctionSubscriptionPublisher:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for subscription publisher function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/stepfunction_subscription_publisher/
+      Handler: index.handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 256
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref StepFunctionSubscriptionPublisherLogGroup
+      Environment:
+        Variables:
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          LOG_LEVEL: !Ref LogLevel
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource: 
+                - !Sub
+                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - StateMachineName: !If
+                    - IsPattern3
+                    - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+                    - !If
+                      - IsPattern2
+                      - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+                      - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Subscription/*"
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  StepFunctionSubscriptionPublisherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  StepFunctionSubscriptionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.states
+        detail-type:
+          - Step Functions Execution Status Change
+        detail:
+          stateMachineArn:
+            - !If
+              - IsPattern3
+              - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
+              - !If
+                - IsPattern2
+                - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
+                - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+          status:
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - TIMED_OUT
+            - ABORTED
+      Targets:
+        - Arn: !GetAtt StepFunctionSubscriptionPublisher.Arn
+          Id: "StepFunctionSubscriptionPublisher"
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+
+  StepFunctionSubscriptionPublisherPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref StepFunctionSubscriptionPublisher
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StepFunctionSubscriptionRule.Arn
+
+  ##########################################################################
   # Optional Post Processing Lambda Hook
   ##########################################################################
   PostProcessingLambdaHookRule:
@@ -2320,6 +2631,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     # checkov:skip=CKV_AWS_116: "DLQ not required for this functions as it is called sychronously"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/save_reporting_data/
       Handler: index.handler
       Runtime: python3.12
@@ -2385,6 +2697,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/evaluation_function/
       Handler: index.handler
       Runtime: python3.12
@@ -2955,6 +3268,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/dashboard_merger
       Handler: index.handler
       Runtime: python3.12
@@ -3008,6 +3322,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/lookup_function/
       Handler: index.handler
       Runtime: python3.12
@@ -3159,6 +3474,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Converts Stackname to lowercase and adds unique timestamp
       Handler: index.handler
       Runtime: python3.12
@@ -3229,6 +3545,7 @@ Resources:
                 "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
               "ForAnyValue:StringLike":
                 "cognito-identity.amazonaws.com:amr": authenticated
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: S3
           PolicyDocument:
@@ -3329,6 +3646,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Condition: ShouldAllowSignUpEmailDomain
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Verifies email address is in allowed domain
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -3412,6 +3730,12 @@ Resources:
   CognitoClientUpdaterRole:
     Type: AWS::IAM::Role
     Condition: ShouldCreatePrivateWorkteam
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Write access required for Cognito client updates and SageMaker workteam integration - resource constraints not applicable for these service operations"
+    # checkov:skip=CKV_AWS_111: "Write access required for Cognito client updates and SageMaker workteam integration"
     Properties:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -3422,6 +3746,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: CognitoClientUpdaterPolicy
           PolicyDocument:
@@ -3459,7 +3784,9 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
       CodeUri: src/lambda/cognito_updater_hitl
       Handler: index.handler
@@ -3517,6 +3844,7 @@ Resources:
             Principal:
               Service: sagemaker.amazonaws.com
             Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: A2IFlowDefinitionAccess
           PolicyDocument:
@@ -3568,6 +3896,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: SageMakerA2IAccess
           PolicyDocument:
@@ -3653,6 +3982,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/create_a2i_resources
       Handler: index.handler
       Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
@@ -3691,6 +4021,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: src/lambda/get-workforce-url
@@ -3764,6 +4095,7 @@ Resources:
     Properties:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -3811,6 +4143,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: ./src/lambda/ipset_updater
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -3927,6 +4260,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DynamoDBAccess
           PolicyDocument:
@@ -3955,6 +4289,7 @@ Resources:
                   - lambda:InvokeFunction
                 Resource: 
                   - !GetAtt GetFileContentsResolverFunction.Arn
+                  - !GetAtt GetStepFunctionExecutionResolverFunction.Arn
                   - !GetAtt ConfigurationResolverFunction.Arn
                   - !GetAtt UploadResolverFunction.Arn
                   - !GetAtt CopyToBaselineResolverFunction.Arn
@@ -3980,6 +4315,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/create_document_resolver
@@ -4244,6 +4580,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/get_file_contents_resolver
@@ -4300,6 +4637,152 @@ Resources:
       TypeName: Query
       FieldName: getFileContents
 
+  GetStepFunctionExecutionResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for AppSync resolver function as GraphQL handles retries"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function as GraphQL handles retries"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/get_stepfunction_execution_resolver/
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 512
+      Timeout: 60
+      LoggingConfig:
+        LogGroup: !Ref GetStepFunctionExecutionResolverFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource: 
+                - !Sub
+                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - StateMachineName: !If
+                      - IsPattern3
+                      - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+                      - !If
+                        - IsPattern2
+                        - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+                        - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+        - KMSDecryptPolicy:
+            KeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  GetStepFunctionExecutionResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  GetStepFunctionExecutionDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: GetStepFunctionExecution
+      Description: Lambda function to return Step Functions execution details via GraphQL API
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GetStepFunctionExecutionResolverFunction.Arn
+
+  GetStepFunctionExecutionResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt GetStepFunctionExecutionDataSource.Name
+      TypeName: Query
+      FieldName: getStepFunctionExecution
+
+  PublishStepFunctionUpdateResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/publish_stepfunction_update_resolver/
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      MemorySize: 256
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref PublishStepFunctionUpdateResolverFunctionLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  PublishStepFunctionUpdateResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  PublishStepFunctionUpdateDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: PublishStepFunctionUpdate
+      Description: Lambda function to publish Step Functions execution updates via GraphQL API
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt PublishStepFunctionUpdateResolverFunction.Arn
+
+  PublishStepFunctionUpdateResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt PublishStepFunctionUpdateDataSource.Name
+      TypeName: Mutation
+      FieldName: publishStepFunctionExecutionUpdate
+
   ConfigurationResolverFunction:
       Type: AWS::Serverless::Function
       Metadata:
@@ -4316,6 +4799,7 @@ Resources:
       # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
       # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
       Properties:
+        PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]       
         Handler: index.handler
         Runtime: python3.12
         CodeUri: ./src/lambda/configuration_resolver
@@ -4398,6 +4882,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/copy_to_baseline_resolver
@@ -4488,6 +4973,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/delete_document_resolver
@@ -4561,6 +5047,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/reprocess_document_resolver
@@ -4628,6 +5115,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/upload_resolver
@@ -4648,7 +5136,11 @@ Resources:
         - S3WritePolicy:
             BucketName: !Ref OutputBucket
         - S3WritePolicy:
-            BucketName: !Ref EvaluationBaselineBucket
+            BucketName: 
+              !If
+                - ShouldCreateEvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucket
+                - !Ref EvaluationBaselineBucketName
         - Statement:
             - Effect: Allow
               Action:
@@ -4707,6 +5199,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/query_knowledgebase_resolver
@@ -4898,6 +5391,7 @@ Resources:
             Effect: Allow
             Principal:
               Service: codebuild.amazonaws.com
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: ecs-service
           PolicyDocument:
@@ -5043,6 +5537,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: "/"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: root
           PolicyDocument:
@@ -5093,6 +5588,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Role: !GetAtt StartUICodeBuildExecutionRole.Arn
       Runtime: python3.12
       Timeout: 60
@@ -5172,6 +5668,9 @@ Outputs:
           - ShouldCreateReportingBucket
           - !Ref ReportingBucket
           - !Ref ReportingBucketName
+  ReportingDatabase:
+    Description: "AWS Glue database containing evaluation metrics tables (document_evaluations, section_evaluations, attribute_evaluations) that can be queried with Amazon Athena for analytics and reporting"
+    Value: !Ref ReportingDatabase
   S3EvaluationBaselineBucketName:
     Description: Evaluation Baseline S3 bucket name
     Value: !If
@@ -5255,6 +5754,3 @@ Outputs:
       REACT_APP_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       REACT_APP_AWS_REGION=${AWS::Region}
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
-  ReportingDatabase:
-    Description: AWS Glue database containing evaluation metrics tables (document_evaluations, section_evaluations, attribute_evaluations) that can be queried with Amazon Athena for analytics and reporting
-    Value: !Ref ReportingDatabase

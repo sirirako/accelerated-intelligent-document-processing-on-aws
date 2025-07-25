@@ -11,13 +11,10 @@ Unit tests for the ExtractionService class.
 import pytest
 
 # Import standard library modules first
-import sys
 from textwrap import dedent
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-# Mock PIL before importing any modules that might depend on it
-sys.modules["PIL"] = MagicMock()
-sys.modules["PIL.Image"] = MagicMock()
+# PIL is now used directly - no mocking needed
 
 # Now import third-party modules
 
@@ -124,6 +121,9 @@ class TestExtractionService:
                     
                     Document text:
                     {DOCUMENT_TEXT}
+                    
+                    Document image:
+                    {DOCUMENT_IMAGE}
                     
                     Respond with a JSON object containing each field name and its extracted value.
                 """),
