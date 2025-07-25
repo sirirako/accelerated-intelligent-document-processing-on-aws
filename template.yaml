@@ -290,6 +290,18 @@ Parameters:
     Description: Maximum acceptable execution time in milliseconds before alerting (default 300000 = 300 seconds)
     MinValue: 1000
 
+  # Security Configuration
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
+      Required by some organizations with Service Control Policies (SCPs).
+      Format: arn:aws:iam::account-id:policy/policy-name
+      Leave blank if no Permissions Boundary is required.
+    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    ConstraintDescription: Must be empty or a valid IAM policy ARN
+
   # Logging configuration
   LogLevel:
     Type: String
@@ -428,6 +440,7 @@ Conditions:
   ShouldCreateDocumentKnowledgeBase: !Equals [!Ref DocumentKnowledgeBase, "BEDROCK_KNOWLEDGE_BASE (Create)"]
   ShouldUseDocumentKnowledgeBase: !Condition ShouldCreateDocumentKnowledgeBase
   DocumentSectionsCrawlerScheduleEnabled: !Not [!Equals [!Ref DocumentSectionsCrawlerFrequency, "Manual"]]
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
 
 
 Metadata:
@@ -493,6 +506,10 @@ Metadata:
           - BedrockGuardrailId
           - BedrockGuardrailVersion
       - Label:
+          default: "Security Configuration"
+        Parameters:
+          - PermissionsBoundaryArn
+      - Label:
           default: "General Configuration"
         Parameters:
           - MaxConcurrentWorkflows
@@ -550,6 +567,8 @@ Metadata:
         default: "Bedrock Guardrail Id"
       BedrockGuardrailVersion:
         default: "Bedrock Guardrail Version"
+      PermissionsBoundaryArn:
+        default: "Permissions Boundary ARN"
       MaxConcurrentWorkflows:
         default: "Maximum Concurrent Workflows"
       DataRetentionInDays:
@@ -828,6 +847,7 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         SageMakerA2IReviewPortalURL: !If
           - IsPattern1HITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -867,6 +887,7 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   PATTERN3STACK:
     DependsOn:
@@ -901,6 +922,7 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   ##########################################################################
   # Encryption key
@@ -1671,6 +1693,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DocumentSectionsCrawlerS3Access
           PolicyDocument:
@@ -3504,6 +3527,7 @@ Resources:
                 "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
               "ForAnyValue:StringLike":
                 "cognito-identity.amazonaws.com:amr": authenticated
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: S3
           PolicyDocument:
@@ -3703,6 +3727,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: CognitoClientUpdaterPolicy
           PolicyDocument:
@@ -3799,6 +3824,7 @@ Resources:
             Principal:
               Service: sagemaker.amazonaws.com
             Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: A2IFlowDefinitionAccess
           PolicyDocument:
@@ -4046,6 +4072,7 @@ Resources:
     Properties:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -4209,6 +4236,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DynamoDBAccess
           PolicyDocument:
