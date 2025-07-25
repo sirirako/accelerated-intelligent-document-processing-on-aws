@@ -18,6 +18,7 @@ mock_strands = MagicMock()
 mock_hooks = MagicMock()
 mock_events = MagicMock()
 
+
 # Create a mock HookProvider class that behaves like the real one
 class MockHookProvider:
     def __init__(self):
@@ -33,6 +34,7 @@ class MockHookProvider:
         self.message_history = []
         self.tool_history = []
         self.model_history = []
+
 
 mock_hooks.HookProvider = MockHookProvider
 mock_hooks.HookRegistry = MagicMock()
@@ -66,10 +68,7 @@ class TestAgentMonitor:
         monitor = AgentMonitor()
 
         # Test with a message dictionary (as expected by the method)
-        mock_message = {
-            "role": "user",
-            "content": "Test message content"
-        }
+        mock_message = {"role": "user", "content": "Test message content"}
 
         preview = monitor._get_message_preview(mock_message)
 
@@ -82,10 +81,7 @@ class TestAgentMonitor:
         monitor = AgentMonitor()
 
         # Test with a tool message dictionary
-        mock_message = {
-            "role": "tool",
-            "content": "Tool execution result"
-        }
+        mock_message = {"role": "tool", "content": "Tool execution result"}
 
         preview = monitor._get_message_preview(mock_message)
 
