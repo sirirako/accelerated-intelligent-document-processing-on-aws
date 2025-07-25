@@ -93,7 +93,8 @@ class TestOcrService:
     @pytest.fixture
     def mock_pdf_content(self):
         """Fixture providing mock PDF content."""
-        return b"Mock PDF content"
+        # Return a minimal valid PDF structure
+        return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\nxref\n0 3\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n116\n%%EOF"
 
     def test_init_textract_backend_default(self):
         """Test initialization with default Textract backend."""
@@ -103,7 +104,7 @@ class TestOcrService:
             assert service.backend == "textract"
             assert service.region == "us-west-2"
             assert service.max_workers == 20
-            assert service.dpi is None
+            assert service.dpi == 150  # Now defaults to 150
             assert service.enhanced_features is False
             assert service.resize_config is None
             assert service.preprocessing_config is None
@@ -207,6 +208,7 @@ class TestOcrService:
         # Mock PDF document
         mock_pdf_doc = MagicMock()
         mock_pdf_doc.__len__.return_value = 2  # 2 pages
+        mock_pdf_doc.is_pdf = True  # Add is_pdf attribute
         mock_fitz_open.return_value = mock_pdf_doc
 
         # Mock concurrent processing
@@ -273,7 +275,8 @@ class TestOcrService:
         # Verify error handling
         assert result.status == Status.FAILED
         assert len(result.errors) > 0
-        assert "PDF error" in result.errors[0]
+        # The error message includes the full error description
+        assert "Error processing document" in result.errors[0]
 
     def test_feature_combo_no_features(self):
         """Test feature combination with no enhanced features."""
@@ -528,20 +531,22 @@ class TestOcrService:
             service = OcrService()
             result = service._generate_text_confidence_data(mock_textract_response)
 
-            # Verify structure
-            assert "page_count" in result
-            assert "text_blocks" in result
-            assert result["page_count"] == 1
-            assert len(result["text_blocks"]) == 2  # Two LINE blocks
+            # Verify structure - now returns markdown table in 'text' field
+            assert "text" in result
+            assert "page_count" not in result  # Removed in new format
+            assert "text_blocks" not in result  # Replaced with markdown table
 
-            # Verify text blocks
-            assert result["text_blocks"][0]["text"] == "Sample text line 1"
-            assert result["text_blocks"][0]["confidence"] == 98.5
-            assert result["text_blocks"][0]["type"] == "PRINTED"
+            # Verify markdown table content
+            markdown_table = result["text"]
+            lines = markdown_table.split("\n")
 
-            assert result["text_blocks"][1]["text"] == "Sample text line 2"
-            assert result["text_blocks"][1]["confidence"] == 97.2
-            assert result["text_blocks"][1]["type"] == "PRINTED"
+            # Check header
+            assert lines[0] == "| Text | Confidence |"
+            assert lines[1] == "|:-----|:-----------|"
+
+            # Check data rows
+            assert lines[2] == "| Sample text line 1 | 98.5 |"
+            assert lines[3] == "| Sample text line 2 | 97.2 |"
 
     def test_parse_textract_response_markdown_success(self):
         """Test parsing Textract response to markdown successfully."""

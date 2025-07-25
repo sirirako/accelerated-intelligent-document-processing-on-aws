@@ -3,8 +3,16 @@
 
 notes: Default settings
 ocr:
+  backend: "textract"  # Default to Textract for backward compatibility
+  model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+  system_prompt: "You are an expert OCR system. Extract all text from the provided image accurately, preserving layout where possible."
+  task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
   features:
     - name: LAYOUT
+  image:
+    dpi: '150'
+    target_width: ''
+    target_height: ''
 classes:
   - name: Bank Statement
     description: Monthly bank account statement
@@ -60,6 +68,9 @@ classes:
         description: List of all transactions in the statement period
         attributeType: list
 classification:
+  image:
+    target_height: ''
+    target_width: ''
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
@@ -199,6 +210,9 @@ classification:
     You are a document classification expert who can analyze and classify multiple documents and their page boundaries within a document package from various domains. Your task is to determine the document type based on its content and structure, using the provided document type definitions. Your output must be valid JSON according to the requested format.
   classificationMethod: textbasedHolisticClassification
 extraction:
+  image:
+    target_height: ''
+    target_width: ''
   top_p: '0.1'
   max_tokens: '10000'
   top_k: '5'
@@ -354,12 +368,20 @@ summarization:
   system_prompt: >-
     You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \nSummarization Style: Balanced\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.
 assessment:
-  default_confidence_threshold: '0.9'
+  image:
+    target_height: ''
+    target_width: ''
+  granular:
+    enabled: true
+    max_workers: "20"
+    simple_batch_size: "3"
+    list_batch_size: "1"
+  default_confidence_threshold: '0.8'
   top_p: '0.1'
   max_tokens: '10000'
   top_k: '5'
   temperature: '0.0'
-  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  model: us.amazon.nova-pro-v1:0
   system_prompt: >-
     You are a document analysis assessment expert. Your task is to evaluate the confidence of extraction results by analyzing the source document evidence. Respond only with JSON containing confidence scores for each extracted attribute.
   task_prompt: >-
@@ -402,22 +424,67 @@ assessment:
 
     </assessment-guidelines>
 
+    <final-instructions>
+
+    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
+
+    For SIMPLE attributes:
+    {
+      "simple_attribute_name": {
+        "confidence": 0.85,
+      }
+    }
+
+    For GROUP attributes (nested object structure):
+    {
+      "group_attribute_name": {
+        "sub_attribute_1": {
+          "confidence": 0.90,
+        },
+        "sub_attribute_2": {
+          "confidence": 0.75,
+        }
+      }
+    }
+
+    For LIST attributes (array of assessed items):
+    {
+      "list_attribute_name": [
+        {
+          "item_attribute_1": {
+            "confidence": 0.95,
+          },
+          "item_attribute_2": {
+            "confidence": 0.88,
+          }
+        },
+        {
+          "item_attribute_1": {
+            "confidence": 0.92,
+          },
+          "item_attribute_2": {
+            "confidence": 0.70,
+          }
+        }
+      ]
+    }
+
+    IMPORTANT: 
+    - For LIST attributes like "Transactions", assess EACH individual item in the list separately
+    - Each transaction should be assessed as a separate object in the array
+    - Do NOT provide aggregate assessments for list items - assess each one individually
+    - Include assessments for ALL attributes present in the extraction results
+    - Match the exact structure of the extracted data
+
+    </final-instructions>
+
     <attributes-definitions>
 
     {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
 
     </attributes-definitions>
 
-
     <<CACHEPOINT>>
-
-
-    <extraction-results>
-
-    {EXTRACTION_RESULTS}
-
-    </extraction-results>
-
 
     <document-image>
 
@@ -432,60 +499,14 @@ assessment:
 
     </ocr-text-confidence-results>
 
+    <<CACHEPOINT>>
 
-    <final-instructions>
+    <extraction-results>
 
-    Analyze the extraction results against the source document and provide confidence assessments. Return a JSON object with the following structure based on the attribute type:
+    {EXTRACTION_RESULTS}
 
-    For SIMPLE attributes:
-    {
-      "simple_attribute_name": {
-        "confidence": 0.85
-      }
-    }
+    </extraction-results>
 
-    For GROUP attributes (nested object structure):
-    {
-      "group_attribute_name": {
-        "sub_attribute_1": {
-          "confidence": 0.90
-        },
-        "sub_attribute_2": {
-          "confidence": 0.75
-        }
-      }
-    }
-
-    For LIST attributes (array of assessed items):
-    {
-      "list_attribute_name": [
-        {
-          "item_attribute_1": {
-            "confidence": 0.95
-          },
-          "item_attribute_2": {
-            "confidence": 0.88
-          }
-        },
-        {
-          "item_attribute_1": {
-            "confidence": 0.92
-          },
-          "item_attribute_2": {
-            "confidence": 0.70
-          }
-        }
-      ]
-    }
-
-    IMPORTANT: 
-    - For LIST attributes like "Transactions", assess EACH individual item in the list separately
-    - Each transaction should be assessed as a separate object in the array
-    - Do NOT provide aggregate assessments for list items - assess each one individually
-    - Include assessments for ALL attributes present in the extraction results
-    - Match the exact structure of the extracted data
-
-    </final-instructions>
 evaluation:
   llm_method:
     top_p: '0.1'
@@ -558,7 +579,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '1.5E-8'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '6.0E-8'
   - name: bedrock/us.amazon.nova-pro-v1:0
     units:
       - name: inputTokens
@@ -568,7 +589,7 @@ pricing:
       - name: cacheReadInputTokens
         price: '2.0E-7'
       - name: cacheWriteInputTokens
-        price: '0'
+        price: '8.0E-7'
   - name: bedrock/us.amazon.nova-premier-v1:0
     units:
       - name: inputTokens

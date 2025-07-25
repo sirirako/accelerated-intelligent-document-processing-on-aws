@@ -64,7 +64,10 @@ export const debugDocumentStructure = (document) => {
     }
 
     if (document.mergedConfig && document.mergedConfig.assessment) {
-      console.log('HITL confidence score from config:', document.mergedConfig.assessment.hitl_confidence_score);
+      console.log(
+        'Default confidence threshold from config:',
+        document.mergedConfig.assessment.default_confidence_threshold,
+      );
     }
 
     console.log('=== End Document Debug ===');

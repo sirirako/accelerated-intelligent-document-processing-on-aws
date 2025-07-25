@@ -1,25 +1,25 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import json
-import io
-import os
-import logging
 import datetime
-import fitz  # PyMuPDF
-from urllib.parse import urlparse
-from botocore.exceptions import ClientError
-
-from idp_common.s3 import get_s3_client, write_content
-from idp_common.utils import build_s3_uri
-from idp_common import metrics
-from idp_common.models import Document, Page, Section, Status, HitlMetadata
-from idp_common.appsync.service import DocumentAppSyncService
-import boto3
+import io
+import json
+import logging
+import os
 import random
 import string
 from decimal import Decimal
+from urllib.parse import urlparse
 
+import boto3
+import fitz  # PyMuPDF
+from botocore.exceptions import ClientError
+from idp_common import metrics
+from idp_common.docs_service import create_document_service
+from idp_common.config import get_config
+from idp_common.models import Document, HitlMetadata, Page, Section, Status
+from idp_common.s3 import get_s3_client, write_content
+from idp_common.utils import build_s3_uri
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -30,34 +30,33 @@ logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_
 s3_client = get_s3_client()
 ssm_client = boto3.client('ssm')
 bedrock_client = boto3.client('bedrock-data-automation')
+SAGEMAKER_A2I_REVIEW_PORTAL_URL = os.environ.get('SAGEMAKER_A2I_REVIEW_PORTAL_URL', '')
+enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower()
 
-def get_confidence_threshold_from_ssm(stack_name: str) -> float:
+def get_confidence_threshold_from_config(document: Document) -> float:
     """
-    Get the HITL confidence threshold from SSM Parameter Store.
+    Get the HITL confidence threshold from configuration.
     
     Args:
-        stack_name (str): The CloudFormation stack name
+        document (Document): The document object containing configuration
         
     Returns:
         float: The confidence threshold as a decimal (0.0-1.0)
     """
     try:
-        parameter_name = f"/{stack_name}/hitl_confidence_threshold"
-        response = ssm_client.get_parameter(Name=parameter_name)
-        threshold_value = float(response['Parameter']['Value'])
-        # Convert percentage to decimal if needed (80 -> 0.80)
-        if threshold_value > 1.0:
-            threshold_value = threshold_value / 100.0
-        logger.info(f"Retrieved confidence threshold from SSM: {threshold_value}")
+        config = get_config()
+        threshold_value = float(config['assessment']['default_confidence_threshold'])
+        
+        # Validate that the threshold is in the expected 0.0-1.0 range
+        if threshold_value < 0.0 or threshold_value > 1.0:
+            logger.warning(f"Invalid confidence threshold value {threshold_value}. Must be between 0.0 and 1.0. Using default: 0.80")
+            return 0.80
+            
+        logger.info(f"Retrieved confidence threshold from configuration: {threshold_value}")
         return threshold_value
-    except ClientError as e:
-        logger.warning(f"Failed to retrieve confidence threshold from SSM parameter {parameter_name}: {e}")
-        # Return default value of 80% (0.80) if SSM parameter is not found
-        logger.info("Using default confidence threshold: 0.80")
-        return 0.80
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Invalid confidence threshold value in SSM parameter: {e}")
-        # Return default value if the parameter value is invalid
+    except Exception as e:
+        logger.warning(f"Failed to retrieve confidence threshold from configuration: {e}")
+        # Return default value of 80% (0.80) if configuration is not available
         logger.info("Using default confidence threshold: 0.80")
         return 0.80
 
@@ -181,7 +180,7 @@ def create_pdf_page_images(bda_result_bucket, output_bucket, object_key):
         logger.error(f"Error creating page images: {str(e)}")
         raise
 
-def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document):
+def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold=0.8):
     """
     Process BDA sections and build sections for the Document object
     
@@ -191,6 +190,7 @@ def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, ob
         output_bucket (str): The output bucket
         object_key (str): The object key
         document (Document): The document object to update
+        confidence_threshold (float): Confidence threshold to add to explainability data
     
     Returns:
         Document: The updated document
@@ -230,15 +230,50 @@ def process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, ob
                 file_name = src_key.split('/')[-1]
                 target_key = f"{target_section_path}{file_name}"
                 
-                # Copy the file
-                s3_client.copy_object(
-                    CopySource={'Bucket': bda_result_bucket, 'Key': src_key},
-                    Bucket=output_bucket,
-                    Key=target_key,
-                    ContentType='application/json' if file_name.endswith('.json') else 'application/octet-stream',
-                    MetadataDirective='REPLACE'
-                )
-                logger.info(f"Copied {src_key} to {target_key}")
+                # Special handling for result.json files to add confidence thresholds
+                if file_name == 'result.json':
+                    try:
+                        # Download the result.json file
+                        result_obj = s3_client.get_object(Bucket=bda_result_bucket, Key=src_key)
+                        result_data = json.loads(result_obj['Body'].read().decode('utf-8'))
+                        
+                        # Add confidence thresholds to explainability_info if present
+                        if 'explainability_info' in result_data:
+                            result_data['explainability_info'] = add_confidence_thresholds_to_explainability(
+                                result_data['explainability_info'], confidence_threshold
+                            )
+                            logger.info(f"Added confidence threshold {confidence_threshold} to explainability_info in section {section_id}")
+                        
+                        # Write the modified result.json to the target location
+                        write_content(
+                            result_data,
+                            output_bucket,
+                            target_key,
+                            content_type='application/json'
+                        )
+                        logger.info(f"Processed and copied {src_key} to {target_key}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing result.json {src_key}: {str(e)}")
+                        # Fallback to regular copy if processing fails
+                        s3_client.copy_object(
+                            CopySource={'Bucket': bda_result_bucket, 'Key': src_key},
+                            Bucket=output_bucket,
+                            Key=target_key,
+                            ContentType='application/json',
+                            MetadataDirective='REPLACE'
+                        )
+                        logger.info(f"Fallback copied {src_key} to {target_key}")
+                else:
+                    # Regular copy for non-result.json files
+                    s3_client.copy_object(
+                        CopySource={'Bucket': bda_result_bucket, 'Key': src_key},
+                        Bucket=output_bucket,
+                        Key=target_key,
+                        ContentType='application/json' if file_name.endswith('.json') else 'application/octet-stream',
+                        MetadataDirective='REPLACE'
+                    )
+                    logger.info(f"Copied {src_key} to {target_key}")
             
             # Get the result.json file
             result_path = f"{target_section_path}result.json"
@@ -308,13 +343,45 @@ def extract_markdown_from_json(raw_json):
         return '\n\n---\n\nPAGE BREAK\n\n---\n\n'.join(markdown_texts)
     return ""
 
-def extract_page_from_multipage_json(raw_json, page_index):
+def add_confidence_thresholds_to_explainability(explainability_data, confidence_threshold):
+    """
+    Add confidence thresholds to explainability data recursively.
+    
+    Args:
+        explainability_data: The explainability data (dict, list, or other)
+        confidence_threshold: The confidence threshold to add
+        
+    Returns:
+        The modified explainability data with confidence thresholds added
+    """
+    if isinstance(explainability_data, dict):
+        # Create a copy to avoid modifying the original
+        result = explainability_data.copy()
+        
+        # If this dict has a confidence field, add the confidence_threshold
+        if 'confidence' in result and isinstance(result['confidence'], (int, float)):
+            result['confidence_threshold'] = confidence_threshold
+        
+        # Recursively process nested dictionaries
+        for key, value in result.items():
+            result[key] = add_confidence_thresholds_to_explainability(value, confidence_threshold)
+        
+        return result
+    elif isinstance(explainability_data, list):
+        # Recursively process list items
+        return [add_confidence_thresholds_to_explainability(item, confidence_threshold) for item in explainability_data]
+    else:
+        # Return primitive values as-is
+        return explainability_data
+
+def extract_page_from_multipage_json(raw_json, page_index, confidence_threshold=None):
     """
     Extract a single page from a multi-page result JSON
     
     Args:
         raw_json (dict): The BDA result JSON
         page_index (int): The page index to extract
+        confidence_threshold (float, optional): Confidence threshold to add to explainability data
         
     Returns:
         dict: A new result JSON with only the specified page
@@ -353,6 +420,18 @@ def extract_page_from_multipage_json(raw_json, page_index):
                 element_copy["page_indices"] = [page_index]
                 single_page_json["elements"].append(element_copy)
     
+    # Include explainability_info if present and add confidence thresholds
+    if "explainability_info" in raw_json:
+        explainability_info = raw_json["explainability_info"]
+        if confidence_threshold is not None:
+            # Add confidence thresholds to the explainability data
+            single_page_json["explainability_info"] = add_confidence_thresholds_to_explainability(
+                explainability_info, confidence_threshold
+            )
+            logger.info(f"Added confidence threshold {confidence_threshold} to explainability_info for page {page_index}")
+        else:
+            single_page_json["explainability_info"] = explainability_info
+    
     return single_page_json
 
 def extract_markdown_from_single_page_json(raw_json):
@@ -371,7 +450,7 @@ def extract_markdown_from_single_page_json(raw_json):
             return page["representation"]["markdown"]
     return ""
 
-def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document):
+def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold=0.8):
     """
     Process BDA page outputs and build pages for the Document object
     
@@ -381,6 +460,7 @@ def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, objec
         output_bucket (str): The output bucket
         object_key (str): The object key
         document (Document): The document object to update
+        confidence_threshold (float): Confidence threshold to add to explainability data
     
     Returns:
         Document: The updated document
@@ -431,8 +511,8 @@ def process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, objec
                             
                         page_id = str(page_index)
                         
-                        # Extract a single page result.json for this page
-                        single_page_json = extract_page_from_multipage_json(raw_json, page_index)
+                        # Extract a single page result.json for this page with confidence threshold
+                        single_page_json = extract_page_from_multipage_json(raw_json, page_index, confidence_threshold)
                         
                         # Determine page directory path in output bucket
                         page_path = f"{pages_output_prefix}{page_id}/"
@@ -623,9 +703,14 @@ def download_decimal(bucket: str, key: str) -> dict:
     response = s3_client.get_object(Bucket=bucket, Key=key)
     return json.loads(response['Body'].read(), parse_float=Decimal)
 
-def process_keyvalue_details(explainability_data: list, page_indices: list) -> dict:
+def process_keyvalue_details(explainability_data: list, page_indices: list, confidence_threshold: float = 0.8) -> dict:
     """
     Process explainability data to extract key-value and bounding box details per page.
+    
+    Args:
+        explainability_data: List of explainability data from BDA
+        page_indices: List of page indices
+        confidence_threshold: Confidence threshold value to add to each field
     """
     results = {
         'key_value_details': {str(p): [] for p in page_indices},
@@ -645,7 +730,8 @@ def process_keyvalue_details(explainability_data: list, page_indices: list) -> d
         kv_entry = {
             'key': format_key_path(key_path),
             'value': entry.get('value', ''),
-            'confidence': entry.get('confidence', 0.0)
+            'confidence': entry.get('confidence', 0.0),
+            'confidence_threshold': confidence_threshold
         }
         bbox = {}
         if entry.get('geometry'):
@@ -687,6 +773,35 @@ def process_keyvalue_details(explainability_data: list, page_indices: list) -> d
     for entry in explainability_data:
         traverse(entry)
     return results
+
+
+def create_confidence_threshold_alerts(pagespecific_details: dict, confidence_threshold: float) -> list:
+    """
+    Create confidence threshold alerts from page-specific key-value details.
+    
+    Args:
+        pagespecific_details: Dictionary containing key-value details per page
+        confidence_threshold: Confidence threshold to check against
+        
+    Returns:
+        List of confidence threshold alert dictionaries matching AppSync service expectations
+    """
+    alerts = []
+    
+    # Process key-value details from all pages
+    for page_num, kv_details in pagespecific_details.get('key_value_details', {}).items():
+        for kv_entry in kv_details:
+            confidence = kv_entry.get('confidence', 0.0)
+            if confidence < confidence_threshold:
+                alert = {
+                    'attribute_name': kv_entry.get('key', ''),
+                    'confidence': confidence,
+                    'confidence_threshold': confidence_threshold
+                }
+                alerts.append(alert)
+    
+    logger.info(f"Created {len(alerts)} confidence threshold alerts")
+    return alerts
 
 def process_segments(
     input_bucket: str,
@@ -732,18 +847,40 @@ def process_segments(
             page_indices = custom_output.get("split_document", {}).get("page_indices", [])
             pagespecific_details = process_keyvalue_details(
                 explainability_data,
-                page_indices
+                page_indices,
+                confidence_threshold
             )
+            
+            # Create confidence threshold alerts for UI display
+            confidence_threshold_alerts = create_confidence_threshold_alerts(
+                pagespecific_details, 
+                confidence_threshold
+            )
+            
+            # Update the corresponding document section with confidence alerts
+            # Find the section that contains these page indices
+            page_ids_str = [str(idx) for idx in page_indices]
+            for section in document.sections:
+                # Check if this section's pages match the current segment's pages
+                if set(section.page_ids) == set(page_ids_str):
+                    section.confidence_threshold_alerts = confidence_threshold_alerts
+                    logger.info(f"Updated section {section.section_id} with {len(confidence_threshold_alerts)} confidence alerts")
+                    break
             blueprint_name = custom_output["matched_blueprint"]["name"]
             bp_confidence = custom_output["matched_blueprint"]["confidence"]
 
             # Check if any key-value or blueprint confidence is below threshold
-            low_confidence = any(
-                kv['confidence'] < confidence_threshold
-                for page_num in page_indices
-                for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
-            ) or float(bp_confidence) < confidence_threshold
+            if enable_hitl == 'true': 
+                low_confidence = any(
+                    kv['confidence'] < confidence_threshold
+                    for page_num in page_indices
+                    for kv in pagespecific_details['key_value_details'].get(str(page_num), [])
+                ) or float(bp_confidence) < confidence_threshold
+            else:
+                low_confidence = None
 
+            logger.info(f"low_confidence: {low_confidence}")
+            
             item.update({
                 "page_array": page_indices,
                 "hitl_triggered": low_confidence,
@@ -757,11 +894,12 @@ def process_segments(
                 bp_match=segment.get('custom_output_status'),
                 extraction_bp_name=blueprint_name,
                 hitl_triggered=low_confidence,
-                page_array=page_indices
+                page_array=page_indices,
+                review_portal_url=SAGEMAKER_A2I_REVIEW_PORTAL_URL
             )
 
             if low_confidence:
-                hitl_triggered = True
+                hitl_triggered = low_confidence
                 metrics.put_metric('HITLTriggered', 1)
                 for page_number in page_indices:
                     page_str = str(page_number)
@@ -789,6 +927,10 @@ def process_segments(
                     "hitl_corrected_result": custom_decimal_output
                 })
         else:
+            if enable_hitl == 'true':
+                std_hitl = 'true'
+            else:
+                std_hitl = None 
             # Process standard output if no custom output match
             std_bucket, std_key = parse_s3_path(segment['standard_output_path'])
             std_output = download_decimal(std_bucket, std_key)
@@ -798,7 +940,7 @@ def process_segments(
             page_array = list(range(start_page, end_page + 1))
             item.update({
                 "page_array": page_array,
-                "hitl_triggered": True,
+                "hitl_triggered": std_hitl,
                 "extraction_bp_name": "None",
                 "extracted_result": std_output
             })
@@ -808,29 +950,31 @@ def process_segments(
                 record_number=record_number,
                 bp_match=segment.get('custom_output_status'),
                 extraction_bp_name="None",
-                hitl_triggered=True,
-                page_array=page_array
+                hitl_triggered=std_hitl,
+                page_array=page_array,
+                review_portal_url=SAGEMAKER_A2I_REVIEW_PORTAL_URL
             )
             
-            hitl_triggered = True
-            for page_number in range(start_page, end_page + 1):
-                ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
-                try:
-                    human_loop_response = start_human_loop(
-                        execution_id=execution_id,
-                        kv_pairs=[],
-                        source_image_uri=ImageUri,
-                        bounding_boxes=[],
-                        blueprintName="",
-                        bp_confidence=0.00,
-                        confidenceThreshold=confidence_threshold,
-                        page_id=page_number,
-                        page_indices=page_array,
-                        record_number=record_number
-                    )
-                    logger.info(f"Triggered human loop for page {page_number}: {human_loop_response}")
-                except Exception as e:
-                    logger.error(f"Failed to start human loop for page {page_number}: {str(e)}")
+            hitl_triggered = std_hitl
+            if enable_hitl == 'true':
+                for page_number in range(start_page, end_page + 1):
+                    ImageUri = f"s3://{output_bucket}/{object_key}/pages/{page_number}/image.jpg"
+                    try:
+                        human_loop_response = start_human_loop(
+                            execution_id=execution_id,
+                            kv_pairs=[],
+                            source_image_uri=ImageUri,
+                            bounding_boxes=[],
+                            blueprintName="",
+                            bp_confidence=0.00,
+                            confidenceThreshold=confidence_threshold,
+                            page_id=page_number,
+                            page_indices=page_array,
+                            record_number=record_number
+                        )
+                        logger.info(f"Triggered human loop for page {page_number}: {human_loop_response}")
+                    except Exception as e:
+                        logger.error(f"Failed to start human loop for page {page_number}: {str(e)}")
         
         document.hitl_metadata.append(hitl_metadata)
 
@@ -900,10 +1044,14 @@ def handler(event, context):
         workflow_execution_arn=first_response.get("execution_arn")
     )
 
+    # Get confidence threshold from configuration for adding to explainability data
+    confidence_threshold = get_confidence_threshold_from_config(document)
+    logger.info(f"Using confidence threshold: {confidence_threshold}")
+
     # Update document status
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {document.status}")
-    appsync_service.update_document(document)
+    document_service.update_document(document)
    
     # Create page images (only need to do this once)
     try:
@@ -914,8 +1062,6 @@ def handler(event, context):
         document.errors.append(f"Error creating page images: {str(e)}")
 
     # Process each BDA response
-    hitl_triggered_any = False
-    section_to_bda_mapping = {}
     
     for response_idx, bda_response in enumerate(bda_responses):
         logger.info(f"Processing BDA response {response_idx + 1} of {len(bda_responses)}")
@@ -949,8 +1095,8 @@ def handler(event, context):
         logger.info(f"BDA Result bucket: {bda_result_bucket}, prefix: {bda_result_prefix}")
         
         # Process sections and pages from BDA output
-        document = process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
-        document = process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document)
+        document = process_bda_sections(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold)
+        document = process_bda_pages(bda_result_bucket, bda_result_prefix, output_bucket, object_key, document, confidence_threshold)
 
     # Calculate metrics
     page_ids_in_sections = set()
@@ -966,59 +1112,51 @@ def handler(event, context):
 
     # Process HITL if enabled
     hitl_triggered = "false"
-    enable_hitl = os.environ.get('ENABLE_HITL', 'false').lower() == 'true'
     
-    if enable_hitl:
-        try:
-            # Get stack name from environment and retrieve confidence threshold from SSM
-            stack_name = os.environ.get('METRIC_NAMESPACE', '')
-            if not stack_name:
-                logger.error("METRIC_NAMESPACE environment variable not found")
-                raise ValueError("Stack name not available")
-            
-            confidence_threshold = get_confidence_threshold_from_ssm(stack_name)
-            metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
-            job_metadata_key = f'{metdatafile_path}/job_metadata.json'
-            execution_id = event.get("execution_arn", "").split(':')[-1]
-            logger.info(f"HITL execution ID: {execution_id}")
+    try:
+        # Use the confidence threshold already calculated above
+        metdatafile_path = '/'.join(bda_result_prefix.split('/')[:-1])
+        job_metadata_key = f'{metdatafile_path}/job_metadata.json'
+        execution_id = event.get("execution_arn", "").split(':')[-1]
+        logger.info(f"HITL execution ID: {execution_id}")
 
-            try:
-                jobmetadata_file = s3_client.get_object(Bucket=bda_result_bucket, Key=job_metadata_key)
-                job_metadata = json.loads(jobmetadata_file['Body'].read())
-                if 'output_metadata' in job_metadata:
-                    output_metadata = job_metadata['output_metadata']
-                    if isinstance(output_metadata, list):
-                        for asset in output_metadata:
-                            document, hitl_result = process_segments(
-                                input_bucket,
-                                output_bucket,
-                                object_key,
-                                asset.get('segment_metadata', []),
-                                confidence_threshold,
-                                execution_id,
-                                document
-                            )
-                            if hitl_result:
-                                hitl_triggered = "true"
-                    elif isinstance(output_metadata, dict):
-                        for asset_id, asset in output_metadata.items():
-                            document, hitl_result = process_segments(
-                                input_bucket,
-                                output_bucket,
-                                object_key,
-                                asset.get('segment_metadata', []),
-                                confidence_threshold,
-                                execution_id,
-                                document
-                            )
-                            if hitl_result:
-                                hitl_triggered = "true"
-                    else:
-                        logger.error("Unexpected output_metadata format in job_metadata.json")
-            except Exception as e:
-                logger.error(f"Error processing job_metadata.json: {str(e)}")
+        try:
+            jobmetadata_file = s3_client.get_object(Bucket=bda_result_bucket, Key=job_metadata_key)
+            job_metadata = json.loads(jobmetadata_file['Body'].read())
+            if 'output_metadata' in job_metadata:
+                output_metadata = job_metadata['output_metadata']
+                if isinstance(output_metadata, list):
+                    for asset in output_metadata:
+                        document, hitl_result = process_segments(
+                            input_bucket,
+                            output_bucket,
+                            object_key,
+                            asset.get('segment_metadata', []),
+                            confidence_threshold,
+                            execution_id,
+                            document
+                        )
+                        if hitl_result:
+                            hitl_triggered = "true"
+                elif isinstance(output_metadata, dict):
+                    for asset_id, asset in output_metadata.items():
+                        document, hitl_result = process_segments(
+                            input_bucket,
+                            output_bucket,
+                            object_key,
+                            asset.get('segment_metadata', []),
+                            confidence_threshold,
+                            execution_id,
+                            document
+                        )
+                        if hitl_result:
+                            hitl_triggered = "true"
+                else:
+                    logger.error("Unexpected output_metadata format in job_metadata.json")
         except Exception as e:
-            logger.error(f"Error in HITL processing: {str(e)}")
+            logger.error(f"Error processing job_metadata.json: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in HITL processing: {str(e)}")
     
     # Record metrics for processed pages
     metrics.put_metric('ProcessedDocuments', 1)
@@ -1038,8 +1176,8 @@ def handler(event, context):
     
     # Update document status based on HITL requirement
     if hitl_triggered == "true":
-        # Keep as RUNNING until HITL completes
-        document.status = Status.RUNNING
+        # Set status to HITL_IN_PROGRESS when HITL is triggered
+        document.status = Status.HITL_IN_PROGRESS
         logger.info(f"Document requires human review, setting status to {document.status}")
     else:
         # Only mark as COMPLETED if no human review is needed
@@ -1047,11 +1185,17 @@ def handler(event, context):
         document.completion_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
         logger.info(f"Document processing complete, setting status to {document.status}")
     
-    appsync_service.update_document(document)
+    document_service.update_document(document)
     
-    # Prepare response
+    # Prepare response using new serialization method
+    # Use working bucket for document compression
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    if not working_bucket:
+        logger.warning("WORKING_BUCKET environment variable not set, using output_bucket for compression")
+        working_bucket = output_bucket
+    
     response = {
-        "document": document.to_dict(),
+        "document": document.serialize_document(working_bucket, "processresults", logger),
         "hitl_triggered": hitl_triggered,
         "bda_response_count": len(bda_responses)
     }

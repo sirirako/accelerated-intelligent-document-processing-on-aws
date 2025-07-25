@@ -122,6 +122,189 @@ class SaveReportingData:
 
         return bucket, key
 
+    def _infer_pyarrow_type(self, value: Any) -> pa.DataType:
+        """
+        Infer PyArrow data type from a Python value.
+
+        Args:
+            value: The value to infer type from
+
+        Returns:
+            PyArrow data type
+        """
+        if value is None:
+            return pa.string()  # Default to string for null values
+        elif isinstance(value, bool):
+            return pa.bool_()
+        elif isinstance(value, int):
+            return pa.int64()
+        elif isinstance(value, float):
+            return pa.float64()
+        elif isinstance(value, str):
+            return pa.string()
+        elif isinstance(value, (list, dict)):
+            return pa.string()  # Store complex types as JSON strings
+        else:
+            return pa.string()  # Default to string for unknown types
+
+    def _convert_value_to_string(self, value: Any) -> Optional[str]:
+        """
+        Convert any value to string, handling special cases for robust type compatibility.
+
+        Args:
+            value: The value to convert
+
+        Returns:
+            String representation of the value, or None if input is None
+        """
+        if value is None:
+            return None
+        elif isinstance(value, bytes):
+            # Handle binary data
+            try:
+                return value.decode("utf-8")
+            except UnicodeDecodeError:
+                # If can't decode, convert to hex string
+                return value.hex()
+        elif isinstance(value, (list, dict)):
+            return json.dumps(value)
+        elif isinstance(value, datetime.datetime):
+            return value.isoformat()
+        elif isinstance(value, (int, float, bool)):
+            return str(value)
+        else:
+            return str(value)
+
+    def _flatten_json_data(
+        self, data: Dict[str, Any], prefix: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Flatten nested JSON data with dot notation and convert all values to strings
+        for robust type compatibility.
+
+        Args:
+            data: The JSON data to flatten
+            prefix: Prefix for nested keys
+
+        Returns:
+            Flattened dictionary with all values converted to strings
+        """
+        flattened = {}
+
+        for key, value in data.items():
+            new_key = f"{prefix}.{key}" if prefix else key
+
+            if isinstance(value, dict) and value:
+                # Recursively flatten nested dictionaries
+                flattened.update(self._flatten_json_data(value, new_key))
+            elif isinstance(value, list):
+                # Convert lists to JSON strings
+                flattened[new_key] = json.dumps(value) if value else None
+            else:
+                # Convert all values to strings for type consistency
+                flattened[new_key] = self._convert_value_to_string(value)
+
+        return flattened
+
+    def _create_dynamic_schema(self, records: List[Dict[str, Any]]) -> pa.Schema:
+        """
+        Create a PyArrow schema dynamically from a list of records.
+        Uses conservative typing - all fields default to string unless whitelisted.
+        This prevents Athena type compatibility issues.
+
+        Args:
+            records: List of dictionaries to analyze
+
+        Returns:
+            PyArrow schema with conservative string typing
+        """
+        # Define fields that should maintain specific types
+        TIMESTAMP_FIELDS = {
+            "timestamp",
+            "evaluation_date",
+        }
+
+        if not records:
+            # Return a minimal schema with just section_id
+            return pa.schema([("section_id", pa.string())])
+
+        # Collect all unique field names
+        all_fields = set()
+        for record in records:
+            all_fields.update(record.keys())
+
+        # Create schema with conservative typing
+        schema_fields = []
+        for field_name in sorted(all_fields):  # Sort for consistent ordering
+            if field_name in TIMESTAMP_FIELDS:
+                # Keep timestamps as timestamps for proper time-based queries
+                pa_type = pa.timestamp("ms")
+            else:
+                # Default everything else to string to prevent type conflicts
+                pa_type = pa.string()
+
+            schema_fields.append((field_name, pa_type))
+
+        return pa.schema(schema_fields)
+
+    def _sanitize_records_for_schema(
+        self, records: List[Dict[str, Any]], schema: pa.Schema
+    ) -> List[Dict[str, Any]]:
+        """
+        Sanitize records to ensure they conform to the schema and handle type compatibility issues.
+
+        Args:
+            records: List of record dictionaries
+            schema: PyArrow schema to conform to
+
+        Returns:
+            List of sanitized records
+        """
+        sanitized_records = []
+
+        for record in records:
+            sanitized_record = {}
+
+            # Process each field in the schema
+            for field in schema:
+                field_name = field.name
+                value = record.get(field_name)
+
+                if value is None:
+                    sanitized_record[field_name] = None
+                elif field.type == pa.string():
+                    # Convert all values to strings for string fields
+                    sanitized_record[field_name] = self._convert_value_to_string(value)
+                elif field.type == pa.timestamp("ms"):
+                    # Handle timestamp fields
+                    if isinstance(value, datetime.datetime):
+                        sanitized_record[field_name] = value
+                    else:
+                        # Try to parse string timestamps
+                        try:
+                            if isinstance(value, str):
+                                sanitized_record[field_name] = (
+                                    datetime.datetime.fromisoformat(
+                                        value.replace("Z", "+00:00")
+                                    )
+                                )
+                            else:
+                                sanitized_record[field_name] = None
+                        except (ValueError, TypeError):
+                            sanitized_record[field_name] = None
+                else:
+                    # For any other types, convert to string as fallback
+                    sanitized_record[field_name] = self._convert_value_to_string(value)
+
+            # Add any fields from the record that aren't in the schema (shouldn't happen with dynamic schema)
+            for field_name, value in record.items():
+                if field_name not in sanitized_record:
+                    sanitized_record[field_name] = self._convert_value_to_string(value)
+
+            sanitized_records.append(sanitized_record)
+
+        return sanitized_records
+
     def save(self, document: Document, data_to_save: List[str]) -> List[Dict[str, Any]]:
         """
         Save document data based on the data_to_save list.
@@ -145,6 +328,12 @@ class SaveReportingData:
         if "metering" in data_to_save:
             logger.info("Processing metering data")
             result = self.save_metering_data(document)
+            if result:
+                results.append(result)
+
+        if "sections" in data_to_save:
+            logger.info("Processing document sections")
+            result = self.save_document_sections(document)
             if result:
                 results.append(result)
 
@@ -248,11 +437,7 @@ class SaveReportingData:
                     document.initial_event_time.replace("Z", "+00:00")
                 )
                 evaluation_date = doc_time
-                year, month, day = (
-                    doc_time.strftime("%Y"),
-                    doc_time.strftime("%Y-%m"),
-                    doc_time.strftime("%Y-%m-%d"),
-                )
+                date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
                 )
@@ -261,25 +446,22 @@ class SaveReportingData:
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
                 evaluation_date = datetime.datetime.now()
-                year, month, day = (
-                    evaluation_date.strftime("%Y"),
-                    evaluation_date.strftime("%Y-%m"),
-                    evaluation_date.strftime("%Y-%m-%d"),
-                )
+                date_partition = evaluation_date.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
             evaluation_date = datetime.datetime.now()
-            year, month, day = (
-                evaluation_date.strftime("%Y"),
-                evaluation_date.strftime("%Y-%m"),
-                evaluation_date.strftime("%Y-%m-%d"),
-            )
+            date_partition = evaluation_date.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
         document_id = document.id
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
+
+        # Create timestamp string for unique filenames (to avoid overwrites if same doc processed multiple times)
+        timestamp_str = evaluation_date.strftime("%Y%m%d_%H%M%S_%f")[
+            :-3
+        ]  # Include milliseconds
 
         # 1. Document level metrics
         document_record = {
@@ -300,7 +482,7 @@ class SaveReportingData:
         }
 
         # Save document metrics in Parquet format
-        doc_key = f"evaluation_metrics/document_metrics/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+        doc_key = f"evaluation_metrics/document_metrics/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
         self._save_records_as_parquet([document_record], doc_key, document_schema)
 
         # 2. Section level metrics
@@ -376,14 +558,14 @@ class SaveReportingData:
 
         # Save section metrics in Parquet format
         if section_records:
-            section_key = f"evaluation_metrics/section_metrics/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+            section_key = f"evaluation_metrics/section_metrics/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
             self._save_records_as_parquet(section_records, section_key, section_schema)
         else:
             logger.warning("No section records to save")
 
         # Save attribute metrics in Parquet format
         if attribute_records:
-            attr_key = f"evaluation_metrics/attribute_metrics/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+            attr_key = f"evaluation_metrics/attribute_metrics/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
             self._save_records_as_parquet(attribute_records, attr_key, attribute_schema)
         else:
             logger.warning("No attribute records to save")
@@ -433,11 +615,7 @@ class SaveReportingData:
                     document.initial_event_time.replace("Z", "+00:00")
                 )
                 timestamp = doc_time
-                year, month, day = (
-                    doc_time.strftime("%Y"),
-                    doc_time.strftime("%Y-%m"),
-                    doc_time.strftime("%Y-%m-%d"),
-                )
+                date_partition = doc_time.strftime("%Y-%m-%d")
                 logger.info(
                     f"Using document initial_event_time: {document.initial_event_time} for partitioning"
                 )
@@ -446,25 +624,22 @@ class SaveReportingData:
                     f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
                 )
                 timestamp = datetime.datetime.now()
-                year, month, day = (
-                    timestamp.strftime("%Y"),
-                    timestamp.strftime("%Y-%m"),
-                    timestamp.strftime("%Y-%m-%d"),
-                )
+                date_partition = timestamp.strftime("%Y-%m-%d")
         else:
             logger.warning(
                 "Document initial_event_time not available, using current time instead"
             )
             timestamp = datetime.datetime.now()
-            year, month, day = (
-                timestamp.strftime("%Y"),
-                timestamp.strftime("%Y-%m"),
-                timestamp.strftime("%Y-%m-%d"),
-            )
+            date_partition = timestamp.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
         document_id = document.id
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
+
+        # Create timestamp string for unique filenames (to avoid overwrites if same doc processed multiple times)
+        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")[
+            :-3
+        ]  # Include milliseconds
 
         # Process metering data
         metering_records = []
@@ -506,7 +681,7 @@ class SaveReportingData:
 
         # Save metering data in Parquet format
         if metering_records:
-            metering_key = f"metering/year={year}/month={month}/day={day}/document={escaped_doc_id}/results.parquet"
+            metering_key = f"metering/date={date_partition}/{escaped_doc_id}_{timestamp_str}_results.parquet"
             self._save_records_as_parquet(
                 metering_records, metering_key, metering_schema
             )
@@ -517,4 +692,201 @@ class SaveReportingData:
         return {
             "statusCode": 200,
             "body": "Successfully saved metering data to reporting bucket",
+        }
+
+    def save_document_sections(self, document: Document) -> Optional[Dict[str, Any]]:
+        """
+        Save document sections data to the reporting bucket.
+
+        This method processes each section in the document, loads the extraction
+        results from S3, and saves them as Parquet files with dynamic schema
+        inference and the specified partition structure.
+
+        Args:
+            document: Document object containing sections with extraction results
+
+        Returns:
+            Dict with status and message, or None if no sections to process
+        """
+        if not document.sections:
+            warning_msg = f"No sections to save for document {document.id}"
+            logger.warning(warning_msg)
+            return None
+
+        # Use document.initial_event_time if available, otherwise use current time
+        if document.initial_event_time:
+            try:
+                # Try to parse the initial_event_time string into a datetime object
+                doc_time = datetime.datetime.fromisoformat(
+                    document.initial_event_time.replace("Z", "+00:00")
+                )
+                timestamp = doc_time
+                date_partition = doc_time.strftime("%Y-%m-%d")
+                logger.info(
+                    f"Using document initial_event_time: {document.initial_event_time} for partitioning"
+                )
+            except (ValueError, TypeError) as e:
+                logger.warning(
+                    f"Could not parse document.initial_event_time: {document.initial_event_time}, using current time instead. Error: {str(e)}"
+                )
+                current_time = datetime.datetime.now()
+                timestamp = current_time
+                date_partition = current_time.strftime("%Y-%m-%d")
+        else:
+            logger.warning(
+                "Document initial_event_time not available, using current time instead"
+            )
+            current_time = datetime.datetime.now()
+            timestamp = current_time
+            date_partition = current_time.strftime("%Y-%m-%d")
+
+        # Escape document ID by replacing slashes with underscores
+        document_id = document.id
+        escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
+
+        sections_processed = 0
+        sections_with_errors = 0
+        total_records_saved = 0
+
+        logger.info(
+            f"Processing {len(document.sections)} sections for document {document_id}"
+        )
+
+        for section in document.sections:
+            try:
+                # Skip sections without extraction results
+                if not section.extraction_result_uri:
+                    logger.warning(
+                        f"Section {section.section_id} has no extraction_result_uri, skipping"
+                    )
+                    continue
+
+                logger.info(
+                    f"Processing section {section.section_id} with classification '{section.classification}'"
+                )
+
+                # Load extraction results from S3
+                try:
+                    extraction_data = get_json_content(section.extraction_result_uri)
+                    if not extraction_data:
+                        logger.warning(
+                            f"Empty extraction results for section {section.section_id}, skipping"
+                        )
+                        continue
+                except Exception as e:
+                    logger.error(
+                        f"Error loading extraction results from {section.extraction_result_uri}: {str(e)}"
+                    )
+                    sections_with_errors += 1
+                    continue
+
+                # Prepare records for this section
+                section_records = []
+
+                # Handle different data structures
+                if isinstance(extraction_data, dict):
+                    # Flatten the JSON data
+                    flattened_data = self._flatten_json_data(extraction_data)
+
+                    # Add section metadata
+                    flattened_data["section_id"] = section.section_id
+                    flattened_data["document_id"] = document_id
+                    flattened_data["section_classification"] = section.classification
+                    flattened_data["section_confidence"] = section.confidence
+                    flattened_data["timestamp"] = timestamp
+
+                    section_records.append(flattened_data)
+
+                elif isinstance(extraction_data, list):
+                    # Handle list of records
+                    for i, item in enumerate(extraction_data):
+                        if isinstance(item, dict):
+                            flattened_item = self._flatten_json_data(item)
+                        else:
+                            flattened_item = {"value": str(item)}
+
+                        # Add section metadata and record index
+                        flattened_item["section_id"] = section.section_id
+                        flattened_item["document_id"] = document_id
+                        flattened_item["section_classification"] = (
+                            section.classification
+                        )
+                        flattened_item["section_confidence"] = section.confidence
+                        flattened_item["record_index"] = i
+
+                        section_records.append(flattened_item)
+                else:
+                    # Handle primitive types
+                    record = {
+                        "section_id": section.section_id,
+                        "document_id": document_id,
+                        "section_classification": section.classification,
+                        "section_confidence": section.confidence,
+                        "value": str(extraction_data),
+                    }
+                    section_records.append(record)
+
+                if not section_records:
+                    logger.warning(
+                        f"No records to save for section {section.section_id}"
+                    )
+                    continue
+
+                # Create dynamic schema for this section's data
+                schema = self._create_dynamic_schema(section_records)
+
+                # Sanitize all records to ensure robust type compatibility
+                section_records = self._sanitize_records_for_schema(
+                    section_records, schema
+                )
+
+                # Create S3 key with separate tables for each section type
+                # document_sections/{section_type}/date={date}/{escaped_doc_id}_section_{section_id}.parquet
+                section_type = (
+                    section.classification if section.classification else "unknown"
+                )
+                # Escape section_type to make it filesystem-safe
+                escaped_section_type = re.sub(r"[/\\:*?\"<>|]", "_", section_type)
+
+                s3_key = (
+                    f"document_sections/"
+                    f"{escaped_section_type}/"
+                    f"date={date_partition}/"
+                    f"{escaped_doc_id}_section_{section.section_id}.parquet"
+                )
+
+                # Save the section data as Parquet
+                self._save_records_as_parquet(section_records, s3_key, schema)
+
+                sections_processed += 1
+                total_records_saved += len(section_records)
+
+                logger.info(
+                    f"Saved {len(section_records)} records for section {section.section_id} "
+                    f"to s3://{self.reporting_bucket}/{s3_key}"
+                )
+
+            except Exception as e:
+                logger.error(f"Error processing section {section.section_id}: {str(e)}")
+                sections_with_errors += 1
+                continue
+
+        # Log summary
+        logger.info(
+            f"Document sections processing complete for {document_id}: "
+            f"{sections_processed} sections processed successfully, "
+            f"{sections_with_errors} sections had errors, "
+            f"{total_records_saved} total records saved"
+        )
+
+        if sections_processed == 0:
+            return {
+                "statusCode": 200,
+                "body": f"No sections with extraction results found for document {document_id}",
+            }
+
+        return {
+            "statusCode": 200,
+            "body": f"Successfully saved {sections_processed} document sections "
+            f"with {total_records_saved} total records to reporting bucket",
         }

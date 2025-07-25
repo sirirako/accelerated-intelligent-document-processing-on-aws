@@ -108,6 +108,32 @@
                     "BackoffRate": 2
                 }
             ],
+            "Next": "HITLStatusUpdate"
+        },
+        "HITLStatusUpdate": {
+            "Type": "Task",
+            "Resource": "${HITLStatusUpdateFunctionArn}",
+            "Parameters": {
+                "document.$": "$.Result.document",
+                "HITLWaitResult.$": "$.HITLWaitResult"
+            },
+            "ResultPath": "$.HITLStatusResult",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException",
+                        "ServiceQuotaExceededException",
+                        "ThrottlingException",
+                        "ProvisionedThroughputExceededException",
+                        "RequestLimitExceeded"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 10,
+                    "BackoffRate": 2
+                }
+            ],
             "Next": "SummarizationChoice"
         },
         "SummarizationChoice": {

@@ -5,6 +5,7 @@ import { Button, ButtonDropdown, CollectionPreferences, Link, SpaceBetween } fro
 
 import { TableHeader } from '../common/table';
 import { DOCUMENTS_PATH } from '../../routes/constants';
+import { renderHitlStatus } from '../common/hitl-status-renderer';
 
 export const KEY_COLUMN_ID = 'objectKey';
 
@@ -30,30 +31,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   {
     id: 'hitlStatus',
     header: 'HITL (A2I) Status',
-    cell: (item) => {
-      if (!item.hitlTriggered) {
-        return 'N/A';
-      }
-
-      if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
-        return 'A2I Review Completed';
-      }
-
-      if (item.hitlReviewURL) {
-        return (
-          <Link href={item.hitlReviewURL} external>
-            A2I Review In Progress
-          </Link>
-        );
-      }
-
-      // If we have a status but no URL and not completed, show the status
-      if (item.hitlStatus) {
-        return item.hitlStatus === 'IN_PROGRESS' ? 'A2I Review In Progress' : item.hitlStatus;
-      }
-
-      return 'A2I Review Triggered';
-    },
+    cell: (item) => renderHitlStatus(item),
     sortingField: 'hitlStatus',
     width: 150,
   },

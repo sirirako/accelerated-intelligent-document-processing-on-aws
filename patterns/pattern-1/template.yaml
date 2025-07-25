@@ -375,11 +375,11 @@ Resources:
             type: object
             sectionLabel: Assessment & HITL Configuration
             properties:
-              hitl_confidence_score:
+              default_confidence_threshold:
                 type: number
-                description: HITL Confidence Threshold (1-100) - Documents with confidence below this threshold will be sent for Human In The Loop review
-                minimum: 1
-                maximum: 100
+                description: HITL Confidence Threshold (0.0-1.0) - Documents with confidence below this threshold will be sent for Human In The Loop review
+                minimum: 0.0
+                maximum: 1.0
                 order: 1
           summarization:
             order: 5
@@ -469,6 +469,7 @@ Resources:
         InvokeBDALambdaArn: !GetAtt InvokeBDAFunction.Arn
         ProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
         HITLWaitFunctionArn: !GetAtt HITLWaitFunction.Arn
+        HITLStatusUpdateFunctionArn: !GetAtt HITLStatusUpdateFunction.Arn
         IsSummarizationEnabled: !If [IsSummarizationEnabled, "true", "false"]
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
         EnableHITL: !Ref EnableHITL
@@ -489,6 +490,8 @@ Resources:
             FunctionName: !Ref SummarizationFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref HITLWaitFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HITLStatusUpdateFunction
         - CloudWatchLogsFullAccess
 
   StateMachineLogGroup:
@@ -594,6 +597,9 @@ Resources:
           ENABLE_HITL: !Ref EnableHITL
           DB_NAME: !Ref BDAMetadataTable
           BDA_PROJECT_ARN: !Ref BDAProjectArn
+          WORKING_BUCKET: !Ref WorkingBucket
+          SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
       Policies:
@@ -606,6 +612,8 @@ Resources:
             BucketName: !Ref OutputBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref BDAMetadataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -678,6 +686,7 @@ Resources:
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref SummarizationFunctionLogGroup
       Policies:
@@ -686,6 +695,8 @@ Resources:
             BucketName: !Ref InputBucket
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
         - Statement:
@@ -892,7 +903,6 @@ Resources:
         Variables:
           DYNAMODB_TABLE: !Ref BDAMetadataTable
           TRACKING_TABLE: !Ref TrackingTable
-          # SQS_QUEUE_URL: !Ref SQSQueue
           LOG_LEVEL: !Ref LogLevel
 
   HITLProcessLambdaRole:
@@ -966,6 +976,19 @@ Resources:
 
   HITLWaitFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
       CodeUri: src/hitl-wait-function/
       Handler: index.lambda_handler
@@ -978,6 +1001,7 @@ Resources:
           DYNAMODB_TABLE: !Ref BDAMetadataTable
           LOG_LEVEL: !Ref LogLevel
           SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
+          WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref HITLWaitFunctionLogGroup
       Policies:
@@ -986,6 +1010,8 @@ Resources:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref BDAMetadataTable
+        - S3ReadPolicy:
+            BucketName: !Ref WorkingBucket
         - Statement:
           - Effect: Allow
             Action:
@@ -1000,6 +1026,56 @@ Resources:
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLWaitFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
+  HITLStatusUpdateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+          - id: W58
+            reason: "DLQ not required for EventBridge triggered function as it handles A2I status updates"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for EventBridge triggered function as it handles A2I status updates"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      CodeUri: src/hitl-status-update-function/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          WORKING_BUCKET: !Ref WorkingBucket
+      LoggingConfig:
+        LogGroup: !Ref HITLStatusUpdateFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - Statement:
+          - Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !Ref CustomerManagedEncryptionKeyArn
+
+  HITLStatusUpdateFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLStatusUpdateFunction"
       RetentionInDays: !Ref LogRetentionDays
 
   #Event Bridge permissions to invoke Lambda function during HITL change 

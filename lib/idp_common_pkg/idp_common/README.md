@@ -1,67 +1,30 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# IDP Common Library
+# IDP Common Core Data Models
 
-This library provides common utilities and data models for the Intelligent Document Processing (IDP) pipeline.
+This document describes the core data models for the IDP processing pipeline. For a high-level overview of the entire package, see the [main README](../README.md).
 
-## Modules
+## 📑 Module Structure
 
-### Models
+The IDP Common library provides these main modules:
 
-The core data model for the IDP processing pipeline. The model classes represent documents, pages, and sections as they move through various processing stages.
+- **Models**: Core document representation (this document)
+- **[Bedrock](bedrock/README.md)**: Utilities for working with Amazon Bedrock LLMs
+- **[Classification](classification/README.md)**: Document classification services
+- **[Extraction](extraction/README.md)**: Field extraction services
+- **[Evaluation](evaluation/README.md)**: Result evaluation tools
+- **[OCR](ocr/README.md)**: Text extraction using AWS Textract
+- **[Summarization](summarization/README.md)**: Document summarization services
+- **[BDA](bda/README.md)**: Bedrock Data Automation integration
+- **[AppSync](appsync/README.md)**: Document storage through GraphQL API
+- **[Reporting](reporting/README.md)**: Analytics data storage
 
-### Bedrock
-
-Utility functions for working with Amazon Bedrock LLM services, including model invocation, response handling, and prompt preparation.
-
-### Classification
-
-Services for document classification using LLMs.
-
-### Extraction
-
-Services for field extraction from documents using LLMs.
-
-### Evaluation
-
-Tools for evaluating extraction and classification results against baselines.
-
-### OCR
-
-Services for extracting text and structure from documents using AWS Textract.
-
-### Summarization
-
-Services for generating document summaries using LLMs.
-
-### BDA
-
-Services for interacting with Amazon Bedrock Data Automation (BDA) for document processing and information extraction.
-
-### AppSync
-
-Services for storing and retrieving documents through AWS AppSync GraphQL API, with seamless conversion between Document objects and AppSync schema.
-
-### Reporting
-
-Services for saving document data to reporting storage for analytics:
-
-```python
-from idp_common.reporting import SaveReportingData
-
-# Initialize the reporting service
-reporter = SaveReportingData("reporting-bucket")
-
-# Save evaluation results for a document
-results = reporter.save(document, data_to_save=["evaluation_results"])
-```
-
-## Key Classes
+## 🗃️ Key Classes
 
 ### Document
 
-The `Document` class is the central data structure for the entire IDP pipeline:
+The `Document` class is the central data structure for the entire IDP pipeline with automatic compression support for large documents:
 
 ```python
 @dataclass
@@ -69,6 +32,9 @@ class Document:
     """
     Core document type that is passed through the processing pipeline.
     Each processing step enriches this object.
+    
+    The Document class provides comprehensive support for handling large documents
+    in Step Functions workflows through automatic compression and decompression.
     """
     # Core identifiers
     id: Optional[str] = None            # Generated document ID
@@ -156,9 +122,52 @@ class Status(Enum):
     FAILED = "FAILED"           # Processing failed
 ```
 
-## Common Class Operations
+## 📦 Document Compression for Large Documents
 
-The data model provides common operations for working with documents:
+The Document class includes automatic compression support to handle large documents that exceed Step Functions payload limits (256KB). This is essential for processing multi-page documents with extensive content.
+
+### Compression Methods
+
+```python
+# Automatic compression when document exceeds threshold
+compressed_data = document.compress(working_bucket, "processing_step")
+# Returns: {"document_id": "...", "s3_uri": "...", "section_ids": [...], "compressed": True}
+
+# Restore full document from compressed data
+restored_document = Document.decompress(working_bucket, compressed_data)
+
+# Handle either compressed or regular document data
+document = Document.from_compressed_or_dict(data, working_bucket)
+```
+
+### Lambda Function Integration Utilities
+
+```python
+# Handle input - automatically detects and decompresses if needed
+document = Document.load_document(
+    event_data=event["document"], 
+    working_bucket=working_bucket, 
+    logger=logger
+)
+
+# Prepare output - automatically compresses if document is large
+response_data = document.serialize_document(
+    working_bucket=working_bucket, 
+    step_name="classification", 
+    logger=logger,
+    size_threshold_kb=200  # Optional: custom threshold
+)
+```
+
+### Key Compression Features
+
+- **Automatic Detection**: Utility methods automatically detect compressed vs uncompressed documents
+- **Size Threshold**: Configurable compression threshold (default 0KB - always compress)
+- **Section Preservation**: Section IDs are preserved in compressed payloads for Step Functions Map operations
+- **Transparent Handling**: Lambda functions work seamlessly with both compressed and uncompressed documents
+- **S3 Storage**: Compressed documents are stored in `s3://working-bucket/compressed_documents/{document_id}/`
+
+## 🔄 Common Operations
 
 ### Document Creation
 
@@ -194,7 +203,7 @@ document_dict = document.to_dict()
 document_json = document.to_json()
 ```
 
-## Working with Sections and Pages
+## 📄 Working with Sections and Pages
 
 The document model makes it easy to work with sections and pages:
 
@@ -221,7 +230,7 @@ document.pages["new-page"] = Page(
 )
 ```
 
-## Example: Building a Document from Scratch
+## 🛠️ Building a Document from Scratch Example
 
 ```python
 from idp_common.models import Document, Page, Section, Status
@@ -265,10 +274,9 @@ document.sections.append(Section(
     page_ids=["1", "2"],
     extraction_result_uri="s3://output-bucket/invoices/invoice-123.pdf/sections/1/result.json"
 ))
-
 ```
 
-## Example: Loading a Document from Baseline for Evaluation
+## 📊 Loading a Document for Evaluation Example
 
 ```python
 from idp_common.models import Document
@@ -285,189 +293,38 @@ expected_document = Document.from_s3(
 # Now both documents can be compared for evaluation
 ```
 
-## Working with LLM Prompts
+## 🔗 Integration with Services
 
-The library provides standardized utilities for working with LLM prompts:
-
-### Format Prompt Templates
-
-The `bedrock.format_prompt` function provides a standard way to replace placeholders in prompt templates:
+The document model integrates with all IDP services:
 
 ```python
-from idp_common.bedrock import format_prompt
+from idp_common import ocr, classification, extraction, evaluation, appsync
 
-# Template with placeholders
-template = """
-Classify this document into one of the following types:
-{CLASS_NAMES_AND_DESCRIPTIONS}
+# OCR Processing
+ocr_service = ocr.OcrService()
+document = ocr_service.process_document(document)
 
-Document text:
-{DOCUMENT_TEXT}
-"""
-
-# Substitutions to apply
-substitutions = {
-    "CLASS_NAMES_AND_DESCRIPTIONS": "Invoice, Receipt, Contract",
-    "DOCUMENT_TEXT": "INVOICE #12345\nDate: 2023-05-15\nTotal: $1,250.00"
-}
-
-# Required placeholders (will raise ValueError if missing)
-required = ["DOCUMENT_TEXT", "CLASS_NAMES_AND_DESCRIPTIONS"]
-
-# Apply substitutions
-prompt = format_prompt(template, substitutions, required)
-```
-
-This function:
-- Validates that required placeholders exist in the template
-- Handles replacement in a way that protects against format string vulnerabilities
-- Provides consistent behavior across classification, extraction, evaluation, and summarization services
-
-## Service Classes
-
-The library provides several service classes for different document processing tasks:
-
-### OcrService
-
-Processes documents to extract text, tables, and forms using AWS Textract:
-
-```python
-from idp_common.ocr.service import OcrService
-from idp_common.models import Document
-
-ocr_service = OcrService(
-    region="us-east-1",
-    enhanced_features=["TABLES", "FORMS"]
-)
-
-# Process a document
-document = Document(id="doc-123", input_bucket="bucket", input_key="doc.pdf")
-processed_document = ocr_service.process_document(document)
-```
-
-### ClassificationService
-
-Classifies documents or document pages:
-
-```python
-from idp_common.classification.service import ClassificationService
-
-classification_service = ClassificationService(
-    region="us-east-1",
-    config=config
-)
-
-# Classify a document
+# Document Classification
+classification_service = classification.ClassificationService(config=config)
 document = classification_service.classify_document(document)
-```
 
-### ExtractionService
-
-Extracts structured information from document sections:
-
-```python
-from idp_common.extraction.service import ExtractionService
-
-extraction_service = ExtractionService(
-    region="us-east-1",
-    config=config
-)
-
-# Process a section
+# Field Extraction
+extraction_service = extraction.ExtractionService(config=config)
 document = extraction_service.process_document_section(document, section_id="1")
+
+# Document Evaluation
+evaluation_service = evaluation.EvaluationService(config=config)
+document = evaluation_service.evaluate_document(document, expected_document)
+
+# Store in AppSync
+appsync_service = appsync.DocumentAppSyncService()
+document = appsync_service.update_document(document)
 ```
 
-### BdaService
+## 📝 Best Practices
 
-Processes documents using Amazon Bedrock Data Automation (BDA):
-
-```python
-from idp_common.bda.bda_service import BdaService
-
-# Initialize the service with output location
-bda_service = BdaService(
-    output_s3_uri="s3://output-bucket/output-path",
-    dataAutomationProjectArn="arn:aws:bedrock:region:account:data-automation-project/project-id"
-)
-
-# Process a document with BDA
-result = bda_service.invoke_data_automation(
-    input_s3_uri="s3://input-bucket/input-path/document.pdf",
-    blueprintArn="arn:aws:bedrock:region:account:blueprint/blueprint-id"
-)
-
-# Access the BDA results
-if result['status'] == 'success':
-    # Use BdaInvocation to parse the results
-    from idp_common.bda.bda_invocation import BdaInvocation
-    bda_invocation = BdaInvocation.from_s3(s3_url=result["output_location"])
-    custom_output = bda_invocation.get_custom_output()
-```
-
-### EvaluationService
-
-Compares extraction results against baseline data:
-
-```python
-from idp_common.evaluation.service import EvaluationService
-
-evaluation_service = EvaluationService(
-    region="us-east-1",
-    config=config
-)
-
-# Evaluate a document
-evaluated_document = evaluation_service.evaluate_document(
-    actual_document=document,
-    expected_document=baseline_document
-)
-```
-
-### SummarizationService
-
-Generates document summaries and creates markdown summary reports:
-
-```python
-from idp_common.summarization.service import SummarizationService
-
-summarization_service = SummarizationService(
-    region="us-east-1",
-    config=config
-)
-
-# Get a document summary
-document = summarization_service.process_document(document)
-
-# Access the document summary information
-print(f"Brief summary: {document.summary}")
-print(f"Detailed summary: {document.detailed_summary}")
-print(f"Summary report: {document.summary_report_uri}")
-```
-
-### DocumentAppSyncService
-
-Manages document storage and retrieval through AWS AppSync:
-
-```python
-from idp_common.appsync import DocumentAppSyncService
-from idp_common.models import Document, Status
-
-# Create a document
-document = Document(
-    id="doc-123",
-    input_key="documents/sample.pdf",
-    status=Status.QUEUED
-)
-
-# Initialize the service
-appsync_service = DocumentAppSyncService()
-
-# Create document in AppSync with 90-day TTL
-ttl = appsync_service.calculate_ttl(days=90)
-object_key = appsync_service.create_document(document, expires_after=ttl)
-
-# Later, update the document
-document.status = Status.COMPLETED
-document.num_pages = 5
-updated_document = appsync_service.update_document(document)
-```
+1. **Always use the Document.load_document() method** to handle input data in Lambda functions
+2. **Always use document.serialize_document()** to prepare output data
+3. **Keep the Document model as the central data structure** across all processing steps
+4. **Store large data in S3** and reference by URI in the Document model
+5. **Use Section objects** to group related pages by document type

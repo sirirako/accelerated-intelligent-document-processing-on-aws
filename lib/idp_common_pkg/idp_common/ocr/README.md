@@ -7,7 +7,34 @@ This module provides OCR (Optical Character Recognition) capabilities for proces
 
 ## Overview
 
-The OCR service is designed to process PDF documents and extract text using AWS Textract. It supports both basic text detection and enhanced document analysis with tables and forms recognition. The service works directly with the Document model from the common data model.
+The OCR service is designed to process PDF documents and extract text using multiple backend options. It supports AWS Textract for traditional OCR with confidence scores, Amazon Bedrock for LLM-based text extraction, and image-only processing. The service works directly with the Document model from the common data model.
+
+## OCR Backend Options
+
+The service supports three OCR backends, each with different capabilities and use cases:
+
+### 1. Textract Backend (Default - Recommended for Assessment)
+- **Technology**: AWS Textract OCR service
+- **Confidence Data**: ✅ Full granular confidence scores per text line (displayed as markdown table)
+- **Features**: Basic text detection + enhanced document analysis (tables, forms, signatures, layout)
+- **Assessment Quality**: ⭐⭐⭐ Optimal - Real OCR confidence enables accurate assessment
+- **Use Cases**: Standard document processing, when assessment is enabled, production workflows
+
+### 2. Bedrock Backend (LLM-based OCR)
+- **Technology**: Amazon Bedrock LLMs (Claude, Nova) for text extraction
+- **Confidence Data**: ❌ No confidence data (displays "No confidence data available from LLM OCR")
+- **Features**: Advanced text understanding, better handling of challenging/degraded documents
+- **Assessment Quality**: ❌ No confidence data for assessment
+- **Use Cases**: Challenging documents where traditional OCR fails, specialized text extraction needs
+
+### 3. None Backend (Image-only)
+- **Technology**: No OCR processing
+- **Confidence Data**: ❌ No confidence data (displays "No OCR performed")
+- **Features**: Image extraction and storage only
+- **Assessment Quality**: ❌ No text confidence for assessment
+- **Use Cases**: Image-only workflows, custom OCR integration
+
+> ⚠️ **CRITICAL for Assessment**: When assessment functionality is enabled, use `backend="textract"` (default) to preserve granular confidence data. Using `backend="bedrock"` results in empty confidence data that eliminates assessment capability.
 
 ## Features
 
@@ -24,9 +51,14 @@ The OCR service is designed to process PDF documents and extract text using AWS 
 
 ## Usage Example
 
+### New Simplified Pattern (Recommended)
+
 ```python
-from idp_common import ocr
+from idp_common import ocr, get_config
 from idp_common.models import Document
+
+# Load configuration (typically from DynamoDB)
+config = get_config()
 
 # Create or retrieve a Document object with input/output details
 document = Document(
@@ -36,14 +68,11 @@ document = Document(
     output_bucket="output-bucket"
 )
 
-# Initialize OCR service
+# Initialize OCR service with config dictionary
 ocr_service = ocr.OcrService(
     region='us-east-1',
-    max_workers=20,
-    enhanced_features=False  # Default: basic text detection (faster)
-    # enhanced_features=["TABLES", "FORMS"]  # For table and form recognition
-    # enhanced_features=["LAYOUT"]  # For layout analysis
-    # enhanced_features=["TABLES", "FORMS", "SIGNATURES"]  # Multiple features
+    config=config,  # Pass entire config dictionary
+    backend='textract'  # Optional: override backend from config
 )
 
 # Process document - this will automatically get the PDF from S3
@@ -56,6 +85,102 @@ for page_id, page in processed_document.pages.items():
     print(f"Page {page_id}: Text and Markdown at {page.parsed_text_uri}")
     print(f"Page {page_id}: Text confidence data at {page.text_confidence_uri}")
 ```
+
+### Legacy Pattern (Deprecated)
+
+```python
+# The old pattern with individual parameters is still supported but deprecated
+ocr_service = ocr.OcrService(
+    region='us-east-1',
+    max_workers=20,
+    enhanced_features=False,  # or ["TABLES", "FORMS"]
+    dpi=150,
+    resize_config={"target_width": 1024, "target_height": 1024},
+    backend='textract'
+)
+```
+
+## Configuration Structure
+
+When using the new pattern, the OCR service expects configuration in the following structure:
+
+```yaml
+ocr:
+  backend: "textract"  # Options: "textract", "bedrock", "none"
+  max_workers: 20
+  features:
+    - name: "TABLES"
+    - name: "FORMS"
+  image:
+    dpi: 150  # DPI for PDF page extraction (default: 150)
+    target_width: 1024
+    target_height: 1024
+    preprocessing: false  # Enable adaptive binarization
+  # For Bedrock backend only:
+  model_id: "anthropic.claude-3-sonnet-20240229-v1:0"
+  system_prompt: "You are an OCR system..."
+  task_prompt: "Extract all text from this image..."
+```
+
+### DPI Configuration
+
+The DPI (dots per inch) setting controls the resolution when extracting images from PDF pages:
+- **Default**: 150 DPI (good balance of quality and file size)
+- **Range**: 72-300 DPI
+- **Location**: `ocr.image.dpi` in the configuration
+- **Behavior**: 
+  - Only applies to PDF files (image files maintain their original resolution)
+  - Higher DPI = better quality but larger file sizes
+  - 150 DPI is recommended for most OCR use cases
+  - 300 DPI for documents with small text or fine details
+  - 100 DPI for simple documents to reduce processing time
+
+
+## Migration Guide
+
+To migrate from the old pattern to the new pattern:
+
+1. **In Lambda functions:**
+   ```python
+   # Old pattern
+   features = [feature['name'] for feature in ocr_config.get("features", [])]
+   service = ocr.OcrService(
+       region=region,
+       max_workers=MAX_WORKERS,
+       enhanced_features=features,
+       resize_config=resize_config,
+       backend=backend
+   )
+   
+   # New pattern
+   config = get_config()
+   service = ocr.OcrService(
+       region=region,
+       config=config,
+       backend=config.get("ocr", {}).get("backend", "textract")
+   )
+   ```
+
+2. **In notebooks:**
+   ```python
+   # Old pattern
+   ocr_service = ocr.OcrService(
+       region=region,
+       enhanced_features=features
+   )
+   
+   # New pattern
+   ocr_service = ocr.OcrService(
+       region=region,
+       config=CONFIG  # Where CONFIG is your loaded configuration
+   )
+   ```
+
+The new pattern provides:
+- Cleaner, more consistent API across all IDP services
+- Easier configuration management
+- No need to extract individual parameters
+- Future-proof design for adding new features
 
 ## Text Confidence Data
 
@@ -72,32 +197,42 @@ For each page, the OCR service creates:
 
 ### Text Confidence Data Format
 
-The condensed format includes only essential information:
+The format varies by OCR backend:
 
+**Textract Backend (with confidence data):**
 ```json
 {
-  "page_count": 1,
-  "text_blocks": [
-    {
-      "text": "WESTERN DARK FIRED TOBACCO GROWERS' ASSOCIATION",
-      "confidence": 99.35,
-      "type": "PRINTED"
-    },
-    {
-      "text": "206 Maple Street",
-      "confidence": 91.41,
-      "type": "PRINTED"
-    }
-  ]
+  "text": "| Text | Confidence |\n|------|------------|\n| WESTERN DARK FIRED TOBACCO GROWERS' ASSOCIATION | 99.4 |\n| 206 Maple Street | 91.4 |\n| Murray, KY 42071 | 98.7 |"
+}
+```
+
+The `text` field contains a markdown table with two columns:
+- **Text**: The extracted text content (with pipe characters escaped as `\|`)
+- **Confidence**: OCR confidence score rounded to 1 decimal point
+- Handwriting is indicated with "(HANDWRITING)" suffix in the text column
+
+**Bedrock Backend (no confidence data):**
+```json
+{
+  "text": "| Text | Confidence |\n|------|------------|\n| *No confidence data available from LLM OCR* | N/A |"
+}
+```
+
+**None Backend (no OCR):**
+```json
+{
+  "text": "| Text | Confidence |\n|------|------------|\n| *No OCR performed* | N/A |"
 }
 ```
 
 ### Benefits
 
-- **80-90% token reduction** compared to raw Textract output
-- **Preserved assessment data**: Text content, OCR confidence scores, text type (PRINTED/HANDWRITING)
-- **Removed overhead**: Geometric data, relationships, block IDs, and verbose metadata
+- **85-95% token reduction** compared to raw Textract output (markdown table format is more compact than JSON)
+- **Preserved assessment data**: Text content, OCR confidence scores (rounded to 1 decimal), text type (PRINTED/HANDWRITING)
+- **Removed overhead**: Geometric data, relationships, block IDs, verbose metadata, and unnecessary JSON syntax
+- **Improved readability**: Markdown table format is human-readable in both UI and assessment prompts
 - **Cost efficiency**: Significantly reduced LLM inference costs for assessment workflows
+- **UI compatibility**: Displays beautifully in the Text Confidence View using existing markdown rendering
 - **Automated generation**: Created during initial OCR processing, not repeatedly during assessment
 
 ### Usage in Assessment Prompts

@@ -12,12 +12,25 @@ import json
 import os
 import logging
 import time
+import boto3
+from enum import Enum
+from typing import Dict, Any, Optional
+
+from idp_common import get_config, evaluation
+from idp_common.models import Document, Status
+from idp_common.docs_service import create_document_service
+
+# Environment variables
+BASELINE_BUCKET = os.environ.get('BASELINE_BUCKET')
+REPORTING_BUCKET = os.environ.get('REPORTING_BUCKET')
 SAVE_REPORTING_FUNCTION_NAME = os.environ.get('SAVE_REPORTING_FUNCTION_NAME', 'SaveReportingData')
 
-# Configuration will be loaded in handler function
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
-# Create AppSync service
-appsync_service = DocumentAppSyncService()
+# Create document service
+document_service = create_document_service()
 
 # Define evaluation status constants
 class EvaluationStatus(Enum):
@@ -28,7 +41,7 @@ class EvaluationStatus(Enum):
 
 def update_document_evaluation_status(document: Document, status: EvaluationStatus) -> Document:
     """
-    Update document evaluation status via AppSync
+    Update document evaluation status via document service
     
     Args:
         document: The Document object to update
@@ -38,12 +51,12 @@ def update_document_evaluation_status(document: Document, status: EvaluationStat
         The updated Document object
         
     Raises:
-        AppSyncError: If the GraphQL operation fails
+        DocumentServiceError: If the operation fails
     """
     document.status = Status.COMPLETED
     document.evaluation_status = status.value
-    logger.info(f"Updating document via AppSync: {document.input_key} with status: {status.value}")
-    return appsync_service.update_document(document)
+    logger.info(f"Updating document via document service: {document.input_key} with status: {status.value}")
+    return document_service.update_document(document)
 
 def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
     """
@@ -59,19 +72,16 @@ def extract_document_from_event(event: Dict[str, Any]) -> Optional[Document]:
         ValueError: If document cannot be extracted from event
     """
     try:
-        input_data = json.loads(event['detail']['input'])
         output_data = json.loads(event['detail']['output'])
         
         if not output_data:
             raise ValueError("No output data found in event")
-            
-        # Get the processed document from the output data
-        processed_result = output_data.get("Result", {})
-        if "document" not in processed_result:
-            raise ValueError("No document found in Result")
-            
+                       
         # Get document from the final processing step
-        document = Document.from_dict(processed_result.get("document", {}))
+        working_bucket = os.environ.get('WORKING_BUCKET')
+        # look for document_data in either output_data.Result.document (Pattern-1) or output_data (others)
+        document_data = output_data.get('Result',{}).get('document', output_data)
+        document = Document.load_document(document_data, working_bucket, logger)
         logger.info(f"Successfully loaded actual document with {len(document.pages)} pages and {len(document.sections)} sections")
         return document
     except Exception as e:

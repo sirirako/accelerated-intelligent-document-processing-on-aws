@@ -217,7 +217,7 @@ Pattern-1 supports Human-in-the-Loop (HITL) review capabilities using Amazon Sag
 
 #### Configuration
 - `EnableHITL`: Boolean parameter to enable/disable the HITL feature
-- **Confidence Threshold**: Configured through the Web UI Portal Configuration tab under "Assessment & HITL Configuration" section. This numeric value (1-100) determines when human review is triggered based on extraction confidence scores.
+- **Confidence Threshold**: Configured through the Web UI Portal Configuration tab under "Assessment & HITL Configuration" section. This numeric value (0.0-1.0) determines when human review is triggered based on extraction confidence scores.
 
 #### Configuring Confidence Threshold
 To set the confidence threshold for HITL triggering:
@@ -226,7 +226,7 @@ To set the confidence threshold for HITL triggering:
 2. **Navigate to Configuration**: Click on the "Configuration" tab in the navigation menu
 3. **Find Assessment & HITL Section**: Scroll to the "Assessment & HITL Configuration" section
 4. **Set Confidence Threshold**: 
-   - Enter a value between 1-100 (e.g., 80 for 80% confidence threshold)
+   - Enter a value between 0.0-1.0 (e.g., 0.8 for 80% confidence threshold)
    - Fields with confidence scores below this threshold will trigger HITL review
 5. **Save Configuration**: Click "Save" to apply the changes
 

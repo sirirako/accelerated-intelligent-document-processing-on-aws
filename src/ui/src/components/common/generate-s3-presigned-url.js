@@ -34,7 +34,7 @@ const parseS3Url = (s3Url) => {
   return { bucket, key };
 };
 
-const generateS3PresignedUrl = async (url, credentials) => {
+const generateS3PresignedUrl = async (url, credentials, options = {}) => {
   // If it's already a special URL (like detailType), return as is
   if (url.includes('detailType')) {
     return url;
@@ -63,12 +63,33 @@ const generateS3PresignedUrl = async (url, credentials) => {
     // Extract region from env
     const region = process.env.REACT_APP_AWS_REGION;
 
-    // Construct the canonical S3 URL
-    const newUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+    // Construct the canonical S3 URL with properly encoded key
+    const encodedKey = key
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const newUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${encodedKey}`;
 
     // Parse the URL for the presigner
     const s3ObjectUrl = parseUrl(newUrl);
+
+    // Determine file type from key to set appropriate content disposition
+    const fileExtension = key.split('.').pop().toLowerCase();
+    const isDisplayableFile = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(fileExtension);
+
+    // Add query parameters for inline display if it's a displayable file type
+    if (isDisplayableFile && options.forceInline !== false) {
+      s3ObjectUrl.query = s3ObjectUrl.query || {};
+      s3ObjectUrl.query['response-content-disposition'] = 'inline';
+
+      // Set appropriate content type for PDFs to ensure proper display
+      if (fileExtension === 'pdf') {
+        s3ObjectUrl.query['response-content-type'] = 'application/pdf';
+      }
+    }
+
     logger.debug('Canonical URL:', newUrl);
+    logger.debug('Query parameters:', s3ObjectUrl.query);
 
     // Create presigner instance
     const presigner = new S3RequestPresigner({

@@ -129,11 +129,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         logger.info(f"Received event: {json.dumps(event)}")
 
-        # Get document from event
-        document = Document.from_dict(event["document"])
+        # Get document from event using new utility method
+        working_bucket = event['working_bucket']
+        document = Document.load_document(event["document"], working_bucket, logger)
         input_bucket = document.input_bucket
         object_key = document.input_key
-        working_bucket = event['working_bucket']
         data_project_arn = event['BDAProjectArn']
         task_token = event['taskToken']
         

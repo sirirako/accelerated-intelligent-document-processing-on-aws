@@ -8,7 +8,6 @@ import {
   ColumnLayout,
   Container,
   SpaceBetween,
-  Link,
   Button,
   Header,
   Table,
@@ -22,87 +21,29 @@ import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
-import {
-  getSectionConfidenceAlerts,
-  getHitlConfidenceThreshold,
-  getDocumentConfidenceAlertCount,
-} from '../common/confidence-alerts-utils';
+import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
+import { renderHitlStatus } from '../common/hitl-status-renderer';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
 const logger = new Logger('DocumentPanel');
 
-// Component to display detailed confidence alerts
+// Component to display confidence alerts count only
 const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
   // Uncomment the line below to enable debugging
   // debugDocumentStructure({ sections, mergedConfig });
 
   if (!sections || !Array.isArray(sections) || !mergedConfig) {
-    return (
-      <div>
-        <StatusIndicator type="success">0 alerts</StatusIndicator>
-        <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-          No configuration available
-        </Box>
-      </div>
-    );
+    return <StatusIndicator type="success">0</StatusIndicator>;
   }
 
-  const hitlThreshold = getHitlConfidenceThreshold(mergedConfig);
   const totalAlertCount = getDocumentConfidenceAlertCount(sections, mergedConfig);
 
-  // Collect all confidence alerts from all sections for detailed display
-  const allAlerts = [];
-  sections.forEach((section, sectionIndex) => {
-    const sectionAlerts = getSectionConfidenceAlerts(section, mergedConfig);
-    sectionAlerts.forEach((alert) => {
-      allAlerts.push({
-        ...alert,
-        sectionId: section.Id || `Section ${sectionIndex + 1}`,
-        sectionClass: section.Class || 'Unknown',
-      });
-    });
-  });
-
   if (totalAlertCount === 0) {
-    return (
-      <div>
-        <StatusIndicator type="success">0 alerts</StatusIndicator>
-        <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-          Threshold: {(hitlThreshold * 100).toFixed(0)}%
-        </Box>
-      </div>
-    );
+    return <StatusIndicator type="success">0</StatusIndicator>;
   }
 
-  return (
-    <div>
-      <StatusIndicator type="warning">
-        {totalAlertCount} alert{totalAlertCount !== 1 ? 's' : ''}
-      </StatusIndicator>
-      <Box fontSize="body-s" color="text-body-secondary" margin={{ top: 'xxxs' }}>
-        Threshold: {(hitlThreshold * 100).toFixed(0)}%
-      </Box>
-      <ExpandableSection
-        headerText={`View ${totalAlertCount} field${totalAlertCount !== 1 ? 's' : ''} below threshold`}
-        variant="footer"
-      >
-        <SpaceBetween size="xs">
-          {allAlerts.map((alert) => (
-            <Box key={`${alert.sectionId}-${alert.fieldName}`} padding="xs" color="text-body-secondary">
-              <Box fontSize="body-s">
-                <strong>{alert.sectionId}</strong> - {alert.fieldName}
-              </Box>
-              <Box fontSize="body-s">
-                Confidence: <span style={{ color: '#d13313' }}>{(alert.confidence * 100).toFixed(1)}%</span> (below{' '}
-                {(alert.confidenceThreshold * 100).toFixed(0)}%)
-              </Box>
-            </Box>
-          ))}
-        </SpaceBetween>
-      </ExpandableSection>
-    </div>
-  );
+  return <StatusIndicator type="warning">{totalAlertCount}</StatusIndicator>;
 };
 
 // Helper function to parse serviceApi key into context and service
@@ -115,32 +56,6 @@ const parseServiceApiKey = (serviceApiKey) => {
   }
   // Fallback for keys that don't follow the new format (less than 3 parts) - set context to ''
   return { context: '', serviceApi: serviceApiKey };
-};
-
-// Helper function to render HITL status without nested ternaries
-const renderHitlStatus = (item) => {
-  if (!item.hitlTriggered) {
-    return 'N/A';
-  }
-
-  if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
-    return 'A2I Review Completed';
-  }
-
-  if (item.hitlReviewURL) {
-    return (
-      <Link href={item.hitlReviewURL} external>
-        A2I Review In Progress
-      </Link>
-    );
-  }
-
-  // If we have a status but no URL and not completed, show the status
-  if (item.hitlStatus) {
-    return item.hitlStatus === 'IN_PROGRESS' ? 'A2I Review In Progress' : item.hitlStatus;
-  }
-
-  return 'A2I Review Triggered';
 };
 
 // Helper function to format cost cells
@@ -539,6 +454,9 @@ const DocumentAttributes = ({ item }) => {
 export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess }) => {
   logger.debug('DocumentPanel item', item);
 
+  // State for Step Function flow viewer
+  const [isFlowViewerVisible, setIsFlowViewerVisible] = useState(false);
+
   // Fetch configuration for dynamic confidence threshold
   const { mergedConfig } = useConfiguration();
 
@@ -556,6 +474,19 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
             variant="h2"
             actions={
               <SpaceBetween direction="horizontal" size="xs">
+                {item?.executionArn && (
+                  <Button
+                    iconName="status-positive"
+                    variant={isFlowViewerVisible ? 'primary' : 'normal'}
+                    onClick={() => {
+                      console.log('Execution ARN:', item.executionArn);
+                      logger.info('Opening flow viewer with execution ARN:', item.executionArn);
+                      setIsFlowViewerVisible(true);
+                    }}
+                  >
+                    View Processing Flow
+                  </Button>
+                )}
                 {onReprocess && (
                   <Button iconName="arrow-right" variant="normal" onClick={onReprocess}>
                     Reprocess
@@ -595,6 +526,15 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
       <ChatPanel objectKey={item.objectKey} />
+
+      {/* Step Function Flow Viewer */}
+      {item?.executionArn && (
+        <StepFunctionFlowViewer
+          executionArn={item.executionArn}
+          visible={isFlowViewerVisible}
+          onDismiss={() => setIsFlowViewerVisible(false)}
+        />
+      )}
     </SpaceBetween>
   );
 };

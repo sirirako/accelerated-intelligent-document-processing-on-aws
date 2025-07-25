@@ -5,6 +5,7 @@ import json
 import os
 import logging
 from datetime import datetime, timezone, timedelta
+from idp_common.models import Document
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
@@ -25,12 +26,26 @@ def lambda_handler(event, context):
     """
     logger.info(f"Processing event: {json.dumps(event)}")
     
-    # Extract document information
-    document = event.get('Payload', {}).get('Result', {}).get('document', {})
-    if not document:
-        document = event.get('Payload', {}).get('ProcessingResult', {}).get('document', {})
-    if not document:
-        document = event.get('Payload', {}).get('document', {})
+    # Extract document information using load_document to handle compression
+    document_data = event.get('Payload', {}).get('Result', {}).get('document', {})
+    if not document_data:
+        document_data = event.get('Payload', {}).get('ProcessingResult', {}).get('document', {})
+    if not document_data:
+        document_data = event.get('Payload', {}).get('document', {})
+    
+    # Get working bucket for decompression
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    if not working_bucket:
+        logger.warning("WORKING_BUCKET environment variable not set")
+    
+    # Load document using utility method to handle compression/decompression
+    try:
+        document_obj = Document.load_document(document_data, working_bucket, logger)
+        # Convert back to dict for the rest of the function
+        document = document_obj.to_dict()
+    except Exception as e:
+        logger.error(f"Error loading document: {str(e)}")
+        raise
     
     document_id = document.get('id')
     workflow_execution_arn = document.get('workflow_execution_arn')

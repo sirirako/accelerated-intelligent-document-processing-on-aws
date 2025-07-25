@@ -9,7 +9,7 @@ import logging
 
 from idp_common import metrics, get_config, extraction
 from idp_common.models import Document, Section, Status
-from idp_common.appsync.service import DocumentAppSyncService
+from idp_common.docs_service import create_document_service
 
 # Configuration will be loaded in handler function
 
@@ -31,18 +31,34 @@ def handler(event, context):
     logger.info(f"Config: {json.dumps(config)}")
     
     # For Map state, we get just one section from the document
-    # Extract the document and section from the event
-    full_document = Document.from_dict(event.get("document", {}))
-    section = Section.from_dict(event.get("section", {}))
+    # Extract the document and section from the event - handle both compressed and uncompressed
+    working_bucket = os.environ.get('WORKING_BUCKET')
+    full_document = Document.load_document(event.get("document", {}), working_bucket, logger)
     
-    # Get the section ID for later use
-    section_id = section.section_id
+    # Get the section ID directly from the Map state input
+    # Now using the simplified array of section IDs format
+    section_id = event.get("section_id")
+    
+    if not section_id:
+        raise ValueError("No section_id found in event")
+    
+    # Look up the full section from the decompressed document
+    section = None
+    for doc_section in full_document.sections:
+        if doc_section.section_id == section_id:
+            section = doc_section
+            break
+    
+    if not section:
+        raise ValueError(f"Section {section_id} not found in document")
+    
+    logger.info(f"Processing section {section_id} with {len(section.page_ids)} pages")
     
     # Update document status to EXTRACTING
     full_document.status = Status.EXTRACTING
-    appsync_service = DocumentAppSyncService()
+    document_service = create_document_service()
     logger.info(f"Updating document status to {full_document.status}")
-    appsync_service.update_document(full_document)
+    document_service.update_document(full_document)
        
     # Create a section-specific document by modifying the original document
     section_document = full_document
@@ -78,11 +94,10 @@ def handler(event, context):
         logger.error(error_message)
         raise Exception(error_message)
     
-    # Return section extraction result with the document
-    # The state machine will later combine all section results
+    # Prepare output with automatic compression if needed
     response = {
         "section_id": section_id,
-        "document": section_document.to_dict()
+        "document": section_document.serialize_document(working_bucket, f"extraction_{section_id}", logger)
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
