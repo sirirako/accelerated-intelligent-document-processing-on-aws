@@ -12,6 +12,7 @@ export default gql`
       completedAt
       result
       error
+      agent_messages
     }
   }
 `;

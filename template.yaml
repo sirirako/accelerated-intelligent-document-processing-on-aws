@@ -3536,7 +3536,8 @@ Resources:
             "createdAt": $util.toJson($ctx.result.createdAt),
             "completedAt": $util.toJson($ctx.result.completedAt),
             "result": $util.toJson($ctx.result.result),
-            "error": $util.toJson($ctx.result.error)
+            "error": $util.toJson($ctx.result.error),
+            "agent_messages": $util.toJson($ctx.result.agent_messages)
           }
         #end
 

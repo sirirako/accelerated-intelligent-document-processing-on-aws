@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
-import React, { useState } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
-import { Box, Container, Header, SpaceBetween, Alert, Button, ExpandableSection } from '@awsui/components-react';
+import { Box, Container, Header, SpaceBetween, Alert } from '@awsui/components-react';
 import { Logger } from 'aws-amplify';
 
 import PlotDisplay from './PlotDisplay';
@@ -12,8 +12,6 @@ import TextDisplay from './TextDisplay';
 const logger = new Logger('AnalyticsResultDisplay');
 
 const AnalyticsResultDisplay = ({ result, query }) => {
-  const [showDebug, setShowDebug] = useState(false);
-
   if (!result) {
     return null;
   }
@@ -119,14 +117,7 @@ const AnalyticsResultDisplay = ({ result, query }) => {
   return (
     <Container
       header={
-        <Header
-          variant="h2"
-          actions={
-            <Button variant="link" onClick={() => setShowDebug(!showDebug)}>
-              {showDebug ? 'Hide' : 'Show'} Debug Info
-            </Button>
-          }
-        >
+        <Header variant="h2">
           Results for: <i>{query}</i>
         </Header>
       }
@@ -135,41 +126,6 @@ const AnalyticsResultDisplay = ({ result, query }) => {
         <Alert type="info">
           Response type: <strong>{parsedResult.responseType || 'Unknown'}</strong>
         </Alert>
-
-        {showDebug && (
-          <ExpandableSection headerText="Debug Information" defaultExpanded>
-            <SpaceBetween size="s">
-              <Box>
-                <Header variant="h4">Raw Result (as received):</Header>
-                <pre
-                  style={{
-                    fontSize: '12px',
-                    maxHeight: '200px',
-                    overflow: 'auto',
-                    backgroundColor: '#f5f5f5',
-                    padding: '10px',
-                  }}
-                >
-                  {JSON.stringify(result, null, 2)}
-                </pre>
-              </Box>
-              <Box>
-                <Header variant="h4">Parsed Result:</Header>
-                <pre
-                  style={{
-                    fontSize: '12px',
-                    maxHeight: '200px',
-                    overflow: 'auto',
-                    backgroundColor: '#f5f5f5',
-                    padding: '10px',
-                  }}
-                >
-                  {JSON.stringify(parsedResult, null, 2)}
-                </pre>
-              </Box>
-            </SpaceBetween>
-          </ExpandableSection>
-        )}
 
         {renderResultContent()}
       </SpaceBetween>

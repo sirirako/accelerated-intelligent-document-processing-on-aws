@@ -7,6 +7,7 @@ Analytics Agent implementation using Strands framework.
 
 import json
 import logging
+import os
 import re
 from typing import Any, Dict
 
@@ -14,6 +15,7 @@ import boto3
 from strands import Agent, tool
 from strands.models import BedrockModel
 
+from ..common.dynamodb_logger import DynamoDBMessageTracker
 from .config import load_result_format_description
 from .tools import generate_plot, get_database_info, run_athena_query
 
@@ -90,12 +92,22 @@ def parse_agent_response(response) -> Dict[str, Any]:
         return {"responseType": "text", "content": response_str}
 
 
-def create_analytics_agent(config: Dict[str, Any], session: boto3.Session) -> Agent:
+def create_analytics_agent(
+    config: Dict[str, Any],
+    session: boto3.Session,
+    job_id: str = None,
+    user_id: str = None,
+    enable_monitoring: bool = None,
+) -> Agent:
     """
     Create and configure the analytics agent with appropriate tools and system prompt.
 
     Args:
         config: Configuration dictionary containing Athena settings and other parameters
+        session: Boto3 session for AWS operations
+        job_id: Analytics job ID for monitoring (optional)
+        user_id: User ID for monitoring (optional)
+        enable_monitoring: Whether to enable agent monitoring (defaults to env var or True)
 
     Returns:
         Agent: Configured Strands agent instance
@@ -161,6 +173,24 @@ def create_analytics_agent(config: Dict[str, Any], session: boto3.Session) -> Ag
     )
 
     agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
+
+    # Add monitoring if enabled and job context is provided
+    if enable_monitoring is None:
+        enable_monitoring = (
+            os.environ.get("ENABLE_AGENT_MONITORING", "true").lower() == "true"
+        )
+
+    if enable_monitoring and job_id and user_id:
+        try:
+            message_tracker = DynamoDBMessageTracker(
+                job_id=job_id, user_id=user_id, enabled=enable_monitoring
+            )
+            agent.hooks.add_hook(message_tracker)
+            logger.info(f"Agent monitoring enabled for job {job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize agent monitoring: {e}")
+    elif enable_monitoring:
+        logger.warning("Agent monitoring enabled but job_id or user_id not provided")
 
     logger.info("Analytics agent created successfully")
     return agent

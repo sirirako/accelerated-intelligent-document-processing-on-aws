@@ -75,12 +75,14 @@ def validate_job_ownership(table, user_id, job_id):
         raise ValueError(error_msg)
 
 
-def process_analytics_query(query: str) -> dict:
+def process_analytics_query(query: str, job_id: str = None, user_id: str = None) -> dict:
     """
     Process an analytics query using the Strands agent.
     
     Args:
         query: The natural language query to process
+        job_id: Analytics job ID for monitoring (optional)
+        user_id: User ID for monitoring (optional)
         
     Returns:
         Dict containing the analytics result
@@ -90,8 +92,13 @@ def process_analytics_query(query: str) -> dict:
         config = get_analytics_config()
         logger.info("Analytics configuration loaded successfully")
         
-        # Create the analytics agent
-        agent = create_analytics_agent(config, session)
+        # Create the analytics agent with monitoring context
+        agent = create_analytics_agent(
+            config, 
+            session, 
+            job_id=job_id, 
+            user_id=user_id
+        )
         logger.info("Analytics agent created successfully")
         
         # Process the query
@@ -285,7 +292,7 @@ def handler(event, context):
                 logger.info(f"Processing analytics query (attempt {attempt + 1}/{max_retries}): {job_id}")
                 
                 # Process the query using the analytics agent
-                result = process_analytics_query(job_record.get("query"))
+                result = process_analytics_query(job_record.get("query"), job_id, user_id)
                 logger.info(f"Successfully processed analytics query on attempt {attempt + 1}: {job_id}")
                 break  # Success, exit retry loop
                 

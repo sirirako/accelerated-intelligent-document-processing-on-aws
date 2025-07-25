@@ -11,6 +11,7 @@ import onAnalyticsJobComplete from '../../graphql/subscriptions/onAnalyticsJobCo
 import AnalyticsQueryInput from './AnalyticsQueryInput';
 import AnalyticsJobStatus from './AnalyticsJobStatus';
 import AnalyticsResultDisplay from './AnalyticsResultDisplay';
+import AgentMessagesDisplay from './AgentMessagesDisplay';
 
 const logger = new Logger('DocumentsAnalyticsLayout');
 
@@ -19,6 +20,7 @@ const DocumentsAnalyticsLayout = () => {
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
   const [jobResult, setJobResult] = useState(null);
+  const [agentMessages, setAgentMessages] = useState(null);
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subscription, setSubscription] = useState(null);
@@ -52,6 +54,7 @@ const DocumentsAnalyticsLayout = () => {
 
               if (job) {
                 setJobStatus(job.status);
+                setAgentMessages(job.agent_messages);
 
                 if (job.status === 'COMPLETED') {
                   setJobResult(job.result);
@@ -115,6 +118,7 @@ const DocumentsAnalyticsLayout = () => {
         const job = response?.data?.getAnalyticsJobStatus;
         if (job) {
           setJobStatus(job.status);
+          setAgentMessages(job.agent_messages);
           if (job.status === 'COMPLETED') {
             setJobResult(job.result);
           } else if (job.status === 'FAILED') {
@@ -130,6 +134,7 @@ const DocumentsAnalyticsLayout = () => {
       // Otherwise, create a new job
       setIsSubmitting(true);
       setJobResult(null);
+      setAgentMessages(null);
       setError(null);
 
       // Clean up previous subscription if exists
@@ -170,6 +175,7 @@ const DocumentsAnalyticsLayout = () => {
 
           if (polledJob && polledJob.status !== job.status) {
             setJobStatus(polledJob.status);
+            setAgentMessages(polledJob.agent_messages);
 
             if (polledJob.status === 'COMPLETED') {
               setJobResult(polledJob.result);
@@ -207,22 +213,27 @@ const DocumentsAnalyticsLayout = () => {
           const job = response?.data?.getAnalyticsJobStatus;
           logger.debug('Polled job status:', job);
 
-          if (job && job.status !== jobStatus) {
-            setJobStatus(job.status);
+          if (job) {
+            // Always update agent messages, even if status hasn't changed
+            setAgentMessages(job.agent_messages);
 
-            if (job.status === 'COMPLETED') {
-              setJobResult(job.result);
-              clearInterval(intervalId);
-            } else if (job.status === 'FAILED') {
-              setError(job.error || 'Job processing failed');
-              clearInterval(intervalId);
+            if (job.status !== jobStatus) {
+              setJobStatus(job.status);
+
+              if (job.status === 'COMPLETED') {
+                setJobResult(job.result);
+                clearInterval(intervalId);
+              } else if (job.status === 'FAILED') {
+                setError(job.error || 'Job processing failed');
+                clearInterval(intervalId);
+              }
             }
           }
         } catch (err) {
           logger.error('Error polling job status:', err);
           // Don't set error here to avoid overriding subscription errors
         }
-      }, 5000); // Poll every 5 seconds
+      }, 1000); // Poll every 1 second
     }
 
     return () => {
@@ -250,14 +261,12 @@ const DocumentsAnalyticsLayout = () => {
 
         <AnalyticsJobStatus jobId={jobId} status={jobStatus} error={error} />
 
-        {jobStatus === 'PROCESSING' && (
-          <Box textAlign="center" padding={{ vertical: 'l' }}>
-            <Spinner size="large" />
-            <Box padding={{ top: 's' }}>Processing your query...</Box>
-          </Box>
-        )}
-
         {jobResult && <AnalyticsResultDisplay result={jobResult} query={queryText} />}
+
+        {/* Show agent messages at the bottom when available */}
+        {(agentMessages || jobStatus === 'PROCESSING') && (
+          <AgentMessagesDisplay agentMessages={agentMessages} isProcessing={jobStatus === 'PROCESSING'} />
+        )}
       </SpaceBetween>
     </Container>
   );
