@@ -103,7 +103,7 @@ def handler(event, context):
         if error_code == 'NoSuchKey':
             raise Exception(f"File not found: {objectKey}")
         elif error_code == 'NoSuchBucket':
-            raise Exception(f"Bucket not found: {bucket}")
+            raise Exception(f"Bucket not found: {output_bucket}")
         else:
             raise Exception(f"Error accessing S3: {error_message}")
             
