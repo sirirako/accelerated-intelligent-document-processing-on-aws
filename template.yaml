@@ -290,6 +290,18 @@ Parameters:
     Description: Maximum acceptable execution time in milliseconds before alerting (default 300000 = 300 seconds)
     MinValue: 1000
 
+  # Security Configuration
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
+      Required by some organizations with Service Control Policies (SCPs).
+      Format: arn:aws:iam::account-id:policy/policy-name
+      Leave blank if no Permissions Boundary is required.
+    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    ConstraintDescription: Must be empty or a valid IAM policy ARN
+
   # Logging configuration
   LogLevel:
     Type: String
@@ -428,6 +440,7 @@ Conditions:
   ShouldCreateDocumentKnowledgeBase: !Equals [!Ref DocumentKnowledgeBase, "BEDROCK_KNOWLEDGE_BASE (Create)"]
   ShouldUseDocumentKnowledgeBase: !Condition ShouldCreateDocumentKnowledgeBase
   DocumentSectionsCrawlerScheduleEnabled: !Not [!Equals [!Ref DocumentSectionsCrawlerFrequency, "Manual"]]
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
 
 
 Metadata:
@@ -493,6 +506,11 @@ Metadata:
           - BedrockGuardrailId
           - BedrockGuardrailVersion
       - Label:
+          default: "Security Configuration"
+        Parameters:
+          - PermissionsBoundaryArn
+          - WAFAllowedIPv4Ranges
+      - Label:
           default: "General Configuration"
         Parameters:
           - MaxConcurrentWorkflows
@@ -503,7 +521,6 @@ Metadata:
           - LogRetentionDays
           - CloudFrontPriceClass
           - CloudFrontAllowedGeos
-          - WAFAllowedIPv4Ranges
 
     ParameterLabels:
       AdminEmail:
@@ -550,6 +567,8 @@ Metadata:
         default: "Bedrock Guardrail Id"
       BedrockGuardrailVersion:
         default: "Bedrock Guardrail Version"
+      PermissionsBoundaryArn:
+        default: "Permissions Boundary ARN"
       MaxConcurrentWorkflows:
         default: "Maximum Concurrent Workflows"
       DataRetentionInDays:
@@ -586,6 +605,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       InlineCode: |
@@ -644,6 +664,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 300
@@ -773,6 +794,8 @@ Resources:
         ProjectName: !Sub '${AWS::StackName}-BDA-Lending-Sample-Project'
         ProjectDescription: !Sub '${AWS::StackName}-BDA-Lending-Sample-Project'
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
 
   DOCUMENTBEDROCKKB:
     DependsOn:
@@ -788,6 +811,8 @@ Resources:
         pCustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         pChunkingStrategy: 'No chunking'
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
 
   ##########################################################################
   # Nested stack for selected pattern
@@ -828,6 +853,7 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         SageMakerA2IReviewPortalURL: !If
           - IsPattern1HITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -867,6 +893,7 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   PATTERN3STACK:
     DependsOn:
@@ -901,6 +928,7 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   ##########################################################################
   # Encryption key
@@ -1671,6 +1699,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DocumentSectionsCrawlerS3Access
           PolicyDocument:
@@ -1873,6 +1902,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
@@ -1939,6 +1969,7 @@ Resources:
     # checkov:skip=CKV_AWS_116: "DLQ not required for Custom Resource function"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
@@ -2013,6 +2044,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Custom Resource function"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
@@ -2160,6 +2192,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_sender/
       Handler: index.handler
       Runtime: python3.12
@@ -2227,6 +2260,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_processor/
       Handler: index.handler
       Runtime: python3.12
@@ -2338,6 +2372,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/workflow_tracker/
       Handler: index.handler
       Runtime: python3.12
@@ -2449,6 +2484,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/stepfunction_subscription_publisher/
       Handler: index.handler
       Runtime: python3.12
@@ -2595,6 +2631,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     # checkov:skip=CKV_AWS_116: "DLQ not required for this functions as it is called sychronously"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/save_reporting_data/
       Handler: index.handler
       Runtime: python3.12
@@ -2660,6 +2697,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/evaluation_function/
       Handler: index.handler
       Runtime: python3.12
@@ -3230,6 +3268,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/dashboard_merger
       Handler: index.handler
       Runtime: python3.12
@@ -3283,6 +3322,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/lookup_function/
       Handler: index.handler
       Runtime: python3.12
@@ -3759,6 +3799,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Converts Stackname to lowercase and adds unique timestamp
       Handler: index.handler
       Runtime: python3.12
@@ -3829,6 +3870,7 @@ Resources:
                 "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
               "ForAnyValue:StringLike":
                 "cognito-identity.amazonaws.com:amr": authenticated
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: S3
           PolicyDocument:
@@ -3929,6 +3971,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Condition: ShouldAllowSignUpEmailDomain
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Verifies email address is in allowed domain
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -4028,6 +4071,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: CognitoClientUpdaterPolicy
           PolicyDocument:
@@ -4067,6 +4111,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
       CodeUri: src/lambda/cognito_updater_hitl
       Handler: index.handler
@@ -4124,6 +4169,7 @@ Resources:
             Principal:
               Service: sagemaker.amazonaws.com
             Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: A2IFlowDefinitionAccess
           PolicyDocument:
@@ -4175,6 +4221,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: SageMakerA2IAccess
           PolicyDocument:
@@ -4260,6 +4307,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/create_a2i_resources
       Handler: index.handler
       Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
@@ -4298,6 +4346,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: src/lambda/get-workforce-url
@@ -4371,6 +4420,7 @@ Resources:
     Properties:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -4418,6 +4468,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: ./src/lambda/ipset_updater
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -4534,6 +4585,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DynamoDBAccess
           PolicyDocument:
@@ -4590,6 +4642,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/create_document_resolver
@@ -4854,6 +4907,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/get_file_contents_resolver
@@ -4926,6 +4980,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/get_stepfunction_execution_resolver/
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -5005,6 +5060,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/publish_stepfunction_update_resolver/
       Handler: index.lambda_handler
       Runtime: python3.12
@@ -5070,6 +5126,7 @@ Resources:
       # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
       # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
       Properties:
+        PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]       
         Handler: index.handler
         Runtime: python3.12
         CodeUri: ./src/lambda/configuration_resolver
@@ -5152,6 +5209,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/copy_to_baseline_resolver
@@ -5242,6 +5300,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/delete_document_resolver
@@ -5315,6 +5374,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/reprocess_document_resolver
@@ -5382,6 +5442,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/upload_resolver
@@ -5465,6 +5526,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/query_knowledgebase_resolver
@@ -5656,6 +5718,7 @@ Resources:
             Effect: Allow
             Principal:
               Service: codebuild.amazonaws.com
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: ecs-service
           PolicyDocument:
@@ -5801,6 +5864,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: "/"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: root
           PolicyDocument:
@@ -5851,6 +5915,7 @@ Resources:
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Role: !GetAtt StartUICodeBuildExecutionRole.Arn
       Runtime: python3.12
       Timeout: 60

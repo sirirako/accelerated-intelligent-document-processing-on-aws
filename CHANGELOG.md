@@ -6,6 +6,24 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
+- **Optional Permissions Boundary Support for Enterprise Deployments**
+  - Added `PermissionsBoundaryArn` parameter to all CloudFormation templates for organizations with Service Control Policies (SCPs) requiring permissions boundaries
+  - Comprehensive support for both explicit IAM roles and implicit roles created by AWS SAM functions and statemachines`
+  - Conditional implementation ensures backward compatibility - when no permissions boundary is provided, roles deploy normally
+
+## [0.3.8]
+
+### Added
+- IDP Configuration and Prompting Best Practices documentation [doc](./docs/idp-configuration-best-practices.md)
+
+### Changed
+
+- Updated lending_package.pdf sample with more realistic driver's license image
+
+### Fixed
+- Issue #27 - removed idp_common bedrock client region default to us-west-2 - PR #28
+
+
 
 ## [0.3.8]
 
