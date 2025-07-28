@@ -1,133 +1,161 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, Box, Spinner, SpaceBetween } from '@awsui/components-react';
+import { Container, Header, Box, Spinner, SpaceBetween, Button, Modal } from '@awsui/components-react';
 
 const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
   const messagesEndRef = useRef(null);
+  const [sqlModalVisible, setSqlModalVisible] = useState(false);
+  const [currentSqlQuery, setCurrentSqlQuery] = useState('');
 
-  // Split assistant messages that contain both text and tool use
-  const splitAssistantMessage = (message) => {
-    const { content } = message;
+  // Extract SQL query from tool use content
+  const extractSqlQuery = (originalMessage) => {
+    if (!originalMessage || !originalMessage.content) return null;
 
-    // If content is a string, check if it contains tool use JSON
-    if (typeof content === 'string') {
-      // Look for tool use patterns in the string
-      const toolUseRegex = /\{"toolUse":\{[^}]+\}\}/g;
-      const matches = content.match(toolUseRegex);
-
-      if (matches && matches.length > 0) {
-        const messages = [];
-        let remainingContent = content;
-
-        matches.forEach((match) => {
-          // Split the content at the tool use
-          const parts = remainingContent.split(match);
-
-          // Add text part if it exists and has meaningful content
-          if (parts[0] && parts[0].trim()) {
-            messages.push({
-              ...message,
-              content: parts[0].trim(),
-            });
-          }
-
-          // Parse and add tool use message
-          try {
-            const toolUse = JSON.parse(match);
-            const toolName = toolUse.toolUse?.name || 'unknown';
-            messages.push({
-              ...message,
-              role: 'tool',
-              content: `Tool request initiated for tool: ${toolName}`,
-              tool_name: toolName,
-              timestamp: message.timestamp,
-            });
-          } catch (error) {
-            // If parsing fails, include the raw JSON as assistant message
-            messages.push({
-              ...message,
-              content: match,
-            });
-          }
-
-          remainingContent = parts[1] || '';
-        });
-
-        // Add any remaining content
-        if (remainingContent && remainingContent.trim()) {
-          messages.push({
-            ...message,
-            content: remainingContent.trim(),
-          });
-        }
-
-        return messages.length > 0 ? messages : [message];
-      }
+    // Handle array content format
+    if (Array.isArray(originalMessage.content)) {
+      const sqlItem = originalMessage.content.find(
+        (item) => item && item.toolUse && item.toolUse.name === 'run_athena_query_with_config',
+      );
+      return sqlItem?.toolUse?.input?.query || null;
     }
 
-    // If content is an array, process each item
-    if (Array.isArray(content)) {
-      const messages = [];
-      let textParts = [];
+    return null;
+  };
 
-      content.forEach((item) => {
-        if (typeof item === 'string') {
-          textParts.push(item);
-        } else if (item && typeof item === 'object' && item.text) {
-          textParts.push(item.text);
-        } else if (item && typeof item === 'object' && item.toolUse) {
-          // Add text content if we have any
+  // Show SQL query modal
+  const showSqlQuery = (originalMessage) => {
+    const sqlQuery = extractSqlQuery(originalMessage);
+    if (sqlQuery) {
+      setCurrentSqlQuery(sqlQuery);
+      setSqlModalVisible(true);
+    }
+  };
+
+  // Parse and process messages using useMemo to avoid re-render loops
+  const messages = useMemo(() => {
+    if (!agentMessages) return [];
+
+    try {
+      const parsed = JSON.parse(agentMessages);
+      const rawMessages = Array.isArray(parsed) ? parsed : [];
+
+      // Split assistant messages that contain both text and tool use
+      const splitAssistantMessage = (message) => {
+        const { content } = message;
+
+        // If content is a string, check if it contains tool use JSON
+        if (typeof content === 'string') {
+          // Look for tool use patterns in the string
+          const toolUseRegex = /\{"toolUse":\{[^}]+\}\}/g;
+          const matches = content.match(toolUseRegex);
+
+          if (matches && matches.length > 0) {
+            const splitMessages = [];
+            let remainingContent = content;
+
+            matches.forEach((match) => {
+              // Split the content at the tool use
+              const parts = remainingContent.split(match);
+
+              // Add text part if it exists and has meaningful content
+              if (parts[0] && parts[0].trim()) {
+                splitMessages.push({
+                  ...message,
+                  content: parts[0].trim(),
+                });
+              }
+
+              // Parse and add tool use message
+              try {
+                const toolUse = JSON.parse(match);
+                const toolName = toolUse.toolUse?.name || 'unknown';
+                splitMessages.push({
+                  ...message,
+                  role: 'tool',
+                  content: `Tool request initiated for tool: ${toolName}`,
+                  tool_name: toolName,
+                  timestamp: message.timestamp,
+                  originalMessage: message, // Store original message for SQL extraction
+                });
+              } catch (error) {
+                // If parsing fails, include the raw JSON as assistant message
+                splitMessages.push({
+                  ...message,
+                  content: match,
+                });
+              }
+
+              remainingContent = parts[1] || '';
+            });
+
+            // Add any remaining content
+            if (remainingContent && remainingContent.trim()) {
+              splitMessages.push({
+                ...message,
+                content: remainingContent.trim(),
+              });
+            }
+
+            return splitMessages.length > 0 ? splitMessages : [message];
+          }
+        }
+
+        // If content is an array, process each item
+        if (Array.isArray(content)) {
+          const splitMessages = [];
+          let textParts = [];
+
+          content.forEach((item) => {
+            if (typeof item === 'string') {
+              textParts.push(item);
+            } else if (item && typeof item === 'object' && item.text) {
+              textParts.push(item.text);
+            } else if (item && typeof item === 'object' && item.toolUse) {
+              // Add text content if we have any
+              if (textParts.length > 0) {
+                const textContent = textParts.join('\n').trim();
+                if (textContent) {
+                  splitMessages.push({
+                    ...message,
+                    content: textContent,
+                  });
+                }
+                textParts = [];
+              }
+
+              // Add tool use message
+              const toolName = item.toolUse?.name || 'unknown';
+              splitMessages.push({
+                ...message,
+                role: 'tool',
+                content: `${toolName}`,
+                tool_name: toolName,
+                timestamp: message.timestamp,
+                originalMessage: message, // Store original message for SQL extraction
+              });
+            }
+          });
+
+          // Add any remaining text content
           if (textParts.length > 0) {
             const textContent = textParts.join('\n').trim();
             if (textContent) {
-              messages.push({
+              splitMessages.push({
                 ...message,
                 content: textContent,
               });
             }
-            textParts = [];
           }
 
-          // Add tool use message
-          const toolName = item.toolUse?.name || 'unknown';
-          messages.push({
-            ...message,
-            role: 'tool',
-            content: `${toolName}`,
-            tool_name: toolName,
-            timestamp: message.timestamp,
-          });
+          return splitMessages.length > 0 ? splitMessages : [message];
         }
-      });
 
-      // Add any remaining text content
-      if (textParts.length > 0) {
-        const textContent = textParts.join('\n').trim();
-        if (textContent) {
-          messages.push({
-            ...message,
-            content: textContent,
-          });
-        }
-      }
-
-      return messages.length > 0 ? messages : [message];
-    }
-
-    // For other content types, return as-is
-    return [message];
-  };
-
-  // Parse agent messages from JSON string and split combined messages
-  const parseMessages = (messagesString) => {
-    if (!messagesString) return [];
-
-    try {
-      const parsed = JSON.parse(messagesString);
-      const rawMessages = Array.isArray(parsed) ? parsed : [];
+        // For other content types, return as-is
+        return [message];
+      };
 
       // Process messages to split assistant messages that contain tool use
       const processedMessages = [];
@@ -154,9 +182,7 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
     } catch (error) {
       return [];
     }
-  };
-
-  const messages = parseMessages(agentMessages);
+  }, [agentMessages]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -249,6 +275,10 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
       }
     }
 
+    // Check if this is a run_athena_query_with_config tool and has SQL query
+    const isAthenaQuery = message.role === 'tool' && message.tool_name === 'run_athena_query_with_config';
+    const hasSqlQuery = isAthenaQuery && message.originalMessage && extractSqlQuery(message.originalMessage);
+
     // Create a unique key for this message
     const messageKey = `${message.role}-${message.sequence_number}-${index}-${message.timestamp}`;
 
@@ -299,17 +329,49 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
                 {message.tool_name}
               </span>
             )}
+            {hasSqlQuery && (
+              <button
+                type="button"
+                onClick={() => showSqlQuery(message.originalMessage)}
+                style={{
+                  marginLeft: '8px',
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  backgroundColor: '#0073bb',
+                  color: 'white',
+                  border: '1px solid #0073bb',
+                  borderRadius: '4px',
+                  textDecoration: 'none',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#005a9e';
+                  e.target.style.borderColor = '#005a9e';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#0073bb';
+                  e.target.style.borderColor = '#0073bb';
+                }}
+              >
+                View SQL
+              </button>
+            )}
           </div>
-          <div
-            style={{
-              fontSize: '13px',
-              lineHeight: '1.3',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {textContent}
-          </div>
+          {/* Hide content for tool request messages (with tool_name), keep for tool response messages */}
+          {!(message.role === 'tool' && message.tool_name) && (
+            <div
+              style={{
+                fontSize: '13px',
+                lineHeight: '1.3',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {textContent}
+            </div>
+          )}
         </div>
       </Box>
     );
@@ -320,55 +382,102 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
   }
 
   return (
-    <Container
-      header={
-        <Header variant="h3" description="Real-time agent conversation">
-          Agent Thought Process
-        </Header>
-      }
-    >
-      <div
-        style={{
-          backgroundColor: '#fafafa',
-          border: '1px solid #e0e0e0',
-          borderRadius: '4px',
-          height: '300px',
-          overflowY: 'auto',
-          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          padding: '4px',
-        }}
+    <>
+      <Container
+        header={
+          <Header variant="h3" description="Real-time agent conversation">
+            Agent Thought Process
+          </Header>
+        }
       >
-        <SpaceBetween size="none">
-          {messages.length > 0 ? (
-            messages.map((message, index) => renderMessage(message, index))
-          ) : (
-            <Box textAlign="center" padding="s" color="text-body-secondary">
-              <em>Waiting for agent to start...</em>
-            </Box>
-          )}
+        <div
+          style={{
+            backgroundColor: '#fafafa',
+            border: '1px solid #e0e0e0',
+            borderRadius: '4px',
+            height: '300px',
+            overflowY: 'auto',
+            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+            padding: '4px',
+          }}
+        >
+          <SpaceBetween size="none">
+            {messages.length > 0 ? (
+              messages.map((message, index) => renderMessage(message, index))
+            ) : (
+              <Box textAlign="center" padding="s" color="text-body-secondary">
+                <em>Waiting for agent to start...</em>
+              </Box>
+            )}
 
-          {isProcessing && (
-            <Box padding={{ vertical: 'xs', horizontal: 's' }} textAlign="center">
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#666',
-                  fontSize: '12px',
+            {isProcessing && (
+              <Box padding={{ vertical: 'xs', horizontal: 's' }} textAlign="center">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#666',
+                    fontSize: '12px',
+                  }}
+                >
+                  <Spinner size="normal" />
+                  <span style={{ marginLeft: '6px' }}>Agent is thinking...</span>
+                </div>
+              </Box>
+            )}
+
+            {/* Invisible element to scroll to */}
+            <div ref={messagesEndRef} />
+          </SpaceBetween>
+        </div>
+      </Container>
+
+      {/* SQL Query Modal */}
+      <Modal
+        onDismiss={() => setSqlModalVisible(false)}
+        visible={sqlModalVisible}
+        header="SQL Query"
+        size="large"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button
+                variant="normal"
+                onClick={() => {
+                  navigator.clipboard.writeText(currentSqlQuery);
                 }}
               >
-                <Spinner size="normal" />
-                <span style={{ marginLeft: '6px' }}>Agent is thinking...</span>
-              </div>
-            </Box>
-          )}
-
-          {/* Invisible element to scroll to */}
-          <div ref={messagesEndRef} />
-        </SpaceBetween>
-      </div>
-    </Container>
+                Copy to Clipboard
+              </Button>
+              <Button variant="primary" onClick={() => setSqlModalVisible(false)}>
+                Close
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <Box padding="s">
+          <div
+            style={{
+              backgroundColor: '#f8f9fa',
+              border: '1px solid #e1e4e8',
+              borderRadius: '6px',
+              padding: '16px',
+              fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "Courier New", monospace',
+              fontSize: '14px',
+              lineHeight: '1.45',
+              overflow: 'auto',
+              maxHeight: '400px',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {currentSqlQuery || 'No SQL query available'}
+          </div>
+        </Box>
+      </Modal>
+    </>
   );
 };
 
