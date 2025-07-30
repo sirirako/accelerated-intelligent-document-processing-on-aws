@@ -7,7 +7,6 @@ Code interpreter tools for analytics agents.
 
 import json
 import logging
-from typing import Any, Dict
 
 import boto3
 from bedrock_agentcore.tools.code_interpreter_client import CodeInterpreter
@@ -66,7 +65,9 @@ class CodeInterpreterTools:
             Success message indicating the file was written to the sandbox
         """
         filename = "query_results.csv"
-        logger.info(f"Downloading CSV from S3 and writing to code interpreter: {filename}")
+        logger.info(
+            f"Downloading CSV from S3 and writing to code interpreter: {filename}"
+        )
 
         # Parse S3 URI
         if not s3_uri.startswith("s3://"):
@@ -92,17 +93,23 @@ class CodeInterpreterTools:
             files_to_create = [{"path": filename, "text": csv_content}]
 
             # Write the file to the code interpreter environment
-            writing_files = self._invoke_code_interpreter_tool("writeFiles", {"content": files_to_create})
+            writing_files = self._invoke_code_interpreter_tool(
+                "writeFiles", {"content": files_to_create}
+            )
             logger.debug(f"Writing files result: {writing_files}")
 
             # List files to verify
-            listing_files = self._invoke_code_interpreter_tool("listFiles", {"path": ""})
+            listing_files = self._invoke_code_interpreter_tool(
+                "listFiles", {"path": ""}
+            )
             logger.debug(f"Files in code interpreter: {listing_files}")
 
             return f"CSV file '{filename}' successfully written to code interpreter environment"
 
         except Exception as e:
-            logger.error(f"Error downloading from S3 or writing to code interpreter: {str(e)}")
+            logger.error(
+                f"Error downloading from S3 or writing to code interpreter: {str(e)}"
+            )
             raise
 
     @tool
@@ -126,7 +133,8 @@ class CodeInterpreterTools:
         try:
             # Execute code using the invoke_code_interpreter_tool helper
             result = self._invoke_code_interpreter_tool(
-                "executeCode", {"code": code, "language": "python", "clearContext": False}
+                "executeCode",
+                {"code": code, "language": "python", "clearContext": False},
             )
 
             return json.dumps(result, indent=2)

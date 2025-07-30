@@ -118,7 +118,7 @@ def main():
 
         # Create boto3 session
         logger.info("Creating boto3 session...")
-        session = boto3.Session(region_name=config.get('aws_region', 'us-east-1'))
+        session = boto3.Session(region_name=config.get("aws_region", "us-east-1"))
         logger.info(f"Boto3 session created for region: {session.region_name}")
 
         # Create the analytics agent

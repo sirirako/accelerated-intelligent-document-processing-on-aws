@@ -21,7 +21,7 @@ from pathlib import Path
 
 def main():
     """Main entry point that loads .env and delegates to test_analytics.main()"""
-    
+
     # Try to load .env file if it exists
     try:
         from dotenv import load_dotenv
@@ -32,7 +32,9 @@ def main():
             print(f"Loaded environment variables from {env_file}")
         else:
             print(f"No .env file found at {env_file}")
-            print("You can create one by copying .env.example to .env and updating the values")
+            print(
+                "You can create one by copying .env.example to .env and updating the values"
+            )
             print("Or set environment variables directly:")
             print("  export ATHENA_DATABASE='your_database_name'")
             print("  export ATHENA_OUTPUT_LOCATION='s3://your-bucket/athena-results/'")
@@ -50,18 +52,21 @@ def main():
         from idp_common.agents.testing.test_analytics import (
             main as test_main,  # noqa: E402
         )
-        
+
         # Delegate to the actual test script
         test_main()
-        
+
     except ImportError as e:
         print(f"Error importing test_analytics module: {e}")
-        print("Make sure you're running from the correct directory and the package is installed.")
+        print(
+            "Make sure you're running from the correct directory and the package is installed."
+        )
         print("Try: pip install -e '.[agents,analytics,test]'")
         sys.exit(1)
     except Exception as e:
         print(f"Error running analytics test: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

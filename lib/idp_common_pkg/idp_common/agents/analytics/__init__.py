@@ -10,10 +10,10 @@ This module provides functionality to create analytics agents that can:
 - Generate visualizations and tables from query results
 """
 
+from ..common.response_utils import parse_agent_response
 from .agent import create_analytics_agent
 from .config import get_analytics_config
 from .utils import cleanup_code_interpreter
-from ..common.response_utils import parse_agent_response
 
 __all__ = [
     "create_analytics_agent",
