@@ -14,6 +14,8 @@ import os
 import sys
 from pathlib import Path
 
+import boto3
+
 # Add the idp_common_pkg root to Python path so we can import idp_common
 pkg_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(pkg_root))
@@ -114,9 +116,14 @@ def main():
             f"Configuration loaded: database={config['athena_database']}, region={config['aws_region']}"
         )
 
+        # Create boto3 session
+        logger.info("Creating boto3 session...")
+        session = boto3.Session(region_name=config.get('aws_region', 'us-east-1'))
+        logger.info(f"Boto3 session created for region: {session.region_name}")
+
         # Create the analytics agent
         logger.info("Creating analytics agent...")
-        agent = create_analytics_agent(config)
+        agent = create_analytics_agent(config, session)
         logger.info("Analytics agent created successfully")
 
         # If a question was provided, process it

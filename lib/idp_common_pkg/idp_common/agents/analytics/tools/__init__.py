@@ -6,11 +6,11 @@ Analytics tools for Strands agents.
 """
 
 from .athena_tool import run_athena_query
-from .generate_plot_tool import generate_plot
+from .code_interpreter_tools import CodeInterpreterTools
 from .get_database_info_tool import get_database_info
 
 __all__ = [
     "run_athena_query",
-    "generate_plot",
     "get_database_info",
+    "CodeInterpreterTools",
 ]

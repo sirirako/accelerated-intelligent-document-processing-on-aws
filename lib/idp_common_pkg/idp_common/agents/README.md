@@ -6,8 +6,8 @@ This module provides agent-based functionality using the Strands framework for t
 
 The agents module is designed to support multiple types of intelligent agents while maintaining consistency and reusability across the IDP accelerator. Currently implemented:
 
-- **Analytics Agent**: Natural language to SQL/visualization conversion
-- **Common Utilities**: Shared configuration and utilities for all agent types
+- **Analytics Agent**: Natural language to SQL/visualization conversion with secure code execution
+- **Common Utilities**: Shared configuration, monitoring, and utilities for all agent types
 
 ## Architecture
 
@@ -17,19 +17,22 @@ idp_common/agents/
 ├── __init__.py                  # Module initialization with lazy loading
 ├── common/                      # Shared utilities for all agent types
 │   ├── __init__.py
-│   └── config.py               # Common configuration patterns
+│   ├── config.py               # Common configuration patterns
+│   ├── monitoring.py           # Agent execution monitoring and hooks
+│   ├── dynamodb_logger.py      # DynamoDB integration for message persistence
+│   └── response_utils.py       # Response parsing utilities
 ├── analytics/                   # Analytics agent implementation
 │   ├── __init__.py
 │   ├── agent.py                # Analytics agent factory
 │   ├── config.py               # Analytics-specific configuration
+│   ├── utils.py                # Cleanup and utility functions
 │   ├── tools/                  # Strands tools for analytics
 │   │   ├── __init__.py
 │   │   ├── athena_tool.py      # Athena query execution
-│   │   ├── generate_plot_tool.py # Python code execution for plots/tables
-│   │   └── get_database_info_tool.py # Database schema information
+│   │   ├── get_database_info_tool.py # Database schema information
+│   │   └── code_interpreter_tools.py # Secure Python code execution
 │   └── assets/                 # Static assets (prompts, schemas)
-│       ├── db_description.md
-│       └── result_format_description.md
+│       └── db_description.md   # Database schema documentation
 └── testing/                    # Testing utilities and examples
     ├── __init__.py
     ├── README.md               # Comprehensive testing guide
@@ -54,22 +57,51 @@ Each agent type follows a simple pattern:
 - `tools/` - Strands tools specific to that agent type
 - `assets/` - Static assets like prompts, schemas, etc.
 
-### 3. IDP Integration
+### 3. Security-First Design
+Agents are designed with security as a primary concern:
+- **Sandboxed Code Execution**: Uses AWS Bedrock AgentCore for secure Python execution
+- **Data Isolation**: Query results are transferred securely between services
+- **Minimal Permissions**: Each agent requests only necessary AWS permissions
+- **Audit Trail**: Comprehensive logging and monitoring for security reviews
+
+### 4. IDP Integration
 Agents are designed to integrate seamlessly with the IDP accelerator:
 - Environment variable configuration for Lambda deployment
-- AWS service integration (Athena, S3, etc.)
+- AWS service integration (Athena, S3, AgentCore, etc.)
 - Consistent logging patterns
 - Error handling that works in serverless environments
+
+## Security Architecture
+
+### AgentCore Integration
+
+The analytics agent uses **AWS Bedrock AgentCore** for secure Python code execution. This is a critical security decision that ensures:
+
+- **Sandboxed Environment**: Python code runs in an isolated, secure sandbox
+- **No Direct File System Access**: Code cannot access the Lambda file system
+- **Controlled Data Transfer**: Query results are securely transferred via S3 and AgentCore APIs
+- **Session Management**: Code interpreter sessions are properly managed and cleaned up
+
+### Data Flow Security
+
+1. **Query Execution**: SQL queries run against Athena with results stored in S3
+2. **Secure Transfer**: Agent downloads CSV results from S3 using boto3
+3. **Sandbox Injection**: CSV data is written to the AgentCore sandbox using the `writeFiles` API
+4. **Code Execution**: Python visualization code runs in the isolated sandbox
+5. **Result Extraction**: Generated plots/tables are returned as JSON through AgentCore APIs
+
+This architecture ensures that arbitrary Python code (used for generating plots and tables) never executes in the Lambda environment, providing a secure foundation for future application security reviews.
 
 ## Usage
 
 ### Analytics Agent
 
-The analytics agent provides natural language to SQL/visualization conversion with three main tools:
+The analytics agent provides natural language to SQL/visualization conversion with four main tools:
 
 1. **Athena Query Tool** (`athena_tool.py`): Executes SQL queries against AWS Athena
-2. **Plot Generation Tool** (`generate_plot_tool.py`): Executes Python code for creating visualizations and tables
-3. **Database Info Tool** (`get_database_info_tool.py`): Provides database schema information
+2. **Database Info Tool** (`get_database_info_tool.py`): Provides database schema information
+3. **Code Sandbox Writer** (`code_interpreter_tools.py`): Securely transfers query results to sandbox
+4. **Python Executor** (`code_interpreter_tools.py`): Executes visualization code in secure sandbox
 
 ```python
 from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
@@ -77,11 +109,33 @@ from idp_common.agents.analytics import create_analytics_agent, get_analytics_co
 # Get configuration from environment variables
 config = get_analytics_config()
 
-# Create the agent
-agent = create_analytics_agent(config)
+# Create the agent with monitoring context
+agent = create_analytics_agent(
+    config, 
+    session=boto3.Session(), 
+    job_id="analytics-job-123", 
+    user_id="user-456"
+)
 
 # Use the agent
 response = agent("How many documents were processed last week?")
+```
+
+### Response Parsing
+
+The analytics agent returns structured responses that can be parsed:
+
+```python
+from idp_common.agents.analytics import parse_agent_response
+
+# Parse the agent response
+result = parse_agent_response(response)
+
+# Result contains:
+# - responseType: "text", "table", or "plotData"
+# - content: Text content (for text responses)
+# - tableData: Structured table data (for table responses)
+# - plotData: Chart.js compatible plot data (for plot responses)
 ```
 
 ### Common Configuration
@@ -91,6 +145,39 @@ from idp_common.agents.common import get_environment_config
 
 # Get basic configuration with validation
 config = get_environment_config(["REQUIRED_VAR1", "REQUIRED_VAR2"])
+```
+
+## Monitoring and Observability
+
+The agents module includes comprehensive monitoring capabilities:
+
+### Agent Monitoring
+
+```python
+from idp_common.agents.common.monitoring import AgentMonitor
+
+# Create agent with monitoring
+agent_monitor = AgentMonitor(
+    log_level=logging.INFO, 
+    enable_detailed_logging=True
+)
+agent.hooks.add_hook(agent_monitor)
+
+# Get execution report
+report = agent_monitor.get_execution_report()
+```
+
+### DynamoDB Message Persistence
+
+```python
+from idp_common.agents.common.dynamodb_logger import DynamoDBMessageTracker
+
+# Add message persistence
+message_tracker = DynamoDBMessageTracker(
+    job_id="analytics-job-123", 
+    user_id="user-456"
+)
+agent.hooks.add_hook(message_tracker)
 ```
 
 ## Adding New Agent Types
@@ -113,7 +200,7 @@ To add a new agent type (e.g., `document_analysis`):
    from strands import Agent
    from .tools import your_tool1, your_tool2, your_tool3
    
-   def create_document_analysis_agent(config):
+   def create_document_analysis_agent(config, session, **kwargs):
        tools = [your_tool1, your_tool2, your_tool3]
        system_prompt = "Your agent prompt here..."
        return Agent(tools=tools, system_prompt=system_prompt)
@@ -135,16 +222,6 @@ To add a new agent type (e.g., `document_analysis`):
    def your_tool(input_param: str) -> dict:
        # Tool implementation
        return {"result": "processed"}
-   
-   @tool
-   def get_database_info() -> str:
-       # Database schema information tool
-       return "Database schema details..."
-   
-   @tool
-   def generate_plot(code: str) -> dict:
-       # Python code execution for visualizations
-       return {"stdout": "output", "stderr": "", "success": True}
    ```
 
 5. **Update the main module** (`__init__.py`):
@@ -160,6 +237,7 @@ The `testing/` directory provides utilities for testing agents locally:
 - **Direct Testing**: Test agents outside of Lambda environment
 - **Configuration Validation**: Verify environment setup
 - **Response Analysis**: Parse and validate agent responses
+- **AgentCore Integration**: Test code interpreter functionality
 
 See [`testing/README.md`](./testing/README.md) for detailed testing instructions.
 
@@ -168,9 +246,41 @@ See [`testing/README.md`](./testing/README.md) for detailed testing instructions
 ### Core Dependencies
 - `strands-agents>=1.0.0` - Core agent framework
 - `boto3` - AWS service integration
+- `bedrock-agentcore` - Secure code execution sandbox
 
 ### Analytics-Specific Dependencies
-- `pandas>=2.0.0` - Data manipulation
+- `pandas>=2.0.0` - Data manipulation (used in sandbox)
+
+### Required AWS Permissions
+
+For analytics agents, the following IAM permissions are required:
+
+```yaml
+# Athena and Glue permissions
+- athena:StartQueryExecution
+- athena:GetQueryExecution
+- athena:GetQueryResults
+- glue:GetTable
+- glue:GetTables
+- glue:GetDatabase
+- glue:GetDatabases
+
+# S3 permissions for query results
+- s3:GetObject
+- s3:PutObject
+- s3:DeleteObject
+
+# Bedrock permissions
+- bedrock:InvokeModel
+- bedrock:InvokeModelWithResponseStream
+
+# AgentCore permissions (CRITICAL for security)
+- bedrock-agentcore:StartCodeInterpreterSession
+- bedrock-agentcore:StopCodeInterpreterSession
+- bedrock-agentcore:InvokeCodeInterpreter
+- bedrock-agentcore:GetCodeInterpreterSession
+- bedrock-agentcore:ListCodeInterpreterSessions
+```
 
 ### Optional Dependencies
 Install specific agent dependencies as needed:
@@ -191,14 +301,29 @@ Agents are designed to work seamlessly in AWS Lambda:
 from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
 
 def handler(event, context):
+    # Change to /tmp for AgentCore compatibility
+    os.chdir('/tmp')
+    
     config = get_analytics_config()  # Loads from environment variables
-    agent = create_analytics_agent(config)
+    agent = create_analytics_agent(
+        config, 
+        session=boto3.Session(),
+        job_id=event.get("jobId"),
+        user_id=event.get("userId")
+    )
     
     query = event.get("query")
     response = agent(query)
     
     return {"response": response}
 ```
+
+### Lambda Environment Considerations
+
+- **Working Directory**: Change to `/tmp` before creating agents (AgentCore requirement)
+- **Session Management**: AgentCore sessions are automatically cleaned up
+- **Memory Requirements**: Analytics agents require at least 1024MB memory
+- **Timeout**: Set appropriate timeout (900s recommended for complex queries)
 
 ## Future Agent Types
 
@@ -209,7 +334,7 @@ The framework is designed to easily support additional agent types:
 - **Quality Assurance**: Validation and quality checking
 - **Custom Agents**: Customer-specific implementations
 
-Each would follow the same simple pattern established by the analytics agent.
+Each would follow the same simple pattern established by the analytics agent, with appropriate security considerations for their specific use cases.
 
 ## Contributing
 
@@ -221,6 +346,8 @@ When adding new agents or modifying existing ones:
 4. Update this README with new agent types
 5. Ensure Lambda compatibility
 6. Follow existing logging and error handling patterns
+7. **Security Review**: Ensure any code execution is properly sandboxed
+8. **Permission Audit**: Document required AWS permissions
 
 ## Support
 
@@ -228,3 +355,4 @@ For questions about the agents module:
 - Check the testing utilities in `testing/`
 - Review existing agent implementations
 - Consult the main IDP documentation
+- Review security architecture for compliance requirements

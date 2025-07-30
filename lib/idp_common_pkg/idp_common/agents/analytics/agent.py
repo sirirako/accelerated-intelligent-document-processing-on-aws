@@ -5,10 +5,8 @@
 Analytics Agent implementation using Strands framework.
 """
 
-import json
 import logging
 import os
-import re
 from typing import Any, Dict
 
 import boto3
@@ -16,80 +14,11 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 from ..common.dynamodb_logger import DynamoDBMessageTracker
-from .config import load_result_format_description
-from .tools import generate_plot, get_database_info, run_athena_query
+from .config import load_python_plot_generation_examples, load_result_format_description
+from .tools import CodeInterpreterTools, get_database_info, run_athena_query
+from .utils import register_code_interpreter_tools
 
 logger = logging.getLogger(__name__)
-
-
-def extract_json_from_markdown(response: str) -> str:
-    """
-    Extract JSON content from markdown code blocks.
-
-    The LLM often returns JSON wrapped in markdown code blocks like:
-    ```json
-    {"key": "value"}
-    ```
-
-    This function extracts the JSON content between the code block markers.
-
-    Args:
-        response: The raw response string from the LLM
-
-    Returns:
-        The extracted JSON string, or the original response if no code blocks found
-    """
-    # Pattern to match ```json ... ``` or ``` ... ``` code blocks
-    json_pattern = r"```(?:json)?\s*\n?(.*?)\n?```"
-
-    match = re.search(json_pattern, response, re.DOTALL | re.IGNORECASE)
-    if match:
-        extracted_json = match.group(1).strip()
-        logger.debug(
-            f"Extracted JSON from markdown code block: {extracted_json[:100]}..."
-        )
-        return extracted_json
-
-    # If no code blocks found, return the original response
-    logger.debug("No markdown code blocks found, returning original response")
-    return response.strip()
-
-
-def parse_agent_response(response) -> Dict[str, Any]:
-    """
-    Parse the agent response, handling Strands AgentResult objects.
-
-    Args:
-        response: The response from the Strands agent (AgentResult)
-
-    Returns:
-        Parsed JSON response as a dictionary
-
-    Raises:
-        ValueError: If the response is not a valid AgentResult
-    """
-    # Check if response is a Strands AgentResult
-    if not hasattr(response, "__str__"):
-        raise ValueError(f"Expected Strands AgentResult, got {type(response)}")
-
-    # Convert AgentResult to string using its __str__ method
-    response_str = str(response)
-    logger.debug(f"Processing AgentResult as string: {response_str[:100]}...")
-
-    # Extract JSON from markdown code blocks if present
-    json_str = extract_json_from_markdown(response_str)
-
-    try:
-        parsed_response = json.loads(json_str)
-        logger.debug(
-            f"Successfully parsed JSON response with type: {parsed_response.get('responseType', 'unknown')}"
-        )
-        return parsed_response
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse extracted JSON: {e}")
-        logger.error(f"Extracted content: {json_str}")
-        # Return a text response with the raw output as fallback
-        return {"responseType": "text", "content": response_str}
 
 
 def create_analytics_agent(
@@ -114,6 +43,8 @@ def create_analytics_agent(
     """
     # Load the output format description
     final_result_format = load_result_format_description()
+    # Load python code examples
+    python_plot_generation_examples = load_python_plot_generation_examples()
 
     # Define the system prompt for the analytics agent
     system_prompt = f"""
@@ -124,30 +55,35 @@ def create_analytics_agent(
     1. Understand the user's question
     2. Use get_database_info tool to understand the database schema
     3. Generate a valid SQL query that answers the question
-    4. Execute the query using the run_athena_query tool. If you receive an error message, correct your SQL query and try again a maximum of 3 times.
+    4. Execute the query using the run_athena_query tool. If you receive an error message, correct your SQL query and try again a maximum of 3 times, then STOP. Do not ever make up fake data.
+    4. Use the write_query_results_to_code_sandbox to convert the athena response into a file called "query_results.csv" in the same environment future python scripts will be executed.
     5. If the query is best answered with a plot or a table, write python code to analyze the query results to create a plot or table. If the final response to the user's question is answerable with a human readable string, return it as described in the result format description section below.
-    6. To execute your plot generation code, use the generate_plot tool and directly return its output without doing any more analysis.
+    6. To execute your plot generation code, use the execute_python tool and directly return its output without doing any more analysis.
     
     When generating SQL:
     - Use standard SQL syntax compatible with Amazon Athena, for example use standard date arithmetic that's compatible with Athena.
     - Include appropriate table joins when needed
     - Use column names exactly as they appear in the schema
     - Always use the run_athena_query tool to execute your queries
+    - If you cannot get your query to work successfully, stop. Do not generate fake or synthetic data.
     
     When writing python:
     - Only write python code to generate plots or tables. Do not use python for any other purpose.
-    - Make sure the python code will output json representing either "table" or "plotData" responseType as described in the above description of the result format
-    - Use built in python libraries, optionally with pandas
-    - Always use the generate_plot tool to execute your python code
+    - The python code should read the query results from "query_results.csv" file provided, for example with a line like `df = pd.read_csv("query_results.csv")`
+    - Make sure the python code will output json representing either "table" or "plotData" responseType as described in the above description of the result format.
+    - Use built in python libraries, optionally with pandas or matplotlib.
+    - Always use the execute_python tool to execute your python code, and be sure to include the reset_state=True flag each time you call this tool.
+    
+    # Here are some python code examples to guide you:
+    {python_plot_generation_examples}
     
     # Result format
-    
     Here is a description of the result format:
     ```markdown
     {final_result_format}
     ```
     
-    Your final response should be directly parsable as json with no additional text before or after. The json should conform to the result format description shown above, with top level key "responseType" being one of "yyotData", "table", or "text".
+    Your final response should be directly parsable as json with no additional text before or after. The json should conform to the result format description shown above, with top level key "responseType" being one of "plotData", "table", or "text". You may have to clean up the output of the python code if, for example, it contains extra strings from logging or otherwise. Return only directly parsable json in your final response.
     """
 
     # Create a new tool function that directly calls run_athena_query with the config
@@ -164,8 +100,19 @@ def create_analytics_agent(
         """
         return run_athena_query(query, config)
 
+    # Initialize code interpreter tools
+    code_interpreter_tools = CodeInterpreterTools(session)
+
+    # Register for cleanup
+    register_code_interpreter_tools(code_interpreter_tools)
+
     # Create the agent with tools and system prompt
-    tools = [run_athena_query_with_config, generate_plot, get_database_info]
+    tools = [
+        run_athena_query_with_config,
+        code_interpreter_tools.write_query_results_to_code_sandbox,
+        code_interpreter_tools.execute_python,
+        get_database_info,
+    ]
 
     # Default is Claude 4 which gets throttled on dev machines
     bedrock_model = BedrockModel(
@@ -182,11 +129,22 @@ def create_analytics_agent(
 
     if enable_monitoring and job_id and user_id:
         try:
+            # Add DynamoDB message tracker for persistence
             message_tracker = DynamoDBMessageTracker(
                 job_id=job_id, user_id=user_id, enabled=enable_monitoring
             )
             agent.hooks.add_hook(message_tracker)
-            logger.info(f"Agent monitoring enabled for job {job_id}")
+            logger.info(f"DynamoDB message tracking enabled for job {job_id}")
+
+            # Also add the AgentMonitor for CloudWatch logging
+            from ..common.monitoring import AgentMonitor
+
+            agent_monitor = AgentMonitor(
+                log_level=logging.INFO, enable_detailed_logging=True
+            )
+            agent.hooks.add_hook(agent_monitor)
+            logger.info(f"CloudWatch agent monitoring enabled for job {job_id}")
+
         except Exception as e:
             logger.warning(f"Failed to initialize agent monitoring: {e}")
     elif enable_monitoring:

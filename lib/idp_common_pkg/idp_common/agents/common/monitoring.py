@@ -142,7 +142,6 @@ class AgentMonitor(HookProvider):
         """
         self.execution_stats["messages_added"] += 1
 
-        print(f"KALEKO DEBUG, on_message_added event! {event.message=}")
         message = event.message
         message_info = {
             "timestamp": datetime.now().isoformat(),
@@ -162,7 +161,7 @@ class AgentMonitor(HookProvider):
         self.monitor_logger.info(f"💬 Message added: [{role}] {content_preview}")
 
         if self.enable_detailed_logging:
-            self.monitor_logger.debug(f"Full message details: {message}")
+            self.monitor_logger.info(f"Full message details: {message}")
 
     def on_before_tool_invocation(self, event) -> None:
         """Handle before tool invocation event."""
@@ -237,11 +236,14 @@ class AgentMonitor(HookProvider):
             if role == "user":
                 for c in message["content"]:
                     if "toolResult" in c:
-                        return {
+                        res = {
                             "role": "tool",
                             "content": f"Tool completed with status '{c['toolResult']['status']}'.",
+                            "debug_tool_output": c["toolResult"],
                             "message_type": type(message).__name__,
                         }
+                        self.monitor_logger.debug(f"Full tool use output: {res}")
+                        return res
 
             # For all other user/assistant messages, return full content
             # Note some assistant messages are themselves a list, with one

@@ -20,14 +20,20 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Execute a SQL query on Amazon Athena.
 
-    Uses boto3 to execute the query on Athena and returns the results.
+    Uses boto3 to execute the query on Athena. Query results are stored in s3.
+    Successful execution will return a dict with result_column_metadata,
+        result_csv_s3_uri, and original_query.
 
     Args:
         query: SQL query string to execute
         config: Configuration dictionary containing Athena settings
 
     Returns:
-        Dict containing either query results or error information
+        Dict containing either s3 URI pointer to query results or error information
+        Query results for a successful query include:
+            result_column_metadata (information about the columns in the result)
+            result_csv_s3_uri (s3 location where results are stored as a csv)
+            original_query (the original query the user entered, for posterity)
     """
     try:
         # Create Athena client
@@ -56,6 +62,9 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
             state = response["QueryExecution"]["Status"]["State"]
             if state == "SUCCEEDED":
                 logger.info("Query succeeded!")
+                query_output_s3_uri = response["QueryExecution"]["ResultConfiguration"][
+                    "OutputLocation"
+                ]
                 break
             elif state in ["FAILED", "CANCELLED"]:
                 logger.error(f"Query {state.lower()}.")
@@ -74,26 +83,19 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
                 QueryExecutionId=query_execution_id
             )
 
-            # Process results
-            columns = [
-                col["Label"]
+            # Extract relevant metadata to share with downstream agents
+            column_metadata = [
+                f"{col['Name']=}, {col['Label']=}, {col['Type']=}, {col['Precision']=}"
                 for col in results["ResultSet"]["ResultSetMetadata"]["ColumnInfo"]
             ]
-            rows = results["ResultSet"]["Rows"][1:]  # Skip header row
 
-            data = []
-            for row in rows:
-                item = {}
-                for i, value in enumerate(row["Data"]):
-                    # Handle null values
-                    if "VarCharValue" in value:
-                        item[columns[i]] = value["VarCharValue"]
-                    else:
-                        item[columns[i]] = None
-                data.append(item)
+            return {
+                "success": True,
+                "result_column_metadata": column_metadata,
+                "result_csv_s3_uri": query_output_s3_uri,
+                "query": query,
+            }
 
-            logger.info(f"Query returned {len(data)} rows")
-            return {"success": True, "data": data, "query": query}
         elif state == "RUNNING":
             # Query is still running after max polling attempts
             logger.warning(

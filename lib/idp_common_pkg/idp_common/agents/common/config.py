@@ -40,6 +40,7 @@ def get_environment_config(required_keys: Optional[list] = None) -> Dict[str, An
 
     # Get Strands-specific logging configuration (separate from general logging)
     strands_log_level_str = os.getenv("STRANDS_LOG_LEVEL", "INFO").upper()
+
     try:
         config["strands_log_level"] = getattr(logging, strands_log_level_str)
     except AttributeError:
@@ -110,11 +111,21 @@ def configure_logging(log_level=None, strands_log_level=None):
     strands_logger = logging.getLogger("strands")
     strands_logger.setLevel(strands_log_level)
 
+    # Explicitly configure monitoring loggers to ensure they appear in CloudWatch
+    monitoring_logger = logging.getLogger("idp_common.agents.common.monitoring")
+    monitoring_logger.setLevel(log_level)
+
+    dynamodb_logger = logging.getLogger("idp_common.agents.common.dynamodb_logger")
+    dynamodb_logger.setLevel(log_level)
+
     logger.debug(
         f"Configured application logging level: {logging.getLevelName(log_level)}"
     )
     logger.debug(
         f"Configured Strands framework logging level: {logging.getLevelName(strands_log_level)}"
+    )
+    logger.debug(
+        f"Configured monitoring loggers level: {logging.getLevelName(log_level)}"
     )
 
 

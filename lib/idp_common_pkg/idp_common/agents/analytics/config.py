@@ -381,7 +381,20 @@ For visualization data (follows Chart.js format):
   "type": "bar"
 }
 ```
+"""
 
+
+def load_python_plot_generation_examples() -> str:
+    """
+    Load sample python plot generation examples.
+    TODO: this is hard coded for now because the assets directory was hard to find in the lambda environment.
+
+
+    Returns:
+        String containing sample python code generation examples
+    """
+
+    return """
 ## Python Libraries and Code Examples
 
 When generating Python code for visualization, you can use the following libraries:
@@ -395,11 +408,8 @@ When generating Python code for visualization, you can use the following librari
 import json
 import pandas as pd
 
-# Assuming 'data' contains the SQL query results
-# data = [{'document_id': 'doc1', 'accuracy': 0.85}, {'document_id': 'doc2', 'accuracy': 0.92}]
-
-# Convert to pandas DataFrame
-df = pd.DataFrame(data)
+# Read query results from local "query_results.csv" file into a dataframe
+df = pd.read_csv("query_results.csv")
 
 # Create table data
 table_data = {
@@ -428,11 +438,8 @@ import json
 import pandas as pd
 import random
 
-# Assuming 'data' contains the SQL query results
-# data = [{'document_type': 'Invoice', 'count': 65}, {'document_type': 'Receipt', 'count': 59}]
-
-# Convert to pandas DataFrame
-df = pd.DataFrame(data)
+# Read query results from local "query_results.csv" file into a dataframe
+df = pd.read_csv("query_results.csv")
 
 # Generate colors
 def generate_colors(n):
