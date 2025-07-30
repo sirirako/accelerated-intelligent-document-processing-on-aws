@@ -17,6 +17,11 @@ import pytest
 sys.modules["strands"] = MagicMock()
 sys.modules["strands.models"] = MagicMock()
 
+# Mock bedrock_agentcore modules before importing analytics modules
+sys.modules["bedrock_agentcore"] = MagicMock()
+sys.modules["bedrock_agentcore.tools"] = MagicMock()
+sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = MagicMock()
+
 
 @pytest.mark.unit
 class TestAthenaQueryLogic:
@@ -212,18 +217,20 @@ class TestToolsIntegration:
         """Test that tool modules can be imported without errors."""
         # This verifies the modules are structured correctly
         from idp_common.agents.analytics.tools import athena_tool
-        from idp_common.agents.analytics.tools import generate_plot_tool
+        from idp_common.agents.analytics.tools import code_interpreter_tools
         from idp_common.agents.analytics.tools import get_database_info_tool
 
-        # Verify the modules have the expected functions
+        # Verify the modules have the expected functions/classes
         assert hasattr(athena_tool, "run_athena_query")
-        assert hasattr(generate_plot_tool, "generate_plot")
+        assert hasattr(code_interpreter_tools, "CodeInterpreterTools")
         assert hasattr(get_database_info_tool, "get_database_info")
 
     def test_tool_function_signatures(self):
         """Test that tool functions have expected signatures."""
         from idp_common.agents.analytics.tools.athena_tool import run_athena_query
-        from idp_common.agents.analytics.tools.generate_plot_tool import generate_plot
+        from idp_common.agents.analytics.tools.code_interpreter_tools import (
+            CodeInterpreterTools,
+        )
 
         import inspect
 
@@ -236,11 +243,14 @@ class TestToolsIntegration:
         # This confirms the decorator was applied
         assert len(athena_params) >= 1  # Should have at least one parameter
 
-        # Test generate plot signature
-        plot_sig = inspect.signature(generate_plot)
-        plot_params = list(plot_sig.parameters.keys())
-        assert len(plot_params) >= 1  # Should have at least one parameter
+        # Test CodeInterpreterTools class
+        assert callable(CodeInterpreterTools)
+
+        # Test that CodeInterpreterTools has the expected methods
+        code_tools_instance = CodeInterpreterTools.__new__(CodeInterpreterTools)
+        assert hasattr(code_tools_instance, "write_query_results_to_code_sandbox")
+        assert hasattr(code_tools_instance, "execute_python")
+        assert hasattr(code_tools_instance, "cleanup")
 
         # Test that functions are callable (most important for unit tests)
         assert callable(run_athena_query)
-        assert callable(generate_plot)

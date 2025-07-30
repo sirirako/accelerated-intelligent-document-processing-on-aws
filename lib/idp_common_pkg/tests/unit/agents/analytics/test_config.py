@@ -18,6 +18,11 @@ import pytest
 sys.modules["strands"] = MagicMock()
 sys.modules["strands.models"] = MagicMock()
 
+# Mock bedrock_agentcore modules before importing analytics modules
+sys.modules["bedrock_agentcore"] = MagicMock()
+sys.modules["bedrock_agentcore.tools"] = MagicMock()
+sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = MagicMock()
+
 from idp_common.agents.analytics.config import (
     get_analytics_config,
     load_db_description,

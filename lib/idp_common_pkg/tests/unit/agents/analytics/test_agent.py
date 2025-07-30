@@ -17,6 +17,11 @@ import pytest
 sys.modules["strands"] = MagicMock()
 sys.modules["strands.models"] = MagicMock()
 
+# Mock bedrock_agentcore modules before importing analytics modules
+sys.modules["bedrock_agentcore"] = MagicMock()
+sys.modules["bedrock_agentcore.tools"] = MagicMock()
+sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = MagicMock()
+
 
 @pytest.mark.unit
 class TestCreateAnalyticsAgent:
