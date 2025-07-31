@@ -121,10 +121,18 @@ def main():
         session = boto3.Session(region_name=config.get("aws_region", "us-east-1"))
         logger.info(f"Boto3 session created for region: {session.region_name}")
 
-        # Create the analytics agent
+        # Create the analytics agent with monitoring enabled
         logger.info("Creating analytics agent...")
-        agent = create_analytics_agent(config, session)
-        logger.info("Analytics agent created successfully")
+        # Add test job_id and user_id to enable monitoring
+        test_job_id = "test-analytics-job0"
+        test_user_id = "test-user"
+        logger.info(
+            f"Enabling monitoring with job_id={test_job_id}, user_id={test_user_id}"
+        )
+        agent = create_analytics_agent(
+            config, session, job_id=test_job_id, user_id=test_user_id
+        )
+        logger.info("Analytics agent created successfully with monitoring enabled")
 
         # If a question was provided, process it
         if args.question:

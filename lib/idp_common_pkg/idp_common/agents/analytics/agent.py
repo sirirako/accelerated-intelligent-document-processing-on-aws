@@ -27,6 +27,7 @@ def create_analytics_agent(
     job_id: str = None,
     user_id: str = None,
     enable_monitoring: bool = None,
+    include_debug_tool_output: bool = False,
 ) -> Agent:
     """
     Create and configure the analytics agent with appropriate tools and system prompt.
@@ -37,6 +38,7 @@ def create_analytics_agent(
         job_id: Analytics job ID for monitoring (optional)
         user_id: User ID for monitoring (optional)
         enable_monitoring: Whether to enable agent monitoring (defaults to env var or True)
+        include_debug_tool_output: Whether to include debug_tool_output in tool result messages (defaults to False)
 
     Returns:
         Agent: Configured Strands agent instance
@@ -131,16 +133,27 @@ def create_analytics_agent(
         try:
             # Add DynamoDB message tracker for persistence
             message_tracker = DynamoDBMessageTracker(
-                job_id=job_id, user_id=user_id, enabled=enable_monitoring
+                job_id=job_id,
+                user_id=user_id,
+                enabled=enable_monitoring,
+                include_debug_tool_output=include_debug_tool_output,
             )
             agent.hooks.add_hook(message_tracker)
             logger.info(f"DynamoDB message tracking enabled for job {job_id}")
 
-            # Also add the AgentMonitor for CloudWatch logging
+            # Also add the AgentMonitor for CloudWatch logging with throttling callback
             from ..common.monitoring import AgentMonitor
 
+            def throttling_callback(exception):
+                """Callback to handle throttling exceptions by logging to DynamoDB."""
+                if message_tracker.enabled and message_tracker.db_logger:
+                    message_tracker._handle_throttling_with_agent_message(exception)
+
             agent_monitor = AgentMonitor(
-                log_level=logging.INFO, enable_detailed_logging=True
+                log_level=logging.INFO,
+                enable_detailed_logging=True,
+                throttling_callback=throttling_callback,
+                include_debug_tool_output=include_debug_tool_output,
             )
             agent.hooks.add_hook(agent_monitor)
             logger.info(f"CloudWatch agent monitoring enabled for job {job_id}")

@@ -46,7 +46,11 @@ class AgentMonitor(HookProvider):
     """
 
     def __init__(
-        self, log_level: int = logging.INFO, enable_detailed_logging: bool = True
+        self,
+        log_level: int = logging.INFO,
+        enable_detailed_logging: bool = True,
+        throttling_callback=None,
+        include_debug_tool_output: bool = False,
     ):
         """
         Initialize the agent monitor.
@@ -54,9 +58,13 @@ class AgentMonitor(HookProvider):
         Args:
             log_level: Logging level for monitor output
             enable_detailed_logging: Whether to log detailed event information
+            throttling_callback: Optional callback function to call when throttling is detected
+            include_debug_tool_output: Whether to include debug_tool_output in tool result messages
         """
         self.log_level = log_level
         self.enable_detailed_logging = enable_detailed_logging
+        self.throttling_callback = throttling_callback
+        self.include_debug_tool_output = include_debug_tool_output
         self.execution_stats = {
             "messages_added": 0,
             "tool_invocations": 0,
@@ -161,7 +169,7 @@ class AgentMonitor(HookProvider):
         self.monitor_logger.info(f"💬 Message added: [{role}] {content_preview}")
 
         if self.enable_detailed_logging:
-            self.monitor_logger.info(f"Full message details: {message}")
+            self.monitor_logger.debug(f"Full message details: {message}")
 
     def on_before_tool_invocation(self, event) -> None:
         """Handle before tool invocation event."""
@@ -218,11 +226,78 @@ class AgentMonitor(HookProvider):
             "timestamp": datetime.now().isoformat(),
         }
 
+        # Check for throttling exceptions
+        if event.exception:
+            self._handle_model_exception(event.exception)
+
         self.model_history.append(model_info)
 
         self.monitor_logger.info("✅ Model invocation completed")
         if self.enable_detailed_logging:
             self.monitor_logger.debug(f"Model response details: {event}")
+
+    def _handle_model_exception(self, exception: Exception) -> None:
+        """Handle exceptions from model invocations, particularly throttling errors."""
+        from botocore.exceptions import ClientError
+
+        # Check for throttling patterns in the exception string first
+        exception_str = str(exception)
+        throttling_patterns = [
+            "ThrottlingException",
+            "ModelThrottledException",
+            "ServiceQuotaExceededException",
+            "RequestLimitExceeded",
+            "Too many requests",
+            "throttl",  # catch variations of throttling
+        ]
+
+        is_throttling = any(
+            pattern.lower() in exception_str.lower() for pattern in throttling_patterns
+        )
+
+        if isinstance(exception, ClientError):
+            error_code = exception.response.get("Error", {}).get("Code", "")
+            error_message = exception.response.get("Error", {}).get("Message", "")
+
+            # Check if this is a throttling-related error
+            throttling_errors = [
+                "ThrottlingException",
+                "ModelThrottledException",
+                "ServiceQuotaExceededException",
+                "RequestLimitExceeded",
+            ]
+
+            if error_code in throttling_errors:
+                self.monitor_logger.error(
+                    f"❌ Model invocation error: {error_code} - {error_message}"
+                )
+
+                # Call throttling callback if provided
+                if self.throttling_callback:
+                    try:
+                        self.throttling_callback(exception)
+                    except Exception as e:
+                        self.monitor_logger.error(f"Error in throttling callback: {e}")
+            else:
+                self.monitor_logger.error(
+                    f"❌ Model invocation error: {error_code} - {error_message}"
+                )
+        elif is_throttling:
+            # Handle non-ClientError throttling exceptions (like ModelThrottledException)
+            self.monitor_logger.error(
+                f"❌ Model invocation error: {type(exception).__name__} - {str(exception)}"
+            )
+
+            # Call throttling callback if provided
+            if self.throttling_callback:
+                try:
+                    self.throttling_callback(exception)
+                except Exception as e:
+                    self.monitor_logger.error(f"Error in throttling callback: {e}")
+        else:
+            self.monitor_logger.error(
+                f"❌ Model invocation error: {type(exception).__name__} - {str(exception)}"
+            )
 
     def _get_message_preview(self, message) -> Dict[str, Any]:
         """Get message content and metadata for logging."""
@@ -239,10 +314,15 @@ class AgentMonitor(HookProvider):
                         res = {
                             "role": "tool",
                             "content": f"Tool completed with status '{c['toolResult']['status']}'.",
-                            "debug_tool_output": c["toolResult"],
                             "message_type": type(message).__name__,
                         }
-                        self.monitor_logger.debug(f"Full tool use output: {res}")
+
+                        # Only include debug_tool_output if the flag is enabled
+                        if self.include_debug_tool_output:
+                            res["debug_tool_output"] = c["toolResult"]
+
+                        if self.enable_detailed_logging:
+                            self.monitor_logger.debug(f"Full tool use output: {res}")
                         return res
 
             # For all other user/assistant messages, return full content
@@ -321,6 +401,106 @@ class AgentMonitor(HookProvider):
         self.message_history.clear()
         self.tool_history.clear()
         self.model_history.clear()
+
+
+class ThrottlingMonitor(HookProvider):
+    """
+    Specialized hook provider for monitoring throttling events.
+
+    This class focuses specifically on detecting and logging throttling exceptions
+    that occur during model invocations, storing them as mock agent messages in DynamoDB.
+    """
+
+    def __init__(self, job_id: str, user_id: str, db_logger=None):
+        """
+        Initialize the throttling monitor.
+
+        Args:
+            job_id: The analytics job ID
+            user_id: The user ID who owns the job
+            db_logger: Optional DynamoDB logger instance
+        """
+        self.job_id = job_id
+        self.user_id = user_id
+        self.db_logger = db_logger
+        self.throttling_events = []
+        self.monitor_logger = logging.getLogger(f"{__name__}.ThrottlingMonitor")
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register throttling monitoring callbacks."""
+        if EXPERIMENTAL_EVENTS_AVAILABLE:
+            registry.add_callback(
+                AfterModelInvocationEvent, self.on_after_model_invocation
+            )
+        else:
+            self.monitor_logger.warning(
+                "Experimental events not available - throttling monitoring disabled"
+            )
+
+    def on_after_model_invocation(self, event) -> None:
+        """Handle after model invocation event to detect throttling."""
+        if not EXPERIMENTAL_EVENTS_AVAILABLE:
+            return
+
+        # Check for throttling exceptions
+        if event.exception:
+            self._handle_model_exception(event.exception)
+
+    def _handle_model_exception(self, exception: Exception) -> None:
+        """Handle exceptions from model invocations, focusing on throttling errors."""
+        from botocore.exceptions import ClientError
+
+        if isinstance(exception, ClientError):
+            error_code = exception.response.get("Error", {}).get("Code", "")
+            error_message = exception.response.get("Error", {}).get("Message", "")
+
+            # Check if this is a throttling-related error
+            throttling_errors = [
+                "ThrottlingException",
+                "ModelThrottledException",
+                "ServiceQuotaExceededException",
+                "RequestLimitExceeded",
+            ]
+
+            if error_code in throttling_errors:
+                throttling_info = {
+                    "timestamp": datetime.now().isoformat(),
+                    "job_id": self.job_id,
+                    "user_id": self.user_id,
+                    "error_code": error_code,
+                    "error_message": error_message,
+                    "exception_type": type(exception).__name__,
+                }
+
+                # Store locally
+                self.throttling_events.append(throttling_info)
+
+                # Log to CloudWatch
+                self.monitor_logger.warning(
+                    f"🚫 Throttling detected for job {self.job_id}: {error_code} - {error_message}"
+                )
+
+                # Log to DynamoDB if logger is available
+                if self.db_logger:
+                    try:
+                        self.db_logger.log_throttling_event_async(
+                            self.job_id, self.user_id, throttling_info
+                        )
+                        self.monitor_logger.info(
+                            f"Throttling event logged to DynamoDB for job {self.job_id}"
+                        )
+                    except Exception as e:
+                        self.monitor_logger.error(
+                            f"Failed to log throttling event to DynamoDB: {e}"
+                        )
+
+    def get_throttling_events(self) -> List[Dict[str, Any]]:
+        """Get all recorded throttling events."""
+        return self.throttling_events.copy()
+
+    def clear_throttling_events(self) -> None:
+        """Clear all recorded throttling events."""
+        self.throttling_events.clear()
 
 
 class MessageTracker(HookProvider):
