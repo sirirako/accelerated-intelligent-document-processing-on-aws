@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { Container, Header, Box, Spinner, SpaceBetween, Button, Modal } from '@awsui/components-react';
 
@@ -9,6 +9,24 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
   const messagesEndRef = useRef(null);
   const [sqlModalVisible, setSqlModalVisible] = useState(false);
   const [currentSqlQuery, setCurrentSqlQuery] = useState('');
+  const [codeModalVisible, setCodeModalVisible] = useState(false);
+  const [currentPythonCode, setCurrentPythonCode] = useState('');
+
+  // Suppress ResizeObserver errors in development
+  useEffect(() => {
+    const handleResizeObserverError = (e) => {
+      if (e.message === 'ResizeObserver loop completed with undelivered notifications.') {
+        e.stopImmediatePropagation();
+        return false;
+      }
+      return true;
+    };
+
+    window.addEventListener('error', handleResizeObserverError);
+    return () => {
+      window.removeEventListener('error', handleResizeObserverError);
+    };
+  }, []);
 
   // Extract SQL query from tool use content
   const extractSqlQuery = (originalMessage) => {
@@ -25,14 +43,112 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
     return null;
   };
 
-  // Show SQL query modal
-  const showSqlQuery = (originalMessage) => {
-    const sqlQuery = extractSqlQuery(originalMessage);
-    if (sqlQuery) {
-      setCurrentSqlQuery(sqlQuery);
-      setSqlModalVisible(true);
+  // Extract Python code from tool use content
+  const extractPythonCode = (originalMessage) => {
+    if (!originalMessage || !originalMessage.content) return null;
+
+    // Handle array content format
+    if (Array.isArray(originalMessage.content)) {
+      const codeItem = originalMessage.content.find(
+        (item) => item && item.toolUse && item.toolUse.name === 'execute_python',
+      );
+      return codeItem?.toolUse?.input?.code || null;
     }
+
+    return null;
   };
+
+  // Show SQL query modal with error handling
+  const showSqlQuery = useCallback((originalMessage) => {
+    try {
+      const sqlQuery = extractSqlQuery(originalMessage);
+      if (sqlQuery) {
+        setCurrentSqlQuery(sqlQuery);
+        // Use setTimeout to avoid ResizeObserver issues
+        setTimeout(() => {
+          setSqlModalVisible(true);
+        }, 0);
+      }
+    } catch (error) {
+      console.warn('Error showing SQL query:', error);
+    }
+  }, []);
+
+  // Show Python code modal with error handling
+  const showPythonCode = useCallback((originalMessage) => {
+    try {
+      const pythonCode = extractPythonCode(originalMessage);
+      if (pythonCode) {
+        setCurrentPythonCode(pythonCode);
+        // Use setTimeout to avoid ResizeObserver issues
+        setTimeout(() => {
+          setCodeModalVisible(true);
+        }, 0);
+      }
+    } catch (error) {
+      console.warn('Error showing Python code:', error);
+    }
+  }, []);
+
+  // Handle code modal dismiss with error handling
+  const handleCodeModalDismiss = useCallback(() => {
+    try {
+      setCodeModalVisible(false);
+      setCurrentPythonCode('');
+    } catch (error) {
+      console.warn('Error dismissing code modal:', error);
+    }
+  }, []);
+
+  // Handle copy code to clipboard with error handling
+  const handleCopyCodeToClipboard = useCallback(() => {
+    try {
+      if (currentPythonCode && navigator.clipboard) {
+        navigator.clipboard.writeText(currentPythonCode).catch((error) => {
+          console.warn('Failed to copy code to clipboard:', error);
+          // Fallback for older browsers
+          const textArea = document.createElement('textarea');
+          textArea.value = currentPythonCode;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+        });
+      }
+    } catch (error) {
+      console.warn('Error copying code to clipboard:', error);
+    }
+  }, [currentPythonCode]);
+
+  // Handle modal dismiss with error handling
+  const handleModalDismiss = useCallback(() => {
+    try {
+      setSqlModalVisible(false);
+      setCurrentSqlQuery('');
+    } catch (error) {
+      console.warn('Error dismissing modal:', error);
+    }
+  }, []);
+
+  // Handle copy to clipboard with error handling
+  const handleCopyToClipboard = useCallback(() => {
+    try {
+      if (currentSqlQuery && navigator.clipboard) {
+        navigator.clipboard.writeText(currentSqlQuery).catch((error) => {
+          console.warn('Failed to copy to clipboard:', error);
+          // Fallback for older browsers
+          const textArea = document.createElement('textarea');
+          textArea.value = currentSqlQuery;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+        });
+      }
+    } catch (error) {
+      console.warn('Error copying to clipboard:', error);
+    }
+  }, [currentSqlQuery]);
 
   // Parse and process messages using useMemo to avoid re-render loops
   const messages = useMemo(() => {
@@ -203,7 +319,7 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
   };
 
   // Get role display name and styling
-  const getRoleInfo = (role) => {
+  const getRoleInfo = (role, messageType) => {
     switch (role) {
       case 'user':
         return { display: 'User', color: '#0073bb', icon: '👤' };
@@ -211,6 +327,11 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
         return { display: 'Assistant', color: '#037f0c', icon: '🤖' };
       case 'tool':
         return { display: 'Tool', color: '#8b5a00', icon: '🔧' };
+      case 'exception':
+        if (messageType === 'throttling_exception') {
+          return { display: 'Throttling', color: '#ff9900', icon: '⚠️' };
+        }
+        return { display: 'Exception', color: '#d13212', icon: '❌' };
       default:
         return { display: role || 'Unknown', color: '#666', icon: '❓' };
     }
@@ -260,9 +381,12 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
 
   // Render individual message
   const renderMessage = (message, index) => {
-    const roleInfo = getRoleInfo(message.role);
+    const roleInfo = getRoleInfo(message.role, message.message_type);
     const timestamp = formatTimestamp(message.timestamp);
     let textContent = extractTextContent(message.content);
+
+    // Handle throttling messages specially
+    const isThrottlingMessage = message.role === 'exception' && message.message_type === 'throttling_exception';
 
     // For tool messages, if we have a tool_name, show it more prominently
     if (message.role === 'tool' && message.tool_name) {
@@ -279,8 +403,23 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
     const isAthenaQuery = message.role === 'tool' && message.tool_name === 'run_athena_query_with_config';
     const hasSqlQuery = isAthenaQuery && message.originalMessage && extractSqlQuery(message.originalMessage);
 
+    // Check if this is an execute_python tool and has Python code
+    const isPythonExecution = message.role === 'tool' && message.tool_name === 'execute_python';
+    const hasPythonCode = isPythonExecution && message.originalMessage && extractPythonCode(message.originalMessage);
+
     // Create a unique key for this message
     const messageKey = `${message.role}-${message.sequence_number}-${index}-${message.timestamp}`;
+
+    // Apply styling for throttling messages
+    const messageStyle = isThrottlingMessage
+      ? {
+          opacity: 0.7,
+          backgroundColor: '#fff8f0',
+          borderRadius: '4px',
+          padding: '4px',
+          margin: '2px 0',
+        }
+      : {};
 
     return (
       <Box key={messageKey} padding={{ vertical: 'xs', horizontal: 's' }}>
@@ -289,6 +428,7 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
             borderLeft: `3px solid ${roleInfo.color}`,
             paddingLeft: '8px',
             marginBottom: '4px',
+            ...messageStyle,
           }}
         >
           <div
@@ -329,6 +469,22 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
                 {message.tool_name}
               </span>
             )}
+            {isThrottlingMessage && message.throttling_details && (
+              <span
+                style={{
+                  marginLeft: '6px',
+                  fontSize: '11px',
+                  backgroundColor: '#fff3cd',
+                  color: '#856404',
+                  padding: '1px 4px',
+                  borderRadius: '2px',
+                  fontWeight: 'normal',
+                  border: '1px solid #ffeaa7',
+                }}
+              >
+                {message.throttling_details.error_code}
+              </span>
+            )}
             {hasSqlQuery && (
               <button
                 type="button"
@@ -358,9 +514,39 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
                 View SQL
               </button>
             )}
+            {hasPythonCode && (
+              <button
+                type="button"
+                onClick={() => showPythonCode(message.originalMessage)}
+                style={{
+                  marginLeft: '8px',
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  backgroundColor: '#0073bb',
+                  color: 'white',
+                  border: '1px solid #0073bb',
+                  borderRadius: '4px',
+                  textDecoration: 'none',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#005a9e';
+                  e.target.style.borderColor = '#005a9e';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#0073bb';
+                  e.target.style.borderColor = '#0073bb';
+                }}
+              >
+                View Code
+              </button>
+            )}
           </div>
-          {/* Hide content for tool request messages (with tool_name), keep for tool response messages */}
-          {!(message.role === 'tool' && message.tool_name) && (
+          {/* Hide content for tool request messages (with tool_name) and throttling messages */}
+          {/* Keep content for tool response messages */}
+          {!(message.role === 'tool' && message.tool_name) && !isThrottlingMessage && (
             <div
               style={{
                 fontSize: '13px',
@@ -434,49 +620,88 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
       </Container>
 
       {/* SQL Query Modal */}
-      <Modal
-        onDismiss={() => setSqlModalVisible(false)}
-        visible={sqlModalVisible}
-        header="SQL Query"
-        size="large"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                variant="normal"
-                onClick={() => {
-                  navigator.clipboard.writeText(currentSqlQuery);
-                }}
-              >
-                Copy to Clipboard
-              </Button>
-              <Button variant="primary" onClick={() => setSqlModalVisible(false)}>
-                Close
-              </Button>
-            </SpaceBetween>
+      {sqlModalVisible && (
+        <Modal
+          onDismiss={handleModalDismiss}
+          visible={sqlModalVisible}
+          header="SQL Query"
+          size="large"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button variant="normal" onClick={handleCopyToClipboard}>
+                  Copy to Clipboard
+                </Button>
+                <Button variant="primary" onClick={handleModalDismiss}>
+                  Close
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <Box padding="s">
+            <div
+              style={{
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #e1e4e8',
+                borderRadius: '6px',
+                padding: '16px',
+                fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "Courier New", monospace',
+                fontSize: '14px',
+                lineHeight: '1.45',
+                overflow: 'auto',
+                maxHeight: '400px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {currentSqlQuery || 'No SQL query available'}
+            </div>
           </Box>
-        }
-      >
-        <Box padding="s">
-          <div
-            style={{
-              backgroundColor: '#f8f9fa',
-              border: '1px solid #e1e4e8',
-              borderRadius: '6px',
-              padding: '16px',
-              fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "Courier New", monospace',
-              fontSize: '14px',
-              lineHeight: '1.45',
-              overflow: 'auto',
-              maxHeight: '400px',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {currentSqlQuery || 'No SQL query available'}
-          </div>
-        </Box>
-      </Modal>
+        </Modal>
+      )}
+
+      {/* Python Code Modal */}
+      {codeModalVisible && (
+        <Modal
+          onDismiss={handleCodeModalDismiss}
+          visible={codeModalVisible}
+          header="Python Code"
+          size="large"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button variant="normal" onClick={handleCopyCodeToClipboard}>
+                  Copy to Clipboard
+                </Button>
+                <Button variant="primary" onClick={handleCodeModalDismiss}>
+                  Close
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <Box padding="s">
+            <div
+              style={{
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #e1e4e8',
+                borderRadius: '6px',
+                padding: '16px',
+                fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "Courier New", monospace',
+                fontSize: '14px',
+                lineHeight: '1.45',
+                overflow: 'auto',
+                maxHeight: '400px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {currentPythonCode || 'No Python code available'}
+            </div>
+          </Box>
+        </Modal>
+      )}
     </>
   );
 };
