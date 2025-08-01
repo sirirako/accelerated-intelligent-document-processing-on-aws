@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { API, Logger } from 'aws-amplify';
-import { FormField, Input, Button, Grid, Box, Select, SpaceBetween } from '@awsui/components-react';
+import { FormField, Input, Button, Grid, Box, SpaceBetween, ButtonDropdown } from '@awsui/components-react';
 import listAnalyticsJobs from '../../graphql/queries/listAnalyticsJobs';
+import deleteAnalyticsJob from '../../graphql/queries/deleteAnalyticsJob';
 
 const logger = new Logger('AnalyticsQueryInput');
 
@@ -73,21 +74,21 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
           const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
 
           // Check if dates are valid
-          if (!Number.isNaN(dateA.getTime()) && !Number.isNaN(dateB.getTime())) {
-            return dateB - dateA;
+          if (Number.isNaN(dateA.getTime()) || Number.isNaN(dateB.getTime())) {
+            // Fall back to string comparison if dates are invalid
+            return (b.createdAt || '').localeCompare(a.createdAt || '');
           }
 
-          // Fallback to string comparison
-          return (b.createdAt || '').localeCompare(a.createdAt || '');
+          return dateB.getTime() - dateA.getTime();
         } catch (e) {
-          logger.warn('Error sorting jobs by date:', e);
-          // Fallback to string comparison of jobId as last resort
-          return (b.jobId || '').localeCompare(a.jobId || '');
+          logger.warn('Error sorting jobs by date, using string comparison:', e);
+          // Fall back to string comparison
+          return (b.createdAt || '').localeCompare(a.createdAt || '');
         }
       });
 
+      logger.debug('Processed and sorted jobs:', sortedJobs);
       setQueryHistory(sortedJobs);
-      logger.debug('Query history loaded:', sortedJobs.length);
     } catch (err) {
       logger.error('Error fetching query history:', err);
       // Continue with empty history rather than breaking the component
@@ -123,26 +124,16 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     }
   };
 
-  const handleHistorySelection = ({ detail }) => {
-    if (detail.selectedOption) {
-      const selectedJob = queryHistory.find((job) => job.jobId === detail.selectedOption.value);
-      if (selectedJob) {
-        setQuery(selectedJob.query);
-        setSelectedOption(detail.selectedOption);
+  const handleDropdownItemClick = ({ detail }) => {
+    const selectedJob = queryHistory.find((job) => job.jobId === detail.id);
+    if (selectedJob) {
+      setQuery(selectedJob.query);
+      setSelectedOption({ value: selectedJob.jobId, label: selectedJob.query });
 
-        // If the job is completed, also submit the result to display it
-        if (selectedJob.status === 'COMPLETED') {
-          onSubmit(selectedJob.query, selectedJob.jobId);
-        }
+      // If the job is completed, also submit the result to display it
+      if (selectedJob.status === 'COMPLETED') {
+        onSubmit(selectedJob.query, selectedJob.jobId);
       }
-    }
-  };
-
-  // Handle dropdown open event
-  const handleDropdownOpen = (event) => {
-    if (event.detail.open) {
-      // Dropdown is being opened, fetch fresh data
-      fetchQueryHistory();
     }
   };
 
@@ -161,27 +152,73 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     }
   };
 
-  // Create options for the dropdown
-  const historyOptions = queryHistory
-    .map((job) => {
-      try {
-        return {
-          label: `${
-            job.query?.length > 50 ? `${job.query.substring(0, 50)}...` : job.query || 'No query'
-          } (${formatDate(job.createdAt)})`,
-          value: job.jobId,
-          description: job.status === 'COMPLETED' ? 'Completed' : job.status || 'Unknown status',
-        };
-      } catch (e) {
-        logger.warn(`Error creating history option for job: ${job?.jobId}`, e);
-        return {
-          label: `Query ${job?.jobId || 'unknown'}`,
-          value: job?.jobId || 'unknown',
-          description: 'Error displaying query details',
-        };
-      }
-    })
-    .filter((option) => option.value !== 'unknown'); // Filter out any invalid options
+  // Create dropdown items with delete functionality
+  const createDropdownItems = () => {
+    if (queryHistory.length === 0) {
+      return [{ text: 'No previous queries found', disabled: true }];
+    }
+
+    return queryHistory.map((job) => {
+      const displayText = job.query?.length > 50 ? `${job.query.substring(0, 50)}...` : job.query || 'No query';
+      const dateText = formatDate(job.createdAt);
+
+      return {
+        id: job.jobId,
+        text: (
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%', minHeight: '40px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 'normal', marginBottom: '2px' }}>{displayText}</div>
+              <div style={{ fontSize: '12px', color: '#5f6b7a' }}>
+                {dateText} • {job.status === 'COMPLETED' ? 'Completed' : job.status || 'Unknown status'}
+              </div>
+            </div>
+            <Button
+              variant="icon"
+              iconName="remove"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await API.graphql({
+                    query: deleteAnalyticsJob,
+                    variables: {
+                      jobId: job.jobId,
+                    },
+                  });
+
+                  logger.debug('Successfully deleted job:', job.jobId);
+
+                  // Remove the deleted job from the local state
+                  setQueryHistory((prev) => prev.filter((historyJob) => historyJob.jobId !== job.jobId));
+
+                  // If the deleted job was currently selected, clear the selection
+                  if (selectedOption && selectedOption.value === job.jobId) {
+                    setSelectedOption(null);
+                    setQuery('');
+                  }
+                } catch (err) {
+                  logger.error('Error deleting job:', err);
+                }
+              }}
+              ariaLabel={`Delete query: ${displayText}`}
+              style={{
+                opacity: 0.7,
+                transition: 'opacity 0.2s',
+                marginLeft: 'auto',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.opacity = 1;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.opacity = 0.7;
+              }}
+            />
+          </div>
+        ),
+        disabled: false,
+      };
+    });
+  };
 
   return (
     <form onSubmit={handleSubmit}>
@@ -205,19 +242,21 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
         </Grid>
 
         <FormField label="Previous queries">
-          <Select
-            placeholder="Select a previous query"
-            options={historyOptions}
-            selectedOption={selectedOption}
-            onChange={handleHistorySelection}
+          <ButtonDropdown
+            items={createDropdownItems()}
+            onItemClick={handleDropdownItemClick}
             onFocus={() => fetchQueryHistory()}
-            expandToViewport
-            loadingText="Loading query history..."
-            statusType={isLoadingHistory ? 'loading' : 'finished'}
-            empty="No previous queries found"
+            loading={isLoadingHistory}
             disabled={isSubmitting}
-            onExpandableItemClick={handleDropdownOpen}
-          />
+          >
+            {(() => {
+              if (!selectedOption) return 'Select a previous query';
+              if (selectedOption.label?.length > 40) {
+                return `${selectedOption.label.substring(0, 40)}...`;
+              }
+              return selectedOption.label || 'Selected query';
+            })()}
+          </ButtonDropdown>
         </FormField>
       </SpaceBetween>
     </form>

@@ -3689,6 +3689,37 @@ Resources:
       ResponseMappingTemplate: |-
         true
 
+  DeleteAnalyticsJobResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteAnalyticsJob
+      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      RequestMappingTemplate: |-
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      ResponseMappingTemplate: |-
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #else
+          true
+        #end
+
   AnalyticsTableDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
