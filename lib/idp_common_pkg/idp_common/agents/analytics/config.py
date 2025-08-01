@@ -63,16 +63,19 @@ def load_db_description() -> str:
 ## Overview 
 
 1. Document Evaluations Table (document_evaluations)
+   * Only useful if users have run "evaluation" jobs, which are not run by default.
    * Contains document-level evaluation metrics
    * Columns include: document_id, input_key, evaluation_date, accuracy, precision, recall, f1_score, false_alarm_rate, false_discovery_rate, execution_time
    * Partitioned by date (YYYY-MM-DD format)
 
 2. Section Evaluations Table (section_evaluations)
+   * Only useful if users have run "evaluation" jobs, which are not run by default.
    * Contains section-level evaluation metrics
    * Columns include: document_id, section_id, section_type, accuracy, precision, recall, f1_score, false_alarm_rate, false_discovery_rate, evaluation_date
    * Partitioned by date (YYYY-MM-DD format)
 
 3. Attribute Evaluations Table (attribute_evaluations)
+   * Only useful if users have run "evaluation" jobs, which are not run by default.
    * Contains attribute-level evaluation metrics
    * Columns include: document_id, section_id, section_type, attribute_name, expected, actual, matched, score, reason, evaluation_method, confidence, confidence_threshold, evaluation_date
    * Partitioned by date (YYYY-MM-DD format)
@@ -80,6 +83,7 @@ def load_db_description() -> str:
 4. Metering Table (metering)
    * Captures detailed usage metrics for document processing operations
    * Useful for monitoring IDP application usage (document processing throughput, costs, token usage, etc)
+   * Populated every time a document is processed (even if no evaluations are run)
    * Columns include: document_id, context, service_api, unit, value, number_of_pages, timestamp
    * Partitioned by date (YYYY-MM-DD format)
 
