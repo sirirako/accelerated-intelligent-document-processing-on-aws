@@ -7,6 +7,7 @@ import { Container, Header, Box, Spinner, SpaceBetween, Button, Modal } from '@a
 
 const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const [sqlModalVisible, setSqlModalVisible] = useState(false);
   const [currentSqlQuery, setCurrentSqlQuery] = useState('');
   const [codeModalVisible, setCodeModalVisible] = useState(false);
@@ -300,10 +301,10 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
     }
   }, [agentMessages]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom within the messages container (not the whole page)
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
   }, [messages, isProcessing]);
 
@@ -577,6 +578,7 @@ const AgentMessagesDisplay = ({ agentMessages, isProcessing }) => {
         }
       >
         <div
+          ref={messagesContainerRef}
           style={{
             backgroundColor: '#fafafa',
             border: '1px solid #e0e0e0',
