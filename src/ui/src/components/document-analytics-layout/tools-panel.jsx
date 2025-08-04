@@ -36,7 +36,7 @@ const ToolsPanel = () => {
         </ol>
         <h3>Example queries</h3>
         <ul>
-          <li>Show me document processing volume over time</li>
+          <li>How has number of pages processed per day trended over the past three weeks?</li>
           <li>What are the most common document types?</li>
           <li>What is the average processing time per document?</li>
         </ul>

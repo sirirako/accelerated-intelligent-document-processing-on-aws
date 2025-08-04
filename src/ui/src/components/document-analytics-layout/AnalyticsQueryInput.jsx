@@ -226,7 +226,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
         <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
           <FormField label="Enter your analytics query">
             <Input
-              placeholder="e.g., Show me document processing volume over time"
+              placeholder="How has number of pages processed per day trended over the past three weeks?"
               value={query}
               onChange={({ detail }) => setQuery(detail.value)}
               disabled={isSubmitting}
