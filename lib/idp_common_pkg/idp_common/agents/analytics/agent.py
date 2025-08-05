@@ -62,12 +62,15 @@ def create_analytics_agent(
     5. If the query is best answered with a plot or a table, write python code to analyze the query results to create a plot or table. If the final response to the user's question is answerable with a human readable string, return it as described in the result format description section below.
     6. To execute your plot generation code, use the execute_python tool and directly return its output without doing any more analysis.
     
+    DO NOT attempt to execute multiple tools in parallel. The input of some tools depend on the output of others. Only ever execute one tool at a time.
+    
     When generating SQL:
-    - Use standard SQL syntax compatible with Amazon Athena, for example use standard date arithmetic that's compatible with Athena.
+    - Use standard SQL syntax compatible with Amazon Athena, for example use standard date arithmetic that's compatible with Athena and putting double quotation marks around column names which include a period in them
     - Include appropriate table joins when needed
     - Use column names exactly as they appear in the schema
     - Always use the run_athena_query tool to execute your queries
     - If you cannot get your query to work successfully, stop. Do not generate fake or synthetic data.
+    - The SQL query does not have to answer the question directly, it just needs to return the data required to answer the question. Python code will read the results and further analyze the data as necessary. If the SQL query is too complicated, you can simplify it to rely on post processing logic later.
     
     When writing python:
     - Only write python code to generate plots or tables. Do not use python for any other purpose.
@@ -84,6 +87,8 @@ def create_analytics_agent(
     ```markdown
     {final_result_format}
     ```
+    
+    Remember, DO NOT attempt to execute multiple tools in parallel. The input of some tools depend on the output of others. Only ever execute one tool at a time.
     
     Your final response should be directly parsable as json with no additional text before or after. The json should conform to the result format description shown above, with top level key "responseType" being one of "plotData", "table", or "text". You may have to clean up the output of the python code if, for example, it contains extra strings from logging or otherwise. Return only directly parsable json in your final response.
     """
@@ -116,10 +121,10 @@ def create_analytics_agent(
         get_database_info,
     ]
 
-    # Default is Claude 4 which gets throttled on dev machines
-    bedrock_model = BedrockModel(
-        model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0", boto_session=session
-    )
+    # Get model ID from environment variable
+    model_id = os.environ.get("DOCUMENT_ANALYSIS_AGENT_MODEL_ID")
+
+    bedrock_model = BedrockModel(model_id=model_id, boto_session=session)
 
     agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
 
