@@ -24,7 +24,7 @@ def run_athena_query(
 
     Uses boto3 to execute the query on Athena. Query results are stored in s3.
     Successful execution will return a dict with result_column_metadata,
-        result_csv_s3_uri, and original_query.
+        result_csv_s3_uri, rows_returned, and original_query.
 
     Args:
         query: SQL query string to execute
@@ -38,6 +38,7 @@ def run_athena_query(
         Query results for a successful query include:
             result_column_metadata (information about the columns in the result)
             result_csv_s3_uri (s3 location where results are stored as a csv)
+            rows_returned (number of rows returned by the query)
             original_query (the original query the user entered, for posterity)
             full_results (optional, only if return_full_query_results=True): CSV string of query results
     """
@@ -95,10 +96,16 @@ def run_athena_query(
                 for col in results["ResultSet"]["ResultSetMetadata"]["ColumnInfo"]
             ]
 
+            # Count the number of rows returned
+            # Note: For most queries, all rows in the ResultSet are data rows
+            # For queries with headers (like SELECT), Athena typically includes headers in the first row
+            total_rows = len(results["ResultSet"]["Rows"])
+
             result_dict = {
                 "success": True,
                 "result_column_metadata": column_metadata,
                 "result_csv_s3_uri": query_output_s3_uri,
+                "rows_returned": total_rows,
                 "query": query,
             }
 
