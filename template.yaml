@@ -243,7 +243,7 @@ Parameters:
 
   DocumentAnalysisAgentModelId:
     Type: String
-    Default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+    Default: "us.amazon.nova-pro-v1:0"
     AllowedValues:
       - "us.amazon.nova-lite-v1:0"
       - "us.amazon.nova-pro-v1:0"
