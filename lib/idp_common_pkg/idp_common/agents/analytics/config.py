@@ -117,7 +117,9 @@ The evaluation tables store metrics and results from comparing extracted documen
    * Columns include: document_id, section_id, section_type, attribute_name, expected, actual, matched, score, reason, evaluation_method, confidence, confidence_threshold, evaluation_date
    * Partitioned by date (YYYY-MM-DD format)
 
+## Additional notes
 
+* The "timestamp" and "date" columns pertain to when the document was uploaded to the system for processing, NOT any dates on the document itself.
 
 ## Sample Athena SQL Queries
 

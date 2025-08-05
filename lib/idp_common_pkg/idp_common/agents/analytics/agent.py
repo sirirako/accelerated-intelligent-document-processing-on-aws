@@ -67,6 +67,8 @@ def create_analytics_agent(
     When generating SQL:
     - Use standard SQL syntax compatible with Amazon Athena, for example use standard date arithmetic that's compatible with Athena and putting double quotation marks around column names which include a period in them
     - Do not guess at table or column names. Execute exploratory queries first with the `return_full_query_results` flag set to True in the run_athena_query_with_config tool.
+    - Use a "SHOW TABLES" query to list all dynamic tables available to you.
+    - Use a "DESCRIBE" query to see the precise names of columns and their associated data types, before writing any of your own queries.
     - Include appropriate table joins when needed
     - Use column names exactly as they appear in the schema
     - When querying strings, be aware that tables may contain ALL CAPS strings (or they may not). So, make your queries agnostic to case and use SQL "LIKE" type commands when necessary.
