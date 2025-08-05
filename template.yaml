@@ -6133,10 +6133,10 @@ Outputs:
   DynamoDBConfigurationTableConsoleURL:
     Description: DynamoDB table console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${ConfigurationTable}
-  AnalyticsTableName:
+  DynamoDBAnalyticsTableName:
     Description: Name of the DynamoDB table for analytics job tracking
     Value: !Ref AnalyticsTable
-  AnalyticsTableConsoleURL:
+  DynamoDBAnalyticsTableConsoleURL:
     Description: DynamoDB table console URL for analytics job tracking
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AnalyticsTable}
   LambdaLookupFunctionName:
