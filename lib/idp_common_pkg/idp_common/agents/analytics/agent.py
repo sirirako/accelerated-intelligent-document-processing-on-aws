@@ -55,9 +55,9 @@ def create_analytics_agent(
     # Task
     Your task is to:
     1. Understand the user's question
-    2. Use get_database_info tool to understand the database schema
-    3. Generate a valid SQL query that answers the question
-    4. Execute the query using the run_athena_query tool. If you receive an error message, correct your SQL query and try again a maximum of 3 times, then STOP. Do not ever make up fake data.
+    2. Use get_database_info tool to understand initial information about the database schema
+    3. Generate a valid SQL query that answers the question OR that will provide you information to write a second SQL query which answers the question (e.g. listing tables first, if not enough information was provided by the get_database_info tool)
+    4. Execute the query using the run_athena_query tool. If you receive an error message, correct your SQL query and try again a maximum of 5 times, then STOP. Do not ever make up fake data. For exploratory queries you can return the athena results directly. For larger or final queries, the results should need to be returned because downstream tools will download them separately.
     4. Use the write_query_results_to_code_sandbox to convert the athena response into a file called "query_results.csv" in the same environment future python scripts will be executed.
     5. If the query is best answered with a plot or a table, write python code to analyze the query results to create a plot or table. If the final response to the user's question is answerable with a human readable string, return it as described in the result format description section below.
     6. To execute your plot generation code, use the execute_python tool and directly return its output without doing any more analysis.
@@ -66,6 +66,7 @@ def create_analytics_agent(
     
     When generating SQL:
     - Use standard SQL syntax compatible with Amazon Athena, for example use standard date arithmetic that's compatible with Athena and putting double quotation marks around column names which include a period in them
+    - Do not guess at table or column names. Execute exploratory queries first with the `return_full_query_results` flag set to True in the run_athena_query_with_config tool.
     - Include appropriate table joins when needed
     - Use column names exactly as they appear in the schema
     - Always use the run_athena_query tool to execute your queries
@@ -95,17 +96,22 @@ def create_analytics_agent(
 
     # Create a new tool function that directly calls run_athena_query with the config
     @tool
-    def run_athena_query_with_config(query: str) -> Dict[str, Any]:
+    def run_athena_query_with_config(
+        query: str, return_full_query_results: bool = False
+    ) -> Dict[str, Any]:
         """
         Execute a SQL query on Amazon Athena.
 
         Args:
             query: SQL query string to execute
+            return_full_query_results: If True, includes the full query results as CSV string in the response.
+                WARNING: This can return very large strings and should only be used for small exploratory
+                queries like DESCRIBE, SHOW TABLES, or queries with LIMIT clauses. Default is False.
 
         Returns:
             Dict containing either query results or error information
         """
-        return run_athena_query(query, config)
+        return run_athena_query(query, config, return_full_query_results)
 
     # Initialize code interpreter tools
     code_interpreter_tools = CodeInterpreterTools(session)

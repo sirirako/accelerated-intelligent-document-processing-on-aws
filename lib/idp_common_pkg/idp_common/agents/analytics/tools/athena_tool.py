@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
+def run_athena_query(
+    query: str, config: Dict[str, Any], return_full_query_results: bool = False
+) -> Dict[str, Any]:
     """
     Execute a SQL query on Amazon Athena.
 
@@ -27,6 +29,9 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
     Args:
         query: SQL query string to execute
         config: Configuration dictionary containing Athena settings
+        return_full_query_results: If True, includes the full query results as CSV string in the response.
+            WARNING: This can return very large strings and should only be used for small exploratory
+            queries like DESCRIBE, SHOW TABLES, or queries with LIMIT clauses. Default is False.
 
     Returns:
         Dict containing either s3 URI pointer to query results or error information
@@ -34,6 +39,7 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
             result_column_metadata (information about the columns in the result)
             result_csv_s3_uri (s3 location where results are stored as a csv)
             original_query (the original query the user entered, for posterity)
+            full_results (optional, only if return_full_query_results=True): CSV string of query results
     """
     try:
         # Create Athena client
@@ -89,12 +95,50 @@ def run_athena_query(query: str, config: Dict[str, Any]) -> Dict[str, Any]:
                 for col in results["ResultSet"]["ResultSetMetadata"]["ColumnInfo"]
             ]
 
-            return {
+            result_dict = {
                 "success": True,
                 "result_column_metadata": column_metadata,
                 "result_csv_s3_uri": query_output_s3_uri,
                 "query": query,
             }
+
+            # Optionally include full query results
+            if return_full_query_results:
+                try:
+                    # Parse S3 URI to get bucket and key
+                    import re
+
+                    s3_match = re.match(r"s3://([^/]+)/(.+)", query_output_s3_uri)
+                    if s3_match:
+                        bucket_name = s3_match.group(1)
+                        object_key = s3_match.group(2)
+
+                        # Create S3 client and read the CSV file
+                        s3_client = boto3.client(
+                            "s3", region_name=config.get("aws_region")
+                        )
+                        response = s3_client.get_object(
+                            Bucket=bucket_name, Key=object_key
+                        )
+                        csv_content = response["Body"].read().decode("utf-8")
+
+                        result_dict["full_results"] = csv_content
+                        logger.info(
+                            f"Included full query results ({len(csv_content)} characters)"
+                        )
+                    else:
+                        logger.warning(f"Could not parse S3 URI: {query_output_s3_uri}")
+                        result_dict["full_results_error"] = (
+                            f"Could not parse S3 URI: {query_output_s3_uri}"
+                        )
+
+                except Exception as e:
+                    logger.error(f"Error reading full query results from S3: {e}")
+                    result_dict["full_results_error"] = (
+                        f"Error reading results from S3: {str(e)}"
+                    )
+
+            return result_dict
 
         elif state == "RUNNING":
             # Query is still running after max polling attempts
