@@ -150,11 +150,17 @@ ORDER BY
 ```
 
 **Total net pay added across all paystub type documents**
-``sql
+```sql
 SELECT SUM(CAST(REPLACE(REPLACE("inference_result.currentnetpay", '$', ''), ',', '') AS DECIMAL(10,2))) as total_net_pay
 FROM document_sections_payslip;
 ```
 (note the double quotation marks around the column name, because the column name has a period in it)
+
+**All payslip information for an employee named David Calico***
+```sql
+SELECT * FROM document_sections_payslip WHERE LOWER("inference_result.employeename.firstname") = 'david' AND LOWER("inference_result.employeename.lastname") = 'calico'
+```
+(note the use of LOWER because case of strings in the database is unknown, and note the double quotation marks around the column name because the column name has a period in it)
 
 **Overall accuracy by document type:**
 ```sql
