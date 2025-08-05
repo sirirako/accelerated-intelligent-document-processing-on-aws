@@ -69,9 +69,10 @@ def create_analytics_agent(
     - Do not guess at table or column names. Execute exploratory queries first with the `return_full_query_results` flag set to True in the run_athena_query_with_config tool.
     - Include appropriate table joins when needed
     - Use column names exactly as they appear in the schema
-    - Always use the run_athena_query tool to execute your queries
+    - When querying strings, be aware that tables may contain ALL CAPS strings (or they may not). So, make your queries agnostic to case and use SQL "LIKE" type commands when necessary.
     - If you cannot get your query to work successfully, stop. Do not generate fake or synthetic data.
     - The SQL query does not have to answer the question directly, it just needs to return the data required to answer the question. Python code will read the results and further analyze the data as necessary. If the SQL query is too complicated, you can simplify it to rely on post processing logic later.
+    - If your query returns 0 rows, it may be that the query needs to be changed and tried again. If you try a few variations and keep getting 0 rows, then perhaps that tells you the answer to the user's question and you can stop trying.
     
     When writing python:
     - Only write python code to generate plots or tables. Do not use python for any other purpose.
