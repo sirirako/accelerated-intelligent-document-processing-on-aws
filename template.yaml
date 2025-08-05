@@ -3554,7 +3554,7 @@ Resources:
                 - bedrock-agentcore:GetCodeInterpreterSession
                 - bedrock-agentcore:ListCodeInterpreterSessions
               Resource: 
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:code-interpreter-session/*"
+                - !Sub "arn:aws:bedrock-agentcore:*:aws:code-interpreter/*"
 
   AnalyticsProcessorLogGroup:
     Type: AWS::Logs::LogGroup
