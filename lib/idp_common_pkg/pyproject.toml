@@ -95,11 +95,6 @@ agents = [
     "bedrock-agentcore>=0.1.1" # Specifically for the code interpreter tool
 ]
 
-# Analytics agent dependencies
-analytics = [
-    "pandas>=2.0.0",
-]
-
 # Document service factory dependencies (includes both appsync and dynamodb support)
 # This includes all dependencies needed for both backends
 docs_service = [
