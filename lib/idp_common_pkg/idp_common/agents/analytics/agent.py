@@ -116,7 +116,7 @@ def create_analytics_agent(
 
     # Initialize code interpreter tools
     # Get region from session or environment variable
-    region = session.region_name or os.environ.get('AWS_REGION', 'us-west-2')
+    region = session.region_name or os.environ.get("AWS_REGION", "us-west-2")
     logger.info(f"Initializing CodeInterpreterTools with region: {region}")
     code_interpreter_tools = CodeInterpreterTools(session, region=region)
 
