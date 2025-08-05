@@ -96,6 +96,7 @@ In addition to the predefined tables, the solution also creates dynamic tables f
 * Common columns include: section_id, document_id, section_classification, section_confidence, timestamp
 * Additional columns are dynamically inferred from the JSON extraction results
 * Tables are partitioned by date (YYYY-MM-DD format)
+* When querying columns with a period in their name (e.g. inference_result.currentnetpay) the column name must be included in quotation marks to be compatible with Athena querying, for example `SELECT "inference_result.currentnetpay" FROM document_sections_payslip`.
 
 
 ## Evaluation Tables
@@ -210,22 +211,19 @@ The remaining columns are dynamically inferred from the JSON extraction results 
 **Partitioning:**
 Each section type table is partitioned by date (YYYY-MM-DD format) for efficient querying.
 
+Since the columns and data types in the document section tables are dynamic, you may want to run a query to learn more about them before writing any other queries. Consider e.g. executing `describe document_sections_payslip` to learn more about that table.
 ## Sample Athena SQL Queries
 
 Here are some example queries to get you started:
 
-**Overall accuracy by document type:**
+**List tables available, including dynamic ones**
 ```sql
-SELECT 
-  section_type, 
-  AVG(accuracy) as avg_accuracy, 
-  COUNT(*) as document_count
-FROM 
-  section_evaluations
-GROUP BY 
-  section_type
-ORDER BY 
-  avg_accuracy DESC;
+SHOW TABLES
+```
+
+**View the dynamic columns of a table named "document_sections_payslip"**
+```sql
+DESCRIBE document_sections_payslip
 ```
 
 **Token usage by model:**
@@ -243,6 +241,28 @@ GROUP BY
 ORDER BY 
   total_tokens DESC;
 ```
+
+**Total net pay added across all paystub type documents**
+``sql
+SELECT SUM(CAST(REPLACE(REPLACE("inference_result.currentnetpay", '$', ''), ',', '') AS DECIMAL(10,2))) as total_net_pay
+FROM document_sections_payslip;
+```
+(note the double quotation marks around the column name, because the column name has a period in it)
+
+**Overall accuracy by document type:**
+```sql
+SELECT 
+  section_type, 
+  AVG(accuracy) as avg_accuracy, 
+  COUNT(*) as document_count
+FROM 
+  section_evaluations
+GROUP BY 
+  section_type
+ORDER BY 
+  avg_accuracy DESC;
+```
+
 
 """
 
