@@ -14,6 +14,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const [queryHistory, setQueryHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [selectedOption, setSelectedOption] = useState(null);
+  const [isDeletingJob, setIsDeletingJob] = useState(false);
   const lastFetchTimeRef = useRef(0);
 
   const fetchQueryHistory = async (force = false) => {
@@ -32,24 +33,47 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       setIsLoadingHistory(true);
       lastFetchTimeRef.current = now;
 
-      const response = await API.graphql({
-        query: listAnalyticsJobs,
-        variables: { limit: 20 }, // Limit to most recent 20 queries
-      });
+      let response;
+      try {
+        response = await API.graphql({
+          query: listAnalyticsJobs,
+          variables: { limit: 20 }, // Limit to most recent 20 queries
+        });
+      } catch (amplifyError) {
+        // Amplify throws an exception when there are GraphQL errors, but the response might still contain valid data
+        logger.warn('Amplify threw an exception due to GraphQL errors, checking for valid data:', amplifyError);
 
-      // Check if there are errors but we still got some data
-      if (response.errors) {
-        logger.warn('Received errors in listAnalyticsJobs response:', response.errors);
-        // Continue processing if we have data despite errors
+        // Check if the error object contains the actual response data
+        if (amplifyError.data && amplifyError.data.listAnalyticsJobs) {
+          logger.info('Found valid data in the error response, proceeding with processing');
+          response = {
+            data: amplifyError.data,
+            errors: amplifyError.errors || [],
+          };
+        } else {
+          // If there's no data in the error, re-throw to be handled by outer catch
+          throw amplifyError;
+        }
       }
 
-      // Get items array and filter out null values
-      const jobs = (response?.data?.listAnalyticsJobs?.items || []).filter((job) => job !== null);
+      // Handle GraphQL errors gracefully - log them but continue processing valid data
+      if (response.errors && response.errors.length > 0) {
+        logger.warn(
+          `Received ${response.errors.length} GraphQL errors in listAnalyticsJobs response:`,
+          response.errors,
+        );
+        logger.warn('Continuing to process valid data despite errors...');
+      }
 
-      logger.debug('Raw jobs data:', jobs);
+      // Get items array and filter out null values (corrupted items)
+      const rawItems = response?.data?.listAnalyticsJobs?.items || [];
+      const nonNullJobs = rawItems.filter((job) => job !== null);
+
+      logger.debug(`Raw response: ${rawItems.length} total items, ${nonNullJobs.length} non-null items`);
+      logger.debug('Non-null jobs data:', nonNullJobs);
 
       // Filter out any jobs with invalid or missing required fields
-      const validJobs = jobs.filter((job) => {
+      const validJobs = nonNullJobs.filter((job) => {
         try {
           // Check if job has required fields
           if (!job || !job.jobId || !job.query || !job.status) {
@@ -64,6 +88,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
           return false;
         }
       });
+
+      logger.debug(`Filtered to ${validJobs.length} valid jobs`);
 
       // Sort by createdAt in descending order (newest first)
       // Use string comparison if date parsing fails
@@ -87,11 +113,21 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
         }
       });
 
-      logger.debug('Processed and sorted jobs:', sortedJobs);
+      logger.debug('Final processed and sorted jobs:', sortedJobs);
       setQueryHistory(sortedJobs);
+
+      // Log summary of what we processed
+      if (response.errors && response.errors.length > 0) {
+        logger.info(
+          `Successfully processed ${sortedJobs.length} valid queries despite ${response.errors.length} GraphQL errors from corrupted items`,
+        );
+      } else {
+        logger.info(`Successfully processed ${sortedJobs.length} queries with no errors`);
+      }
     } catch (err) {
       logger.error('Error fetching query history:', err);
-      // Continue with empty history rather than breaking the component
+      // Only log as empty if it's a complete failure (network error, etc.)
+      logger.error('Complete failure - setting empty history');
       setQueryHistory([]);
     } finally {
       setIsLoadingHistory(false);
@@ -125,6 +161,11 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   };
 
   const handleDropdownItemClick = ({ detail }) => {
+    // Prevent dropdown item selection if a delete operation is in progress
+    if (isDeletingJob) {
+      return;
+    }
+
     const selectedJob = queryHistory.find((job) => job.jobId === detail.id);
     if (selectedJob) {
       setQuery(selectedJob.query);
@@ -176,7 +217,12 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
               variant="icon"
               iconName="remove"
               onClick={async (e) => {
+                e.preventDefault();
                 e.stopPropagation();
+
+                // Set flag to prevent dropdown item selection
+                setIsDeletingJob(true);
+
                 try {
                   await API.graphql({
                     query: deleteAnalyticsJob,
@@ -197,6 +243,11 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                   }
                 } catch (err) {
                   logger.error('Error deleting job:', err);
+                } finally {
+                  // Reset the flag after a short delay to ensure event handling is complete
+                  setTimeout(() => {
+                    setIsDeletingJob(false);
+                  }, 100);
                 }
               }}
               ariaLabel={`Delete query: ${displayText}`}
