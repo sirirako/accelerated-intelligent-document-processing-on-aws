@@ -3423,6 +3423,7 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics request handler as it's invoked synchronously via AppSync and errors are handled by the caller"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
@@ -3470,10 +3471,12 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/analytics_processor/
       Handler: index.handler
       Runtime: python3.12
@@ -3509,7 +3512,9 @@ Resources:
                 - athena:StartQueryExecution
                 - athena:GetQueryExecution
                 - athena:GetQueryResults
-              Resource: "*"
+              Resource: 
+                - !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
             - Effect: Allow
               Action:
                 - glue:GetTable
@@ -3517,12 +3522,17 @@ Resources:
                 - glue:GetDatabase
                 - glue:GetDatabases
                 - glue:GetPartitions
-              Resource: "*"
+              Resource: 
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
-              Resource: "*"
+              Resource: 
+                - !Sub "arn:aws:bedrock:*::foundation-model/*"
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
             - Effect: Allow
               Action:
                 - appsync:GraphQL
@@ -3543,7 +3553,8 @@ Resources:
                 - bedrock-agentcore:InvokeCodeInterpreter
                 - bedrock-agentcore:GetCodeInterpreterSession
                 - bedrock-agentcore:ListCodeInterpreterSessions
-              Resource: "*"
+              Resource: 
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:code-interpreter-session/*"
 
   AnalyticsProcessorLogGroup:
     Type: AWS::Logs::LogGroup
