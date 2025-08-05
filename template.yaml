@@ -3495,6 +3495,7 @@ Resources:
                 - glue:GetTables
                 - glue:GetDatabase
                 - glue:GetDatabases
+                - glue:GetPartitions
               Resource: "*"
             - Effect: Allow
               Action:
