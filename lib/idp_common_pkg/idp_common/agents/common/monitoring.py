@@ -160,11 +160,12 @@ class AgentMonitor(HookProvider):
 
         # Log the message event
         role = message_info["role"]
-        content_preview = (
-            message_info["content"][:100] + "..."
-            if len(message_info["content"]) > 100
-            else message_info["content"]
-        )
+        # content_preview = (
+        #     message_info["content"][:100] + "..."
+        #     if len(message_info["content"]) > 100
+        #     else message_info["content"]
+        # )
+        content_preview = message_info["content"]
 
         self.monitor_logger.info(f"💬 Message added: [{role}] {content_preview}")
 
@@ -311,15 +312,54 @@ class AgentMonitor(HookProvider):
             if role == "user":
                 for c in message["content"]:
                     if "toolResult" in c:
+                        tool_result = c["toolResult"]
+                        framework_status = tool_result.get("status", "unknown")
+
+                        # Try to parse the actual tool response to determine real success/failure
+                        actual_status = framework_status
+                        try:
+                            # Check if the tool result content contains success/failure information
+                            content_list = tool_result.get("content", [])
+                            if content_list and isinstance(content_list, list):
+                                for content_item in content_list:
+                                    if (
+                                        isinstance(content_item, dict)
+                                        and "text" in content_item
+                                    ):
+                                        import json
+
+                                        try:
+                                            # Try to parse the text as JSON to check for success field
+                                            parsed_content = json.loads(
+                                                content_item["text"]
+                                            )
+                                            if (
+                                                isinstance(parsed_content, dict)
+                                                and "success" in parsed_content
+                                            ):
+                                                # Override the framework status with the actual tool result
+                                                actual_status = (
+                                                    "success"
+                                                    if parsed_content["success"]
+                                                    else "error"
+                                                )
+                                                break
+                                        except (json.JSONDecodeError, TypeError):
+                                            # If parsing fails, stick with framework status
+                                            pass
+                        except Exception:
+                            # If any error occurs in parsing, use framework status
+                            pass
+
                         res = {
                             "role": "tool",
-                            "content": f"Tool completed with status '{c['toolResult']['status']}'.",
+                            "content": f"Tool completed with status '{actual_status}'.",
                             "message_type": type(message).__name__,
                         }
 
                         # Only include debug_tool_output if the flag is enabled
                         if self.include_debug_tool_output:
-                            res["debug_tool_output"] = c["toolResult"]
+                            res["debug_tool_output"] = tool_result
 
                         if self.enable_detailed_logging:
                             self.monitor_logger.debug(f"Full tool use output: {res}")
@@ -344,20 +384,54 @@ class AgentMonitor(HookProvider):
     def _get_tool_result_preview(self, result) -> str:
         """Get a preview of tool result for logging."""
         try:
+            # First check if this is a Strands tool result structure
+            if isinstance(result, dict) and "content" in result:
+                content_list = result.get("content", [])
+                if content_list and isinstance(content_list, list):
+                    for content_item in content_list:
+                        if isinstance(content_item, dict) and "text" in content_item:
+                            import json
+
+                            try:
+                                # Try to parse the text as JSON to check for success field
+                                parsed_content = json.loads(content_item["text"])
+                                if (
+                                    isinstance(parsed_content, dict)
+                                    and "success" in parsed_content
+                                ):
+                                    success = parsed_content["success"]
+                                    if success:
+                                        data_preview = str(
+                                            parsed_content.get(
+                                                "result_csv_s3_uri",
+                                                parsed_content.get("data", ""),
+                                            )
+                                        )
+                                        return f"Success: {data_preview}"
+                                    else:
+                                        error = parsed_content.get(
+                                            "error", "Unknown error"
+                                        )
+                                        return f"Error: {error}"
+                            except (json.JSONDecodeError, TypeError):
+                                # If parsing fails, fall through to generic handling
+                                pass
+
+            # Fallback to original logic for other result types
             if isinstance(result, dict):
                 if "success" in result:
                     success = result["success"]
                     if success:
-                        data_preview = str(result.get("data", ""))[:50]
-                        return f"Success: {data_preview}..."
+                        data_preview = str(result.get("data", ""))
+                        return f"Success: {data_preview}"
                     else:
                         error = result.get("error", "Unknown error")
                         return f"Error: {error}"
                 else:
                     # Generic dict preview
-                    return str(result)[:50] + "..."
+                    return str(result)
             else:
-                return str(result)[:50] + "..."
+                return str(result)
         except Exception as e:
             return f"<Error getting preview: {e}>"
 
