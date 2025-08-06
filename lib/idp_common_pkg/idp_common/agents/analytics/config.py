@@ -138,44 +138,45 @@ DESCRIBE document_sections_payslip
 **Token usage by model:**
 ```sql
 SELECT 
-  service_api, 
-  SUM(CASE WHEN unit = 'inputTokens' THEN value ELSE 0 END) as total_input_tokens,
-  SUM(CASE WHEN unit = 'outputTokens' THEN value ELSE 0 END) as total_output_tokens,
-  SUM(CASE WHEN unit = 'totalTokens' THEN value ELSE 0 END) as total_tokens,
-  COUNT(DISTINCT document_id) as document_count
+  "service_api", 
+  SUM(CASE WHEN "unit" = "inputTokens" THEN value ELSE 0 END) as total_input_tokens,
+  SUM(CASE WHEN "unit" = "outputTokens" THEN value ELSE 0 END) as total_output_tokens,
+  SUM(CASE WHEN "unit" = "totalTokens" THEN value ELSE 0 END) as total_tokens,
+  COUNT(DISTINCT "document_id") as document_count
 FROM 
   metering
 GROUP BY 
-  service_api
+  "service_api"
 ORDER BY 
   total_tokens DESC;
 ```
+(note all columns are included within double quotes)
 
 **Total net pay added across all paystub type documents**
 ```sql
 SELECT SUM(CAST(REPLACE(REPLACE("inference_result.currentnetpay", '$', ''), ',', '') AS DECIMAL(10,2))) as total_net_pay
 FROM document_sections_payslip;
 ```
-(note the double quotation marks around the column name, because the column name has a period in it)
+(note the double quotation marks around the column name)
 
 **All payslip information for an employee named David Calico***
 ```sql
 SELECT * FROM document_sections_payslip WHERE LOWER("inference_result.employeename.firstname") = 'david' AND LOWER("inference_result.employeename.lastname") = 'calico'
 ```
-(note the use of LOWER because case of strings in the database is unknown, and note the double quotation marks around the column name because the column name has a period in it)
+(note the use of LOWER because case of strings in the database is unknown, and note the double quotation marks around the column name)
 
 **Overall accuracy by document type:**
 ```sql
 SELECT 
-  section_type, 
-  AVG(accuracy) as avg_accuracy, 
+  "section_type", 
+  AVG("accuracy") as avg_accuracy, 
   COUNT(*) as document_count
 FROM 
   section_evaluations
 GROUP BY 
-  section_type
+  "section_type"
 ORDER BY 
-  avg_accuracy DESC;
+  "avg_accuracy" DESC;
 ```
 
 
