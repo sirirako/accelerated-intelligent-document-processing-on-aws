@@ -181,6 +181,11 @@ const PlotDisplay = ({ plotData }) => {
       ...originalOptions,
     };
 
+    // Ensure plugins object exists
+    if (!baseOptions.plugins) {
+      baseOptions.plugins = {};
+    }
+
     // For pie and doughnut charts, we typically don't need scales
     if (chartType === 'pie' || chartType === 'doughnut') {
       const { scales, ...optionsWithoutScales } = baseOptions;
@@ -199,6 +204,10 @@ const PlotDisplay = ({ plotData }) => {
         },
       };
 
+      // Safely merge tooltip configuration
+      const existingTooltip = baseOptions.plugins?.tooltip || {};
+      const existingCallbacks = existingTooltip.callbacks || {};
+
       return {
         ...optionsWithoutScales,
         plugins: {
@@ -206,19 +215,38 @@ const PlotDisplay = ({ plotData }) => {
           legend: legendConfig,
           tooltip: {
             enabled: true,
+            ...existingTooltip,
             callbacks: {
+              ...existingCallbacks,
               label(context) {
-                const label = context.label || '';
-                const value = context.parsed || 0;
-                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
-                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                return `${label}: ${value} (${percentage}%)`;
+                try {
+                  const label = context.label || '';
+                  const value = context.parsed || 0;
+                  const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                  return `${label}: ${value} (${percentage}%)`;
+                } catch (error) {
+                  console.error('Error in tooltip callback:', error);
+                  return context.label || 'Unknown';
+                }
               },
             },
-            ...baseOptions.plugins?.tooltip,
           },
         },
       };
+    }
+
+    // For other chart types, ensure tooltip callbacks are properly structured
+    if (baseOptions.plugins?.tooltip?.callbacks) {
+      const existingCallbacks = baseOptions.plugins.tooltip.callbacks;
+
+      // Validate that callbacks are functions
+      Object.keys(existingCallbacks).forEach((callbackName) => {
+        if (typeof existingCallbacks[callbackName] !== 'function') {
+          console.warn(`Invalid tooltip callback '${callbackName}' - not a function`);
+          delete existingCallbacks[callbackName];
+        }
+      });
     }
 
     return baseOptions;
