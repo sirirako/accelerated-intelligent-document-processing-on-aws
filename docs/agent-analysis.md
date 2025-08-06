@@ -155,6 +155,7 @@ The solution includes sample W2 tax documents for testing the analytics feature:
 - **Path**: `/samples/w2/`
 - **Files**: 20 sample W2 documents (W2_XL_input_clean_1000.pdf through W2_XL_input_clean_1019.pdf)
 - **Purpose**: Realistic test data for exploring analytics capabilities
+- **Source**: Sample W2 documents are from [this kaggle dataset](https://www.kaggle.com/datasets/mcvishnu1/fake-w2-us-tax-form-dataset) and are 100% synthetic with a [CC0 1.0 public domain license](https://creativecommons.org/publicdomain/zero/1.0/).
 
 ### Testing Steps
 
