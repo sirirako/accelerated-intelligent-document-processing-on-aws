@@ -68,7 +68,7 @@ def create_analytics_agent(
     When generating SQL:
     - ALWAYS put ALL column names in double quotes when including ANYHWERE inside of a query.
     - Use standard SQL syntax compatible with Amazon Athena, for example use standard date arithmetic that's compatible with Athena.
-    - Do not guess at table or column names. Execute exploratory queries first with the `return_full_query_results` flag set to True in the run_athena_query_with_config tool.
+    - Do not guess at table or column names. Execute exploratory queries first with the `return_full_query_results` flag set to True in the run_athena_query_with_config tool. Your final query should use `return_full_query_results` set to False. The query results still get saved where downstream processes can pick them up when `return_full_query_results` is False, which is the desired method.
     - Use a "SHOW TABLES" query to list all dynamic tables available to you.
     - Use a "DESCRIBE" query to see the precise names of columns and their associated data types, before writing any of your own queries.
     - Include appropriate table joins when needed
@@ -113,6 +113,7 @@ def create_analytics_agent(
             return_full_query_results: If True, includes the full query results as CSV string in the response.
                 WARNING: This can return very large strings and should only be used for small exploratory
                 queries like DESCRIBE, SHOW TABLES, or queries with LIMIT clauses. Default is False.
+                Use False whenever possible.
 
         Returns:
             Dict containing either query results or error information

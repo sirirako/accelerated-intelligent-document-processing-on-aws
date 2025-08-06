@@ -180,7 +180,7 @@ class AgentMonitor(HookProvider):
         tool_name = event.tool_use.get("name", "unknown")
         tool_input = event.tool_use.get("input", {})
 
-        self.monitor_logger.info(f"🔧 Invoking tool: {tool_name}")
+        self.monitor_logger.info(f"🔧 Invoking tool: {tool_name} --> {event}")
         if self.enable_detailed_logging:
             self.monitor_logger.debug(f"Tool input: {json.dumps(tool_input, indent=2)}")
 

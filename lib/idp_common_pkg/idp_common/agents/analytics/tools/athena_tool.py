@@ -14,6 +14,9 @@ from strands import tool
 
 logger = logging.getLogger(__name__)
 
+# Maximum number of rows that can be returned directly when return_full_query_results=True
+MAX_ROWS_TO_RETURN_DIRECTLY = 100
+
 
 @tool
 def run_athena_query(
@@ -24,7 +27,7 @@ def run_athena_query(
 
     Uses boto3 to execute the query on Athena. Query results are stored in s3.
     Successful execution will return a dict with result_column_metadata,
-        result_csv_s3_uri, rows_returned, and original_query.
+        result_csv_s3_uri, number of rows_returned, and original_query.
 
     Args:
         query: SQL query string to execute
@@ -100,6 +103,24 @@ def run_athena_query(
             # Note: For most queries, all rows in the ResultSet are data rows
             # For queries with headers (like SELECT), Athena typically includes headers in the first row
             total_rows = len(results["ResultSet"]["Rows"])
+
+            # Check if return_full_query_results is True and we have too many rows
+            if return_full_query_results and total_rows > MAX_ROWS_TO_RETURN_DIRECTLY:
+                logger.warning(
+                    f"Query returned {total_rows} rows, which exceeds the limit of {MAX_ROWS_TO_RETURN_DIRECTLY} "
+                    f"for return_full_query_results=True"
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        f"More than {MAX_ROWS_TO_RETURN_DIRECTLY} rows were retrieved when the tool was called with "
+                        "`return_full_query_results` set to True. This flag should only be used for small queries "
+                        "returning a few rows. Please try again with `return_full_query_results` set to False, "
+                        "in which case the query results will be saved rather than returned directly."
+                    ),
+                    "query": query,
+                    "rows_returned": total_rows,
+                }
 
             result_dict = {
                 "success": True,
