@@ -122,6 +122,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Architecture](./docs/architecture.md) - Detailed component architecture and data flow
 - [Deployment](./docs/deployment.md) - Build, publish, deploy, and test instructions
 - [Web UI](./docs/web-ui.md) - Web interface features and usage
+- [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
 - [Configuration](./docs/configuration.md) - Configuration and customization options
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction
