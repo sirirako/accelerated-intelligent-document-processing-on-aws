@@ -165,6 +165,23 @@ type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
   steps: [StepFunctionExecutionStep]
 }
 
+
+type AnalyticsJob @aws_cognito_user_pools @aws_iam {
+  jobId: ID!
+  status: String!  # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
+  query: String!
+  createdAt: AWSDateTime!
+  completedAt: AWSDateTime
+  result: String
+  error: String
+  agent_messages: String  # JSON string containing agent conversation messages
+}
+
+type AnalyticsJobConnection @aws_cognito_user_pools @aws_iam {
+  items: [AnalyticsJob]
+  nextToken: String
+}
+
 type Mutation  {
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
@@ -174,6 +191,8 @@ type Mutation  {
   copyToBaseline(objectKey: String!): CopyToBaselineResponse! @aws_cognito_user_pools
   reprocessDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
   publishStepFunctionExecutionUpdate(executionArn: String!, data: AWSJSON!): StepFunctionExecutionResponse @aws_iam
+  updateAnalyticsJobStatus(jobId: ID!, status: String!, userId: String!, result: String): Boolean @aws_iam
+  deleteAnalyticsJob(jobId: ID!): Boolean @aws_cognito_user_pools
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -186,6 +205,9 @@ type Query @aws_cognito_user_pools @aws_iam {
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(s3Uri: String!, prompt: String!): String
   getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
+  submitAnalyticsQuery(query: String!): AnalyticsJob @aws_cognito_user_pools
+  getAnalyticsJobStatus(jobId: ID!): AnalyticsJob @aws_cognito_user_pools
+  listAnalyticsJobs(limit: Int, nextToken: String): AnalyticsJobConnection @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
@@ -195,6 +217,8 @@ type Subscription @aws_cognito_user_pools @aws_iam {
     @aws_subscribe(mutations: ["updateDocument"])
   onStepFunctionExecutionUpdate(executionArn: String!): StepFunctionExecutionResponse
     @aws_subscribe(mutations: ["publishStepFunctionExecutionUpdate"])
+  onAnalyticsJobComplete(jobId: ID!): Boolean
+    @aws_subscribe(mutations: ["updateAnalyticsJobStatus"])
 }
 
 schema {
