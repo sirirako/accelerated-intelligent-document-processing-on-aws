@@ -121,22 +121,35 @@ The evaluation tables store metrics and results from comparing extracted documen
 
 * The "timestamp" and "date" columns pertain to when the document was uploaded to the system for processing, NOT any dates on the document itself.
 
-## Sample Athena SQL Queries
+## Sample Athena Queries
 
 Here are some example queries to get you started:
 
 **List tables available, including dynamic ones**
-```sql
+```athena
 SHOW TABLES
 ```
 
+**List tables available starting with "document_sections" with wildcard notation**
+```athena
+SHOW TABLES LIKE 'document_sections*'
+```
+
+**List tables available starting with "document_sections" with an SQL LIKE pattern**
+```athena
+SHOW TABLES WHERE table_name LIKE 'document_sections%'  -- Uses SQL LIKE pattern
+```
+
+(note that `SHOW TABLES LIKE 'document_sections%'` does NOT WORK here because in Athena, the pattern is treated as a regular expression rather than the SQL LIKE pattern matching. In regular expressions, '%' doesn't serve as a wildcard - it denotes "zero or more occurrences of the preceding element.")
+
+
 **View the dynamic columns of a table named "document_sections_payslip"**
-```sql
+```athena
 DESCRIBE document_sections_payslip
 ```
 
 **Token usage by model:**
-```sql
+```athena
 SELECT 
   "service_api", 
   SUM(CASE WHEN "unit" = "inputTokens" THEN value ELSE 0 END) as total_input_tokens,
@@ -153,20 +166,20 @@ ORDER BY
 (note all columns are included within double quotes)
 
 **Total net pay added across all paystub type documents**
-```sql
+```athena
 SELECT SUM(CAST(REPLACE(REPLACE("inference_result.currentnetpay", '$', ''), ',', '') AS DECIMAL(10,2))) as total_net_pay
 FROM document_sections_payslip;
 ```
 (note the double quotation marks around the column name)
 
 **All payslip information for an employee named David Calico***
-```sql
+```athena
 SELECT * FROM document_sections_payslip WHERE LOWER("inference_result.employeename.firstname") = 'david' AND LOWER("inference_result.employeename.lastname") = 'calico'
 ```
 (note the use of LOWER because case of strings in the database is unknown, and note the double quotation marks around the column name)
 
 **Overall accuracy by document type:**
-```sql
+```athena
 SELECT 
   "section_type", 
   AVG("accuracy") as avg_accuracy, 
@@ -224,7 +237,7 @@ Another example:
 ```json
 {
   "responseType": "text",
-  "content": "There were no results found from the SQL query."
+  "content": "There were no results found from the Athena query."
 }
 ```
 
