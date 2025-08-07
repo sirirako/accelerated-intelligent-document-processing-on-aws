@@ -1,12 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { API, Logger } from 'aws-amplify';
 import { Container, Header, SpaceBetween, Spinner, Box } from '@awsui/components-react';
 
 import submitAnalyticsQuery from '../../graphql/queries/submitAnalyticsQuery';
 import getAnalyticsJobStatus from '../../graphql/queries/getAnalyticsJobStatus';
 import onAnalyticsJobComplete from '../../graphql/subscriptions/onAnalyticsJobComplete';
+import { useAnalyticsContext } from '../../contexts/analytics';
 
 import AnalyticsQueryInput from './AnalyticsQueryInput';
 import AnalyticsJobStatus from './AnalyticsJobStatus';
@@ -16,15 +17,8 @@ import AgentMessagesDisplay from './AgentMessagesDisplay';
 const logger = new Logger('DocumentsAnalyticsLayout');
 
 const DocumentsAnalyticsLayout = () => {
-  const [queryText, setQueryText] = useState('');
-  const [jobId, setJobId] = useState(null);
-  const [jobStatus, setJobStatus] = useState(null);
-  const [jobResult, setJobResult] = useState(null);
-  const [agentMessages, setAgentMessages] = useState(null);
-  const [error, setError] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [subscription, setSubscription] = useState(null);
-  const [selectedHistoryItem] = useState(null);
+  const { analyticsState, updateAnalyticsState } = useAnalyticsContext();
+  const { queryText, jobId, jobStatus, jobResult, agentMessages, error, isSubmitting, subscription } = analyticsState;
 
   const subscribeToJobCompletion = (id) => {
     try {
@@ -53,39 +47,43 @@ const DocumentsAnalyticsLayout = () => {
               logger.debug('Fetched job details:', job);
 
               if (job) {
-                setJobStatus(job.status);
-                setAgentMessages(job.agent_messages);
+                updateAnalyticsState({
+                  jobStatus: job.status,
+                  agentMessages: job.agent_messages,
+                });
 
                 if (job.status === 'COMPLETED') {
-                  setJobResult(job.result);
+                  updateAnalyticsState({ jobResult: job.result });
                 } else if (job.status === 'FAILED') {
-                  setError(job.error || 'Job processing failed');
+                  updateAnalyticsState({ error: job.error || 'Job processing failed' });
                 }
               } else {
                 logger.error('Failed to fetch job details after completion notification');
-                setError('Failed to fetch job details after completion');
+                updateAnalyticsState({ error: 'Failed to fetch job details after completion' });
               }
             } catch (fetchError) {
               logger.error('Error fetching job details:', fetchError);
-              setError(`Failed to fetch job details: ${fetchError.message || 'Unknown error'}`);
+              updateAnalyticsState({ error: `Failed to fetch job details: ${fetchError.message || 'Unknown error'}` });
             }
           } else {
             logger.error('Received invalid completion notification. Full response:', JSON.stringify(value, null, 2));
-            setError(`Received invalid completion notification. Check console logs for details.`);
+            updateAnalyticsState({
+              error: 'Received invalid completion notification. Check console logs for details.',
+            });
           }
         },
         error: (err) => {
           logger.error('Subscription error:', err);
           logger.error('Error details:', JSON.stringify(err, null, 2));
-          setError(`Subscription error: ${err.message || 'Unknown error'}`);
+          updateAnalyticsState({ error: `Subscription error: ${err.message || 'Unknown error'}` });
         },
       });
 
-      setSubscription(sub);
+      updateAnalyticsState({ subscription: sub });
       return sub;
     } catch (err) {
       logger.error('Error setting up subscription:', err);
-      setError(`Failed to set up job status subscription: ${err.message || 'Unknown error'}`);
+      updateAnalyticsState({ error: `Failed to set up job status subscription: ${err.message || 'Unknown error'}` });
       return null;
     }
   };
@@ -102,12 +100,15 @@ const DocumentsAnalyticsLayout = () => {
 
   const handleSubmitQuery = async (query, existingJobId = null) => {
     try {
-      setQueryText(query);
+      updateAnalyticsState({
+        queryText: query,
+        currentInputText: query, // Also update the input text to match the submitted query
+      });
 
       // If an existing job ID is provided, fetch that job's result instead of creating a new job
       if (existingJobId) {
         logger.debug('Using existing job:', existingJobId);
-        setJobId(existingJobId);
+        updateAnalyticsState({ jobId: existingJobId });
 
         // Fetch the job status and result
         const response = await API.graphql({
@@ -117,12 +118,14 @@ const DocumentsAnalyticsLayout = () => {
 
         const job = response?.data?.getAnalyticsJobStatus;
         if (job) {
-          setJobStatus(job.status);
-          setAgentMessages(job.agent_messages);
+          updateAnalyticsState({
+            jobStatus: job.status,
+            agentMessages: job.agent_messages,
+          });
           if (job.status === 'COMPLETED') {
-            setJobResult(job.result);
+            updateAnalyticsState({ jobResult: job.result });
           } else if (job.status === 'FAILED') {
-            setError(job.error || 'Job processing failed');
+            updateAnalyticsState({ error: job.error || 'Job processing failed' });
           } else {
             // If job is still processing, subscribe to updates
             subscribeToJobCompletion(existingJobId);
@@ -132,10 +135,12 @@ const DocumentsAnalyticsLayout = () => {
       }
 
       // Otherwise, create a new job
-      setIsSubmitting(true);
-      setJobResult(null);
-      setAgentMessages(null);
-      setError(null);
+      updateAnalyticsState({
+        isSubmitting: true,
+        jobResult: null,
+        agentMessages: null,
+        error: null,
+      });
 
       // Clean up previous subscription if exists
       if (subscription) {
@@ -155,8 +160,10 @@ const DocumentsAnalyticsLayout = () => {
         throw new Error('Failed to create analytics job - received null response');
       }
 
-      setJobId(job.jobId);
-      setJobStatus(job.status);
+      updateAnalyticsState({
+        jobId: job.jobId,
+        jobStatus: job.status,
+      });
 
       // Subscribe to job completion
       subscribeToJobCompletion(job.jobId);
@@ -174,13 +181,15 @@ const DocumentsAnalyticsLayout = () => {
           logger.debug('Immediate poll result:', polledJob);
 
           if (polledJob && polledJob.status !== job.status) {
-            setJobStatus(polledJob.status);
-            setAgentMessages(polledJob.agent_messages);
+            updateAnalyticsState({
+              jobStatus: polledJob.status,
+              agentMessages: polledJob.agent_messages,
+            });
 
             if (polledJob.status === 'COMPLETED') {
-              setJobResult(polledJob.result);
+              updateAnalyticsState({ jobResult: polledJob.result });
             } else if (polledJob.status === 'FAILED') {
-              setError(polledJob.error || 'Job processing failed');
+              updateAnalyticsState({ error: polledJob.error || 'Job processing failed' });
             }
           }
         } catch (pollErr) {
@@ -190,10 +199,12 @@ const DocumentsAnalyticsLayout = () => {
       }, 1000);
     } catch (err) {
       logger.error('Error submitting query:', err);
-      setError(err.message || 'Failed to submit query');
-      setJobStatus('FAILED');
+      updateAnalyticsState({
+        error: err.message || 'Failed to submit query',
+        jobStatus: 'FAILED',
+      });
     } finally {
-      setIsSubmitting(false);
+      updateAnalyticsState({ isSubmitting: false });
     }
   };
 
@@ -215,16 +226,16 @@ const DocumentsAnalyticsLayout = () => {
 
           if (job) {
             // Always update agent messages, even if status hasn't changed
-            setAgentMessages(job.agent_messages);
+            updateAnalyticsState({ agentMessages: job.agent_messages });
 
             if (job.status !== jobStatus) {
-              setJobStatus(job.status);
+              updateAnalyticsState({ jobStatus: job.status });
 
               if (job.status === 'COMPLETED') {
-                setJobResult(job.result);
+                updateAnalyticsState({ jobResult: job.result });
                 clearInterval(intervalId);
               } else if (job.status === 'FAILED') {
-                setError(job.error || 'Job processing failed');
+                updateAnalyticsState({ error: job.error || 'Job processing failed' });
                 clearInterval(intervalId);
               }
             }
@@ -241,16 +252,12 @@ const DocumentsAnalyticsLayout = () => {
         clearInterval(intervalId);
       }
     };
-  }, [jobId, jobStatus]);
+  }, [jobId, jobStatus, updateAnalyticsState]);
 
   return (
     <Container header={<Header variant="h1">Document Analytics</Header>}>
       <SpaceBetween size="l">
-        <AnalyticsQueryInput
-          onSubmit={handleSubmitQuery}
-          isSubmitting={isSubmitting}
-          selectedResult={selectedHistoryItem}
-        />
+        <AnalyticsQueryInput onSubmit={handleSubmitQuery} isSubmitting={isSubmitting} selectedResult={null} />
 
         {isSubmitting && (
           <Box textAlign="center" padding={{ vertical: 'l' }}>

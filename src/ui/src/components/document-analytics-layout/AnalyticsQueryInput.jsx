@@ -6,6 +6,7 @@ import { API, Logger } from 'aws-amplify';
 import { FormField, Textarea, Button, Grid, Box, SpaceBetween, ButtonDropdown } from '@awsui/components-react';
 import listAnalyticsJobs from '../../graphql/queries/listAnalyticsJobs';
 import deleteAnalyticsJob from '../../graphql/queries/deleteAnalyticsJob';
+import { useAnalyticsContext } from '../../contexts/analytics';
 
 // Custom styles for expandable textarea
 const textareaStyles = `
@@ -19,7 +20,9 @@ const textareaStyles = `
 const logger = new Logger('AnalyticsQueryInput');
 
 const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
-  const [query, setQuery] = useState('');
+  const { analyticsState, updateAnalyticsState } = useAnalyticsContext();
+  const { currentInputText } = analyticsState;
+
   const [queryHistory, setQueryHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [selectedOption, setSelectedOption] = useState(null);
@@ -151,15 +154,15 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   // Update query input when a result is selected externally
   useEffect(() => {
     if (selectedResult) {
-      setQuery(selectedResult.query);
+      updateAnalyticsState({ currentInputText: selectedResult.query });
       setSelectedOption(null); // Reset dropdown selection
     }
-  }, [selectedResult]);
+  }, [selectedResult, updateAnalyticsState]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (query.trim() && !isSubmitting) {
-      onSubmit(query);
+    if (currentInputText.trim() && !isSubmitting) {
+      onSubmit(currentInputText);
       setSelectedOption(null); // Reset dropdown selection after submission
 
       // Refresh the query history after a short delay to include the new query
@@ -177,13 +180,12 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
     const selectedJob = queryHistory.find((job) => job.jobId === detail.id);
     if (selectedJob) {
-      setQuery(selectedJob.query);
+      updateAnalyticsState({ currentInputText: selectedJob.query });
       setSelectedOption({ value: selectedJob.jobId, label: selectedJob.query });
 
-      // If the job is completed, also submit the result to display it
-      if (selectedJob.status === 'COMPLETED') {
-        onSubmit(selectedJob.query, selectedJob.jobId);
-      }
+      // Submit the job to display its current status and results (if completed)
+      // This will work for both completed jobs and in-progress jobs
+      onSubmit(selectedJob.query, selectedJob.jobId);
     }
   };
 
@@ -248,7 +250,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                   // If the deleted job was currently selected, clear the selection
                   if (selectedOption && selectedOption.value === job.jobId) {
                     setSelectedOption(null);
-                    setQuery('');
+                    updateAnalyticsState({ currentInputText: '' });
                   }
                 } catch (err) {
                   logger.error('Error deleting job:', err);
@@ -289,8 +291,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
             <FormField label="Enter your analytics query">
               <Textarea
                 placeholder="How has the number of documents processed per day trended over the past three weeks?"
-                value={query}
-                onChange={({ detail }) => setQuery(detail.value)}
+                value={currentInputText}
+                onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
                 disabled={isSubmitting}
                 rows={2}
                 className="expandable-textarea"
@@ -299,7 +301,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
             <Box padding={{ top: 'xl' }}>
               {' '}
               {/* Add top padding to align with input box */}
-              <Button variant="primary" type="submit" disabled={!query.trim() || isSubmitting} fullWidth>
+              <Button variant="primary" type="submit" disabled={!currentInputText.trim() || isSubmitting} fullWidth>
                 {isSubmitting ? 'Submitting...' : 'Submit query'}
               </Button>
             </Box>
