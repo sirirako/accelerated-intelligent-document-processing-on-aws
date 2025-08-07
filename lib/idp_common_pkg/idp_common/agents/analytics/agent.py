@@ -74,7 +74,7 @@ def create_analytics_agent(
     - Include appropriate table joins when needed
     - Use column names exactly as they appear in the schema, ALWAYS in double quotes within your query.
     - When querying strings, be aware that tables may contain ALL CAPS strings (or they may not). So, make your queries agnostic to case whenever possible.
-    - If you cannot get your query to work successfully, stop. Do not generate fake or synthetic data.
+    - If you cannot get your query to work successfully, stop. DO NOT EVER generate fake or synthetic data. Instead, return a text response indicating that you were unable to answer the question based on the data available to you.
     - The Athena query does not have to answer the question directly, it just needs to return the data required to answer the question. Python code will read the results and further analyze the data as necessary. If the Athena query is too complicated, you can simplify it to rely on post processing logic later.
     - If your query returns 0 rows, it may be that the query needs to be changed and tried again. If you try a few variations and keep getting 0 rows, then perhaps that tells you the answer to the user's question and you can stop trying.
     - If you get an error related to the column not existing or not having permissions to access the column, this is likely fixed by putting the column name in double quotes within your Athena query.
