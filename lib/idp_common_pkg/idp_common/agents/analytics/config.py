@@ -321,7 +321,17 @@ For visualization data (follows Chart.js format):
   "options": {
     "scales": {
       "y": {
-        "beginAtZero": true
+        "beginAtZero": true,
+        "title": {
+          "display": true,
+          "text": "Number of Documents"
+        }
+      },
+      "x": {
+        "title": {
+          "display": true,
+          "text": "Document Types"
+        }
       }
     },
     "responsive": true,

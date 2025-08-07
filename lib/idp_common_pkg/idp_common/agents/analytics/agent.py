@@ -83,6 +83,7 @@ def create_analytics_agent(
     - Only write python code to generate plots or tables. Do not use python for any other purpose.
     - The python code should read the query results from "query_results.csv" file provided, for example with a line like `df = pd.read_csv("query_results.csv")`
     - Make sure the python code will output json representing either "table" or "plotData" responseType as described in the above description of the result format.
+    - Any time you generate a plot, make sure to label the x and y axes clearly.
     - Use built in python libraries, optionally with pandas or matplotlib.
     - Always use the execute_python tool to execute your python code, and be sure to include the reset_state=True flag each time you call this tool.
     
