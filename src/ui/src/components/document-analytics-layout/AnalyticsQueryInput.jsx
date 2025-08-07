@@ -3,9 +3,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { API, Logger } from 'aws-amplify';
-import { FormField, Input, Button, Grid, Box, SpaceBetween, ButtonDropdown } from '@awsui/components-react';
+import { FormField, Textarea, Button, Grid, Box, SpaceBetween, ButtonDropdown } from '@awsui/components-react';
 import listAnalyticsJobs from '../../graphql/queries/listAnalyticsJobs';
 import deleteAnalyticsJob from '../../graphql/queries/deleteAnalyticsJob';
+
+// Custom styles for expandable textarea
+const textareaStyles = `
+  .expandable-textarea {
+    max-height: 250px;
+    overflow-y: auto !important;
+    resize: vertical;
+  }
+`;
 
 const logger = new Logger('AnalyticsQueryInput');
 
@@ -272,45 +281,50 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <SpaceBetween size="s">
-        <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
-          <FormField label="Enter your analytics query">
-            <Input
-              placeholder="How has the number of documents processed per day trended over the past three weeks?"
-              value={query}
-              onChange={({ detail }) => setQuery(detail.value)}
-              disabled={isSubmitting}
-            />
-          </FormField>
-          <Box padding={{ top: 'xl' }}>
-            {' '}
-            {/* Add top padding to align with input box */}
-            <Button variant="primary" type="submit" disabled={!query.trim() || isSubmitting} fullWidth>
-              {isSubmitting ? 'Submitting...' : 'Submit query'}
-            </Button>
-          </Box>
-        </Grid>
+    <>
+      <style>{textareaStyles}</style>
+      <form onSubmit={handleSubmit}>
+        <SpaceBetween size="s">
+          <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
+            <FormField label="Enter your analytics query">
+              <Textarea
+                placeholder="How has the number of documents processed per day trended over the past three weeks?"
+                value={query}
+                onChange={({ detail }) => setQuery(detail.value)}
+                disabled={isSubmitting}
+                rows={2}
+                className="expandable-textarea"
+              />
+            </FormField>
+            <Box padding={{ top: 'xl' }}>
+              {' '}
+              {/* Add top padding to align with input box */}
+              <Button variant="primary" type="submit" disabled={!query.trim() || isSubmitting} fullWidth>
+                {isSubmitting ? 'Submitting...' : 'Submit query'}
+              </Button>
+            </Box>
+          </Grid>
 
-        <FormField label="Previous queries">
-          <ButtonDropdown
-            items={createDropdownItems()}
-            onItemClick={handleDropdownItemClick}
-            onFocus={() => fetchQueryHistory()}
-            loading={isLoadingHistory}
-            disabled={isSubmitting}
-          >
-            {(() => {
-              if (!selectedOption) return 'Select a previous query';
-              if (selectedOption.label?.length > 40) {
-                return `${selectedOption.label.substring(0, 40)}...`;
-              }
-              return selectedOption.label || 'Selected query';
-            })()}
-          </ButtonDropdown>
-        </FormField>
-      </SpaceBetween>
-    </form>
+          <FormField label="Previous queries">
+            <ButtonDropdown
+              items={createDropdownItems()}
+              onItemClick={handleDropdownItemClick}
+              onFocus={() => fetchQueryHistory()}
+              loading={isLoadingHistory}
+              disabled={isSubmitting}
+            >
+              {(() => {
+                if (!selectedOption) return 'Select a previous query';
+                if (selectedOption.label?.length > 40) {
+                  return `${selectedOption.label.substring(0, 40)}...`;
+                }
+                return selectedOption.label || 'Selected query';
+              })()}
+            </ButtonDropdown>
+          </FormField>
+        </SpaceBetween>
+      </form>
+    </>
   );
 };
 
