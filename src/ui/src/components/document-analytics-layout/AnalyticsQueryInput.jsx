@@ -20,7 +20,7 @@ const textareaStyles = `
 const logger = new Logger('AnalyticsQueryInput');
 
 const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
-  const { analyticsState, updateAnalyticsState } = useAnalyticsContext();
+  const { analyticsState, updateAnalyticsState, resetAnalyticsState } = useAnalyticsContext();
   const { currentInputText } = analyticsState;
 
   const [queryHistory, setQueryHistory] = useState([]);
@@ -172,6 +172,18 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     }
   };
 
+  const handleClearQuery = () => {
+    // Clean up any existing subscription before resetting state
+    if (analyticsState.subscription) {
+      analyticsState.subscription.unsubscribe();
+    }
+
+    // Reset all analytics state to initial values
+    resetAnalyticsState();
+    // Also clear local component state
+    setSelectedOption(null);
+  };
+
   const handleDropdownItemClick = ({ detail }) => {
     // Prevent dropdown item selection if a delete operation is in progress
     if (isDeletingJob) {
@@ -294,16 +306,21 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                 value={currentInputText}
                 onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
                 disabled={isSubmitting}
-                rows={2}
+                rows={3}
                 className="expandable-textarea"
               />
             </FormField>
             <Box padding={{ top: 'xl' }}>
               {' '}
               {/* Add top padding to align with input box */}
-              <Button variant="primary" type="submit" disabled={!currentInputText.trim() || isSubmitting} fullWidth>
-                {isSubmitting ? 'Submitting...' : 'Submit query'}
-              </Button>
+              <SpaceBetween size="s">
+                <Button variant="primary" type="submit" disabled={!currentInputText.trim() || isSubmitting} fullWidth>
+                  {isSubmitting ? 'Submitting...' : 'Submit query'}
+                </Button>
+                <Button variant="normal" onClick={handleClearQuery} disabled={isSubmitting} fullWidth>
+                  Clear query
+                </Button>
+              </SpaceBetween>
             </Box>
           </Grid>
 
