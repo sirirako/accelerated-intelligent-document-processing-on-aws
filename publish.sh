@@ -515,6 +515,7 @@ function set_public_acls() {
   
   # Also set ACL for the main template
   aws s3api put-object-acl --acl public-read --bucket ${BUCKET} --key ${PREFIX}/${MAIN_TEMPLATE}
+  aws s3api put-object-acl --acl public-read --bucket ${BUCKET} --key ${PREFIX}/${MAIN_TEMPLATE%.yaml}_${VERSION}.yaml
   echo ""
   echo "Done with ACLs."
 }
