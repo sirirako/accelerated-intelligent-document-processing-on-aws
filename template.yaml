@@ -2680,10 +2680,21 @@ Resources:
                 - kms:GenerateDataKey*
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            - Effect: Allow
+              Action:
+                - glue:CreateTable
+                - glue:GetTable
+                - glue:UpdateTable
+                - glue:GetDatabase
+              Resource:
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           METRIC_NAMESPACE: !Ref AWS::StackName
+          STACK_NAME: !Ref AWS::StackName
 
   SaveReportingDataFunctionLogGroup:
     Type: AWS::Logs::LogGroup

@@ -199,11 +199,21 @@ The reporting module is designed to work seamlessly with AWS Glue and Amazon Ath
 
 ### Automatic Table Creation
 
-AWS Glue tables are automatically created via CloudFormation with the following features:
+The reporting module provides two types of automatic table creation:
 
-- **Predefined Tables**: `document_evaluations`, `section_evaluations`, `attribute_evaluations`, and `metering` tables
-- **Dynamic Tables**: Document sections tables are automatically discovered by AWS Glue Crawler
-- **Partition Projection**: All tables use partition projection for efficient querying
+#### Predefined Tables (CloudFormation)
+- **Evaluation Tables**: `document_evaluations`, `section_evaluations`, `attribute_evaluations`
+- **Metering Table**: `metering`
+- Created during stack deployment via CloudFormation
+
+#### Dynamic Section Tables (Runtime)
+When processing documents with new section types, the `SaveReportingData` class automatically:
+- **Creates New Tables**: Generates a Glue table for each unique section type (e.g., `document_sections_invoice`, `document_sections_w2`)
+- **Updates Schemas**: Adds new columns when new fields are detected in extraction results
+- **Configures Partitions**: Sets up partition projection for efficient date-based queries
+- **Normalizes Names**: Converts section types to lowercase for S3 path consistency (e.g., "W2" → "w2")
+
+This automatic table creation eliminates manual table management and ensures data is immediately queryable in Athena.
 
 ### Partition Projection Configuration
 
