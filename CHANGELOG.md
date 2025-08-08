@@ -16,11 +16,6 @@ SPDX-License-Identifier: MIT-0
   - Tables are configured with partition projection for efficient date-based queries without manual partition management
   - Automatic schema evolution - tables update when new fields are detected in extraction results
 
-### Fixed
-- **Fixed Case Mismatch Bug in Document Sections Reporting**
-  - Fixed issue where uppercase section types (e.g., 'W2') caused Glue tables to fail finding parquet files
-  - Glue table locations and S3 parquet paths now consistently use lowercase for section type names
-  - Ensures data accessibility in Athena queries for all section types regardless of original case
 
 ## [0.3.9]
 
