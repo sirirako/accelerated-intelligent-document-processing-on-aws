@@ -14,6 +14,11 @@ install_requires = [
 extras_require = {
     # Core utilities only - minimal dependencies
     "core": [],
+    # Analytics agent dependencies
+    "analytics": [
+        "strands-agents>=1.0.0",
+        "pandas>=2.0.0",
+    ],
     # Image handling dependencies
     "image": [
         "Pillow==11.2.1",
