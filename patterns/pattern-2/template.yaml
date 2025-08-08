@@ -500,7 +500,7 @@ Resources:
               classificationMethod:
                 type: string
                 description: "Classification methodology to use"
-                enum: ["multimodalPageLevelClassification", "textbasedHolisticClassification"]
+                enum: ["multimodalPageLevelClassification", "textbasedHolisticClassification", "multimodalPageBoundaryClassification"]
                 order: 2
               temperature:
                 type: number
