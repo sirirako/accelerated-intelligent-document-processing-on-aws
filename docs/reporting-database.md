@@ -107,11 +107,21 @@ The metering table is particularly valuable for:
 
 ## Document Sections Tables
 
-The document sections tables store the actual extracted data from document sections in a structured format suitable for analytics. These tables are automatically discovered by AWS Glue Crawler and are organized by section type (classification).
+The document sections tables store the actual extracted data from document sections in a structured format suitable for analytics. These tables are automatically created when new section types are encountered during document processing, eliminating the need for manual table creation.
+
+### Automatic Table Creation
+
+When a document is processed and a new section type (classification) is detected, the system automatically:
+1. Creates a new Glue table for that section type (e.g., `document_sections_invoice`, `document_sections_receipt`, `document_sections_w2`)
+2. Configures the table with appropriate schema based on the extracted data
+3. Sets up partition projection for efficient date-based queries
+4. Updates the table schema if new fields are detected in subsequent documents
+
+**Important:** Section type names are normalized to lowercase for consistency with case-sensitive S3 paths. For example, a section classified as "W2" will create a table named `document_sections_w2` with data stored in `document_sections/w2/`.
 
 ### Dynamic Section Tables
 
-Document sections are stored in dynamically created tables based on the section classification. Each section type gets its own table (e.g., `document_sections_invoice`, `document_sections_receipt`, `document_sections_bank_statement`, etc.) with the following characteristics:
+Document sections are stored in dynamically created tables based on the section classification. Each section type gets its own table with the following characteristics:
 
 **Common Metadata Columns:**
 | Column | Type | Description |

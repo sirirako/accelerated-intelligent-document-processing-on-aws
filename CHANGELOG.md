@@ -5,13 +5,25 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.10]
+
+### Added
+
+- **Automatic Glue Table Creation for Document Sections**
+  - Added automatic creation of AWS Glue tables for each document section type (classification) during processing
+  - Tables are created dynamically when new section types are encountered, eliminating manual table creation
+  - Consistent lowercase naming convention for tables ensures compatibility with case-sensitive S3 paths
+  - Tables are configured with partition projection for efficient date-based queries without manual partition management
+  - Automatic schema evolution - tables update when new fields are detected in extraction results
+
+
+## [0.3.9]
+
 ### Added
 - **Optional Permissions Boundary Support for Enterprise Deployments**
   - Added `PermissionsBoundaryArn` parameter to all CloudFormation templates for organizations with Service Control Policies (SCPs) requiring permissions boundaries
   - Comprehensive support for both explicit IAM roles and implicit roles created by AWS SAM functions and statemachines`
   - Conditional implementation ensures backward compatibility - when no permissions boundary is provided, roles deploy normally
-
-## [0.3.8]
 
 ### Added
 - IDP Configuration and Prompting Best Practices documentation [doc](./docs/idp-configuration-best-practices.md)

@@ -4,6 +4,7 @@ Lambda function for saving document evaluation data to the reporting bucket in P
 
 import json
 import logging
+import os
 import traceback
 from typing import Dict, Any, List
 
@@ -60,8 +61,19 @@ def handler(event, context):
         # Convert document dict to Document object
         document = Document.from_dict(document_dict)
         
+        # Get the database name from event or environment variable
+        # The database name is typically in the format: {stackname}-reporting-db
+        database_name = event.get('database_name')
+        if not database_name:
+            # Try to get from environment variable if not in event
+            stack_name = os.environ.get('STACK_NAME', '').lower()
+            if stack_name:
+                database_name = f"{stack_name}-reporting-db"
+                logger.info(f"Using database name from stack name: {database_name}")
+        
         # Use the SaveReportingData class to save the data
-        reporter = SaveReportingData(reporting_bucket)
+        # Pass database_name to enable automatic Glue table creation
+        reporter = SaveReportingData(reporting_bucket, database_name)
         results = reporter.save(document, data_to_save)
         
         # If no data was processed, return a warning
