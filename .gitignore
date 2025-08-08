@@ -17,3 +17,4 @@ __pycache__
 .ruff_cache
 .kiro
 rvl_cdip_*
+notebooks/examples/data

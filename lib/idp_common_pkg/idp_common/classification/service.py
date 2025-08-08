@@ -684,7 +684,7 @@ class ClassificationService:
                     document_boundary = classification_data.get(
                         "document_boundary", "continue"
                     )
-                    logger.debug(
+                    logger.info(
                         f"Parsed classification response as {detected_format}: {classification_data}"
                     )
                 else:
