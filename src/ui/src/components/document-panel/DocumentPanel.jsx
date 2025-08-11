@@ -23,6 +23,7 @@ import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
 import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
+import StepFunctionFlowViewer from '../step-function-flow/StepFunctionFlowViewer';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
