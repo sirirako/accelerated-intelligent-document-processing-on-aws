@@ -22,6 +22,7 @@ The solution includes a responsive web-based user interface built with React tha
 - **Confidence threshold configuration** for HITL (Human-in-the-Loop) triggering through the Assessment & HITL Configuration section
 - Document upload from local computer
 - Knowledge base querying for document collections
+- "Chat with document" from the detailed view of the document
 - **Document Process Flow visualization** for detailed workflow execution monitoring and troubleshooting
 
 ## Document Process Flow Visualization
