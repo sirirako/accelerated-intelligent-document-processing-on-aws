@@ -100,7 +100,12 @@ The Document Process Flow visualization is particularly useful for troubleshooti
 
 ## Chat with Document
 
-The "Chat with Document" feature is available at the bottom of the Document Detail view. This feature uses the same model that's configured to do the summarization to provide a RAG interface to the document that's the details are displayed for. No other document is taken in to account except the document you're viewing the details of.
+The "Chat with Document" feature is available at the bottom of the Document Detail view. This feature uses the same model that's configured to do the summarization to provide a RAG interface to the document that's the details are displayed for. No other document is taken in to account except the document you're viewing the details of. Note that this feature will only work after the document status is marked as complete.
+
+### How to Use
+
+1. Navigate to a document's detail page and scroll to the bottom
+2. In the text area, type in your question and you'll see an answer pop up after the document is analyzed with the model that's configured for summarization
 
 ## Authentication Features
 
