@@ -15,12 +15,13 @@ const getChatResponse = async (s3Uri, prompt) => {
 
   // commenting this out until model selection for chat is available again on this screen
   // logger.debug('modelId:', modelId);
-  const modelSelection = 'us.amazon.nova-pro-v1:0';
-  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt, modelSelection } });
+  const modelId = 'us.amazon.nova-pro-v1:0';
+  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt, modelId } });
   // logger.debug('response:', response);
   return response;
 };
 
+// commenting this out until model selection for chat is available again on this screen
 // const modelOptions = [
 //   { value: 'us.amazon.nova-lite-v1:0', label: 'Nova Lite' },
 //   { value: 'us.amazon.nova-pro-v1:0', label: 'Nova Pro' },
