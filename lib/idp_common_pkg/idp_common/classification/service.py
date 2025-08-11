@@ -1250,11 +1250,17 @@ class ClassificationService:
                     ].confidence = cached_result.classification.confidence
 
                     # Copy metadata (including boundary information) to the page
-                    if hasattr(document.pages[page_id], 'metadata'):
-                        document.pages[page_id].metadata = cached_result.classification.metadata
+                    if hasattr(document.pages[page_id], "metadata"):
+                        document.pages[
+                            page_id
+                        ].metadata = cached_result.classification.metadata
                     else:
                         # If the page doesn't have a metadata attribute, add it
-                        setattr(document.pages[page_id], 'metadata', cached_result.classification.metadata)
+                        setattr(
+                            document.pages[page_id],
+                            "metadata",
+                            cached_result.classification.metadata,
+                        )
 
                     # Merge cached metering data
                     page_metering = cached_result.classification.metadata.get(
@@ -1305,11 +1311,17 @@ class ClassificationService:
                             ].confidence = page_result.classification.confidence
 
                             # Copy metadata (including boundary information) to the page
-                            if hasattr(document.pages[page_id], 'metadata'):
-                                document.pages[page_id].metadata = page_result.classification.metadata
+                            if hasattr(document.pages[page_id], "metadata"):
+                                document.pages[
+                                    page_id
+                                ].metadata = page_result.classification.metadata
                             else:
                                 # If the page doesn't have a metadata attribute, add it
-                                setattr(document.pages[page_id], 'metadata', page_result.classification.metadata)
+                                setattr(
+                                    document.pages[page_id],
+                                    "metadata",
+                                    page_result.classification.metadata,
+                                )
 
                             # Merge metering data
                             page_metering = page_result.classification.metadata.get(
@@ -1393,9 +1405,9 @@ class ClassificationService:
                 current_pages = [sorted_results[0]]
 
                 for result in sorted_results[1:]:
-                    boundary = (
-                        result.classification.metadata.get("document_boundary", "continue").lower()
-                    )
+                    boundary = result.classification.metadata.get(
+                        "document_boundary", "continue"
+                    ).lower()
                     if (
                         result.classification.doc_type == current_type
                         and boundary != "start"
