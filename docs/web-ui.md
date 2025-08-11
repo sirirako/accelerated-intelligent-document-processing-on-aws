@@ -98,6 +98,10 @@ The Document Process Flow visualization is particularly useful for troubleshooti
 - Analyze execution times to identify performance bottlenecks
 - Inspect the input and output of each step to verify data transformation
 
+## Chat with Document
+
+The "Chat with Document" feature is available at the bottom of the Document Detail view. This feature uses the same model that's configured to do the summarization to provide a RAG interface to the document that's the details are displayed for. No other document is taken in to account except the document you're viewing the details of.
+
 ## Authentication Features
 
 The web UI uses Amazon Cognito for secure user authentication and authorization:
