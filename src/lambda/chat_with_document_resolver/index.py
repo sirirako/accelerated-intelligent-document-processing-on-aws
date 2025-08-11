@@ -15,6 +15,30 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 # Get LOG_LEVEL from environment variable with INFO as default
 
+def get_summarization_model():
+    """Get the summarization model from configuration table"""
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        config_table = dynamodb.Table(os.environ['CONFIGURATION_TABLE_NAME'])
+        
+        # Query for the Default configuration
+        response = config_table.get_item(
+            Key={'Configuration': 'Default'}
+        )
+        
+        if 'Item' in response:
+            config_data = response['Item']
+            # Extract summarization model from the configuration
+            if 'summarization' in config_data and 'model' in config_data['summarization']:
+                return config_data['summarization']['model']
+        
+        # Fallback to a default model if not found in config
+        return 'us.amazon.nova-pro-v1:0'
+        
+    except Exception as e:
+        logger.error(f"Error getting summarization model from config: {str(e)}")
+        return 'us.amazon.nova-pro-v1:0'  # Fallback default
+
 def handler(event, context):
     response_data = {}
 
@@ -23,7 +47,11 @@ def handler(event, context):
 
         objectKey = event['arguments']['s3Uri']
         prompt = event['arguments']['prompt']
-        selectedModelId = event['arguments']['modelId']
+
+        # this feature is not enabled until the model can be selected on the chat screen
+        # selectedModelId = event['arguments']['modelId']
+        selectedModelId = get_summarization_model()
+        
         logger.info(f"Processing S3 URI: {objectKey}")
 
         output_bucket = os.environ['OUTPUT_BUCKET']

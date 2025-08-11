@@ -10,26 +10,29 @@ import './ChatPanel.css';
 
 const logger = new Logger('chatWithDocument');
 
-const getChatResponse = async (s3Uri, prompt, modelId) => {
+const getChatResponse = async (s3Uri, prompt) => {
   logger.debug('s3URI:', s3Uri);
-  logger.debug('modelId:', modelId);
-  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt, modelId } });
+
+  // commenting this out until model selection for chat is available again on this screen
+  // logger.debug('modelId:', modelId);
+  const modelSelection = 'us.amazon.nova-pro-v1:0';
+  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt, modelSelection } });
   // logger.debug('response:', response);
   return response;
 };
 
-const modelOptions = [
-  { value: 'us.amazon.nova-lite-v1:0', label: 'Nova Lite' },
-  { value: 'us.amazon.nova-pro-v1:0', label: 'Nova Pro' },
-  { value: 'us.amazon.nova-premier-v1:0', label: 'Nova Premier' },
-  { value: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', label: 'Claude 3.7 Sonnet' },
-  { value: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4' },
-  { value: 'us.anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4' },
-];
+// const modelOptions = [
+//   { value: 'us.amazon.nova-lite-v1:0', label: 'Nova Lite' },
+//   { value: 'us.amazon.nova-pro-v1:0', label: 'Nova Pro' },
+//   { value: 'us.amazon.nova-premier-v1:0', label: 'Nova Premier' },
+//   { value: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', label: 'Claude 3.7 Sonnet' },
+//   { value: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4' },
+//   { value: 'us.anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4' },
+// ];
 
 const ChatPanel = (item) => {
   const [error, setError] = useState(null);
-  const [modelId, setModelId] = useState(modelOptions[0].value);
+  // const [modelId, setModelId] = useState(modelOptions[0].value);
   const [chatQueries, setChatQueries] = useState([]);
   const textareaRef = useRef(null);
   const { objectKey } = item;
@@ -40,14 +43,15 @@ const ChatPanel = (item) => {
     return rowId;
   }
 
-  function handleModelIdChange(e) {
-    setModelId(e.target.value);
-  }
+  // comment out sending the model ID until model selection is available again on this screen
+  // function handleModelIdChange(e) {
+  //   setModelId(e.target.value);
+  // }
 
   const handlePromptSubmit = () => {
     const prompt = textareaRef.current.value;
 
-    logger.debug('selectedModelId:', modelId);
+    // logger.debug('selectedModelId:', modelId);
 
     const chatRequestData = {
       role: 'user',
@@ -65,7 +69,9 @@ const ChatPanel = (item) => {
 
     textareaRef.current.value = '';
 
-    const chatResponse = getChatResponse(objectKey, prompt, modelId);
+    // comment out sending the model ID until model selection is available again on this screen
+    // const chatResponse = getChatResponse(objectKey, prompt, modelId);
+    const chatResponse = getChatResponse(objectKey, prompt);
 
     let chatResponseData = {};
 
@@ -155,7 +161,7 @@ const ChatPanel = (item) => {
             <textarea name="postContent" ref={textareaRef} rows={6} className="chat-textarea" id="chatTextarea" />
           </FormField>
 
-          <FormField label="Model">
+          {/* <FormField label="Model">
             <select name="model" id="modelSelect" onChange={handleModelIdChange}>
               {modelOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -163,7 +169,7 @@ const ChatPanel = (item) => {
                 </option>
               ))}
             </select>
-          </FormField>
+          </FormField> */}
 
           <Button variant="primary" onClick={handlePromptSubmit}>
             Send
