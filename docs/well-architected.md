@@ -30,6 +30,7 @@ The GenAI Intelligent Document Processing (GenAIIDP) Accelerator demonstrates st
 ### Strengths
 
 - **Defense in Depth**: Multiple security layers including IAM roles with least privilege, encryption at rest, and secure API access.
+- **Enterprise IAM Governance**: Comprehensive support for IAM permissions boundaries to comply with organizational Service Control Policies (SCPs) that mandate permissions boundaries on all IAM roles.
 - **Content Safety**: Integration with Amazon Bedrock Guardrails to enforce content policies, block sensitive information, and prevent model misuse.
 - **Authentication**: Cognito user pools with configurable password policies and MFA support.
 - **Authorization**: Fine-grained access controls for different components and resources.

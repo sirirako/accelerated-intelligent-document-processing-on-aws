@@ -161,7 +161,7 @@ function calculate_hash() {
 # Calculate directory checksum
 function get_dir_checksum() {
   local dir=$1
-  local dir_checksum=$(find "$dir" -type d \( -name "python" -o -name "node_modules" -o -name "build" -o -name ".aws-sam" -o -name "dist" -o -name "__pycache__" -o -name "*.egg-info" \) -prune -o -type f \( ! -name ".checksum" -a ! -name "*.pyc" \) -exec $STAT_CMD {} \; | sha256sum | awk '{ print $1 }')
+  local dir_checksum=$(find "$dir" -type d \( -name "python" -o -name "node_modules" -o -name "build" -o -name ".aws-sam" -o -name "dist" -o -name "__pycache__" -o -name ".pytest_cache" -o -name "*.egg-info" \) -prune -o -type f \( ! -name ".checksum" -a ! -name "*.pyc" \) -exec $STAT_CMD {} \; | sha256sum | awk '{ print $1 }')
   local combined_string="$BUCKET $PREFIX_AND_VERSION $REGION $dir_checksum"
   echo -n "$combined_string" | sha256sum | awk '{ print $1 }'
 }
@@ -515,6 +515,7 @@ function set_public_acls() {
   
   # Also set ACL for the main template
   aws s3api put-object-acl --acl public-read --bucket ${BUCKET} --key ${PREFIX}/${MAIN_TEMPLATE}
+  aws s3api put-object-acl --acl public-read --bucket ${BUCKET} --key ${PREFIX}/${MAIN_TEMPLATE%.yaml}_${VERSION}.yaml
   echo ""
   echo "Done with ACLs."
 }

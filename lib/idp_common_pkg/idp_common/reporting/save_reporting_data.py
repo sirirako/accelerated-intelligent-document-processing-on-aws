@@ -32,15 +32,18 @@ class SaveReportingData:
     to a reporting bucket in Parquet format for analytics.
     """
 
-    def __init__(self, reporting_bucket: str):
+    def __init__(self, reporting_bucket: str, database_name: str = None):
         """
         Initialize the SaveReportingData class.
 
         Args:
             reporting_bucket: S3 bucket name for reporting data
+            database_name: Glue database name for creating tables (optional)
         """
         self.reporting_bucket = reporting_bucket
+        self.database_name = database_name
         self.s3_client = boto3.client("s3")
+        self.glue_client = boto3.client("glue") if database_name else None
 
     def _serialize_value(self, value: Any) -> str:
         """
@@ -304,6 +307,165 @@ class SaveReportingData:
             sanitized_records.append(sanitized_record)
 
         return sanitized_records
+
+    def _convert_schema_to_glue_columns(
+        self, schema: pa.Schema
+    ) -> List[Dict[str, str]]:
+        """
+        Convert PyArrow schema to Glue table columns format.
+
+        Args:
+            schema: PyArrow schema
+
+        Returns:
+            List of column definitions for Glue
+        """
+        columns = []
+        for field in schema:
+            # Map PyArrow types to Glue/Hive types
+            if field.type == pa.string():
+                glue_type = "string"
+            elif field.type == pa.bool_():
+                glue_type = "boolean"
+            elif field.type == pa.int64():
+                glue_type = "bigint"
+            elif field.type == pa.int32():
+                glue_type = "int"
+            elif field.type == pa.float64():
+                glue_type = "double"
+            elif field.type == pa.float32():
+                glue_type = "float"
+            elif field.type == pa.timestamp("ms"):
+                glue_type = "timestamp"
+            else:
+                # Default to string for unknown types
+                glue_type = "string"
+
+            columns.append({"Name": field.name, "Type": glue_type})
+
+        return columns
+
+    def _create_or_update_glue_table(
+        self, section_type: str, schema: pa.Schema, new_section_created: bool = False
+    ) -> bool:
+        """
+        Create or update a Glue table for a document section type.
+
+        Args:
+            section_type: The document section type (e.g., 'invoice', 'receipt')
+            schema: PyArrow schema for the table
+            new_section_created: Whether this is a new section type
+
+        Returns:
+            True if table was created or updated, False otherwise
+        """
+        if not self.glue_client or not self.database_name:
+            logger.debug(
+                "Glue client or database name not configured, skipping table creation"
+            )
+            return False
+
+        # Escape section_type to make it table-name-safe
+        escaped_section_type = re.sub(r"[/\\:*?\"<>|]", "_", section_type.lower())
+        table_name = f"document_sections_{escaped_section_type}"
+
+        # Convert schema to Glue columns
+        columns = self._convert_schema_to_glue_columns(schema)
+
+        # Table input for create/update
+        table_input = {
+            "Name": table_name,
+            "Description": f"Document sections table for type: {section_type}",
+            "StorageDescriptor": {
+                "Columns": columns,
+                "Location": f"s3://{self.reporting_bucket}/document_sections/{escaped_section_type}/",
+                "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                "Compressed": True,
+                "SerdeInfo": {
+                    "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+                },
+            },
+            "PartitionKeys": [{"Name": "date", "Type": "string"}],
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {
+                "classification": "parquet",
+                "typeOfData": "file",
+                "projection.enabled": "true",
+                "projection.date.type": "date",
+                "projection.date.format": "yyyy-MM-dd",
+                "projection.date.range": "2024-01-01,2030-12-31",
+                "projection.date.interval": "1",
+                "projection.date.interval.unit": "DAYS",
+                "storage.location.template": f"s3://{self.reporting_bucket}/document_sections/{escaped_section_type}/date=${{date}}/",
+            },
+        }
+
+        try:
+            # Try to get the existing table
+            existing_table = self.glue_client.get_table(
+                DatabaseName=self.database_name, Name=table_name
+            )
+
+            # Check if schema has changed significantly
+            existing_columns = (
+                existing_table.get("Table", {})
+                .get("StorageDescriptor", {})
+                .get("Columns", [])
+            )
+            existing_column_names = {col["Name"] for col in existing_columns}
+            new_column_names = {col["Name"] for col in columns}
+
+            # If there are new columns, update the table
+            if new_column_names - existing_column_names:
+                logger.info(f"Updating Glue table {table_name} with new columns")
+                self.glue_client.update_table(
+                    DatabaseName=self.database_name, TableInput=table_input
+                )
+                return True
+            else:
+                logger.debug(
+                    f"Glue table {table_name} already exists with current schema"
+                )
+                return False
+
+        except Exception as get_table_error:
+            # Check if it's an EntityNotFoundException or similar (table doesn't exist)
+            error_str = str(get_table_error)
+            if (
+                "EntityNotFoundException" in error_str
+                or "not found" in error_str.lower()
+            ):
+                # Table doesn't exist, create it
+                logger.info(
+                    f"Creating new Glue table {table_name} for section type: {section_type}"
+                )
+                try:
+                    self.glue_client.create_table(
+                        DatabaseName=self.database_name, TableInput=table_input
+                    )
+                    logger.info(f"Successfully created Glue table {table_name}")
+                    return True
+                except Exception as create_error:
+                    # Check if it's an AlreadyExistsException
+                    if "AlreadyExistsException" in str(create_error):
+                        logger.debug(
+                            f"Glue table {table_name} already exists (race condition)"
+                        )
+                        return False
+                    logger.error(
+                        f"Error creating Glue table {table_name}: {str(create_error)}"
+                    )
+                    return False
+            else:
+                # Some other error occurred
+                logger.error(
+                    f"Error checking Glue table {table_name}: {str(get_table_error)}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"Error checking/updating Glue table {table_name}: {str(e)}")
+            return False
 
     def save(self, document: Document, data_to_save: List[str]) -> List[Dict[str, Any]]:
         """
@@ -747,6 +909,7 @@ class SaveReportingData:
         sections_processed = 0
         sections_with_errors = 0
         total_records_saved = 0
+        section_types_processed = set()  # Track unique section types
 
         logger.info(
             f"Processing {len(document.sections)} sections for document {document_id}"
@@ -845,8 +1008,10 @@ class SaveReportingData:
                 section_type = (
                     section.classification if section.classification else "unknown"
                 )
-                # Escape section_type to make it filesystem-safe
-                escaped_section_type = re.sub(r"[/\\:*?\"<>|]", "_", section_type)
+                # Escape section_type to make it filesystem-safe and lowercase for consistency
+                escaped_section_type = re.sub(
+                    r"[/\\:*?\"<>|]", "_", section_type.lower()
+                )
 
                 s3_key = (
                     f"document_sections/"
@@ -865,6 +1030,18 @@ class SaveReportingData:
                     f"Saved {len(section_records)} records for section {section.section_id} "
                     f"to s3://{self.reporting_bucket}/{s3_key}"
                 )
+
+                # Track this section type and create/update Glue table if needed
+                if section_type not in section_types_processed:
+                    section_types_processed.add(section_type)
+                    # Try to create or update the Glue table for this section type
+                    table_created = self._create_or_update_glue_table(
+                        section_type, schema
+                    )
+                    if table_created:
+                        logger.info(
+                            f"Created/updated Glue table for section type: {section_type}"
+                        )
 
             except Exception as e:
                 logger.error(f"Error processing section {section.section_id}: {str(e)}")

@@ -51,6 +51,20 @@ This document outlines the AWS services used by the GenAI Intelligent Document P
 
 ## IAM Role Requirements
 
+### Enterprise Deployment Considerations
+
+For organizations with Service Control Policies (SCPs) that mandate permissions boundaries on all IAM roles, the solution provides comprehensive support through the `PermissionsBoundaryArn` parameter. This optional parameter can be specified during deployment to attach a permissions boundary to all IAM roles (both explicit roles and implicit roles created by AWS SAM functions).
+
+**Usage:**
+```bash
+aws cloudformation deploy \
+  --template-file template.yaml \
+  --parameter-overrides PermissionsBoundaryArn=arn:aws:iam::123456789012:policy/MyPermissionsBoundary \
+  --capabilities CAPABILITY_IAM
+```
+
+When no permissions boundary is specified, roles deploy normally, ensuring backward compatibility.
+
 ### Deployment Roles
 
 Deploying this solution requires an IAM role/user with the following permissions:
