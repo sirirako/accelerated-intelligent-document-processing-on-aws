@@ -10,13 +10,17 @@ import './ChatPanel.css';
 
 const logger = new Logger('chatWithDocument');
 
-const getChatResponse = async (s3Uri, prompt) => {
+const getChatResponse = async (s3Uri, prompt, history) => {
   logger.debug('s3URI:', s3Uri);
-
+  logger.debug('history:', history);
   // commenting this out until model selection for chat is available again on this screen
   // logger.debug('modelId:', modelId);
   const modelId = 'us.amazon.nova-pro-v1:0';
-  const response = await API.graphql({ query: chatWithDocument, variables: { s3Uri, prompt, modelId } });
+  const strHistory = JSON.stringify(history);
+  const response = await API.graphql({
+    query: chatWithDocument,
+    variables: { s3Uri, prompt, history: strHistory, modelId },
+  });
   // logger.debug('response:', response);
   return response;
 };
@@ -35,6 +39,7 @@ const ChatPanel = (item) => {
   const [error, setError] = useState(null);
   // const [modelId, setModelId] = useState(modelOptions[0].value);
   const [chatQueries, setChatQueries] = useState([]);
+  const [jsonChatHistory, setJsonChatHistory] = useState([]);
   const textareaRef = useRef(null);
   const { objectKey } = item;
   let rowId = 0;
@@ -71,8 +76,8 @@ const ChatPanel = (item) => {
     textareaRef.current.value = '';
 
     // comment out sending the model ID until model selection is available again on this screen
-    // const chatResponse = getChatResponse(objectKey, prompt, modelId);
-    const chatResponse = getChatResponse(objectKey, prompt);
+    // const chatResponse = getChatResponse(objectKey, prompt, history, modelId);
+    const chatResponse = getChatResponse(objectKey, prompt, jsonChatHistory);
 
     let chatResponseData = {};
 
@@ -87,6 +92,13 @@ const ChatPanel = (item) => {
             dt: new Date().toLocaleTimeString(),
             type: 'msg',
           };
+
+          const chatItem = {
+            ask: prompt,
+            response: cResponse.cr.content[0].text,
+          };
+
+          setJsonChatHistory((prevChatHistory) => [...prevChatHistory, chatItem]);
         }
       })
       .catch((r) => {
@@ -158,9 +170,30 @@ const ChatPanel = (item) => {
             <p>To start chatting to this document, enter your message below.</p>
           )}
 
-          <FormField label="Your message" className="chat-composer-container">
+          {/* <FormField label="Your message" className="chat-composer-container">
             <textarea name="postContent" ref={textareaRef} rows={6} className="chat-textarea" id="chatTextarea" />
-          </FormField>
+          </FormField> */}
+
+          <div style={{ gap: '8px', width: '100%' }}>
+            <FormField label="Your message" style={{ flex: 8 }}>
+              <input
+                type="text"
+                name="postContent"
+                ref={textareaRef}
+                style={{ padding: '3px', width: '100%' }}
+                id="chatTextarea"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handlePromptSubmit();
+                  }
+                }}
+              />
+            </FormField>
+
+            <Button variant="primary" onClick={handlePromptSubmit}>
+              Send
+            </Button>
+          </div>
 
           {/* <FormField label="Model">
             <select name="model" id="modelSelect" onChange={handleModelIdChange}>
@@ -171,10 +204,6 @@ const ChatPanel = (item) => {
               ))}
             </select>
           </FormField> */}
-
-          <Button variant="primary" onClick={handlePromptSubmit}>
-            Send
-          </Button>
         </Container>
       </SpaceBetween>
     </div>

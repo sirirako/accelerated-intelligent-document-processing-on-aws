@@ -203,7 +203,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   getFileContents(s3Uri: String!): FileContentsResponse
   getConfiguration: ConfigurationResponse
   queryKnowledgeBase(input: String!, sessionId: String): String
-  chatWithDocument(s3Uri: String!, prompt: String!, modelId: String!): String
+  chatWithDocument(s3Uri: String!, prompt: String!, history: AWSJSON!, modelId: String!): String
   getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
   submitAnalyticsQuery(query: String!): AnalyticsJob @aws_cognito_user_pools
   getAnalyticsJobStatus(jobId: ID!): AnalyticsJob @aws_cognito_user_pools

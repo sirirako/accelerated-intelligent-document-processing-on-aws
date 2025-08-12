@@ -5725,11 +5725,14 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           OUTPUT_BUCKET: !Ref OutputBucket
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
       LoggingConfig:
         LogGroup: !Ref ChatWithDocumentResolverFunctionLogGroup
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref OutputBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
         - Statement: 
           - !If
             - ShouldUseDocumentKnowledgeBase

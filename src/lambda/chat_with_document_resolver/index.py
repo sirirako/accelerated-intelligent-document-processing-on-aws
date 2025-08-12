@@ -47,11 +47,18 @@ def handler(event, context):
 
         objectKey = event['arguments']['s3Uri']
         prompt = event['arguments']['prompt']
+        history = event['arguments']['history']
+
+        full_prompt = "You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\n"
+        full_prompt += "If you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\n"
+        full_prompt += "Additionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n"
+        full_prompt += "The JSON object is: " + json.dumps(history) + ".\n\n"
+        full_prompt += "The user's question is: " + prompt
 
         # this feature is not enabled until the model can be selected on the chat screen
         # selectedModelId = event['arguments']['modelId']
         selectedModelId = get_summarization_model()
-        
+
         logger.info(f"Processing S3 URI: {objectKey}")
 
         output_bucket = os.environ['OUTPUT_BUCKET']
@@ -66,6 +73,9 @@ def handler(event, context):
 
             # full text key
             fulltext_key = objectKey + '/summary/fulltext.txt'
+
+            logger.info(f"Output Bucket: {output_bucket}")
+            logger.info(f"Full Text Key: {fulltext_key}")
 
             # read full contents of the object as text
             s3 = boto3.client('s3')
@@ -90,7 +100,7 @@ def handler(event, context):
                     "role":"user",
                     "content": [
                         {
-                            "text": prompt
+                            "text": full_prompt
                         }
                     ]
                 }
