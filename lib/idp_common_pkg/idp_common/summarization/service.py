@@ -648,7 +648,7 @@ class SummarizationService:
             )
 
         return document
-    
+
     def _get_all_text(self, document: Document) -> str:
         """
         Retrieve all text content from a document's pages.
@@ -670,7 +670,7 @@ class SummarizationService:
                         f"Failed to load text content from {page.parsed_text_uri}: {e}"
                     )
                     # Continue with other pages
-        
+
         return all_text
 
     def _process_document_as_whole(
