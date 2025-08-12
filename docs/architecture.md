@@ -41,6 +41,8 @@ The solution uses a modular architecture with nested CloudFormation stacks to su
 - Pattern-specific optimizations and configurations
 - Optional features that can be enabled across all patterns:
   - Document summarization (controlled by `IsSummarizationEnabled` parameter)
+    - This feature also enables the "Chat with Document" functionality
+    - This feature does not use the Bedrock Knowledge Base but stores a full-text text file in S3
   - Document Knowledge Base (using Amazon Bedrock)
   - Automated accuracy evaluation against baseline data
 
