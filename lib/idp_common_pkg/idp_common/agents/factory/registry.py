@@ -18,6 +18,7 @@ Example:
 """
 
 from ..analytics.agent import create_analytics_agent
+from ..dummy.agent import create_dummy_agent
 from .agent_factory import IDPAgentFactory
 
 # Create global factory instance
@@ -29,4 +30,12 @@ agent_factory.register_agent(
     agent_name="Analytics Agent",
     agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
     creator_func=create_analytics_agent,
+)
+
+# Register dummy agent
+agent_factory.register_agent(
+    agent_id="dummy-dev-v1",
+    agent_name="Dummy Agent",
+    agent_description="Simple development agent with calculator tool",
+    creator_func=create_dummy_agent,
 )

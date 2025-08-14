@@ -7,6 +7,7 @@ This module provides agent-based functionality using the Strands framework for t
 The agents module is designed to support multiple types of intelligent agents while maintaining consistency and reusability across the IDP accelerator. Currently implemented:
 
 - **Analytics Agent**: Natural language to SQL/visualization conversion with secure code execution
+- **Dummy Agent**: Simple development agent with calculator tool for testing and development
 - **Common Utilities**: Shared configuration, monitoring, and utilities for all agent types
 
 ## Architecture
@@ -38,6 +39,9 @@ idp_common/agents/
 │   │   └── code_interpreter_tools.py # Secure Python code execution
 │   └── assets/                 # Static assets (prompts, schemas)
 │       └── db_description.md   # Database schema documentation
+├── dummy/                      # Dummy agent for development
+│   ├── __init__.py
+│   └── agent.py                # Simple agent with calculator tool
 └── testing/                    # Testing utilities and examples
     ├── __init__.py
     ├── README.md               # Comprehensive testing guide
@@ -114,7 +118,10 @@ from idp_common.agents.factory import agent_factory
 
 # List all available agents
 available_agents = agent_factory.list_available_agents()
-# Returns: [{"agent_id": "analytics-20250813-v0-kaleko", "agent_name": "Analytics Agent", "agent_description": "..."}]
+# Returns: [
+#   {"agent_id": "analytics-20250813-v0-kaleko", "agent_name": "Analytics Agent", "agent_description": "..."},
+#   {"agent_id": "dummy-dev-v1", "agent_name": "Dummy Agent", "agent_description": "..."}
+# ]
 
 # Create an agent by ID
 agent = agent_factory.create_agent(
@@ -133,10 +140,6 @@ print(agent.agent_id)          # "analytics-20250813-v0-kaleko"
 # Use the agent (same as any Strands agent)
 response = agent("How many documents were processed last week?")
 ```
-
-### Direct Agent Creation (Legacy)
-
-You can still create agents directly for backward compatibility:
 
 ### Analytics Agent
 
@@ -163,6 +166,29 @@ agent = create_analytics_agent(
 
 # Use the agent
 response = agent("How many documents were processed last week?")
+```
+
+### Dummy Agent
+
+The dummy agent provides a simple development and testing environment with basic calculator functionality:
+
+```python
+from idp_common.agents.dummy import create_dummy_agent
+
+# Create the dummy agent
+agent = create_dummy_agent(
+    config={}, 
+    session=boto3.Session()
+)
+
+# Use the agent for simple calculations
+response = agent("What is 15 * 23 + 7?")
+```
+
+The dummy agent is useful for:
+- Testing the agent framework without complex dependencies
+- Development and debugging of agent infrastructure
+- Simple mathematical calculations during development
 ```
 
 ### Response Parsing
@@ -233,13 +259,11 @@ To add a new agent type to the factory system:
 Create your agent directory structure:
 ```
 idp_common/agents/your_agent/
-├── __init__.py
-├── agent.py                # Agent creation function
-├── config.py              # Configuration management
-├── tools/                 # Strands tools
-│   └── __init__.py
-└── assets/               # Static assets
+├── __init__.py             # Export your agent creator function
+└── agent.py                # Agent creation function
 ```
+
+For simple agents, you may not need additional directories like `tools/`, `config.py`, or `assets/`.
 
 ### Step 2: Implement the Agent Creator Function
 
@@ -280,6 +304,55 @@ def create_your_agent(config, session, **kwargs) -> IDPAgent:
     )
 ```
 
+#### Example: Dummy Agent Implementation
+
+Here's the complete implementation of the dummy agent as a concrete example:
+
+**`idp_common/agents/dummy/__init__.py`:**
+```python
+from .agent import create_dummy_agent
+
+__all__ = ["create_dummy_agent"]
+```
+
+**`idp_common/agents/dummy/agent.py`:**
+```python
+import logging
+import os
+from typing import Any, Dict
+
+import boto3
+from strands import Agent
+from strands.models import BedrockModel
+from strands_tools import calculator
+
+from ..common.idp_agent import IDPAgent
+
+def create_dummy_agent(
+    config: Dict[str, Any],
+    session: boto3.Session,
+    job_id: str = None,
+    user_id: str = None,
+    **kwargs,
+) -> IDPAgent:
+    # Get model ID from environment variable
+    model_id = os.environ.get("DUMMY_AGENT_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+
+    # Create Bedrock model
+    model = BedrockModel(model_id=model_id, session=session)
+
+    # Create agent with calculator tool
+    agent = Agent(model=model, tools=[calculator])
+
+    # Wrap in IDPAgent
+    return IDPAgent(
+        agent=agent,
+        agent_id="dummy-dev-v1",
+        agent_name="Dummy Agent",
+        agent_description="Simple development agent with calculator tool",
+    )
+```
+
 ### Step 3: Register the Agent
 
 Add your agent to the factory registry in `factory/registry.py`:
@@ -294,6 +367,34 @@ agent_factory.register_agent(
     agent_name="Your Agent Name",
     agent_description="Description of what your agent does",
     creator_func=create_your_agent
+)
+```
+
+#### Example: Dummy Agent Registration
+
+**`factory/registry.py`:**
+```python
+from ..analytics.agent import create_analytics_agent
+from ..dummy.agent import create_dummy_agent
+from .agent_factory import IDPAgentFactory
+
+# Create global factory instance
+agent_factory = IDPAgentFactory()
+
+# Register analytics agent
+agent_factory.register_agent(
+    agent_id="analytics-20250813-v0-kaleko",
+    agent_name="Analytics Agent",
+    agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
+    creator_func=create_analytics_agent,
+)
+
+# Register dummy agent
+agent_factory.register_agent(
+    agent_id="dummy-dev-v1",
+    agent_name="Dummy Agent",
+    agent_description="Simple development agent with calculator tool",
+    creator_func=create_dummy_agent,
 )
 ```
 
@@ -331,6 +432,26 @@ assert agent.agent_name == "Your Agent Name"
 
 # Test agent functionality
 response = agent("Test query")
+```
+
+#### Example: Testing the Dummy Agent
+
+```python
+from idp_common.agents.factory import agent_factory
+import boto3
+
+# Test that dummy agent is registered
+agents = agent_factory.list_available_agents()
+assert any(a["agent_id"] == "dummy-dev-v1" for a in agents)
+
+# Test agent creation
+config = {'aws_region': 'us-east-1'}
+session = boto3.Session()
+agent = agent_factory.create_agent("dummy-dev-v1", config=config, session=session)
+assert agent.agent_name == "Dummy Agent"
+
+# Test agent functionality
+response = agent("What is 15 * 23 + 7?")
 ```
 
 ### Agent ID Naming Convention

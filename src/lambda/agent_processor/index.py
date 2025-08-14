@@ -76,12 +76,13 @@ def validate_job_ownership(table, user_id, job_id):
         raise ValueError(error_msg)
 
 
-def process_agent_query(query: str, job_id: str = None, user_id: str = None) -> dict:
+def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id: str = None) -> dict:
     """
     Process an agent query using the Strands agent.
     
     Args:
         query: The natural language query to process
+        agent_ids: List of agent IDs to use (currently uses first one)
         job_id: Agent job ID for monitoring (optional)
         user_id: User ID for monitoring (optional)
         
@@ -89,13 +90,21 @@ def process_agent_query(query: str, job_id: str = None, user_id: str = None) -> 
         Dict containing the agent result
     """
     try:
+        # Validate agent_ids is not empty
+        if not agent_ids:
+            raise ValueError("At least one agent ID is required")
+            
+        # Use the first agent ID for now (future-proofing for multiple agents)
+        agent_id = agent_ids[0]
+        logger.info(f"Using agent ID: {agent_id}")
+        
         # Get analytics configuration
         config = get_analytics_config()
         logger.info("Analytics configuration loaded successfully")
         
         # Create the analytics agent using the factory
         agent = agent_factory.create_agent(
-            agent_id="analytics-20250813-v0-kaleko",
+            agent_id=agent_id,
             config=config,
             session=session,
             job_id=job_id,
@@ -294,7 +303,12 @@ def handler(event, context):
                 logger.info(f"Processing agent query (attempt {attempt + 1}/{max_retries}): {job_id}")
                 
                 # Process the query using the agent
-                result = process_agent_query(job_record.get("query"), job_id, user_id)
+                result = process_agent_query(
+                    job_record.get("query"), 
+                    job_record.get("agentIds", []), 
+                    job_id, 
+                    user_id
+                )
                 logger.info(f"Successfully processed agent query on attempt {attempt + 1}: {job_id}")
                 break  # Success, exit retry loop
                 

@@ -68,12 +68,21 @@ def handler(event, context):
     logger.info(f"Received event: {json.dumps(event)}")
     
     try:
-        # Extract the query from the event
+        # Extract the query and agent IDs from the event
         arguments = event.get("arguments", {})
         query = arguments.get("query")
+        agent_ids = arguments.get("agentIds", [])
         
         if not query:
             error_msg = "Query parameter is required"
+            logger.error(error_msg)
+            return {
+                "statusCode": 400,
+                "body": error_msg
+            }
+            
+        if not agent_ids:
+            error_msg = "At least one agent ID is required"
             logger.error(error_msg)
             return {
                 "statusCode": 400,
@@ -108,6 +117,7 @@ def handler(event, context):
             "PK": f"agent#{user_id}",
             "SK": job_id,
             "query": query,
+            "agentIds": agent_ids,
             "status": "PENDING",
             "createdAt": created_at,
             "expiresAfter": expires_after
