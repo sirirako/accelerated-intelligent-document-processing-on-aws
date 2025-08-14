@@ -257,7 +257,7 @@ Parameters:
 
   DummyAgentModelId:
     Type: String
-    Default: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    Default: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
     AllowedValues:
       - "us.amazon.nova-lite-v1:0"
       - "us.amazon.nova-pro-v1:0"
