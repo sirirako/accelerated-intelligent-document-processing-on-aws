@@ -257,6 +257,7 @@ To use Bedrock OCR:
    - `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
    - `us.anthropic.claude-sonnet-4-20250514-v1:0`
    - `us.anthropic.claude-opus-4-20250514-v1:0`
+   - `us.anthropic.claude-opus-4-1-20250805-v1:0`
 3. **Configure prompts**: Customize system and task prompts for your specific use case
 4. **Deploy**: The configuration can be updated through the Web UI without stack redeployment
 

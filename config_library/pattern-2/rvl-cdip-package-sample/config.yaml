@@ -891,3 +891,13 @@ pricing:
         price: '1.5E-6'
       - name: cacheWriteInputTokens
         price: '1.875E-5'
+  - name: bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0
+    units:
+      - name: inputTokens
+        price: '1.5E-5'
+      - name: outputTokens
+        price: '7.5E-5'
+      - name: cacheReadInputTokens
+        price: '1.5E-6'
+      - name: cacheWriteInputTokens
+        price: '1.875E-5'
