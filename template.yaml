@@ -267,7 +267,6 @@ Parameters:
       - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
       - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
       - "us.anthropic.claude-sonnet-4-20250514-v1:0"
-      - "anthropic.claude-3-5-sonnet-20241022-v2:0"
     Description: Model to use for Dummy Agent (development). Model access MUST be enabled in Amazon Bedrock.
 
   # Optional - Post processing Lambda hook

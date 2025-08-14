@@ -338,7 +338,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                     value: agent.agent_id,
                     description: agent.agent_description,
                   }))}
-                  placeholder="Choose an agent"
+                  placeholder="Loading available agents..."
                   disabled={isSubmitting || isLoadingAgents}
                   loadingText="Loading agents..."
                   statusType={isLoadingAgents ? 'loading' : 'finished'}
