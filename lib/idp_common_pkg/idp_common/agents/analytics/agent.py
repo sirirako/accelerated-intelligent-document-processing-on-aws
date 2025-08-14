@@ -14,6 +14,7 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 from ..common.dynamodb_logger import DynamoDBMessageTracker
+from ..common.idp_agent import IDPAgent
 from .config import load_python_plot_generation_examples, load_result_format_description
 from .tools import CodeInterpreterTools, get_database_info, run_athena_query
 from .utils import register_code_interpreter_tools
@@ -28,7 +29,7 @@ def create_analytics_agent(
     user_id: str = None,
     enable_monitoring: bool = None,
     include_debug_tool_output: bool = False,
-) -> Agent:
+) -> IDPAgent:
     """
     Create and configure the analytics agent with appropriate tools and system prompt.
 
@@ -41,7 +42,7 @@ def create_analytics_agent(
         include_debug_tool_output: Whether to include debug_tool_output in tool result messages (defaults to False)
 
     Returns:
-        Agent: Configured Strands agent instance
+        IDPAgent: Configured IDP agent instance
     """
     # Load the output format description
     final_result_format = load_result_format_description()
@@ -143,7 +144,16 @@ def create_analytics_agent(
 
     bedrock_model = BedrockModel(model_id=model_id, boto_session=session)
 
-    agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
+    # Create the Strands agent with tools and system prompt
+    strands_agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
+
+    # Wrap in IDPAgent with metadata
+    agent = IDPAgent(
+        agent_name="Analytics Agent",
+        agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
+        agent_id="analytics-20250813-v0-kaleko",
+        agent=strands_agent,
+    )
 
     # Add monitoring if enabled and job context is provided
     if enable_monitoring is None:

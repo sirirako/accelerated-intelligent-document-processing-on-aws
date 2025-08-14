@@ -18,9 +18,14 @@ idp_common/agents/
 ├── common/                      # Shared utilities for all agent types
 │   ├── __init__.py
 │   ├── config.py               # Common configuration patterns
+│   ├── idp_agent.py            # IDPAgent base class with metadata
 │   ├── monitoring.py           # Agent execution monitoring and hooks
 │   ├── dynamodb_logger.py      # DynamoDB integration for message persistence
 │   └── response_utils.py       # Response parsing utilities
+├── factory/                     # Agent factory for creating and managing agents
+│   ├── __init__.py
+│   ├── agent_factory.py        # IDPAgentFactory class
+│   └── registry.py             # Global factory instance with registered agents
 ├── analytics/                   # Analytics agent implementation
 │   ├── __init__.py
 │   ├── agent.py                # Analytics agent factory
@@ -50,21 +55,27 @@ All agents use the Strands framework directly without unnecessary abstraction la
 - Built-in agent management and conversation handling
 - Consistent patterns across all agent types
 
-### 2. Simple Factory Pattern
-Each agent type follows a simple pattern:
-- `agent.py` - Factory function to create configured Strands agents
-- `config.py` - Simple configuration management
-- `tools/` - Strands tools specific to that agent type
-- `assets/` - Static assets like prompts, schemas, etc.
+### 2. Agent Factory Pattern
+Agents are managed through a centralized factory that provides:
+- **Agent Registry**: Central registration of all available agent types
+- **Metadata Management**: Each agent includes name, description, and unique ID
+- **Consistent Creation**: Standardized interface for creating any agent type
+- **Extensibility**: Easy addition of new agent types without modifying existing code
 
-### 3. Security-First Design
+### 3. IDPAgent Base Class
+All agents extend the IDPAgent class which provides:
+- **Metadata**: Each agent has a name, description, and unique identifier
+- **Strands Compatibility**: Full compatibility with Strands Agent functionality
+- **Factory Integration**: Seamless integration with the agent factory pattern
+
+### 4. Security-First Design
 Agents are designed with security as a primary concern:
 - **Sandboxed Code Execution**: Uses AWS Bedrock AgentCore for secure Python execution
 - **Data Isolation**: Query results are transferred securely between services
 - **Minimal Permissions**: Each agent requests only necessary AWS permissions
 - **Audit Trail**: Comprehensive logging and monitoring for security reviews
 
-### 4. IDP Integration
+### 5. IDP Integration
 Agents are designed to integrate seamlessly with the IDP accelerator:
 - Environment variable configuration for Lambda deployment
 - AWS service integration (Athena, S3, AgentCore, etc.)
@@ -93,6 +104,39 @@ The analytics agent uses **AWS Bedrock AgentCore** for secure Python code execut
 This architecture ensures that arbitrary Python code (used for generating plots and tables) never executes in the Lambda environment, providing a secure foundation for future application security reviews.
 
 ## Usage
+
+### Agent Factory
+
+The recommended way to create agents is through the factory pattern:
+
+```python
+from idp_common.agents.factory import agent_factory
+
+# List all available agents
+available_agents = agent_factory.list_available_agents()
+# Returns: [{"agent_id": "analytics-20250813-v0-kaleko", "agent_name": "Analytics Agent", "agent_description": "..."}]
+
+# Create an agent by ID
+agent = agent_factory.create_agent(
+    agent_id="analytics-20250813-v0-kaleko",
+    config=config,
+    session=boto3.Session(),
+    job_id="analytics-job-123",
+    user_id="user-456"
+)
+
+# The agent is an IDPAgent with metadata
+print(agent.agent_name)        # "Analytics Agent"
+print(agent.agent_description) # "Converts natural language questions..."
+print(agent.agent_id)          # "analytics-20250813-v0-kaleko"
+
+# Use the agent (same as any Strands agent)
+response = agent("How many documents were processed last week?")
+```
+
+### Direct Agent Creation (Legacy)
+
+You can still create agents directly for backward compatibility:
 
 ### Analytics Agent
 
@@ -182,7 +226,129 @@ agent.hooks.add_hook(message_tracker)
 
 ## Adding New Agent Types
 
-To add a new agent type (e.g., `document_analysis`):
+To add a new agent type to the factory system:
+
+### Step 1: Create the Agent Implementation
+
+Create your agent directory structure:
+```
+idp_common/agents/your_agent/
+├── __init__.py
+├── agent.py                # Agent creation function
+├── config.py              # Configuration management
+├── tools/                 # Strands tools
+│   └── __init__.py
+└── assets/               # Static assets
+```
+
+### Step 2: Implement the Agent Creator Function
+
+In `agent.py`, create a function that returns an IDPAgent:
+
+```python
+from strands import Agent
+from ..common.idp_agent import IDPAgent
+from .tools import your_tool1, your_tool2
+
+def create_your_agent(config, session, **kwargs) -> IDPAgent:
+    """
+    Create and configure your agent.
+    
+    Args:
+        config: Configuration dictionary
+        session: Boto3 session
+        **kwargs: Additional arguments
+        
+    Returns:
+        IDPAgent: Configured agent instance
+    """
+    # Create tools
+    tools = [your_tool1, your_tool2]
+    
+    # Define system prompt
+    system_prompt = "Your agent system prompt here..."
+    
+    # Create Strands agent
+    strands_agent = Agent(tools=tools, system_prompt=system_prompt, model=your_model)
+    
+    # Wrap in IDPAgent with metadata
+    return IDPAgent(
+        agent_name="Your Agent Name",
+        agent_description="Description of what your agent does",
+        agent_id="your-agent-YYYYMMDD-v0-yourname",  # Use this naming convention
+        agent=strands_agent
+    )
+```
+
+### Step 3: Register the Agent
+
+Add your agent to the factory registry in `factory/registry.py`:
+
+```python
+# Import your agent creator
+from ..your_agent.agent import create_your_agent
+
+# Register with the factory
+agent_factory.register_agent(
+    agent_id="your-agent-YYYYMMDD-v0-yourname",
+    agent_name="Your Agent Name",
+    agent_description="Description of what your agent does",
+    creator_func=create_your_agent
+)
+```
+
+### Step 4: Update Module Exports
+
+Update `__init__.py` files to include your new agent:
+
+```python
+# In idp_common/agents/__init__.py
+def __getattr__(name):
+    if name in ["analytics", "common", "testing", "factory", "your_agent"]:
+        # ... existing code
+
+# In idp_common/agents/your_agent/__init__.py
+from .agent import create_your_agent
+from .config import get_your_agent_config
+
+__all__ = ["create_your_agent", "get_your_agent_config"]
+```
+
+### Step 5: Test Your Agent
+
+Create tests and verify your agent works:
+
+```python
+from idp_common.agents.factory import agent_factory
+
+# Test that your agent is registered
+agents = agent_factory.list_available_agents()
+assert any(a["agent_id"] == "your-agent-YYYYMMDD-v0-yourname" for a in agents)
+
+# Test agent creation
+agent = agent_factory.create_agent("your-agent-YYYYMMDD-v0-yourname", config=config)
+assert agent.agent_name == "Your Agent Name"
+
+# Test agent functionality
+response = agent("Test query")
+```
+
+### Agent ID Naming Convention
+
+Use this naming pattern for agent IDs:
+- `{agent-type}-{YYYYMMDD}-v{version}-{creator}`
+- Example: `analytics-20250813-v0-kaleko`
+- Example: `document-analysis-20250815-v1-smith`
+
+This ensures:
+- **Uniqueness**: No ID conflicts between different agents
+- **Versioning**: Clear version tracking for agent updates
+- **Attribution**: Clear ownership/creator identification
+- **Chronology**: Easy to see when agents were created
+
+### Legacy Direct Creation Pattern (Deprecated)
+
+The old pattern of creating agents directly is still supported but deprecated:
 
 1. **Create the directory structure**:
    ```
@@ -206,29 +372,7 @@ To add a new agent type (e.g., `document_analysis`):
        return Agent(tools=tools, system_prompt=system_prompt)
    ```
 
-3. **Add configuration management** (`config.py`):
-   ```python
-   from ..common.config import get_environment_config
-   
-   def get_document_analysis_config():
-       return get_environment_config(["REQUIRED_ENV_VAR"])
-   ```
-
-4. **Create Strands tools** (`tools/`):
-   ```python
-   from strands import tool
-   
-   @tool
-   def your_tool(input_param: str) -> dict:
-       # Tool implementation
-       return {"result": "processed"}
-   ```
-
-5. **Update the main module** (`__init__.py`):
-   ```python
-   # Add to the lazy loading list
-   if name in ["analytics", "common", "document_analysis"]:
-   ```
+**Note**: New agents should use the factory pattern described above for consistency and better metadata management.
 
 ## Testing
 
@@ -294,19 +438,24 @@ pip install "idp_common[all]"
 
 ## Integration with Lambda Functions
 
-Agents are designed to work seamlessly in AWS Lambda:
+Agents are designed to work seamlessly in AWS Lambda using the factory pattern:
 
 ```python
 # In your Lambda function
-from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
+from idp_common.agents.factory import agent_factory
+from idp_common.agents.analytics import get_analytics_config
 
 def handler(event, context):
     # Change to /tmp for AgentCore compatibility
     os.chdir('/tmp')
     
+    # Get configuration
     config = get_analytics_config()  # Loads from environment variables
-    agent = create_analytics_agent(
-        config, 
+    
+    # Create agent using factory
+    agent = agent_factory.create_agent(
+        agent_id="analytics-20250813-v0-kaleko",  # Or get from event
+        config=config,
         session=boto3.Session(),
         job_id=event.get("jobId"),
         user_id=event.get("userId")
@@ -316,6 +465,24 @@ def handler(event, context):
     response = agent(query)
     
     return {"response": response}
+```
+
+### Legacy Direct Creation (Still Supported)
+
+```python
+# Direct creation (deprecated but still works)
+from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
+
+def handler(event, context):
+    os.chdir('/tmp')
+    config = get_analytics_config()
+    agent = create_analytics_agent(
+        config, 
+        session=boto3.Session(),
+        job_id=event.get("jobId"),
+        user_id=event.get("userId")
+    )
+    # ... rest of handler
 ```
 
 ### Lambda Environment Considerations

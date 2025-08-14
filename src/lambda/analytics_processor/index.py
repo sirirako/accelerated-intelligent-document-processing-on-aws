@@ -17,7 +17,8 @@ from aws_requests_auth.aws_auth import AWSRequestsAuth
 from botocore.exceptions import ClientError
 
 # Import the analytics agent and configuration utilities from idp_common
-from idp_common.agents.analytics import create_analytics_agent, get_analytics_config, parse_agent_response
+from idp_common.agents.analytics import get_analytics_config, parse_agent_response
+from idp_common.agents.factory import agent_factory
 from idp_common.agents.common.config import configure_logging
 
 # Configure logging for both application and Strands framework
@@ -92,11 +93,12 @@ def process_analytics_query(query: str, job_id: str = None, user_id: str = None)
         config = get_analytics_config()
         logger.info("Analytics configuration loaded successfully")
         
-        # Create the analytics agent with monitoring context
-        agent = create_analytics_agent(
-            config, 
-            session, 
-            job_id=job_id, 
+        # Create the analytics agent using the factory
+        agent = agent_factory.create_agent(
+            agent_id="analytics-20250813-v0-kaleko",
+            config=config,
+            session=session,
+            job_id=job_id,
             user_id=user_id
         )
         logger.info("Analytics agent created successfully")
