@@ -166,6 +166,12 @@ type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
 }
 
 
+type Agent @aws_cognito_user_pools @aws_iam {
+  agent_id: String!
+  agent_name: String!
+  agent_description: String!
+}
+
 type AgentJob @aws_cognito_user_pools @aws_iam {
   jobId: ID!
   status: String!  # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
@@ -205,6 +211,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(s3Uri: String!, prompt: String!): String
   getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
+  listAvailableAgents: [Agent] @aws_cognito_user_pools @aws_iam
   submitAgentQuery(query: String!): AgentJob @aws_cognito_user_pools
   getAgentJobStatus(jobId: ID!): AgentJob @aws_cognito_user_pools
   listAgentJobs(limit: Int, nextToken: String): AgentJobConnection @aws_cognito_user_pools
