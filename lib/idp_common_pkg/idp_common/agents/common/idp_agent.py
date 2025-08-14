@@ -34,7 +34,7 @@ class IDPAgent(Agent):
         # Copy all attributes from the existing agent
         for attr, value in agent.__dict__.items():
             setattr(self, attr, value)
-        
+
         # Set our metadata attributes after copying (to ensure they don't get overwritten)
         self.agent_name = agent_name
         self.agent_description = agent_description

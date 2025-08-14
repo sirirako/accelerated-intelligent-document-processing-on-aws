@@ -9,10 +9,10 @@ available agents registered. Import `agent_factory` to access registered agents.
 
 Example:
     from idp_common.agents.factory import agent_factory
-    
+
     # List available agents
     agents = agent_factory.list_available_agents()
-    
+
     # Create an agent
     agent = agent_factory.create_agent("analytics-20250813-v0-kaleko", config=config)
 """
