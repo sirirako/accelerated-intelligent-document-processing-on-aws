@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 """
-Lambda function to process analytics queries using Strands agents.
+Lambda function to process agent queries using Strands agents.
 """
 
 import json
@@ -34,7 +34,7 @@ session = boto3.Session()
 credentials = session.get_credentials()
 
 # Get environment variables
-ANALYTICS_TABLE = os.environ.get("ANALYTICS_TABLE")
+AGENT_TABLE = os.environ.get("AGENT_TABLE")
 APPSYNC_API_URL = os.environ.get("APPSYNC_API_URL")
 
 
@@ -56,7 +56,7 @@ def validate_job_ownership(table, user_id, job_id):
     try:
         response = table.get_item(
             Key={
-                "PK": f"analytics#{user_id}",
+                "PK": f"agent#{user_id}",
                 "SK": job_id
             }
         )
@@ -76,17 +76,17 @@ def validate_job_ownership(table, user_id, job_id):
         raise ValueError(error_msg)
 
 
-def process_analytics_query(query: str, job_id: str = None, user_id: str = None) -> dict:
+def process_agent_query(query: str, job_id: str = None, user_id: str = None) -> dict:
     """
-    Process an analytics query using the Strands agent.
+    Process an agent query using the Strands agent.
     
     Args:
         query: The natural language query to process
-        job_id: Analytics job ID for monitoring (optional)
+        job_id: Agent job ID for monitoring (optional)
         user_id: User ID for monitoring (optional)
         
     Returns:
-        Dict containing the analytics result
+        Dict containing the agent result
     """
     try:
         # Get analytics configuration
@@ -162,8 +162,8 @@ def update_job_status_in_appsync(job_id, status, user_id, result=None):
     try:
         # Prepare the simplified mutation
         mutation = """
-        mutation UpdateAnalyticsJobStatus($jobId: ID!, $status: String!, $userId: String!, $result: String) {
-            updateAnalyticsJobStatus(jobId: $jobId, status: $status, userId: $userId, result: $result)
+        mutation UpdateAgentJobStatus($jobId: ID!, $status: String!, $userId: String!, $result: String) {
+            updateAgentJobStatus(jobId: $jobId, status: $status, userId: $userId, result: $result)
         }
         """
         
@@ -241,7 +241,7 @@ def update_job_status_in_appsync(job_id, status, user_id, result=None):
 
 def handler(event, context):
     """
-    Process analytics queries.
+    Process agent queries.
     
     Args:
         event: The event dict with userId and jobId
@@ -266,7 +266,7 @@ def handler(event, context):
             }
         
         # Get the DynamoDB table
-        table = dynamodb.Table(ANALYTICS_TABLE)
+        table = dynamodb.Table(AGENT_TABLE)
         
         # Validate job ownership
         try:
@@ -281,7 +281,7 @@ def handler(event, context):
         update_job_status_in_appsync(job_id, "PROCESSING", user_id)
         logger.info(f"Updated job status to PROCESSING: {job_id}")
         
-        # Process the analytics query using the agent with retry logic
+        # Process the agent query using the agent with retry logic
         # This retries the entire workflow -- if something dies, it restarts
         # from scratch with the initial query.
         max_retries = 3
@@ -291,15 +291,15 @@ def handler(event, context):
         
         for attempt in range(max_retries):
             try:
-                logger.info(f"Processing analytics query (attempt {attempt + 1}/{max_retries}): {job_id}")
+                logger.info(f"Processing agent query (attempt {attempt + 1}/{max_retries}): {job_id}")
                 
-                # Process the query using the analytics agent
-                result = process_analytics_query(job_record.get("query"), job_id, user_id)
-                logger.info(f"Successfully processed analytics query on attempt {attempt + 1}: {job_id}")
+                # Process the query using the agent
+                result = process_agent_query(job_record.get("query"), job_id, user_id)
+                logger.info(f"Successfully processed agent query on attempt {attempt + 1}: {job_id}")
                 break  # Success, exit retry loop
                 
             except Exception as e:
-                logger.warning(f"Analytics query processing failed on attempt {attempt + 1}/{max_retries} for job {job_id}: {str(e)}")
+                logger.warning(f"Agent query processing failed on attempt {attempt + 1}/{max_retries} for job {job_id}: {str(e)}")
                 processing_error = e
                 
                 if attempt < max_retries - 1:  # Not the last attempt
@@ -307,7 +307,7 @@ def handler(event, context):
                     time.sleep(retry_delay)
                 else:
                     # Last attempt failed
-                    logger.error(f"All {max_retries} attempts failed for analytics query processing, job {job_id}: {str(e)}")
+                    logger.error(f"All {max_retries} attempts failed for agent query processing, job {job_id}: {str(e)}")
         
         # Check if processing was successful
         if result is not None:
@@ -364,7 +364,7 @@ def handler(event, context):
         
         # Failure path - all retries failed or result processing failed
         if processing_error:
-            error_msg = f"Analytics query processing failed: {str(processing_error)}"
+            error_msg = f"Agent query processing failed: {str(processing_error)}"
             logger.error(error_msg)
             
             # Update the job status to FAILED via AppSync
