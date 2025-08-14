@@ -255,20 +255,6 @@ Parameters:
       - "us.anthropic.claude-sonnet-4-20250514-v1:0"
     Description: Model to use for Document Analysis Agent (analytics queries). Model access MUST be enabled in Amazon Bedrock.
 
-  DummyAgentModelId:
-    Type: String
-    Default: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-    AllowedValues:
-      - "us.amazon.nova-lite-v1:0"
-      - "us.amazon.nova-pro-v1:0"
-      - "us.amazon.nova-premier-v1:0"
-      - "us.anthropic.claude-3-haiku-20240307-v1:0"
-      - "us.anthropic.claude-3-5-haiku-20241022-v1:0"
-      - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-      - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-      - "us.anthropic.claude-sonnet-4-20250514-v1:0"
-    Description: Model to use for Dummy Agent (development). Model access MUST be enabled in Amazon Bedrock.
-
   # Optional - Post processing Lambda hook
   PostProcessingLambdaHookFunctionArn:
     Default: ""
@@ -528,7 +514,6 @@ Metadata:
           default: "Agentic Analysis"
         Parameters:
           - DocumentAnalysisAgentModelId
-          - DummyAgentModelId
       - Label:
           default: "Post Processing"
         Parameters:
@@ -598,8 +583,6 @@ Metadata:
         default: "Knowledge Base Model Id"
       DocumentAnalysisAgentModelId:
         default: "Document Analysis Agent Model Id"
-      DummyAgentModelId:
-        default: "Dummy Agent Model Id"
       BedrockGuardrailId:
         default: "Bedrock Guardrail Id"
       BedrockGuardrailVersion:
@@ -3524,7 +3507,6 @@ Resources:
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
           DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
-          DUMMY_AGENT_MODEL_ID: !Ref DummyAgentModelId
       LoggingConfig:
         LogGroup: !Ref AgentProcessorLogGroup
       Policies:
@@ -3697,6 +3679,7 @@ Resources:
             "jobId": $util.toJson($ctx.result.SK),
             "status": $util.toJson($ctx.result.status),
             "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
             "createdAt": $util.toJson($ctx.result.createdAt),
             "completedAt": $util.toJson($ctx.result.completedAt),
             "result": $util.toJson($ctx.result.result),
@@ -3746,6 +3729,7 @@ Resources:
                 "jobId": $util.toJson($item.SK),
                 "status": $util.toJson($item.status),
                 "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
                 "createdAt": $util.toJson($item.createdAt),
                 "completedAt": $util.toJson($item.completedAt),
                 "result": $util.toJson($item.result),

@@ -117,7 +117,7 @@ def handler(event, context):
             "PK": f"agent#{user_id}",
             "SK": job_id,
             "query": query,
-            "agentIds": agent_ids,
+            "agentIds": json.dumps(agent_ids),  # Store as JSON string
             "status": "PENDING",
             "createdAt": created_at,
             "expiresAfter": expires_after

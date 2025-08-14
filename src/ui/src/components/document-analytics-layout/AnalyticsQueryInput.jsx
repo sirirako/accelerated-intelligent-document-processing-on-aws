@@ -213,19 +213,62 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   };
 
   const handleDropdownItemClick = ({ detail }) => {
+    console.log('Previous query clicked, detail:', detail);
+
     // Prevent dropdown item selection if a delete operation is in progress
     if (isDeletingJob) {
+      console.log('Delete operation in progress, ignoring click');
       return;
     }
 
     const selectedJob = queryHistory.find((job) => job.jobId === detail.id);
+    console.log('Selected job:', selectedJob);
+
     if (selectedJob) {
       updateAnalyticsState({ currentInputText: selectedJob.query });
       setSelectedOption({ value: selectedJob.jobId, label: selectedJob.query });
 
+      let agentToUse = selectedAgent?.value;
+      console.log('Current selected agent:', selectedAgent);
+
+      // Auto-select agent from agentIds (use 0th element)
+      if (selectedJob.agentIds) {
+        console.log('Job has agentIds:', selectedJob.agentIds);
+        try {
+          const agentIds = JSON.parse(selectedJob.agentIds);
+          console.log('Parsed agentIds:', agentIds);
+
+          if (agentIds.length > 0) {
+            const agentId = agentIds[0];
+            console.log('Using agent ID:', agentId);
+
+            const matchingAgent = availableAgents.find((agent) => agent.agent_id === agentId);
+            console.log('Matching agent found:', matchingAgent);
+            console.log('Available agents:', availableAgents);
+
+            if (matchingAgent) {
+              const newAgentSelection = {
+                label: matchingAgent.agent_name,
+                value: matchingAgent.agent_id,
+                description: matchingAgent.agent_description,
+              };
+              console.log('Setting selected agent to:', newAgentSelection);
+              setSelectedAgent(newAgentSelection);
+              agentToUse = matchingAgent.agent_id;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to parse agentIds from selected job:', error);
+          logger.warn('Failed to parse agentIds from selected job:', error);
+        }
+      } else {
+        console.log('Job has no agentIds');
+      }
+
+      console.log('Submitting with agent:', agentToUse);
       // Submit the job to display its current status and results (if completed)
       // This will work for both completed jobs and in-progress jobs
-      onSubmit(selectedJob.query, selectedAgent?.value, selectedJob.jobId);
+      onSubmit(selectedJob.query, agentToUse, selectedJob.jobId);
     }
   };
 

@@ -302,10 +302,22 @@ def handler(event, context):
             try:
                 logger.info(f"Processing agent query (attempt {attempt + 1}/{max_retries}): {job_id}")
                 
+                # Parse agentIds from JSON string
+                agent_ids_str = job_record.get("agentIds", "[]")
+                try:
+                    agent_ids = json.loads(agent_ids_str) if isinstance(agent_ids_str, str) else agent_ids_str
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON in agentIds for job {job_id}, using empty list")
+                    agent_ids = []
+                
+                # Validate that agentIds are provided
+                if not agent_ids:
+                    raise ValueError("No agentIds provided - at least one agent ID is required")
+                
                 # Process the query using the agent
                 result = process_agent_query(
                     job_record.get("query"), 
-                    job_record.get("agentIds", []), 
+                    agent_ids, 
                     job_id, 
                     user_id
                 )

@@ -176,6 +176,7 @@ type AgentJob @aws_cognito_user_pools @aws_iam {
   jobId: ID!
   status: String!  # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
   query: String!
+  agentIds: String  # JSON string containing list of agent IDs used
   createdAt: AWSDateTime!
   completedAt: AWSDateTime
   result: String

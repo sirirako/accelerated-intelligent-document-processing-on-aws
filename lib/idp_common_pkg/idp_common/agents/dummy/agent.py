@@ -37,10 +37,8 @@ def create_dummy_agent(
     Returns:
         IDPAgent: Configured dummy agent instance
     """
-    # Get model ID from environment variable
-    model_id = os.environ.get(
-        "DUMMY_AGENT_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-    )
+    # Use hardcoded model ID
+    model_id = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
 
     # Create Bedrock model
     model = BedrockModel(model_id=model_id, session=session)

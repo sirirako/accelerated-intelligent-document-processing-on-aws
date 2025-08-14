@@ -9,6 +9,7 @@ export default gql`
         jobId
         status
         query
+        agentIds
         createdAt
         completedAt
       }
