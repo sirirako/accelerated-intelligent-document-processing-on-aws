@@ -4,9 +4,9 @@ import React, { useEffect } from 'react';
 import { API, Logger } from 'aws-amplify';
 import { Container, Header, SpaceBetween, Spinner, Box } from '@awsui/components-react';
 
-import submitAnalyticsQuery from '../../graphql/queries/submitAnalyticsQuery';
-import getAnalyticsJobStatus from '../../graphql/queries/getAnalyticsJobStatus';
-import onAnalyticsJobComplete from '../../graphql/subscriptions/onAnalyticsJobComplete';
+import submitAgentQuery from '../../graphql/queries/submitAgentQuery';
+import getAgentJobStatus from '../../graphql/queries/getAgentJobStatus';
+import onAgentJobComplete from '../../graphql/subscriptions/onAgentJobComplete';
 import { useAnalyticsContext } from '../../contexts/analytics';
 
 import AnalyticsQueryInput from './AnalyticsQueryInput';
@@ -24,14 +24,14 @@ const DocumentsAnalyticsLayout = () => {
     try {
       logger.debug('Subscribing to job completion for job ID:', id);
       const sub = API.graphql({
-        query: onAnalyticsJobComplete,
+        query: onAgentJobComplete,
         variables: { jobId: id },
       }).subscribe({
         next: async ({ value }) => {
           // Log the entire subscription response
           logger.debug('Subscription response value:', JSON.stringify(value, null, 2));
 
-          const jobCompleted = value?.data?.onAnalyticsJobComplete;
+          const jobCompleted = value?.data?.onAgentJobComplete;
           logger.debug('Job completion notification:', jobCompleted);
 
           if (jobCompleted) {
@@ -39,11 +39,11 @@ const DocumentsAnalyticsLayout = () => {
             try {
               logger.debug('Fetching job details after completion notification');
               const jobResponse = await API.graphql({
-                query: getAnalyticsJobStatus,
+                query: getAgentJobStatus,
                 variables: { jobId: id },
               });
 
-              const job = jobResponse?.data?.getAnalyticsJobStatus;
+              const job = jobResponse?.data?.getAgentJobStatus;
               logger.debug('Fetched job details:', job);
 
               if (job) {
@@ -98,7 +98,7 @@ const DocumentsAnalyticsLayout = () => {
     };
   }, [subscription]);
 
-  const handleSubmitQuery = async (query, existingJobId = null) => {
+  const handleSubmitQuery = async (query, agentId, existingJobId = null) => {
     try {
       updateAnalyticsState({
         queryText: query,
@@ -112,11 +112,11 @@ const DocumentsAnalyticsLayout = () => {
 
         // Fetch the job status and result
         const response = await API.graphql({
-          query: getAnalyticsJobStatus,
+          query: getAgentJobStatus,
           variables: { jobId: existingJobId },
         });
 
-        const job = response?.data?.getAnalyticsJobStatus;
+        const job = response?.data?.getAgentJobStatus;
         if (job) {
           updateAnalyticsState({
             jobStatus: job.status,
@@ -147,13 +147,13 @@ const DocumentsAnalyticsLayout = () => {
         subscription.unsubscribe();
       }
 
-      logger.debug('Submitting analytics query:', query);
+      logger.debug('Submitting agent query:', query, 'with agent:', agentId);
       const response = await API.graphql({
-        query: submitAnalyticsQuery,
-        variables: { query },
+        query: submitAgentQuery,
+        variables: { query, agentIds: [agentId] },
       });
 
-      const job = response?.data?.submitAnalyticsQuery;
+      const job = response?.data?.submitAgentQuery;
       logger.debug('Job created:', job);
 
       if (!job) {
@@ -173,11 +173,11 @@ const DocumentsAnalyticsLayout = () => {
         try {
           logger.debug('Immediate poll for job ID:', job.jobId);
           const pollResponse = await API.graphql({
-            query: getAnalyticsJobStatus,
+            query: getAgentJobStatus,
             variables: { jobId: job.jobId },
           });
 
-          const polledJob = pollResponse?.data?.getAnalyticsJobStatus;
+          const polledJob = pollResponse?.data?.getAgentJobStatus;
           logger.debug('Immediate poll result:', polledJob);
 
           if (polledJob && polledJob.status !== job.status) {
@@ -217,11 +217,11 @@ const DocumentsAnalyticsLayout = () => {
         try {
           logger.debug('Polling job status for job ID:', jobId);
           const response = await API.graphql({
-            query: getAnalyticsJobStatus,
+            query: getAgentJobStatus,
             variables: { jobId },
           });
 
-          const job = response?.data?.getAnalyticsJobStatus;
+          const job = response?.data?.getAgentJobStatus;
           logger.debug('Polled job status:', job);
 
           if (job) {
@@ -255,7 +255,7 @@ const DocumentsAnalyticsLayout = () => {
   }, [jobId, jobStatus, updateAnalyticsState]);
 
   return (
-    <Container header={<Header variant="h1">Document Analytics</Header>}>
+    <Container header={<Header variant="h1">Agent HQ</Header>}>
       <SpaceBetween size="l">
         <AnalyticsQueryInput onSubmit={handleSubmitQuery} isSubmitting={isSubmitting} selectedResult={null} />
 

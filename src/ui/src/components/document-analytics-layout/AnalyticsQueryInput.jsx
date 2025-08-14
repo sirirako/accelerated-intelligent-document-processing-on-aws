@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { API, Logger } from 'aws-amplify';
-import { FormField, Textarea, Button, Grid, Box, SpaceBetween, ButtonDropdown } from '@awsui/components-react';
-import listAnalyticsJobs from '../../graphql/queries/listAnalyticsJobs';
-import deleteAnalyticsJob from '../../graphql/queries/deleteAnalyticsJob';
+import { FormField, Textarea, Button, Grid, Box, SpaceBetween, ButtonDropdown, Select } from '@awsui/components-react';
+import listAgentJobs from '../../graphql/queries/listAgentJobs';
+import deleteAgentJob from '../../graphql/queries/deleteAgentJob';
+import listAvailableAgents from '../../graphql/queries/listAvailableAgents';
 import { useAnalyticsContext } from '../../contexts/analytics';
 
 // Custom styles for expandable textarea
@@ -27,7 +28,36 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [selectedOption, setSelectedOption] = useState(null);
   const [isDeletingJob, setIsDeletingJob] = useState(false);
+  const [availableAgents, setAvailableAgents] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const lastFetchTimeRef = useRef(0);
+
+  const fetchAvailableAgents = async () => {
+    try {
+      setIsLoadingAgents(true);
+      const response = await API.graphql({
+        query: listAvailableAgents,
+      });
+
+      const agents = response?.data?.listAvailableAgents || [];
+      setAvailableAgents(agents);
+
+      // Auto-select first agent if none selected
+      if (agents.length > 0 && !selectedAgent) {
+        setSelectedAgent({
+          label: agents[0].agent_name,
+          value: agents[0].agent_id,
+          description: agents[0].agent_description,
+        });
+      }
+    } catch (err) {
+      logger.error('Error fetching available agents:', err);
+      setAvailableAgents([]);
+    } finally {
+      setIsLoadingAgents(false);
+    }
+  };
 
   const fetchQueryHistory = async (force = false) => {
     // Don't fetch if we're already loading
@@ -48,7 +78,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       let response;
       try {
         response = await API.graphql({
-          query: listAnalyticsJobs,
+          query: listAgentJobs,
           variables: { limit: 20 }, // Limit to most recent 20 queries
         });
       } catch (amplifyError) {
@@ -56,7 +86,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
         logger.warn('Amplify threw an exception due to GraphQL errors, checking for valid data:', amplifyError);
 
         // Check if the error object contains the actual response data
-        if (amplifyError.data && amplifyError.data.listAnalyticsJobs) {
+        if (amplifyError.data && amplifyError.data.listAgentJobs) {
           logger.info('Found valid data in the error response, proceeding with processing');
           response = {
             data: amplifyError.data,
@@ -70,15 +100,12 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
       // Handle GraphQL errors gracefully - log them but continue processing valid data
       if (response.errors && response.errors.length > 0) {
-        logger.warn(
-          `Received ${response.errors.length} GraphQL errors in listAnalyticsJobs response:`,
-          response.errors,
-        );
+        logger.warn(`Received ${response.errors.length} GraphQL errors in listAgentJobs response:`, response.errors);
         logger.warn('Continuing to process valid data despite errors...');
       }
 
       // Get items array and filter out null values (corrupted items)
-      const rawItems = response?.data?.listAnalyticsJobs?.items || [];
+      const rawItems = response?.data?.listAgentJobs?.items || [];
       const nonNullJobs = rawItems.filter((job) => job !== null);
 
       logger.debug(`Raw response: ${rawItems.length} total items, ${nonNullJobs.length} non-null items`);
@@ -146,9 +173,10 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     }
   };
 
-  // Fetch query history when component mounts
+  // Fetch query history and agents when component mounts
   useEffect(() => {
     fetchQueryHistory(true);
+    fetchAvailableAgents();
   }, []);
 
   // Update query input when a result is selected externally
@@ -161,8 +189,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (currentInputText.trim() && !isSubmitting) {
-      onSubmit(currentInputText);
+    if (currentInputText.trim() && selectedAgent && !isSubmitting) {
+      onSubmit(currentInputText, selectedAgent.value);
       setSelectedOption(null); // Reset dropdown selection after submission
 
       // Refresh the query history after a short delay to include the new query
@@ -197,7 +225,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
       // Submit the job to display its current status and results (if completed)
       // This will work for both completed jobs and in-progress jobs
-      onSubmit(selectedJob.query, selectedJob.jobId);
+      onSubmit(selectedJob.query, selectedAgent?.value, selectedJob.jobId);
     }
   };
 
@@ -248,7 +276,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
                 try {
                   await API.graphql({
-                    query: deleteAnalyticsJob,
+                    query: deleteAgentJob,
                     variables: {
                       jobId: job.jobId,
                     },
@@ -300,21 +328,43 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       <form onSubmit={handleSubmit}>
         <SpaceBetween size="s">
           <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
-            <FormField label="Enter your analytics query">
-              <Textarea
-                placeholder="How has the number of documents processed per day trended over the past three weeks?"
-                value={currentInputText}
-                onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
-                disabled={isSubmitting}
-                rows={3}
-                className="expandable-textarea"
-              />
-            </FormField>
+            <SpaceBetween size="s">
+              <FormField label="Select an agent">
+                <Select
+                  selectedOption={selectedAgent}
+                  onChange={({ detail }) => setSelectedAgent(detail.selectedOption)}
+                  options={availableAgents.map((agent) => ({
+                    label: agent.agent_name,
+                    value: agent.agent_id,
+                    description: agent.agent_description,
+                  }))}
+                  placeholder="Choose an agent"
+                  disabled={isSubmitting || isLoadingAgents}
+                  loadingText="Loading agents..."
+                  statusType={isLoadingAgents ? 'loading' : 'finished'}
+                />
+              </FormField>
+              <FormField label="Enter your question for the agent">
+                <Textarea
+                  placeholder="How has the number of documents processed per day trended over the past three weeks?"
+                  value={currentInputText}
+                  onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
+                  disabled={isSubmitting}
+                  rows={3}
+                  className="expandable-textarea"
+                />
+              </FormField>
+            </SpaceBetween>
             <Box padding={{ top: 'xl' }}>
               {' '}
               {/* Add top padding to align with input box */}
               <SpaceBetween size="s">
-                <Button variant="primary" type="submit" disabled={!currentInputText.trim() || isSubmitting} fullWidth>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={!currentInputText.trim() || !selectedAgent || isSubmitting}
+                  fullWidth
+                >
                   {isSubmitting ? 'Submitting...' : 'Submit query'}
                 </Button>
                 <Button variant="normal" onClick={handleClearQuery} disabled={isSubmitting} fullWidth>
