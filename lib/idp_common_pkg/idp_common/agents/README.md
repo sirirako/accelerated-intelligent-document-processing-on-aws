@@ -71,6 +71,17 @@ All agents extend the IDPAgent class which provides:
 - **Metadata**: Each agent has a name, description, and unique identifier
 - **Strands Compatibility**: Full compatibility with Strands Agent functionality
 - **Factory Integration**: Seamless integration with the agent factory pattern
+- **Automatic Monitoring**: Built-in DynamoDB message tracking when job_id and user_id are provided
+
+#### Automatic Monitoring System
+The IDPAgent base class automatically sets up monitoring when both `job_id` and `user_id` parameters are provided during agent creation. This monitoring system:
+
+- **Real-time UI Updates**: Logs agent conversations to DynamoDB for live progress tracking
+- **Message Persistence**: Stores all agent interactions for debugging and audit purposes
+- **Consistent Observability**: Provides the same monitoring across all agent types
+- **Production Robustness**: Gracefully handles monitoring failures without breaking agent functionality
+
+The monitoring is enabled automatically in Lambda environments where job tracking is needed, but can be disabled for testing or development scenarios.
 
 ### 4. Security-First Design
 Agents are designed with security as a primary concern:
@@ -128,8 +139,8 @@ agent = agent_factory.create_agent(
     agent_id="analytics-20250813-v0-kaleko",
     config=config,
     session=boto3.Session(),
-    job_id="analytics-job-123",
-    user_id="user-456"
+    job_id="analytics-job-123",  # Enables automatic monitoring
+    user_id="user-456"           # Required for monitoring
 )
 
 # The agent is an IDPAgent with metadata
@@ -219,7 +230,42 @@ config = get_environment_config(["REQUIRED_VAR1", "REQUIRED_VAR2"])
 
 ## Monitoring and Observability
 
-The agents module includes comprehensive monitoring capabilities:
+The agents module includes comprehensive monitoring capabilities built into the IDPAgent base class:
+
+### Automatic Monitoring
+
+All agents automatically include DynamoDB message tracking when created with `job_id` and `user_id` parameters:
+
+```python
+from idp_common.agents.factory import agent_factory
+
+# Agent with automatic monitoring (typical Lambda usage)
+agent = agent_factory.create_agent(
+    agent_id="analytics-20250813-v0-kaleko",
+    config=config,
+    session=boto3.Session(),
+    job_id="analytics-job-123",  # Enables monitoring
+    user_id="user-456"           # Required for monitoring
+)
+
+# Agent without monitoring (testing/development)
+agent = agent_factory.create_agent(
+    agent_id="dummy-dev-v1",
+    config=config,
+    session=boto3.Session()
+    # No job_id/user_id = no monitoring
+)
+```
+
+The automatic monitoring system provides:
+- **Real-time UI Updates**: Agent conversations are logged to DynamoDB for live progress tracking
+- **Message Persistence**: All agent interactions stored for debugging and audit purposes
+- **Consistent Observability**: Same monitoring patterns across all agent types
+- **Production Robustness**: Graceful handling of monitoring failures
+
+### Manual Monitoring (Legacy)
+
+For advanced use cases, you can still manually configure monitoring:
 
 ### Agent Monitoring
 
@@ -295,12 +341,14 @@ def create_your_agent(config, session, **kwargs) -> IDPAgent:
     # Create Strands agent
     strands_agent = Agent(tools=tools, system_prompt=system_prompt, model=your_model)
     
-    # Wrap in IDPAgent with metadata
+    # Wrap in IDPAgent with metadata and automatic monitoring
     return IDPAgent(
         agent_name="Your Agent Name",
         agent_description="Description of what your agent does",
         agent_id="your-agent-YYYYMMDD-v0-yourname",  # Use this naming convention
-        agent=strands_agent
+        agent=strands_agent,
+        job_id=job_id,      # Enables automatic monitoring when provided
+        user_id=user_id     # Required for monitoring
     )
 ```
 
@@ -336,7 +384,7 @@ def create_dummy_agent(
     **kwargs,
 ) -> IDPAgent:
     # Get model ID from environment variable
-    model_id = os.environ.get("DUMMY_AGENT_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+    model_id = os.environ.get("DUMMY_AGENT_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")
 
     # Create Bedrock model
     model = BedrockModel(model_id=model_id, session=session)
@@ -344,12 +392,14 @@ def create_dummy_agent(
     # Create agent with calculator tool
     agent = Agent(model=model, tools=[calculator])
 
-    # Wrap in IDPAgent
+    # Wrap in IDPAgent with automatic monitoring
     return IDPAgent(
         agent=agent,
         agent_id="dummy-dev-v1",
         agent_name="Dummy Agent",
         agent_description="Simple development agent with calculator tool",
+        job_id=job_id,      # Enables automatic monitoring when provided
+        user_id=user_id,    # Required for monitoring
     )
 ```
 
@@ -559,7 +609,7 @@ pip install "idp_common[all]"
 
 ## Integration with Lambda Functions
 
-Agents are designed to work seamlessly in AWS Lambda using the factory pattern:
+Agents are designed to work seamlessly in AWS Lambda with automatic monitoring:
 
 ```python
 # In your Lambda function
@@ -573,20 +623,30 @@ def handler(event, context):
     # Get configuration
     config = get_analytics_config()  # Loads from environment variables
     
-    # Create agent using factory
+    # Create agent using factory with automatic monitoring
     agent = agent_factory.create_agent(
         agent_id="analytics-20250813-v0-kaleko",  # Or get from event
         config=config,
         session=boto3.Session(),
-        job_id=event.get("jobId"),
-        user_id=event.get("userId")
+        job_id=event.get("jobId"),    # Enables DynamoDB monitoring
+        user_id=event.get("userId")   # Required for monitoring
     )
     
     query = event.get("query")
-    response = agent(query)
+    response = agent(query)  # Agent conversations automatically logged to DynamoDB
     
     return {"response": response}
 ```
+
+### Monitoring in Lambda
+
+When `job_id` and `user_id` are provided, the agent automatically:
+- Logs all conversations to DynamoDB (AGENT_TABLE environment variable)
+- Enables real-time UI progress updates
+- Provides message history for debugging
+- Maintains audit trails for compliance
+
+The monitoring system is designed to be robust - if DynamoDB logging fails, the agent continues to function normally.
 
 ### Legacy Direct Creation (Still Supported)
 

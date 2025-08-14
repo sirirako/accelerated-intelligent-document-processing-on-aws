@@ -39,7 +39,7 @@ def create_dummy_agent(
     """
     # Get model ID from environment variable
     model_id = os.environ.get(
-        "DUMMY_AGENT_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        "DUMMY_AGENT_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
     )
 
     # Create Bedrock model
@@ -48,10 +48,12 @@ def create_dummy_agent(
     # Create agent with calculator tool
     agent = Agent(model=model, tools=[calculator])
 
-    # Wrap in IDPAgent
+    # Wrap in IDPAgent with automatic monitoring
     return IDPAgent(
         agent=agent,
         agent_id="dummy-dev-v1",
         agent_name="Dummy Agent",
         agent_description="Simple development agent with calculator tool",
+        job_id=job_id,
+        user_id=user_id,
     )

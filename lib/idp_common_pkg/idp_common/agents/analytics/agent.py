@@ -13,7 +13,6 @@ import boto3
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-from ..common.dynamodb_logger import DynamoDBMessageTracker
 from ..common.idp_agent import IDPAgent
 from .config import load_python_plot_generation_examples, load_result_format_description
 from .tools import CodeInterpreterTools, get_database_info, run_athena_query
@@ -147,53 +146,16 @@ def create_analytics_agent(
     # Create the Strands agent with tools and system prompt
     strands_agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
 
-    # Wrap in IDPAgent with metadata
+    # Wrap in IDPAgent with metadata and automatic monitoring
     agent = IDPAgent(
         agent_name="Analytics Agent",
         agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
         agent_id="analytics-20250813-v0-kaleko",
         agent=strands_agent,
+        job_id=job_id,
+        user_id=user_id,
+        enable_monitoring=enable_monitoring,
     )
-
-    # Add monitoring if enabled and job context is provided
-    if enable_monitoring is None:
-        enable_monitoring = (
-            os.environ.get("ENABLE_AGENT_MONITORING", "true").lower() == "true"
-        )
-
-    if enable_monitoring and job_id and user_id:
-        try:
-            # Add DynamoDB message tracker for persistence
-            message_tracker = DynamoDBMessageTracker(
-                job_id=job_id,
-                user_id=user_id,
-                enabled=enable_monitoring,
-                include_debug_tool_output=include_debug_tool_output,
-            )
-            agent.hooks.add_hook(message_tracker)
-            logger.info(f"DynamoDB message tracking enabled for job {job_id}")
-
-            # Also add the AgentMonitor for CloudWatch logging with throttling callback
-            from ..common.monitoring import AgentMonitor
-
-            def throttling_callback(exception):
-                """Callback to handle throttling exceptions by logging to DynamoDB."""
-                if message_tracker.enabled and message_tracker.db_logger:
-                    message_tracker._handle_throttling_with_agent_message(exception)
-
-            agent_monitor = AgentMonitor(
-                log_level=logging.INFO,
-                enable_detailed_logging=True,
-                throttling_callback=throttling_callback,
-                include_debug_tool_output=include_debug_tool_output,
-            )
-            agent.hooks.add_hook(agent_monitor)
-            logger.info(f"CloudWatch agent monitoring enabled for job {job_id}")
-
-        except Exception as e:
-            logger.warning(f"Failed to initialize agent monitoring: {e}")
-    elif enable_monitoring:
-        logger.warning("Agent monitoring enabled but job_id or user_id not provided")
 
     logger.info("Analytics agent created successfully")
     return agent
