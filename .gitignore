@@ -17,3 +17,7 @@ __pycache__
 .ruff_cache
 .kiro
 rvl_cdip_*
+
+# IDE specific files
+.idea/
+
