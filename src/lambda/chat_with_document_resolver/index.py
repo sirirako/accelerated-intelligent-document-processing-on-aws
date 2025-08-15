@@ -52,8 +52,11 @@ def handler(event, context):
         full_prompt = "You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\n"
         full_prompt += "If you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\n"
         full_prompt += "Additionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n"
-        full_prompt += "The JSON object is: " + json.dumps(history) + ".\n\n"
-        full_prompt += "The user's question is: " + prompt
+        # full_prompt += "Your response MUST be in the following JSON format: {'content': [{'text': 'String'}]}.\n\n"
+        # full_prompt += "You MUST NOT include outside of that JSON format.\n\n"
+        # full_prompt += "Do NOT include the role or anything else in the response."
+        full_prompt += "The history JSON object is: " + json.dumps(history) + ".\n\n"
+        full_prompt += "The user's question is: " + prompt + "\n\n"
 
         # this feature is not enabled until the model can be selected on the chat screen
         # selectedModelId = event['arguments']['modelId']
@@ -67,13 +70,14 @@ def handler(event, context):
 
         # Call Bedrock Runtime to get Python code based on the prompt
         if (len(objectKey)):
-            encoded_string = objectKey.encode()
-            md5_hash = hashlib.md5(encoded_string, usedforsecurity=False)
-            hex_representation = md5_hash.hexdigest()
+            # encoded_string = objectKey.encode()
+            # md5_hash = hashlib.md5(encoded_string)
+            # hex_representation = md5_hash.hexdigest()
 
             # full text key
             fulltext_key = objectKey + '/summary/fulltext.txt'
 
+            logger.info(f"Model: {selectedModelId}")
             logger.info(f"Output Bucket: {output_bucket}")
             logger.info(f"Full Text Key: {fulltext_key}")
 
@@ -108,6 +112,7 @@ def handler(event, context):
 
             # print('invoking model converse')
 
+            selectedModelId = 'us.amazon.nova-pro-v1:0'
             response = bedrock_runtime.converse(
                 modelId=selectedModelId,
                 messages=message
@@ -121,16 +126,13 @@ def handler(event, context):
             # print(f"cacheWriteInputTokens:  {token_usage['cacheWriteInputTokens']}")
             # print(f"Stop reason: {response['stopReason']}")
 
+
             output_message = response['output']['message']
+            text_content = output_message['content'][0]['text']
 
-            model_response_text = ''
-            for content in output_message['content']:
-                model_response_text += content['text']
-
-            # print output_message
-
-            chat_response = {"cr" : output_message }
+            chat_response = {"cr": {"content": [{"text": text_content}]}}
             return json.dumps(chat_response)
+
 
 
     except ClientError as e:
@@ -146,7 +148,7 @@ def handler(event, context):
             raise Exception(error_message)
             
     except Exception as e:
-        logger.error(f"Unexpected Error: {str(e)}")
-        raise Exception(f"Unexpected Error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}")
+        raise Exception(f"Error fetching file: {str(e)}")
     
     return response_data
