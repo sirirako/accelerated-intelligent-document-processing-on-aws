@@ -68,7 +68,7 @@ def handler(event, context):
         # Call Bedrock Runtime to get Python code based on the prompt
         if (len(objectKey)):
             encoded_string = objectKey.encode()
-            md5_hash = hashlib.md5(encoded_string)
+            md5_hash = hashlib.md5(encoded_string, usedforsecurity=False)
             hex_representation = md5_hash.hexdigest()
 
             # full text key
