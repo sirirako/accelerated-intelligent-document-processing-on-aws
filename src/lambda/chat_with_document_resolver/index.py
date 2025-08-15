@@ -139,14 +139,14 @@ def handler(event, context):
         logger.error(f"S3 ClientError: {error_code} - {error_message}")
         
         if error_code == 'NoSuchKey':
-            raise Exception(f"File not found: {objectKey}")
+            raise Exception(f"File not found: {fulltext_key}. The chat feature will not work with files that were processed prior to v0.3.11.")
         elif error_code == 'NoSuchBucket':
             raise Exception(f"Bucket not found: {output_bucket}")
         else:
             raise Exception(error_message)
             
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise Exception(f"Error fetching file: {str(e)}")
+        logger.error(f"Unexpected Error: {str(e)}")
+        raise Exception(f"Unexpected Error: {str(e)}")
     
     return response_data
