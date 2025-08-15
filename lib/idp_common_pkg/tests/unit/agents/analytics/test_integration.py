@@ -39,7 +39,7 @@ class TestAnalyticsIntegration:
             "AWS_REGION": "us-east-1",
         },
     )
-    @patch("idp_common.agents.analytics.agent.Agent")
+    @patch("idp_common.agents.analytics.agent.strands.Agent")
     @patch("boto3.Session")
     def test_end_to_end_agent_creation(self, mock_session, mock_agent_class):
         """Test end-to-end agent creation with configuration."""

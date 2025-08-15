@@ -29,7 +29,7 @@ class TestCreateAnalyticsAgent:
 
     @patch("idp_common.agents.analytics.config.load_python_plot_generation_examples")
     @patch("idp_common.agents.analytics.config.load_result_format_description")
-    @patch("idp_common.agents.analytics.agent.Agent")
+    @patch("idp_common.agents.analytics.agent.strands.Agent")
     @patch("boto3.Session")
     def test_create_analytics_agent_success(
         self, mock_session, mock_agent_class, mock_load_result, mock_load_examples
