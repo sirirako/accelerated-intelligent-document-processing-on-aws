@@ -22,6 +22,7 @@ The solution includes a responsive web-based user interface built with React tha
 - **Confidence threshold configuration** for HITL (Human-in-the-Loop) triggering through the Assessment & HITL Configuration section
 - Document upload from local computer
 - Knowledge base querying for document collections
+- "Chat with document" from the detailed view of the document
 - **Document Process Flow visualization** for detailed workflow execution monitoring and troubleshooting
 - **Document Analytics** for querying and visualizing processed document data
 
@@ -96,6 +97,17 @@ The Document Process Flow visualization is particularly useful for troubleshooti
 - Understand the sequence of processing steps
 - Analyze execution times to identify performance bottlenecks
 - Inspect the input and output of each step to verify data transformation
+
+## Chat with Document
+
+The "Chat with Document" feature is available at the bottom of the Document Detail view. This feature uses the same model that's configured to do the summarization to provide a RAG interface to the document that's the details are displayed for. No other document is taken in to account except the document you're viewing the details of. Note that this feature will only work after the document status is marked as complete.
+
+Your chat history will be saved as you continue your chat but if you leave the document details screen, your chat history is erased. This feature uses prompt caching for the document contents for repeated chat requests for each document.
+
+### How to Use
+
+1. Navigate to a document's detail page and scroll to the bottom
+2. In the text area, type in your question and you'll see an answer pop up after the document is analyzed with the Nova Pro model
 
 ## Authentication Features
 

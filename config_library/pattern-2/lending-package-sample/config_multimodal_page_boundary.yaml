@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: MIT-0
+
+notes: Boundary-aware classification example for pattern-2
+
+
+
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
@@ -914,15 +920,26 @@ classes:
         evaluation_method: LLM
         attributeType: group
 classification:
+  classificationMethod: multimodalPageBoundaryClassification
   image:
     target_height: ''
     target_width: ''
+  model: us.amazon.nova-pro-v1:0
+  temperature: '0.0'
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
+  system_prompt: >-
+    You are a multimodal document classification expert that analyzes business documents using both visual layout and textual content. Your task is to classify single-page documents into predefined categories based on their structural patterns, visual features, and text content. Your output must be valid JSON according to the requested format.
+
+    <variables>
+    DOCUMENT_TEXT: OCR-extracted text content from the document page that provides textual information for classification
+    DOCUMENT_IMAGE: Visual representation of the document page that provides layout, formatting, and visual structure information
+    CLASS_NAMES_AND_DESCRIPTIONS: List of valid document types with their descriptions that the document must be classified into
+    </variables>
   task_prompt: >-
     <task-description>
-    Analyze the provided document using both its visual layout and textual content to determine its document type. You must classify it into exactly one of the predefined categories.
+    Analyze the provided document using both its visual layout and textual content to determine its document type and whether this page begins a new document or continues the previous one.
     </task-description>
 
     <document-types>
@@ -934,24 +951,16 @@ classification:
     1. Examine the visual layout: headers, logos, formatting, structure, and visual organization
     2. Analyze the textual content: key phrases, terminology, purpose, and information type
     3. Identify distinctive features that match the document type descriptions
-    4. Consider both visual and textual evidence together to determine the best match
-    5. CRITICAL: Only use document types explicitly listed in the <document-types> section
+    4. Decide if this page starts a new document (output "start") or continues the previous document (output "continue")
+    5. Consider both visual and textual evidence together to determine the best match
+    6. CRITICAL: Only use document types explicitly listed in the <document-types> section
     </classification-instructions>
 
-    <reasoning-guidelines>
-    When determining the document type:
-    - First identify the document's primary purpose and function
-    - Note specific visual elements (letterhead, forms, tables, signatures)
-    - Identify key textual indicators (terminology, phrases, structure)
-    - Consider the document's intended audience and use case
-    - Provide specific evidence from both visual and textual analysis
-    </reasoning-guidelines>
-
     <output-format>
-    Return your classification as valid JSON following this exact structure:
     {
       "classification_reason": "Detailed reasoning including specific visual and textual evidence that led to this classification",
-      "class": "exact_document_type_from_list"
+      "class": "exact_document_type_from_list",
+      "document_boundary": "start or continue"
     }
     </output-format>
 
@@ -968,22 +977,10 @@ classification:
     <final-instructions>
     Analyze the document above by:
     1. Applying the <classification-instructions> to examine both visual and textual features
-    2. Following the <reasoning-guidelines> to build your classification rationale
-    3. Selecting ONLY from document types in <document-types>
-    4. Providing clear reasoning with specific evidence before the classification
-    5. Outputting in the exact JSON format specified in <output-format>
+    2. Selecting ONLY from document types in <document-types>
+    3. Providing clear reasoning with specific evidence
+    4. Outputting in the exact JSON format specified in <output-format>
     </final-instructions>
-  temperature: '0.0'
-  model: us.amazon.nova-pro-v1:0
-  system_prompt: >-
-    You are a multimodal document classification expert that analyzes business documents using both visual layout and textual content. Your task is to classify single-page documents into predefined categories based on their structural patterns, visual features, and text content. Your output must be valid JSON according to the requested format.
-
-    <variables>
-    DOCUMENT_TEXT: OCR-extracted text content from the document page that provides textual information for classification
-    DOCUMENT_IMAGE: Visual representation of the document page that provides layout, formatting, and visual structure information
-    CLASS_NAMES_AND_DESCRIPTIONS: List of valid document types with their descriptions that the document must be classified into
-    </variables>
-  classificationMethod: multimodalPageLevelClassification
 extraction:
   image:
     target_width: ''
@@ -1425,13 +1422,4 @@ pricing:
         price: '1.5E-6'
       - name: cacheWriteInputTokens
         price: '1.875E-5'
-  - name: bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0
-    units:
-      - name: inputTokens
-        price: '1.5E-5'
-      - name: outputTokens
-        price: '7.5E-5'
-      - name: cacheReadInputTokens
-        price: '1.5E-6'
-      - name: cacheWriteInputTokens
-        price: '1.875E-5'
+
