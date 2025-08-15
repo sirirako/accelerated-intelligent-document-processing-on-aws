@@ -143,7 +143,7 @@ def handler(event, context):
         elif error_code == 'NoSuchBucket':
             raise Exception(f"Bucket not found: {output_bucket}")
         else:
-            raise Exception(f"Error accessing S3: {error_message}")
+            raise Exception(error_message)
             
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
