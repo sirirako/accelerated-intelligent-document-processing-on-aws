@@ -67,6 +67,7 @@ class IDPAgent(Agent):
         agent_description: str,
         agent_id: str,
         agent: Agent,
+        sample_queries: Optional[list[str]] = None,
         job_id: Optional[str] = None,
         user_id: Optional[str] = None,
         enable_monitoring: Optional[bool] = None,
@@ -79,6 +80,7 @@ class IDPAgent(Agent):
             agent_description: Description of what the agent does
             agent_id: Unique identifier for the agent (e.g., "analytics-20250813-v0-kaleko")
             agent: Existing Strands Agent instance to wrap (required)
+            sample_queries: List of example queries that demonstrate the agent's capabilities
             job_id: Job ID for monitoring purposes. When provided with user_id, enables
                    automatic DynamoDB message tracking for real-time UI updates and
                    debugging. This should be the same job_id used in the Lambda
@@ -110,6 +112,7 @@ class IDPAgent(Agent):
         self.agent_name = agent_name
         self.agent_description = agent_description
         self.agent_id = agent_id
+        self.sample_queries = sample_queries or []
 
         # Set up automatic monitoring if job_id and user_id are provided
         self._setup_monitoring(job_id, user_id, enable_monitoring)

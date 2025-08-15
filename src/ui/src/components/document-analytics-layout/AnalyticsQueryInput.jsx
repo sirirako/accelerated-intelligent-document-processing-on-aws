@@ -33,6 +33,18 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const lastFetchTimeRef = useRef(0);
 
+  const handleAgentSelection = (selectedAgentOption) => {
+    setSelectedAgent(selectedAgentOption);
+
+    // Only populate sample query if input is empty
+    if (!currentInputText.trim()) {
+      const selectedAgentData = availableAgents.find((agent) => agent.agent_id === selectedAgentOption.value);
+      if (selectedAgentData?.sample_query) {
+        updateAnalyticsState({ currentInputText: selectedAgentData.sample_query });
+      }
+    }
+  };
+
   const fetchAvailableAgents = async () => {
     try {
       setIsLoadingAgents(true);
@@ -45,11 +57,17 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
       // Auto-select first agent if none selected
       if (agents.length > 0 && !selectedAgent) {
-        setSelectedAgent({
+        const firstAgent = {
           label: agents[0].agent_name,
           value: agents[0].agent_id,
           description: agents[0].agent_description,
-        });
+        };
+        setSelectedAgent(firstAgent);
+
+        // Populate sample query if input is empty
+        if (!currentInputText.trim() && agents[0].sample_query) {
+          updateAnalyticsState({ currentInputText: agents[0].sample_query });
+        }
       }
     } catch (err) {
       logger.error('Error fetching available agents:', err);
@@ -375,7 +393,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
               <FormField label="Select an agent">
                 <Select
                   selectedOption={selectedAgent}
-                  onChange={({ detail }) => setSelectedAgent(detail.selectedOption)}
+                  onChange={({ detail }) => handleAgentSelection(detail.selectedOption)}
                   options={availableAgents.map((agent) => ({
                     label: agent.agent_name,
                     value: agent.agent_id,

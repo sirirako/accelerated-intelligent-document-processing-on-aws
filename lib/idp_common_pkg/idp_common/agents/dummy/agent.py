@@ -4,7 +4,6 @@
 """Dummy Agent implementation for development purposes."""
 
 import logging
-import os
 from typing import Any, Dict
 
 import boto3
@@ -52,6 +51,11 @@ def create_dummy_agent(
         agent_id="dummy-dev-v1",
         agent_name="Dummy Agent",
         agent_description="Simple development agent with calculator tool",
+        sample_queries=[
+            "Calculate 25 * 4 + 10",
+            "What is the square root of 144?",
+            "Help me solve 15% of 200",
+        ],
         job_id=job_id,
         user_id=user_id,
     )

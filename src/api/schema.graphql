@@ -170,6 +170,7 @@ type Agent @aws_cognito_user_pools @aws_iam {
   agent_id: String!
   agent_name: String!
   agent_description: String!
+  sample_query: String
 }
 
 type AgentJob @aws_cognito_user_pools @aws_iam {

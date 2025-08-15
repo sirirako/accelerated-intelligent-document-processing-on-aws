@@ -68,10 +68,16 @@ Agents are managed through a centralized factory that provides:
 
 ### 3. IDPAgent Base Class
 All agents extend the IDPAgent class which provides:
-- **Metadata**: Each agent has a name, description, and unique identifier
+- **Metadata**: Each agent has a name, description, unique identifier, and sample queries
 - **Strands Compatibility**: Full compatibility with Strands Agent functionality
 - **Factory Integration**: Seamless integration with the agent factory pattern
 - **Automatic Monitoring**: Built-in DynamoDB message tracking when job_id and user_id are provided
+
+#### Agent Metadata for Router Agents
+Agent descriptions and sample queries are critical for router agents that route queries to appropriate sub-agents:
+- **Detailed Descriptions**: Used in router agent prompts to determine which agent to select
+- **Sample Queries**: Help router agents understand the types of queries each agent handles
+- **UI Integration**: Sample queries are displayed in the frontend to guide users
 
 #### Automatic Monitoring System
 The IDPAgent base class automatically sets up monitoring when both `job_id` and `user_id` parameters are provided during agent creation. This monitoring system:
@@ -344,8 +350,13 @@ def create_your_agent(config, session, **kwargs) -> IDPAgent:
     # Wrap in IDPAgent with metadata and automatic monitoring
     return IDPAgent(
         agent_name="Your Agent Name",
-        agent_description="Description of what your agent does",
+        agent_description="Description of what your agent does",  # Be detailed - used by router agents
         agent_id="your-agent-YYYYMMDD-v0-yourname",  # Use this naming convention
+        sample_queries=[  # Provide 2-3 example queries - used by router agents and UI
+            "Example query 1 that demonstrates your agent's capabilities",
+            "Example query 2 showing different functionality",
+            "Example query 3 for another use case"
+        ],
         agent=strands_agent,
         job_id=job_id,      # Enables automatic monitoring when provided
         user_id=user_id     # Required for monitoring
@@ -398,6 +409,11 @@ def create_dummy_agent(
         agent_id="dummy-dev-v1",
         agent_name="Dummy Agent",
         agent_description="Simple development agent with calculator tool",
+        sample_queries=[
+            "Calculate 25 * 4 + 10",
+            "What is the square root of 144?",
+            "Help me solve 15% of 200"
+        ],
         job_id=job_id,      # Enables automatic monitoring when provided
         user_id=user_id,    # Required for monitoring
     )
@@ -436,6 +452,11 @@ agent_factory.register_agent(
     agent_id="analytics-20250813-v0-kaleko",
     agent_name="Analytics Agent",
     agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
+    sample_queries=[
+        "Show me a chart of document processing volume by month",
+        "What are the most common document types processed?",
+        "Create a visualization showing extraction accuracy trends over time"
+    ],
     creator_func=create_analytics_agent,
 )
 
@@ -444,6 +465,11 @@ agent_factory.register_agent(
     agent_id="dummy-dev-v1",
     agent_name="Dummy Agent",
     agent_description="Simple development agent with calculator tool",
+    sample_queries=[
+        "Calculate 25 * 4 + 10",
+        "What is the square root of 144?",
+        "Help me solve 15% of 200"
+    ],
     creator_func=create_dummy_agent,
 )
 ```
@@ -694,8 +720,9 @@ When adding new agents or modifying existing ones:
 4. Update this README with new agent types
 5. Ensure Lambda compatibility
 6. Follow existing logging and error handling patterns
-7. **Security Review**: Ensure any code execution is properly sandboxed
-8. **Permission Audit**: Document required AWS permissions
+7. **Provide detailed descriptions and sample queries** - these are used by router agents for query routing
+8. **Security Review**: Ensure any code execution is properly sandboxed
+9. **Permission Audit**: Document required AWS permissions
 
 ## Support
 

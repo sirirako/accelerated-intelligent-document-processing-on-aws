@@ -23,6 +23,7 @@ class IDPAgentFactory:
         agent_name: str,
         agent_description: str,
         creator_func: Callable[..., IDPAgent],
+        sample_queries: List[str] = None,
     ) -> None:
         """
         Register an agent creator function with metadata.
@@ -32,11 +33,13 @@ class IDPAgentFactory:
             agent_name: Human-readable name for the agent
             agent_description: Description of what the agent does
             creator_func: Function that creates and returns an IDPAgent instance
+            sample_queries: List of example queries for the agent
         """
         self._registry[agent_id] = {
             "agent_name": agent_name,
             "agent_description": agent_description,
             "creator_func": creator_func,
+            "sample_queries": sample_queries or [],
         }
 
     def list_available_agents(self) -> List[Dict[str, str]]:
@@ -44,13 +47,14 @@ class IDPAgentFactory:
         List all available agents with their metadata.
 
         Returns:
-            List of dicts containing agent_id, agent_name, and agent_description
+            List of dicts containing agent_id, agent_name, agent_description, and sample_queries
         """
         return [
             {
                 "agent_id": agent_id,
                 "agent_name": info["agent_name"],
                 "agent_description": info["agent_description"],
+                "sample_queries": info["sample_queries"],
             }
             for agent_id, info in self._registry.items()
         ]

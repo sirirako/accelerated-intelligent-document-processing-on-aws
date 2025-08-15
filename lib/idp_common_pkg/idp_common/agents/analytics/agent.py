@@ -151,6 +151,11 @@ def create_analytics_agent(
         agent_name="Analytics Agent",
         agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
         agent_id="analytics-20250813-v0-kaleko",
+        sample_queries=[
+            "Show me a chart of document processing volume by month",
+            "What are the most common document types processed?",
+            "Create a visualization showing extraction accuracy trends over time",
+        ],
         agent=strands_agent,
         job_id=job_id,
         user_id=user_id,

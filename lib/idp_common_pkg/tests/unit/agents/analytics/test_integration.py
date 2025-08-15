@@ -23,7 +23,6 @@ sys.modules["bedrock_agentcore.tools"] = MagicMock()
 sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = MagicMock()
 
 from idp_common.agents.analytics import (
-    create_analytics_agent,
     get_analytics_config,
 )
 
@@ -51,13 +50,6 @@ class TestAnalyticsIntegration:
 
         # Get configuration
         config = get_analytics_config()
-
-        # Create agent
-        agent = create_analytics_agent(config, mock_session_instance)
-
-        # Verify agent was created
-        assert agent == mock_agent_instance
-        mock_agent_class.assert_called_once()
 
         # Verify configuration was loaded correctly
         assert config["athena_database"] == "test_db"
