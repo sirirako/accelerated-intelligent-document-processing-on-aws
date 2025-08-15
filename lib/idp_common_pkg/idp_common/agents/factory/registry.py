@@ -28,12 +28,19 @@ agent_factory = IDPAgentFactory()
 agent_factory.register_agent(
     agent_id="analytics-20250813-v0-kaleko",
     agent_name="Analytics Agent",
-    agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
+    agent_description="""
+    Converts natural language questions into SQL queries and generates visualizations from document data.
+    This agent has access to all databases within the IDP system, including metering databases which track
+    the document processing volume and statistics, document-specific tables for different classes of documents,
+    entity-specific information like names of people, numbers, and other entities extracted from documents,
+    as well as evaluation tables which include confidence scores for extracted entities as well as
+    accuracy metrics for evaluation jobs computed against provided ground truth data.
+    """,
     creator_func=create_analytics_agent,
     sample_queries=[
-        "Show me a chart of document processing volume by month",
+        "How many input and output tokens have I processed in each of the last 10 days?",
         "What are the most common document types processed?",
-        "Create a visualization showing extraction accuracy trends over time",
+        "In extracted W2 forms, what is the average state tax paid?",
     ],
 )
 
