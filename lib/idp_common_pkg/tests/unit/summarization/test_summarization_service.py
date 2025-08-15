@@ -450,8 +450,8 @@ class TestSummarizationService:
             # Verify executor was used to process sections in parallel
             assert mock_executor_instance.submit.call_count == 2
 
-            # Verify write_content was called for combined results
-            assert mock_write_content.call_count == 2
+            # Verify write_content was called for combined results (JSON, fulltext, and markdown)
+            assert mock_write_content.call_count == 3
 
             # Verify document has summarization_result
             assert result.summarization_result is not None
