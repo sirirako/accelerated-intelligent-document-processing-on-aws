@@ -16,10 +16,10 @@ import {
 
 export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
 export const documentsNavItems = [
-  { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
-  { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
-  { type: 'link', text: 'Document Analytics', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
-  { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
+  { type: 'link', text: 'My Documents', href: `#${DOCUMENTS_PATH}` },
+  { type: 'link', text: 'Ask Questions', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
+  { type: 'link', text: 'Analytics Dashboard', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
+  { type: 'link', text: 'Upload Files', href: `#${UPLOAD_DOCUMENT_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
   {
     type: 'section',
