@@ -5,13 +5,34 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.10]
+
+### Added
+
+- **Agent Analysis Feature for Natural Language Document Analytics**
+  - Added integrated AI-powered analytics agent that enables natural language querying of processed document data
+  - **Key Capabilities**: Convert natural language questions to SQL queries, generate interactive visualizations and tables, explore database schema automatically
+  - **Secure Architecture**: All Python code execution happens in isolated AWS Bedrock AgentCore sandboxes, not in Lambda functions
+  - **Multi-Tool Agent System**: Database discovery tool for schema exploration, Athena query tool for SQL execution, secure code sandbox for data transfer, Python visualization tool for charts and tables
+  - **Example Use Cases**: Query document processing volumes and trends, analyze confidence scores and extraction accuracy, explore document classifications and content patterns, generate custom charts and data tables
+  - **Sample W2 Test Data**: Includes 20 synthetic W2 tax documents for testing analytics capabilities
+  - **Configurable Models**: Supports multiple AI models including Claude 3.7 Sonnet (default), Claude 3.5 Sonnet, Nova Pro/Lite, and Haiku
+  - **Web UI Integration**: Accessible through "Document Analytics" section with real-time progress display and query history
+
+- **Automatic Glue Table Creation for Document Sections**
+  - Added automatic creation of AWS Glue tables for each document section type (classification) during processing
+  - Tables are created dynamically when new section types are encountered, eliminating manual table creation
+  - Consistent lowercase naming convention for tables ensures compatibility with case-sensitive S3 paths
+  - Tables are configured with partition projection for efficient date-based queries without manual partition management
+  - Automatic schema evolution - tables update when new fields are detected in extraction results
+
+## [0.3.9]
+
 ### Added
 - **Optional Permissions Boundary Support for Enterprise Deployments**
   - Added `PermissionsBoundaryArn` parameter to all CloudFormation templates for organizations with Service Control Policies (SCPs) requiring permissions boundaries
   - Comprehensive support for both explicit IAM roles and implicit roles created by AWS SAM functions and statemachines`
   - Conditional implementation ensures backward compatibility - when no permissions boundary is provided, roles deploy normally
-
-## [0.3.8]
 
 ### Added
 - IDP Configuration and Prompting Best Practices documentation [doc](./docs/idp-configuration-best-practices.md)

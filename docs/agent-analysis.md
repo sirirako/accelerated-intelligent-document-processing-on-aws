@@ -15,6 +15,10 @@ The Agent Analysis feature provides intelligent data exploration capabilities th
 - **Real-time Analysis**: Get insights from your processed documents without manual data analysis
 - **Secure Code Execution**: Python visualization code runs in isolated AWS Bedrock AgentCore sandboxes
 
+
+https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
+
+
 ## Key Features
 
 - **Multi-Modal AI Agent**: Uses advanced language models (Claude 3.7 Sonnet by default) for intelligent query understanding
