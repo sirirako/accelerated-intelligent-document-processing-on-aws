@@ -149,12 +149,17 @@ def create_analytics_agent(
     # Wrap in IDPAgent with metadata and automatic monitoring
     agent = IDPAgent(
         agent_name="Analytics Agent",
-        agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
+        agent_description="""
+        Converts natural language questions into SQL queries and generates visualizations from document data.
+        This agent has access to all databases and tables contained within the IDP system, including tables
+        which track processing volume and statistics, document types, evaluation or accuracy metrics, 
+        confidence scores, extracted entities from within documents, etc.
+        """,
         agent_id="analytics-20250813-v0-kaleko",
         sample_queries=[
-            "Show me a chart of document processing volume by month",
+            "How many input and output tokens have I processed each of the last 10 days?",
             "What are the most common document types processed?",
-            "Create a visualization showing extraction accuracy trends over time",
+            "Create a visualization showing extraction accuracy trends over time.",
         ],
         agent=strands_agent,
         job_id=job_id,

@@ -4,7 +4,6 @@
 """Dummy Agent implementation for development purposes."""
 
 import logging
-from typing import Any, Dict
 
 import boto3
 from strands import Agent
@@ -17,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 def create_dummy_agent(
-    config: Dict[str, Any],
     session: boto3.Session,
     job_id: str = None,
     user_id: str = None,
@@ -27,7 +25,6 @@ def create_dummy_agent(
     Create a minimal dummy agent with calculator tool.
 
     Args:
-        config: Configuration dictionary
         session: Boto3 session for AWS operations
         job_id: Job ID for monitoring (optional)
         user_id: User ID for monitoring (optional)
