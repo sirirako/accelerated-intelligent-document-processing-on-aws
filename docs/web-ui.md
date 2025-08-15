@@ -107,7 +107,7 @@ Your chat history will be saved as you continue your chat but if you leave the d
 ### How to Use
 
 1. Navigate to a document's detail page and scroll to the bottom
-2. In the text area, type in your question and you'll see an answer pop up after the document is analyzed with the model that's configured for summarization
+2. In the text area, type in your question and you'll see an answer pop up after the document is analyzed with the Nova Pro model
 
 ## Authentication Features
 
