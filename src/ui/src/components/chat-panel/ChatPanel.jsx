@@ -80,6 +80,7 @@ const ChatPanel = (item) => {
     const chatResponse = getChatResponse(objectKey, prompt, jsonChatHistory);
 
     let chatResponseData = {};
+    let chatItem = {};
 
     chatResponse
       .then((r) => {
@@ -93,12 +94,10 @@ const ChatPanel = (item) => {
             type: 'msg',
           };
 
-          const chatItem = {
+          chatItem = {
             ask: prompt,
             response: cResponse.cr.content[0].text,
           };
-
-          setJsonChatHistory((prevChatHistory) => [...prevChatHistory, chatItem]);
         }
       })
       .catch((r) => {
@@ -114,8 +113,8 @@ const ChatPanel = (item) => {
       .finally(() => {
         // remove loader from the chat queries
         setChatQueries((prevChatQueries) => prevChatQueries.filter((data) => data.role !== 'loader'));
-
         setChatQueries((prevChatQueries) => [...prevChatQueries, chatResponseData]);
+        setJsonChatHistory((prevChatHistory) => [...prevChatHistory, chatItem]);
         const maxScrollHeight = document.documentElement.scrollHeight;
         window.scrollTo(0, maxScrollHeight);
       });
