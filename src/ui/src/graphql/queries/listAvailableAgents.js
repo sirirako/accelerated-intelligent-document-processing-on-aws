@@ -8,6 +8,7 @@ export default gql`
       agent_id
       agent_name
       agent_description
+      sample_query
     }
   }
 `;

@@ -36,13 +36,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const handleAgentSelection = (selectedAgentOption) => {
     setSelectedAgent(selectedAgentOption);
 
-    // Only populate sample query if input is empty
-    if (!currentInputText.trim()) {
-      const selectedAgentData = availableAgents.find((agent) => agent.agent_id === selectedAgentOption.value);
-      if (selectedAgentData?.sample_query) {
-        updateAnalyticsState({ currentInputText: selectedAgentData.sample_query });
-      }
-    }
+    // Don't populate sample query as text - let it remain as placeholder only
   };
 
   const fetchAvailableAgents = async () => {
@@ -64,10 +58,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
         };
         setSelectedAgent(firstAgent);
 
-        // Populate sample query if input is empty
-        if (!currentInputText.trim() && agents[0].sample_query) {
-          updateAnalyticsState({ currentInputText: agents[0].sample_query });
-        }
+        // Don't populate sample query as text - let it remain as placeholder only
       }
     } catch (err) {
       logger.error('Error fetching available agents:', err);
@@ -407,7 +398,12 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
               </FormField>
               <FormField label="Enter your question for the agent">
                 <Textarea
-                  placeholder="How has the number of documents processed per day trended over the past three weeks?"
+                  placeholder={
+                    selectedAgent
+                      ? availableAgents.find((agent) => agent.agent_id === selectedAgent.value)?.sample_query ||
+                        'Enter your question here...'
+                      : 'Select an agent first...'
+                  }
                   value={currentInputText}
                   onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
                   disabled={isSubmitting}
