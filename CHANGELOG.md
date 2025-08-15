@@ -5,6 +5,16 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+
+## [0.3.11]
+
+### Added
+
+- **Chat with Document** now available at the bottom of the each Document Detail page.
+- **Anthropic Claude Opus 4.1** model available in configuration for all document processing steps
+- **Browser tab icon** now features a blue background with a white "IDP"
+- **Experimental new classification method** - multimodalPageBoundaryClassification - for detecting section boundaries during page level classification.
+
 ## [0.3.10]
 
 ### Added
