@@ -319,14 +319,13 @@ For simple agents, you may not need additional directories like `tools/`, `confi
 
 ### Step 2: Implement the Agent Creator Function
 
-In `agent.py`, create a function that returns an IDPAgent:
+In `agent.py`, create a function that returns a Strands Agent:
 
 ```python
-from strands import Agent
-from ..common.idp_agent import IDPAgent
+import strands
 from .tools import your_tool1, your_tool2
 
-def create_your_agent(config, session, **kwargs) -> IDPAgent:
+def create_your_agent(config, session, **kwargs) -> strands.Agent:
     """
     Create and configure your agent.
     
@@ -336,7 +335,7 @@ def create_your_agent(config, session, **kwargs) -> IDPAgent:
         **kwargs: Additional arguments
         
     Returns:
-        IDPAgent: Configured agent instance
+        strands.Agent: Configured Strands agent instance
     """
     # Create tools
     tools = [your_tool1, your_tool2]
@@ -344,10 +343,8 @@ def create_your_agent(config, session, **kwargs) -> IDPAgent:
     # Define system prompt
     system_prompt = "Your agent system prompt here..."
     
-    # Create Strands agent
-    strands_agent = Agent(tools=tools, system_prompt=system_prompt, model=your_model)
-    
-    # Wrap in IDPAgent with metadata and automatic monitoring
+    # Create and return Strands agent
+    return strands.Agent(tools=tools, system_prompt=system_prompt, model=your_model)
     return IDPAgent(
         agent_name="Your Agent Name",
         agent_description="Description of what your agent does",  # Be detailed - used by router agents
@@ -361,6 +358,9 @@ def create_your_agent(config, session, **kwargs) -> IDPAgent:
         job_id=job_id,      # Enables automatic monitoring when provided
         user_id=user_id     # Required for monitoring
     )
+```
+
+**Note**: The factory will automatically wrap your Strands agent in an IDPAgent with the metadata you provide during registration.
 ```
 
 #### Example: Dummy Agent Implementation

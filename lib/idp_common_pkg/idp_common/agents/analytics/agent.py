@@ -10,10 +10,9 @@ import os
 from typing import Any, Dict
 
 import boto3
-from strands import Agent, tool
+import strands
 from strands.models import BedrockModel
 
-from ..common.idp_agent import IDPAgent
 from .config import load_python_plot_generation_examples, load_result_format_description
 from .tools import CodeInterpreterTools, get_database_info, run_athena_query
 from .utils import register_code_interpreter_tools
@@ -24,24 +23,16 @@ logger = logging.getLogger(__name__)
 def create_analytics_agent(
     config: Dict[str, Any],
     session: boto3.Session,
-    job_id: str = None,
-    user_id: str = None,
-    enable_monitoring: bool = None,
-    include_debug_tool_output: bool = False,
-) -> IDPAgent:
+) -> strands.Agent:
     """
     Create and configure the analytics agent with appropriate tools and system prompt.
 
     Args:
         config: Configuration dictionary containing Athena settings and other parameters
         session: Boto3 session for AWS operations
-        job_id: Analytics job ID for monitoring (optional)
-        user_id: User ID for monitoring (optional)
-        enable_monitoring: Whether to enable agent monitoring (defaults to env var or True)
-        include_debug_tool_output: Whether to include debug_tool_output in tool result messages (defaults to False)
 
     Returns:
-        IDPAgent: Configured IDP agent instance
+        strands.Agent: Configured Strands agent instance
     """
     # Load the output format description
     final_result_format = load_result_format_description()
@@ -102,7 +93,7 @@ def create_analytics_agent(
     """
 
     # Create a new tool function that directly calls run_athena_query with the config
-    @tool
+    @strands.tool
     def run_athena_query_with_config(
         query: str, return_full_query_results: bool = False
     ) -> Dict[str, Any]:
@@ -144,28 +135,9 @@ def create_analytics_agent(
     bedrock_model = BedrockModel(model_id=model_id, boto_session=session)
 
     # Create the Strands agent with tools and system prompt
-    strands_agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
-
-    # Wrap in IDPAgent with metadata and automatic monitoring
-    agent = IDPAgent(
-        agent_name="Analytics Agent",
-        agent_description="""
-        Converts natural language questions into SQL queries and generates visualizations from document data.
-        This agent has access to all databases and tables contained within the IDP system, including tables
-        which track processing volume and statistics, document types, evaluation or accuracy metrics, 
-        confidence scores, extracted entities from within documents, etc.
-        """,
-        agent_id="analytics-20250813-v0-kaleko",
-        sample_queries=[
-            "How many input and output tokens have I processed each of the last 10 days?",
-            "What are the most common document types processed?",
-            "Create a visualization showing extraction accuracy trends over time.",
-        ],
-        agent=strands_agent,
-        job_id=job_id,
-        user_id=user_id,
-        enable_monitoring=enable_monitoring,
+    strands_agent = strands.Agent(
+        tools=tools, system_prompt=system_prompt, model=bedrock_model
     )
 
     logger.info("Analytics agent created successfully")
-    return agent
+    return strands_agent

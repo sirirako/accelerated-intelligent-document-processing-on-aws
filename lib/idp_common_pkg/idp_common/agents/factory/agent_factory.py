@@ -22,7 +22,9 @@ class IDPAgentFactory:
         agent_id: str,
         agent_name: str,
         agent_description: str,
-        creator_func: Callable[..., IDPAgent],
+        creator_func: Callable[
+            ..., Any
+        ],  # Now returns Strands Agent instead of IDPAgent
         sample_queries: List[str] = None,
     ) -> None:
         """
@@ -32,7 +34,7 @@ class IDPAgentFactory:
             agent_id: Unique identifier for the agent
             agent_name: Human-readable name for the agent
             agent_description: Description of what the agent does
-            creator_func: Function that creates and returns an IDPAgent instance
+            creator_func: Function that creates and returns a Strands Agent instance
             sample_queries: List of example queries for the agent
         """
         self._registry[agent_id] = {
@@ -68,7 +70,7 @@ class IDPAgentFactory:
             **kwargs: Arguments to pass to the agent creator function
 
         Returns:
-            IDPAgent instance
+            IDPAgent instance with registered metadata
 
         Raises:
             ValueError: If agent_id is not registered
@@ -79,5 +81,16 @@ class IDPAgentFactory:
         info = self._registry[agent_id]
         creator_func = info["creator_func"]
 
-        # Call creator function which returns an IDPAgent
-        return creator_func(**kwargs)
+        # Call creator function which now returns a Strands agent
+        strands_agent = creator_func(**kwargs)
+
+        # Wrap it in IDPAgent with the registered metadata
+        return IDPAgent(
+            agent=strands_agent,
+            agent_id=agent_id,
+            agent_name=info["agent_name"],
+            agent_description=info["agent_description"],
+            sample_queries=info["sample_queries"],
+            job_id=kwargs.get("job_id"),
+            user_id=kwargs.get("user_id"),
+        )
