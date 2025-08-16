@@ -71,9 +71,17 @@ def handler(event, context):
                 database_name = f"{stack_name}-reporting-db"
                 logger.info(f"Using database name from stack name: {database_name}")
         
+        # Get the configuration table name from event or environment variable
+        config_table_name = event.get('config_table_name') or os.environ.get('CONFIGURATION_TABLE_NAME')
+        if config_table_name:
+            logger.info(f"Using configuration table: {config_table_name}")
+        else:
+            logger.warning("No configuration table name provided, will use hardcoded pricing values")
+        
         # Use the SaveReportingData class to save the data
         # Pass database_name to enable automatic Glue table creation
-        reporter = SaveReportingData(reporting_bucket, database_name)
+        # Pass config_table_name to enable dynamic pricing from DynamoDB configuration
+        reporter = SaveReportingData(reporting_bucket, database_name, config_table_name)
         results = reporter.save(document, data_to_save)
         
         # If no data was processed, return a warning
