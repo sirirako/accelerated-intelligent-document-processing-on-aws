@@ -34,7 +34,12 @@ class SaveReportingData:
     to a reporting bucket in Parquet format for analytics.
     """
 
-    def __init__(self, reporting_bucket: str, database_name: str = None, config_table_name: str = None):
+    def __init__(
+        self,
+        reporting_bucket: str,
+        database_name: str = None,
+        config_table_name: str = None,
+    ):
         """
         Initialize the SaveReportingData class.
 
@@ -45,7 +50,9 @@ class SaveReportingData:
         """
         self.reporting_bucket = reporting_bucket
         self.database_name = database_name
-        self.config_table_name = config_table_name or os.environ.get('CONFIGURATION_TABLE_NAME')
+        self.config_table_name = config_table_name or os.environ.get(
+            "CONFIGURATION_TABLE_NAME"
+        )
         self.s3_client = boto3.client("s3")
         self.glue_client = boto3.client("glue") if database_name else None
 
@@ -892,43 +899,59 @@ class SaveReportingData:
         # Try to load pricing from DynamoDB configuration and merge with hardcoded values
         try:
             if self.config_table_name:
-                logger.info(f"Loading pricing configuration from DynamoDB table: {self.config_table_name}")
+                logger.info(
+                    f"Loading pricing configuration from DynamoDB table: {self.config_table_name}"
+                )
 
                 # Load configuration using the same system as the UI
                 config = get_config(self.config_table_name)
 
-                if config and 'pricing' in config:
-                    pricing_config = config['pricing']
-                    logger.info(f"Found {len(pricing_config)} pricing entries in configuration")
+                if config and "pricing" in config:
+                    pricing_config = config["pricing"]
+                    logger.info(
+                        f"Found {len(pricing_config)} pricing entries in configuration"
+                    )
 
                     config_loaded_count = 0
                     # Convert configuration pricing to lookup dictionary (same format as UI)
                     for service in pricing_config:
-                        if 'name' in service and 'units' in service:
-                            service_name = service['name']
-                            for unit_info in service['units']:
-                                if 'name' in unit_info and 'price' in unit_info:
-                                    unit_name = unit_info['name']
+                        if "name" in service and "units" in service:
+                            service_name = service["name"]
+                            for unit_info in service["units"]:
+                                if "name" in unit_info and "price" in unit_info:
+                                    unit_name = unit_info["name"]
                                     try:
-                                        price = float(unit_info['price'])
+                                        price = float(unit_info["price"])
                                         if service_name not in pricing_map:
                                             pricing_map[service_name] = {}
                                         pricing_map[service_name][unit_name] = price
                                         config_loaded_count += 1
                                     except (ValueError, TypeError) as e:
-                                        logger.warning(f"Invalid price value for {service_name}/{unit_name}: {unit_info['price']}, error: {e}. Using hardcoded fallback.")
+                                        logger.warning(
+                                            f"Invalid price value for {service_name}/{unit_name}: {unit_info['price']}, error: {e}. Using hardcoded fallback."
+                                        )
 
                     if config_loaded_count > 0:
-                        logger.info(f"Successfully loaded {config_loaded_count} pricing entries from configuration, merged with hardcoded fallbacks")
+                        logger.info(
+                            f"Successfully loaded {config_loaded_count} pricing entries from configuration, merged with hardcoded fallbacks"
+                        )
                     else:
-                        logger.warning("No valid pricing data found in configuration, using hardcoded values")
+                        logger.warning(
+                            "No valid pricing data found in configuration, using hardcoded values"
+                        )
                 else:
-                    logger.warning("No pricing section found in configuration, using hardcoded values")
+                    logger.warning(
+                        "No pricing section found in configuration, using hardcoded values"
+                    )
             else:
-                logger.info("No configuration table name provided, using hardcoded pricing values")
+                logger.info(
+                    "No configuration table name provided, using hardcoded pricing values"
+                )
 
         except Exception as e:
-            logger.error(f"Error loading pricing from configuration: {str(e)}, using hardcoded values")
+            logger.error(
+                f"Error loading pricing from configuration: {str(e)}, using hardcoded values"
+            )
 
         # Cache the final pricing (either config + hardcoded or just hardcoded)
         self._pricing_cache = pricing_map
@@ -944,70 +967,118 @@ class SaveReportingData:
         # Hardcoded pricing values (same as before for backward compatibility)
         default_pricing = [
             # BDA pricing
-            {"name": "bda/documents-custom", "units": [{"name": "pages", "price": "0.04"}]},
-            {"name": "bda/documents-standard", "units": [{"name": "pages", "price": "0.01"}]},
-
+            {
+                "name": "bda/documents-custom",
+                "units": [{"name": "pages", "price": "0.04"}],
+            },
+            {
+                "name": "bda/documents-standard",
+                "units": [{"name": "pages", "price": "0.01"}],
+            },
             # Textract pricing
-            {"name": "textract/detect_document_text", "units": [{"name": "pages", "price": "0.0015"}]},
-            {"name": "textract/analyze_document-Layout", "units": [{"name": "pages", "price": "0.004"}]},
-            {"name": "textract/analyze_document-Signatures", "units": [{"name": "pages", "price": "0.0035"}]},
-            {"name": "textract/analyze_document-Forms", "units": [{"name": "pages", "price": "0.05"}]},
-            {"name": "textract/analyze_document-Tables", "units": [{"name": "pages", "price": "0.015"}]},
-            {"name": "textract/analyze_document-Tables+Forms", "units": [{"name": "pages", "price": "0.065"}]},
-
+            {
+                "name": "textract/detect_document_text",
+                "units": [{"name": "pages", "price": "0.0015"}],
+            },
+            {
+                "name": "textract/analyze_document-Layout",
+                "units": [{"name": "pages", "price": "0.004"}],
+            },
+            {
+                "name": "textract/analyze_document-Signatures",
+                "units": [{"name": "pages", "price": "0.0035"}],
+            },
+            {
+                "name": "textract/analyze_document-Forms",
+                "units": [{"name": "pages", "price": "0.05"}],
+            },
+            {
+                "name": "textract/analyze_document-Tables",
+                "units": [{"name": "pages", "price": "0.015"}],
+            },
+            {
+                "name": "textract/analyze_document-Tables+Forms",
+                "units": [{"name": "pages", "price": "0.065"}],
+            },
             # Bedrock pricing - Nova models
-            {"name": "bedrock/us.amazon.nova-lite-v1:0", "units": [
-                {"name": "inputTokens", "price": "6.0E-8"},
-                {"name": "outputTokens", "price": "2.4E-7"},
-                {"name": "cacheReadInputTokens", "price": "1.5E-8"},
-                {"name": "cacheWriteInputTokens", "price": "6.0E-8"}
-            ]},
-            {"name": "bedrock/us.amazon.nova-pro-v1:0", "units": [
-                {"name": "inputTokens", "price": "8.0E-7"},
-                {"name": "outputTokens", "price": "3.2E-6"},
-                {"name": "cacheReadInputTokens", "price": "2.0E-7"},
-                {"name": "cacheWriteInputTokens", "price": "8.0E-7"}
-            ]},
-            {"name": "bedrock/us.amazon.nova-premier-v1:0", "units": [
-                {"name": "inputTokens", "price": "2.5E-6"},
-                {"name": "outputTokens", "price": "1.25E-5"}
-            ]},
-
+            {
+                "name": "bedrock/us.amazon.nova-lite-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "6.0E-8"},
+                    {"name": "outputTokens", "price": "2.4E-7"},
+                    {"name": "cacheReadInputTokens", "price": "1.5E-8"},
+                    {"name": "cacheWriteInputTokens", "price": "6.0E-8"},
+                ],
+            },
+            {
+                "name": "bedrock/us.amazon.nova-pro-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "8.0E-7"},
+                    {"name": "outputTokens", "price": "3.2E-6"},
+                    {"name": "cacheReadInputTokens", "price": "2.0E-7"},
+                    {"name": "cacheWriteInputTokens", "price": "8.0E-7"},
+                ],
+            },
+            {
+                "name": "bedrock/us.amazon.nova-premier-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "2.5E-6"},
+                    {"name": "outputTokens", "price": "1.25E-5"},
+                ],
+            },
             # Bedrock pricing - Claude models
-            {"name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0", "units": [
-                {"name": "inputTokens", "price": "2.5E-7"},
-                {"name": "outputTokens", "price": "1.25E-6"}
-            ]},
-            {"name": "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0", "units": [
-                {"name": "inputTokens", "price": "8.0E-7"},
-                {"name": "outputTokens", "price": "4.0E-6"},
-                {"name": "cacheReadInputTokens", "price": "8.0E-8"},
-                {"name": "cacheWriteInputTokens", "price": "1.0E-6"}
-            ]},
-            {"name": "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0", "units": [
-                {"name": "inputTokens", "price": "3.0E-6"},
-                {"name": "outputTokens", "price": "1.5E-5"},
-                {"name": "cacheReadInputTokens", "price": "3.0E-7"},
-                {"name": "cacheWriteInputTokens", "price": "3.75E-6"}
-            ]},
-            {"name": "bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0", "units": [
-                {"name": "inputTokens", "price": "3.0E-6"},
-                {"name": "outputTokens", "price": "1.5E-5"},
-                {"name": "cacheReadInputTokens", "price": "3.0E-7"},
-                {"name": "cacheWriteInputTokens", "price": "3.75E-6"}
-            ]},
-            {"name": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0", "units": [
-                {"name": "inputTokens", "price": "3.0E-6"},
-                {"name": "outputTokens", "price": "1.5E-5"},
-                {"name": "cacheReadInputTokens", "price": "3.0E-7"},
-                {"name": "cacheWriteInputTokens", "price": "3.75E-6"}
-            ]},
-            {"name": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0", "units": [
-                {"name": "inputTokens", "price": "1.5E-5"},
-                {"name": "outputTokens", "price": "7.5E-5"},
-                {"name": "cacheReadInputTokens", "price": "1.5E-6"},
-                {"name": "cacheWriteInputTokens", "price": "1.875E-5"}
-            ]}
+            {
+                "name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "2.5E-7"},
+                    {"name": "outputTokens", "price": "1.25E-6"},
+                ],
+            },
+            {
+                "name": "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "8.0E-7"},
+                    {"name": "outputTokens", "price": "4.0E-6"},
+                    {"name": "cacheReadInputTokens", "price": "8.0E-8"},
+                    {"name": "cacheWriteInputTokens", "price": "1.0E-6"},
+                ],
+            },
+            {
+                "name": "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "units": [
+                    {"name": "inputTokens", "price": "3.0E-6"},
+                    {"name": "outputTokens", "price": "1.5E-5"},
+                    {"name": "cacheReadInputTokens", "price": "3.0E-7"},
+                    {"name": "cacheWriteInputTokens", "price": "3.75E-6"},
+                ],
+            },
+            {
+                "name": "bedrock/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "3.0E-6"},
+                    {"name": "outputTokens", "price": "1.5E-5"},
+                    {"name": "cacheReadInputTokens", "price": "3.0E-7"},
+                    {"name": "cacheWriteInputTokens", "price": "3.75E-6"},
+                ],
+            },
+            {
+                "name": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "3.0E-6"},
+                    {"name": "outputTokens", "price": "1.5E-5"},
+                    {"name": "cacheReadInputTokens", "price": "3.0E-7"},
+                    {"name": "cacheWriteInputTokens", "price": "3.75E-6"},
+                ],
+            },
+            {
+                "name": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "1.5E-5"},
+                    {"name": "outputTokens", "price": "7.5E-5"},
+                    {"name": "cacheReadInputTokens", "price": "1.5E-6"},
+                    {"name": "cacheWriteInputTokens", "price": "1.875E-5"},
+                ],
+            },
         ]
 
         # Convert to lookup dictionary
@@ -1049,15 +1120,26 @@ class SaveReportingData:
 
         for service_key, service_costs in pricing_map.items():
             service_key_lower = service_key.lower()
-            if service_key_lower in service_api_lower or service_api_lower in service_key_lower:
+            if (
+                service_key_lower in service_api_lower
+                or service_api_lower in service_key_lower
+            ):
                 for unit_key, cost in service_costs.items():
                     unit_key_lower = unit_key.lower()
-                    if unit_key_lower == unit_lower or unit_key_lower in unit_lower or unit_lower in unit_key_lower:
-                        logger.info(f"Using partial match for {service_api}/{unit}: {service_key}/{unit_key} = ${cost}")
+                    if (
+                        unit_key_lower == unit_lower
+                        or unit_key_lower in unit_lower
+                        or unit_lower in unit_key_lower
+                    ):
+                        logger.info(
+                            f"Using partial match for {service_api}/{unit}: {service_key}/{unit_key} = ${cost}"
+                        )
                         return cost
 
         # Log when no cost mapping is found
-        logger.warning(f"No unit cost mapping found for service_api='{service_api}', unit='{unit}'. Using $0.0")
+        logger.warning(
+            f"No unit cost mapping found for service_api='{service_api}', unit='{unit}'. Using $0.0"
+        )
         return 0.0
 
     def clear_pricing_cache(self):
