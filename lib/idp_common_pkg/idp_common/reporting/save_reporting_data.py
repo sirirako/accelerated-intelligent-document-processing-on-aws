@@ -18,9 +18,9 @@ import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from idp_common.config import get_config
 from idp_common.models import Document
 from idp_common.s3 import get_json_content
-from idp_common.config import get_config
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class SaveReportingData:
         self.config_table_name = config_table_name or os.environ.get('CONFIGURATION_TABLE_NAME')
         self.s3_client = boto3.client("s3")
         self.glue_client = boto3.client("glue") if database_name else None
-        
+
         # Cache for configuration data to avoid repeated DynamoDB calls
         self._config_cache = None
         self._pricing_cache = None
@@ -475,6 +475,128 @@ class SaveReportingData:
             logger.error(f"Error checking/updating Glue table {table_name}: {str(e)}")
             return False
 
+    def _create_or_update_metering_glue_table(self, schema: pa.Schema) -> bool:
+        """
+        Create or update a Glue table for metering data.
+
+        Args:
+            schema: PyArrow schema for the metering table
+
+        Returns:
+            True if table was created or updated, False otherwise
+        """
+        if not self.glue_client or not self.database_name:
+            logger.debug(
+                "Glue client or database name not configured, skipping table creation"
+            )
+            return False
+
+        table_name = "metering"
+
+        # Convert schema to Glue columns
+        columns = self._convert_schema_to_glue_columns(schema)
+
+        # Table input for create/update
+        table_input = {
+            "Name": table_name,
+            "Description": "Metering data table for document processing costs and usage",
+            "StorageDescriptor": {
+                "Columns": columns,
+                "Location": f"s3://{self.reporting_bucket}/metering/",
+                "InputFormat": (
+                    "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+                ),
+                "OutputFormat": (
+                    "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+                ),
+                "Compressed": True,
+                "SerdeInfo": {
+                    "SerializationLibrary": (
+                        "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+                    )
+                },
+            },
+            "PartitionKeys": [{"Name": "date", "Type": "string"}],
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {
+                "classification": "parquet",
+                "typeOfData": "file",
+                "projection.enabled": "true",
+                "projection.date.type": "date",
+                "projection.date.format": "yyyy-MM-dd",
+                "projection.date.range": "2024-01-01,2030-12-31",
+                "projection.date.interval": "1",
+                "projection.date.interval.unit": "DAYS",
+                "storage.location.template": (
+                    f"s3://{self.reporting_bucket}/metering/date=${{date}}/"
+                ),
+            },
+        }
+
+        try:
+            # Try to get the existing table
+            existing_table = self.glue_client.get_table(
+                DatabaseName=self.database_name, Name=table_name
+            )
+
+            # Check if schema has changed significantly
+            existing_columns = (
+                existing_table.get("Table", {})
+                .get("StorageDescriptor", {})
+                .get("Columns", [])
+            )
+            existing_column_names = {col["Name"] for col in existing_columns}
+            new_column_names = {col["Name"] for col in columns}
+
+            # If there are new columns, update the table
+            if new_column_names - existing_column_names:
+                logger.info(f"Updating Glue table {table_name} with new columns")
+                self.glue_client.update_table(
+                    DatabaseName=self.database_name, TableInput=table_input
+                )
+                return True
+            else:
+                logger.debug(
+                    f"Glue table {table_name} already exists with current schema"
+                )
+                return False
+
+        except Exception as get_table_error:
+            # Check if it's an EntityNotFoundException or similar (table doesn't exist)
+            error_str = str(get_table_error)
+            if (
+                "EntityNotFoundException" in error_str
+                or "not found" in error_str.lower()
+            ):
+                # Table doesn't exist, create it
+                logger.info(f"Creating new Glue table {table_name} for metering data")
+                try:
+                    self.glue_client.create_table(
+                        DatabaseName=self.database_name, TableInput=table_input
+                    )
+                    logger.info(f"Successfully created Glue table {table_name}")
+                    return True
+                except Exception as create_error:
+                    # Check if it's an AlreadyExistsException
+                    if "AlreadyExistsException" in str(create_error):
+                        logger.debug(
+                            f"Glue table {table_name} already exists (race condition)"
+                        )
+                        return False
+                    logger.error(
+                        f"Error creating Glue table {table_name}: {str(create_error)}"
+                    )
+                    return False
+            else:
+                # Some other error occurred
+                logger.error(
+                    f"Error checking Glue table {table_name}: {str(get_table_error)}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"Error checking/updating Glue table {table_name}: {str(e)}")
+            return False
+
     def save(self, document: Document, data_to_save: List[str]) -> List[Dict[str, Any]]:
         """
         Save document data based on the data_to_save list.
@@ -752,33 +874,33 @@ class SaveReportingData:
     def _get_pricing_from_config(self) -> Dict[str, Dict[str, float]]:
         """
         Get pricing information from the configuration system (DynamoDB) with fallback to hardcoded values.
-        
+
         This method loads pricing from the same DynamoDB configuration source used by the UI,
         with caching to avoid repeated calls and fallback to hardcoded values if configuration
         is not available.
-        
+
         Returns:
             Dictionary mapping service/unit combinations to prices
         """
         # Return cached pricing if available
         if self._pricing_cache is not None:
             return self._pricing_cache
-        
+
         # Start with hardcoded pricing as base (for fallback)
         pricing_map = self._get_hardcoded_pricing()
-        
+
         # Try to load pricing from DynamoDB configuration and merge with hardcoded values
         try:
             if self.config_table_name:
                 logger.info(f"Loading pricing configuration from DynamoDB table: {self.config_table_name}")
-                
+
                 # Load configuration using the same system as the UI
                 config = get_config(self.config_table_name)
-                
+
                 if config and 'pricing' in config:
                     pricing_config = config['pricing']
                     logger.info(f"Found {len(pricing_config)} pricing entries in configuration")
-                    
+
                     config_loaded_count = 0
                     # Convert configuration pricing to lookup dictionary (same format as UI)
                     for service in pricing_config:
@@ -795,7 +917,7 @@ class SaveReportingData:
                                         config_loaded_count += 1
                                     except (ValueError, TypeError) as e:
                                         logger.warning(f"Invalid price value for {service_name}/{unit_name}: {unit_info['price']}, error: {e}. Using hardcoded fallback.")
-                    
+
                     if config_loaded_count > 0:
                         logger.info(f"Successfully loaded {config_loaded_count} pricing entries from configuration, merged with hardcoded fallbacks")
                     else:
@@ -804,10 +926,10 @@ class SaveReportingData:
                     logger.warning("No pricing section found in configuration, using hardcoded values")
             else:
                 logger.info("No configuration table name provided, using hardcoded pricing values")
-                
+
         except Exception as e:
             logger.error(f"Error loading pricing from configuration: {str(e)}, using hardcoded values")
-        
+
         # Cache the final pricing (either config + hardcoded or just hardcoded)
         self._pricing_cache = pricing_map
         return pricing_map
@@ -815,7 +937,7 @@ class SaveReportingData:
     def _get_hardcoded_pricing(self) -> Dict[str, Dict[str, float]]:
         """
         Get the hardcoded pricing values as fallback.
-        
+
         Returns:
             Dictionary mapping service/unit combinations to hardcoded prices
         """
@@ -824,7 +946,7 @@ class SaveReportingData:
             # BDA pricing
             {"name": "bda/documents-custom", "units": [{"name": "pages", "price": "0.04"}]},
             {"name": "bda/documents-standard", "units": [{"name": "pages", "price": "0.01"}]},
-            
+
             # Textract pricing
             {"name": "textract/detect_document_text", "units": [{"name": "pages", "price": "0.0015"}]},
             {"name": "textract/analyze_document-Layout", "units": [{"name": "pages", "price": "0.004"}]},
@@ -832,7 +954,7 @@ class SaveReportingData:
             {"name": "textract/analyze_document-Forms", "units": [{"name": "pages", "price": "0.05"}]},
             {"name": "textract/analyze_document-Tables", "units": [{"name": "pages", "price": "0.015"}]},
             {"name": "textract/analyze_document-Tables+Forms", "units": [{"name": "pages", "price": "0.065"}]},
-            
+
             # Bedrock pricing - Nova models
             {"name": "bedrock/us.amazon.nova-lite-v1:0", "units": [
                 {"name": "inputTokens", "price": "6.0E-8"},
@@ -850,7 +972,7 @@ class SaveReportingData:
                 {"name": "inputTokens", "price": "2.5E-6"},
                 {"name": "outputTokens", "price": "1.25E-5"}
             ]},
-            
+
             # Bedrock pricing - Claude models
             {"name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0", "units": [
                 {"name": "inputTokens", "price": "2.5E-7"},
@@ -887,7 +1009,7 @@ class SaveReportingData:
                 {"name": "cacheWriteInputTokens", "price": "1.875E-5"}
             ]}
         ]
-        
+
         # Convert to lookup dictionary
         pricing_map = {}
         for service in default_pricing:
@@ -895,36 +1017,36 @@ class SaveReportingData:
             for unit_info in service["units"]:
                 unit_name = unit_info["name"]
                 price = float(unit_info["price"])
-                
+
                 if service_name not in pricing_map:
                     pricing_map[service_name] = {}
                 pricing_map[service_name][unit_name] = price
-        
+
         return pricing_map
 
     def _get_unit_cost(self, service_api: str, unit: str) -> float:
         """
         Get the unit cost for a specific service API and unit using the DynamoDB configuration system
         (same source as the UI) with fallback to hardcoded values.
-        
+
         Args:
             service_api: The AWS service API (e.g., 'bedrock/model-id', 'textract/operation')
             unit: The unit of measurement (e.g., 'inputTokens', 'pages')
-            
+
         Returns:
             Unit cost in USD, or 0.0 if not found
         """
         # Get pricing from configuration (DynamoDB or fallback to hardcoded values)
         pricing_map = self._get_pricing_from_config()
-        
+
         # Try exact match first
         if service_api in pricing_map and unit in pricing_map[service_api]:
             return pricing_map[service_api][unit]
-        
+
         # Try partial matches for common patterns
         service_api_lower = service_api.lower()
         unit_lower = unit.lower()
-        
+
         for service_key, service_costs in pricing_map.items():
             service_key_lower = service_key.lower()
             if service_key_lower in service_api_lower or service_api_lower in service_key_lower:
@@ -933,7 +1055,7 @@ class SaveReportingData:
                     if unit_key_lower == unit_lower or unit_key_lower in unit_lower or unit_lower in unit_key_lower:
                         logger.info(f"Using partial match for {service_api}/{unit}: {service_key}/{unit_key} = ${cost}")
                         return cost
-        
+
         # Log when no cost mapping is found
         logger.warning(f"No unit cost mapping found for service_api='{service_api}', unit='{unit}'. Using $0.0")
         return 0.0
@@ -1062,6 +1184,9 @@ class SaveReportingData:
                 metering_records, metering_key, metering_schema
             )
             logger.info(f"Saved {len(metering_records)} metering records")
+
+            # Create or update Glue table for metering data
+            self._create_or_update_metering_glue_table(metering_schema)
         else:
             logger.warning("No metering records to save")
 

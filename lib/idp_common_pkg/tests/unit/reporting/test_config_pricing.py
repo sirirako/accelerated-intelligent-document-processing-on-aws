@@ -3,8 +3,9 @@
 Unit tests for configuration-based pricing functionality in SaveReportingData
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from idp_common.reporting.save_reporting_data import SaveReportingData
 
 
