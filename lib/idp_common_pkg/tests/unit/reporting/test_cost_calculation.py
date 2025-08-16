@@ -3,8 +3,9 @@
 Unit tests for cost calculation functionality
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 from idp_common.models import Document
 from idp_common.reporting.save_reporting_data import SaveReportingData
 
@@ -36,28 +37,7 @@ def test_cost_calculation_pricing_lookup():
 
 @pytest.mark.unit
 def test_cost_calculation_with_document():
-    """Test cost calculation with a document containing metering data"""
-    # Create a test document with metering data
-    document = Document(
-        id="test-doc-123",
-        input_key="test-document.pdf",
-        num_pages=5,
-        metering={
-            "Classification/bedrock/us.anthropic.claude-3-haiku-20240307-v1:0": {
-                "inputTokens": 1000,
-                "outputTokens": 200
-            },
-            "OCR/textract/detect_document_text": {
-                "pages": 5
-            },
-            "Extraction/bedrock/us.amazon.nova-lite-v1:0": {
-                "inputTokens": 2000,
-                "outputTokens": 500
-            }
-        },
-        initial_event_time=datetime.now().isoformat()
-    )
-    
+    """Test cost calculation with document metering data structure"""
     # Create SaveReportingData instance
     reporter = SaveReportingData("test-bucket")
     
