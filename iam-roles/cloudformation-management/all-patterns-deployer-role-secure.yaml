@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Least Privileges Secure IAM role for deploying GenAI IDP patterns'
+
+Parameters:
+  MasterStackName:
+    Type: String
+    Description: Name of the master GenAI IDP stack
+    Default: 'IDP'
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]*$'
+    ConstraintDescription: Must be a valid CloudFormation stack name
+  
+Resources:
+  AllPatternsDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${MasterStackName}-AllPatterns-Deployer-Secure'
+      Description: 'Minimal secure role for deploying all GenAI IDP patterns'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'aws:RequestedRegion': !Ref 'AWS::Region'
+          - Effect: Allow
+            Principal:
+              Service: 'cloudformation.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
+      Policies:
+        - PolicyName: CorePermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:*'
+                  - 'iam:GetRole'
+                  - 'iam:GetRolePolicy'
+                  - 'iam:ListRolePolicies'
+                  - 'iam:ListAttachedRolePolicies'
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:UpdateRole'
+                  - 'iam:UpdateRoleDescription'
+                  - 'iam:UpdateAssumeRolePolicy'
+                  - 'iam:TagRole'
+                  - 'iam:PassRole'
+                  - 'iam:CreateServiceLinkedRole'
+                  - 'lambda:*'
+                  - 'kms:*'
+                  - 'logs:*'
+                  - 'cloudwatch:*'
+                  - 'events:*'
+                  - 'sts:AssumeRole'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:*'
+                Resource: '*'
+              - Effect: Deny
+                Action: '*'
+                Resource: '*'
+                Condition:
+                  StringNotEquals:
+                    'aws:RequestedRegion':
+                      - 'us-east-1'
+                      - 'us-west-2'
+        - PolicyName: ServicesPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:*'
+                  - 'textract:*'
+                  - 'sagemaker:*'
+                  - 'states:*'
+                  - 'appsync:*'
+                  - 'cognito-idp:*'
+                  - 'cognito-identity:*'
+                  - 'glue:*'
+                  - 'aoss:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'cloudfront:*'
+                  - 'wafv2:*'
+                  - 'sns:*'
+                  - 'sqs:*'
+                  - 'ssm:*'
+                  - 'codebuild:*'
+                  - 'application-autoscaling:*'
+                  - 'scheduler:*'
+                  - 'ec2:CreateVpc'
+                  - 'ec2:DeleteVpc'
+                  - 'ec2:DescribeVpcs'
+                  - 'ec2:CreateSubnet'
+                  - 'ec2:DeleteSubnet'
+                  - 'ec2:DescribeSubnets'
+                  - 'ec2:CreateSecurityGroup'
+                  - 'ec2:DeleteSecurityGroup'
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:AuthorizeSecurityGroupIngress'
+                  - 'ec2:AuthorizeSecurityGroupEgress'
+                  - 'ec2:RevokeSecurityGroupIngress'
+                  - 'ec2:RevokeSecurityGroupEgress'
+                  - 'ec2:CreateTags'
+                  - 'ec2:DeleteTags'
+                  - 'ec2:DescribeTags'
+                  - 'ec2:DescribeAvailabilityZones'
+                Resource: '*'
+
+
+Outputs:
+  AllPatternsDeployerRoleArn:
+    Description: ARN of the secure all-patterns deployer role
+    Value: !GetAtt AllPatternsDeployerRole.Arn
