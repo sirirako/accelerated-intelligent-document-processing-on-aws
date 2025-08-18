@@ -811,6 +811,108 @@ class SaveReportingData:
         self._pricing_cache = pricing_map
         return pricing_map
 
+    def _create_or_update_metering_glue_table(self, schema: pa.Schema) -> bool:
+        """
+        Create or update a Glue table specifically for metering data.
+
+        Args:
+            schema: PyArrow schema for the metering table
+
+        Returns:
+            True if table was created or updated, False otherwise
+        """
+        if not self.glue_client or not self.database_name:
+            logger.debug(
+                "Glue client or database name not configured, skipping table creation"
+            )
+            return False
+
+        table_name = "metering"
+
+        # Convert schema to Glue columns
+        columns = self._convert_schema_to_glue_columns(schema)
+
+        # Table input for create/update
+        table_input = {
+            "Name": table_name,
+            "Description": "Metering data table for document processing costs and usage",
+            "StorageDescriptor": {
+                "Columns": columns,
+                "Location": f"s3://{self.reporting_bucket}/metering/",
+                "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                "Compressed": True,
+                "SerdeInfo": {
+                    "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+                },
+            },
+            "PartitionKeys": [{"Name": "date", "Type": "string"}],
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {
+                "projection.enabled": "true",
+                "projection.date.type": "date",
+                "projection.date.format": "yyyy-MM-dd",
+                "projection.date.range": "2020-01-01,NOW",
+                "projection.date.interval": "1",
+                "projection.date.interval.unit": "DAYS",
+                "storage.location.template": f"s3://{self.reporting_bucket}/metering/date=${{date}}/",
+            },
+        }
+
+        try:
+            # Check if table exists
+            self.glue_client.get_table(DatabaseName=self.database_name, Name=table_name)
+
+            # Table exists, check if we need to update it
+            existing_table = self.glue_client.get_table(
+                DatabaseName=self.database_name, Name=table_name
+            )["Table"]
+            existing_columns = existing_table["StorageDescriptor"]["Columns"]
+
+            # Check if new columns need to be added
+            existing_column_names = {col["Name"] for col in existing_columns}
+            new_column_names = {col["Name"] for col in columns}
+
+            if not new_column_names.issubset(existing_column_names):
+                # Update table with new columns
+                logger.info(f"Updating Glue table {table_name} with new columns")
+                self.glue_client.update_table(
+                    DatabaseName=self.database_name, TableInput=table_input
+                )
+                logger.info(f"Successfully updated Glue table {table_name}")
+                return True
+            else:
+                logger.debug(f"Glue table {table_name} already up to date")
+                return True
+
+        except Exception as e:
+            if "EntityNotFoundException" in str(e):
+                # Table doesn't exist, create it
+                logger.info(f"Creating new Glue table {table_name} for metering data")
+                try:
+                    self.glue_client.create_table(
+                        DatabaseName=self.database_name, TableInput=table_input
+                    )
+                    logger.info(f"Successfully created Glue table {table_name}")
+                    return True
+                except Exception as create_error:
+                    if "AlreadyExistsException" in str(create_error):
+                        # Race condition - table was created by another process
+                        logger.info(
+                            f"Glue table {table_name} already exists (created by another process)"
+                        )
+                        return True
+                    else:
+                        logger.error(
+                            f"Error creating Glue table {table_name}: {str(create_error)}"
+                        )
+                        return False
+            else:
+                logger.error(
+                    f"Error checking/updating Glue table {table_name}: {str(e)}"
+                )
+                return False
+
     def _get_unit_cost(self, service_api: str, unit: str) -> float:
         """
         Get the unit cost for a specific service API and unit using the configuration dictionary

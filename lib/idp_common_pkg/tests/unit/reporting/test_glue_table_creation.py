@@ -449,7 +449,7 @@ class TestGlueTableCreation:
             ]
         )
 
-        # Call the method
+        # Call the method - use the correct method name
         result = reporter_with_database._create_or_update_metering_glue_table(
             metering_schema
         )
@@ -549,7 +549,7 @@ class TestGlueTableCreation:
             ]
         )
 
-        # Call the method
+        # Call the method - use the correct method name
         result = reporter_with_database._create_or_update_metering_glue_table(
             metering_schema
         )
