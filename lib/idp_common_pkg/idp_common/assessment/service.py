@@ -600,7 +600,10 @@ class AssessmentService:
         """
         # Check if assessment is enabled in configuration
         assessment_config = self.config.get("assessment", {})
-        if not assessment_config.get("enabled", True):
+        from idp_common.utils import normalize_boolean_value
+
+        enabled = normalize_boolean_value(assessment_config.get("enabled", True))
+        if not enabled:
             logger.info("Assessment is disabled via configuration")
             return document
 

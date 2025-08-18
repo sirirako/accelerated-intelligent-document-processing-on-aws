@@ -37,7 +37,6 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
                     classification="Invoice",
                     page_ids=["1"],
                     extraction_result_uri="s3://test-bucket/test-doc/extraction-1.json",
-                    status=Status.COMPLETED,
                 )
             ],
             status=Status.EXTRACTING,

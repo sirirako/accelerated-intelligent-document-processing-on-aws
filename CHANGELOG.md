@@ -20,27 +20,18 @@ SPDX-License-Identifier: MIT-0
   - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
   - **Configuration Example**: Set `assessment.enabled: false` to disable, `enabled: true` to enable (default)
 
-### Changed  
-- **State Machine Simplification**: Removed `SummarizationChoice` and `AssessmentChoice` conditional states from all patterns (Pattern 2, 3) for cleaner workflows
-- **Service Logic Enhancement**: SummarizationService and AssessmentService now check configuration `enabled` flag at the beginning of processing methods
-- **Configuration Schema Updates**: Added `enabled` boolean property to summarization and assessment sections in all CloudFormation template schemas
-- Updated all sample configurations to include `summarization.enabled: true` and `assessment.enabled: true`
-- Updated configuration documentation with new summarization and assessment control approaches
-
 ### Removed
 - **CloudFormation Parameters**: Removed `IsSummarizationEnabled` and `IsAssessmentEnabled` parameters from all pattern templates
 - **Related Conditions**: Removed parameter conditions and state machine definition substitutions for both features
 - **Conditional Logic**: Eliminated complex conditional logic from state machine definitions for summarization and assessment steps
 
-### Fixed
-- **CloudFormation Template Deployment Error**: Fixed "Template format error: Unresolved resource dependencies [IsAssessmentEnabled]" by removing final parameter reference in main template PATTERN3STACK parameters
-- **State Machine Logic**: Simplified conditional assessment/summarization steps that were causing complex workflow logic
-- **Parameter Dependencies**: Cleaned up all CloudFormation parameter dependencies and references
+### ⚠️ Breaking Changes
+- **Configuration Migration Required**: When updating a stack that previously had `IsSummarizationEnabled` or `IsAssessmentEnabled` set to `false`, these features will now default to `enabled: true` after the update. To maintain the disabled behavior:
+  1. Update your configuration file to set `summarization.enabled: false` and/or `assessment.enabled: false` as needed
+  2. Save the configuration changes immediately after the stack update
+  3. This ensures continued cost optimization by preventing unexpected LLM API calls
+- **Action Required**: Review your current CloudFormation parameter settings before updating and update your configuration accordingly to preserve existing behavior
 
-### Documentation
-- **Updated Documentation**: Enhanced docs/configuration.md, docs/architecture.md, and all pattern-specific docs (pattern-1.md, pattern-2.md, pattern-3.md)
-- **Service Documentation**: Updated lib/idp_common_pkg/idp_common/summarization/README.md with configuration examples and behavior details
-- **Migration Guidance**: Added migration notes about the CloudFormation parameter removal
 
 ## [0.3.11]
 

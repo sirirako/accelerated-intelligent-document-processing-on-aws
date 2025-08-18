@@ -395,9 +395,10 @@ class SummarizationService:
         """
         # Check if summarization is enabled in configuration
         summarization_config = self.config.get("summarization", {})
-        if not summarization_config.get(
-            "enabled", True
-        ):  # Default to True for backward compatibility
+        from idp_common.utils import normalize_boolean_value
+
+        enabled = normalize_boolean_value(summarization_config.get("enabled", True))
+        if not enabled:
             logger.info(
                 f"Summarization is disabled in configuration for document {document.id}, skipping processing"
             )
