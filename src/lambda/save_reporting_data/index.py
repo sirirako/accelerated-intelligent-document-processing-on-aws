@@ -8,6 +8,7 @@ import os
 import traceback
 from typing import Dict, Any, List
 
+from idp_common.config import get_config
 from idp_common.models import Document
 from idp_common.reporting import SaveReportingData
 
@@ -71,17 +72,24 @@ def handler(event, context):
                 database_name = f"{stack_name}-reporting-db"
                 logger.info(f"Using database name from stack name: {database_name}")
         
-        # Get the configuration table name from environment variable
+        # Get the configuration table name from environment variable and load config
         config_table_name = os.environ.get('CONFIGURATION_TABLE_NAME')
+        config = None
         if config_table_name:
-            logger.info(f"Using configuration table: {config_table_name}")
+            try:
+                logger.info(f"Loading configuration from table: {config_table_name}")
+                config = get_config(config_table_name)
+                logger.info("Configuration loaded successfully")
+            except Exception as e:
+                logger.warning(f"Failed to load configuration from {config_table_name}: {str(e)}")
+                config = None
         else:
-            logger.warning("No configuration table name provided, will use hardcoded pricing values")
+            logger.warning("No configuration table name provided")
         
         # Use the SaveReportingData class to save the data
         # Pass database_name to enable automatic Glue table creation
-        # Pass config_table_name from environment variable to enable dynamic pricing from DynamoDB configuration
-        reporter = SaveReportingData(reporting_bucket, database_name, config_table_name)
+        # Pass config dictionary to enable dynamic pricing from configuration
+        reporter = SaveReportingData(reporting_bucket, database_name, config)
         results = reporter.save(document, data_to_save)
         
         # If no data was processed, return a warning
