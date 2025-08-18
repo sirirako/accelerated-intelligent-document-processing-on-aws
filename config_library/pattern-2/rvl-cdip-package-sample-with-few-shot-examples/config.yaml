@@ -886,6 +886,7 @@ pricing:
       - name: cacheWriteInputTokens
         price: '3.75E-6'
 assessment:
+  enabled: true
   image:
     target_height: ''
     target_width: ''

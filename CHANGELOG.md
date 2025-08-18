@@ -13,14 +13,29 @@ SPDX-License-Identifier: MIT-0
   - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
   - **Configuration Example**: Set `summarization.enabled: false` to disable, `enabled: true` to enable (default)
 
-### Changed
-- **State Machine Simplification**: Removed `SummarizationChoice` conditional states from all patterns (Pattern 1, 2, 3) for cleaner workflows
-- **Service Logic Enhancement**: SummarizationService now checks configuration `enabled` flag at the beginning of `process_document()`
-- **Configuration Schema Updates**: Added `enabled` boolean property to summarization sections in all CloudFormation template schemas
+- **Configuration-Based Assessment Control**
+  - Assessment can now be enabled/disabled via configuration file `assessment.enabled` property instead of CloudFormation stack parameter
+  - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
+  - **Implementation**: Always calls AssessmentStep but service skips processing when `enabled: false`
+  - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
+  - **Configuration Example**: Set `assessment.enabled: false` to disable, `enabled: true` to enable (default)
+
+### Changed  
+- **State Machine Simplification**: Removed `SummarizationChoice` and `AssessmentChoice` conditional states from all patterns (Pattern 2, 3) for cleaner workflows
+- **Service Logic Enhancement**: SummarizationService and AssessmentService now check configuration `enabled` flag at the beginning of processing methods
+- **Configuration Schema Updates**: Added `enabled` boolean property to summarization and assessment sections in all CloudFormation template schemas
+- Updated all sample configurations to include `summarization.enabled: true` and `assessment.enabled: true`
+- Updated configuration documentation with new summarization and assessment control approaches
 
 ### Removed
-- **CloudFormation Parameter**: Removed `IsSummarizationEnabled` parameter from all pattern templates (patterns/pattern-1, pattern-2, pattern-3)
-- **Related Conditions**: Removed `IsSummarizationEnabled` conditions and state machine definition substitutions
+- **CloudFormation Parameters**: Removed `IsSummarizationEnabled` and `IsAssessmentEnabled` parameters from all pattern templates
+- **Related Conditions**: Removed parameter conditions and state machine definition substitutions for both features
+- **Conditional Logic**: Eliminated complex conditional logic from state machine definitions for summarization and assessment steps
+
+### Fixed
+- **CloudFormation Template Deployment Error**: Fixed "Template format error: Unresolved resource dependencies [IsAssessmentEnabled]" by removing final parameter reference in main template PATTERN3STACK parameters
+- **State Machine Logic**: Simplified conditional assessment/summarization steps that were causing complex workflow logic
+- **Parameter Dependencies**: Cleaned up all CloudFormation parameter dependencies and references
 
 ### Documentation
 - **Updated Documentation**: Enhanced docs/configuration.md, docs/architecture.md, and all pattern-specific docs (pattern-1.md, pattern-2.md, pattern-3.md)

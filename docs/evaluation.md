@@ -43,7 +43,7 @@ The framework supports multiple comparison methods:
 
 ## Assessment Confidence Integration
 
-The evaluation framework automatically integrates with the assessment feature to provide enhanced quality insights. When documents have been processed with assessment enabled, the evaluation reports include confidence scores alongside traditional accuracy metrics.
+The evaluation framework automatically integrates with the assessment feature to provide enhanced quality insights. When documents have been processed with assessment enabled via the configuration `assessment.enabled: true` property, the evaluation reports include confidence scores alongside traditional accuracy metrics.
 
 ### Confidence Score Display
 

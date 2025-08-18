@@ -90,18 +90,7 @@
                                 "BackoffRate": 2
                             }
                         ],
-                        "Next": "AssessmentChoice"
-                    },
-                    "AssessmentChoice": {
-                        "Type": "Choice",
-                        "QueryLanguage": "JSONata",
-                        "Choices": [
-                            {
-                                "Condition": "{% ${IsAssessmentEnabled} = true %}",
-                                "Next": "AssessmentStep"
-                            }
-                        ],
-                        "Default": "SectionComplete"
+                        "Next": "AssessmentStep"
                     },
                     "AssessmentStep": {
                         "Type": "Task",

@@ -56,6 +56,35 @@ summarization:
 
 **Migration Note**: The previous `IsSummarizationEnabled` CloudFormation parameter has been removed in favor of this configuration-based approach.
 
+## Assessment Configuration
+
+### Enable/Disable Assessment
+
+Similar to summarization, assessment can now be controlled via the configuration file rather than CloudFormation stack parameters. This provides more flexibility and eliminates the need for stack redeployment when changing assessment behavior.
+
+**Configuration-based Control (Recommended):**
+```yaml
+assessment:
+  enabled: true  # Set to false to disable assessment
+  model: us.amazon.nova-lite-v1:0
+  temperature: 0.0
+  # ... other assessment settings
+```
+
+**Key Benefits:**
+- **Runtime Control**: Enable/disable without stack redeployment
+- **Cost Optimization**: Zero LLM costs when disabled (`enabled: false`)
+- **Simplified Architecture**: No conditional logic in state machines
+- **Backward Compatible**: Defaults to `enabled: true` when property is missing
+
+**Behavior When Disabled:**
+- Assessment lambda is still called (minimal overhead)
+- Service immediately returns with logging: "Assessment is disabled via configuration"
+- No LLM API calls or S3 operations are performed
+- Document processing continues to completion
+
+**Migration Note**: The previous `IsAssessmentEnabled` CloudFormation parameter has been removed in favor of this configuration-based approach.
+
 ## Stack Parameters
 
 Key parameters that can be configured during CloudFormation deployment:
