@@ -1656,6 +1656,10 @@ Resources:
               Type: double
             - Name: number_of_pages
               Type: int
+            - Name: unit_cost
+              Type: double
+            - Name: estimated_cost
+              Type: double
             - Name: timestamp
               Type: timestamp
           Compressed: true
