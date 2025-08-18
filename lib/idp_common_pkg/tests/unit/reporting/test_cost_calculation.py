@@ -13,8 +13,32 @@ from idp_common.reporting.save_reporting_data import SaveReportingData
 @pytest.mark.unit
 def test_cost_calculation_pricing_lookup():
     """Test the pricing lookup functionality"""
-    # Create SaveReportingData instance
-    reporter = SaveReportingData("test-bucket")
+    # Create pricing configuration
+    pricing_config = {
+        "pricing": [
+            {
+                "name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "0.00025"},
+                    {"name": "outputTokens", "price": "0.00125"},
+                ],
+            },
+            {
+                "name": "bedrock/us.amazon.nova-lite-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "0.00006"},
+                    {"name": "outputTokens", "price": "0.00024"},
+                ],
+            },
+            {
+                "name": "textract/detect_document_text",
+                "units": [{"name": "pages", "price": "0.0015"}],
+            },
+        ]
+    }
+
+    # Create SaveReportingData instance with pricing config
+    reporter = SaveReportingData("test-bucket", config=pricing_config)
 
     # Test Bedrock pricing lookup
     claude_input_cost = reporter._get_unit_cost(
@@ -52,8 +76,32 @@ def test_cost_calculation_pricing_lookup():
 @pytest.mark.unit
 def test_cost_calculation_with_document():
     """Test cost calculation with document metering data structure"""
-    # Create SaveReportingData instance
-    reporter = SaveReportingData("test-bucket")
+    # Create pricing configuration
+    pricing_config = {
+        "pricing": [
+            {
+                "name": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "0.00025"},
+                    {"name": "outputTokens", "price": "0.00125"},
+                ],
+            },
+            {
+                "name": "bedrock/us.amazon.nova-lite-v1:0",
+                "units": [
+                    {"name": "inputTokens", "price": "0.00006"},
+                    {"name": "outputTokens", "price": "0.00024"},
+                ],
+            },
+            {
+                "name": "textract/detect_document_text",
+                "units": [{"name": "pages", "price": "0.0015"}],
+            },
+        ]
+    }
+
+    # Create SaveReportingData instance with pricing config
+    reporter = SaveReportingData("test-bucket", config=pricing_config)
 
     # Get unit costs
     claude_input_cost = reporter._get_unit_cost(
