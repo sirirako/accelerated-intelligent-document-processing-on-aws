@@ -547,6 +547,7 @@ extraction:
   system_prompt: >-
     You are a document assistant. Respond only with JSON. Never make up data, only provide data found in the document being provided.
 summarization:
+  enabled: true
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'

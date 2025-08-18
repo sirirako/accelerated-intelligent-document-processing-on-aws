@@ -393,6 +393,19 @@ class SummarizationService:
         Returns:
             Document: Updated Document object with summary and summarization_result
         """
+        # Check if summarization is enabled in configuration
+        summarization_config = self.config.get("summarization", {})
+        if not summarization_config.get(
+            "enabled", True
+        ):  # Default to True for backward compatibility
+            logger.info(
+                f"Summarization is disabled in configuration for document {document.id}, skipping processing"
+            )
+            # Update document status to completed if not already failed
+            if document.status != Status.FAILED:
+                document.status = Status.COMPLETED
+            return document
+
         if not document.pages:
             logger.warning("Document has no pages to summarize")
             return self._update_document_status(

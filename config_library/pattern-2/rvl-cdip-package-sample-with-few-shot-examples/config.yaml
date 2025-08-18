@@ -1069,6 +1069,7 @@ evaluation:
       values match for document attribute extraction. You will consider the
       context and meaning rather than just exact string matching.
 summarization:
+  enabled: true
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'

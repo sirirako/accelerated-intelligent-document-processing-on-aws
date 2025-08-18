@@ -598,6 +598,12 @@ class AssessmentService:
         Returns:
             Document: Updated Document object with assessment results appended to extraction results
         """
+        # Check if assessment is enabled in configuration
+        assessment_config = self.config.get("assessment", {})
+        if not assessment_config.get("enabled", True):
+            logger.info("Assessment is disabled via configuration")
+            return document
+
         # Validate input document
         if not document:
             logger.error("No document provided")

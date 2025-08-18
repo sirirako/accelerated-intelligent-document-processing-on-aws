@@ -51,14 +51,6 @@ Parameters:
     Type: String
     AllowedPattern: "^(|s3://.*)$"
 
-  IsSummarizationEnabled:
-    Type: String
-    Default: 'true'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: Enable or disable document summarization functionality
-
   IsAssessmentEnabled:
     Type: String
     Default: 'false'
@@ -111,7 +103,6 @@ Parameters:
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
 Conditions:
-  IsSummarizationEnabled: !Equals [!Ref IsSummarizationEnabled, "true"]
   IsAssessmentEnabled: !Equals [!Ref IsAssessmentEnabled, "true"]
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
@@ -636,6 +627,11 @@ Resources:
             type: object
             sectionLabel: Summarization Inference
             properties:
+              enabled:
+                type: boolean
+                description: Enable or disable document summarization
+                default: true
+                order: 0
               model:
                 type: string
                 description: Bedrock model ID
@@ -1229,7 +1225,6 @@ Resources:
         AssessmentFunctionArn: !GetAtt AssessmentFunction.Arn
         ProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
-        IsSummarizationEnabled: !If [IsSummarizationEnabled, "true", "false"]
         IsAssessmentEnabled: !If [IsAssessmentEnabled, "true", "false"]
         OutputBucket: !Ref OutputBucket
       Logging:

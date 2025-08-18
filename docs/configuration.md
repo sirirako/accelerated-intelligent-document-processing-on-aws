@@ -16,7 +16,7 @@ The web interface allows real-time configuration updates without stack redeploym
 - **Prompt Engineering**: Customize system and task prompts for optimal results
 - **OCR Features**: Configure Textract features (TABLES, FORMS, SIGNATURES, LAYOUT) for enhanced data capture
 - **Evaluation Methods**: Set evaluation methods and thresholds for each attribute
-- **Summarization**: Configure model, prompts, and parameters for document summarization (when `IsSummarizationEnabled` is true)
+- **Summarization**: Configure model, prompts, parameters, and enable/disable document summarization via the `enabled` property
 
 ### Configuration Management Features
 
@@ -26,6 +26,35 @@ The web interface allows real-time configuration updates without stack redeploym
 - **Restore Default**: Reset all configuration settings back to the original default values, removing all customizations.
 
 Configuration changes are validated and applied immediately, with rollback capability if issues arise. See [web-ui.md](web-ui.md) for details on using the administration interface.
+
+## Summarization Configuration
+
+### Enable/Disable Summarization
+
+Summarization can be controlled via the configuration file rather than CloudFormation stack parameters. This provides more flexibility and eliminates the need for stack redeployment when changing summarization behavior.
+
+**Configuration-based Control (Recommended):**
+```yaml
+summarization:
+  enabled: true  # Set to false to disable summarization
+  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  temperature: 0.0
+  # ... other summarization settings
+```
+
+**Key Benefits:**
+- **Runtime Control**: Enable/disable without stack redeployment
+- **Cost Optimization**: Zero LLM costs when disabled (`enabled: false`)
+- **Simplified Architecture**: No conditional logic in state machines
+- **Backward Compatible**: Defaults to `enabled: true` when property is missing
+
+**Behavior When Disabled:**
+- Summarization lambda is still called (minimal overhead)
+- Service immediately returns with logging: "Summarization is disabled in configuration"
+- No LLM API calls or S3 operations are performed
+- Document processing continues to completion
+
+**Migration Note**: The previous `IsSummarizationEnabled` CloudFormation parameter has been removed in favor of this configuration-based approach.
 
 ## Stack Parameters
 
@@ -64,7 +93,6 @@ Key parameters that can be configured during CloudFormation deployment:
   - `Pattern3Configuration`: Configuration preset to use
 
 ### Optional Features
-- `IsSummarizationEnabled`: Enable/disable document summarization (default: true)
 - `EvaluationBaselineBucketName`: Optional existing bucket for ground truth data
 - `EvaluationAutoEnabled`: Enable automatic accuracy evaluation (default: true)
 - `DocumentKnowledgeBase`: Enable document knowledge base functionality

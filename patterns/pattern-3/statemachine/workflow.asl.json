@@ -169,18 +169,7 @@
                     "BackoffRate": 2
                 }
             ],
-            "Next": "SummarizationChoice"
-        },
-        "SummarizationChoice": {
-            "Type": "Choice",
-            "QueryLanguage": "JSONata",
-            "Choices": [
-                {
-                    "Condition": "{% ${IsSummarizationEnabled} = true %}",
-                    "Next": "SummarizationStep"
-                }
-            ],
-            "Default": "WorkflowComplete"
+            "Next": "SummarizationStep"
         },
         "SummarizationStep": {
             "Type": "Task",

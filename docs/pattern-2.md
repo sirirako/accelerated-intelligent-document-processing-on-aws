@@ -213,7 +213,7 @@ The pattern exports these outputs to the parent stack:
 
 **Stack Deployment Parameters:**
 - `ClassificationMethod`: Classification methodology to use (options: 'multimodalPageLevelClassification' or 'textbasedHolisticClassification')
-- `IsSummarizationEnabled`: Boolean to enable/disable summarization functionality (true|false)
+- **Summarization**: Control summarization via configuration file `summarization.enabled` property (replaces `IsSummarizationEnabled` parameter)
 - `ConfigurationDefaultS3Uri`: Optional S3 URI to custom configuration (uses default configuration if not specified)
 - `MaxConcurrentWorkflows`: Workflow concurrency limit
 - `LogRetentionDays`: CloudWatch log retention period
