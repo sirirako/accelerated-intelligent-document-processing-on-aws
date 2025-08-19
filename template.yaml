@@ -1656,6 +1656,10 @@ Resources:
               Type: double
             - Name: number_of_pages
               Type: int
+            - Name: unit_cost
+              Type: double
+            - Name: estimated_cost
+              Type: double
             - Name: timestamp
               Type: timestamp
           Compressed: true
@@ -1747,6 +1751,8 @@ Resources:
                   - kms:Decrypt
                   - kms:DescribeKey
                 Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+
 
 
   EvaluationBaselineBucket:
@@ -2667,6 +2673,8 @@ Resources:
               - !Ref ReportingBucketName
         - S3ReadPolicy:
             BucketName: !Ref OutputBucket
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
         - Statement:
             - Effect: Allow
               Action:
@@ -2690,11 +2698,13 @@ Resources:
                 - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
                 - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
                 - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           METRIC_NAMESPACE: !Ref AWS::StackName
           STACK_NAME: !Ref AWS::StackName
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
 
   SaveReportingDataFunctionLogGroup:
     Type: AWS::Logs::LogGroup
