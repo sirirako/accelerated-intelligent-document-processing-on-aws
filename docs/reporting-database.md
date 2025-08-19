@@ -85,7 +85,7 @@ This table is partitioned by date (YYYY-MM-DD format).
 
 ## Metering Table
 
-The `metering` table captures detailed usage metrics for each document processing operation:
+The `metering` table captures detailed usage metrics and cost information for each document processing operation:
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -95,15 +95,52 @@ The `metering` table captures detailed usage metrics for each document processin
 | unit | string | Unit of measurement (pages, inputTokens, outputTokens, etc.) |
 | value | double | Quantity of the unit consumed |
 | number_of_pages | int | Number of pages in the document |
+| unit_cost | double | Cost per unit in USD (e.g., cost per token, cost per page) |
+| estimated_cost | double | Calculated total cost in USD (value × unit_cost) |
 | timestamp | timestamp | When the operation was performed |
 
 This table is partitioned by date (YYYY-MM-DD format).
 
+### Cost Calculation and Pricing
+
+The metering table now includes automated cost calculation capabilities:
+
+- **unit_cost**: Retrieved from pricing configuration for each service_api/unit combination
+- **estimated_cost**: Automatically calculated as value × unit_cost for each record
+- **Dynamic Pricing**: Costs are loaded from configuration and cached for performance
+- **Fallback Handling**: When pricing data is not available, unit_cost defaults to $0.0
+
+#### Pricing Configuration Format
+
+Pricing data is loaded from the system configuration in the following format:
+
+```yaml
+pricing:
+  - name: "bedrock/us.anthropic.claude-3-sonnet-20240229-v1:0"
+    units:
+      - name: "inputTokens"
+        price: "3.0e-6"    # $0.000003 per input token
+      - name: "outputTokens"
+        price: "1.5e-5"    # $0.000015 per output token
+  - name: "textract/analyze_document"
+    units:
+      - name: "pages"
+        price: "0.0015"    # $0.0015 per page
+```
+
+#### Cost Calculation Process
+
+1. **Service/Unit Matching**: System attempts exact match for service_api/unit combination
+2. **Partial Matching**: If exact match fails, uses fuzzy matching for common patterns
+3. **Cost Calculation**: estimated_cost = value × unit_cost
+4. **Caching**: Pricing data is cached to avoid repeated configuration lookups
+
 The metering table is particularly valuable for:
-- Cost analysis and allocation
-- Usage pattern identification
-- Resource optimization
-- Performance benchmarking across different document types and sizes
+- **Cost analysis and allocation** - Track spending by document type, service, or time period
+- **Usage pattern identification** - Analyze consumption patterns across different models
+- **Resource optimization** - Identify cost-effective processing approaches
+- **Performance benchmarking** - Compare cost efficiency across different document types and sizes
+- **Budget monitoring** - Track actual costs against budgets and forecasts
 
 ## Document Sections Tables
 
@@ -317,6 +354,108 @@ GROUP BY
   SUBSTR(date, 1, 7)
 ORDER BY 
   month;
+```
+
+**Cost analysis queries:**
+```sql
+-- Total estimated costs by service API
+SELECT 
+  service_api,
+  SUM(estimated_cost) as total_cost,
+  AVG(estimated_cost) as avg_cost_per_operation,
+  COUNT(*) as operation_count,
+  COUNT(DISTINCT document_id) as document_count
+FROM 
+  metering
+WHERE 
+  date BETWEEN '2024-01-01' AND '2024-01-31'
+GROUP BY 
+  service_api
+ORDER BY 
+  total_cost DESC;
+
+-- Cost per page analysis by document type
+SELECT 
+  se.section_type,
+  SUM(m.estimated_cost) / SUM(m.number_of_pages) as cost_per_page,
+  SUM(m.estimated_cost) as total_cost,
+  SUM(m.number_of_pages) as total_pages,
+  COUNT(DISTINCT m.document_id) as document_count
+FROM 
+  metering m
+JOIN 
+  section_evaluations se ON m.document_id = se.document_id
+WHERE 
+  m.number_of_pages > 0
+  AND m.date BETWEEN '2024-01-01' AND '2024-01-31'
+GROUP BY 
+  se.section_type
+ORDER BY 
+  cost_per_page DESC;
+
+-- Daily cost trends
+SELECT 
+  date,
+  SUM(estimated_cost) as daily_cost,
+  COUNT(DISTINCT document_id) as documents_processed,
+  SUM(estimated_cost) / COUNT(DISTINCT document_id) as avg_cost_per_document
+FROM 
+  metering
+WHERE 
+  date BETWEEN '2024-01-01' AND '2024-01-31'
+GROUP BY 
+  date
+ORDER BY 
+  date;
+
+-- Most expensive documents
+SELECT 
+  document_id,
+  SUM(estimated_cost) as total_document_cost,
+  SUM(value) as total_units_consumed,
+  COUNT(*) as operations_count,
+  MAX(number_of_pages) as page_count
+FROM 
+  metering
+WHERE 
+  date BETWEEN '2024-01-01' AND '2024-01-31'
+GROUP BY 
+  document_id
+ORDER BY 
+  total_document_cost DESC
+LIMIT 10;
+
+-- Cost efficiency by model (cost per token)
+SELECT 
+  service_api,
+  SUM(estimated_cost) / SUM(value) as cost_per_token,
+  SUM(estimated_cost) as total_cost,
+  SUM(value) as total_tokens,
+  COUNT(DISTINCT document_id) as document_count
+FROM 
+  metering
+WHERE 
+  unit IN ('inputTokens', 'outputTokens', 'totalTokens')
+  AND date BETWEEN '2024-01-01' AND '2024-01-31'
+GROUP BY 
+  service_api
+ORDER BY 
+  cost_per_token ASC;
+
+-- Cost breakdown by processing context
+SELECT 
+  context,
+  SUM(estimated_cost) as total_cost,
+  COUNT(DISTINCT document_id) as document_count,
+  SUM(estimated_cost) / COUNT(DISTINCT document_id) as avg_cost_per_document
+FROM 
+  metering
+WHERE 
+  date BETWEEN '2024-01-01' AND '2024-01-31'
+GROUP BY 
+  context
+ORDER BY 
+  total_cost DESC;
 ```
 
 ### Creating Dashboards

@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
+
+- **Dynamic Cost Calculation for Metering Data**
+  - Added automated unit cost and estimated cost calculation to metering table with new `unit_cost` and `estimated_cost` columns
+  - Dynamic pricing configuration loading from configuration
+  - Enhanced cost analysis capabilities with comprehensive Athena queries for cost tracking, trend analysis, and efficiency metrics
+  - Automatic cost calculation as `estimated_cost = value × unit_cost` for all metering records
+  
 - **Configuration-Based Summarization Control**
   - Summarization can now be enabled/disabled via configuration file `summarization.enabled` property instead of CloudFormation stack parameter
   - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
