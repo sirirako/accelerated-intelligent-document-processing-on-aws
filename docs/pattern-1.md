@@ -68,7 +68,7 @@ InvokeDataAutomation (with waitForTaskToken)
 
 **Stack Deployment Parameters:**
 - `BDAProjectArn`: ARN of your Bedrock Data Automation project
-- `IsSummarizationEnabled`: Boolean to enable/disable summarization functionality (true|false)
+- **Summarization**: Control summarization via configuration file `summarization.enabled` property (replaces `IsSummarizationEnabled` parameter)
 - `ConfigurationDefaultS3Uri`: Optional S3 URI to custom configuration (uses default configuration if not specified)
 - `InputBucket`: S3 bucket for input documents
 - `WorkingBucket`: S3 bucket for temporary BDA job output
@@ -84,7 +84,7 @@ InvokeDataAutomation (with waitForTaskToken)
 **Configuration Management:**
 - Configuration now supports multiple presets per pattern (e.g., default, checkboxed_attributes_extraction, medical_records_summarization)
 - Configuration can be updated through the Web UI without stack redeployment
-- Summarization functionality is controlled through the centralized `IsSummarizationEnabled` parameter rather than model-specific settings
+- Summarization functionality is controlled through the configuration file `summarization.enabled` property rather than CloudFormation parameters
 - BDA-specific configuration is handled within the Bedrock Data Automation project rather than the IDP stack configuration
 
 **Note on BDA Configuration:**

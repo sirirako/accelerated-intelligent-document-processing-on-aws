@@ -393,6 +393,20 @@ class SummarizationService:
         Returns:
             Document: Updated Document object with summary and summarization_result
         """
+        # Check if summarization is enabled in configuration
+        summarization_config = self.config.get("summarization", {})
+        from idp_common.utils import normalize_boolean_value
+
+        enabled = normalize_boolean_value(summarization_config.get("enabled", True))
+        if not enabled:
+            logger.info(
+                f"Summarization is disabled in configuration for document {document.id}, skipping processing"
+            )
+            # Update document status to completed if not already failed
+            if document.status != Status.FAILED:
+                document.status = Status.COMPLETED
+            return document
+
         if not document.pages:
             logger.warning("Document has no pages to summarize")
             return self._update_document_status(

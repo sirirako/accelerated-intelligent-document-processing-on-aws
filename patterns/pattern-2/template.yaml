@@ -70,21 +70,6 @@ Parameters:
   ConfigurationTable:
     Type: String
     
-  IsSummarizationEnabled:
-    Type: String
-    Default: 'true'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: Enable or disable document summarization functionality
-    
-  IsAssessmentEnabled:
-    Type: String
-    Default: 'false'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: Enable or disable extraction confidence assessment functionality
     
   BedrockGuardrailId:
     Type: String
@@ -116,8 +101,6 @@ Parameters:
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
 Conditions:
-  IsSummarizationEnabled: !Equals [!Ref IsSummarizationEnabled, "true"]
-  IsAssessmentEnabled: !Equals [!Ref IsAssessmentEnabled, "true"]
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
   HasCustomClassificationModelARN : !Not [!Equals [!Ref CustomClassificationModelARN , ""]]
   HasCustomExtractionModelARN : !Not [!Equals [!Ref CustomExtractionModelARN , ""]]
@@ -613,11 +596,16 @@ Resources:
             type: object
             sectionLabel: Assessment Inference
             properties:
+              enabled:
+                type: boolean
+                description: Enable or disable assessment processing
+                default: true
+                order: 0
               image:
                 type: object
                 sectionLabel: Image Processing Settings
                 description: Configure image resolution and processing options for for image attachments in assessment
-                order: 0
+                order: 1
                 properties:
                   target_width:
                     type: number
@@ -717,6 +705,11 @@ Resources:
             type: object
             sectionLabel: Summarization Inference
             properties:
+              enabled:
+                type: boolean
+                description: Enable or disable document summarization
+                default: true
+                order: 0
               model:
                 type: string
                 description: Bedrock model ID
@@ -1328,8 +1321,6 @@ Resources:
         AssessmentFunctionArn: !GetAtt AssessmentFunction.Arn
         ProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
-        IsSummarizationEnabled: !If [IsSummarizationEnabled, "true", "false"]
-        IsAssessmentEnabled: !If [IsAssessmentEnabled, "true", "false"]
         OutputBucket: !Ref OutputBucket
       Logging:
         Level: ALL

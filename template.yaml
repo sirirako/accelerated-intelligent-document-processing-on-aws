@@ -201,23 +201,6 @@ Parameters:
       Set to true during test cycles to evaluate and compare accuracy for different patterns and prompts for each document.
       If false, evaluation is not automatically attempted for each processed document. Set to false when deployed in production.
 
-  # Summarization 
-  IsSummarizationEnabled:
-    Type: String
-    Default: true
-    AllowedValues:
-      - true
-      - false
-    Description: Enable or disable document summarization functionality across all patterns.
-
-  # Assessment
-  IsAssessmentEnabled:
-    Type: String
-    Default: true
-    AllowedValues:
-      - true
-      - false
-    Description: Enable or disable extraction confidence assessment functionality (except pattern-1 BDA, which always includes confidence scores).
 
   # Optional Knowledge Base Configuration
   DocumentKnowledgeBase:
@@ -488,14 +471,6 @@ Metadata:
           - Pattern3Configuration
           - Pattern3UDOPModelArtifactPath
       - Label:
-          default: "Summarization"
-        Parameters:
-          - IsSummarizationEnabled
-      - Label:
-          default: "Assessment / Confidence Scoring"
-        Parameters:
-          - IsAssessmentEnabled
-      - Label:
           default: "Evaluation"
         Parameters:
           - EvaluationBaselineBucketName
@@ -573,10 +548,6 @@ Metadata:
         default: "Evaluation Auto Enabled"
       ReportingBucketName:
         default: "Reporting Bucket Name"
-      IsSummarizationEnabled:
-        default: "Summarization Enabled"
-      IsAssessmentEnabled:
-        default: "Assessment / Confidence Scoring Enabled"
       DocumentKnowledgeBase:
         default: "Document Knowledge Base Configuration"
       KnowledgeBaseModelId:
@@ -863,7 +834,6 @@ Resources:
           - ShouldCreateBDASampleProject
           - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
           - !Ref Pattern1BDAProjectArn
-        IsSummarizationEnabled: !Ref IsSummarizationEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
@@ -903,8 +873,6 @@ Resources:
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         CustomClassificationModelARN: !Ref Pattern2CustomClassificationModelARN
         CustomExtractionModelARN: !Ref Pattern2CustomExtractionModelARN
-        IsSummarizationEnabled: !Ref IsSummarizationEnabled
-        IsAssessmentEnabled: !Ref IsAssessmentEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
@@ -938,8 +906,6 @@ Resources:
         BedrockGuardrailId: !Ref BedrockGuardrailId
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         UDOPModelArtifactPath: !Ref Pattern3UDOPModelArtifactPath
-        IsSummarizationEnabled: !Ref IsSummarizationEnabled
-        IsAssessmentEnabled: !Ref IsAssessmentEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
