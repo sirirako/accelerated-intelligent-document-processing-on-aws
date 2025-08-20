@@ -369,8 +369,11 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       <style>{textareaStyles}</style>
       <form onSubmit={handleSubmit}>
         <SpaceBetween size="l">
-          <FormField label="Select from available agents">
-            <Box padding={{ vertical: 's' }} style={{ maxHeight: '300px', overflowY: 'auto' }}>
+          <Box>
+            <Box fontSize="body-m" fontWeight="bold" padding={{ bottom: 'xs' }}>
+              Select from available agents
+            </Box>
+            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #d5dbdb', padding: '8px' }}>
               {isLoadingAgents && (
                 <Box textAlign="center" padding="m">
                   Loading agents...
@@ -392,8 +395,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                       <Box>
                         <Box fontWeight="bold">{agent.agent_name}</Box>
                         <Box fontSize="body-s" color="text-body-secondary">
-                          {agent.agent_description?.length > 100
-                            ? `${agent.agent_description.substring(0, 100)}...`
+                          {agent.agent_description?.length > 150
+                            ? `${agent.agent_description.substring(0, 150)}...`
                             : agent.agent_description}
                         </Box>
                       </Box>
@@ -401,8 +404,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                   ))}
                 </SpaceBetween>
               )}
-            </Box>
-          </FormField>
+            </div>
+          </Box>
 
           <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
             <FormField label="Enter your question for the agent">
