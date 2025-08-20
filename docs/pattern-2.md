@@ -213,7 +213,7 @@ The pattern exports these outputs to the parent stack:
 
 **Stack Deployment Parameters:**
 - `ClassificationMethod`: Classification methodology to use (options: 'multimodalPageLevelClassification' or 'textbasedHolisticClassification')
-- `IsSummarizationEnabled`: Boolean to enable/disable summarization functionality (true|false)
+- **Summarization**: Control summarization via configuration file `summarization.enabled` property (replaces `IsSummarizationEnabled` parameter)
 - `ConfigurationDefaultS3Uri`: Optional S3 URI to custom configuration (uses default configuration if not specified)
 - `MaxConcurrentWorkflows`: Workflow concurrency limit
 - `LogRetentionDays`: CloudWatch log retention period
@@ -257,6 +257,7 @@ To use Bedrock OCR:
    - `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
    - `us.anthropic.claude-sonnet-4-20250514-v1:0`
    - `us.anthropic.claude-opus-4-20250514-v1:0`
+   - `us.anthropic.claude-opus-4-1-20250805-v1:0`
 3. **Configure prompts**: Customize system and task prompts for your specific use case
 4. **Deploy**: The configuration can be updated through the Web UI without stack redeployment
 
@@ -618,16 +619,32 @@ The assessment feature runs after successful extraction and provides:
 
 ### Enabling Assessment
 
-Assessment is controlled by the `IsAssessmentEnabled` deployment parameter:
+Assessment can now be controlled via the configuration file rather than CloudFormation stack parameters. This provides more flexibility and eliminates the need for stack redeployment when changing assessment behavior.
 
-```bash
-# Deploy with assessment enabled
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --parameter-overrides IsAssessmentEnabled=true
+**Configuration-based Control (Recommended):**
+```yaml
+assessment:
+  enabled: true  # Set to false to disable assessment
+  model: us.amazon.nova-lite-v1:0
+  temperature: 0.0
+  # ... other assessment settings
 ```
 
-When enabled, the assessment step is conditionally added to the state machine workflow:
+**Key Benefits:**
+- **Runtime Control**: Enable/disable without stack redeployment
+- **Cost Optimization**: Zero LLM costs when disabled (`enabled: false`)
+- **Simplified Architecture**: No conditional logic in state machines
+- **Backward Compatible**: Defaults to `enabled: true` when property is missing
+
+**Behavior When Disabled:**
+- Assessment lambda is still called (minimal overhead)
+- Service immediately returns with logging: "Assessment is disabled via configuration"
+- No LLM API calls or S3 operations are performed
+- Document processing continues to completion
+
+**Migration Note**: The previous `IsAssessmentEnabled` CloudFormation parameter has been removed in favor of this configuration-based approach.
+
+The assessment step is always called in the state machine workflow, but the service itself handles the enablement decision:
 
 ```
 OCRStep → ClassificationStep → ProcessPageGroups (Map State):

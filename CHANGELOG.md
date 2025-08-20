@@ -5,6 +5,50 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic Cost Calculation for Metering Data**
+  - Added automated unit cost and estimated cost calculation to metering table with new `unit_cost` and `estimated_cost` columns
+  - Dynamic pricing configuration loading from configuration
+  - Enhanced cost analysis capabilities with comprehensive Athena queries for cost tracking, trend analysis, and efficiency metrics
+  - Automatic cost calculation as `estimated_cost = value × unit_cost` for all metering records
+  
+- **Configuration-Based Summarization Control**
+  - Summarization can now be enabled/disabled via configuration file `summarization.enabled` property instead of CloudFormation stack parameter
+  - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
+  - **Implementation**: Always calls SummarizationStep but service skips processing when `enabled: false`
+  - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
+  - **Configuration Example**: Set `summarization.enabled: false` to disable, `enabled: true` to enable (default)
+
+- **Configuration-Based Assessment Control**
+  - Assessment can now be enabled/disabled via configuration file `assessment.enabled` property instead of CloudFormation stack parameter
+  - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
+  - **Implementation**: Always calls AssessmentStep but service skips processing when `enabled: false`
+  - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
+  - **Configuration Example**: Set `assessment.enabled: false` to disable, `enabled: true` to enable (default)
+
+### Removed
+- **CloudFormation Parameters**: Removed `IsSummarizationEnabled` and `IsAssessmentEnabled` parameters from all pattern templates
+- **Related Conditions**: Removed parameter conditions and state machine definition substitutions for both features
+- **Conditional Logic**: Eliminated complex conditional logic from state machine definitions for summarization and assessment steps
+
+### ⚠️ Breaking Changes
+- **Configuration Migration Required**: When updating a stack that previously had `IsSummarizationEnabled` or `IsAssessmentEnabled` set to `false`, these features will now default to `enabled: true` after the update. To maintain the disabled behavior:
+  1. Update your configuration file to set `summarization.enabled: false` and/or `assessment.enabled: false` as needed
+  2. Save the configuration changes immediately after the stack update
+  3. This ensures continued cost optimization by preventing unexpected LLM API calls
+- **Action Required**: Review your current CloudFormation parameter settings before updating and update your configuration accordingly to preserve existing behavior
+
+
+## [0.3.11]
+
+### Added
+
+- **Chat with Document** now available at the bottom of the each Document Detail page.
+- **Anthropic Claude Opus 4.1** model available in configuration for all document processing steps
+- **Browser tab icon** now features a blue background with a white "IDP"
+- **Experimental new classification method** - multimodalPageBoundaryClassification - for detecting section boundaries during page level classification.
+
 ## [0.3.10]
 
 ### Added

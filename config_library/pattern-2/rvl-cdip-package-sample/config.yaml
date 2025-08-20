@@ -547,6 +547,7 @@ extraction:
   system_prompt: >-
     You are a document assistant. Respond only with JSON. Never make up data, only provide data found in the document being provided.
 summarization:
+  enabled: true
   top_p: '0.1'
   max_tokens: '4096'
   top_k: '5'
@@ -608,6 +609,7 @@ summarization:
   system_prompt: >-
     You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \nSummarization Style: Balanced\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.
 assessment:
+  enabled: true
   image:
     target_height: ''
     target_width: ''
@@ -882,6 +884,16 @@ pricing:
       - name: cacheWriteInputTokens
         price: '3.75E-6'
   - name: bedrock/us.anthropic.claude-opus-4-20250514-v1:0
+    units:
+      - name: inputTokens
+        price: '1.5E-5'
+      - name: outputTokens
+        price: '7.5E-5'
+      - name: cacheReadInputTokens
+        price: '1.5E-6'
+      - name: cacheWriteInputTokens
+        price: '1.875E-5'
+  - name: bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0
     units:
       - name: inputTokens
         price: '1.5E-5'

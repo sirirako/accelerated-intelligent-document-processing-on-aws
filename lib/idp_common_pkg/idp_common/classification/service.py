@@ -46,6 +46,7 @@ class ClassificationService:
     # Classification method options
     MULTIMODAL_PAGE_LEVEL = "multimodalPageLevelClassification"
     TEXTBASED_HOLISTIC = "textbasedHolisticClassification"
+    MULTIMODAL_PAGE_BOUNDARY = "multimodalPageBoundaryClassification"
 
     def __init__(
         self,
@@ -132,6 +133,8 @@ class ClassificationService:
         # Log classification method
         if self.classification_method == self.TEXTBASED_HOLISTIC:
             logger.info("Using textbased holistic packet classification method")
+        elif self.classification_method == self.MULTIMODAL_PAGE_BOUNDARY:
+            logger.info("Using multimodal page boundary classification method")
         else:
             # Default to multimodal page-level classification if value is invalid
             if self.classification_method != self.MULTIMODAL_PAGE_LEVEL:
@@ -678,16 +681,21 @@ class ClassificationService:
                 )
                 if isinstance(classification_data, dict):
                     doc_type = classification_data.get("class", "")
-                    logger.debug(
+                    document_boundary = classification_data.get(
+                        "document_boundary", "continue"
+                    )
+                    logger.info(
                         f"Parsed classification response as {detected_format}: {classification_data}"
                     )
                 else:
                     # If parsing failed, try to extract classification directly from text
                     doc_type = self._extract_class_from_text(classification_text)
+                    document_boundary = "continue"
             except Exception as e:
                 logger.warning(f"Failed to parse structured data from response: {e}")
                 # Try to extract classification directly from text
                 doc_type = self._extract_class_from_text(classification_text)
+                document_boundary = "continue"
 
             # Validate classification against known document types
             if not doc_type:
@@ -710,7 +718,10 @@ class ClassificationService:
                 classification=DocumentClassification(
                     doc_type=doc_type,
                     confidence=1.0,  # Default confidence
-                    metadata={"metering": metering},
+                    metadata={
+                        "metering": metering,
+                        "document_boundary": str(document_boundary).lower(),
+                    },
                 ),
                 image_uri=image_uri,
                 text_uri=text_uri,
@@ -803,7 +814,10 @@ class ClassificationService:
                     classification=DocumentClassification(
                         doc_type=doc_type,
                         confidence=1.0,  # Default confidence since SageMaker doesn't provide it
-                        metadata={"metering": metering},
+                        metadata={
+                            "metering": metering,
+                            "document_boundary": "continue",
+                        },
                     ),
                     image_uri=image_uri,
                     text_uri=text_uri,
@@ -1199,10 +1213,15 @@ class ClassificationService:
             )
             return self.holistic_classify_document(document)
 
-        # Default to page-by-page classification
+        # Page-level classification (with or without boundary detection)
         t0 = time.time()
+        method_desc = (
+            "page boundary"
+            if self.classification_method == self.MULTIMODAL_PAGE_BOUNDARY
+            else "page-by-page"
+        )
         logger.info(
-            f"Classifying document with {len(document.pages)} pages using page-by-page method with {self.backend} backend"
+            f"Classifying document with {len(document.pages)} pages using {method_desc} method with {self.backend} backend"
         )
 
         try:
@@ -1229,6 +1248,19 @@ class ClassificationService:
                     document.pages[
                         page_id
                     ].confidence = cached_result.classification.confidence
+
+                    # Copy metadata (including boundary information) to the page
+                    if hasattr(document.pages[page_id], "metadata"):
+                        document.pages[
+                            page_id
+                        ].metadata = cached_result.classification.metadata
+                    else:
+                        # If the page doesn't have a metadata attribute, add it
+                        setattr(
+                            document.pages[page_id],
+                            "metadata",
+                            cached_result.classification.metadata,
+                        )
 
                     # Merge cached metering data
                     page_metering = cached_result.classification.metadata.get(
@@ -1277,6 +1309,19 @@ class ClassificationService:
                             document.pages[
                                 page_id
                             ].confidence = page_result.classification.confidence
+
+                            # Copy metadata (including boundary information) to the page
+                            if hasattr(document.pages[page_id], "metadata"):
+                                document.pages[
+                                    page_id
+                                ].metadata = page_result.classification.metadata
+                            else:
+                                # If the page doesn't have a metadata attribute, add it
+                                setattr(
+                                    document.pages[page_id],
+                                    "metadata",
+                                    page_result.classification.metadata,
+                                )
 
                             # Merge metering data
                             page_metering = page_result.classification.metadata.get(
@@ -1360,7 +1405,13 @@ class ClassificationService:
                 current_pages = [sorted_results[0]]
 
                 for result in sorted_results[1:]:
-                    if result.classification.doc_type == current_type:
+                    boundary = result.classification.metadata.get(
+                        "document_boundary", "continue"
+                    ).lower()
+                    if (
+                        result.classification.doc_type == current_type
+                        and boundary != "start"
+                    ):
                         current_pages.append(result)
                     else:
                         # Create a new section with the current group of pages
@@ -1528,7 +1579,10 @@ class ClassificationService:
         current_pages = [sorted_results[0]]
 
         for result in sorted_results[1:]:
-            if result.classification.doc_type == current_type:
+            boundary = result.classification.metadata.get(
+                "document_boundary", "continue"
+            ).lower()
+            if result.classification.doc_type == current_type and boundary != "start":
                 current_pages.append(result)
             else:
                 # Create a section with the current group

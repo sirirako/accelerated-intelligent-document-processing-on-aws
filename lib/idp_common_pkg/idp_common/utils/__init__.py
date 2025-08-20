@@ -235,6 +235,28 @@ def extract_json_from_text(text: str) -> str:
     return text
 
 
+def normalize_boolean_value(value: Any) -> bool:
+    """
+    Normalize a value to a boolean, handling string representations.
+
+    This function is useful for configuration values that may come as strings
+    (e.g., from JSON config files or environment variables) but need to be
+    treated as booleans.
+
+    Args:
+        value: Value to normalize (can be bool, str, or other)
+
+    Returns:
+        Boolean value
+    """
+    if isinstance(value, bool):
+        return value
+    elif isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on")
+    else:
+        return bool(value)
+
+
 def extract_yaml_from_text(text: str) -> str:
     """
     Extract YAML string from LLM response text with robust multi-strategy handling.

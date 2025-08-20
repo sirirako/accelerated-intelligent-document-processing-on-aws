@@ -211,7 +211,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   getFileContents(s3Uri: String!): FileContentsResponse
   getConfiguration: ConfigurationResponse
   queryKnowledgeBase(input: String!, sessionId: String): String
-  chatWithDocument(s3Uri: String!, prompt: String!): String
+  chatWithDocument(s3Uri: String!, prompt: String!, history: AWSJSON!, modelId: String!): String
   getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
   listAvailableAgents: [Agent] @aws_cognito_user_pools @aws_iam
   submitAgentQuery(query: String!, agentIds: [String!]!): AgentJob @aws_cognito_user_pools

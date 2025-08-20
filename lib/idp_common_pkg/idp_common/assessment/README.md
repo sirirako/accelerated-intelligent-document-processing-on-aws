@@ -63,6 +63,7 @@ The assessment service uses configuration-driven prompts and model parameters:
 
 ```yaml
 assessment:
+  enabled: true                         # Enable/disable assessment processing
   model: "us.amazon.nova-pro-v1:0"
   temperature: 0
   top_k: 5
@@ -86,6 +87,30 @@ assessment:
     
     Respond with confidence assessments in JSON format.
 ```
+
+### `enabled` Configuration Property
+
+The assessment service supports runtime enable/disable control via the `enabled` property:
+
+- **`enabled: true`** (default): Assessment processing proceeds normally
+- **`enabled: false`**: Assessment is skipped entirely with minimal overhead
+
+**Cost Optimization**: When `enabled: false`, no LLM API calls are made, resulting in zero assessment costs.
+
+**Example - Disabling Assessment:**
+```yaml
+assessment:
+  enabled: false  # Disables all assessment processing
+  # Other properties can remain but will be ignored
+  model: us.amazon.nova-lite-v1:0
+  temperature: 0.0
+```
+
+**Behavior When Disabled:**
+- Service immediately returns with logging: "Assessment is disabled via configuration"
+- No LLM API calls or S3 operations are performed
+- Document processing continues to completion
+- Minimal performance impact (early return)
 
 ## Prompt Template Placeholders
 
