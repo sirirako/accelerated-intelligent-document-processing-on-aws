@@ -3,7 +3,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { API, Logger } from 'aws-amplify';
-import { FormField, Textarea, Button, Grid, Box, SpaceBetween, ButtonDropdown, Select } from '@awsui/components-react';
+import {
+  FormField,
+  Textarea,
+  Button,
+  Grid,
+  Box,
+  SpaceBetween,
+  ButtonDropdown,
+  Checkbox,
+} from '@awsui/components-react';
 import listAgentJobs from '../../graphql/queries/listAgentJobs';
 import deleteAgentJob from '../../graphql/queries/deleteAgentJob';
 import listAvailableAgents from '../../graphql/queries/listAvailableAgents';
@@ -29,14 +38,16 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const [selectedOption, setSelectedOption] = useState(null);
   const [isDeletingJob, setIsDeletingJob] = useState(false);
   const [availableAgents, setAvailableAgents] = useState([]);
-  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [selectedAgents, setSelectedAgents] = useState([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const lastFetchTimeRef = useRef(0);
 
-  const handleAgentSelection = (selectedAgentOption) => {
-    setSelectedAgent(selectedAgentOption);
-
-    // Don't populate sample query as text - let it remain as placeholder only
+  const handleAgentSelection = (agentId, isSelected) => {
+    if (isSelected) {
+      setSelectedAgents((prev) => [...prev, agentId]);
+    } else {
+      setSelectedAgents((prev) => prev.filter((id) => id !== agentId));
+    }
   };
 
   const fetchAvailableAgents = async () => {
@@ -50,15 +61,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       setAvailableAgents(agents);
 
       // Auto-select first agent if none selected
-      if (agents.length > 0 && !selectedAgent) {
-        const firstAgent = {
-          label: agents[0].agent_name,
-          value: agents[0].agent_id,
-          description: agents[0].agent_description,
-        };
-        setSelectedAgent(firstAgent);
-
-        // Don't populate sample query as text - let it remain as placeholder only
+      if (agents.length > 0 && selectedAgents.length === 0) {
+        setSelectedAgents([agents[0].agent_id]);
       }
     } catch (err) {
       logger.error('Error fetching available agents:', err);
@@ -198,8 +202,8 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (currentInputText.trim() && selectedAgent && !isSubmitting) {
-      onSubmit(currentInputText, selectedAgent.value);
+    if (currentInputText.trim() && selectedAgents.length > 0 && !isSubmitting) {
+      onSubmit(currentInputText, selectedAgents);
       setSelectedOption(null); // Reset dropdown selection after submission
 
       // Refresh the query history after a short delay to include the new query
@@ -237,10 +241,10 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       updateAnalyticsState({ currentInputText: selectedJob.query });
       setSelectedOption({ value: selectedJob.jobId, label: selectedJob.query });
 
-      let agentToUse = selectedAgent?.value;
-      console.log('Current selected agent:', selectedAgent);
+      let agentsToUse = selectedAgents;
+      console.log('Current selected agents:', selectedAgents);
 
-      // Auto-select agent from agentIds (use 0th element)
+      // Auto-select agents from agentIds
       if (selectedJob.agentIds) {
         console.log('Job has agentIds:', selectedJob.agentIds);
         try {
@@ -248,23 +252,9 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
           console.log('Parsed agentIds:', agentIds);
 
           if (agentIds.length > 0) {
-            const agentId = agentIds[0];
-            console.log('Using agent ID:', agentId);
-
-            const matchingAgent = availableAgents.find((agent) => agent.agent_id === agentId);
-            console.log('Matching agent found:', matchingAgent);
-            console.log('Available agents:', availableAgents);
-
-            if (matchingAgent) {
-              const newAgentSelection = {
-                label: matchingAgent.agent_name,
-                value: matchingAgent.agent_id,
-                description: matchingAgent.agent_description,
-              };
-              console.log('Setting selected agent to:', newAgentSelection);
-              setSelectedAgent(newAgentSelection);
-              agentToUse = matchingAgent.agent_id;
-            }
+            console.log('Setting selected agents to:', agentIds);
+            setSelectedAgents(agentIds);
+            agentsToUse = agentIds;
           }
         } catch (error) {
           console.error('Failed to parse agentIds from selected job:', error);
@@ -274,10 +264,10 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
         console.log('Job has no agentIds');
       }
 
-      console.log('Submitting with agent:', agentToUse);
+      console.log('Submitting with agents:', agentsToUse);
       // Submit the job to display its current status and results (if completed)
       // This will work for both completed jobs and in-progress jobs
-      onSubmit(selectedJob.query, agentToUse, selectedJob.jobId);
+      onSubmit(selectedJob.query, agentsToUse, selectedJob.jobId);
     }
   };
 
@@ -378,48 +368,64 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     <>
       <style>{textareaStyles}</style>
       <form onSubmit={handleSubmit}>
-        <SpaceBetween size="s">
+        <SpaceBetween size="l">
+          <FormField label="Select from available agents">
+            <Box padding={{ vertical: 's' }} style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {isLoadingAgents && (
+                <Box textAlign="center" padding="m">
+                  Loading agents...
+                </Box>
+              )}
+              {!isLoadingAgents && availableAgents.length === 0 && (
+                <Box textAlign="center" padding="m">
+                  <b>No agents available</b>
+                </Box>
+              )}
+              {!isLoadingAgents && availableAgents.length > 0 && (
+                <SpaceBetween size="s">
+                  {availableAgents.map((agent) => (
+                    <Checkbox
+                      key={agent.agent_id}
+                      checked={selectedAgents.includes(agent.agent_id)}
+                      onChange={({ detail }) => handleAgentSelection(agent.agent_id, detail.checked)}
+                    >
+                      <Box>
+                        <Box fontWeight="bold">{agent.agent_name}</Box>
+                        <Box fontSize="body-s" color="text-body-secondary">
+                          {agent.agent_description?.length > 100
+                            ? `${agent.agent_description.substring(0, 100)}...`
+                            : agent.agent_description}
+                        </Box>
+                      </Box>
+                    </Checkbox>
+                  ))}
+                </SpaceBetween>
+              )}
+            </Box>
+          </FormField>
+
           <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
-            <SpaceBetween size="s">
-              <FormField label="Select an agent">
-                <Select
-                  selectedOption={selectedAgent}
-                  onChange={({ detail }) => handleAgentSelection(detail.selectedOption)}
-                  options={availableAgents.map((agent) => ({
-                    label: agent.agent_name,
-                    value: agent.agent_id,
-                    description: agent.agent_description,
-                  }))}
-                  placeholder="Loading available agents..."
-                  disabled={isSubmitting || isLoadingAgents}
-                  loadingText="Loading agents..."
-                  statusType={isLoadingAgents ? 'loading' : 'finished'}
-                />
-              </FormField>
-              <FormField label="Enter your question for the agent">
-                <Textarea
-                  placeholder={
-                    selectedAgent
-                      ? availableAgents.find((agent) => agent.agent_id === selectedAgent.value)?.sample_query ||
-                        'Enter your question here...'
-                      : 'Select an agent first...'
-                  }
-                  value={currentInputText}
-                  onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
-                  disabled={isSubmitting}
-                  rows={3}
-                  className="expandable-textarea"
-                />
-              </FormField>
-            </SpaceBetween>
+            <FormField label="Enter your question for the agent">
+              <Textarea
+                placeholder={
+                  selectedAgents.length > 0
+                    ? availableAgents.find((agent) => agent.agent_id === selectedAgents[0])?.sample_query ||
+                      'Enter your question here...'
+                    : 'Select an agent first...'
+                }
+                value={currentInputText}
+                onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
+                disabled={isSubmitting}
+                rows={3}
+                className="expandable-textarea"
+              />
+            </FormField>
             <Box padding={{ top: 'xl' }}>
-              {' '}
-              {/* Add top padding to align with input box */}
               <SpaceBetween size="s">
                 <Button
                   variant="primary"
                   type="submit"
-                  disabled={!currentInputText.trim() || !selectedAgent || isSubmitting}
+                  disabled={!currentInputText.trim() || selectedAgents.length === 0 || isSubmitting}
                   fullWidth
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit query'}

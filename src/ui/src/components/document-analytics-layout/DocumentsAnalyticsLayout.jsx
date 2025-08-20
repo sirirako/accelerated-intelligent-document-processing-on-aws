@@ -98,7 +98,7 @@ const DocumentsAnalyticsLayout = () => {
     };
   }, [subscription]);
 
-  const handleSubmitQuery = async (query, agentId, existingJobId = null) => {
+  const handleSubmitQuery = async (query, agentIds, existingJobId = null) => {
     try {
       updateAnalyticsState({
         queryText: query,
@@ -147,10 +147,10 @@ const DocumentsAnalyticsLayout = () => {
         subscription.unsubscribe();
       }
 
-      logger.debug('Submitting agent query:', query, 'with agent:', agentId);
+      logger.debug('Submitting agent query:', query, 'with agents:', agentIds);
       const response = await API.graphql({
         query: submitAgentQuery,
-        variables: { query, agentIds: [agentId] },
+        variables: { query, agentIds: Array.isArray(agentIds) ? agentIds : [agentIds] },
       });
 
       const job = response?.data?.submitAgentQuery;
