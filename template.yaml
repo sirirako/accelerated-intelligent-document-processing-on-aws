@@ -4738,13 +4738,8 @@ Resources:
                   - !GetAtt DeleteDocumentResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
-<<<<<<< HEAD
                   - !GetAtt AgentRequestHandlerFunction.Arn
                   - !GetAtt ListAvailableAgentsFunction.Arn
-=======
-                  - !GetAtt AnalyticsRequestHandlerFunction.Arn
-                  - !GetAtt ChatWithDocumentResolverFunction.Arn
->>>>>>> develop
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
