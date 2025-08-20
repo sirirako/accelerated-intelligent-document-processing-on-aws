@@ -94,3 +94,61 @@ class IDPAgentFactory:
             job_id=kwargs.get("job_id"),
             user_id=kwargs.get("user_id"),
         )
+
+    def create_orchestrator_agent(self, agent_ids: List[str], **kwargs) -> IDPAgent:
+        """
+        Create an orchestrator agent that can route queries to multiple specialized agents.
+
+        Args:
+            agent_ids: List of agent IDs to include as tools in the orchestrator
+            **kwargs: Arguments to pass to the orchestrator and specialized agents
+
+        Returns:
+            IDPAgent instance configured as an orchestrator
+
+        Raises:
+            ValueError: If any agent_id is not registered
+        """
+        # Validate all agent IDs exist
+        for agent_id in agent_ids:
+            if agent_id not in self._registry:
+                raise ValueError(f"Agent ID '{agent_id}' not found in registry")
+
+        # Prepare agent tools metadata for orchestrator
+        agent_tools = []
+        for agent_id in agent_ids:
+            info = self._registry[agent_id]
+            agent_tools.append(
+                {
+                    "agent_id": agent_id,
+                    "agent_name": info["agent_name"],
+                    "agent_description": info["agent_description"],
+                    "sample_queries": info["sample_queries"],
+                    "creator_func": info["creator_func"],
+                }
+            )
+
+        # Import orchestrator here to avoid circular imports
+        from ..orchestrator.agent import create_orchestrator_agent
+
+        # Create the orchestrator agent
+        orchestrator_agent = create_orchestrator_agent(
+            agent_tools=agent_tools, **kwargs
+        )
+
+        # Create orchestrator metadata
+        agent_names = [self._registry[aid]["agent_name"] for aid in agent_ids]
+        orchestrator_description = (
+            f"Orchestrator agent that routes queries to: {', '.join(agent_names)}"
+        )
+
+        # Wrap in IDPAgent
+        return IDPAgent(
+            agent=orchestrator_agent,
+            agent_id=f"orchestrator-{'-'.join(agent_ids)}",
+            agent_name="Orchestrator Agent",
+            agent_description=orchestrator_description,
+            sample_queries=[],
+            job_id=kwargs.get("job_id"),
+            user_id=kwargs.get("user_id"),
+        )

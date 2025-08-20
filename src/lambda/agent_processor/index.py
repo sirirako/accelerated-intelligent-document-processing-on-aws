@@ -78,11 +78,11 @@ def validate_job_ownership(table, user_id, job_id):
 
 def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id: str = None) -> dict:
     """
-    Process an agent query using the Strands agent.
+    Process an agent query using either a single agent or orchestrator.
     
     Args:
         query: The natural language query to process
-        agent_ids: List of agent IDs to use (currently uses first one)
+        agent_ids: List of agent IDs to use
         job_id: Agent job ID for monitoring (optional)
         user_id: User ID for monitoring (optional)
         
@@ -94,23 +94,38 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
         if not agent_ids:
             raise ValueError("At least one agent ID is required")
             
-        # Use the first agent ID for now (future-proofing for multiple agents)
-        agent_id = agent_ids[0]
-        logger.info(f"Using agent ID: {agent_id}")
+        logger.info(f"Processing query with agent IDs: {agent_ids}")
         
         # Get analytics configuration
         config = get_analytics_config()
         logger.info("Analytics configuration loaded successfully")
         
-        # Create the analytics agent using the factory
-        agent = agent_factory.create_agent(
-            agent_id=agent_id,
-            config=config,
-            session=session,
-            job_id=job_id,
-            user_id=user_id
-        )
-        logger.info("Analytics agent created successfully")
+        # Determine whether to use single agent or orchestrator
+        if len(agent_ids) == 1:
+            # Single agent - use directly
+            agent_id = agent_ids[0]
+            logger.info(f"Using single agent: {agent_id}")
+            
+            agent = agent_factory.create_agent(
+                agent_id=agent_id,
+                config=config,
+                session=session,
+                job_id=job_id,
+                user_id=user_id
+            )
+            logger.info("Single agent created successfully")
+        else:
+            # Multiple agents - use orchestrator
+            logger.info(f"Using orchestrator with {len(agent_ids)} agents: {agent_ids}")
+            
+            agent = agent_factory.create_orchestrator_agent(
+                agent_ids=agent_ids,
+                config=config,
+                session=session,
+                job_id=job_id,
+                user_id=user_id
+            )
+            logger.info("Orchestrator agent created successfully")
         
         # Process the query
         logger.info(f"Processing query: {query}")
@@ -132,7 +147,7 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             }
             
     except Exception as e:
-        logger.exception(f"Error processing analytics query: {str(e)}")
+        logger.exception(f"Error processing agent query: {str(e)}")
         # Re-raise the exception so the retry logic can handle it properly
         raise
 
