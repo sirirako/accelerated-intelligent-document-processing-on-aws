@@ -36,15 +36,7 @@ def create_analytics_agent(
     Returns:
         strands.Agent: Configured Strands agent instance
     """
-    Create and configure the analytics agent with appropriate tools and system prompt.
 
-    Args:
-        config: Configuration dictionary containing Athena settings and other parameters
-        session: Boto3 session for AWS operations
-
-    Returns:
-        strands.Agent: Configured Strands agent instance
-    """
     # Load the output format description
     final_result_format = load_result_format_description()
     # Load python code examples
