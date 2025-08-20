@@ -40,7 +40,38 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const [availableAgents, setAvailableAgents] = useState([]);
   const [selectedAgents, setSelectedAgents] = useState([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  const [hoveredAgent, setHoveredAgent] = useState(null);
+  const [hoverTimeout, setHoverTimeout] = useState(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const lastFetchTimeRef = useRef(0);
+
+  const handleMouseEnter = (agentId, event) => {
+    setMousePosition({ x: event.clientX, y: event.clientY });
+
+    // If a tooltip is already showing, switch instantly
+    if (hoveredAgent) {
+      setHoveredAgent(agentId);
+      return;
+    }
+
+    // Otherwise, use the delay
+    const timeout = setTimeout(() => {
+      setHoveredAgent(agentId);
+    }, 500);
+    setHoverTimeout(timeout);
+  };
+
+  const handleMouseMove = (event) => {
+    setMousePosition({ x: event.clientX, y: event.clientY });
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+      setHoverTimeout(null);
+    }
+    setHoveredAgent(null);
+  };
 
   const handleAgentSelection = (agentId, isSelected) => {
     if (isSelected) {
@@ -373,7 +404,15 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
             <Box fontSize="body-m" fontWeight="bold" padding={{ bottom: 'xs' }}>
               Select from available agents
             </Box>
-            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #d5dbdb', padding: '8px' }}>
+            <div
+              style={{
+                maxHeight: '200px',
+                overflowY: 'auto',
+                border: '1px solid #d5dbdb',
+                padding: '8px',
+                position: 'relative',
+              }}
+            >
               {isLoadingAgents && (
                 <Box textAlign="center" padding="m">
                   Loading agents...
@@ -387,24 +426,77 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
               {!isLoadingAgents && availableAgents.length > 0 && (
                 <SpaceBetween size="s">
                   {availableAgents.map((agent) => (
-                    <Checkbox
+                    <div
                       key={agent.agent_id}
-                      checked={selectedAgents.includes(agent.agent_id)}
-                      onChange={({ detail }) => handleAgentSelection(agent.agent_id, detail.checked)}
+                      onMouseEnter={(e) => handleMouseEnter(agent.agent_id, e)}
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={handleMouseLeave}
+                      style={{ width: '100%' }}
                     >
-                      <Box>
-                        <Box fontWeight="bold">{agent.agent_name}</Box>
-                        <Box fontSize="body-s" color="text-body-secondary">
-                          {agent.agent_description?.length > 150
-                            ? `${agent.agent_description.substring(0, 150)}...`
-                            : agent.agent_description}
+                      <Checkbox
+                        checked={selectedAgents.includes(agent.agent_id)}
+                        onChange={({ detail }) => handleAgentSelection(agent.agent_id, detail.checked)}
+                      >
+                        <Box>
+                          <Box fontWeight="bold">{agent.agent_name}</Box>
+                          <Box fontSize="body-s" color="text-body-secondary">
+                            {agent.agent_description?.length > 150
+                              ? `${agent.agent_description.substring(0, 150)}...`
+                              : agent.agent_description}
+                          </Box>
                         </Box>
-                      </Box>
-                    </Checkbox>
+                      </Checkbox>
+                    </div>
                   ))}
                 </SpaceBetween>
               )}
             </div>
+            {hoveredAgent && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: mousePosition.y + 10,
+                  left: mousePosition.x + 10,
+                  backgroundColor: 'white',
+                  border: '1px solid #d5dbdb',
+                  borderRadius: '4px',
+                  padding: '16px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                  zIndex: 9999,
+                  minWidth: '300px',
+                  maxWidth: '500px',
+                }}
+              >
+                {(() => {
+                  const agent = availableAgents.find((a) => a.agent_id === hoveredAgent);
+                  if (!agent) return null;
+                  return (
+                    <>
+                      <Box fontWeight="bold" fontSize="body-m" padding={{ bottom: 's' }}>
+                        {agent.agent_name}
+                      </Box>
+                      <Box fontSize="body-s" color="text-body-secondary" padding={{ bottom: 's' }}>
+                        {agent.agent_description}
+                      </Box>
+                      {agent.sample_queries && agent.sample_queries.length > 0 && (
+                        <Box>
+                          <Box fontWeight="bold" fontSize="body-s" padding={{ bottom: 'xs' }}>
+                            Sample Queries:
+                          </Box>
+                          <SpaceBetween size="xs">
+                            {agent.sample_queries.map((query) => (
+                              <Box key={query} fontSize="body-s" color="text-body-secondary">
+                                • {query}
+                              </Box>
+                            ))}
+                          </SpaceBetween>
+                        </Box>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </Box>
 
           <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { colspan: { default: 12, xxs: 3 } }]}>
