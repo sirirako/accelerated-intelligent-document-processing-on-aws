@@ -504,7 +504,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
               <Textarea
                 placeholder={
                   selectedAgents.length > 0
-                    ? availableAgents.find((agent) => agent.agent_id === selectedAgents[0])?.sample_query ||
+                    ? availableAgents.find((agent) => agent.agent_id === selectedAgents[0])?.sample_queries?.[0] ||
                       'Enter your question here...'
                     : 'Select an agent first...'
                 }

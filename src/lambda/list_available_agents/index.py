@@ -33,11 +33,6 @@ def handler(event, context):
         # Get list of available agents from factory
         available_agents = agent_factory.list_available_agents()
         
-        # Add sample_query field (first sample query) to each agent
-        for agent in available_agents:
-            sample_queries = agent.get("sample_queries", [])
-            agent["sample_query"] = sample_queries[0] if sample_queries else None
-        
         logger.info(f"Found {len(available_agents)} available agents")
         return available_agents
         
