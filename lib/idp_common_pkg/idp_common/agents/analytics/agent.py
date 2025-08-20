@@ -23,7 +23,18 @@ logger = logging.getLogger(__name__)
 def create_analytics_agent(
     config: Dict[str, Any],
     session: boto3.Session,
+    **kwargs,
 ) -> strands.Agent:
+    """
+    Create and configure the analytics agent with appropriate tools and system prompt.
+
+    Args:
+        config: Configuration dictionary containing Athena settings and other parameters
+        session: Boto3 session for AWS operations
+        **kwargs: Additional arguments (job_id, user_id, etc. handled by IDPAgent wrapper)
+
+    Returns:
+        strands.Agent: Configured Strands agent instance
     """
     Create and configure the analytics agent with appropriate tools and system prompt.
 
