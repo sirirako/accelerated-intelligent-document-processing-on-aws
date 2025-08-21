@@ -8,6 +8,7 @@ The agents module is designed to support multiple types of intelligent agents wh
 
 - **Analytics Agent**: Natural language to SQL/visualization conversion with secure code execution
 - **Dummy Agent**: Simple development agent with calculator tool for testing and development
+- **Orchestrator Agent**: Routes queries to appropriate specialized agents based on query content
 - **Common Utilities**: Shared configuration, monitoring, and utilities for all agent types
 
 ## Architecture
@@ -42,6 +43,9 @@ idp_common/agents/
 ├── dummy/                      # Dummy agent for development
 │   ├── __init__.py
 │   └── agent.py                # Simple agent with calculator tool
+├── orchestrator/                # Orchestrator agent for routing queries
+│   ├── __init__.py
+│   └── agent.py                # Multi-agent orchestration and routing
 └── testing/                    # Testing utilities and examples
     ├── __init__.py
     ├── README.md               # Comprehensive testing guide
@@ -64,6 +68,7 @@ Agents are managed through a centralized factory that provides:
 - **Agent Registry**: Central registration of all available agent types
 - **Metadata Management**: Each agent includes name, description, and unique ID
 - **Consistent Creation**: Standardized interface for creating any agent type
+- **Orchestrator Support**: Automatic creation of orchestrator agents that route queries to multiple specialized agents
 - **Extensibility**: Easy addition of new agent types without modifying existing code
 
 ### 3. IDPAgent Base Class
@@ -206,6 +211,33 @@ The dummy agent is useful for:
 - Testing the agent framework without complex dependencies
 - Development and debugging of agent infrastructure
 - Simple mathematical calculations during development
+
+### Orchestrator Agent
+
+The orchestrator agent routes queries to appropriate specialized agents based on query content and agent capabilities:
+
+```python
+from idp_common.agents.factory import agent_factory
+
+# Create an orchestrator with multiple agents
+orchestrator = agent_factory.create_orchestrator_agent(
+    agent_ids=["analytics-20250813-v0-kaleko", "dummy-dev-v1"],
+    config=config,
+    session=boto3.Session(),
+    job_id="orchestrator-job-123",
+    user_id="user-456"
+)
+
+# The orchestrator automatically routes queries to the best agent
+response = orchestrator("Show me a chart of document processing volume")  # Routes to analytics
+response = orchestrator("Calculate 25 * 4")  # Routes to dummy agent
+```
+
+The orchestrator agent:
+- **Intelligent Routing**: Analyzes queries and selects the most appropriate specialized agent
+- **Automatic Tool Creation**: Converts each registered agent into a tool for the orchestrator
+- **Metadata-Driven**: Uses agent descriptions and sample queries to make routing decisions
+- **Monitoring Integration**: All sub-agent conversations are automatically tracked when monitoring is enabled
 ```
 
 ### Response Parsing

@@ -1,16 +1,18 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# Agent Analysis Feature
+# Agent HQ Feature
 
-The GenAIIDP solution includes an integrated Agent Analysis feature that enables you to interactively query and analyze your processed document data using natural language. This feature leverages AI agents to convert natural language questions into SQL queries, execute them against your document analytics database, and generate visualizations or tables to answer your questions.
+The GenAIIDP solution includes an integrated Agent HQ feature that provides intelligent document analysis capabilities through multiple specialized AI agents. This feature enables you to interactively query and analyze your processed document data using natural language, with an intelligent orchestrator that routes queries to the most appropriate specialized agent.
 
 ## Overview
 
-The Agent Analysis feature provides intelligent data exploration capabilities that allow users to:
+The Agent HQ feature provides intelligent data exploration and analysis capabilities through:
 
+- **Multi-Agent Architecture**: Multiple specialized agents handle different types of queries
+- **Intelligent Orchestration**: Automatic routing of queries to the most appropriate agent
 - **Natural Language Querying**: Ask questions about your document data in plain English
-- **Automated SQL Generation**: AI agents convert your questions into optimized SQL queries
+- **Automated SQL Generation**: Analytics agents convert questions into optimized SQL queries
 - **Interactive Visualizations**: Generate charts, graphs, and tables from query results
 - **Real-time Analysis**: Get insights from your processed documents without manual data analysis
 - **Secure Code Execution**: Python visualization code runs in isolated AWS Bedrock AgentCore sandboxes
@@ -21,29 +23,50 @@ https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
 
 ## Key Features
 
-- **Multi-Modal AI Agent**: Uses advanced language models (Claude 3.7 Sonnet by default) for intelligent query understanding
+- **Multi-Agent System**: Specialized agents for different types of queries (analytics, calculations, etc.)
+- **Intelligent Orchestration**: Automatic query routing based on content analysis and agent capabilities
+- **Agent Selection Interface**: Choose specific agents or let the orchestrator decide automatically
 - **Secure Architecture**: All code execution happens in AWS Bedrock AgentCore sandboxes, not in Lambda functions
-- **Database Schema Discovery**: Agents automatically explore and understand your database structure
+- **Database Schema Discovery**: Analytics agents automatically explore and understand your database structure
 - **Flexible Visualization**: Supports multiple chart types including bar charts, line charts, pie charts, and data tables
-- **Query History**: Track and manage previous analytics queries through the web interface
-- **Real-time Progress**: Live display of agent thought processes and SQL query execution
+- **Query History**: Track and manage previous queries through the web interface with agent selection memory
+- **Real-time Progress**: Live display of agent thought processes and execution steps
 - **Error Handling**: Intelligent retry logic for failed queries with automatic corrections
 
 ## Architecture
 
+### Multi-Agent System
+
+The Agent HQ feature uses a multi-agent architecture with:
+
+1. **Orchestrator Agent**: Routes queries to appropriate specialized agents based on query content and agent capabilities
+2. **Analytics Agent**: Handles data analysis, SQL generation, and visualization creation
+3. **Dummy Agent**: Provides simple calculations and development testing capabilities
+4. **Extensible Framework**: Easy addition of new specialized agents for specific use cases
+
 ### Agent Workflow
 
 1. **Question Processing**: User submits a natural language question through the web UI
-2. **Database Discovery**: Agent explores database schema using `get_database_info` tool
-3. **SQL Generation**: Agent converts the question into optimized SQL queries with proper column quoting
-4. **Query Execution**: SQL queries are executed against Amazon Athena with results stored in S3
-5. **Data Processing**: Query results are securely transferred to AWS Bedrock AgentCore sandbox
-6. **Visualization Generation**: Python code generates charts or tables from the data
-7. **Result Display**: Final visualizations are displayed in the web interface
+2. **Agent Selection**: User can choose specific agents or let the orchestrator decide automatically
+3. **Query Routing**: Orchestrator analyzes the query and routes it to the most appropriate specialized agent
+4. **Specialized Processing**: Selected agent processes the query using its specific tools and capabilities
+5. **Result Generation**: Agent generates appropriate responses (visualizations, calculations, text, etc.)
+6. **Result Display**: Final results are displayed in the web interface with agent conversation history
+
+### Analytics Agent Workflow
+
+For data analysis queries, the Analytics Agent follows this workflow:
+
+1. **Database Discovery**: Agent explores database schema using `get_database_info` tool
+2. **SQL Generation**: Agent converts the question into optimized SQL queries with proper column quoting
+3. **Query Execution**: SQL queries are executed against Amazon Athena with results stored in S3
+4. **Data Processing**: Query results are securely transferred to AWS Bedrock AgentCore sandbox
+5. **Visualization Generation**: Python code generates charts or tables from the data
+6. **Result Display**: Final visualizations are displayed in the web interface
 
 ### Security Architecture
 
-The Agent Analysis feature implements a security-first design:
+The Agent HQ feature implements a security-first design:
 
 - **Sandboxed Execution**: All Python code runs in AWS Bedrock AgentCore, completely isolated from the rest of the AWS environment and the internet
 - **Secure Data Transfer**: Query results are transferred via S3 and AgentCore APIs, never through direct file system access
