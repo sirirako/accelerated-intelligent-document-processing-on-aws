@@ -9,14 +9,14 @@ import getAgentJobStatus from '../../graphql/queries/getAgentJobStatus';
 import onAgentJobComplete from '../../graphql/subscriptions/onAgentJobComplete';
 import { useAnalyticsContext } from '../../contexts/analytics';
 
-import AnalyticsQueryInput from './AnalyticsQueryInput';
-import AnalyticsJobStatus from './AnalyticsJobStatus';
-import AnalyticsResultDisplay from './AnalyticsResultDisplay';
+import AgentQueryInput from './AgentQueryInput';
+import AgentJobStatus from './AgentJobStatus';
+import AgentResultDisplay from './AgentResultDisplay';
 import AgentMessagesDisplay from './AgentMessagesDisplay';
 
-const logger = new Logger('DocumentsAnalyticsLayout');
+const logger = new Logger('DocumentsAgentsLayout');
 
-const DocumentsAnalyticsLayout = () => {
+const DocumentsAgentsLayout = () => {
   const { analyticsState, updateAnalyticsState } = useAnalyticsContext();
   const { queryText, jobId, jobStatus, jobResult, agentMessages, error, isSubmitting, subscription } = analyticsState;
 
@@ -257,7 +257,7 @@ const DocumentsAnalyticsLayout = () => {
   return (
     <Container header={<Header variant="h1">Agent HQ</Header>}>
       <SpaceBetween size="l">
-        <AnalyticsQueryInput onSubmit={handleSubmitQuery} isSubmitting={isSubmitting} selectedResult={null} />
+        <AgentQueryInput onSubmit={handleSubmitQuery} isSubmitting={isSubmitting} selectedResult={null} />
 
         {isSubmitting && (
           <Box textAlign="center" padding={{ vertical: 'l' }}>
@@ -266,9 +266,9 @@ const DocumentsAnalyticsLayout = () => {
           </Box>
         )}
 
-        <AnalyticsJobStatus jobId={jobId} status={jobStatus} error={error} />
+        <AgentJobStatus jobId={jobId} status={jobStatus} error={error} />
 
-        {jobResult && <AnalyticsResultDisplay result={jobResult} query={queryText} />}
+        {jobResult && <AgentResultDisplay result={jobResult} query={queryText} />}
 
         {/* Show agent messages at the bottom when available */}
         {(agentMessages || jobStatus === 'PROCESSING') && (
@@ -279,4 +279,4 @@ const DocumentsAnalyticsLayout = () => {
   );
 };
 
-export default DocumentsAnalyticsLayout;
+export default DocumentsAgentsLayout;

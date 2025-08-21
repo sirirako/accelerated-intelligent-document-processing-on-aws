@@ -27,9 +27,9 @@ const textareaStyles = `
   }
 `;
 
-const logger = new Logger('AnalyticsQueryInput');
+const logger = new Logger('AgentQueryInput');
 
-const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
+const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const { analyticsState, updateAnalyticsState, resetAnalyticsState } = useAnalyticsContext();
   const { currentInputText } = analyticsState;
 
@@ -269,7 +269,10 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     console.log('Selected job:', selectedJob);
 
     if (selectedJob) {
-      updateAnalyticsState({ currentInputText: selectedJob.query });
+      updateAnalyticsState({ 
+        currentInputText: selectedJob.query,
+        error: null // Clear any previous error
+      });
       setSelectedOption({ value: selectedJob.jobId, label: selectedJob.query });
 
       let agentsToUse = selectedAgents;
@@ -555,7 +558,7 @@ const AnalyticsQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   );
 };
 
-AnalyticsQueryInput.propTypes = {
+AgentQueryInput.propTypes = {
   onSubmit: PropTypes.func.isRequired,
   isSubmitting: PropTypes.bool,
   selectedResult: PropTypes.shape({
@@ -564,9 +567,9 @@ AnalyticsQueryInput.propTypes = {
   }),
 };
 
-AnalyticsQueryInput.defaultProps = {
+AgentQueryInput.defaultProps = {
   isSubmitting: false,
   selectedResult: null,
 };
 
-export default AnalyticsQueryInput;
+export default AgentQueryInput;
