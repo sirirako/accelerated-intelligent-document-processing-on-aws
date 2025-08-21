@@ -118,9 +118,7 @@ class IDPAgentFactory:
         from ..orchestrator.agent import create_orchestrator_agent
 
         # Create the orchestrator agent
-        orchestrator_agent = create_orchestrator_agent(
-            agent_ids=agent_ids, **kwargs
-        )
+        orchestrator_agent = create_orchestrator_agent(agent_ids=agent_ids, **kwargs)
 
         # Create orchestrator metadata
         agent_names = [self._registry[aid]["agent_name"] for aid in agent_ids]
