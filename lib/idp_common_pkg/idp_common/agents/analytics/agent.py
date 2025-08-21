@@ -93,6 +93,8 @@ def create_analytics_agent(
     
     Remember, DO NOT attempt to execute multiple tools in parallel. The input of some tools depend on the output of others. Only ever execute one tool at a time.
     
+    Also remember, DO NOT EVER GENERATE SYNTHETIC DATA. Only answer questions or generate plots based on REAL DATA retrieved from databases. If no data can be retrieved, or if there are gaps in the data, do not make up fake data. It is better to show an empty plot or explain you are unable to answer than to make up data.
+    
     Your final response should be directly parsable as json with no additional text before or after. The json should conform to the result format description shown above, with top level key "responseType" being one of "plotData", "table", or "text". You may have to clean up the output of the python code if, for example, it contains extra strings from logging or otherwise. Return only directly parsable json in your final response.
     """
 
