@@ -28,7 +28,7 @@ class TestCreateAnalyticsAgent:
     """Tests for the create_analytics_agent function."""
 
     @patch("idp_common.agents.analytics.config.load_python_plot_generation_examples")
-    @patch("idp_common.agents.analytics.config.load_result_format_description")
+    @patch("idp_common.agents.common.config.load_result_format_description")
     @patch("idp_common.agents.analytics.agent.strands.Agent")
     @patch("boto3.Session")
     def test_create_analytics_agent_success(
