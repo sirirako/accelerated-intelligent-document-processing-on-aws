@@ -9,11 +9,23 @@ import json
 import logging
 import os
 
-from idp_common.agents.factory import agent_factory
-
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+
+# Initialize agent factory at module level for caching across invocations
+_cached_agents = None
+
+def get_available_agents():
+    """Get available agents, using cache if available."""
+    global _cached_agents
+    
+    if _cached_agents is None:
+        from idp_common.agents.factory import agent_factory
+        _cached_agents = agent_factory.list_available_agents()
+        logger.info(f"Cached {len(_cached_agents)} available agents")
+    
+    return _cached_agents
 
 
 def handler(event, context):
@@ -30,10 +42,10 @@ def handler(event, context):
     logger.info(f"Received event: {json.dumps(event)}")
     
     try:
-        # Get list of available agents from factory
-        available_agents = agent_factory.list_available_agents()
+        # Get list of available agents (cached)
+        available_agents = get_available_agents()
         
-        logger.info(f"Found {len(available_agents)} available agents")
+        logger.info(f"Returning {len(available_agents)} available agents")
         return available_agents
         
     except Exception as e:
