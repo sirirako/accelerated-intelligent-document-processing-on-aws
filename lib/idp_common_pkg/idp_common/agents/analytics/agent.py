@@ -13,7 +13,8 @@ import boto3
 import strands
 from strands.models import BedrockModel
 
-from .config import load_python_plot_generation_examples, load_result_format_description
+from .config import load_python_plot_generation_examples
+from ..common.config import load_result_format_description
 from .tools import CodeInterpreterTools, get_database_info, run_athena_query
 from .utils import register_code_interpreter_tools
 

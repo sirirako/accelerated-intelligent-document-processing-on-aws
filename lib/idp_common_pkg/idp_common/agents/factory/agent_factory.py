@@ -114,26 +114,12 @@ class IDPAgentFactory:
             if agent_id not in self._registry:
                 raise ValueError(f"Agent ID '{agent_id}' not found in registry")
 
-        # Prepare agent tools metadata for orchestrator
-        agent_tools = []
-        for agent_id in agent_ids:
-            info = self._registry[agent_id]
-            agent_tools.append(
-                {
-                    "agent_id": agent_id,
-                    "agent_name": info["agent_name"],
-                    "agent_description": info["agent_description"],
-                    "sample_queries": info["sample_queries"],
-                    "creator_func": info["creator_func"],
-                }
-            )
-
         # Import orchestrator here to avoid circular imports
         from ..orchestrator.agent import create_orchestrator_agent
 
         # Create the orchestrator agent
         orchestrator_agent = create_orchestrator_agent(
-            agent_tools=agent_tools, **kwargs
+            agent_ids=agent_ids, **kwargs
         )
 
         # Create orchestrator metadata
