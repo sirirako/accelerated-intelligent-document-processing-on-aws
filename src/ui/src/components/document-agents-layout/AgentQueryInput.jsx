@@ -269,9 +269,9 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     console.log('Selected job:', selectedJob);
 
     if (selectedJob) {
-      updateAnalyticsState({ 
+      updateAnalyticsState({
         currentInputText: selectedJob.query,
-        error: null // Clear any previous error
+        error: null, // Clear any previous error
       });
       setSelectedOption({ value: selectedJob.jobId, label: selectedJob.query });
 
