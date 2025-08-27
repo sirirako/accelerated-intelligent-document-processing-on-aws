@@ -7,6 +7,103 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Modern Python-Based Publishing System**
+  - **Complete Rewrite**: Replaced legacy `publish.sh` bash script (583 lines) with modern `publish.py` Python script (1,294 lines)
+  - **Enhanced User Experience**: Rich console interface with progress bars, spinners, and colored output using Rich library
+  - **Concurrent Processing**: Multi-threaded artifact building and uploading for significantly improved performance
+  - **Cross-Platform Support**: Native support for Linux, macOS, and Windows environments
+  - **Intelligent Caching**: Advanced checksum-based build optimization to skip unnecessary rebuilds
+  - **Robust Error Handling**: Comprehensive error handling with detailed error messages and recovery suggestions
+  - **Resource Management**: Automatic cleanup of temporary files and proper resource management
+  - **CLI Interface**: Modern command-line interface using Typer with clear help documentation and parameter validation
+  - **Key Features**:
+    - Parallel S3 uploads with thread-safe progress tracking
+    - CloudFormation template validation and processing
+    - Automatic bucket creation with proper permissions and lifecycle policies
+    - Build artifact optimization with dependency tracking
+    - Comprehensive logging and debugging capabilities
+    - Memory-efficient processing for large artifacts
+
+- **Comprehensive Unit Test Suite for Publishing System**
+  - **Extensive Test Coverage**: 1,621 lines of unit tests covering 95%+ of publish.py functionality
+  - **Testing Framework**: Uses pytest with proper unit test markers (`@pytest.mark.unit`) following project testing standards
+  - **Mock Integration**: Comprehensive mocking of AWS services (S3, CloudFormation) for isolated unit testing without external dependencies
+  - **Cross-Platform Testing**: Tests for Linux, macOS, and Windows-specific functionality and edge cases
+  - **Error Scenario Coverage**: Tests for network failures, permission errors, malformed templates, and concurrent access scenarios
+  - **Performance Testing**: Tests for concurrent operations, memory usage, and resource cleanup
+  - **Key Test Categories**:
+    - IDPPublisher initialization and configuration
+    - S3 operations (bucket creation, uploads, permissions)
+    - CloudFormation template processing and validation
+    - Build system integration and checksum validation
+    - Error handling and recovery mechanisms
+    - Concurrent publishing workflows and thread safety
+
+- **Windows Development Environment Setup**
+  - **Automated Setup Script**: New `scripts/dev_setup.bat` (570 lines) for complete Windows development environment configuration
+  - **Comprehensive Installation**: Automated installation of all required development tools and dependencies
+  - **Tool Installation**:
+    - AWS CLI with proper configuration
+    - Python 3.13 (required for compatibility with latest dependencies)
+    - Node.js for React UI development
+    - Git for version control
+    - Docker for containerized development
+    - AWS SAM CLI for serverless application development
+    - Python dependencies (boto3, numpy 2.3.2, typer, rich)
+  - **Environment Configuration**: Automatic AWS credentials setup and project cloning with dependency installation
+  - **Administrator Privileges**: Proper handling of Windows administrator requirements for system-level installations
+  - **Error Handling**: Comprehensive error checking and user guidance throughout the setup process
+
+- **OCR Service Default Image Sizing for Resource Optimization**
+  - Implemented automatic default image size limits (951×1268) when no image sizing configuration is provided
+  - **Key Benefits**: Reduction in vision model token consumption, prevents OutOfMemory errors during concurrent processing, improves processing speed and reduces bandwidth usage
+
+### Changed
+
+- **Publishing Workflow Modernization**
+  - Migrated from bash-based to Python-based publishing system for better maintainability and cross-platform support
+  - Improved build performance through intelligent caching and concurrent processing
+  - Enhanced developer experience with rich console output and clear progress indicators
+  - Better error diagnostics and troubleshooting capabilities
+
+- **Reverted to python3.12 runtime to resolve build package dependency problems**
+
+### Technical Improvements
+
+- **Build System Optimization**: Checksum-based incremental builds reduce unnecessary processing time
+- **Memory Management**: Efficient handling of large artifacts and proper resource cleanup
+- **Thread Safety**: Concurrent operations with proper synchronization and error handling
+- **Code Quality**: Comprehensive unit testing ensures reliability and maintainability of the publishing system
+
+
+
+
+## [0.3.12]
+
+### Added
+
+- **Custom Prompt Generator Lambda Support for Patterns 2 & 3**
+  - Added `custom_prompt_lambda_arn` configuration field to enable injection of custom business logic into extraction processing
+  - **Key Features**: Lambda interface with all template placeholders (DOCUMENT_TEXT, DOCUMENT_CLASS, ATTRIBUTE_NAMES_AND_DESCRIPTIONS, DOCUMENT_IMAGE), URI-based image handling for JSON serialization, comprehensive error handling with fail-fast behavior, scoped IAM permissions requiring GENAIIDP-* function naming
+  - **Use Cases**: Document type-specific processing rules, integration with external systems for customer configurations, conditional processing based on document content, regulatory compliance and industry-specific requirements
+  - **Demo Resources**: Interactive notebook demonstration (`step3_extraction_with_custom_lambda.ipynb`), SAM deployment template for demo Lambda function, comprehensive documentation and examples in `notebooks/examples/demo-lambda/`
+  - **Benefits**: Custom business logic without core code changes, backward compatible (existing deployments unchanged), robust JSON serialization handling all object types, complete observability with detailed logging
+
+- **Refactored Document Classification Service for Enhanced Boundary Detection**
+  - Consolidated `multimodalPageLevelClassification` and the experimental `multimodalPageBoundaryClassification` (from v0.3.11) into a single enhanced `multimodalPageLevelClassification` method
+  - Implemented BIO-like sequence segmentation with document boundary indicators: "start" (new document) and "continue" (same document)
+  - Automatically segments multi-document packets, even when they contain multiple documents of the same type
+  - Added comprehensive classification guide with method comparisons and best practices
+  - **Benefits**: Simplified codebase with single multimodal classification method, improved handling of complex document packets, maintains backward compatibility
+  - **No Breaking Changes**: Existing configurations work unchanged, no configuration updates required
+
+- **Enhanced A2I Template and Workflow Management**
+  - Enhanced A2I template with improved user interface and clearer instructions for reviewers
+  - Added comprehensive instructions for reviewers in A2I template to guide the review process
+  - Implemented capture of failed review tasks with proper error handling and logging
+  - Added workflow orchestration control to stop processing when reviewer rejects A2I task
+  - Removed automatic A2I task creation when Pattern-1 Bedrock Data Automation (BDA) fails to classify document to appropriate Blueprint
+
 - **Dynamic Cost Calculation for Metering Data**
   - Added automated unit cost and estimated cost calculation to metering table with new `unit_cost` and `estimated_cost` columns
   - Dynamic pricing configuration loading from configuration
@@ -27,6 +124,10 @@ SPDX-License-Identifier: MIT-0
   - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
   - **Configuration Example**: Set `assessment.enabled: false` to disable, `enabled: true` to enable (default)
 
+- **New guides for setting up development environments**
+  - EC2-based Linux development environment
+  - MacOS development environment
+
 ### Removed
 - **CloudFormation Parameters**: Removed `IsSummarizationEnabled` and `IsAssessmentEnabled` parameters from all pattern templates
 - **Related Conditions**: Removed parameter conditions and state machine definition substitutions for both features
@@ -39,6 +140,17 @@ SPDX-License-Identifier: MIT-0
   3. This ensures continued cost optimization by preventing unexpected LLM API calls
 - **Action Required**: Review your current CloudFormation parameter settings before updating and update your configuration accordingly to preserve existing behavior
 
+### Changed
+- **Updated Python Lambda Runtime to 3.13**
+
+### Fixed
+- **Fixed B615 "Unsafe Hugging Face Hub download without revision pinning" security finding in Pattern-3 fine-tuning module** - Added revision pinning with to prevent supply chain attacks and ensure reproducible deployments
+- **Fixed CloudWatch Log Group Missing Retention regression**
+- **Security: Cross-Site Scripting (XSS) Vulnerability in FileViewer Component** - Fixed high-risk XSS vulnerability in `src/ui/src/components/document-viewer/FileViewer.jsx` where `innerHTML` was used with user-controlled data
+- **Add permissions boundary support to new Lambda function roles introduced in previous releases**
+- **Fixed OutOfMemory Errors in Pattern-2 OCR Lambda for Large High-Resolution Documents**
+  - **Root Cause**: Processing large PDFs with high-resolution images (7469×9623 pixels) caused memory spikes when 20 concurrent workers each held ~101MB images simultaneously, exceeding the 4GB Lambda memory limit
+  - **Optimal Solution**: Refactored image extraction to render directly at target dimensions using PyMuPDF matrix transformations, completely eliminating oversized image creation
 
 ## [0.3.11]
 

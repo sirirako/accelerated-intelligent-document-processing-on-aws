@@ -878,6 +878,8 @@ Resources:
         detail:
           humanLoopStatus:
             - 'Completed'
+            - 'Failed'
+            - 'Stopped'
       State: 'ENABLED'
       Targets:
         - Arn: !GetAtt HITLProcessLambdaFunction.Arn

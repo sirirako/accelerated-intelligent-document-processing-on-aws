@@ -33,6 +33,7 @@ White-glove customization, deployment, and integration support for production us
 - **Modular, pluggable patterns**: Pre-built processing patterns using state-of-the-art models and AWS services
 - **Advanced Classification**: Support for page-level and holistic document packet classification
 - **Few Shot Example Support**: Improve accuracy through example-based prompting
+- **Custom Business Logic Integration**: Inject custom prompt generation logic via Lambda functions for specialized document processing
 - **High Throughput Processing**: Handles large volumes of documents through intelligent queuing
 - **Built-in Resilience**: Comprehensive error handling, retries, and throttling management
 - **Cost Optimization**: Pay-per-use pricing model with built-in controls

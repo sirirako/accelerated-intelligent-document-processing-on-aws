@@ -4,6 +4,8 @@ build.toml
 model.tar.gz
 .checksum
 .checksums/
+.build_checksum
+.lib_checksum
 .vscode/
 .DS_Store
 dist/
@@ -19,3 +21,5 @@ __pycache__
 rvl_cdip_*
 notebooks/examples/data
 .idea/
+.dsr/
+*tmp-dev-assets*

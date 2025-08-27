@@ -108,6 +108,12 @@
                     "BackoffRate": 2
                 }
             ],
+            "Catch": [
+                {
+                    "ErrorEquals": ["HITLFailedException"],
+                    "Next": "HITLFailState"
+                }
+            ],
             "Next": "HITLStatusUpdate"
         },
         "HITLStatusUpdate": {
@@ -171,6 +177,11 @@
             "Type": "Fail",
             "Cause": "Data Automation Job Failed",
             "Error": "JobFailedException"
+        },
+        "HITLFailState": {
+            "Type": "Fail",
+            "Cause": "Human In The Loop Review Failed",
+            "Error": "HITLFailedException"
         }
     }
 }

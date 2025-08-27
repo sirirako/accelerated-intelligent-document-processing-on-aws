@@ -79,13 +79,68 @@ Despite its strengths in handling full-document context, this method has several
 
 **Scalability Challenges**: Not ideal for very large or visually complex document sets. In such cases, the Multi-Modal Page-Level Classification method is more appropriate.
 
-#### MultiModal Page-Level Classification with Few-Shot Examples
+#### MultiModal Page-Level Classification with Sequence Segmentation
 
 - Classifies each page independently using both text and image data
-- Works well for single-page documents or clearly distinct multi-page documents
+- **Uses sequence segmentation with BIO-like tagging for document boundary detection**
+- **Each page receives both a document type and a boundary indicator ("start" or "continue")**
+- **Automatically segments multi-document packets where multiple documents may be combined**
+- Works exceptionally well for complex document packets containing multiple documents of the same or different types
 - Supports optional few-shot examples to improve classification accuracy
 - Deployed when you select 'few_shot_example_with_multimodal_page_classification' during stack deployment
 - See the [few-shot-examples.md](./few-shot-examples.md) documentation for details on configuring examples
+
+##### Sequence Segmentation Approach
+
+The multimodal page-level classification implements a sophisticated sequence segmentation approach similar to BIO (Begin-Inside-Outside) tagging commonly used in NLP. This enables accurate segmentation of multi-document packets where a single file may contain multiple distinct documents.
+
+**How It Works:**
+
+Each page receives two pieces of information during classification:
+1. **Document Type**: The classification label (e.g., "invoice", "letter", "financial_statement")
+2. **Document Boundary**: A boundary indicator that signals document transitions:
+   - `"start"`: Indicates the beginning of a new document (similar to "Begin" in BIO)
+   - `"continue"`: Indicates continuation of the current document (similar to "Inside" in BIO)
+
+**Benefits of Sequence Segmentation:**
+
+- **Multi-Document Packet Support**: Accurately segments packets containing multiple documents
+- **Type-Aware Boundaries**: Detects when a new document of the same type begins
+- **Automatic Section Creation**: Pages are grouped into sections based on both type and boundaries
+- **Improved Accuracy**: Context-aware classification that considers document flow
+- **No Manual Splitting Required**: Eliminates the need to manually separate documents before processing
+
+**Example Segmentation:**
+
+Consider a packet with 6 pages containing two invoices and one letter:
+
+```
+Page 1: type="invoice", boundary="start"      → Section 1 (Invoice #1)
+Page 2: type="invoice", boundary="continue"   → Section 1 (Invoice #1)
+Page 3: type="letter", boundary="start"       → Section 2 (Letter)
+Page 4: type="letter", boundary="continue"    → Section 2 (Letter)
+Page 5: type="invoice", boundary="start"      → Section 3 (Invoice #2)
+Page 6: type="invoice", boundary="continue"   → Section 3 (Invoice #2)
+```
+
+The system automatically creates three sections, properly separating the two invoices despite them having the same document type.
+
+**Configuration for Boundary Detection:**
+
+The boundary detection is automatically included in the classification results. No special configuration is needed - the system will populate the `document_boundary` field in the metadata for each page:
+
+```json
+{
+  "page_id": "1",
+  "classification": {
+    "doc_type": "invoice",
+    "confidence": 0.95,
+    "metadata": {
+      "document_boundary": "start"  // New document begins
+    }
+  }
+}
+```
 
 ### Pattern 3: UDOP-Based Classification
 
@@ -93,6 +148,37 @@ Despite its strengths in handling full-document context, this method has several
 - Model is deployed on Amazon SageMaker
 - Performs multi-modal page-level classification (classifies each page based on OCR data and page image)
 - Not configurable inside the GenAIIDP solution
+
+## Choosing Between Classification Methods
+
+When deciding between Text-Based Holistic Classification and MultiModal Page-Level Classification with Sequence Segmentation, consider these factors:
+
+### Use Text-Based Holistic Classification When:
+- Documents have clear logical boundaries based on content
+- Text context spans multiple pages and requires understanding the full document
+- You have access to high-context models (e.g., Amazon Nova Premier)
+- Document packets are relatively small (within model context limits)
+- Visual elements are less important than textual continuity
+
+### Use MultiModal Page-Level Classification with Sequence Segmentation When:
+- **Document packets contain multiple documents of the same type** (e.g., multiple invoices)
+- **Visual layout and image content are important for classification**
+- **You need to process very large document packets** that might exceed context limits
+- **Documents have clear visual boundaries** (headers, footers, different layouts)
+- **You want to leverage both text and image information** for better accuracy
+- **Processing speed is important** (parallel page processing is possible)
+
+### Comparison Table
+
+| Feature | Text-Based Holistic | MultiModal Page-Level with Sequence Segmentation |
+|---------|-------------------|--------------------------------------------------|
+| Context Awareness | Full document context | Page-level with boundary detection |
+| Multi-document Packets | Good | Excellent (handles same-type documents) |
+| Visual Processing | Text only | Text + Images |
+| Model Requirements | High-context models | Standard models |
+| Processing Speed | Sequential | Can be parallelized |
+| Boundary Detection | Content-based | BIO-like tagging |
+| Large Documents | Limited by context | No practical limit |
 
 ## Customizing Classification in Pattern 2
 
@@ -495,7 +581,7 @@ The classification service uses the new `extract_structured_data_from_text()` fu
 
 1. **Provide Clear Class Descriptions**: Include distinctive features and common elements
 2. **Use Few Shot Examples**: Include 2-3 diverse examples per class
-3. **Choose the Right Method**: Use page-level for simple documents, holistic for complex packets
+3. **Choose the Right Method**: Use page-level with sequence segmentation for multi-document packets, holistic for context-dependent documents
 4. **Balance Class Coverage**: Ensure all expected document types have classes
 5. **Monitor and Refine**: Use the evaluation framework to track classification accuracy
 6. **Consider Visual Elements**: Describe visual layout and design patterns in class descriptions
@@ -504,3 +590,8 @@ The classification service uses the new `extract_structured_data_from_text()` fu
 9. **Balance Quality vs Performance**: Higher resolution images provide better accuracy but consume more resources
 10. **Consider Output Format**: Use YAML prompts for token efficiency, especially with complex nested responses
 11. **Leverage Format Flexibility**: Take advantage of automatic format detection to optimize prompts for different use cases
+12. **Understand Boundary Indicators**: Review the `document_boundary` metadata to understand how documents are being segmented
+13. **Handle Multi-Document Packets**: Use sequence segmentation when processing files containing multiple documents of the same type
+14. **Test Segmentation Logic**: Verify that documents are correctly separated by reviewing section boundaries in the results
+15. **Consider Document Flow**: Ensure your document classes account for typical document structures (headers, body, footers)
+16. **Leverage BIO-like Tagging**: Take advantage of the automatic boundary detection to eliminate manual document splitting

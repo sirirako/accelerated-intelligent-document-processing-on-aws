@@ -198,3 +198,53 @@ Test system capacity and identify bottlenecks:
 2. Start with low document rates and increase gradually
 3. Monitor CloudWatch metrics for saturation points
 4. Identify bottlenecks and optimize configuration
+
+## Build and Deployment Issues
+
+### Publishing Script Failures
+
+| Issue | Resolution |
+|-------|------------|
+| **Generic "Failed to build" error** | Use `--verbose` flag to see detailed error messages: `python3 publish.py bucket prefix region --verbose` |
+| **Python version mismatch** | Ensure Python 3.13 is installed and available in PATH. Check with `python3 --version` |
+| **SAM build fails** | Verify SAM CLI is installed and up to date. Check Docker is running if using containerized builds |
+| **Missing dependencies** | Install required packages: `pip install boto3 typer rich botocore` |
+| **Permission errors** | Verify AWS credentials are configured and have necessary S3/CloudFormation permissions |
+
+### Common Build Error Messages
+
+**Python Runtime Error:**
+```
+Error: PythonPipBuilder:Validation - Binary validation failed for python, searched for python in following locations: [...] which did not satisfy constraints for runtime: python3.12
+```
+**Resolution:** Install Python 3.13 and ensure it's in your PATH, or use the `--use-container` flag for containerized builds.
+
+**Docker Not Running:**
+```
+Error: Running AWS SAM projects locally requires Docker
+```
+**Resolution:** Start Docker daemon before running the publish script.
+
+**AWS Credentials Not Found:**
+```
+Error: Unable to locate credentials
+```
+**Resolution:** Configure AWS credentials using `aws configure` or set environment variables.
+
+### Verbose Mode Usage
+
+For detailed debugging information, always use the `--verbose` flag when troubleshooting build issues:
+
+```bash
+# Standard usage
+python3 publish.py my-bucket idp us-east-1
+
+# Verbose mode for troubleshooting
+python3 publish.py my-bucket idp us-east-1 --verbose
+```
+
+Verbose mode provides:
+- Exact SAM build commands being executed
+- Complete stdout/stderr from failed operations
+- Python environment and dependency information
+- Detailed error traces and stack traces
