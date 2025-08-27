@@ -127,7 +127,7 @@ def create_external_mcp_agent(
             # Create dynamic description based on available tools
             if tool_names:
                 tool_list = ", ".join(tool_names)
-                dynamic_description = f"Agent which has access to an external MCP server. The tools available from this external server at the time this agent was created are: {tool_list}."
+                dynamic_description = f"Agent which has access to an external MCP server. The tools available are: {tool_list}."
             else:
                 dynamic_description = "Agent which has access to an external MCP server, but no tools were discovered at creation time."
 
