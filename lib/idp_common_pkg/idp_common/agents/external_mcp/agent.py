@@ -22,16 +22,18 @@ logger = logging.getLogger(__name__)
 
 
 def create_external_mcp_agent(
-    config: Dict[str, Any],
-    session: boto3.Session,
+    config: Dict[str, Any] = None,
+    session: boto3.Session = None,
+    model_id: str = None,
     **kwargs,
 ) -> Agent:
     """
     Create External MCP Agent that connects to external MCP servers.
 
     Args:
-        config: Configuration dictionary containing secret name and region
-        session: Boto3 session for AWS operations
+        config: Configuration dictionary (ignored - MCP agent uses its own config)
+        session: Boto3 session for AWS operations. If None, creates default session
+        model_id: Model ID to use. If None, reads from DOCUMENT_ANALYSIS_AGENT_MODEL_ID environment variable
         **kwargs: Additional arguments (job_id, user_id, etc.)
 
     Returns:
@@ -40,8 +42,16 @@ def create_external_mcp_agent(
     Raises:
         Exception: If secret retrieval, authentication, or MCP connection fails
     """
-    secret_name = config["secret_name"]
-    region = config.get("region", session.region_name or "us-east-1")
+    # Always use MCP-specific config, ignore any passed config
+    from .config import get_external_mcp_config
+    mcp_config = get_external_mcp_config()
+
+    # Get session if not provided
+    if session is None:
+        session = boto3.Session()
+
+    secret_name = mcp_config["secret_name"]
+    region = mcp_config.get("region", session.region_name or "us-east-1")
 
     logger.info(f"Creating External MCP Agent with secret: {secret_name}")
 
@@ -122,14 +132,15 @@ def create_external_mcp_agent(
 
             logger.info(f"Discovered {len(tools)} MCP tools: {tool_names}")
 
-            # Get model ID from environment variable
-            model_id = os.environ.get("DOCUMENT_ANALYSIS_AGENT_MODEL_ID")
-            if not model_id:
-                error_msg = (
-                    "DOCUMENT_ANALYSIS_AGENT_MODEL_ID environment variable not set"
-                )
-                logger.error(error_msg)
-                raise Exception(error_msg)
+            # Get model ID from parameter or environment variable
+            if model_id is None:
+                model_id = os.environ.get("DOCUMENT_ANALYSIS_AGENT_MODEL_ID")
+                if not model_id:
+                    error_msg = (
+                        "DOCUMENT_ANALYSIS_AGENT_MODEL_ID environment variable not set"
+                    )
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
 
             # Create Bedrock model
             bedrock_model = BedrockModel(model_id=model_id, boto_session=session)

@@ -3542,6 +3542,11 @@ Resources:
                 - bedrock-agentcore:ListCodeInterpreterSessions
               Resource: 
                 - !Sub "arn:aws:bedrock-agentcore:*:aws:code-interpreter/*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:idp/external-mcp-agent/credentials-*"
 
   AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
@@ -3572,6 +3577,14 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:idp/external-mcp-agent/credentials-*"
       LoggingConfig:
         LogGroup: !Ref ListAvailableAgentsLogGroup
 
