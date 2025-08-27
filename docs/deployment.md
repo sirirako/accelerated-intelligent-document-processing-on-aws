@@ -119,8 +119,7 @@ aws cloudformation update-stack \
   --template-url <template URL output by publish script, e.g. https://s3.us-east-1.amazonaws.com/blahblah.yaml> \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --region <region> \
-  --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>" ParameterKey=IDPPattern,ParameterValue="<pattern-name>" \
-  --wait # optional to force synchronous update, else it runs async
+  --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>" ParameterKey=IDPPattern,ParameterValue="<pattern-name>" 
 ```
 
 
