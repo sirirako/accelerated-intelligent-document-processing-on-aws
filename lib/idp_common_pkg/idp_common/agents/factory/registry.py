@@ -17,9 +17,13 @@ Example:
     agent = agent_factory.create_agent("analytics-20250813-v0-kaleko", config=config)
 """
 
+import logging
+
 from ..analytics.agent import create_analytics_agent
 from ..dummy.agent import create_dummy_agent
 from .agent_factory import IDPAgentFactory
+
+logger = logging.getLogger(__name__)
 
 # Create global factory instance
 agent_factory = IDPAgentFactory()
@@ -56,3 +60,59 @@ agent_factory.register_agent(
         "Help me solve 15% of 200",
     ],
 )
+
+# Conditionally register External MCP Agent if credentials are available
+try:
+    import boto3
+
+    from ..external_mcp.agent import create_external_mcp_agent
+    from ..external_mcp.config import get_external_mcp_config
+
+    # Test if External MCP Agent can be created
+    test_session = boto3.Session()
+    test_config = get_external_mcp_config()
+
+    # Try to create a test agent to validate configuration and get dynamic description
+    test_result = create_external_mcp_agent(config=test_config, session=test_session)
+    test_strands_agent, test_mcp_client = test_result
+
+    # Extract the dynamic description from the test agent's system prompt
+    dynamic_description = "Agent which connects to external MCP servers to provide additional tools and capabilities"
+    if (
+        hasattr(test_strands_agent, "system_prompt")
+        and test_strands_agent.system_prompt
+    ):
+        # Extract the description from the system prompt
+        prompt_lines = test_strands_agent.system_prompt.strip().split("\n")
+        for line in prompt_lines:
+            if "tools available from this external server" in line:
+                dynamic_description = line.strip()
+                break
+
+    # Clean up the test MCP client
+    if test_mcp_client:
+        try:
+            with test_mcp_client:
+                pass  # Just enter and exit to clean up
+        except Exception:
+            pass  # Ignore cleanup errors
+
+    # If successful, register the agent with dynamic description
+    agent_factory.register_agent(
+        agent_id="external-mcp-agent-0",
+        agent_name="External MCP Agent",
+        agent_description=dynamic_description,
+        creator_func=create_external_mcp_agent,
+        sample_queries=[
+            "What tools are available from the external MCP server?",
+            "Help me use the external tools to solve my problem",
+            "Show me what capabilities the MCP server provides",
+        ],
+    )
+    logger.info("External MCP Agent registered successfully")
+
+except Exception as e:
+    logger.warning(
+        f"External MCP Agent not registered - credentials not available or invalid: {str(e)}"
+    )
+    # Don't register the agent if it can't be created

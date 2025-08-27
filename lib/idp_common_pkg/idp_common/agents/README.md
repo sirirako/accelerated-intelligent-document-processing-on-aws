@@ -7,8 +7,8 @@ This module provides agent-based functionality using the Strands framework for t
 The agents module is designed to support multiple types of intelligent agents while maintaining consistency and reusability across the IDP accelerator. Currently implemented:
 
 - **Analytics Agent**: Natural language to SQL/visualization conversion with secure code execution
-- **Dummy Agent**: Simple development agent with calculator tool for testing and development
-- **Orchestrator Agent**: Routes queries to appropriate specialized agents based on query content
+- **External MCP Agent**: Connects to external MCP servers to provide additional tools and capabilities
+- **Dummy Agent**: Simple development agent with calculator tool for testing
 - **Common Utilities**: Shared configuration, monitoring, and utilities for all agent types
 
 ## Architecture
@@ -20,14 +20,9 @@ idp_common/agents/
 ├── common/                      # Shared utilities for all agent types
 │   ├── __init__.py
 │   ├── config.py               # Common configuration patterns
-│   ├── idp_agent.py            # IDPAgent base class with metadata
 │   ├── monitoring.py           # Agent execution monitoring and hooks
 │   ├── dynamodb_logger.py      # DynamoDB integration for message persistence
 │   └── response_utils.py       # Response parsing utilities
-├── factory/                     # Agent factory for creating and managing agents
-│   ├── __init__.py
-│   ├── agent_factory.py        # IDPAgentFactory class
-│   └── registry.py             # Global factory instance with registered agents
 ├── analytics/                   # Analytics agent implementation
 │   ├── __init__.py
 │   ├── agent.py                # Analytics agent factory
@@ -40,12 +35,17 @@ idp_common/agents/
 │   │   └── code_interpreter_tools.py # Secure Python code execution
 │   └── assets/                 # Static assets (prompts, schemas)
 │       └── db_description.md   # Database schema documentation
-├── dummy/                      # Dummy agent for development
+├── external_mcp/               # External MCP agent implementation
 │   ├── __init__.py
-│   └── agent.py                # Simple agent with calculator tool
-├── orchestrator/                # Orchestrator agent for routing queries
+│   ├── agent.py                # External MCP agent factory
+│   └── config.py               # MCP-specific configuration
+├── dummy/                      # Dummy agent for development/testing
 │   ├── __init__.py
-│   └── agent.py                # Multi-agent orchestration and routing
+│   └── agent.py                # Simple calculator agent
+├── factory/                    # Agent factory and registry
+│   ├── __init__.py
+│   ├── agent_factory.py        # Core factory implementation
+│   └── registry.py             # Global agent registration
 └── testing/                    # Testing utilities and examples
     ├── __init__.py
     ├── README.md               # Comprehensive testing guide
@@ -63,45 +63,21 @@ All agents use the Strands framework directly without unnecessary abstraction la
 - Built-in agent management and conversation handling
 - Consistent patterns across all agent types
 
-### 2. Agent Factory Pattern
-Agents are managed through a centralized factory that provides:
-- **Agent Registry**: Central registration of all available agent types
-- **Metadata Management**: Each agent includes name, description, and unique ID
-- **Consistent Creation**: Standardized interface for creating any agent type
-- **Orchestrator Support**: Automatic creation of orchestrator agents that route queries to multiple specialized agents
-- **Extensibility**: Easy addition of new agent types without modifying existing code
+### 2. Simple Factory Pattern
+Each agent type follows a simple pattern:
+- `agent.py` - Factory function to create configured Strands agents
+- `config.py` - Simple configuration management
+- `tools/` - Strands tools specific to that agent type
+- `assets/` - Static assets like prompts, schemas, etc.
 
-### 3. IDPAgent Base Class
-All agents extend the IDPAgent class which provides:
-- **Metadata**: Each agent has a name, description, unique identifier, and sample queries
-- **Strands Compatibility**: Full compatibility with Strands Agent functionality
-- **Factory Integration**: Seamless integration with the agent factory pattern
-- **Automatic Monitoring**: Built-in DynamoDB message tracking when job_id and user_id are provided
-
-#### Agent Metadata for Router Agents
-Agent descriptions and sample queries are critical for router agents that route queries to appropriate sub-agents:
-- **Detailed Descriptions**: Used in router agent prompts to determine which agent to select
-- **Sample Queries**: Help router agents understand the types of queries each agent handles
-- **UI Integration**: Sample queries are displayed in the frontend to guide users
-
-#### Automatic Monitoring System
-The IDPAgent base class automatically sets up monitoring when both `job_id` and `user_id` parameters are provided during agent creation. This monitoring system:
-
-- **Real-time UI Updates**: Logs agent conversations to DynamoDB for live progress tracking
-- **Message Persistence**: Stores all agent interactions for debugging and audit purposes
-- **Consistent Observability**: Provides the same monitoring across all agent types
-- **Production Robustness**: Gracefully handles monitoring failures without breaking agent functionality
-
-The monitoring is enabled automatically in Lambda environments where job tracking is needed, but can be disabled for testing or development scenarios.
-
-### 4. Security-First Design
+### 3. Security-First Design
 Agents are designed with security as a primary concern:
 - **Sandboxed Code Execution**: Uses AWS Bedrock AgentCore for secure Python execution
 - **Data Isolation**: Query results are transferred securely between services
 - **Minimal Permissions**: Each agent requests only necessary AWS permissions
 - **Audit Trail**: Comprehensive logging and monitoring for security reviews
 
-### 5. IDP Integration
+### 4. IDP Integration
 Agents are designed to integrate seamlessly with the IDP accelerator:
 - Environment variable configuration for Lambda deployment
 - AWS service integration (Athena, S3, AgentCore, etc.)
@@ -131,38 +107,6 @@ This architecture ensures that arbitrary Python code (used for generating plots 
 
 ## Usage
 
-### Agent Factory
-
-The recommended way to create agents is through the factory pattern:
-
-```python
-from idp_common.agents.factory import agent_factory
-
-# List all available agents
-available_agents = agent_factory.list_available_agents()
-# Returns: [
-#   {"agent_id": "analytics-20250813-v0-kaleko", "agent_name": "Analytics Agent", "agent_description": "..."},
-#   {"agent_id": "dummy-dev-v1", "agent_name": "Dummy Agent", "agent_description": "..."}
-# ]
-
-# Create an agent by ID
-agent = agent_factory.create_agent(
-    agent_id="analytics-20250813-v0-kaleko",
-    config=config,
-    session=boto3.Session(),
-    job_id="analytics-job-123",  # Enables automatic monitoring
-    user_id="user-456"           # Required for monitoring
-)
-
-# The agent is an IDPAgent with metadata
-print(agent.agent_name)        # "Analytics Agent"
-print(agent.agent_description) # "Converts natural language questions..."
-print(agent.agent_id)          # "analytics-20250813-v0-kaleko"
-
-# Use the agent (same as any Strands agent)
-response = agent("How many documents were processed last week?")
-```
-
 ### Analytics Agent
 
 The analytics agent provides natural language to SQL/visualization conversion with four main tools:
@@ -190,55 +134,50 @@ agent = create_analytics_agent(
 response = agent("How many documents were processed last week?")
 ```
 
-### Dummy Agent
+### External MCP Agent
 
-The dummy agent provides a simple development and testing environment with basic calculator functionality:
+The External MCP Agent connects to external MCP (Model Context Protocol) servers to provide additional tools and capabilities. This agent enables integration with third-party services and custom tools hosted outside the IDP system.
 
-```python
-from idp_common.agents.dummy import create_dummy_agent
+**Key Features:**
+- **Cross-Account Support**: MCP servers can be hosted in separate AWS accounts
+- **OAuth Authentication**: Uses AWS Cognito for secure authentication
+- **Dynamic Tool Discovery**: Automatically discovers and integrates available MCP tools
+- **Context Management**: Maintains MCP client connections throughout agent lifecycle
 
-# Create the dummy agent
-agent = create_dummy_agent(
-    config={}, 
-    session=boto3.Session()
-)
+**Configuration:**
+The agent requires credentials stored in AWS Secrets Manager at `idp/external-mcp-agent/credentials`:
 
-# Use the agent for simple calculations
-response = agent("What is 15 * 23 + 7?")
+```json
+{
+  "mcp_url": "https://your-mcp-server.com/mcp",
+  "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
+  "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx", 
+  "cognito_username": "mcp-user",
+  "cognito_password": "secure-password"
+}
 ```
 
-The dummy agent is useful for:
-- Testing the agent framework without complex dependencies
-- Development and debugging of agent infrastructure
-- Simple mathematical calculations during development
-
-### Orchestrator Agent
-
-The orchestrator agent routes queries to appropriate specialized agents based on query content and agent capabilities:
-
+**Usage:**
 ```python
 from idp_common.agents.factory import agent_factory
+from idp_common.agents.external_mcp.config import get_external_mcp_config
 
-# Create an orchestrator with multiple agents
-orchestrator = agent_factory.create_orchestrator_agent(
-    agent_ids=["analytics-20250813-v0-kaleko", "dummy-dev-v1"],
+# Create MCP agent (only available if credentials are configured)
+config = get_external_mcp_config()
+with agent_factory.create_agent(
+    agent_id="external-mcp-agent-0",
     config=config,
-    session=boto3.Session(),
-    job_id="orchestrator-job-123",
-    user_id="user-456"
-)
-
-# The orchestrator automatically routes queries to the best agent
-response = orchestrator("Show me a chart of document processing volume")  # Routes to analytics
-response = orchestrator("Calculate 25 * 4")  # Routes to dummy agent
+    session=session
+) as agent:
+    response = agent("Use your external tools to help me")
 ```
 
-The orchestrator agent:
-- **Intelligent Routing**: Analyzes queries and selects the most appropriate specialized agent
-- **Automatic Tool Creation**: Converts each registered agent into a tool for the orchestrator
-- **Metadata-Driven**: Uses agent descriptions and sample queries to make routing decisions
-- **Monitoring Integration**: All sub-agent conversations are automatically tracked when monitoring is enabled
-```
+**Security:**
+- Uses streamable HTTP transport with OAuth bearer tokens
+- Credentials managed through AWS Secrets Manager
+- MCP client context properly managed to prevent connection leaks
+
+For detailed setup instructions, see [Custom MCP Agent Documentation](../../docs/custom-MCP-agent.md).
 
 ### Response Parsing
 
@@ -268,42 +207,7 @@ config = get_environment_config(["REQUIRED_VAR1", "REQUIRED_VAR2"])
 
 ## Monitoring and Observability
 
-The agents module includes comprehensive monitoring capabilities built into the IDPAgent base class:
-
-### Automatic Monitoring
-
-All agents automatically include DynamoDB message tracking when created with `job_id` and `user_id` parameters:
-
-```python
-from idp_common.agents.factory import agent_factory
-
-# Agent with automatic monitoring (typical Lambda usage)
-agent = agent_factory.create_agent(
-    agent_id="analytics-20250813-v0-kaleko",
-    config=config,
-    session=boto3.Session(),
-    job_id="analytics-job-123",  # Enables monitoring
-    user_id="user-456"           # Required for monitoring
-)
-
-# Agent without monitoring (testing/development)
-agent = agent_factory.create_agent(
-    agent_id="dummy-dev-v1",
-    config=config,
-    session=boto3.Session()
-    # No job_id/user_id = no monitoring
-)
-```
-
-The automatic monitoring system provides:
-- **Real-time UI Updates**: Agent conversations are logged to DynamoDB for live progress tracking
-- **Message Persistence**: All agent interactions stored for debugging and audit purposes
-- **Consistent Observability**: Same monitoring patterns across all agent types
-- **Production Robustness**: Graceful handling of monitoring failures
-
-### Manual Monitoring (Legacy)
-
-For advanced use cases, you can still manually configure monitoring:
+The agents module includes comprehensive monitoring capabilities:
 
 ### Agent Monitoring
 
@@ -336,248 +240,7 @@ agent.hooks.add_hook(message_tracker)
 
 ## Adding New Agent Types
 
-To add a new agent type to the factory system:
-
-### Step 1: Create the Agent Implementation
-
-Create your agent directory structure:
-```
-idp_common/agents/your_agent/
-├── __init__.py             # Export your agent creator function
-└── agent.py                # Agent creation function
-```
-
-For simple agents, you may not need additional directories like `tools/`, `config.py`, or `assets/`.
-
-### Step 2: Implement the Agent Creator Function
-
-In `agent.py`, create a function that returns a Strands Agent:
-
-```python
-import strands
-from .tools import your_tool1, your_tool2
-
-def create_your_agent(config, session, **kwargs) -> strands.Agent:
-    """
-    Create and configure your agent.
-    
-    Args:
-        config: Configuration dictionary
-        session: Boto3 session
-        **kwargs: Additional arguments
-        
-    Returns:
-        strands.Agent: Configured Strands agent instance
-    """
-    # Create tools
-    tools = [your_tool1, your_tool2]
-    
-    # Define system prompt
-    system_prompt = "Your agent system prompt here..."
-    
-    # Create and return Strands agent
-    return strands.Agent(tools=tools, system_prompt=system_prompt, model=your_model)
-    return IDPAgent(
-        agent_name="Your Agent Name",
-        agent_description="Description of what your agent does",  # Be detailed - used by router agents
-        agent_id="your-agent-YYYYMMDD-v0-yourname",  # Use this naming convention
-        sample_queries=[  # Provide 2-3 example queries - used by router agents and UI
-            "Example query 1 that demonstrates your agent's capabilities",
-            "Example query 2 showing different functionality",
-            "Example query 3 for another use case"
-        ],
-        agent=strands_agent,
-        job_id=job_id,      # Enables automatic monitoring when provided
-        user_id=user_id     # Required for monitoring
-    )
-```
-
-**Note**: The factory will automatically wrap your Strands agent in an IDPAgent with the metadata you provide during registration.
-```
-
-#### Example: Dummy Agent Implementation
-
-Here's the complete implementation of the dummy agent as a concrete example:
-
-**`idp_common/agents/dummy/__init__.py`:**
-```python
-from .agent import create_dummy_agent
-
-__all__ = ["create_dummy_agent"]
-```
-
-**`idp_common/agents/dummy/agent.py`:**
-```python
-import logging
-import os
-from typing import Any, Dict
-
-import boto3
-from strands import Agent
-from strands.models import BedrockModel
-from strands_tools import calculator
-
-from ..common.idp_agent import IDPAgent
-
-def create_dummy_agent(
-    config: Dict[str, Any],
-    session: boto3.Session,
-    job_id: str = None,
-    user_id: str = None,
-    **kwargs,
-) -> IDPAgent:
-    # Get model ID from environment variable
-    model_id = os.environ.get("DUMMY_AGENT_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")
-
-    # Create Bedrock model
-    model = BedrockModel(model_id=model_id, session=session)
-
-    # Create agent with calculator tool
-    agent = Agent(model=model, tools=[calculator])
-
-    # Wrap in IDPAgent with automatic monitoring
-    return IDPAgent(
-        agent=agent,
-        agent_id="dummy-dev-v1",
-        agent_name="Dummy Agent",
-        agent_description="Simple development agent with calculator tool",
-        sample_queries=[
-            "Calculate 25 * 4 + 10",
-            "What is the square root of 144?",
-            "Help me solve 15% of 200"
-        ],
-        job_id=job_id,      # Enables automatic monitoring when provided
-        user_id=user_id,    # Required for monitoring
-    )
-```
-
-### Step 3: Register the Agent
-
-Add your agent to the factory registry in `factory/registry.py`:
-
-```python
-# Import your agent creator
-from ..your_agent.agent import create_your_agent
-
-# Register with the factory
-agent_factory.register_agent(
-    agent_id="your-agent-YYYYMMDD-v0-yourname",
-    agent_name="Your Agent Name",
-    agent_description="Description of what your agent does",
-    creator_func=create_your_agent
-)
-```
-
-#### Example: Dummy Agent Registration
-
-**`factory/registry.py`:**
-```python
-from ..analytics.agent import create_analytics_agent
-from ..dummy.agent import create_dummy_agent
-from .agent_factory import IDPAgentFactory
-
-# Create global factory instance
-agent_factory = IDPAgentFactory()
-
-# Register analytics agent
-agent_factory.register_agent(
-    agent_id="analytics-20250813-v0-kaleko",
-    agent_name="Analytics Agent",
-    agent_description="Converts natural language questions into SQL queries and generates visualizations from document data",
-    sample_queries=[
-        "Show me a chart of document processing volume by month",
-        "What are the most common document types processed?",
-        "Create a visualization showing extraction accuracy trends over time"
-    ],
-    creator_func=create_analytics_agent,
-)
-
-# Register dummy agent
-agent_factory.register_agent(
-    agent_id="dummy-dev-v1",
-    agent_name="Dummy Agent",
-    agent_description="Simple development agent with calculator tool",
-    sample_queries=[
-        "Calculate 25 * 4 + 10",
-        "What is the square root of 144?",
-        "Help me solve 15% of 200"
-    ],
-    creator_func=create_dummy_agent,
-)
-```
-
-### Step 4: Update Module Exports
-
-Update `__init__.py` files to include your new agent:
-
-```python
-# In idp_common/agents/__init__.py
-def __getattr__(name):
-    if name in ["analytics", "common", "testing", "factory", "your_agent"]:
-        # ... existing code
-
-# In idp_common/agents/your_agent/__init__.py
-from .agent import create_your_agent
-from .config import get_your_agent_config
-
-__all__ = ["create_your_agent", "get_your_agent_config"]
-```
-
-### Step 5: Test Your Agent
-
-Create tests and verify your agent works:
-
-```python
-from idp_common.agents.factory import agent_factory
-
-# Test that your agent is registered
-agents = agent_factory.list_available_agents()
-assert any(a["agent_id"] == "your-agent-YYYYMMDD-v0-yourname" for a in agents)
-
-# Test agent creation
-agent = agent_factory.create_agent("your-agent-YYYYMMDD-v0-yourname", config=config)
-assert agent.agent_name == "Your Agent Name"
-
-# Test agent functionality
-response = agent("Test query")
-```
-
-#### Example: Testing the Dummy Agent
-
-```python
-from idp_common.agents.factory import agent_factory
-import boto3
-
-# Test that dummy agent is registered
-agents = agent_factory.list_available_agents()
-assert any(a["agent_id"] == "dummy-dev-v1" for a in agents)
-
-# Test agent creation
-config = {'aws_region': 'us-east-1'}
-session = boto3.Session()
-agent = agent_factory.create_agent("dummy-dev-v1", config=config, session=session)
-assert agent.agent_name == "Dummy Agent"
-
-# Test agent functionality
-response = agent("What is 15 * 23 + 7?")
-```
-
-### Agent ID Naming Convention
-
-Use this naming pattern for agent IDs:
-- `{agent-type}-{YYYYMMDD}-v{version}-{creator}`
-- Example: `analytics-20250813-v0-kaleko`
-- Example: `document-analysis-20250815-v1-smith`
-
-This ensures:
-- **Uniqueness**: No ID conflicts between different agents
-- **Versioning**: Clear version tracking for agent updates
-- **Attribution**: Clear ownership/creator identification
-- **Chronology**: Easy to see when agents were created
-
-### Legacy Direct Creation Pattern (Deprecated)
-
-The old pattern of creating agents directly is still supported but deprecated:
+To add a new agent type (e.g., `document_analysis`):
 
 1. **Create the directory structure**:
    ```
@@ -601,7 +264,29 @@ The old pattern of creating agents directly is still supported but deprecated:
        return Agent(tools=tools, system_prompt=system_prompt)
    ```
 
-**Note**: New agents should use the factory pattern described above for consistency and better metadata management.
+3. **Add configuration management** (`config.py`):
+   ```python
+   from ..common.config import get_environment_config
+   
+   def get_document_analysis_config():
+       return get_environment_config(["REQUIRED_ENV_VAR"])
+   ```
+
+4. **Create Strands tools** (`tools/`):
+   ```python
+   from strands import tool
+   
+   @tool
+   def your_tool(input_param: str) -> dict:
+       # Tool implementation
+       return {"result": "processed"}
+   ```
+
+5. **Update the main module** (`__init__.py`):
+   ```python
+   # Add to the lazy loading list
+   if name in ["analytics", "common", "document_analysis"]:
+   ```
 
 ## Testing
 
@@ -667,61 +352,28 @@ pip install "idp_common[all]"
 
 ## Integration with Lambda Functions
 
-Agents are designed to work seamlessly in AWS Lambda with automatic monitoring:
+Agents are designed to work seamlessly in AWS Lambda:
 
 ```python
 # In your Lambda function
-from idp_common.agents.factory import agent_factory
-from idp_common.agents.analytics import get_analytics_config
+from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
 
 def handler(event, context):
     # Change to /tmp for AgentCore compatibility
     os.chdir('/tmp')
     
-    # Get configuration
     config = get_analytics_config()  # Loads from environment variables
-    
-    # Create agent using factory with automatic monitoring
-    agent = agent_factory.create_agent(
-        agent_id="analytics-20250813-v0-kaleko",  # Or get from event
-        config=config,
-        session=boto3.Session(),
-        job_id=event.get("jobId"),    # Enables DynamoDB monitoring
-        user_id=event.get("userId")   # Required for monitoring
-    )
-    
-    query = event.get("query")
-    response = agent(query)  # Agent conversations automatically logged to DynamoDB
-    
-    return {"response": response}
-```
-
-### Monitoring in Lambda
-
-When `job_id` and `user_id` are provided, the agent automatically:
-- Logs all conversations to DynamoDB (AGENT_TABLE environment variable)
-- Enables real-time UI progress updates
-- Provides message history for debugging
-- Maintains audit trails for compliance
-
-The monitoring system is designed to be robust - if DynamoDB logging fails, the agent continues to function normally.
-
-### Legacy Direct Creation (Still Supported)
-
-```python
-# Direct creation (deprecated but still works)
-from idp_common.agents.analytics import create_analytics_agent, get_analytics_config
-
-def handler(event, context):
-    os.chdir('/tmp')
-    config = get_analytics_config()
     agent = create_analytics_agent(
         config, 
         session=boto3.Session(),
         job_id=event.get("jobId"),
         user_id=event.get("userId")
     )
-    # ... rest of handler
+    
+    query = event.get("query")
+    response = agent(query)
+    
+    return {"response": response}
 ```
 
 ### Lambda Environment Considerations
@@ -752,9 +404,8 @@ When adding new agents or modifying existing ones:
 4. Update this README with new agent types
 5. Ensure Lambda compatibility
 6. Follow existing logging and error handling patterns
-7. **Provide detailed descriptions and sample queries** - these are used by router agents for query routing
-8. **Security Review**: Ensure any code execution is properly sandboxed
-9. **Permission Audit**: Document required AWS permissions
+7. **Security Review**: Ensure any code execution is properly sandboxed
+8. **Permission Audit**: Document required AWS permissions
 
 ## Support
 

@@ -16,7 +16,7 @@ _submodules = {}
 
 def __getattr__(name):
     """Lazy load submodules only when accessed"""
-    if name in ["analytics", "common", "testing", "factory", "orchestrator"]:
+    if name in ["analytics", "common", "testing", "factory", "orchestrator", "external_mcp"]:
         if name not in _submodules:
             _submodules[name] = __import__(f"idp_common.agents.{name}", fromlist=["*"])
         return _submodules[name]
@@ -29,5 +29,6 @@ __all__ = [
     "common",
     "testing",
     "factory",
-    "orchestrator",
+    "orchestrator", 
+    "external_mcp",
 ]

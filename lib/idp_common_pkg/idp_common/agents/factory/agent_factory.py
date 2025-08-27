@@ -82,7 +82,16 @@ class IDPAgentFactory:
         creator_func = info["creator_func"]
 
         # Call creator function which now returns a Strands agent
-        strands_agent = creator_func(**kwargs)
+        result = creator_func(**kwargs)
+
+        # Handle different return formats from creator functions
+        if isinstance(result, tuple):
+            # External MCP agent returns (strands_agent, mcp_client)
+            strands_agent, mcp_client = result
+        else:
+            # Other agents return just the strands_agent
+            strands_agent = result
+            mcp_client = None
 
         # Wrap it in IDPAgent with the registered metadata
         return IDPAgent(
@@ -93,6 +102,7 @@ class IDPAgentFactory:
             sample_queries=info["sample_queries"],
             job_id=kwargs.get("job_id"),
             user_id=kwargs.get("user_id"),
+            mcp_client=mcp_client,
         )
 
     def create_orchestrator_agent(self, agent_ids: List[str], **kwargs) -> IDPAgent:

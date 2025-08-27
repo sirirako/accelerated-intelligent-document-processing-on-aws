@@ -127,9 +127,10 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             )
             logger.info("Orchestrator agent created successfully")
         
-        # Process the query
+        # Process the query using context manager for MCP agents
         logger.info(f"Processing query: {query}")
-        response = agent(query)
+        with agent:
+            response = agent(query)
         logger.info("Query processed successfully")
         
         # Parse the response using the new parsing function

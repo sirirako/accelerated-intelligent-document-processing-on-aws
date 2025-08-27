@@ -123,6 +123,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Deployment](./docs/deployment.md) - Build, publish, deploy, and test instructions
 - [Web UI](./docs/web-ui.md) - Web interface features and usage
 - [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
+- [Custom MCP Agent](./docs/custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
 - [Configuration](./docs/configuration.md) - Configuration and customization options
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction

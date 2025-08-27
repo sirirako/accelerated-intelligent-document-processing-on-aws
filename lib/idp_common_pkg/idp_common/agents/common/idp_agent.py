@@ -19,7 +19,7 @@ The monitoring system automatically logs agent conversations to DynamoDB for:
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from strands import Agent
 
@@ -34,6 +34,7 @@ class IDPAgent(Agent):
     - Agent metadata (name, description, unique ID) for factory management
     - Automatic DynamoDB monitoring when job_id and user_id are provided
     - Consistent observability patterns across all IDP agents
+    - Optional MCP client context management for agents using external MCP servers
 
     The monitoring system enables:
     - Real-time agent conversation tracking in the UI
@@ -71,6 +72,7 @@ class IDPAgent(Agent):
         job_id: Optional[str] = None,
         user_id: Optional[str] = None,
         enable_monitoring: Optional[bool] = None,
+        mcp_client: Optional[Any] = None,
     ):
         """
         Initialize IDPAgent with metadata and automatic monitoring setup.
@@ -113,6 +115,7 @@ class IDPAgent(Agent):
         self.agent_description = agent_description
         self.agent_id = agent_id
         self.sample_queries = sample_queries or []
+        self.mcp_client = mcp_client
 
         # Set up automatic monitoring if job_id and user_id are provided
         self._setup_monitoring(job_id, user_id, enable_monitoring)
@@ -177,3 +180,18 @@ class IDPAgent(Agent):
             logger.error(f"Failed to set up agent monitoring: {e}")
             # Don't fail agent creation if monitoring setup fails - this ensures
             # production robustness even if monitoring infrastructure has issues
+
+    def __enter__(self):
+        """Context manager entry - manages MCP client lifecycle if present."""
+        if self.mcp_client:
+            self.mcp_client.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - properly closes MCP client if present."""
+        if self.mcp_client:
+            try:
+                self.mcp_client.__exit__(exc_type, exc_val, exc_tb)
+            except Exception as e:
+                logger.warning(f"Error closing MCP client: {e}")
+                # Don't propagate MCP cleanup errors
