@@ -20,7 +20,7 @@ Example:
 import logging
 
 from ..analytics.agent import create_analytics_agent
-from ..dummy.agent import create_dummy_agent
+# from ..dummy.agent import create_dummy_agent  # Commented out - kept as reference for developers
 from .agent_factory import IDPAgentFactory
 
 logger = logging.getLogger(__name__)
@@ -48,18 +48,19 @@ agent_factory.register_agent(
     ],
 )
 
-# Register dummy agent
-agent_factory.register_agent(
-    agent_id="dummy-dev-v1",
-    agent_name="Dummy Agent",
-    agent_description="Simple development agent with calculator tool",
-    creator_func=create_dummy_agent,
-    sample_queries=[
-        "Calculate 25 * 4 + 10",
-        "What is the square root of 144?",
-        "Help me solve 15% of 200",
-    ],
-)
+# Register dummy agent - COMMENTED OUT for production use
+# Kept as reference pattern for developers
+# agent_factory.register_agent(
+#     agent_id="dummy-dev-v1",
+#     agent_name="Dummy Agent",
+#     agent_description="Simple development agent with calculator tool",
+#     creator_func=create_dummy_agent,
+#     sample_queries=[
+#         "Calculate 25 * 4 + 10",
+#         "What is the square root of 144?",
+#         "Help me solve 15% of 200",
+#     ],
+# )
 
 # Conditionally register External MCP Agent if credentials are available
 try:
