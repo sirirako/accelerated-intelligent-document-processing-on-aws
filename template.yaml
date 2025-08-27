@@ -5747,7 +5747,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/chat_with_document_resolver
       Description: Lambda function to chat with the document via GraphQL API
       MemorySize: 512
