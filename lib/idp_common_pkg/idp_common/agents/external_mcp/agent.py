@@ -44,6 +44,7 @@ def create_external_mcp_agent(
     """
     # Always use MCP-specific config, ignore any passed config
     from .config import get_external_mcp_config
+
     mcp_config = get_external_mcp_config()
 
     # Get session if not provided
