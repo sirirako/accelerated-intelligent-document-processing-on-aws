@@ -70,7 +70,9 @@ def create_orchestrator_agent(
                         },
                     )
 
-                    response = specialized_agent(query)
+                    # Use context manager to properly handle MCP clients
+                    with specialized_agent:
+                        response = specialized_agent(query)
                     return str(response)
 
                 except Exception as e:
@@ -86,6 +88,8 @@ def create_orchestrator_agent(
             )
 
             new_func.__doc__ = f"Route query to agent {aid}"
+            # Store the original agent_id as a custom attribute
+            new_func._original_agent_id = aid
             return tool(new_func)
 
         # Create the tool function for this specific agent
@@ -95,8 +99,12 @@ def create_orchestrator_agent(
     # Build agent descriptions for system prompt
     agent_descriptions = []
     for tool_func in tools:
-        # Extract agent_id from tool function name
-        agent_id = tool_func.__name__.replace("_agent", "").replace("_", "-")
+        # Get the original agent_id from the function's custom attribute
+        agent_id = getattr(tool_func, "_original_agent_id", None)
+        if not agent_id:
+            raise ValueError(
+                f"Tool function {tool_func.__name__} missing _original_agent_id attribute"
+            )
 
         from ..factory import agent_factory
 
