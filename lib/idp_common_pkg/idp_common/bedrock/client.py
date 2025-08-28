@@ -39,9 +39,24 @@ DEFAULT_MAX_BACKOFF = 300    # 5 minutes
 CACHEPOINT_SUPPORTED_MODELS = [
     "us.anthropic.claude-3-5-haiku-20241022-v1:0",
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "anthropic.claude-4-sonnet-20250115-v1:0",
     "us.amazon.nova-lite-v1:0",
     "us.amazon.nova-pro-v1:0"
 ]
+
+
+def supports_unlimited_images(model_id: str) -> bool:
+    """Check if model supports unlimited images (Claude 4+)."""
+    return "claude-4" in model_id.lower()
+
+
+def get_max_context_tokens(model_id: str) -> int:
+    """Get maximum context tokens for model."""
+    if "claude-4" in model_id.lower():
+        return 1000000  # 1M tokens
+    elif "claude-3" in model_id.lower():
+        return 200000   # 200K tokens
+    return 200000  # Default
 
 class BedrockClient:
     """Client for interacting with Amazon Bedrock models."""
