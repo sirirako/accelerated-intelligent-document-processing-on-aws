@@ -3540,7 +3540,7 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: 
-                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/external-mcp-agents/credentials"
+                - !Ref ExternalMCPAgentsSecret
 
   AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
@@ -3579,7 +3579,12 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: 
-                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/external-mcp-agents/credentials"
+                - !Ref ExternalMCPAgentsSecret
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
       LoggingConfig:
         LogGroup: !Ref ListAvailableAgentsLogGroup
 
@@ -5839,4 +5844,4 @@ Outputs:
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
   ExternalMCPAgentsSecretName:
     Description: Name of the Secrets Manager secret for External MCP Agent credentials (JSON array format)
-    Value: !Ref ExternalMCPAgentsSecret
+    Value: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
