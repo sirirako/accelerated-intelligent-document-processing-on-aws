@@ -5,7 +5,6 @@
 External MCP Agent implementation using Strands framework.
 """
 
-import json
 import logging
 import os
 from typing import Any, Dict
@@ -25,6 +24,7 @@ def create_external_mcp_agent(
     config: Dict[str, Any] = None,
     session: boto3.Session = None,
     model_id: str = None,
+    mcp_server_config: Dict[str, Any] = None,
     **kwargs,
 ) -> Agent:
     """
@@ -34,41 +34,25 @@ def create_external_mcp_agent(
         config: Configuration dictionary (ignored - MCP agent uses its own config)
         session: Boto3 session for AWS operations. If None, creates default session
         model_id: Model ID to use. If None, reads from DOCUMENT_ANALYSIS_AGENT_MODEL_ID environment variable
+        mcp_server_config: Individual MCP server configuration dict (required)
         **kwargs: Additional arguments (job_id, user_id, etc.)
 
     Returns:
         Agent: Configured Strands agent instance with MCP tools
 
     Raises:
-        Exception: If secret retrieval, authentication, or MCP connection fails
+        Exception: If authentication or MCP connection fails
     """
-    # Always use MCP-specific config, ignore any passed config
-    from .config import get_external_mcp_config
-
-    mcp_config = get_external_mcp_config()
+    if mcp_server_config is None:
+        raise Exception("mcp_server_config is required")
 
     # Get session if not provided
     if session is None:
         session = boto3.Session()
 
-    secret_name = mcp_config["secret_name"]
-    region = mcp_config.get("region", session.region_name or "us-east-1")
+    logger.info("Creating External MCP Agent with provided server configuration")
 
-    logger.info(f"Creating External MCP Agent with secret: {secret_name}")
-
-    # Retrieve secret from Secrets Manager
-    try:
-        secrets_client = session.client("secretsmanager", region_name=region)
-        response = secrets_client.get_secret_value(SecretId=secret_name)
-        secret_value = response["SecretString"]
-        secret_data = json.loads(secret_value)
-        logger.info("Successfully retrieved MCP credentials from Secrets Manager")
-    except Exception as e:
-        error_msg = f"Failed to retrieve secret '{secret_name}': {str(e)}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
-
-    # Validate required secret fields
+    # Validate required fields
     required_fields = [
         "mcp_url",
         "cognito_user_pool_id",
@@ -76,19 +60,19 @@ def create_external_mcp_agent(
         "cognito_username",
         "cognito_password",
     ]
-    missing_fields = [field for field in required_fields if field not in secret_data]
+    missing_fields = [field for field in required_fields if field not in mcp_server_config]
     if missing_fields:
-        error_msg = f"Secret missing required fields: {missing_fields}"
+        error_msg = f"MCP server config missing required fields: {missing_fields}"
         logger.error(error_msg)
         raise Exception(error_msg)
 
     # Get bearer token from Cognito
     try:
         bearer_token = get_cognito_bearer_token(
-            user_pool_id=secret_data["cognito_user_pool_id"],
-            client_id=secret_data["cognito_client_id"],
-            username=secret_data["cognito_username"],
-            password=secret_data["cognito_password"],
+            user_pool_id=mcp_server_config["cognito_user_pool_id"],
+            client_id=mcp_server_config["cognito_client_id"],
+            username=mcp_server_config["cognito_username"],
+            password=mcp_server_config["cognito_password"],
             session=session,
         )
         logger.info("Successfully obtained bearer token for MCP authentication")
@@ -98,7 +82,7 @@ def create_external_mcp_agent(
         raise Exception(error_msg)
 
     # Create MCP client with authentication headers
-    mcp_url = secret_data["mcp_url"]
+    mcp_url = mcp_server_config["mcp_url"]
     headers = {
         "authorization": f"Bearer {bearer_token}",
         "Content-Type": "application/json",

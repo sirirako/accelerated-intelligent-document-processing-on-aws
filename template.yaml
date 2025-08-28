@@ -3383,6 +3383,15 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
+  # Secrets Manager secret for External MCP Agent credentials
+  ExternalMCPAgentsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
+      Description: "Credentials for External MCP Agents - JSON array of MCP server configurations"
+      SecretString: "[]"
+      KmsKeyId: !Ref CustomerManagedEncryptionKey
+
   # Lambda function for agent request handler
   AgentRequestHandlerFunction:
     Type: AWS::Serverless::Function
@@ -3467,6 +3476,7 @@ Resources:
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
           DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
+          AWS_STACK_NAME: !Ref AWS::StackName
       LoggingConfig:
         LogGroup: !Ref AgentProcessorLogGroup
       Policies:
@@ -3530,7 +3540,7 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: 
-                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:idp/external-mcp-agent/credentials-*"
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/external-mcp-agents/credentials"
 
   AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
@@ -3561,6 +3571,7 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
+          AWS_STACK_NAME: !Ref AWS::StackName
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -3568,7 +3579,7 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: 
-                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:idp/external-mcp-agent/credentials-*"
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/external-mcp-agents/credentials"
       LoggingConfig:
         LogGroup: !Ref ListAvailableAgentsLogGroup
 
@@ -5826,3 +5837,6 @@ Outputs:
       REACT_APP_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       REACT_APP_AWS_REGION=${AWS::Region}
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
+  ExternalMCPAgentsSecretName:
+    Description: Name of the Secrets Manager secret for External MCP Agent credentials (JSON array format)
+    Value: !Ref ExternalMCPAgentsSecret

@@ -16,7 +16,8 @@ def get_external_mcp_config() -> Dict[str, Any]:
     Returns:
         Configuration dictionary with secret name and region
     """
+    stack_name = os.environ.get("AWS_STACK_NAME", "IDP")
     return {
-        "secret_name": "idp/external-mcp-agent/credentials",
+        "secret_name": f"{stack_name}/external-mcp-agents/credentials",
         "region": os.environ.get("AWS_REGION", "us-east-1"),
     }

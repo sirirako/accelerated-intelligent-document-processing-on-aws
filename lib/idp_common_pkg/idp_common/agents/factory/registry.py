@@ -20,6 +20,7 @@ Example:
 import logging
 
 from ..analytics.agent import create_analytics_agent
+
 # from ..dummy.agent import create_dummy_agent  # Commented out - kept as reference for developers
 from .agent_factory import IDPAgentFactory
 
@@ -62,7 +63,7 @@ agent_factory.register_agent(
 #     ],
 # )
 
-# Conditionally register External MCP Agent if credentials are available
+# Conditionally register External MCP Agents if credentials are available
 try:
     import json
 
@@ -71,82 +72,94 @@ try:
     from ..external_mcp.agent import create_external_mcp_agent
     from ..external_mcp.config import get_external_mcp_config
 
-    # Test if External MCP Agent credentials are available (without creating the agent)
+    # Test if External MCP Agent credentials are available
     test_session = boto3.Session()
     test_config = get_external_mcp_config()
 
-    # Just test if we can access the secret - don't create the full agent
     secret_name = test_config["secret_name"]
     region = test_config.get("region", test_session.region_name or "us-east-1")
 
     secrets_client = test_session.client("secretsmanager", region_name=region)
     response = secrets_client.get_secret_value(SecretId=secret_name)
     secret_value = response["SecretString"]
-    credentials = json.loads(secret_value)
+    mcp_configs = json.loads(secret_value)
 
-    # Validate required fields exist
-    required_fields = [
-        "mcp_url",
-        "cognito_user_pool_id",
-        "cognito_client_id",
-        "cognito_username",
-        "cognito_password",
-    ]
-    for field in required_fields:
-        if field not in credentials:
-            raise ValueError(f"Missing required field '{field}' in MCP credentials")
+    # Validate it's an array
+    if not isinstance(mcp_configs, list):
+        raise ValueError("MCP credentials secret must contain a JSON array")
 
-    # Try to discover available tools for dynamic description by creating temporary agent
-    try:
-        # Create temporary agent with dummy model ID just for tool discovery
-        test_result = create_external_mcp_agent(
-            config=test_config,
-            session=test_session,
-            model_id="dummy-model-for-tool-discovery",
+    # Register one agent per MCP server configuration
+    for i, mcp_config in enumerate(mcp_configs, 1):
+        # Validate required fields exist
+        required_fields = [
+            "mcp_url",
+            "cognito_user_pool_id",
+            "cognito_client_id",
+            "cognito_username",
+            "cognito_password",
+        ]
+        for field in required_fields:
+            if field not in mcp_config:
+                logger.warning(f"Skipping MCP config {i}: missing required field '{field}'")
+                continue
+
+        # Create wrapper function for this specific MCP config
+        def create_mcp_agent_wrapper(mcp_server_config=mcp_config):
+            def wrapper(config=None, session=None, model_id=None, **kwargs):
+                return create_external_mcp_agent(
+                    config=config,
+                    session=session,
+                    model_id=model_id,
+                    mcp_server_config=mcp_server_config,
+                    **kwargs,
+                )
+            return wrapper
+
+        # Try to discover available tools for dynamic description
+        try:
+            test_result = create_external_mcp_agent(
+                session=test_session,
+                model_id="dummy-model-for-tool-discovery",
+                mcp_server_config=mcp_config,
+            )
+            test_strands_agent, test_mcp_client = test_result
+
+            # Extract available tools for dynamic description
+            dynamic_description = f"Agent {i} which connects to external MCP servers to provide additional tools and capabilities"
+            if hasattr(test_strands_agent, "tool_names") and test_strands_agent.tool_names:
+                tool_names = list(test_strands_agent.tool_names)
+                if tool_names:
+                    tools_list = ", ".join(tool_names)
+                    dynamic_description = f"Agent {i} with access to external MCP tools: {tools_list}. Use this agent to access external capabilities and services."
+
+            # Clean up the test MCP client
+            if test_mcp_client:
+                try:
+                    with test_mcp_client:
+                        pass  # Just enter and exit to clean up
+                except Exception:
+                    pass  # Ignore cleanup errors
+
+        except Exception as e:
+            logger.warning(f"Could not discover MCP tools for agent {i}: {e}")
+            dynamic_description = f"Agent {i} which connects to external MCP servers to provide additional tools and capabilities"
+
+        # Register the agent
+        agent_factory.register_agent(
+            agent_id=f"external-mcp-agent-{i}",
+            agent_name=f"External MCP Agent {i}",
+            agent_description=dynamic_description,
+            creator_func=create_mcp_agent_wrapper(),
+            sample_queries=[
+                "What tools are available from the external MCP server?",
+                "Help me use the external tools to solve my problem",
+                "Show me what capabilities the MCP server provides",
+            ],
         )
-        test_strands_agent, test_mcp_client = test_result
-
-        # Extract the dynamic description from the test agent's system prompt
-        dynamic_description = "Agent which connects to external MCP servers to provide additional tools and capabilities"
-        if (
-            hasattr(test_strands_agent, "system_prompt")
-            and test_strands_agent.system_prompt
-        ):
-            # Extract the description from the system prompt
-            prompt_lines = test_strands_agent.system_prompt.strip().split("\n")
-            for line in prompt_lines:
-                if "tools available from this external server" in line:
-                    dynamic_description = line.strip()
-                    break
-
-        # Clean up the test MCP client
-        if test_mcp_client:
-            try:
-                with test_mcp_client:
-                    pass  # Just enter and exit to clean up
-            except Exception:
-                pass  # Ignore cleanup errors
-
-    except Exception as e:
-        logger.warning(f"Could not discover MCP tools for description: {e}")
-        dynamic_description = "Agent which connects to external MCP servers to provide additional tools and capabilities"
-
-    # If successful, register the agent with static description
-    agent_factory.register_agent(
-        agent_id="external-mcp-agent-0",
-        agent_name="External MCP Agent",
-        agent_description=dynamic_description,
-        creator_func=create_external_mcp_agent,
-        sample_queries=[
-            "What tools are available from the external MCP server?",
-            "Help me use the external tools to solve my problem",
-            "Show me what capabilities the MCP server provides",
-        ],
-    )
-    logger.info("External MCP Agent registered successfully")
+        logger.info(f"External MCP Agent {i} registered successfully")
 
 except Exception as e:
     logger.warning(
-        f"External MCP Agent not registered - credentials not available or invalid: {str(e)}"
+        f"External MCP Agents not registered - credentials not available or invalid: {str(e)}"
     )
-    # Don't register the agent if it can't be created
+    # Don't register any agents if they can't be created

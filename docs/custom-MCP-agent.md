@@ -43,6 +43,8 @@ Before setting up the External MCP Agent, you need:
 3. **Network Access**: Your MCP server must be accessible via HTTPS from the IDP solution
 4. **AWS Permissions**: Access to create secrets in the IDP solution's AWS account
 
+For guidance on deploying your own MCP servers with Cognito authentication, see the [AWS Bedrock Agent Core MCP Documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-mcp.html).
+
 ## Setup Instructions
 
 ### Step 1: Prepare Your MCP Server
@@ -144,20 +146,29 @@ def handle_mcp_request(request):
 In the AWS account where the IDP solution is deployed, create a secret with your MCP server credentials:
 
 1. **Navigate to AWS Secrets Manager** in the AWS Console
-2. **Create New Secret**:
-   - Secret type: "Other type of secret"
-   - Key/value pairs: Use the JSON structure below
-   - Secret name: `idp/external-mcp-agent/credentials`
+2. **Find the External MCP Agents Secret**:
+   - Look for a secret named `{StackName}/external-mcp-agents/credentials` (where StackName is your IDP stack name)
+   - This secret is automatically created by the CloudFormation template with an empty array `[]`
+   - You can find the exact secret name in your CloudFormation stack outputs
 
-3. **Secret JSON Structure**:
+3. **Update Secret with JSON Array Structure**:
    ```json
-   {
-     "mcp_url": "https://your-mcp-server.example.com/mcp",
-     "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
-     "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
-     "cognito_username": "mcp-service-user", 
-     "cognito_password": "SecurePassword123!"
-   }
+   [
+     {
+       "mcp_url": "https://your-first-mcp-server.example.com/mcp",
+       "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
+       "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+       "cognito_username": "mcp-service-user-1", 
+       "cognito_password": "SecurePassword123!"
+     },
+     {
+       "mcp_url": "https://your-second-mcp-server.example.com/mcp",
+       "cognito_user_pool_id": "us-east-1_YYYYYYYYY",
+       "cognito_client_id": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
+       "cognito_username": "mcp-service-user-2", 
+       "cognito_password": "AnotherSecurePassword456!"
+     }
+   ]
    ```
 
 **Field Descriptions:**
@@ -229,8 +240,8 @@ The authentication process works as follows:
 ### Common Issues
 
 **Agent Not Appearing in UI:**
-- Verify secret exists at exact path: `idp/external-mcp-agent/credentials`
-- Check secret JSON format matches the required structure
+- Verify secret exists at path: `{StackName}/external-mcp-agents/credentials` (check CloudFormation outputs for exact name)
+- Check secret contains a valid JSON array format (not a single object)
 - Review CloudWatch logs for agent registration errors
 
 **Authentication Failures:**

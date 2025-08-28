@@ -145,28 +145,34 @@ The External MCP Agent connects to external MCP (Model Context Protocol) servers
 - **Context Management**: Maintains MCP client connections throughout agent lifecycle
 
 **Configuration:**
-The agent requires credentials stored in AWS Secrets Manager at `idp/external-mcp-agent/credentials`:
+The agent requires credentials stored in AWS Secrets Manager at `{StackName}/external-mcp-agents/credentials` as a JSON array:
 
 ```json
-{
-  "mcp_url": "https://your-mcp-server.com/mcp",
-  "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
-  "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx", 
-  "cognito_username": "mcp-user",
-  "cognito_password": "secure-password"
-}
+[
+  {
+    "mcp_url": "https://your-first-mcp-server.com/mcp",
+    "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
+    "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx", 
+    "cognito_username": "mcp-user-1",
+    "cognito_password": "secure-password-1"
+  },
+  {
+    "mcp_url": "https://your-second-mcp-server.com/mcp",
+    "cognito_user_pool_id": "us-east-1_YYYYYYYYY",
+    "cognito_client_id": "yyyyyyyyyyyyyyyyyyyyyyyyyy", 
+    "cognito_username": "mcp-user-2",
+    "cognito_password": "secure-password-2"
+  }
+]
 ```
 
 **Usage:**
 ```python
 from idp_common.agents.factory import agent_factory
-from idp_common.agents.external_mcp.config import get_external_mcp_config
 
-# Create MCP agent (only available if credentials are configured)
-config = get_external_mcp_config()
+# Multiple MCP agents are automatically registered (external-mcp-agent-1, external-mcp-agent-2, etc.)
 with agent_factory.create_agent(
-    agent_id="external-mcp-agent-0",
-    config=config,
+    agent_id="external-mcp-agent-1",
     session=session
 ) as agent:
     response = agent("Use your external tools to help me")
@@ -178,6 +184,8 @@ with agent_factory.create_agent(
 - MCP client context properly managed to prevent connection leaks
 
 For detailed setup instructions, see [Custom MCP Agent Documentation](../../docs/custom-MCP-agent.md).
+
+For guidance on deploying your own MCP servers with Cognito authentication, see the [AWS Bedrock Agent Core MCP Documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-mcp.html).
 
 ### Response Parsing
 
