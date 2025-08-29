@@ -1192,8 +1192,11 @@ class IDPPublisher:
             "evaluation_function": "EvaluationFunction",
             "save_reporting_data": "SaveReportingDataFunction",
             "queue_sender": "QueueSender",
-            "analytics_processor": "AnalyticsProcessorFunction",
             "copy_to_baseline_resolver": "CopyToBaselineResolverFunction",
+            # Agent-related functions
+            "agent_processor": "AgentProcessorFunction",
+            "list_available_agents": "ListAvailableAgentsFunction",
+            "agent_request_handler": "AgentRequestHandlerFunction",
         }
         return name_mappings.get(dir_name, dir_name)
 

@@ -3452,11 +3452,11 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
-  # Analytics resources for text-to-analytics feature
+  # Agent resources for text-to-agent feature
   ##########################################################################
 
-  # DynamoDB table for analytics job tracking
-  AnalyticsTable:
+  # DynamoDB table for agent job tracking
+  AgentTable:
     Type: AWS::DynamoDB::Table
     Properties:
       PointInTimeRecoverySpecification:
@@ -3480,8 +3480,17 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
-  # Lambda function for analytics request handler
-  AnalyticsRequestHandlerFunction:
+  # Secrets Manager secret for External MCP Agent credentials
+  ExternalMCPAgentsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
+      Description: "Credentials for External MCP Agents - JSON array with required fields: mcp_url, cognito_user_pool_id, cognito_client_id, cognito_username, cognito_password. Optional fields: agent_name, agent_description"
+      SecretString: "[]"
+      KmsKeyId: !Ref CustomerManagedEncryptionKey
+
+  # Lambda function for agent request handler
+  AgentRequestHandlerFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3496,23 +3505,23 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      CodeUri: src/lambda/analytics_request_handler/
+      CodeUri: src/lambda/agent_request_handler/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          ANALYTICS_TABLE: !Ref AnalyticsTable
-          ANALYTICS_PROCESSOR_FUNCTION: !Ref AnalyticsProcessorFunction
+          AGENT_TABLE: !Ref AgentTable
+          AGENT_PROCESSOR_FUNCTION: !Ref AgentProcessorFunction
           DATA_RETENTION_DAYS: !Ref DataRetentionInDays
       LoggingConfig:
-        LogGroup: !Ref AnalyticsRequestHandlerLogGroup
+        LogGroup: !Ref AgentRequestHandlerLogGroup
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalyticsTable
+            TableName: !Ref AgentTable
         - LambdaInvokePolicy:
-            FunctionName: !Ref AnalyticsProcessorFunction
+            FunctionName: !Ref AgentProcessorFunction
         - Statement:
             - Effect: Allow
               Action:
@@ -3523,14 +3532,14 @@ Resources:
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
 
-  AnalyticsRequestHandlerLogGroup:
+  AgentRequestHandlerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # Lambda function for analytics processor
-  AnalyticsProcessorFunction:
+  # Lambda function for agent processor
+  AgentProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3545,7 +3554,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      CodeUri: src/lambda/analytics_processor/
+      CodeUri: src/lambda/agent_processor/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -3554,7 +3563,7 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           STRANDS_LOG_LEVEL: !Ref LogLevel
-          ANALYTICS_TABLE: !Ref AnalyticsTable
+          AGENT_TABLE: !Ref AgentTable
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           ATHENA_DATABASE: !Ref ReportingDatabase
           ATHENA_OUTPUT_LOCATION: !Sub 
@@ -3564,11 +3573,12 @@ Resources:
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
           DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
+          AWS_STACK_NAME: !Ref AWS::StackName
       LoggingConfig:
-        LogGroup: !Ref AnalyticsProcessorLogGroup
+        LogGroup: !Ref AgentProcessorLogGroup
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalyticsTable
+            TableName: !Ref AgentTable
         - S3CrudPolicy:
             BucketName: !If
               - ShouldCreateReportingBucket
@@ -3623,42 +3633,113 @@ Resources:
                 - bedrock-agentcore:ListCodeInterpreterSessions
               Resource: 
                 - !Sub "arn:${AWS::Partition}:bedrock-agentcore:*:aws:code-interpreter/*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref ExternalMCPAgentsSecret
 
-  AnalyticsProcessorLogGroup:
+  AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # AppSync resolvers for analytics operations
-  SubmitAnalyticsQueryResolver:
+  # Lambda function for listing available agents
+  ListAvailableAgentsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with local agent factory"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with local agent factory"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/list_available_agents/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 30
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          AWS_STACK_NAME: !Ref AWS::StackName
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref ExternalMCPAgentsSecret
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+      LoggingConfig:
+        LogGroup: !Ref ListAvailableAgentsLogGroup
+
+  ListAvailableAgentsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # AppSync resolvers for agent operations
+  ListAvailableAgentsResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: submitAnalyticsQuery
-      DataSourceName: !GetAtt AnalyticsRequestHandlerDataSource.Name
+      FieldName: listAvailableAgents
+      DataSourceName: !GetAtt ListAvailableAgentsDataSource.Name
 
-  AnalyticsRequestHandlerDataSource:
+  ListAvailableAgentsDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AnalyticsRequestHandlerDataSource
-      Description: Lambda function for handling analytics query requests
+      Name: ListAvailableAgentsDataSource
+      Description: Lambda function for listing available agents
       Type: AWS_LAMBDA
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       LambdaConfig:
-        LambdaFunctionArn: !GetAtt AnalyticsRequestHandlerFunction.Arn
+        LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
 
-  GetAnalyticsJobStatusResolver:
+  SubmitAgentQueryResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: getAnalyticsJobStatus
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: submitAgentQuery
+      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
+
+  AgentRequestHandlerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentRequestHandlerDataSource
+      Description: Lambda function for handling agent query requests
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
+
+  GetAgentJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3671,7 +3752,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "GetItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           }
         }
@@ -3683,6 +3764,7 @@ Resources:
             "jobId": $util.toJson($ctx.result.SK),
             "status": $util.toJson($ctx.result.status),
             "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
             "createdAt": $util.toJson($ctx.result.createdAt),
             "completedAt": $util.toJson($ctx.result.completedAt),
             "result": $util.toJson($ctx.result.result),
@@ -3691,14 +3773,14 @@ Resources:
           }
         #end
 
-  ListAnalyticsJobsResolver:
+  ListAgentJobsResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: listAnalyticsJobs
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: listAgentJobs
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3713,7 +3795,7 @@ Resources:
           "query": {
             "expression": "PK = :pk",
             "expressionValues": {
-              ":pk": $util.dynamodb.toDynamoDBJson("analytics#${userId}")
+              ":pk": $util.dynamodb.toDynamoDBJson("agent#${userId}")
             }
           },
           #if($ctx.args.limit)
@@ -3732,6 +3814,7 @@ Resources:
                 "jobId": $util.toJson($item.SK),
                 "status": $util.toJson($item.status),
                 "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
                 "createdAt": $util.toJson($item.createdAt),
                 "completedAt": $util.toJson($item.completedAt),
                 "result": $util.toJson($item.result),
@@ -3742,14 +3825,14 @@ Resources:
           "nextToken": $util.toJson($ctx.result.nextToken)
         }
 
-  UpdateAnalyticsJobStatusResolver:
+  UpdateAgentJobStatusResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Mutation
-      FieldName: updateAnalyticsJobStatus
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: updateAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |-
         #set($userId = $ctx.args.userId)
         #set($expNames = {})
@@ -3778,7 +3861,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "UpdateItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           },
           "update": {
@@ -3790,14 +3873,14 @@ Resources:
       ResponseMappingTemplate: |-
         true
 
-  DeleteAnalyticsJobResolver:
+  DeleteAgentJobResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Mutation
-      FieldName: deleteAnalyticsJob
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: deleteAgentJob
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |-
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3810,7 +3893,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "DeleteItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           }
         }
@@ -3821,16 +3904,16 @@ Resources:
           true
         #end
 
-  AnalyticsTableDataSource:
+  AgentTableDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AnalyticsTableDataSource
-      Description: DynamoDB table for analytics job tracking
+      Name: AgentTableDataSource
+      Description: DynamoDB table for agent job tracking
       Type: AMAZON_DYNAMODB
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       DynamoDBConfig:
-        TableName: !Ref AnalyticsTable
+        TableName: !Ref AgentTable
         AwsRegion: !Ref AWS::Region
         
   ##########################################################################
@@ -4764,8 +4847,8 @@ Resources:
                   - !GetAtt DeleteDocumentResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
-                  - !GetAtt AnalyticsRequestHandlerFunction.Arn
-                  - !GetAtt ChatWithDocumentResolverFunction.Arn
+                  - !GetAtt AgentRequestHandlerFunction.Arn
+                  - !GetAtt ListAvailableAgentsFunction.Arn
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
@@ -6304,12 +6387,12 @@ Outputs:
   DynamoDBConfigurationTableConsoleURL:
     Description: DynamoDB table console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${ConfigurationTable}
-  DynamoDBAnalyticsTableName:
-    Description: Name of the DynamoDB table for analytics job tracking
-    Value: !Ref AnalyticsTable
-  DynamoDBAnalyticsTableConsoleURL:
-    Description: DynamoDB table console URL for analytics job tracking
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AnalyticsTable}
+  DynamoDBAgentTableName:
+    Description: Name of the DynamoDB table for agent job tracking
+    Value: !Ref AgentTable
+  DynamoDBAgentTableConsoleURL:
+    Description: DynamoDB table console URL for agent job tracking
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AgentTable}
   LambdaLookupFunctionName:
     Description: Name of the Lookup function
     Value: !Ref LookupFunction
@@ -6331,3 +6414,6 @@ Outputs:
       REACT_APP_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       REACT_APP_AWS_REGION=${AWS::Region}
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
+  ExternalMCPAgentsSecretName:
+    Description: Name of the Secrets Manager secret for External MCP Agent credentials (JSON array format)
+    Value: !Sub "${AWS::StackName}/external-mcp-agents/credentials"

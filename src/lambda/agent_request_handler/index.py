@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT-0
 
 """
-Lambda function to handle analytics query requests.
-This function creates a job record in DynamoDB and invokes the analytics processor Lambda.
+Lambda function to handle agent query requests.
+This function creates a job record in DynamoDB and invokes the agent processor Lambda.
 """
 
 import json
@@ -25,8 +25,8 @@ dynamodb = boto3.resource("dynamodb")
 lambda_client = boto3.client("lambda")
 
 # Get environment variables
-ANALYTICS_TABLE = os.environ.get("ANALYTICS_TABLE")
-ANALYTICS_PROCESSOR_FUNCTION = os.environ.get("ANALYTICS_PROCESSOR_FUNCTION")
+AGENT_TABLE = os.environ.get("AGENT_TABLE")
+AGENT_PROCESSOR_FUNCTION = os.environ.get("AGENT_PROCESSOR_FUNCTION")
 DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "30"))
 
 
@@ -56,7 +56,7 @@ def validate_user_identity(identity):
 
 def handler(event, context):
     """
-    Handle analytics query requests from AppSync.
+    Handle agent query requests from AppSync.
     
     Args:
         event: The event dict from AppSync
@@ -68,12 +68,21 @@ def handler(event, context):
     logger.info(f"Received event: {json.dumps(event)}")
     
     try:
-        # Extract the query from the event
+        # Extract the query and agent IDs from the event
         arguments = event.get("arguments", {})
         query = arguments.get("query")
+        agent_ids = arguments.get("agentIds", [])
         
         if not query:
             error_msg = "Query parameter is required"
+            logger.error(error_msg)
+            return {
+                "statusCode": 400,
+                "body": error_msg
+            }
+            
+        if not agent_ids:
+            error_msg = "At least one agent ID is required"
             logger.error(error_msg)
             return {
                 "statusCode": 400,
@@ -101,13 +110,14 @@ def handler(event, context):
         created_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         
         # Create the job record in DynamoDB
-        # Use a composite key with PK = "analytics#{userId}" and SK = jobId
+        # Use a composite key with PK = "agent#{userId}" and SK = jobId
         # This follows the pattern used in the existing application
-        table = dynamodb.Table(ANALYTICS_TABLE)
+        table = dynamodb.Table(AGENT_TABLE)
         job_record = {
-            "PK": f"analytics#{user_id}",
+            "PK": f"agent#{user_id}",
             "SK": job_id,
             "query": query,
+            "agentIds": json.dumps(agent_ids),  # Store as JSON string
             "status": "PENDING",
             "createdAt": created_at,
             "expiresAfter": expires_after
@@ -116,16 +126,16 @@ def handler(event, context):
         table.put_item(Item=job_record)
         logger.info(f"Created job record: {job_id} for user: {user_id}")
         
-        # Invoke the analytics processor Lambda asynchronously
+        # Invoke the agent processor Lambda asynchronously
         lambda_client.invoke(
-            FunctionName=ANALYTICS_PROCESSOR_FUNCTION,
+            FunctionName=AGENT_PROCESSOR_FUNCTION,
             InvocationType="Event",
             Payload=json.dumps({
                 "userId": user_id,
                 "jobId": job_id
             })
         )
-        logger.info(f"Invoked analytics processor for job: {job_id}")
+        logger.info(f"Invoked agent processor for job: {job_id}")
         
         # Return the job record to the client (without exposing userId)
         return {

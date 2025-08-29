@@ -166,10 +166,18 @@ type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
 }
 
 
-type AnalyticsJob @aws_cognito_user_pools @aws_iam {
+type Agent @aws_cognito_user_pools @aws_iam {
+  agent_id: String!
+  agent_name: String!
+  agent_description: String!
+  sample_queries: [String]
+}
+
+type AgentJob @aws_cognito_user_pools @aws_iam {
   jobId: ID!
   status: String!  # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
   query: String!
+  agentIds: String  # JSON string containing list of agent IDs used
   createdAt: AWSDateTime!
   completedAt: AWSDateTime
   result: String
@@ -177,8 +185,8 @@ type AnalyticsJob @aws_cognito_user_pools @aws_iam {
   agent_messages: String  # JSON string containing agent conversation messages
 }
 
-type AnalyticsJobConnection @aws_cognito_user_pools @aws_iam {
-  items: [AnalyticsJob]
+type AgentJobConnection @aws_cognito_user_pools @aws_iam {
+  items: [AgentJob]
   nextToken: String
 }
 
@@ -191,8 +199,8 @@ type Mutation  {
   copyToBaseline(objectKey: String!): CopyToBaselineResponse! @aws_cognito_user_pools
   reprocessDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
   publishStepFunctionExecutionUpdate(executionArn: String!, data: AWSJSON!): StepFunctionExecutionResponse @aws_iam
-  updateAnalyticsJobStatus(jobId: ID!, status: String!, userId: String!, result: String): Boolean @aws_iam
-  deleteAnalyticsJob(jobId: ID!): Boolean @aws_cognito_user_pools
+  updateAgentJobStatus(jobId: ID!, status: String!, userId: String!, result: String): Boolean @aws_iam
+  deleteAgentJob(jobId: ID!): Boolean @aws_cognito_user_pools
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -205,9 +213,10 @@ type Query @aws_cognito_user_pools @aws_iam {
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(s3Uri: String!, prompt: String!, history: AWSJSON!, modelId: String!): String
   getStepFunctionExecution(executionArn: String!): StepFunctionExecutionResponse
-  submitAnalyticsQuery(query: String!): AnalyticsJob @aws_cognito_user_pools
-  getAnalyticsJobStatus(jobId: ID!): AnalyticsJob @aws_cognito_user_pools
-  listAnalyticsJobs(limit: Int, nextToken: String): AnalyticsJobConnection @aws_cognito_user_pools
+  listAvailableAgents: [Agent] @aws_cognito_user_pools @aws_iam
+  submitAgentQuery(query: String!, agentIds: [String!]!): AgentJob @aws_cognito_user_pools
+  getAgentJobStatus(jobId: ID!): AgentJob @aws_cognito_user_pools
+  listAgentJobs(limit: Int, nextToken: String): AgentJobConnection @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
@@ -217,8 +226,8 @@ type Subscription @aws_cognito_user_pools @aws_iam {
     @aws_subscribe(mutations: ["updateDocument"])
   onStepFunctionExecutionUpdate(executionArn: String!): StepFunctionExecutionResponse
     @aws_subscribe(mutations: ["publishStepFunctionExecutionUpdate"])
-  onAnalyticsJobComplete(jobId: ID!): Boolean
-    @aws_subscribe(mutations: ["updateAnalyticsJobStatus"])
+  onAgentJobComplete(jobId: ID!): Boolean
+    @aws_subscribe(mutations: ["updateAgentJobStatus"])
 }
 
 schema {

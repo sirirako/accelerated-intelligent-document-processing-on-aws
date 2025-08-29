@@ -15,7 +15,7 @@ import useGraphQlApi from '../../hooks/use-graphql-api';
 import DocumentList from '../document-list';
 import DocumentDetails from '../document-details';
 import DocumentsQueryLayout from '../document-kb-query-layout';
-import DocumentsAnalyticsLayout from '../document-analytics-layout/DocumentsAnalyticsLayout';
+import DocumentsAgentsLayout from '../document-agents-layout/DocumentsAgentsLayout';
 import UploadDocumentPanel from '../upload-document';
 import { appLayoutLabels } from '../common/labels';
 
@@ -121,8 +121,8 @@ const GenAIIDPLayout = () => {
             <Route path={`${path}/query`}>
               <DocumentsQueryLayout />
             </Route>
-            <Route path={`${path}/analytics`}>
-              <DocumentsAnalyticsLayout />
+            <Route path={`${path}/agents`}>
+              <DocumentsAgentsLayout />
             </Route>
             <Route path={`${path}/config`}>
               <ConfigurationLayout />

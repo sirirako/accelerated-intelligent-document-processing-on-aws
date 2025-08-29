@@ -22,3 +22,4 @@ rvl_cdip_*
 notebooks/examples/data
 .idea/
 .dsr/
+*tmp-dev-assets*

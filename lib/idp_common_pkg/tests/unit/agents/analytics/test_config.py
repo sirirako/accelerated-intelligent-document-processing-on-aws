@@ -26,8 +26,8 @@ sys.modules["bedrock_agentcore.tools.code_interpreter_client"] = MagicMock()
 from idp_common.agents.analytics.config import (
     get_analytics_config,
     load_db_description,
-    load_result_format_description,
 )
+from idp_common.agents.common.config import load_result_format_description
 
 
 @pytest.mark.unit
