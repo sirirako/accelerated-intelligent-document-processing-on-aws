@@ -494,7 +494,6 @@ class IDPPublisher:
             "build",
             "--template-file",
             template_filename,
-            "--cached",
         ]
 
         # Only add --parallel if no idp_common dependencies to prevent race conditions
@@ -504,17 +503,10 @@ class IDPPublisher:
         if self.use_container_flag and self.use_container_flag.strip():
             cmd.append(self.use_container_flag)
 
-        result = subprocess.run(cmd, cwd=abs_dir_path)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            # If cached build fails, try without cache
-            print(
-                f"Cached build failed, retrying without cache for {template_filename}"
-            )
-            cmd_no_cache = [c for c in cmd if c != "--cached"]
-            result = subprocess.run(cmd_no_cache, cwd=abs_dir_path)
-            if result.returncode != 0:
-                print("Error running sam build")
-                sys.exit(1)
+            print("Error running sam build")
+            sys.exit(1)
 
     def _check_template_for_idp_common_deps(self, template_path):
         """Check if a template has Lambda functions with idp_common dependencies."""
@@ -552,15 +544,7 @@ class IDPPublisher:
             # Build the template from the pattern directory
             cmd = ["sam", "build", "--template-file", "template.yaml"]
 
-            # Add caching but remove parallel flag to avoid race conditions
-            # when building multiple templates concurrently
-            cmd.extend(
-                [
-                    "--cached",  # Enable SAM build caching
-                    # Note: Removed --parallel to prevent race conditions with idp_common_pkg
-                ]
-            )
-
+            # Add container flag if needed
             if self.use_container_flag and self.use_container_flag.strip():
                 cmd.append(self.use_container_flag)
 
@@ -575,29 +559,10 @@ class IDPPublisher:
             sam_build_time = time.time() - sam_build_start
 
             if result.returncode != 0:
-                # If cached build fails, try without cache
-                self.log_verbose(
-                    f"Cached build failed for {directory}, retrying without cache"
-                )
-                self.console.print(
-                    f"[yellow]Cached build failed for {directory}, retrying without cache[/yellow]"
-                )
-                cmd_no_cache = [c for c in cmd if c != "--cached"]
-                sam_build_start = time.time()
-                self.log_verbose(
-                    f"Running SAM build command (no cache) in {directory}: {' '.join(cmd_no_cache)}"
-                )
-                result = subprocess.run(
-                    cmd_no_cache, cwd=abs_directory, capture_output=True, text=True
-                )
-                sam_build_time = time.time() - sam_build_start
-                if result.returncode != 0:
-                    # Log detailed error information
-                    error_output = (
-                        f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
-                    )
-                    self.log_error_details(f"SAM build for {directory}", error_output)
-                    return False
+                # Log detailed error information
+                error_output = f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+                self.log_error_details(f"SAM build for {directory}", error_output)
+                return False
 
             # Package the template (using absolute paths)
             build_template_path = os.path.join(
@@ -632,6 +597,10 @@ class IDPPublisher:
                 error_output = f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
                 self.log_error_details(f"SAM package for {directory}", error_output)
                 return False
+
+            # Log S3 upload location
+            template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{self.prefix}/{directory}/template.yaml"
+            self.console.print(f"[dim]  📤 Template uploaded: {template_url}[/dim]")
 
             # Log timing information
             total_time = time.time() - build_start
@@ -1139,7 +1108,9 @@ class IDPPublisher:
                 function_key = f"{context}/{func_dir.name}"
                 functions[function_key] = {
                     "template_path": template_path,
-                    "function_name": self._extract_function_name(func_dir.name),
+                    "function_name": self._extract_function_name(
+                        func_dir.name, template_path
+                    ),
                     "source_path": func_dir,
                     "context": context,
                     "template_dir": template_path.parent,
@@ -1171,34 +1142,66 @@ class IDPPublisher:
         except Exception as e:
             return False, f"Error reading requirements.txt: {e}"
 
-    def _extract_function_name(self, dir_name):
-        """Extract CloudFormation function name from directory name."""
-        name_mappings = {
-            # Pattern functions
-            "bda_invoke_function": "InvokeBDAFunction",
-            "bda_completion_function": "BDACompletionFunction",
-            "processresults_function": "ProcessResultsFunction",
-            "summarization_function": "SummarizationFunction",
-            "hitl-process-function": "HITLProcessLambdaFunction",
-            "hitl-wait-function": "HITLWaitFunction",
-            "hitl-status-update-function": "HITLStatusUpdateFunction",
-            "ocr_function": "OCRFunction",
-            "classification_function": "ClassificationFunction",
-            "extraction_function": "ExtractionFunction",
-            "assessment_function": "AssessmentFunction",
-            # Main template functions
-            "queue_processor": "QueueProcessor",
-            "workflow_tracker": "WorkflowTracker",
-            "evaluation_function": "EvaluationFunction",
-            "save_reporting_data": "SaveReportingDataFunction",
-            "queue_sender": "QueueSender",
-            "copy_to_baseline_resolver": "CopyToBaselineResolverFunction",
-            # Agent-related functions
-            "agent_processor": "AgentProcessorFunction",
-            "list_available_agents": "ListAvailableAgentsFunction",
-            "agent_request_handler": "AgentRequestHandlerFunction",
-        }
-        return name_mappings.get(dir_name, dir_name)
+    def _extract_function_name(self, dir_name, template_path):
+        """Extract CloudFormation function name from template by matching CodeUri."""
+        try:
+            import yaml
+
+            # Create a custom loader that ignores CloudFormation intrinsic functions
+            class CFLoader(yaml.SafeLoader):
+                pass
+
+            def construct_unknown(loader, node):
+                return None
+
+            # Add constructors for CloudFormation intrinsic functions
+            cf_functions = [
+                "!Ref",
+                "!GetAtt",
+                "!Join",
+                "!Sub",
+                "!Select",
+                "!Split",
+                "!Base64",
+                "!GetAZs",
+                "!ImportValue",
+                "!FindInMap",
+                "!Equals",
+                "!And",
+                "!Or",
+                "!Not",
+                "!If",
+                "!Condition",
+            ]
+
+            for func in cf_functions:
+                CFLoader.add_constructor(func, construct_unknown)
+
+            with open(template_path, "r") as f:
+                template = yaml.load(f, Loader=CFLoader)
+
+            resources = template.get("Resources", {})
+            for resource_name, resource_config in resources.items():
+                if (
+                    resource_config
+                    and resource_config.get("Type") == "AWS::Serverless::Function"
+                ):
+                    properties = resource_config.get("Properties", {})
+                    if properties:
+                        code_uri = properties.get("CodeUri", "")
+                        if isinstance(code_uri, str):
+                            code_uri = code_uri.rstrip("/")
+                            code_dir = (
+                                code_uri.split("/")[-1] if "/" in code_uri else code_uri
+                            )
+                            if code_dir == dir_name:
+                                return resource_name
+
+            return dir_name
+
+        except Exception as e:
+            self.log_verbose(f"Error reading template {template_path}: {e}")
+            return dir_name
 
     def _validate_idp_common_in_build(self, template_dir, function_name, source_path):
         """Validate that idp_common package exists in the built Lambda function."""
@@ -1221,24 +1224,6 @@ class IDPPublisher:
             file_path = idp_common_dir / core_file
             if not file_path.exists():
                 issues.append(f"Missing core file: {core_file}")
-
-        # Check for key modules based on function type
-        module_checks = {
-            "InvokeBDAFunction": ["bda/bda_service.py", "bda/__init__.py"],
-            "BDACompletionFunction": ["metrics/__init__.py"],
-            "ProcessResultsFunction": ["ocr/service.py", "extraction/service.py"],
-            "ClassificationFunction": ["classification/service.py"],
-            "ExtractionFunction": ["extraction/service.py"],
-            "OCRFunction": ["ocr/service.py"],
-            "AssessmentFunction": ["assessment/service.py"],
-            "SummarizationFunction": ["summarization/service.py"],
-        }
-
-        if function_name in module_checks:
-            for module_path in module_checks[function_name]:
-                module_file = idp_common_dir / module_path
-                if not module_file.exists():
-                    issues.append(f"Missing function-specific module: {module_path}")
 
         return len(issues) == 0, issues
 
@@ -1332,6 +1317,9 @@ except Exception as e:
         """Package UI source code"""
         ui_hash = self.compute_ui_hash()
         zipfile_name = f"src-{ui_hash[:16]}.zip"
+
+        # Ensure .aws-sam directory exists
+        os.makedirs(".aws-sam", exist_ok=True)
 
         # Check if we need to rebuild
         existing_zipfiles = [
@@ -1506,35 +1494,70 @@ except Exception as e:
         else:
             self.console.print("[green]✅ Main template is up to date[/green]")
 
-        # Always upload the final template to S3, regardless of whether rebuild was needed
+        # Upload main template based on whether build was required
         final_template_key = f"{self.prefix}/{self.main_template}"
         packaged_template_path = ".aws-sam/idp-main.yaml"
 
-        # Check if packaged template exists, if not we have a problem
-        if not os.path.exists(packaged_template_path):
-            self.console.print(
-                f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
-            )
-            self.console.print(
-                "[red]This suggests the template was never built. Try running without cache.[/red]"
-            )
-            sys.exit(1)
+        if main_needs_build:
+            # Main was rebuilt, so upload the new template
+            if not os.path.exists(packaged_template_path):
+                self.console.print(
+                    f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+                )
+                sys.exit(1)
 
-        self.console.print(
-            f"[cyan]Uploading main template to S3: {final_template_key}[/cyan]"
-        )
-        self.log_verbose(f"Local template path: {packaged_template_path}")
-        try:
-            self.s3_client.upload_file(
-                packaged_template_path,
-                self.bucket,
-                final_template_key,
-                ExtraArgs={"ACL": self.acl},
+            self.console.print(
+                f"[cyan]Uploading main template to S3: {final_template_key}[/cyan]"
             )
-            self.console.print("[green]✅ Main template uploaded successfully[/green]")
-        except ClientError as e:
-            self.console.print(f"[red]Error uploading main template: {e}[/red]")
-            sys.exit(1)
+            try:
+                self.s3_client.upload_file(
+                    packaged_template_path,
+                    self.bucket,
+                    final_template_key,
+                    ExtraArgs={"ACL": self.acl},
+                )
+                self.console.print(
+                    "[green]✅ Main template uploaded successfully[/green]"
+                )
+            except Exception as e:
+                self.console.print(f"[red]Failed to upload main template: {e}[/red]")
+                sys.exit(1)
+        else:
+            # Main was not rebuilt, check if template exists in S3
+            try:
+                self.s3_client.head_object(Bucket=self.bucket, Key=final_template_key)
+                self.console.print(
+                    "[green]✅ Main template already exists in S3[/green]"
+                )
+            except self.s3_client.exceptions.NoSuchKey:
+                self.console.print(
+                    f"[yellow]Main template missing from S3, uploading: {final_template_key}[/yellow]"
+                )
+                if not os.path.exists(packaged_template_path):
+                    self.console.print(
+                        f"[red]Error: No packaged template to upload at {packaged_template_path}[/red]"
+                    )
+                    sys.exit(1)
+                try:
+                    self.s3_client.upload_file(
+                        packaged_template_path,
+                        self.bucket,
+                        final_template_key,
+                        ExtraArgs={"ACL": self.acl},
+                    )
+                    self.console.print(
+                        "[green]✅ Main template uploaded successfully[/green]"
+                    )
+                except Exception as e:
+                    self.console.print(
+                        f"[red]Failed to upload main template: {e}[/red]"
+                    )
+                    sys.exit(1)
+            except Exception as e:
+                self.console.print(
+                    f"[yellow]Could not check S3 template existence: {e}[/yellow]"
+                )
+                self.console.print("[yellow]Proceeding without upload[/yellow]")
 
         # Validate the template
         template_url = (
@@ -1768,10 +1791,11 @@ except Exception as e:
                     }
                 )
 
-                if self.verbose:
-                    self.console.print(
-                        f"[yellow]📝 {component} needs rebuild due to changes in: {', '.join(deps)}[/yellow]"
-                    )
+                self.console.print(
+                    f"[yellow]📝 {component} needs rebuild due to changes in any of these dependencies:[/yellow]"
+                )
+                for dep in deps:
+                    self.console.print(f"[yellow]   • {dep}[/yellow]")
 
         return components_to_rebuild
 
@@ -1783,16 +1807,8 @@ except Exception as e:
             sam_dir = os.path.join(component, ".aws-sam")
 
         if os.path.exists(sam_dir):
-            build_dir = os.path.join(sam_dir, "build")
-            cache_dir = os.path.join(sam_dir, "cache")
-
-            if os.path.exists(build_dir):
-                self.log_verbose(f"Clearing build cache for {component}: {build_dir}")
-                shutil.rmtree(build_dir)
-
-            if os.path.exists(cache_dir):
-                self.log_verbose(f"Clearing SAM cache for {component}: {cache_dir}")
-                shutil.rmtree(cache_dir)
+            self.log_verbose(f"Clearing entire SAM cache for {component}: {sam_dir}")
+            shutil.rmtree(sam_dir)
 
     def update_component_checksum(self, components_needing_rebuild):
         """Update checksum for a successfully built component"""
@@ -1918,7 +1934,27 @@ except Exception as e:
             # Perform smart rebuild detection and cache management
             components_needing_rebuild = self.smart_rebuild_detection()
 
-            # Clear caches for components that need rebuilding
+            # Build lib package if it changed
+            lib_changed = any(
+                comp["component"] == "lib" for comp in components_needing_rebuild
+            )
+            if lib_changed:
+                self.console.print("[bold yellow]📚 Building lib package[/bold yellow]")
+                lib_dir = "lib/idp_common_pkg"
+                result = subprocess.run(
+                    ["python", "setup.py", "build"],
+                    cwd=lib_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    self.console.print(
+                        f"[red]❌ Failed to build lib package: {result.stderr}[/red]"
+                    )
+                    sys.exit(1)
+                self.console.print("[green]✅ Lib package built successfully[/green]")
+
+            # clear component cache
             for comp_info in components_needing_rebuild:
                 if comp_info["component"] != "lib":  # lib doesnt have sam build
                     self.clear_component_cache(comp_info["component"])
