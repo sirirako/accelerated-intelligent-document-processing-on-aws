@@ -502,7 +502,7 @@ Resources:
               classificationMethod:
                 type: string
                 description: "Classification methodology to use"
-                enum: ["multimodalPageLevelClassification", "textbasedHolisticClassification", "multimodalPageBoundaryClassification"]
+                enum: ["multimodalPageLevelClassification", "textbasedHolisticClassification"]
                 order: 2
               temperature:
                 type: number
