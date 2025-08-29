@@ -60,7 +60,9 @@ def create_external_mcp_agent(
         "cognito_username",
         "cognito_password",
     ]
-    missing_fields = [field for field in required_fields if field not in mcp_server_config]
+    missing_fields = [
+        field for field in required_fields if field not in mcp_server_config
+    ]
     if missing_fields:
         error_msg = f"MCP server config missing required fields: {missing_fields}"
         logger.error(error_msg)
