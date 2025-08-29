@@ -4825,7 +4825,7 @@ Resources:
                   - dynamodb:Scan
                 Resource:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AnalyticsTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
