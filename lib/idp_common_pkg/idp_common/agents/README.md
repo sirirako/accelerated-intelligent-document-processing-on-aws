@@ -39,7 +39,7 @@ idp_common/agents/
 │   ├── __init__.py
 │   ├── agent.py                # External MCP agent factory
 │   └── config.py               # MCP-specific configuration
-├── dummy/                      # Dummy agent for development/testing
+├── sample_calculator/          # Sample calculator agent for development/testing
 │   ├── __init__.py
 │   └── agent.py                # Simple calculator agent
 ├── factory/                    # Agent factory and registry
