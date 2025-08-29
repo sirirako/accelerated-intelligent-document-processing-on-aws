@@ -5,7 +5,17 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.13]
+
 ### Added
+
+- **External MCP Agent Integration for Custom Tool Extension**
+  - Added External MCP (Model Context Protocol) Agent support that enables integration with custom MCP servers to extend IDP capabilities
+  - **Cross-Account Integration**: Host MCP servers in separate AWS accounts or external infrastructure with secure OAuth authentication using AWS Cognito
+  - **Dynamic Tool Discovery**: Automatically discovers and integrates available tools from MCP servers through the IDP web interface
+  - **Secure Authentication Flow**: Uses AWS Cognito User Pools for OAuth bearer token authentication with proper token validation
+  - **Configuration Management**: JSON array configuration in AWS Secrets Manager supporting multiple MCP server connections with optional custom agent names and descriptions
+  - **Real-time Integration**: Tools become immediately available through the IDP web interface after configuration
 
 - **AWS GovCloud Support with Automated Template Generation**
   - Added GovCloud compatibility through `scripts/generate_govcloud_template.py` script
