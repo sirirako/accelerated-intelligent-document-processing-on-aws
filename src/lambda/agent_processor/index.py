@@ -347,7 +347,7 @@ def handler(event, context):
                 
                 if attempt < max_retries - 1:  # Not the last attempt
                     logger.info(f"Waiting {retry_delay} seconds before retry {attempt + 2}/{max_retries} for job {job_id}")
-                    time.sleep(retry_delay)
+                    time.sleep(retry_delay) # semgrep-ignore: arbitrary-sleep - Intentional delay. Duration is hardcoded and not user-controlled.
                 else:
                     # Last attempt failed
                     logger.error(f"All {max_retries} attempts failed for agent query processing, job {job_id}: {str(e)}")

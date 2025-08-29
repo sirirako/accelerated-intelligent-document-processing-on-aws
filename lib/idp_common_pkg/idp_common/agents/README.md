@@ -153,15 +153,15 @@ The agent requires credentials stored in AWS Secrets Manager at `{StackName}/ext
     "mcp_url": "https://your-first-mcp-server.com/mcp",
     "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
     "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx", 
-    "cognito_username": "mcp-user-1",
-    "cognito_password": "secure-password-1"
+    "cognito_username": "<your first user here>",
+    "cognito_password": "<your first password here>"
   },
   {
     "mcp_url": "https://your-second-mcp-server.com/mcp",
     "cognito_user_pool_id": "us-east-1_YYYYYYYYY",
     "cognito_client_id": "yyyyyyyyyyyyyyyyyyyyyyyyyy", 
-    "cognito_username": "mcp-user-2",
-    "cognito_password": "secure-password-2"
+    "cognito_username": "<your second user here>",
+    "cognito_password": "<your second password here>"
   }
 ]
 ```

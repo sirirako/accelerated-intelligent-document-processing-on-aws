@@ -83,7 +83,9 @@ def run_athena_query(
                 logger.debug(
                     f"Query state: {state}, sleeping for 2 seconds (attempt {attempts + 1}/{max_polling_attempts})"
                 )
-                time.sleep(2)
+                time.sleep(  # semgrep-ignore: arbitrary-sleep - Intentional delay. Duration is hardcoded and not user-controlled.
+                    2
+                )  # semgrep-ignore: arbitrary-sleep - Intentional delay. Duration is hardcoded and not user-controlled.
                 attempts += 1
 
         # Check final state
