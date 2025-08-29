@@ -1077,15 +1077,6 @@ class OcrService:
                 f"Applied adaptive binarization preprocessing for OCR processing (page {page_id})"
             )
 
-        # Apply preprocessing if enabled (only for OCR processing, not saved image)
-        if self.preprocessing_config and self.preprocessing_config.get("enabled"):
-            from idp_common.image import apply_adaptive_binarization
-
-            ocr_img_bytes = apply_adaptive_binarization(ocr_img_bytes)
-            logger.debug(
-                f"Applied adaptive binarization preprocessing for OCR processing (page {page_id})"
-            )
-
         # Process with OCR using potentially resized image
         if isinstance(self.enhanced_features, list) and self.enhanced_features:
             textract_result = self._analyze_document(ocr_img_bytes, page_id)
