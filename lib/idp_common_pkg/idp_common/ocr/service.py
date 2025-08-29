@@ -313,9 +313,6 @@ class OcrService:
         # Initialize document converter for non-PDF formats
         self.document_converter = DocumentConverter(dpi=self.dpi or 150)
 
-        # Initialize document converter for non-PDF formats
-        self.document_converter = DocumentConverter(dpi=self.dpi or 150)
-
     def process_document(self, document: Document) -> Document:
         """
         Process a document with OCR and update the Document model.
