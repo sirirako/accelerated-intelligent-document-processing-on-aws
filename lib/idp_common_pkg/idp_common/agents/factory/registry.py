@@ -14,7 +14,7 @@ Example:
     agents = agent_factory.list_available_agents()
 
     # Create an agent
-    agent = agent_factory.create_agent("analytics-20250813-v0-kaleko", config=config)
+    agent = agent_factory.create_agent("analytics-20250813-v0", config=config)
 """
 
 import logging
@@ -31,7 +31,7 @@ agent_factory = IDPAgentFactory()
 
 # Register analytics agent
 agent_factory.register_agent(
-    agent_id="analytics-20250813-v0-kaleko",
+    agent_id="Analytics-Agent-v1",
     agent_name="Analytics Agent",
     agent_description="""
     Converts natural language questions into SQL queries and generates visualizations from document data.
@@ -100,7 +100,9 @@ try:
         ]
         for field in required_fields:
             if field not in mcp_config:
-                logger.warning(f"Skipping MCP config {i}: missing required field '{field}'")
+                logger.warning(
+                    f"Skipping MCP config {i}: missing required field '{field}'"
+                )
                 continue
 
         # Create wrapper function for this specific MCP config
@@ -113,6 +115,7 @@ try:
                     mcp_server_config=mcp_server_config,
                     **kwargs,
                 )
+
             return wrapper
 
         # Try to discover available tools for dynamic description
@@ -126,7 +129,10 @@ try:
 
             # Extract available tools for dynamic description
             dynamic_description = f"Agent {i} which connects to external MCP servers to provide additional tools and capabilities"
-            if hasattr(test_strands_agent, "tool_names") and test_strands_agent.tool_names:
+            if (
+                hasattr(test_strands_agent, "tool_names")
+                and test_strands_agent.tool_names
+            ):
                 tool_names = list(test_strands_agent.tool_names)
                 if tool_names:
                     tools_list = ", ".join(tool_names)

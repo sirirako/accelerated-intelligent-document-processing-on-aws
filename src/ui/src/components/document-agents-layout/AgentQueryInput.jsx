@@ -12,6 +12,9 @@ import {
   SpaceBetween,
   ButtonDropdown,
   Checkbox,
+  Modal,
+  Header,
+  Link,
 } from '@awsui/components-react';
 import listAgentJobs from '../../graphql/queries/listAgentJobs';
 import deleteAgentJob from '../../graphql/queries/deleteAgentJob';
@@ -40,6 +43,7 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   const [availableAgents, setAvailableAgents] = useState([]);
   const [selectedAgents, setSelectedAgents] = useState([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  const [showMcpInfoModal, setShowMcpInfoModal] = useState(false);
   const [hoveredAgent, setHoveredAgent] = useState(null);
   const [hoverTimeout, setHoverTimeout] = useState(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -81,6 +85,17 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
     }
   };
 
+  const handleSelectAllAgents = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const allSelected = selectedAgents.length === availableAgents.length;
+    if (allSelected) {
+      setSelectedAgents([]);
+    } else {
+      setSelectedAgents(availableAgents.map((agent) => agent.agent_id));
+    }
+  };
+
   const fetchAvailableAgents = async () => {
     try {
       setIsLoadingAgents(true);
@@ -90,11 +105,6 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
 
       const agents = response?.data?.listAvailableAgents || [];
       setAvailableAgents(agents);
-
-      // Auto-select first agent if none selected
-      if (agents.length > 0 && selectedAgents.length === 0) {
-        setSelectedAgents([agents[0].agent_id]);
-      }
     } catch (err) {
       logger.error('Error fetching available agents:', err);
       setAvailableAgents([]);
@@ -323,7 +333,7 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
   // Create dropdown items with delete functionality
   const createDropdownItems = () => {
     if (queryHistory.length === 0) {
-      return [{ text: 'No previous queries found', disabled: true }];
+      return [{ text: 'No previous questions found', disabled: true }];
     }
 
     return queryHistory.map((job) => {
@@ -404,9 +414,14 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       <form onSubmit={handleSubmit}>
         <SpaceBetween size="l">
           <Box>
-            <Box fontSize="body-m" fontWeight="bold" padding={{ bottom: 'xs' }}>
-              Select from available agents
-            </Box>
+            <SpaceBetween direction="horizontal" size="s" alignItems="center">
+              <Box fontSize="body-m" fontWeight="bold">
+                Select from available agents
+              </Box>
+              <Button variant="link" onClick={() => setShowMcpInfoModal(true)} fontSize="body-s">
+                🚀 NEW: Integrate your own systems with MCP!
+              </Button>
+            </SpaceBetween>
             <div
               style={{
                 maxHeight: '200px',
@@ -454,6 +469,17 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                 </SpaceBetween>
               )}
             </div>
+            {!isLoadingAgents && availableAgents.length > 0 && (
+              <Box padding={{ top: 's' }}>
+                <Button
+                  type="button"
+                  variant={selectedAgents.length === availableAgents.length ? 'normal' : 'primary'}
+                  onClick={handleSelectAllAgents}
+                >
+                  {selectedAgents.length === availableAgents.length ? 'Deselect All Agents' : 'Select All Agents'}
+                </Button>
+              </Box>
+            )}
             {hoveredAgent && (
               <div
                 style={{
@@ -509,7 +535,7 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                   selectedAgents.length > 0
                     ? availableAgents.find((agent) => agent.agent_id === selectedAgents[0])?.sample_queries?.[0] ||
                       'Enter your question here...'
-                    : 'Select an agent first...'
+                    : 'Select at least one available agent to get started'
                 }
                 value={currentInputText}
                 onChange={({ detail }) => updateAnalyticsState({ currentInputText: detail.value })}
@@ -526,16 +552,16 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                   disabled={!currentInputText.trim() || selectedAgents.length === 0 || isSubmitting}
                   fullWidth
                 >
-                  {isSubmitting ? 'Submitting...' : 'Submit query'}
+                  {isSubmitting ? 'Submitting...' : 'Submit question'}
                 </Button>
                 <Button variant="normal" onClick={handleClearQuery} disabled={isSubmitting} fullWidth>
-                  Clear query
+                  Clear question
                 </Button>
               </SpaceBetween>
             </Box>
           </Grid>
 
-          <FormField label="Previous queries">
+          <FormField>
             <ButtonDropdown
               items={createDropdownItems()}
               onItemClick={handleDropdownItemClick}
@@ -544,16 +570,67 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
               disabled={isSubmitting}
             >
               {(() => {
-                if (!selectedOption) return 'Select a previous query';
+                if (!selectedOption) return 'Select a previous question';
                 if (selectedOption.label?.length > 40) {
                   return `${selectedOption.label.substring(0, 40)}...`;
                 }
-                return selectedOption.label || 'Selected query';
+                return selectedOption.label || 'Selected question';
               })()}
             </ButtonDropdown>
           </FormField>
         </SpaceBetween>
       </form>
+
+      <Modal
+        onDismiss={() => setShowMcpInfoModal(false)}
+        visible={showMcpInfoModal}
+        header={<Header>Custom MCP Agents</Header>}
+        footer={
+          <Box float="right">
+            <Button variant="primary" onClick={() => setShowMcpInfoModal(false)}>
+              Close
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Box>
+            <Box fontWeight="bold" fontSize="body-m">
+              What are MCP Agents?
+            </Box>
+            <Box>
+              Model Context Protocol (MCP) agents allow you to connect external tools and services to extend the
+              capabilities of your document analysis workflow.
+            </Box>
+          </Box>
+
+          <Box>
+            <Box fontWeight="bold" fontSize="body-m">
+              Adding Custom Agents
+            </Box>
+            <Box>
+              You can add your own MCP agents by configuring external MCP servers in AWS Secrets Manager. This allows
+              you to integrate custom tools, APIs, and services specific to your organization&apos;s needs without any
+              code changes or redeployments.
+            </Box>
+          </Box>
+
+          <Box>
+            <Box fontWeight="bold" fontSize="body-m">
+              Learn More
+            </Box>
+            <Box>
+              For detailed setup instructions and examples, see the{' '}
+              <Link
+                external
+                href="https://github.com/aws-samples/genaiic-idp-accelerator/blob/main/docs/custom-MCP-agent.md"
+              >
+                Custom MCP Agent Documentation
+              </Link>
+            </Box>
+          </Box>
+        </SpaceBetween>
+      </Modal>
     </>
   );
 };

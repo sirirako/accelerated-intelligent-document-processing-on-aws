@@ -255,7 +255,7 @@ const DocumentsAgentsLayout = () => {
   }, [jobId, jobStatus, updateAnalyticsState]);
 
   return (
-    <Container header={<Header variant="h1">Agent HQ</Header>}>
+    <Container header={<Header variant="h2">Agent Analysis</Header>}>
       <SpaceBetween size="l">
         <AgentQueryInput onSubmit={handleSubmitQuery} isSubmitting={isSubmitting} selectedResult={null} />
 

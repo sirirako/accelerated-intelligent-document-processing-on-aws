@@ -80,7 +80,7 @@ class IDPAgent(Agent):
         Args:
             agent_name: Human-readable name for the agent (e.g., "Analytics Agent")
             agent_description: Description of what the agent does
-            agent_id: Unique identifier for the agent (e.g., "analytics-20250813-v0-kaleko")
+            agent_id: Unique identifier for the agent (e.g., "analytics-20250813-v0")
             agent: Existing Strands Agent instance to wrap (required)
             sample_queries: List of example queries that demonstrate the agent's capabilities
             job_id: Job ID for monitoring purposes. When provided with user_id, enables

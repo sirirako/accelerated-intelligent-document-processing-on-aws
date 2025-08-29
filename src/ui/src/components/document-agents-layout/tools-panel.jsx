@@ -6,7 +6,7 @@ import { HelpPanel, Icon } from '@awsui/components-react';
 const ToolsPanel = () => {
   return (
     <HelpPanel
-      header={<h2>Agent HQ</h2>}
+      header={<h2>Agent Analysis</h2>}
       footer={
         <div>
           <h3>
@@ -24,7 +24,7 @@ const ToolsPanel = () => {
     >
       <div>
         <p>
-          Use Agent HQ to interact with AI agents using natural language and receive interactive visualizations and
+          Use Agent Analysis to interact with AI agents using natural language and receive interactive visualizations and
           insights.
         </p>
         <h3>How to use</h3>

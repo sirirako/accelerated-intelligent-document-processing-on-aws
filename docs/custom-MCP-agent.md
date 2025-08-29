@@ -147,7 +147,7 @@ In the AWS account where the IDP solution is deployed, create a secret with your
 
 1. **Navigate to AWS Secrets Manager** in the AWS Console
 2. **Find the External MCP Agents Secret**:
-   - Look for a secret named `{StackName}/external-mcp-agents/credentials` (where StackName is your IDP stack name)
+   - Look for a secret named `{StackName}/external-mcp-agents/credentials` (where StackName is your IDP stack name).
    - This secret is automatically created by the CloudFormation template with an empty array `[]`
    - You can find the exact secret name in your CloudFormation stack outputs
 
@@ -243,6 +243,11 @@ The authentication process works as follows:
 - Verify secret exists at path: `{StackName}/external-mcp-agents/credentials` (check CloudFormation outputs for exact name)
 - Check secret contains a valid JSON array format (not a single object)
 - Review CloudWatch logs for agent registration errors
+- **Lambda Caching**: The ListAvailableAgentsFunction has caching that may delay new agents appearing for up to 15 minutes. To force refresh:
+  - Find the function named `{StackName}-ListAvailableAgentsFunction-*` in AWS Console → Lambda → Functions
+  - Go to Configuration → Environment variables
+  - Add a temporary variable like `REFRESH=1` and save to restart the function
+  - Remove the temporary variable after agents appear
 
 **Authentication Failures:**
 - Verify Cognito User Pool ID and Client ID are correct
@@ -292,45 +297,6 @@ The authentication process works as follows:
      -d '{"method": "list_tools", "params": {}}'
    ```
 
-## Example MCP Tools
-
-Here are examples of tools you might implement in your MCP server:
-
-### Calculator Tool
-```python
-@mcp_server.tool()
-def calculator(expression: str) -> dict:
-    """Evaluate mathematical expressions safely."""
-    try:
-        result = eval(expression, {"__builtins__": {}})
-        return {"result": result}
-    except Exception as e:
-        return {"error": str(e)}
-```
-
-### Weather API Tool
-```python
-@mcp_server.tool()
-def get_weather(city: str) -> dict:
-    """Get current weather for a city."""
-    # Call external weather API
-    weather_data = call_weather_api(city)
-    return {
-        "city": city,
-        "temperature": weather_data["temp"],
-        "conditions": weather_data["conditions"]
-    }
-```
-
-### Database Query Tool
-```python
-@mcp_server.tool()
-def query_database(query: str) -> dict:
-    """Execute safe database queries."""
-    # Implement with proper SQL injection protection
-    results = execute_safe_query(query)
-    return {"results": results}
-```
 
 ## Best Practices
 
