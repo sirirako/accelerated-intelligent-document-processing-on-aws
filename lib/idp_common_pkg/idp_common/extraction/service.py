@@ -151,7 +151,6 @@ class ExtractionService:
         class_label: str,
         attribute_descriptions: str,
         image_content: Any = None,
-        model_id: str = None,
     ) -> List[Dict[str, Any]]:
         """
         Build content array, automatically deciding whether to use image placeholder processing.
@@ -176,7 +175,6 @@ class ExtractionService:
                 class_label,
                 attribute_descriptions,
                 image_content,
-                model_id,
             )
         else:
             return self._build_content_without_image_placeholder(
@@ -185,7 +183,6 @@ class ExtractionService:
                 class_label,
                 attribute_descriptions,
                 image_content,
-                model_id,
             )
 
     def _build_content_with_image_placeholder(
@@ -195,7 +192,6 @@ class ExtractionService:
         class_label: str,
         attribute_descriptions: str,
         image_content: Any = None,
-        model_id: str = None,
     ) -> List[Dict[str, Any]]:
         """
         Build content array with image inserted at DOCUMENT_IMAGE placeholder if present.
@@ -258,10 +254,12 @@ class ExtractionService:
         if image_content:
             if isinstance(image_content, list):
                 # Dynamic image limit based on model capabilities
-                image_limit = 20 if not supports_unlimited_images(model_id) else None
+                image_limit = (
+                    20 if not supports_unlimited_images(self.model_id) else None
+                )
                 if image_limit and len(image_content) > image_limit:
                     logger.warning(
-                        f"Found {len(image_content)} images, truncating to {image_limit} for {model_id}. "
+                        f"Found {len(image_content)} images, truncating to {image_limit} for {self.model_id}. "
                         f"{len(image_content) - image_limit} images will be dropped."
                     )
                     image_content = image_content[:image_limit]
@@ -284,7 +282,6 @@ class ExtractionService:
         class_label: str,
         attribute_descriptions: str,
         image_content: Any = None,
-        model_id: str = None,
     ) -> List[Dict[str, Any]]:
         """
         Build content array without DOCUMENT_IMAGE placeholder (standard processing).
@@ -325,7 +322,6 @@ class ExtractionService:
         class_label: str,
         attribute_descriptions: str,
         image_content: Any = None,
-        model_id: str = None,
     ) -> List[Dict[str, Any]]:
         """
         Build content array with few-shot examples inserted at the FEW_SHOT_EXAMPLES placeholder.
@@ -352,17 +348,11 @@ class ExtractionService:
                 class_label,
                 attribute_descriptions,
                 image_content,
-                model_id,
             )
 
         # Process each part using the unified function
         before_examples_content = self._build_content_with_or_without_image_placeholder(
-            parts[0],
-            document_text,
-            class_label,
-            attribute_descriptions,
-            image_content,
-            model_id,
+            parts[0], document_text, class_label, attribute_descriptions, image_content
         )
 
         # Only pass image_content if it wasn't already used in the first part
@@ -375,7 +365,6 @@ class ExtractionService:
             class_label,
             attribute_descriptions,
             image_for_second_part,
-            model_id,
         )
 
         # Build content array
@@ -924,7 +913,6 @@ class ExtractionService:
                             class_label,
                             attribute_descriptions,
                             page_images,
-                            model_id,
                         )
                     else:
                         # Use the unified content builder for DOCUMENT_IMAGE placeholder support
@@ -935,7 +923,6 @@ class ExtractionService:
                                 class_label,
                                 attribute_descriptions,
                                 page_images,
-                                model_id,
                             )
                         )
                 else:
@@ -953,7 +940,7 @@ class ExtractionService:
                     default_content = [{"text": task_prompt}]
                     if page_images:
                         image_limit = (
-                            20 if not supports_unlimited_images(model_id) else None
+                            20 if not supports_unlimited_images(self.model_id) else None
                         )
                         images_to_use = (
                             page_images[:image_limit] if image_limit else page_images
@@ -1058,7 +1045,7 @@ class ExtractionService:
                         )
                         # Dynamic image limit based on model capabilities
                         image_limit = (
-                            20 if not supports_unlimited_images(model_id) else None
+                            20 if not supports_unlimited_images(self.model_id) else None
                         )
                         images_to_use = (
                             page_images[:image_limit] if image_limit else page_images
@@ -1074,7 +1061,6 @@ class ExtractionService:
                             class_label,
                             attribute_descriptions,
                             page_images,  # Pass images to the content builder
-                            model_id,
                         )
                     else:
                         # Use the unified content builder for DOCUMENT_IMAGE placeholder support
@@ -1086,7 +1072,6 @@ class ExtractionService:
                                     class_label,
                                     attribute_descriptions,
                                     page_images,  # Pass images to the content builder
-                                    model_id,
                                 )
                             )
                         except ValueError as e:
@@ -1114,7 +1099,7 @@ class ExtractionService:
                                 # Dynamic image limit based on model capabilities
                                 image_limit = (
                                     20
-                                    if not supports_unlimited_images(model_id)
+                                    if not supports_unlimited_images(self.model_id)
                                     else None
                                 )
                                 images_to_use = (
