@@ -7,6 +7,8 @@ This module provides agent-based functionality using the Strands framework for t
 The agents module is designed to support multiple types of intelligent agents while maintaining consistency and reusability across the IDP accelerator. Currently implemented:
 
 - **Analytics Agent**: Natural language to SQL/visualization conversion with secure code execution
+- **External MCP Agent**: Connects to external MCP servers to provide additional tools and capabilities
+- **Dummy Agent**: Simple development agent with calculator tool for testing
 - **Common Utilities**: Shared configuration, monitoring, and utilities for all agent types
 
 ## Architecture
@@ -33,6 +35,17 @@ idp_common/agents/
 │   │   └── code_interpreter_tools.py # Secure Python code execution
 │   └── assets/                 # Static assets (prompts, schemas)
 │       └── db_description.md   # Database schema documentation
+├── external_mcp/               # External MCP agent implementation
+│   ├── __init__.py
+│   ├── agent.py                # External MCP agent factory
+│   └── config.py               # MCP-specific configuration
+├── sample_calculator/          # Sample calculator agent for development/testing
+│   ├── __init__.py
+│   └── agent.py                # Simple calculator agent
+├── factory/                    # Agent factory and registry
+│   ├── __init__.py
+│   ├── agent_factory.py        # Core factory implementation
+│   └── registry.py             # Global agent registration
 └── testing/                    # Testing utilities and examples
     ├── __init__.py
     ├── README.md               # Comprehensive testing guide
@@ -120,6 +133,65 @@ agent = create_analytics_agent(
 # Use the agent
 response = agent("How many documents were processed last week?")
 ```
+
+### External MCP Agent
+
+The External MCP Agent connects to external MCP (Model Context Protocol) servers to provide additional tools and capabilities. This agent enables integration with third-party services and custom tools hosted outside the IDP system.
+
+**Key Features:**
+- **Cross-Account Support**: MCP servers can be hosted in separate AWS accounts
+- **OAuth Authentication**: Uses AWS Cognito for secure authentication
+- **Dynamic Tool Discovery**: Automatically discovers and integrates available MCP tools
+- **Context Management**: Maintains MCP client connections throughout agent lifecycle
+
+**Configuration:**
+The agent requires credentials stored in AWS Secrets Manager at `{StackName}/external-mcp-agents/credentials` as a JSON array:
+
+```json
+[
+  {
+    "mcp_url": "https://your-first-mcp-server.com/mcp",
+    "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
+    "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx", 
+    "cognito_username": "<your first user here>",
+    "cognito_password": "<your first password here>",
+    "agent_name": "My Custom Calculator Agent",
+    "agent_description": "Provides advanced mathematical calculations"
+  },
+  {
+    "mcp_url": "https://your-second-mcp-server.com/mcp",
+    "cognito_user_pool_id": "us-east-1_YYYYYYYYY",
+    "cognito_client_id": "yyyyyyyyyyyyyyyyyyyyyyyyyy", 
+    "cognito_username": "<your second user here>",
+    "cognito_password": "<your second password here>"
+  }
+]
+```
+
+**Optional Fields:**
+- `agent_name`: Custom name for the agent (defaults to "External MCP Agent {N}")
+- `agent_description`: Custom description (tool information is automatically appended)
+
+**Usage:**
+```python
+from idp_common.agents.factory import agent_factory
+
+# Multiple MCP agents are automatically registered (external-mcp-agent-1, external-mcp-agent-2, etc.)
+with agent_factory.create_agent(
+    agent_id="external-mcp-agent-1",
+    session=session
+) as agent:
+    response = agent("Use your external tools to help me")
+```
+
+**Security:**
+- Uses streamable HTTP transport with OAuth bearer tokens
+- Credentials managed through AWS Secrets Manager
+- MCP client context properly managed to prevent connection leaks
+
+For detailed setup instructions, see [Custom MCP Agent Documentation](../../docs/custom-MCP-agent.md).
+
+For guidance on deploying your own MCP servers with Cognito authentication, see the [AWS Bedrock Agent Core MCP Documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-mcp.html).
 
 ### Response Parsing
 

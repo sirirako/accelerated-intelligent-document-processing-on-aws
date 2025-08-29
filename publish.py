@@ -1792,8 +1792,10 @@ except Exception as e:
                 )
 
                 self.console.print(
-                    f"[yellow]📝 {component} needs rebuild due to changes in either of dependencies: {', '.join(deps)}[/yellow]"
+                    f"[yellow]📝 {component} needs rebuild due to changes in any of these dependencies:[/yellow]"
                 )
+                for dep in deps:
+                    self.console.print(f"[yellow]   • {dep}[/yellow]")
 
         return components_to_rebuild
 

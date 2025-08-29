@@ -19,7 +19,7 @@ const getStatusIndicator = (status) => {
   }
 };
 
-const AnalyticsJobStatus = ({ jobId, status, error }) => {
+const AgentJobStatus = ({ jobId, status, error }) => {
   if (!jobId) {
     return null;
   }
@@ -38,16 +38,16 @@ const AnalyticsJobStatus = ({ jobId, status, error }) => {
   );
 };
 
-AnalyticsJobStatus.propTypes = {
+AgentJobStatus.propTypes = {
   jobId: PropTypes.string,
   status: PropTypes.string,
   error: PropTypes.string,
 };
 
-AnalyticsJobStatus.defaultProps = {
+AgentJobStatus.defaultProps = {
   jobId: null,
   status: null,
   error: null,
 };
 
-export default AnalyticsJobStatus;
+export default AgentJobStatus;

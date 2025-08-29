@@ -112,6 +112,17 @@ aws cloudformation deploy \
   --stack-name <your-stack-name>
 ```
 
+Or to update an already-deployed stack:
+```bash
+aws cloudformation update-stack \
+  --stack-name <your-stack-name> \
+  --template-url <template URL output by publish script, e.g. https://s3.us-east-1.amazonaws.com/blahblah.yaml> \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --region <region> \
+  --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>" ParameterKey=IDPPattern,ParameterValue="<pattern-name>" 
+```
+
+
 **Pattern Parameter Options:**
 * `Pattern1` - Packet or Media processing with Bedrock Data Automation (BDA)
   * Can use an existing BDA project or create a new demo project

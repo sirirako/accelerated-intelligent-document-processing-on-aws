@@ -7,52 +7,30 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Modern Python-Based Publishing System**
-  - **Complete Rewrite**: Replaced legacy `publish.sh` bash script (583 lines) with modern `publish.py` Python script (1,294 lines)
-  - **Enhanced User Experience**: Rich console interface with progress bars, spinners, and colored output using Rich library
-  - **Concurrent Processing**: Multi-threaded artifact building and uploading for significantly improved performance
-  - **Cross-Platform Support**: Native support for Linux, macOS, and Windows environments
-  - **Intelligent Caching**: Advanced checksum-based build optimization to skip unnecessary rebuilds
-  - **Robust Error Handling**: Comprehensive error handling with detailed error messages and recovery suggestions
-  - **Resource Management**: Automatic cleanup of temporary files and proper resource management
-  - **CLI Interface**: Modern command-line interface using Typer with clear help documentation and parameter validation
-  - **Key Features**:
-    - Parallel S3 uploads with thread-safe progress tracking
-    - CloudFormation template validation and processing
-    - Automatic bucket creation with proper permissions and lifecycle policies
-    - Build artifact optimization with dependency tracking
-    - Comprehensive logging and debugging capabilities
-    - Memory-efficient processing for large artifacts
+- **AWS GovCloud Support with Automated Template Generation**
+  - Added GovCloud compatibility through `scripts/generate_govcloud_template.py` script
+  - **ARN Partition Compatibility**: All templates updated to use `arn:${AWS::Partition}:` for both commercial and GovCloud regions
+  - **Headless Operation**: Automatically removes UI-related resources (CloudFront, AppSync, Cognito, WAF) for GovCloud deployment
+  - **Core Functionality Preserved**: All 3 processing patterns and complete 6-step pipeline (OCR, Classification, Extraction, Assessment, Summarization, Evaluation) remain fully functional
+  - **Automated Workflow**: Single script orchestrates build + GovCloud template generation + S3 upload with deployment URLs
+  - **Enterprise Ready**: Enables headless document processing for government and enterprise environments requiring GovCloud compliance
+  - **Documentation**: New `docs/govcloud-deployment.md` with deployment guide, architecture differences, and access methods
 
-- **Comprehensive Unit Test Suite for Publishing System**
-  - **Extensive Test Coverage**: 1,621 lines of unit tests covering 95%+ of publish.py functionality
-  - **Testing Framework**: Uses pytest with proper unit test markers (`@pytest.mark.unit`) following project testing standards
-  - **Mock Integration**: Comprehensive mocking of AWS services (S3, CloudFormation) for isolated unit testing without external dependencies
-  - **Cross-Platform Testing**: Tests for Linux, macOS, and Windows-specific functionality and edge cases
-  - **Error Scenario Coverage**: Tests for network failures, permission errors, malformed templates, and concurrent access scenarios
-  - **Performance Testing**: Tests for concurrent operations, memory usage, and resource cleanup
-  - **Key Test Categories**:
-    - IDPPublisher initialization and configuration
-    - S3 operations (bucket creation, uploads, permissions)
-    - CloudFormation template processing and validation
-    - Build system integration and checksum validation
-    - Error handling and recovery mechanisms
-    - Concurrent publishing workflows and thread safety
+- **Pattern-2 and Pattern-3 Assessment now generate geometry (bounding boxes) for visualization in UI 'Visual Editor' (parity with Pattern-1)**
+  - Added comprehensive spatial localization capabilities to both regular and granular assessment services
+  - **Automatic Processing**: When LLM provides bbox coordinates, automatically converts to UI-compatible (Visual Edit) geometry format without any configuration
+  - **Universal Support**: Works with all attribute types - simple attributes, nested group attributes (e.g., CompanyAddress.State), and list attributes
+  - **Enhanced Prompts**: Updated assessment task prompts with spatial-localization-guidelines requesting bbox coordinates in normalized 0-1000 scale
+  - **Demo Notebooks**: Assessment notebooks now showcase automatic bounding box processing
 
-- **Windows Development Environment Setup**
-  - **Automated Setup Script**: New `scripts/dev_setup.bat` (570 lines) for complete Windows development environment configuration
-  - **Comprehensive Installation**: Automated installation of all required development tools and dependencies
-  - **Tool Installation**:
-    - AWS CLI with proper configuration
-    - Python 3.13 (required for compatibility with latest dependencies)
-    - Node.js for React UI development
-    - Git for version control
-    - Docker for containerized development
-    - AWS SAM CLI for serverless application development
-    - Python dependencies (boto3, numpy 2.3.2, typer, rich)
-  - **Environment Configuration**: Automatic AWS credentials setup and project cloning with dependency installation
-  - **Administrator Privileges**: Proper handling of Windows administrator requirements for system-level installations
-  - **Error Handling**: Comprehensive error checking and user guidance throughout the setup process
+- **New Python-Based Publishing System**
+  - Replaced `publish.sh` bash script with new `publish.py` Python script
+  - Rich console interface with progress bars, spinners, and colored output using Rich library
+  - Multi-threaded artifact building and uploading for significantly improved performance
+  - Native support for Linux, macOS, and Windows environments
+
+- **Windows Development Environment Setup Guide and Helper Script**
+  - New `scripts/dev_setup.bat` (570 lines) for complete Windows development environment configuration
 
 - **OCR Service Default Image Sizing for Resource Optimization**
   - Implemented automatic default image size limits (951×1268) when no image sizing configuration is provided
@@ -60,21 +38,10 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Publishing Workflow Modernization**
-  - Migrated from bash-based to Python-based publishing system for better maintainability and cross-platform support
-  - Improved build performance through intelligent caching and concurrent processing
-  - Enhanced developer experience with rich console output and clear progress indicators
-  - Better error diagnostics and troubleshooting capabilities
-
 - **Reverted to python3.12 runtime to resolve build package dependency problems**
 
-### Technical Improvements
-
-- **Build System Optimization**: Checksum-based incremental builds reduce unnecessary processing time
-- **Memory Management**: Efficient handling of large artifacts and proper resource cleanup
-- **Thread Safety**: Concurrent operations with proper synchronization and error handling
-- **Code Quality**: Comprehensive unit testing ensures reliability and maintainability of the publishing system
-
+### Fixed
+- **Improved Visual Edit bounding box position when using image zoom or pan**
 
 
 

@@ -9,9 +9,9 @@ import PlotDisplay from './PlotDisplay';
 import TableDisplay from './TableDisplay';
 import TextDisplay from './TextDisplay';
 
-const logger = new Logger('AnalyticsResultDisplay');
+const logger = new Logger('AgentResultDisplay');
 
-const AnalyticsResultDisplay = ({ result, query }) => {
+const AgentResultDisplay = ({ result, query }) => {
   if (!result) {
     return null;
   }
@@ -133,7 +133,7 @@ const AnalyticsResultDisplay = ({ result, query }) => {
   );
 };
 
-AnalyticsResultDisplay.propTypes = {
+AgentResultDisplay.propTypes = {
   result: PropTypes.oneOfType([
     PropTypes.string, // For JSON strings
     PropTypes.object, // For parsed objects
@@ -141,9 +141,9 @@ AnalyticsResultDisplay.propTypes = {
   query: PropTypes.string,
 };
 
-AnalyticsResultDisplay.defaultProps = {
+AgentResultDisplay.defaultProps = {
   result: null,
   query: '',
 };
 
-export default AnalyticsResultDisplay;
+export default AgentResultDisplay;

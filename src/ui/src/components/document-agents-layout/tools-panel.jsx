@@ -6,7 +6,7 @@ import { HelpPanel, Icon } from '@awsui/components-react';
 const ToolsPanel = () => {
   return (
     <HelpPanel
-      header={<h2>Document Analytics</h2>}
+      header={<h2>Agent Analysis</h2>}
       footer={
         <div>
           <h3>
@@ -24,8 +24,8 @@ const ToolsPanel = () => {
     >
       <div>
         <p>
-          Use the Document Analytics feature to query your document processing data using natural language and receive
-          interactive visualizations and insights.
+          Use Agent Analysis to interact with AI agents using natural language and receive interactive visualizations and
+          insights.
         </p>
         <h3>How to use</h3>
         <ol>

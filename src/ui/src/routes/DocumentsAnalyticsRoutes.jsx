@@ -5,7 +5,7 @@ import { Route, Switch, useRouteMatch } from 'react-router-dom';
 import { Logger } from 'aws-amplify';
 
 // Import the component directly from the file instead of the directory
-import DocumentsAnalyticsLayout from '../components/document-analytics-layout/DocumentsAnalyticsLayout';
+import DocumentsAgentsLayout from '../components/document-agents-layout/DocumentsAgentsLayout';
 import GenAIIDPLayout from '../components/genaiidp-layout';
 
 const logger = new Logger('DocumentsAnalyticsRoutes');
@@ -18,7 +18,7 @@ const DocumentsAnalyticsRoutes = () => {
     <Switch>
       <Route path={path}>
         <GenAIIDPLayout>
-          <DocumentsAnalyticsLayout />
+          <DocumentsAgentsLayout />
         </GenAIIDPLayout>
       </Route>
     </Switch>
