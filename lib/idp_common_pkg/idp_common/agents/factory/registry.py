@@ -18,7 +18,6 @@ Example:
 """
 
 import logging
-import uuid
 
 from ..analytics.agent import create_analytics_agent
 
