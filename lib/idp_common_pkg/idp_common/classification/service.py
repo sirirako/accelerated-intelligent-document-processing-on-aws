@@ -54,7 +54,6 @@ class ClassificationService:
     # Classification method options
     MULTIMODAL_PAGE_LEVEL = "multimodalPageLevelClassification"
     TEXTBASED_HOLISTIC = "textbasedHolisticClassification"
-    MULTIMODAL_PAGE_BOUNDARY = "multimodalPageBoundaryClassification"
 
     def __init__(
         self,
@@ -141,8 +140,6 @@ class ClassificationService:
         # Log classification method
         if self.classification_method == self.TEXTBASED_HOLISTIC:
             logger.info("Using textbased holistic packet classification method")
-        elif self.classification_method == self.MULTIMODAL_PAGE_BOUNDARY:
-            logger.info("Using multimodal page boundary classification method")
         else:
             # Default to multimodal page-level classification if value is invalid
             if self.classification_method != self.MULTIMODAL_PAGE_LEVEL:
