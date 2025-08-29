@@ -15,7 +15,6 @@ import time
 from typing import Any, Dict, List
 
 from idp_common import bedrock, image, metrics, s3, utils
-from idp_common.bedrock.client import supports_unlimited_images
 from idp_common.models import Document
 from idp_common.utils import extract_json_from_text
 
@@ -253,17 +252,13 @@ class ExtractionService:
         # Add the image if available
         if image_content:
             if isinstance(image_content, list):
-                # Dynamic image limit based on model capabilities
-                image_limit = (
-                    20 if not supports_unlimited_images(self.model_id) else None
-                )
-                if image_limit and len(image_content) > image_limit:
+                # Multiple images (limit to 20 as per Bedrock constraints)
+                if len(image_content) > 20:
                     logger.warning(
-                        f"Found {len(image_content)} images, truncating to {image_limit} for {self.model_id}. "
-                        f"{len(image_content) - image_limit} images will be dropped."
+                        f"Found {len(image_content)} images, truncating to 20 due to Bedrock constraints. "
+                        f"{len(image_content) - 20} images will be dropped."
                     )
-                    image_content = image_content[:image_limit]
-                for img in image_content:
+                for img in image_content[:20]:
                     content.append(image.prepare_bedrock_image_attachment(img))
             else:
                 # Single image
@@ -939,13 +934,7 @@ class ExtractionService:
                     """
                     default_content = [{"text": task_prompt}]
                     if page_images:
-                        image_limit = (
-                            20 if not supports_unlimited_images(self.model_id) else None
-                        )
-                        images_to_use = (
-                            page_images[:image_limit] if image_limit else page_images
-                        )
-                        for img in images_to_use:
+                        for img in page_images[:20]:
                             default_content.append(
                                 image.prepare_bedrock_image_attachment(img)
                             )
@@ -1038,19 +1027,13 @@ class ExtractionService:
                     """
                     content = [{"text": task_prompt}]
 
-                    # Add image attachments to the content (dynamic limit based on model capabilities)
+                    # Add image attachments to the content (limit to 20 images as per Bedrock constraints)
                     if page_images:
                         logger.info(
                             f"Attaching images to prompt, for {len(page_images)} pages."
                         )
-                        # Dynamic image limit based on model capabilities
-                        image_limit = (
-                            20 if not supports_unlimited_images(self.model_id) else None
-                        )
-                        images_to_use = (
-                            page_images[:image_limit] if image_limit else page_images
-                        )
-                        for img in images_to_use:
+                        # Limit to 20 images as per Bedrock constraints
+                        for img in page_images[:20]:
                             content.append(image.prepare_bedrock_image_attachment(img))
                 else:
                     # Check if task prompt contains FEW_SHOT_EXAMPLES placeholder
@@ -1096,18 +1079,8 @@ class ExtractionService:
                                 logger.info(
                                     f"Attaching images to prompt, for {len(page_images)} pages."
                                 )
-                                # Dynamic image limit based on model capabilities
-                                image_limit = (
-                                    20
-                                    if not supports_unlimited_images(self.model_id)
-                                    else None
-                                )
-                                images_to_use = (
-                                    page_images[:image_limit]
-                                    if image_limit
-                                    else page_images
-                                )
-                                for img in images_to_use:
+                                # Limit to 20 images as per Bedrock constraints
+                                for img in page_images[:20]:
                                     content.append(
                                         image.prepare_bedrock_image_attachment(img)
                                     )
