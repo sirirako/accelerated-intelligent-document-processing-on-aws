@@ -1919,7 +1919,7 @@ except Exception as e:
                             f"[yellow]Warning: Could not set ACL for {obj['Key']}: {e}[/yellow]"
                         )
 
-            # Also set ACL for main template files
+            # Also set ACL for main template files (only if they exist)
             main_template_keys = [
                 f"{self.prefix}/{self.main_template}",
                 f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
@@ -1927,16 +1927,25 @@ except Exception as e:
 
             for key in main_template_keys:
                 try:
+                    # Check if the key exists first
+                    self.s3_client.head_object(Bucket=self.bucket, Key=key)
+                    # If it exists, set the ACL
                     self.s3_client.put_object_acl(
                         Bucket=self.bucket, Key=key, ACL="public-read"
                     )
                     successful_acls += 1
                 except ClientError as e:
-                    failed_acls += 1
-                    if "AccessDenied" not in str(e) and "BlockPublicAcls" not in str(e):
-                        self.console.print(
-                            f"[yellow]Warning: Could not set ACL for {key}: {e}[/yellow]"
-                        )
+                    if e.response["Error"]["Code"] == "404":
+                        # Key doesn't exist, skip silently
+                        continue
+                    else:
+                        failed_acls += 1
+                        if "AccessDenied" not in str(
+                            e
+                        ) and "BlockPublicAcls" not in str(e):
+                            self.console.print(
+                                f"[yellow]Warning: Could not set ACL for {key}: {e}[/yellow]"
+                            )
 
             # Report accurate final status
             if failed_acls == 0:
