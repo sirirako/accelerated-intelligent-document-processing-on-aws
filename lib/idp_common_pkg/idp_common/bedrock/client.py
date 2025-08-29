@@ -39,6 +39,10 @@ DEFAULT_MAX_BACKOFF = 300    # 5 minutes
 CACHEPOINT_SUPPORTED_MODELS = [
     "us.anthropic.claude-3-5-haiku-20241022-v1:0",
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "anthropic.claude-opus-4-1-20250805-v1:0",
+    "anthropic.claude-opus-4-20250514-v1:0",
+    "anthropic.claude-sonnet-4-20250514-v1:0",
+    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
     "us.amazon.nova-lite-v1:0",
     "us.amazon.nova-pro-v1:0"
 ]
@@ -213,7 +217,15 @@ class BedrockClient:
         """
         # Track total requests
         self._put_metric('BedrockRequestsTotal', 1)
-               
+        
+        # Parse model selection for 1M context
+        if model_id and model_id.endswith(':1m'):
+            actual_model_id = model_id[:-3]  # Remove ':1m'
+            use_1m_context = True
+        else:
+            actual_model_id = model_id
+            use_1m_context = False
+        
         # Use instance max_retries if not overridden
         effective_max_retries = max_retries if max_retries is not None else self.max_retries
         
@@ -340,7 +352,7 @@ class BedrockClient:
         
         # Build converse parameters
         converse_params = {
-            "modelId": use_model_id,
+            "modelId": actual_model_id,
             "messages": messages,
             "system": formatted_system_prompt,
             "inferenceConfig": inference_config,
@@ -366,6 +378,29 @@ class BedrockClient:
         
         return result
 
+    def converse_claude_sonnet4_1m(self, prompt_text: str, use_1m_context: bool = True, additional_model_fields: dict = None) -> str:
+        """Simple 1M context Claude Sonnet 4 method"""
+        # Add 1M context headers if needed
+        if use_1m_context:
+            if additional_model_fields is None:
+                additional_model_fields = {}
+            additional_model_fields["anthropic_beta"] = ["context-1m-2025-08-07"]
+        
+        response = self.bedrock_runtime.converse(
+            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"text": prompt_text}]
+                }
+            ],
+            inferenceConfig={
+                "maxTokens": 4000,
+            },
+            additionalModelRequestFields=additional_model_fields
+        )
+        return response['output']['message']['content'][0]['text']
+    
     def _invoke_with_retry(
         self,
         model_id: str,
