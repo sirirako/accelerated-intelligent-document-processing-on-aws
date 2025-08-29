@@ -288,16 +288,7 @@ See [web-ui.md](web-ui.md) for details on using the dashboard.
 Use the included script to check document processing status via CLI:
 
 ```bash
-bash scripts/lookup_file_status.sh <STACK_NAME> <DOCUMENT_KEY>
-```
-
-or directly using the Lambda function:
-
-```bash
-aws lambda invoke \
-  --function-name <STACK_NAME>-LookupFunction \
-  --payload '{"document_key":"<DOCUMENT_KEY>"}' \
-  output.json && cat output.json | jq
+bash scripts/lookup_file_status.sh <DOCUMENT_KEY> <STACK_NAME>
 ```
 
 ### Response Format

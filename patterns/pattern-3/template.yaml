@@ -60,10 +60,12 @@ Parameters:
     
   AppSyncApiUrl:
     Type: String
+    Default: ""
     Description: The AppSync API URL for status updates
     
   AppSyncApiArn:
     Type: String
+    Default: ""
     Description: The AppSync API ARN for IAM permissions
     
   BedrockGuardrailId:
@@ -90,9 +92,9 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
       Required by some organizations with Service Control Policies (SCPs).
-      Format: arn:aws:iam::account-id:policy/policy-name
+      Format: arn:${AWS::Partition}:iam::account-id:policy/policy-name
       Leave blank if no Permissions Boundary is required.
-    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
   EnableHITL:
@@ -111,6 +113,7 @@ Parameters:
 Conditions:
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
+  HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
   IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
 
 Resources:
@@ -528,7 +531,7 @@ Resources:
                 order: 7
               custom_prompt_lambda_arn:
                 type: string
-                description: "(Optional) ARN of a Lambda function to generate custom extraction prompts. Function name must start with 'GENAIIDP-'. If not provided, default prompts will be used. The Lambda function receives the complete config, prompt placeholders, default task prompt content, and serialized document, and returns custom system_prompt and task_prompt_content. Example: arn:aws:lambda:us-east-1:123456789012:function:GENAIIDP-my-extractor"
+                description: "(Optional) ARN of a Lambda function to generate custom extraction prompts. Function name must start with 'GENAIIDP-'. If not provided, default prompts will be used. The Lambda function receives the complete config, prompt placeholders, default task prompt content, and serialized document, and returns custom system_prompt and task_prompt_content. Example: arn:${AWS::Partition}:lambda:us-east-1:123456789012:function:GENAIIDP-my-extractor"
                 order: 8
           assessment:
             order: 5
@@ -793,6 +796,8 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref OCRFunctionLogGroup
@@ -806,6 +811,8 @@ Resources:
             BucketName: !Ref InputBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -824,12 +831,15 @@ Resources:
               - textract:DetectDocumentText
               - textract:AnalyzeDocument
             Resource: '*'
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available) (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: 
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
 
   
   OCRFunctionLogGroup:
@@ -869,6 +879,7 @@ Resources:
           SAGEMAKER_ENDPOINT_NAME: !GetAtt SAGEMAKERCLASSIFIERSTACK.Outputs.EndpointName
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           WORKING_BUCKET: !Ref WorkingBucket
@@ -888,6 +899,8 @@ Resources:
             BucketName: !Ref ConfigurationBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -903,17 +916,20 @@ Resources:
           - Effect: Allow
             Action: sagemaker:InvokeEndpoint
             Resource: !GetAtt SAGEMAKERCLASSIFIERSTACK.Outputs.EndpointArn
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: 
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action: bedrock:ApplyGuardrail
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
   
   ClassificationFunctionLogGroup:
@@ -952,6 +968,8 @@ Resources:
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref ExtractionFunctionLogGroup
@@ -967,6 +985,8 @@ Resources:
             BucketName: !Ref ConfigurationBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -982,26 +1002,29 @@ Resources:
           - Effect: Allow
             Action: bedrock:InvokeModel
             Resource: 
-                - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - Effect: Allow
             Action: lambda:InvokeFunction
             Resource: 
-              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:GENAIIDP-*"
+              - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:GENAIIDP-*"
             Condition:
               StringLike:
                 "lambda:FunctionName": "GENAIIDP-*"
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: 
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action: bedrock:ApplyGuardrail
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
 
   ExtractionFunctionLogGroup:
@@ -1040,6 +1063,8 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref AssessmentFunctionLogGroup
@@ -1055,6 +1080,8 @@ Resources:
             BucketName: !Ref ConfigurationBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -1067,22 +1094,25 @@ Resources:
               - kms:GenerateDataKey*
               - kms:DescribeKey
             Resource: !Ref CustomerManagedEncryptionKeyArn
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: 
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
           - Effect: Allow
             Action: bedrock:InvokeModel
             Resource: 
-                - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action: bedrock:ApplyGuardrail
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
 
   AssessmentFunctionLogGroup:
@@ -1119,6 +1149,8 @@ Resources:
           METRIC_NAMESPACE: !Ref StackName
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
@@ -1130,6 +1162,8 @@ Resources:
             BucketName: !Ref OutputBucket
         - S3CrudPolicy:
             BucketName: !Ref WorkingBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -1142,12 +1176,15 @@ Resources:
               - kms:GenerateDataKey*
               - kms:DescribeKey
             Resource: !Ref CustomerManagedEncryptionKeyArn
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: 
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
 
   
   ProcessResultsFunctionLogGroup:
@@ -1186,6 +1223,8 @@ Resources:
           GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref AppSyncApiUrl
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           WORKING_BUCKET: !Ref WorkingBucket
       LoggingConfig:
         LogGroup: !Ref SummarizationFunctionLogGroup
@@ -1199,6 +1238,8 @@ Resources:
             BucketName: !Ref WorkingBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement:
           - Effect: Allow
             Action: cloudwatch:PutMetricData
@@ -1214,19 +1255,22 @@ Resources:
           - Effect: Allow
             Action: bedrock:InvokeModel
             Resource: 
-                - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: 
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action: bedrock:ApplyGuardrail
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
 
   SummarizationFunctionLogGroup:
@@ -1773,4 +1817,4 @@ Outputs:
 
   DashboardArn:
     Description: ARN of the Pattern 3 (UDOP) CloudWatch Dashboard
-    Value: !Sub "arn:aws:cloudwatch::${AWS::AccountId}:dashboard/${Dashboard}"
+    Value: !Sub "arn:${AWS::Partition}:cloudwatch::${AWS::AccountId}:dashboard/${Dashboard}"

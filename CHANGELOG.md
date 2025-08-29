@@ -7,6 +7,15 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **AWS GovCloud Support with Automated Template Generation**
+  - Added GovCloud compatibility through `scripts/generate_govcloud_template.py` script
+  - **ARN Partition Compatibility**: All templates updated to use `arn:${AWS::Partition}:` for both commercial and GovCloud regions
+  - **Headless Operation**: Automatically removes UI-related resources (CloudFront, AppSync, Cognito, WAF) for GovCloud deployment
+  - **Core Functionality Preserved**: All 3 processing patterns and complete 6-step pipeline (OCR, Classification, Extraction, Assessment, Summarization, Evaluation) remain fully functional
+  - **Automated Workflow**: Single script orchestrates build + GovCloud template generation + S3 upload with deployment URLs
+  - **Enterprise Ready**: Enables headless document processing for government and enterprise environments requiring GovCloud compliance
+  - **Documentation**: New `docs/govcloud-deployment.md` with deployment guide, architecture differences, and access methods
+
 - **Pattern-2 and Pattern-3 Assessment now generate geometry (bounding boxes) for visualization in UI 'Visual Editor' (parity with Pattern-1)**
   - Added comprehensive spatial localization capabilities to both regular and granular assessment services
   - **Automatic Processing**: When LLM provides bbox coordinates, automatically converts to UI-compatible (Visual Edit) geometry format without any configuration
@@ -31,6 +40,8 @@ SPDX-License-Identifier: MIT-0
 
 - **Reverted to python3.12 runtime to resolve build package dependency problems**
 
+### Fixed
+- **Improved Visual Edit bounding box position when using image zoom or pan**
 
 
 

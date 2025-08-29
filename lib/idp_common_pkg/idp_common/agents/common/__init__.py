@@ -8,10 +8,12 @@ This module provides shared functionality that can be used across different agen
 """
 
 from .config import get_environment_config
+from .idp_agent import IDPAgent
 from .response_utils import extract_json_from_markdown, parse_agent_response
 
 __all__ = [
     "get_environment_config",
+    "IDPAgent",
     "extract_json_from_markdown",
     "parse_agent_response",
 ]

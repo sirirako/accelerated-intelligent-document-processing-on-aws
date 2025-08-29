@@ -102,7 +102,7 @@ Parameters:
   Pattern1BDAProjectArn:
     Type: String
     Default: ""
-    AllowedPattern: "^(|^arn:aws:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
+    AllowedPattern: "^(|^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
     Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
 
   Pattern1Configuration:
@@ -179,11 +179,11 @@ Parameters:
   ExistingPrivateWorkforceArn:
     Type: String
     Default: ""
-    AllowedPattern: "^(|arn:aws:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
     Description: >-
       (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
       If provided, the template will use this existing workteam instead of creating a new one.
-      Format: arn:aws:sagemaker:region:account-id:workteam/private-crowd/workteam-name
+      Format: arn:${AWS::Partition}:sagemaker:region:account-id:workteam/private-crowd/workteam-name
       Leave blank to create a new private workteam.
 
   # Evaluation
@@ -269,7 +269,7 @@ Parameters:
   PostProcessingLambdaHookFunctionArn:
     Default: ""
     Type: String
-    AllowedPattern: "^(|arn:aws:lambda:.*)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:lambda:.*)$"
     Description: >
       (Optional) The specified Lambda function is invoked by EventBridge after the document processing workflow is processed.
       This function can implement custom logic to initiate downstream processing on the output of the processing pattern.
@@ -321,9 +321,9 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
       Required by some organizations with Service Control Policies (SCPs).
-      Format: arn:aws:iam::account-id:policy/policy-name
+      Format: arn:${AWS::Partition}:iam::account-id:policy/policy-name
       Leave blank if no Permissions Boundary is required.
-    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
   # Logging configuration
@@ -991,13 +991,13 @@ Resources:
           - Sid: Enable IAM User Permissions
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: "*"
           - Sid: Allow lambda to access the Keys
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
             Action:
               - kms:Encrypt
               - kms:Decrypt
@@ -1746,7 +1746,7 @@ Resources:
               Service: glue.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSGlueServiceRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DocumentSectionsCrawlerS3Access
@@ -1759,13 +1759,13 @@ Resources:
                   - s3:ListBucket
                 Resource:
                   - !Sub 
-                    - "arn:aws:s3:::${Bucket}"
+                    - "arn:${AWS::Partition}:s3:::${Bucket}"
                     - Bucket: !If
                         - ShouldCreateReportingBucket
                         - !Ref ReportingBucket
                         - !Ref ReportingBucketName
                   - !Sub 
-                    - "arn:aws:s3:::${Bucket}/document_sections/*"
+                    - "arn:${AWS::Partition}:s3:::${Bucket}/document_sections/*"
                     - Bucket: !If
                         - ShouldCreateReportingBucket
                         - !Ref ReportingBucket
@@ -2048,10 +2048,10 @@ Resources:
               - "s3:GetObject"
               - "s3:ListBucket"
             Resource:
-              - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>"
-              - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
-              - !Sub "arn:aws:s3:::${ConfigurationBucket}"
-              - !Sub "arn:aws:s3:::${ConfigurationBucket}/*"
+              - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>"
+              - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}"
+              - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}/*"
           # Allow reading user-supplied config file only if CustomConfigPath is specified
           - !If
             - HasCustomConfigPath
@@ -2059,7 +2059,7 @@ Resources:
               Action:
                 - "s3:GetObject"
               Resource: !Sub
-                - "arn:aws:s3:::${Path}"
+                - "arn:${AWS::Partition}:s3:::${Path}"
                 - Path: !Select [1, !Split ["s3://", !Ref CustomConfigPath]]
             - !Ref AWS::NoValue
           # Allow listing the specific bucket containing the custom config file
@@ -2069,7 +2069,7 @@ Resources:
               Action:
                 - "s3:ListBucket"
               Resource: !Sub
-                - "arn:aws:s3:::${BucketName}"
+                - "arn:${AWS::Partition}:s3:::${BucketName}"
                 - BucketName: !Select [0, !Split ["/", !Select [1, !Split ["s3://", !Ref CustomConfigPath]]]]
             - !Ref AWS::NoValue
 
@@ -2128,7 +2128,7 @@ Resources:
               - ssm:GetParameter
               - ssm:PutParameter
             Resource:
-              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
 
   UpdateSettingsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -2576,7 +2576,7 @@ Resources:
                 - states:GetExecutionHistory
               Resource: 
                 - !Sub
-                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
                     - IsPattern3
                     - !GetAtt PATTERN3STACK.Outputs.StateMachineName
@@ -2739,10 +2739,10 @@ Resources:
                 - glue:UpdateTable
                 - glue:GetDatabase
               Resource:
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -2847,8 +2847,8 @@ Resources:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: 
-                  - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
 
   EvaluationFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -3428,7 +3428,7 @@ Resources:
                 - states:GetExecutionHistory
               Resource:
                 - !Sub
-                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
                       - IsPattern3
                       - !GetAtt PATTERN3STACK.Outputs.StateMachineName
@@ -3452,11 +3452,11 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
-  # Analytics resources for text-to-analytics feature
+  # Agent resources for text-to-agent feature
   ##########################################################################
 
-  # DynamoDB table for analytics job tracking
-  AnalyticsTable:
+  # DynamoDB table for agent job tracking
+  AgentTable:
     Type: AWS::DynamoDB::Table
     Properties:
       PointInTimeRecoverySpecification:
@@ -3480,8 +3480,17 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
-  # Lambda function for analytics request handler
-  AnalyticsRequestHandlerFunction:
+  # Secrets Manager secret for External MCP Agent credentials
+  ExternalMCPAgentsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
+      Description: "Credentials for External MCP Agents - JSON array with required fields: mcp_url, cognito_user_pool_id, cognito_client_id, cognito_username, cognito_password. Optional fields: agent_name, agent_description"
+      SecretString: "[]"
+      KmsKeyId: !Ref CustomerManagedEncryptionKey
+
+  # Lambda function for agent request handler
+  AgentRequestHandlerFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3496,23 +3505,23 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      CodeUri: src/lambda/analytics_request_handler/
+      CodeUri: src/lambda/agent_request_handler/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          ANALYTICS_TABLE: !Ref AnalyticsTable
-          ANALYTICS_PROCESSOR_FUNCTION: !Ref AnalyticsProcessorFunction
+          AGENT_TABLE: !Ref AgentTable
+          AGENT_PROCESSOR_FUNCTION: !Ref AgentProcessorFunction
           DATA_RETENTION_DAYS: !Ref DataRetentionInDays
       LoggingConfig:
-        LogGroup: !Ref AnalyticsRequestHandlerLogGroup
+        LogGroup: !Ref AgentRequestHandlerLogGroup
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalyticsTable
+            TableName: !Ref AgentTable
         - LambdaInvokePolicy:
-            FunctionName: !Ref AnalyticsProcessorFunction
+            FunctionName: !Ref AgentProcessorFunction
         - Statement:
             - Effect: Allow
               Action:
@@ -3523,14 +3532,14 @@ Resources:
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
 
-  AnalyticsRequestHandlerLogGroup:
+  AgentRequestHandlerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # Lambda function for analytics processor
-  AnalyticsProcessorFunction:
+  # Lambda function for agent processor
+  AgentProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3545,7 +3554,7 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      CodeUri: src/lambda/analytics_processor/
+      CodeUri: src/lambda/agent_processor/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
@@ -3554,7 +3563,7 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           STRANDS_LOG_LEVEL: !Ref LogLevel
-          ANALYTICS_TABLE: !Ref AnalyticsTable
+          AGENT_TABLE: !Ref AgentTable
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           ATHENA_DATABASE: !Ref ReportingDatabase
           ATHENA_OUTPUT_LOCATION: !Sub 
@@ -3564,11 +3573,12 @@ Resources:
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
           DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
+          AWS_STACK_NAME: !Ref AWS::StackName
       LoggingConfig:
-        LogGroup: !Ref AnalyticsProcessorLogGroup
+        LogGroup: !Ref AgentProcessorLogGroup
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalyticsTable
+            TableName: !Ref AgentTable
         - S3CrudPolicy:
             BucketName: !If
               - ShouldCreateReportingBucket
@@ -3581,8 +3591,8 @@ Resources:
                 - athena:GetQueryExecution
                 - athena:GetQueryResults
               Resource: 
-                - !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
-                - !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
             - Effect: Allow
               Action:
                 - glue:GetTable
@@ -3591,16 +3601,16 @@ Resources:
                 - glue:GetDatabases
                 - glue:GetPartitions
               Resource: 
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
               Resource: 
-                - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
             - Effect: Allow
               Action:
                 - appsync:GraphQL
@@ -3622,43 +3632,114 @@ Resources:
                 - bedrock-agentcore:GetCodeInterpreterSession
                 - bedrock-agentcore:ListCodeInterpreterSessions
               Resource: 
-                - !Sub "arn:aws:bedrock-agentcore:*:aws:code-interpreter/*"
+                - !Sub "arn:${AWS::Partition}:bedrock-agentcore:*:aws:code-interpreter/*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref ExternalMCPAgentsSecret
 
-  AnalyticsProcessorLogGroup:
+  AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # AppSync resolvers for analytics operations
-  SubmitAnalyticsQueryResolver:
+  # Lambda function for listing available agents
+  ListAvailableAgentsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with local agent factory"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with local agent factory"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/list_available_agents/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 30
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          AWS_STACK_NAME: !Ref AWS::StackName
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref ExternalMCPAgentsSecret
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+      LoggingConfig:
+        LogGroup: !Ref ListAvailableAgentsLogGroup
+
+  ListAvailableAgentsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # AppSync resolvers for agent operations
+  ListAvailableAgentsResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: submitAnalyticsQuery
-      DataSourceName: !GetAtt AnalyticsRequestHandlerDataSource.Name
+      FieldName: listAvailableAgents
+      DataSourceName: !GetAtt ListAvailableAgentsDataSource.Name
 
-  AnalyticsRequestHandlerDataSource:
+  ListAvailableAgentsDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AnalyticsRequestHandlerDataSource
-      Description: Lambda function for handling analytics query requests
+      Name: ListAvailableAgentsDataSource
+      Description: Lambda function for listing available agents
       Type: AWS_LAMBDA
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       LambdaConfig:
-        LambdaFunctionArn: !GetAtt AnalyticsRequestHandlerFunction.Arn
+        LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
 
-  GetAnalyticsJobStatusResolver:
+  SubmitAgentQueryResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: getAnalyticsJobStatus
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: submitAgentQuery
+      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
+
+  AgentRequestHandlerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentRequestHandlerDataSource
+      Description: Lambda function for handling agent query requests
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
+
+  GetAgentJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3671,7 +3752,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "GetItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           }
         }
@@ -3683,6 +3764,7 @@ Resources:
             "jobId": $util.toJson($ctx.result.SK),
             "status": $util.toJson($ctx.result.status),
             "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
             "createdAt": $util.toJson($ctx.result.createdAt),
             "completedAt": $util.toJson($ctx.result.completedAt),
             "result": $util.toJson($ctx.result.result),
@@ -3691,14 +3773,14 @@ Resources:
           }
         #end
 
-  ListAnalyticsJobsResolver:
+  ListAgentJobsResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: listAnalyticsJobs
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: listAgentJobs
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3713,7 +3795,7 @@ Resources:
           "query": {
             "expression": "PK = :pk",
             "expressionValues": {
-              ":pk": $util.dynamodb.toDynamoDBJson("analytics#${userId}")
+              ":pk": $util.dynamodb.toDynamoDBJson("agent#${userId}")
             }
           },
           #if($ctx.args.limit)
@@ -3732,6 +3814,7 @@ Resources:
                 "jobId": $util.toJson($item.SK),
                 "status": $util.toJson($item.status),
                 "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
                 "createdAt": $util.toJson($item.createdAt),
                 "completedAt": $util.toJson($item.completedAt),
                 "result": $util.toJson($item.result),
@@ -3742,14 +3825,14 @@ Resources:
           "nextToken": $util.toJson($ctx.result.nextToken)
         }
 
-  UpdateAnalyticsJobStatusResolver:
+  UpdateAgentJobStatusResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Mutation
-      FieldName: updateAnalyticsJobStatus
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: updateAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |-
         #set($userId = $ctx.args.userId)
         #set($expNames = {})
@@ -3778,7 +3861,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "UpdateItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           },
           "update": {
@@ -3790,14 +3873,14 @@ Resources:
       ResponseMappingTemplate: |-
         true
 
-  DeleteAnalyticsJobResolver:
+  DeleteAgentJobResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Mutation
-      FieldName: deleteAnalyticsJob
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: deleteAgentJob
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |-
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3810,7 +3893,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "DeleteItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           }
         }
@@ -3821,16 +3904,16 @@ Resources:
           true
         #end
 
-  AnalyticsTableDataSource:
+  AgentTableDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AnalyticsTableDataSource
-      Description: DynamoDB table for analytics job tracking
+      Name: AgentTableDataSource
+      Description: DynamoDB table for agent job tracking
       Type: AMAZON_DYNAMODB
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       DynamoDBConfig:
-        TableName: !Ref AnalyticsTable
+        TableName: !Ref AgentTable
         AwsRegion: !Ref AWS::Region
         
   ##########################################################################
@@ -4022,12 +4105,12 @@ Resources:
                   - "s3:GetObject"
                   - "s3:ListBucket"
                 Resource:
-                  - !Sub "arn:aws:s3:::${OutputBucket}"
-                  - !Sub "arn:aws:s3:::${OutputBucket}/*"
-                  - !Sub "arn:aws:s3:::${InputBucket}"
-                  - !Sub "arn:aws:s3:::${InputBucket}/*"
-                  - !Sub "arn:aws:s3:::${ConfigurationBucket}"
-                  - !Sub "arn:aws:s3:::${ConfigurationBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}/*"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -4044,7 +4127,7 @@ Resources:
                 Action:
                   - "ssm:GetParameter"
                 Resource:
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
         - PolicyName: GraphQL
           PolicyDocument:
             Version: 2012-10-17
@@ -4211,7 +4294,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: CognitoClientUpdaterPolicy
@@ -4334,7 +4417,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -4361,7 +4444,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: SageMakerA2IAccess
@@ -4398,10 +4481,10 @@ Resources:
                   - s3:GetBucketLocation
                   - s3:GetObject
                 Resource:
-                  - Fn::Sub: arn:aws:s3:::${OutputBucket}
-                  - Fn::Sub: arn:aws:s3:::${OutputBucket}/*
-                  - Fn::Sub: arn:aws:s3:::${InputBucket}
-                  - Fn::Sub: arn:aws:s3:::${InputBucket}/*
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${OutputBucket}
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${OutputBucket}/*
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${InputBucket}
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${InputBucket}/*
         - PolicyName: LambdaSSMAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4410,7 +4493,7 @@ Resources:
                 Action:
                   - ssm:PutParameter
                 Resource: 
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
         - PolicyName: KMSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4431,8 +4514,8 @@ Resources:
                 Action:
                   - s3:PutObject
                 Resource:
-                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*'
-                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::cloudformation-custom-resource-response-*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::cloudformation-custom-resource-response-*/*'
   
   CreateA2IResourcesLambda:
     Type: AWS::Serverless::Function
@@ -4459,7 +4542,7 @@ Resources:
           STACK_NAME: !Ref AWS::StackName
           A2I_WORKTEAM_ARN: !If
             - ShouldCreatePrivateWorkteam
-            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
             - !Ref AWS::NoValue
           A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
           BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
@@ -4507,7 +4590,7 @@ Resources:
           - sagemaker:DescribeWorkteam
           Resource: !If
             - ShouldCreatePrivateWorkteam
-            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
             - !Ref ExistingPrivateWorkforceArn
   
   WorkforceURLResource:
@@ -4560,7 +4643,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -4725,7 +4808,7 @@ Resources:
               Service: appsync.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DynamoDBAccess
@@ -4741,8 +4824,8 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AnalyticsTable}
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -4764,8 +4847,8 @@ Resources:
                   - !GetAtt DeleteDocumentResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
-                  - !GetAtt AnalyticsRequestHandlerFunction.Arn
-                  - !GetAtt ChatWithDocumentResolverFunction.Arn
+                  - !GetAtt AgentRequestHandlerFunction.Arn
+                  - !GetAtt ListAvailableAgentsFunction.Arn
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
@@ -5140,7 +5223,7 @@ Resources:
                 - states:GetExecutionHistory
               Resource: 
                 - !Sub
-                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
                       - IsPattern3
                       - !GetAtt PATTERN3STACK.Outputs.StateMachineName
@@ -5298,7 +5381,7 @@ Resources:
                 Action:
                   - ssm:GetParameter
                   - ssm:PutParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -5696,26 +5779,26 @@ Resources:
               Action:
                 - bedrock:Retrieve
                 - bedrock:RetrieveAndGenerate
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
               - "bedrock:InvokeModel"
             Resource:
-              - !Sub "arn:aws:bedrock:*::foundation-model/*"
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - Effect: Allow
             Action:
               - "bedrock:GetInferenceProfile"
             Resource:
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action:
                 - "bedrock:ApplyGuardrail"
               Resource:
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
@@ -5798,26 +5881,26 @@ Resources:
               Action:
                 - bedrock:Retrieve
                 - bedrock:RetrieveAndGenerate
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
               - "bedrock:InvokeModel"
             Resource:
-              - !Sub "arn:aws:bedrock:*::foundation-model/*"
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - Effect: Allow
             Action:
               - "bedrock:GetInferenceProfile"
             Resource:
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action:
                 - "bedrock:ApplyGuardrail"
               Resource:
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
@@ -5969,8 +6052,8 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Resource:
-                  - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>"
-                  - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>"
+                  - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
                 Effect: Allow
                 Action:
                   - s3:GetObject
@@ -5980,8 +6063,8 @@ Resources:
                   - s3:PutObject
                   - s3:ListBucket
               - Resource:
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*:*"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*:*"
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -5992,7 +6075,7 @@ Resources:
                   - s3:PutObject
                   - s3:DeleteObject
                 Resource:
-                  - !Sub "arn:aws:s3:::${WebUIBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${WebUIBucket}/*"
               - Effect: Allow
                 Action:
                   - cloudfront:CreateInvalidation
@@ -6011,7 +6094,7 @@ Resources:
         Type: NO_ARTIFACTS
       Source:
         # Publish script substitutes the tokens in the filename here during package build
-        Location: !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
+        Location: !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
         Type: S3
         BuildSpec: |
           version: 0.2
@@ -6184,7 +6267,7 @@ Resources:
       SettingsParameter: !Ref SettingsParameter
       # Force codebuild to rerun when source code changes (filename will change), and to correctly roll back to
       # previous version if build fails.
-      CodeLocation: "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
+      CodeLocation: !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
 
 Outputs:
   ApplicationWebURL:
@@ -6304,12 +6387,12 @@ Outputs:
   DynamoDBConfigurationTableConsoleURL:
     Description: DynamoDB table console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${ConfigurationTable}
-  DynamoDBAnalyticsTableName:
-    Description: Name of the DynamoDB table for analytics job tracking
-    Value: !Ref AnalyticsTable
-  DynamoDBAnalyticsTableConsoleURL:
-    Description: DynamoDB table console URL for analytics job tracking
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AnalyticsTable}
+  DynamoDBAgentTableName:
+    Description: Name of the DynamoDB table for agent job tracking
+    Value: !Ref AgentTable
+  DynamoDBAgentTableConsoleURL:
+    Description: DynamoDB table console URL for agent job tracking
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AgentTable}
   LambdaLookupFunctionName:
     Description: Name of the Lookup function
     Value: !Ref LookupFunction
@@ -6331,3 +6414,6 @@ Outputs:
       REACT_APP_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       REACT_APP_AWS_REGION=${AWS::Region}
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
+  ExternalMCPAgentsSecretName:
+    Description: Name of the Secrets Manager secret for External MCP Agent credentials (JSON array format)
+    Value: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
