@@ -1,13 +1,13 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# Agent HQ Feature
+# Agent Analysis Feature
 
-The GenAIIDP solution includes an integrated Agent HQ feature that provides intelligent document analysis capabilities through multiple specialized AI agents. This feature enables you to interactively query and analyze your processed document data using natural language, with an intelligent orchestrator that routes queries to the most appropriate specialized agent.
+The GenAIIDP solution includes an integrated Agent Analysis feature that provides intelligent document analysis capabilities through multiple specialized AI agents. This feature enables you to interactively query and analyze your processed document data using natural language, with an intelligent orchestrator that routes queries to the most appropriate specialized agent.
 
 ## Overview
 
-The Agent HQ feature provides intelligent data exploration and analysis capabilities through:
+The Agent Analysis feature provides intelligent data exploration and analysis capabilities through:
 
 - **Multi-Agent Architecture**: Multiple specialized agents handle different types of queries
 - **Intelligent Orchestration**: Automatic routing of queries to the most appropriate agent
@@ -16,6 +16,7 @@ The Agent HQ feature provides intelligent data exploration and analysis capabili
 - **Interactive Visualizations**: Generate charts, graphs, and tables from query results
 - **Real-time Analysis**: Get insights from your processed documents without manual data analysis
 - **Secure Code Execution**: Python visualization code runs in isolated AWS Bedrock AgentCore sandboxes
+- **MCP Integration**: Connect external systems and tools via Model Context Protocol (MCP) servers
 
 
 https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
@@ -25,11 +26,12 @@ https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
 
 - **Multi-Agent System**: Specialized agents for different types of queries (analytics, calculations, etc.)
 - **Intelligent Orchestration**: Automatic query routing based on content analysis and agent capabilities
-- **Agent Selection Interface**: Choose specific agents or let the orchestrator decide automatically
+- **Multi-Agent Selection**: Select multiple agents simultaneously for complex analysis workflows
+- **MCP External Integration**: Connect custom external tools and systems via MCP servers
 - **Secure Architecture**: All code execution happens in AWS Bedrock AgentCore sandboxes, not in Lambda functions
 - **Database Schema Discovery**: Analytics agents automatically explore and understand your database structure
 - **Flexible Visualization**: Supports multiple chart types including bar charts, line charts, pie charts, and data tables
-- **Query History**: Track and manage previous queries through the web interface with agent selection memory
+- **Query History**: Track and manage previous questions through the web interface with agent selection memory
 - **Real-time Progress**: Live display of agent thought processes and execution steps
 - **Error Handling**: Intelligent retry logic for failed queries with automatic corrections
 
@@ -37,17 +39,18 @@ https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
 
 ### Multi-Agent System
 
-The Agent HQ feature uses a multi-agent architecture with:
+The Agent Analysis feature uses a multi-agent architecture with:
 
 1. **Orchestrator Agent**: Routes queries to appropriate specialized agents based on query content and agent capabilities
 2. **Analytics Agent**: Handles data analysis, SQL generation, and visualization creation
 3. **Dummy Agent**: Provides simple calculations and development testing capabilities
-4. **Extensible Framework**: Easy addition of new specialized agents for specific use cases
+4. **External MCP Agents**: Custom agents connected via Model Context Protocol servers
+5. **Extensible Framework**: Easy addition of new specialized agents for specific use cases
 
 ### Agent Workflow
 
 1. **Question Processing**: User submits a natural language question through the web UI
-2. **Agent Selection**: User can choose specific agents or let the orchestrator decide automatically
+2. **Agent Selection**: User can choose multiple specific agents or let the orchestrator decide automatically
 3. **Query Routing**: Orchestrator analyzes the query and routes it to the most appropriate specialized agent
 4. **Specialized Processing**: Selected agent processes the query using its specific tools and capabilities
 5. **Result Generation**: Agent generates appropriate responses (visualizations, calculations, text, etc.)
@@ -66,7 +69,7 @@ For data analysis queries, the Analytics Agent follows this workflow:
 
 ### Security Architecture
 
-The Agent HQ feature implements a security-first design:
+The Agent Analysis feature implements a security-first design:
 
 - **Sandboxed Execution**: All Python code runs in AWS Bedrock AgentCore, completely isolated from the rest of the AWS environment and the internet
 - **Secure Data Transfer**: Query results are transferred via S3 and AgentCore APIs, never through direct file system access
@@ -118,8 +121,36 @@ The analytics agent has access to four specialized tools:
 ### Accessing the Feature
 
 1. Log in to the GenAIIDP Web UI
-2. Navigate to the "Document Analytics" section in the main navigation
+2. Navigate to the "Agent Analysis" section in the main navigation
 3. You'll see a chat-like interface for querying your document data
+
+### Agent Selection
+
+The Agent Analysis interface allows you to select from multiple available agents:
+
+**Multi-Agent Selection:**
+- Select multiple agents simultaneously for complex analysis workflows
+- Use "Select All Agents" / "Deselect All Agents" for bulk selection
+- Each agent brings specialized capabilities to your analysis
+
+**Available Agent Types:**
+- **Analytics Agent**: Database queries, SQL generation, and data visualization
+- **Dummy Agent**: Simple calculations and testing capabilities  
+- **External MCP Agents**: Custom tools and systems integrated via MCP servers
+
+**Agent Selection Tips:**
+- Select specific agents when you know what type of analysis you need
+- Choose multiple agents for comprehensive analysis requiring different capabilities
+- The system intelligently routes your question to the most appropriate selected agents
+
+### MCP Integration
+
+**Custom System Integration:**
+- Click "🚀 NEW: Integrate your own systems with MCP!" to learn about connecting external tools
+- Add custom agents without code changes or redeployments
+- Integrate APIs, databases, and specialized tools via Model Context Protocol servers
+
+For detailed MCP setup instructions, see the [Custom MCP Agent Documentation](./custom-MCP-agent.md).
 
 ### Asking Questions
 
