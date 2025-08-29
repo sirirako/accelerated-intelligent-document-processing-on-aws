@@ -105,7 +105,6 @@ Parameters:
     AllowedPattern: "^(|^arn:aws:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
     Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
 
-
   Pattern1Configuration:
     Type: String
     Default: "lending-package-sample"
@@ -402,6 +401,15 @@ Parameters:
 
 Rules:
   # Pattern 1 rules
+  ValidateExistingPrivateWorkforceArn:
+    RuleCondition:
+      !And [
+        !Equals [!Ref EnableHITL, "true"],
+        !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+      ]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+        AssertDescription: ExistingPrivateWorkforceArn must be a valid ARN when provided and HITL is enabled.
 
   Pattern3UDOPModelArtifactPath:
     RuleCondition:
@@ -438,6 +446,13 @@ Conditions:
       !Equals [!Ref Pattern1BDAProjectArn, ""]
     ]
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
+  
+  # HITL and Private Workforce conditions
+  IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
+  IsPattern1HITLEnabled: !And [!Condition IsPattern1, !Condition IsHITLEnabled]
+  IsPattern2HITLEnabled: !And [!Condition IsPattern2, !Condition IsHITLEnabled]
+  ShouldCreatePrivateWorkteam: !And [!Condition IsHITLEnabled, !Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+  ShouldUseExistingPrivateWorkteam: !And [!Condition IsHITLEnabled, !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]]
 
   # General rules
   ShouldAllowSignUpEmailDomain:
@@ -472,8 +487,6 @@ Metadata:
         Parameters:
           - Pattern1Configuration
           - Pattern1BDAProjectArn
-          - Pattern1EnableHITL
-          - ExistingPrivateWorkforceArn
       - Label:
           default: "Pattern 2 Configuration"
         Parameters:
@@ -492,11 +505,8 @@ Metadata:
       - Label:
           default: "HITL (A2I) Configuration"
         Parameters:
-          - IsSummarizationEnabled
-      - Label:
-          default: "Assessment / Confidence Scoring"
-        Parameters:
-          - IsAssessmentEnabled
+          - EnableHITL
+          - ExistingPrivateWorkforceArn
       - Label:
           default: "Evaluation"
         Parameters:
@@ -557,6 +567,10 @@ Metadata:
         default: "Pattern2 - Custom Extraction Model ARN"
       Pattern1Configuration:
         default: "Pattern1 - Configuration Preset"
+      EnableHITL:
+        default: "Enable Human In The Loop"
+      ExistingPrivateWorkforceArn:
+        default: "Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
       CustomConfigPath:
@@ -871,6 +885,11 @@ Resources:
             - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
             - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+        SageMakerA2IReviewPortalURL: !If
+          - IsHITLEnabled
+          - !GetAtt WorkforceURLResource.PortalURL
+          - ""
 
   PATTERN2STACK:
     DependsOn:
@@ -907,6 +926,12 @@ Resources:
             - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
             - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        EnableHITL: !Ref EnableHITL
+        SageMakerA2IReviewPortalURL: !If
+          - IsHITLEnabled
+          - !GetAtt WorkforceURLResource.PortalURL
+          - ""
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   PATTERN3STACK:
     DependsOn:
@@ -942,6 +967,12 @@ Resources:
             - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
             - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        EnableHITL: !Ref EnableHITL
+        SageMakerA2IReviewPortalURL: !If
+          - IsHITLEnabled
+          - !GetAtt WorkforceURLResource.PortalURL
+          - ""
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   ##########################################################################
   # Encryption key
@@ -3418,6 +3449,8 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
   ##########################################################################
   # Agent resources for text-to-agent feature
   ##########################################################################
@@ -3452,7 +3485,7 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
-      Description: "Credentials for External MCP Agents - JSON array of MCP server configurations"
+      Description: "Credentials for External MCP Agents - JSON array with required fields: mcp_url, cognito_user_pool_id, cognito_client_id, cognito_username, cognito_password. Optional fields: agent_name, agent_description"
       SecretString: "[]"
       KmsKeyId: !Ref CustomerManagedEncryptionKey
 
@@ -3466,11 +3499,12 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for agent request handler as it's invoked synchronously via AppSync and errors are handled by the caller"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics request handler as it's invoked synchronously via AppSync and errors are handled by the caller"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/agent_request_handler/
       Handler: index.handler
       Runtime: python3.12
@@ -3504,7 +3538,6 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-
   # Lambda function for agent processor
   AgentProcessorFunction:
     Type: AWS::Serverless::Function
@@ -3515,7 +3548,7 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for agent processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
@@ -3658,6 +3691,231 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+  # AppSync resolvers for agent operations
+  ListAvailableAgentsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listAvailableAgents
+      DataSourceName: !GetAtt ListAvailableAgentsDataSource.Name
+
+  ListAvailableAgentsDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ListAvailableAgentsDataSource
+      Description: Lambda function for listing available agents
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
+
+  SubmitAgentQueryResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: submitAgentQuery
+      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
+
+  AgentRequestHandlerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentRequestHandlerDataSource
+      Description: Lambda function for handling agent query requests
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
+
+  GetAgentJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
+      RequestMappingTemplate: |
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "GetItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      ResponseMappingTemplate: |
+        #if(!$ctx.result)
+          null
+        #else
+          {
+            "jobId": $util.toJson($ctx.result.SK),
+            "status": $util.toJson($ctx.result.status),
+            "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
+            "createdAt": $util.toJson($ctx.result.createdAt),
+            "completedAt": $util.toJson($ctx.result.completedAt),
+            "result": $util.toJson($ctx.result.result),
+            "error": $util.toJson($ctx.result.error),
+            "agent_messages": $util.toJson($ctx.result.agent_messages)
+          }
+        #end
+
+  ListAgentJobsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listAgentJobs
+      DataSourceName: !GetAtt AgentTableDataSource.Name
+      RequestMappingTemplate: |
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "Query",
+          "query": {
+            "expression": "PK = :pk",
+            "expressionValues": {
+              ":pk": $util.dynamodb.toDynamoDBJson("agent#${userId}")
+            }
+          },
+          #if($ctx.args.limit)
+            "limit": $ctx.args.limit,
+          #end
+          #if($ctx.args.nextToken)
+            "nextToken": "$ctx.args.nextToken",
+          #end
+          "scanIndexForward": false
+        }
+      ResponseMappingTemplate: |
+        {
+          "items": [
+            #foreach($item in $ctx.result.items)
+              {
+                "jobId": $util.toJson($item.SK),
+                "status": $util.toJson($item.status),
+                "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
+                "createdAt": $util.toJson($item.createdAt),
+                "completedAt": $util.toJson($item.completedAt),
+                "result": $util.toJson($item.result),
+                "error": $util.toJson($item.error)
+              }#if($foreach.hasNext),#end
+            #end
+          ],
+          "nextToken": $util.toJson($ctx.result.nextToken)
+        }
+
+  UpdateAgentJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: updateAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
+      RequestMappingTemplate: |-
+        #set($userId = $ctx.args.userId)
+        #set($expNames = {})
+        #set($expValues = {})
+        
+        ## Set status (required)
+        $util.qr($expNames.put("#status", "status"))
+        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
+        #set($updateExpression = "SET #status = :status")
+        
+        ## Set result (optional)
+        #if($ctx.args.result)
+          $util.qr($expNames.put("#result", "result"))
+          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
+          #set($updateExpression = "${updateExpression}, #result = :result")
+        #end
+        
+        ## Set completedAt to current timestamp when status is COMPLETED or FAILED
+        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
+          $util.qr($expNames.put("#completedAt", "completedAt"))
+          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+          #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
+        #end
+        
+        {
+          "version": "2018-05-29",
+          "operation": "UpdateItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          },
+          "update": {
+            "expression": "$updateExpression",
+            "expressionNames": $utils.toJson($expNames),
+            "expressionValues": $utils.toJson($expValues)
+          }
+        }
+      ResponseMappingTemplate: |-
+        true
+
+  DeleteAgentJobResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteAgentJob
+      DataSourceName: !GetAtt AgentTableDataSource.Name
+      RequestMappingTemplate: |-
+        #set($userId = $context.identity.username)
+        #if(!$userId)
+          #set($userId = $context.identity.sub)
+        #end
+        #if(!$userId)
+          #set($userId = "anonymous")
+        #end
+        {
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
+            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      ResponseMappingTemplate: |-
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #else
+          true
+        #end
+
+  AgentTableDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentTableDataSource
+      Description: DynamoDB table for agent job tracking
+      Type: AMAZON_DYNAMODB
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      DynamoDBConfig:
+        TableName: !Ref AgentTable
+        AwsRegion: !Ref AWS::Region
+        
   ##########################################################################
   # Cognoito user authentication for AppSync API and WebUI 
   ##########################################################################
@@ -3985,6 +4243,370 @@ Resources:
       SourceAccount: !Ref AWS::AccountId
       SourceArn: !GetAtt UserPool.Arn
 
+  ##########################################################################
+  # HITL resource deployment (SageMaker A2I)
+  ##########################################################################
+
+  # Cognito user pool client with generate secret as true (HITL)
+  UserPoolClienta2i:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: IsHITLEnabled
+    Properties:
+      ClientName:
+        Fn::Sub: ${AWS::StackName}-A2I-Client
+      GenerateSecret: true
+      UserPoolId: 
+        Ref: UserPool
+
+  #SageMaker A2I (HITL) Labelling workforce Private Work Team
+  PrivateWorkteam:
+    Type: AWS::SageMaker::Workteam
+    Condition: ShouldCreatePrivateWorkteam
+    Properties:
+      WorkteamName: 
+        Fn::Sub: ${AWS::StackName}-Private-WorkTeam
+      Description: "Private workteam for working on A2I tasks"
+      MemberDefinitions:
+        - CognitoMemberDefinition:
+            CognitoUserPool: 
+              Ref: UserPool
+            CognitoUserGroup: 
+              Ref: AdminGroup
+            CognitoClientId: 
+              Ref: UserPoolClienta2i
+  
+  # Cognito Client Update with lambda function to resolve circular dependency with SageMaker A2I resources
+  CognitoClientUpdaterRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldCreatePrivateWorkteam
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Write access required for Cognito client updates and SageMaker workteam integration - resource constraints not applicable for these service operations"
+    # checkov:skip=CKV_AWS_111: "Write access required for Cognito client updates and SageMaker workteam integration"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: CognitoClientUpdaterPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:UpdateUserPoolClient
+                  - cognito-idp:DescribeUserPoolClient
+                  - sagemaker:DescribeWorkteam
+                Resource: '*'
+
+  CognitoClientUpdaterFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: ShouldCreatePrivateWorkteam
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      LogGroupName:
+        Fn::Sub: /${AWS::StackName}/lambda/CognitoClientUpdaterFunction
+      RetentionInDays:
+        Ref: LogRetentionDays  
+
+  CognitoClientUpdaterFunction:
+    DependsOn:
+      - UserPoolClienta2i
+    Type: AWS::Serverless::Function
+    Condition: ShouldCreatePrivateWorkteam
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
+      CodeUri: src/lambda/cognito_updater_hitl
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 4096
+      LoggingConfig:
+        LogGroup: !Ref CognitoClientUpdaterFunctionLogGroup
+      Role: !GetAtt CognitoClientUpdaterRole.Arn
+      Environment:
+        Variables:
+          USER_POOL_ID: 
+            Ref: UserPool
+          CLIENT_ID: 
+            Ref: UserPoolClienta2i
+          WORKTEAM_NAME: 
+            Fn::GetAtt: PrivateWorkteam.WorkteamName
+  
+  CognitoClientCustomResource:
+    Type: Custom::CognitoClientUpdater
+    Condition: ShouldCreatePrivateWorkteam
+    Properties:
+      ServiceToken: !GetAtt CognitoClientUpdaterFunction.Arn
+      SourceCodeHash: <COGNITO_CLIENT_HASH_TOKEN>
+    DependsOn:
+      - UserPoolClienta2i
+      - PrivateWorkteam
+      - CognitoClientUpdaterFunction
+
+  ##########################################################################
+  # SageMaker A2I (HITL) Resources with Comprehensive Cleanup
+  # 
+  # Resource Responsibilities:
+  # - CreateA2IResourcesLambda: Handles complete A2I lifecycle
+  #   * Create: Flow Definition and Human Task UI
+  #   * Update: Flow Definition and Human Task UI (delete old, create new)
+  #   * Delete: Flow Definition, Human Task UI, AND comprehensive workforce cleanup
+  # 
+  # Benefits of Single Function Approach:
+  # - Simpler architecture with fewer resources
+  # - No inter-function dependencies
+  # - Comprehensive cleanup in single operation
+  # - Reduced complexity and maintenance overhead
+  ##########################################################################
+
+  # Separate role for SageMaker Flow Definition with minimal permissions
+  A2IFlowDefinitionRole:
+    Type: AWS::IAM::Role
+    Condition: IsHITLEnabled
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: A2IFlowDefinitionAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub '${OutputBucket.Arn}/*'
+                  - !Sub '${InputBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource:
+                  - !GetAtt OutputBucket.Arn
+                  - !GetAtt InputBucket.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                  - kms:DescribeKey
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  A2IHumanTaskUILambdaRole:
+    Type: AWS::IAM::Role
+    Condition: IsHITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for SageMaker A2I operations as resource name is not available"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: SageMakerA2IAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - sagemaker:CreateHumanTaskUi
+                - sagemaker:DeleteHumanTaskUi
+                - sagemaker:DescribeHumanTaskUi
+                - sagemaker:CreateFlowDefinition
+                - sagemaker:DeleteFlowDefinition
+                - sagemaker:DescribeFlowDefinition
+                - sagemaker:ListHumanLoops
+                - sagemaker:StopHumanLoop
+                - sagemaker:DescribeWorkteam
+                - sagemaker:DeleteWorkteam
+                - sagemaker:ListWorkforces
+                - sagemaker:DescribeWorkforce
+                - sagemaker:DeleteWorkforce
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: !GetAtt A2IFlowDefinitionRole.Arn
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                Resource:
+                  - Fn::Sub: arn:aws:s3:::${OutputBucket}
+                  - Fn::Sub: arn:aws:s3:::${OutputBucket}/*
+                  - Fn::Sub: arn:aws:s3:::${InputBucket}
+                  - Fn::Sub: arn:aws:s3:::${InputBucket}/*
+        - PolicyName: LambdaSSMAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                  - kms:DescribeKey
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+        - PolicyName: CFNCustomAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*'
+                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*/*'
+  
+  CreateA2IResourcesLambda:
+    Type: AWS::Serverless::Function
+    Condition: IsHITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/create_a2i_resources
+      Handler: index.handler
+      Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
+      Runtime: python3.12
+      Timeout: 900  # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
+      Environment:
+        Variables:
+          STACK_NAME: !Ref AWS::StackName
+          A2I_WORKTEAM_ARN: !If
+            - ShouldCreatePrivateWorkteam
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Ref AWS::NoValue
+          A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
+          BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
+      
+  A2IResourcesCustomResource:
+    Type: Custom::A2IResources
+    Condition: IsHITLEnabled
+    Properties:
+      ServiceToken: 
+        Fn::GetAtt: CreateA2IResourcesLambda.Arn
+      StackName: !Ref AWS::StackName
+      SourceCodeHash: <A2I_RESOURCES_HASH_TOKEN>
+  
+  GetWorkforceURLFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsHITLEnabled
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: src/lambda/get-workforce-url
+      Description: Lambda function to get the SageMaker Ground Truth workforce portal URL
+      MemorySize: 128
+      Timeout: 30
+      Environment:
+        Variables:
+          REGION:
+            Ref: AWS::Region
+          LOG_LEVEL: INFO
+      Policies:
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - sagemaker:DescribeWorkteam
+          Resource: !If
+            - ShouldCreatePrivateWorkteam
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Ref ExistingPrivateWorkforceArn
+  
+  WorkforceURLResource:
+    Type: Custom::WorkforceURL
+    Condition: IsHITLEnabled
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - GetWorkforceURLFunction
+        - Arn
+      WorkteamName: !If
+        - ShouldCreatePrivateWorkteam
+        - !GetAtt PrivateWorkteam.WorkteamName
+        - !Select [2, !Split ['/', !Ref ExistingPrivateWorkforceArn]]
+      SourceCodeHash: <WORKFORCE_URL_HASH_TOKEN>
+        
   ##########################################################################
   # AppSync GraphQL API 
   ##########################################################################
@@ -5214,234 +5836,106 @@ Resources:
       FieldName: queryKnowledgeBase
 
   ##########################################################################
-  # Agent-related AppSync Resources
+  # Chat With Document Resolver 
   ##########################################################################
 
-  # AppSync resolver for listing available agents
-  ListAvailableAgentsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
+  ChatWithDocumentResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listAvailableAgents
-      DataSourceName: !GetAtt ListAvailableAgentsDataSource.Name
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/chat_with_document_resolver
+      Description: Lambda function to chat with the document via GraphQL API
+      MemorySize: 512
+      Timeout: 120
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          OUTPUT_BUCKET: !Ref OutputBucket
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+      LoggingConfig:
+        LogGroup: !Ref ChatWithDocumentResolverFunctionLogGroup
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref OutputBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
+        - Statement: 
+          - !If
+            - ShouldUseDocumentKnowledgeBase
+            - Effect: Allow
+              Action:
+                - bedrock:Retrieve
+                - bedrock:RetrieveAndGenerate
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+            - !Ref AWS::NoValue
+          - Effect: Allow
+            Action:
+              - "bedrock:InvokeModel"
+            Resource:
+              - !Sub "arn:aws:bedrock:*::foundation-model/*"
+              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+          - Effect: Allow
+            Action:
+              - "bedrock:GetInferenceProfile"
+            Resource:
+              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+          - !If
+            - HasGuardrailConfig
+            - Effect: Allow
+              Action:
+                - "bedrock:ApplyGuardrail"
+              Resource:
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+            - !Ref AWS::NoValue
+          - Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt CustomerManagedEncryptionKey.Arn
 
-  ListAvailableAgentsDataSource:
+  ChatWithDocumentResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ChatWithDocumentDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ListAvailableAgentsDataSource
-      Description: Lambda function for listing available agents
+      Name: ChatWithDocument
+      Description: Lambda function to chat with document
       Type: AWS_LAMBDA
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       LambdaConfig:
-        LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
+        LambdaFunctionArn: !GetAtt ChatWithDocumentResolverFunction.Arn
 
-  # AppSync resolvers for agent operations
-  SubmitAgentQueryResolver:
+  ChatWithDocumentResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt ChatWithDocumentDataSource.Name
       TypeName: Query
-      FieldName: submitAgentQuery
-      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
-
-  AgentRequestHandlerDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentRequestHandlerDataSource
-      Description: Lambda function for handling agent query requests
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
-
-  GetAgentJobStatusResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: getAgentJobStatus
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "GetItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          }
-        }
-      ResponseMappingTemplate: |
-        #if(!$ctx.result)
-          null
-        #else
-          {
-            "jobId": $util.toJson($ctx.result.SK),
-            "status": $util.toJson($ctx.result.status),
-            "query": $util.toJson($ctx.result.query),
-            "agentIds": $util.toJson($ctx.result.agentIds),
-            "createdAt": $util.toJson($ctx.result.createdAt),
-            "completedAt": $util.toJson($ctx.result.completedAt),
-            "result": $util.toJson($ctx.result.result),
-            "error": $util.toJson($ctx.result.error),
-            "agent_messages": $util.toJson($ctx.result.agent_messages)
-          }
-        #end
-
-  ListAgentJobsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listAgentJobs
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "Query",
-          "query": {
-            "expression": "PK = :pk",
-            "expressionValues": {
-              ":pk": $util.dynamodb.toDynamoDBJson("agent#${userId}")
-            }
-          },
-          #if($ctx.args.limit)
-            "limit": $ctx.args.limit,
-          #end
-          #if($ctx.args.nextToken)
-            "nextToken": "$ctx.args.nextToken",
-          #end
-          "scanIndexForward": false
-        }
-      ResponseMappingTemplate: |
-        {
-          "items": [
-            #foreach($item in $ctx.result.items)
-              {
-                "jobId": $util.toJson($item.SK),
-                "status": $util.toJson($item.status),
-                "query": $util.toJson($item.query),
-                "agentIds": $util.toJson($item.agentIds),
-                "createdAt": $util.toJson($item.createdAt),
-                "completedAt": $util.toJson($item.completedAt),
-                "result": $util.toJson($item.result),
-                "error": $util.toJson($item.error)
-              }#if($foreach.hasNext),#end
-            #end
-          ],
-          "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-
-  UpdateAgentJobStatusResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: updateAgentJobStatus
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |-
-        #set($userId = $ctx.args.userId)
-        #set($expNames = {})
-        #set($expValues = {})
-        
-        ## Set status (required)
-        $util.qr($expNames.put("#status", "status"))
-        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
-        #set($updateExpression = "SET #status = :status")
-        
-        ## Set result (optional)
-        #if($ctx.args.result)
-          $util.qr($expNames.put("#result", "result"))
-          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
-          #set($updateExpression = "${updateExpression}, #result = :result")
-        #end
-        
-        ## Set completedAt to current timestamp when status is COMPLETED or FAILED
-        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
-          $util.qr($expNames.put("#completedAt", "completedAt"))
-          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-          #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
-        #end
-        
-        {
-          "version": "2018-05-29",
-          "operation": "UpdateItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          },
-          "update": {
-            "expression": "$updateExpression",
-            "expressionNames": $utils.toJson($expNames),
-            "expressionValues": $utils.toJson($expValues)
-          }
-        }
-      ResponseMappingTemplate: |-
-        true
-
-  DeleteAgentJobResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: deleteAgentJob
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |-
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "DeleteItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          }
-        }
-      ResponseMappingTemplate: |-
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #else
-          true
-        #end
-
-  AgentTableDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentTableDataSource
-      Description: DynamoDB table for agent job tracking
-      Type: AMAZON_DYNAMODB
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      DynamoDBConfig:
-        TableName: !Ref AgentTable
-        AwsRegion: !Ref AWS::Region
+      FieldName: chatWithDocument
 
   ##########################################################################
   # WebUI build and deployment 
@@ -5779,6 +6273,20 @@ Outputs:
   ApplicationWebURL:
     Description: Application Web URL
     Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
+  SageMakerA2IReviewPortalURL:
+    Description: SageMaker HITL Review portal URL
+    Condition: IsHITLEnabled
+    Value:
+      Fn::GetAtt:
+      - WorkforceURLResource
+      - PortalURL
+  LabelingConsoleURL:
+    Description: SageMaker Ground Truth console URL
+    Condition: IsHITLEnabled
+    Value:
+      Fn::GetAtt:
+      - WorkforceURLResource
+      - ConsoleURL
   S3InstallBucket:
     Description: Install S3 bucket name
     Value: !Ref InputBucket
@@ -5879,6 +6387,12 @@ Outputs:
   DynamoDBConfigurationTableConsoleURL:
     Description: DynamoDB table console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${ConfigurationTable}
+  DynamoDBAgentTableName:
+    Description: Name of the DynamoDB table for agent job tracking
+    Value: !Ref AgentTable
+  DynamoDBAgentTableConsoleURL:
+    Description: DynamoDB table console URL for agent job tracking
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AgentTable}
   LambdaLookupFunctionName:
     Description: Name of the Lookup function
     Value: !Ref LookupFunction
@@ -5888,12 +6402,6 @@ Outputs:
   SQSDocumentQueueUrl:
     Description: SQS Queue URL
     Value: !Ref DocumentQueue
-  DynamoDBAgentTableName:
-    Description: Name of the DynamoDB table for agent job tracking
-    Value: !Ref AgentTable
-  DynamoDBAgentTableConsoleURL:
-    Description: DynamoDB table console URL for agent job tracking
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AgentTable}
   SQSDocumentQueueConsoleURL:
     Description: SQS Queue console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/sqs/v2/home?region=${AWS::Region}#/queues/${DocumentQueue}

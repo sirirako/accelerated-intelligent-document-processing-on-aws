@@ -18,6 +18,7 @@ Example:
 """
 
 import logging
+import uuid
 
 from ..analytics.agent import create_analytics_agent
 
@@ -128,7 +129,7 @@ try:
             test_strands_agent, test_mcp_client = test_result
 
             # Extract available tools for dynamic description
-            dynamic_description = f"Agent {i} which connects to external MCP servers to provide additional tools and capabilities"
+            tools_description = ""
             if (
                 hasattr(test_strands_agent, "tool_names")
                 and test_strands_agent.tool_names
@@ -136,7 +137,7 @@ try:
                 tool_names = list(test_strands_agent.tool_names)
                 if tool_names:
                     tools_list = ", ".join(tool_names)
-                    dynamic_description = f"Agent {i} with access to external MCP tools: {tools_list}. Use this agent to access external capabilities and services."
+                    tools_description = f" The tools available are: {tools_list}."
 
             # Clean up the test MCP client
             if test_mcp_client:
@@ -148,13 +149,29 @@ try:
 
         except Exception as e:
             logger.warning(f"Could not discover MCP tools for agent {i}: {e}")
-            dynamic_description = f"Agent {i} which connects to external MCP servers to provide additional tools and capabilities"
+            tools_description = ""
+
+        # Determine agent name and ID
+        if "agent_name" in mcp_config and mcp_config["agent_name"]:
+            agent_name = mcp_config["agent_name"]
+            # Create ID from name with UUID for uniqueness
+            name_no_spaces = agent_name.replace(" ", "_").lower()
+            agent_id = f"{name_no_spaces}_{str(uuid.uuid4())[:8]}"
+        else:
+            agent_name = f"External MCP Agent {i}"
+            agent_id = f"external-mcp-agent-{i}"
+
+        # Determine agent description
+        if "agent_description" in mcp_config and mcp_config["agent_description"]:
+            agent_description = mcp_config["agent_description"] + tools_description
+        else:
+            agent_description = f"Agent which connects to external MCP servers to provide additional tools and capabilities.{tools_description}"
 
         # Register the agent
         agent_factory.register_agent(
-            agent_id=f"external-mcp-agent-{i}",
-            agent_name=f"External MCP Agent {i}",
-            agent_description=dynamic_description,
+            agent_id=agent_id,
+            agent_name=agent_name,
+            agent_description=agent_description,
             creator_func=create_mcp_agent_wrapper(),
             sample_queries=[
                 "What tools are available from the external MCP server?",
@@ -162,7 +179,9 @@ try:
                 "Show me what capabilities the MCP server provides",
             ],
         )
-        logger.info(f"External MCP Agent {i} registered successfully")
+        logger.info(
+            f"External MCP Agent '{agent_name}' registered successfully with ID '{agent_id}'"
+        )
 
 except Exception as e:
     logger.warning(

@@ -154,7 +154,9 @@ The agent requires credentials stored in AWS Secrets Manager at `{StackName}/ext
     "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
     "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx", 
     "cognito_username": "<your first user here>",
-    "cognito_password": "<your first password here>"
+    "cognito_password": "<your first password here>",
+    "agent_name": "My Custom Calculator Agent",
+    "agent_description": "Provides advanced mathematical calculations"
   },
   {
     "mcp_url": "https://your-second-mcp-server.com/mcp",
@@ -165,6 +167,10 @@ The agent requires credentials stored in AWS Secrets Manager at `{StackName}/ext
   }
 ]
 ```
+
+**Optional Fields:**
+- `agent_name`: Custom name for the agent (defaults to "External MCP Agent {N}")
+- `agent_description`: Custom description (tool information is automatically appended)
 
 **Usage:**
 ```python

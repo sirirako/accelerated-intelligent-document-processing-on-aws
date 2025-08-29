@@ -159,7 +159,9 @@ In the AWS account where the IDP solution is deployed, create a secret with your
        "cognito_user_pool_id": "us-east-1_XXXXXXXXX",
        "cognito_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
        "cognito_username": "mcp-service-user-1", 
-       "cognito_password": "SecurePassword123!"
+       "cognito_password": "SecurePassword123!",
+       "agent_name": "My Custom Calculator Agent",
+       "agent_description": "Provides advanced mathematical calculations for document analysis"
      },
      {
        "mcp_url": "https://your-second-mcp-server.example.com/mcp",
@@ -177,6 +179,8 @@ In the AWS account where the IDP solution is deployed, create a secret with your
 - `cognito_client_id`: The App Client ID from Step 2  
 - `cognito_username`: The username created in Step 2
 - `cognito_password`: The permanent password set in Step 2
+- `agent_name` (optional): Custom name for the agent (defaults to "External MCP Agent {N}")
+- `agent_description` (optional): Custom description for the agent (tool information is automatically appended)
 
 ### Step 5: Verify Integration
 
