@@ -1296,9 +1296,7 @@ except Exception as e:
                 s3_key = f"{self.prefix_and_version}/config_library/{relative_path}"
 
                 try:
-                    self.s3_client.upload_file(
-                        local_path, self.bucket, s3_key, ExtraArgs={"ACL": self.acl}
-                    )
+                    self.s3_client.upload_file(local_path, self.bucket, s3_key)
                 except ClientError as e:
                     self.console.print(f"[red]Error uploading {local_path}: {e}[/red]")
                     sys.exit(1)
@@ -1363,9 +1361,7 @@ except Exception as e:
             if e.response["Error"]["Code"] == "404":
                 self.console.print("[cyan]Upload source to S3[/cyan]")
                 try:
-                    self.s3_client.upload_file(
-                        zipfile_path, self.bucket, s3_key, ExtraArgs={"ACL": self.acl}
-                    )
+                    self.s3_client.upload_file(zipfile_path, self.bucket, s3_key)
                     self.console.print(
                         f"[green]Uploaded WebUI zipfile to S3: {zipfile_name}[/green]"
                     )
@@ -1514,7 +1510,6 @@ except Exception as e:
                     packaged_template_path,
                     self.bucket,
                     final_template_key,
-                    ExtraArgs={"ACL": self.acl},
                 )
                 self.console.print(
                     "[green]✅ Main template uploaded successfully[/green]"
@@ -1543,7 +1538,6 @@ except Exception as e:
                         packaged_template_path,
                         self.bucket,
                         final_template_key,
-                        ExtraArgs={"ACL": self.acl},
                     )
                     self.console.print(
                         "[green]✅ Main template uploaded successfully[/green]"
@@ -1858,6 +1852,9 @@ except Exception as e:
             f"  • Public Access: [yellow]{'Yes' if self.public else 'No'}[/yellow]"
         )
 
+        # Set public ACLs if requested
+        self.set_public_acls()
+
         # Display hyperlinks with complete URLs as the display text
         self.console.print("\n[bold green]Deployment Outputs[/bold green]")
 
@@ -1870,6 +1867,102 @@ except Exception as e:
         self.console.print("\n[cyan]Template URL (for updating existing stack):[/cyan]")
         template_link = f"[link={template_url}]{template_url}[/link]"
         self.console.print(f"  {template_link}")
+
+    def set_public_acls(self):
+        """Set public read ACLs on all uploaded artifacts if public option is enabled"""
+        if not self.public:
+            return
+
+        self.console.print(
+            "[cyan]Setting public read ACLs on published artifacts...[/cyan]"
+        )
+
+        try:
+            # Get all objects with the prefix
+            paginator = self.s3_client.get_paginator("list_objects_v2")
+            page_iterator = paginator.paginate(
+                Bucket=self.bucket, Prefix=self.prefix_and_version
+            )
+
+            objects = []
+            for page in page_iterator:
+                if "Contents" in page:
+                    objects.extend(page["Contents"])
+
+            if not objects:
+                self.console.print("[yellow]No objects found to set ACLs on[/yellow]")
+                return
+
+            total_files = len(objects)
+            successful_acls = 0
+            failed_acls = 0
+
+            self.console.print(f"[cyan]Setting ACLs on {total_files} files...[/cyan]")
+
+            for i, obj in enumerate(objects, 1):
+                try:
+                    self.s3_client.put_object_acl(
+                        Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
+                    )
+                    successful_acls += 1
+                    if i % 10 == 0 or i == total_files:  # Progress every 10 files
+                        self.console.print(
+                            f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
+                        )
+                except ClientError as e:
+                    failed_acls += 1
+                    if "AccessDenied" in str(e) or "BlockPublicAcls" in str(e):
+                        # Don't spam with individual permission error messages
+                        pass
+                    else:
+                        self.console.print(
+                            f"[yellow]Warning: Could not set ACL for {obj['Key']}: {e}[/yellow]"
+                        )
+
+            # Also set ACL for main template files
+            main_template_keys = [
+                f"{self.prefix}/{self.main_template}",
+                f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
+            ]
+
+            for key in main_template_keys:
+                try:
+                    self.s3_client.put_object_acl(
+                        Bucket=self.bucket, Key=key, ACL="public-read"
+                    )
+                    successful_acls += 1
+                except ClientError as e:
+                    failed_acls += 1
+                    if "AccessDenied" not in str(e) and "BlockPublicAcls" not in str(e):
+                        self.console.print(
+                            f"[yellow]Warning: Could not set ACL for {key}: {e}[/yellow]"
+                        )
+
+            # Report accurate final status
+            if failed_acls == 0:
+                self.console.print("[green]✅ Public ACLs set successfully[/green]")
+            elif successful_acls == 0:
+                self.console.print(
+                    f"[red]❌ Could not set public ACLs on any files ({failed_acls} failed)[/red]"
+                )
+                self.console.print(
+                    "[yellow]Files uploaded successfully but are NOT publicly accessible[/yellow]"
+                )
+                self.console.print(
+                    "[yellow]This is usually due to 'Block Public Access' settings or insufficient permissions[/yellow]"
+                )
+            else:
+                self.console.print(
+                    f"[yellow]⚠️  Partial ACL success: {successful_acls} succeeded, {failed_acls} failed[/yellow]"
+                )
+
+        except Exception as e:
+            self.console.print(
+                f"[yellow]Warning: Failed to set public ACLs: {e}[/yellow]"
+            )
+            self.console.print(
+                "[yellow]Files were uploaded successfully but may not be publicly accessible[/yellow]"
+            )
 
     def run(self, args):
         """Main execution method"""
