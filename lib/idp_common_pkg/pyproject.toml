@@ -8,12 +8,12 @@ exclude = ["build", "build.*", "*build", "*build.*", "*.build", "*.build.*", "**
 
 [project]
 name = "idp_common"
-version = "0.3.12"
+version = "0.3.13"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [
     {name = "AWS", email = "noreply@amazon.com"}
 ]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.9,<3.14"
 dependencies = [
     "boto3==1.39.7",  # Core dependency for AWS services
 ]

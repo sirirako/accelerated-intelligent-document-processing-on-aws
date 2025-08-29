@@ -10,11 +10,11 @@ import os
 from typing import Any, Dict
 
 import boto3
-from strands import Agent, tool
+import strands
 from strands.models import BedrockModel
 
-from ..common.dynamodb_logger import DynamoDBMessageTracker
-from .config import load_python_plot_generation_examples, load_result_format_description
+from ..common.config import load_result_format_description
+from .config import load_python_plot_generation_examples
 from .tools import CodeInterpreterTools, get_database_info, run_athena_query
 from .utils import register_code_interpreter_tools
 
@@ -24,25 +24,20 @@ logger = logging.getLogger(__name__)
 def create_analytics_agent(
     config: Dict[str, Any],
     session: boto3.Session,
-    job_id: str = None,
-    user_id: str = None,
-    enable_monitoring: bool = None,
-    include_debug_tool_output: bool = False,
-) -> Agent:
+    **kwargs,
+) -> strands.Agent:
     """
     Create and configure the analytics agent with appropriate tools and system prompt.
 
     Args:
         config: Configuration dictionary containing Athena settings and other parameters
         session: Boto3 session for AWS operations
-        job_id: Analytics job ID for monitoring (optional)
-        user_id: User ID for monitoring (optional)
-        enable_monitoring: Whether to enable agent monitoring (defaults to env var or True)
-        include_debug_tool_output: Whether to include debug_tool_output in tool result messages (defaults to False)
+        **kwargs: Additional arguments (job_id, user_id, etc. handled by IDPAgent wrapper)
 
     Returns:
-        Agent: Configured Strands agent instance
+        strands.Agent: Configured Strands agent instance
     """
+
     # Load the output format description
     final_result_format = load_result_format_description()
     # Load python code examples
@@ -98,11 +93,13 @@ def create_analytics_agent(
     
     Remember, DO NOT attempt to execute multiple tools in parallel. The input of some tools depend on the output of others. Only ever execute one tool at a time.
     
+    Also remember, DO NOT EVER GENERATE SYNTHETIC DATA. Only answer questions or generate plots based on REAL DATA retrieved from databases. If no data can be retrieved, or if there are gaps in the data, do not make up fake data. It is better to show an empty plot or explain you are unable to answer than to make up data.
+    
     Your final response should be directly parsable as json with no additional text before or after. The json should conform to the result format description shown above, with top level key "responseType" being one of "plotData", "table", or "text". You may have to clean up the output of the python code if, for example, it contains extra strings from logging or otherwise. Return only directly parsable json in your final response.
     """
 
     # Create a new tool function that directly calls run_athena_query with the config
-    @tool
+    @strands.tool
     def run_athena_query_with_config(
         query: str, return_full_query_results: bool = False
     ) -> Dict[str, Any]:
@@ -143,47 +140,10 @@ def create_analytics_agent(
 
     bedrock_model = BedrockModel(model_id=model_id, boto_session=session)
 
-    agent = Agent(tools=tools, system_prompt=system_prompt, model=bedrock_model)
-
-    # Add monitoring if enabled and job context is provided
-    if enable_monitoring is None:
-        enable_monitoring = (
-            os.environ.get("ENABLE_AGENT_MONITORING", "true").lower() == "true"
-        )
-
-    if enable_monitoring and job_id and user_id:
-        try:
-            # Add DynamoDB message tracker for persistence
-            message_tracker = DynamoDBMessageTracker(
-                job_id=job_id,
-                user_id=user_id,
-                enabled=enable_monitoring,
-                include_debug_tool_output=include_debug_tool_output,
-            )
-            agent.hooks.add_hook(message_tracker)
-            logger.info(f"DynamoDB message tracking enabled for job {job_id}")
-
-            # Also add the AgentMonitor for CloudWatch logging with throttling callback
-            from ..common.monitoring import AgentMonitor
-
-            def throttling_callback(exception):
-                """Callback to handle throttling exceptions by logging to DynamoDB."""
-                if message_tracker.enabled and message_tracker.db_logger:
-                    message_tracker._handle_throttling_with_agent_message(exception)
-
-            agent_monitor = AgentMonitor(
-                log_level=logging.INFO,
-                enable_detailed_logging=True,
-                throttling_callback=throttling_callback,
-                include_debug_tool_output=include_debug_tool_output,
-            )
-            agent.hooks.add_hook(agent_monitor)
-            logger.info(f"CloudWatch agent monitoring enabled for job {job_id}")
-
-        except Exception as e:
-            logger.warning(f"Failed to initialize agent monitoring: {e}")
-    elif enable_monitoring:
-        logger.warning("Agent monitoring enabled but job_id or user_id not provided")
+    # Create the Strands agent with tools and system prompt
+    strands_agent = strands.Agent(
+        tools=tools, system_prompt=system_prompt, model=bedrock_model
+    )
 
     logger.info("Analytics agent created successfully")
-    return agent
+    return strands_agent

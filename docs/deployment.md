@@ -26,6 +26,7 @@ You need to have the following packages installed on your computer:
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 4. python 3.11 or later
 5. A local Docker daemon
+6. Python packages for publish.py: `pip install boto3 typer rich botocore`
 
 For guidance on setting up a development environment, see: [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) or [Development Environment Setup Guide on MacOS](./setup-development-env-macos.md)
 
@@ -40,28 +41,53 @@ To build and publish your own template to your own S3 bucket:
 * `cfn_bucket_basename`: A prefix added to the beginning of the bucket name (e.g. `idp-1234567890` to ensure global uniqueness) 
 * `cfn_prefix`: A prefix added to CloudFormation resources (e.g. `idp` or `idp-dev`)
 
-Navigate into the project root directory and, in a bash shell, run:
+Navigate into the project root directory and run:
+
+#### Using publish.py (Recommended)
 
 ```bash
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region e.g. us-east-1>
+python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [--verbose]
 ```
 
-This script:
-- Checks your system dependencies for required packages
-- Creates CloudFormation templates and asset zip files
-- Publishes the templates and required assets to an S3 bucket in your account
-- The bucket will be named `<cfn_bucket_basename>-<region>` (created if it doesn't exist)
+**Parameters:**
+- `cfn_bucket_basename`: A prefix for the S3 bucket name (e.g., `idp-1234567890`)
+- `cfn_prefix`: S3 prefix for artifacts (e.g., `idp`)
+- `region`: AWS region for deployment (e.g., `us-east-1`)
+- `--verbose` or `-v`: (Optional) Enable detailed error output for debugging build failures
+
+Example:
+```bash
+python3 publish.py idp-1234567890 idp us-east-1
+```
+
+**Troubleshooting Build Issues:**
+If the build fails, use the `--verbose` flag to see detailed error messages:
+```bash
+python3 publish.py idp-1234567890 idp us-east-1 --verbose
+```
+
+This will show:
+- Exact SAM build commands being executed
+- Complete error output from failed builds
+- Python version compatibility issues
+- Missing dependencies or configuration problems
+
+#### Using publish.sh (Legacy)
+
+```bash
+./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
+```
 
 Example:
 ```bash
 ./publish.sh idp-1234567890 idp us-east-1
 ```
 
-Optional: Add a final parameter `public` if you want to make the published artifacts publicly accessible:
-```bash
-./publish.sh idp-1234567890 idp us-east-1 public
-```
-Note: Your bucket and account must be configured not to Block Public Access using new ACLs.
+Both scripts:
+- Check your system dependencies for required packages
+- Create CloudFormation templates and asset zip files
+- Publish the templates and required assets to an S3 bucket in your account
+- The bucket will be named `<cfn_bucket_basename>-<region>` (created if it doesn't exist)
 
 When completed, the script displays:
 - The CloudFormation template's S3 URL
@@ -85,6 +111,17 @@ aws cloudformation deploy \
   --parameter-overrides IDPPattern="<pattern-name>" AdminEmail=<your-email> \
   --stack-name <your-stack-name>
 ```
+
+Or to update an already-deployed stack:
+```bash
+aws cloudformation update-stack \
+  --stack-name <your-stack-name> \
+  --template-url <template URL output by publish script, e.g. https://s3.us-east-1.amazonaws.com/blahblah.yaml> \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --region <region> \
+  --parameters ParameterKey=AdminEmail,ParameterValue="<your-email>" ParameterKey=IDPPattern,ParameterValue="<pattern-name>" 
+```
+
 
 **Pattern Parameter Options:**
 * `Pattern1` - Packet or Media processing with Bedrock Data Automation (BDA)

@@ -77,7 +77,7 @@ class DynamoDBMessageLogger:
             message_data: The message data to log
         """
         try:
-            pk = f"analytics#{user_id}"
+            pk = f"agent#{user_id}"
             sk = job_id
 
             # First, try to get the existing agent_messages to append to it
@@ -227,11 +227,11 @@ class DynamoDBMessageTracker:
 
         # Get table name from environment if not provided
         if table_name is None:
-            table_name = os.environ.get("ANALYTICS_TABLE")
+            table_name = os.environ.get("AGENT_TABLE")
 
         if not table_name:
             self.logger.error(
-                "No DynamoDB table name provided and ANALYTICS_TABLE env var not set"
+                "No DynamoDB table name provided and AGENT_TABLE env var not set"
             )
             self.enabled = False
             self.db_logger = None

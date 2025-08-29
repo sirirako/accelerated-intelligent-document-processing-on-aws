@@ -121,34 +121,78 @@ class OcrService:
             else:
                 self.enhanced_features = False
 
-            # Extract image configuration
+            # Extract image configuration with sensible defaults
             image_config = ocr_config.get("image", {})
+
+            # Apply sensible defaults for image sizing when not specified
+            DEFAULT_TARGET_WIDTH = 951
+            DEFAULT_TARGET_HEIGHT = 1268
 
             # Extract resize configuration
             target_width = image_config.get("target_width")
             target_height = image_config.get("target_height")
-            if target_width is not None and target_height is not None:
-                # Handle empty strings
+
+            # Normalize None and empty strings to None for consistent handling
+            if isinstance(target_width, str) and not target_width.strip():
+                target_width = None
+            if isinstance(target_height, str) and not target_height.strip():
+                target_height = None
+
+            # Apply sizing configuration logic
+            if target_width is None and target_height is None:
+                # No sizing configuration provided (None or empty strings) - apply sensible defaults
+                self.resize_config = {
+                    "target_width": DEFAULT_TARGET_WIDTH,
+                    "target_height": DEFAULT_TARGET_HEIGHT,
+                }
+                logger.info(
+                    f"No image sizing configured, applying default limits: "
+                    f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} to optimize resource usage and token consumption"
+                )
+            elif target_width is not None and target_height is not None:
+                # Handle empty strings by converting to None for validation
                 if isinstance(target_width, str) and not target_width.strip():
                     target_width = None
                 if isinstance(target_height, str) and not target_height.strip():
                     target_height = None
 
+                # If after handling empty strings we still have values, use them
                 if target_width is not None and target_height is not None:
+                    # Explicit configuration provided - validate and use it
                     try:
                         self.resize_config = {
                             "target_width": int(target_width),
                             "target_height": int(target_height),
                         }
+                        logger.info(
+                            f"Using configured image sizing: {target_width}x{target_height}"
+                        )
                     except (ValueError, TypeError):
                         logger.warning(
-                            f"Invalid resize configuration values: width={target_width}, height={target_height}"
+                            f"Invalid resize configuration values: width={target_width}, height={target_height}. "
+                            f"Falling back to defaults: {DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT}"
                         )
-                        self.resize_config = None
+                        self.resize_config = {
+                            "target_width": DEFAULT_TARGET_WIDTH,
+                            "target_height": DEFAULT_TARGET_HEIGHT,
+                        }
                 else:
-                    self.resize_config = None
+                    # After handling empty strings, we have None values - apply defaults
+                    self.resize_config = {
+                        "target_width": DEFAULT_TARGET_WIDTH,
+                        "target_height": DEFAULT_TARGET_HEIGHT,
+                    }
+                    logger.info(
+                        f"Invalid image sizing configuration provided, applying default limits: "
+                        f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} to optimize resource usage and token consumption"
+                    )
             else:
+                # Partial configuration (only width or height) - no defaults applied
+                # This preserves the existing behavior for partial configs
                 self.resize_config = None
+                logger.info(
+                    "Partial image sizing configuration detected, no defaults applied"
+                )
 
             # Extract preprocessing configuration
             preprocessing_value = image_config.get("preprocessing")
@@ -176,13 +220,15 @@ class OcrService:
             else:
                 self.bedrock_config = None
 
-        # Log DPI setting for debugging
-        logger.info(f"OCR Service initialized with DPI: {self.dpi}")
-
-        # Log resize config if provided
+        # Log DPI and sizing configuration together for clarity
         if self.resize_config:
             logger.info(
-                f"OCR Service initialized with resize config: {self.resize_config}"
+                f"OCR Service initialized - DPI: {self.dpi}, "
+                f"Image sizing: {self.resize_config['target_width']}x{self.resize_config['target_height']}"
+            )
+        else:
+            logger.info(
+                f"OCR Service initialized - DPI: {self.dpi}, No image sizing limits"
             )
 
         # Validate backend
@@ -1163,14 +1209,14 @@ class OcrService:
                         if is_pdf:
                             dpi = self.dpi or 150
                             pix = page.get_pixmap(dpi=dpi)
-                            logger.info(
-                                f"Page {page_id} already fits target size, using DPI {dpi}"
-                            )
                         else:
                             pix = page.get_pixmap()
-                            logger.info(
-                                f"Page {page_id} already fits target size, using original dimensions"
-                            )
+
+                        # Log actual extracted dimensions
+                        actual_width, actual_height = pix.width, pix.height
+                        logger.info(
+                            f"Page {page_id} already fits target size, extracted at: {actual_width}x{actual_height}"
+                        )
                 else:
                     # No valid target dimensions - use original extraction
                     if is_pdf:
@@ -1178,17 +1224,25 @@ class OcrService:
                         pix = page.get_pixmap(dpi=dpi)
                     else:
                         pix = page.get_pixmap()
+
+                    # Log actual extracted dimensions
+                    actual_width, actual_height = pix.width, pix.height
+                    logger.info(
+                        f"Page {page_id} extracted at original size: {actual_width}x{actual_height}"
+                    )
             else:
                 # No resize config - extract at original size
                 if is_pdf:
                     dpi = self.dpi or 150
                     pix = page.get_pixmap(dpi=dpi)
-                    logger.debug(f"Processing PDF page {page_id} at {dpi} DPI")
                 else:
                     pix = page.get_pixmap()
-                    logger.debug(
-                        f"Processing image page {page_id} at original dimensions"
-                    )
+
+                # Log actual extracted dimensions
+                actual_width, actual_height = pix.width, pix.height
+                logger.info(
+                    f"Page {page_id} extracted at original size: {actual_width}x{actual_height}"
+                )
 
             image_bytes = pix.tobytes("jpeg")
             return image_bytes

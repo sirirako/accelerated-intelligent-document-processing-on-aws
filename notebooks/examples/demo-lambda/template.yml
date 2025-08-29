@@ -13,7 +13,7 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to the Lambda execution role.
       Leave blank if no Permissions Boundary is required.
-    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*::iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
 Conditions:
@@ -28,7 +28,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: ./
       Handler: GENAIIDP-notebook-demo-extractor.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 300
       MemorySize: 512
       Description: Demo Lambda function for GenAI IDP Custom Prompt Generator demonstration

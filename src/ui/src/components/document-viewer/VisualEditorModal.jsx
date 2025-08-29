@@ -97,11 +97,13 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
           transformedOffsetY,
         });
       };
-
-      // Small delay to allow transforms to complete
-      const timeoutId = setTimeout(updateDimensions, 50);
-
-      return () => clearTimeout(timeoutId);
+      // Delay to allow transforms to complete
+      const timeoutId = setTimeout(updateDimensions, 150);
+      // Ensure accuracy after reset
+      const secondTimeoutId = setTimeout(updateDimensions, 300);
+      return () => {
+      clearTimeout(timeoutId);
+      clearTimeout(secondTimeoutId);}
     }
     return undefined;
   }, [zoomLevel, panOffset, imageRef, page, currentPage]);
