@@ -1334,42 +1334,148 @@ except Exception as e:
             else:
                 self.console.print("[green]✅ Main template is up to date[/green]")
 
-            # Upload templates
-            packaged_template_path = ".aws-sam/idp-main.yaml"
-            templates = [
-                (f"{self.prefix}/{self.main_template}", "Main template"),
-                (
-                    f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
-                    "Versioned main template",
-                ),
-            ]
+        # Upload main template based on whether build was required
+        final_template_key = f"{self.prefix}/{self.main_template}"
+        versioned_template_key = f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}"
+        packaged_template_path = ".aws-sam/idp-main.yaml"
 
-            for s3_key, description in templates:
-                if main_needs_build:
+        if main_needs_build:
+            # Main was rebuilt, so upload the new template
+            if not os.path.exists(packaged_template_path):
+                self.console.print(
+                    f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+                )
+                sys.exit(1)
+
+            self.console.print(
+                f"[cyan]Uploading main template to S3: {final_template_key}[/cyan]"
+            )
+            try:
+                self.s3_client.upload_file(
+                    packaged_template_path,
+                    self.bucket,
+                    final_template_key,
+                )
+                self.console.print(
+                    "[green]✅ Main template uploaded successfully[/green]"
+                )
+            except Exception as e:
+                self.console.print(f"[red]Failed to upload main template: {e}[/red]")
+                sys.exit(1)
+
+            # Also upload versioned copy
+            self.console.print(
+                f"[cyan]Uploading versioned main template to S3: {versioned_template_key}[/cyan]"
+            )
+            try:
+                self.s3_client.upload_file(
+                    packaged_template_path,
+                    self.bucket,
+                    versioned_template_key,
+                )
+                self.console.print(
+                    "[green]✅ Versioned main template uploaded successfully[/green]"
+                )
+            except Exception as e:
+                self.console.print(
+                    f"[red]Failed to upload versioned main template: {e}[/red]"
+                )
+                sys.exit(1)
+        else:
+            # Main was not rebuilt, check if template exists in S3
+            try:
+                self.s3_client.head_object(Bucket=self.bucket, Key=final_template_key)
+                self.console.print(
+                    "[green]✅ Main template already exists in S3[/green]"
+                )
+            except self.s3_client.exceptions.NoSuchKey:
+                self.console.print(
+                    f"[yellow]Main template missing from S3, uploading: {final_template_key}[/yellow]"
+                )
+                if not os.path.exists(packaged_template_path):
+                    self.console.print(
+                        f"[red]Error: No packaged template to upload at {packaged_template_path}[/red]"
+                    )
+                    sys.exit(1)
+                try:
+                    self.s3_client.upload_file(
+                        packaged_template_path,
+                        self.bucket,
+                        final_template_key,
+                    )
+                    self.console.print(
+                        "[green]✅ Main template uploaded successfully[/green]"
+                    )
+
+                    # Also upload versioned copy
+                    self.console.print(
+                        f"[cyan]Uploading versioned main template to S3: {versioned_template_key}[/cyan]"
+                    )
+                    self.s3_client.upload_file(
+                        packaged_template_path,
+                        self.bucket,
+                        versioned_template_key,
+                    )
+                    self.console.print(
+                        "[green]✅ Versioned main template uploaded successfully[/green]"
+                    )
+                except Exception as e:
+                    self.console.print(
+                        f"[red]Failed to upload main template: {e}[/red]"
+                    )
+                    sys.exit(1)
+            except Exception as e:
+                self.console.print(
+                    f"[yellow]Could not check S3 template existence: {e}[/yellow]"
+                )
+                self.console.print("[yellow]Proceeding without upload[/yellow]")
+
+            # Check versioned template separately
+            try:
+                self.s3_client.head_object(
+                    Bucket=self.bucket, Key=versioned_template_key
+                )
+                self.console.print(
+                    "[green]✅ Versioned main template already exists in S3[/green]"
+                )
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "404":
+                    self.console.print(
+                        f"[yellow]Versioned template missing from S3, uploading: {versioned_template_key}[/yellow]"
+                    )
                     if not os.path.exists(packaged_template_path):
                         self.console.print(
-                            f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+                            f"[red]Error: No packaged template to upload at {packaged_template_path}[/red]"
                         )
-                        raise Exception(packaged_template_path + " missing")
-                    self._upload_template_to_s3(
-                        packaged_template_path, s3_key, description
-                    )
+                        sys.exit(1)
+                    try:
+                        self.s3_client.upload_file(
+                            packaged_template_path,
+                            self.bucket,
+                            versioned_template_key,
+                        )
+                        self.console.print(
+                            "[green]✅ Versioned main template uploaded successfully[/green]"
+                        )
+                    except Exception as upload_e:
+                        self.console.print(
+                            f"[red]Failed to upload versioned template: {upload_e}[/red]"
+                        )
+                        sys.exit(1)
                 else:
-                    self._check_and_upload_template(
-                        packaged_template_path, s3_key, description
+                    self.console.print(
+                        f"[yellow]Could not check versioned template existence: {e}[/yellow]"
                     )
 
-            # Validate the template
-            if self.skip_validation:
-                self.console.print(
-                    "[yellow]⚠️  Skipping CloudFormation template validation[/yellow]"
-                )
-            else:
-                template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
-                self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
-                self.cf_client.validate_template(TemplateURL=template_url)
-                self.console.print("[green]✅ Template validation passed[/green]")
+        # Validate the template
+        template_url = (
+            f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{final_template_key}"
+        )
+        self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
 
+        try:
+            self.cf_client.validate_template(TemplateURL=template_url)
+            self.console.print("[green]✅ Template validation passed[/green]")
         except ClientError as e:
             # Delete checksum on template validation failure
             self._delete_checksum_file(".checksum")
