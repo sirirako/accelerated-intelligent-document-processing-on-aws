@@ -42,6 +42,14 @@ This guide provides solutions for common issues and optimization techniques for 
 | **DynamoDB capacity exceeded** | Check CloudWatch metrics for throttling. Consider increasing provisioned capacity or switching to on-demand capacity. |
 | **S3 permission errors** | Verify bucket policies and IAM role permissions. Check for cross-account access issues. |
 
+### Agent Processing Issues
+
+| Issue | Resolution |
+|-------|------------|
+| **Agent query shows "processing failed"** | Check CloudWatch logs for the Agent Processing Lambda function (`{StackName}-AgentProcessorFunction-*`). Look for specific error messages, timeout issues, or permission errors. |
+| **External MCP agent not appearing** | Verify the External MCP Agents secret is properly configured with valid JSON array format. Check CloudWatch logs for agent registration errors. |
+| **Agent responses are incomplete** | Check CloudWatch logs for token limits, model throttling, or timeout issues in the Agent Processing function. |
+
 ## Performance Considerations
 
 ### Resource Sizing

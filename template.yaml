@@ -6414,6 +6414,6 @@ Outputs:
       REACT_APP_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       REACT_APP_AWS_REGION=${AWS::Region}
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
-  ExternalMCPAgentsSecretName:
-    Description: Name of the Secrets Manager secret for External MCP Agent credentials (JSON array format)
-    Value: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
+  ExternalMCPAgentsSecretConsoleURL:
+    Description: External MCP Agents secret console URL - configure MCP server credentials here (JSON array format)
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/secretsmanager/secret?name=${AWS::StackName}/external-mcp-agents/credentials&region=${AWS::Region}"

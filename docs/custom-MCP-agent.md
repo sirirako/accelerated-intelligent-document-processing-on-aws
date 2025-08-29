@@ -147,9 +147,9 @@ In the AWS account where the IDP solution is deployed, create a secret with your
 
 1. **Navigate to AWS Secrets Manager** in the AWS Console
 2. **Find the External MCP Agents Secret**:
-   - Look for a secret named `{StackName}/external-mcp-agents/credentials` (where StackName is your IDP stack name).
+   - Use the `ExternalMCPAgentsSecretConsoleURL` link from your CloudFormation stack outputs to go directly to the secret
+   - Alternatively, look for a secret named `{StackName}/external-mcp-agents/credentials` (where StackName is your IDP stack name)
    - This secret is automatically created by the CloudFormation template with an empty array `[]`
-   - You can find the exact secret name in your CloudFormation stack outputs
 
 3. **Update Secret with JSON Array Structure**:
    ```json

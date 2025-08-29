@@ -414,14 +414,21 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
       <form onSubmit={handleSubmit}>
         <SpaceBetween size="l">
           <Box>
-            <SpaceBetween direction="horizontal" size="s" alignItems="center">
-              <Box fontSize="body-m" fontWeight="bold">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box fontSize="heading-xs" fontWeight="bold">
                 Select from available agents
               </Box>
-              <Button variant="link" onClick={() => setShowMcpInfoModal(true)} fontSize="body-s">
+              <Button
+                variant="normal"
+                onClick={() => setShowMcpInfoModal(true)}
+                fontSize="body-s"
+                style={{
+                  borderColor: '#e9ecef',
+                }}
+              >
                 🚀 NEW: Integrate your own systems with MCP!
               </Button>
-            </SpaceBetween>
+            </div>
             <div
               style={{
                 maxHeight: '200px',
@@ -429,6 +436,7 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                 border: '1px solid #d5dbdb',
                 padding: '8px',
                 position: 'relative',
+                marginTop: '16px',
               }}
             >
               {isLoadingAgents && (
@@ -446,10 +454,21 @@ const AgentQueryInput = ({ onSubmit, isSubmitting, selectedResult }) => {
                   {availableAgents.map((agent) => (
                     <div
                       key={agent.agent_id}
-                      onMouseEnter={(e) => handleMouseEnter(agent.agent_id, e)}
+                      onMouseEnter={(e) => {
+                        handleMouseEnter(agent.agent_id, e);
+                        e.currentTarget.style.backgroundColor = '#f8f9fa';
+                      }}
                       onMouseMove={handleMouseMove}
-                      onMouseLeave={handleMouseLeave}
-                      style={{ width: '100%' }}
+                      onMouseLeave={(e) => {
+                        handleMouseLeave();
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        transition: 'background-color 0.2s ease',
+                      }}
                     >
                       <Checkbox
                         checked={selectedAgents.includes(agent.agent_id)}

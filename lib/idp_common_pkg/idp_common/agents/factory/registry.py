@@ -36,7 +36,7 @@ agent_factory.register_agent(
     agent_name="Analytics Agent",
     agent_description="""
     Converts natural language questions into SQL queries and generates visualizations from document data.
-    This agent has access to all databases within the IDP system, including metering databases which track
+    This agent has access to many databases within the IDP system, including metering databases which track
     the document processing volume and statistics, document-specific tables for different classes of documents,
     entity-specific information like names of people, numbers, and other entities extracted from documents,
     as well as evaluation tables which include confidence scores for extracted entities as well as
@@ -154,9 +154,8 @@ try:
         # Determine agent name and ID
         if "agent_name" in mcp_config and mcp_config["agent_name"]:
             agent_name = mcp_config["agent_name"]
-            # Create ID from name with UUID for uniqueness
-            name_no_spaces = agent_name.replace(" ", "_").lower()
-            agent_id = f"{name_no_spaces}_{str(uuid.uuid4())[:8]}"
+            # Create ID from name with no spaces - assume users provide unique names
+            agent_id = agent_name.replace(" ", "_").lower()
         else:
             agent_name = f"External MCP Agent {i}"
             agent_id = f"external-mcp-agent-{i}"
