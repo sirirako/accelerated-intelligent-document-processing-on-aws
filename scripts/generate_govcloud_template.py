@@ -52,7 +52,6 @@ class GovCloudTemplateGenerator:
             'AppSyncCwlRole',
             'AppSyncServiceRole',
             'TrackingTableDataSource',
-            'AnalyticsTableDataSource',
             'UpdateDocumentResolver',
             'GetDocumentResolver',
             'ListDocumentResolver',
@@ -103,12 +102,15 @@ class GovCloudTemplateGenerator:
             'CreateDocumentResolverFunctionLogGroup',
             'CreateDocumentDataSource',
             'CreateDocumentResolver',
-            'SubmitAnalyticsQueryResolver',
-            'AnalyticsRequestHandlerDataSource',
-            'GetAnalyticsJobStatusResolver',
-            'ListAnalyticsJobsResolver',
-            'UpdateAnalyticsJobStatusResolver',
-            'DeleteAnalyticsJobResolver'
+            'AgentTableDataSource',
+            'SubmitAgentQueryResolver',
+            'AgentRequestHandlerDataSource',
+            'GetAgentJobStatusResolver',
+            'ListAgentJobsResolver',
+            'UpdateAgentJobStatusResolver',
+            'DeleteAgentJobResolver',
+            'ListAvailableAgentsResolver',
+            'ListAvailableAgentsDataSource'
         }
         
         self.auth_resources = {
@@ -137,12 +139,15 @@ class GovCloudTemplateGenerator:
             'IPSetUpdaterCustomResource'
         }
         
-        self.analytics_resources = {
-            'AnalyticsTable',
-            'AnalyticsRequestHandlerFunction',
-            'AnalyticsRequestHandlerLogGroup',
-            'AnalyticsProcessorFunction',
-            'AnalyticsProcessorLogGroup'
+        self.agent_resources = {
+            'AgentTable',
+            'AgentRequestHandlerFunction',
+            'AgentRequestHandlerLogGroup',
+            'AgentProcessorFunction',
+            'AgentProcessorLogGroup',
+            'ExternalMCPAgentsSecret',
+            'ListAvailableAgentsFunction',
+            'ListAvailableAgentsLogGroup'
         }
         
         self.hitl_resources = {
@@ -188,7 +193,8 @@ class GovCloudTemplateGenerator:
             'WebUIBucketName',
             'WebUITestEnvFile',
             'SageMakerA2IReviewPortalURL',
-            'LabelingConsoleURL'
+            'LabelingConsoleURL',
+            'ExternalMCPAgentsSecretName'
         }
 
     def setup_logging(self):
@@ -328,7 +334,7 @@ class GovCloudTemplateGenerator:
             self.appsync_dependent_resources |
             self.auth_resources | 
             self.waf_resources | 
-            self.analytics_resources |
+            self.agent_resources |
             self.hitl_resources
         )
         
@@ -627,10 +633,10 @@ class GovCloudTemplateGenerator:
                 
                 # Remove outputs that reference analytics table (removed)
                 if (isinstance(output_value, dict) and 
-                    output_value.get('Ref') == 'AnalyticsTable'):
+                    output_value.get('Ref') == 'AgentTable'):
                     outputs_to_clean.append(output_name)
                 elif (isinstance(output_value, dict) and 
-                      'AnalyticsTable' in str(output_value)):
+                      'AgentTable' in str(output_value)):
                     outputs_to_clean.append(output_name)
                 # Remove outputs that reference WebUIBucket (removed)  
                 elif (isinstance(output_value, dict) and
