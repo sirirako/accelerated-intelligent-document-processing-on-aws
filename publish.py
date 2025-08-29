@@ -1701,27 +1701,70 @@ except Exception as e:
             self.console.print(f"[cyan]Setting ACLs on {total_files} files...[/cyan]")
 
             for i, obj in enumerate(objects, 1):
-                self.s3_client.put_object_acl(
-                    Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
-                )
-                if i % 10 == 0 or i == total_files:
-                    self.console.print(
-                        f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
+                try:
+                    self.s3_client.put_object_acl(
+                        Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
                     )
+                    successful_acls += 1
+                    if i % 10 == 0 or i == total_files:  # Progress every 10 files
+                        self.console.print(
+                            f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
+                        )
+                except ClientError as e:
+                    failed_acls += 1
+                    if "AccessDenied" in str(e) or "BlockPublicAcls" in str(e):
+                        # Don't spam with individual permission error messages
+                        pass
+                    else:
+                        self.console.print(
+                            f"[yellow]Warning: Could not set ACL for {obj['Key']}: {e}[/yellow]"
+                        )
 
-            # Set ACL for main template files
+            # Also set ACL for main template files (only if they exist)
             main_template_keys = [
                 f"{self.prefix}/{self.main_template}",
                 f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
             ]
 
             for key in main_template_keys:
-                self.s3_client.head_object(Bucket=self.bucket, Key=key)
-                self.s3_client.put_object_acl(
-                    Bucket=self.bucket, Key=key, ACL="public-read"
-                )
+                try:
+                    # Check if the key exists first
+                    self.s3_client.head_object(Bucket=self.bucket, Key=key)
+                    # If it exists, set the ACL
+                    self.s3_client.put_object_acl(
+                        Bucket=self.bucket, Key=key, ACL="public-read"
+                    )
+                    successful_acls += 1
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "404":
+                        # Key doesn't exist, skip silently
+                        continue
+                    else:
+                        failed_acls += 1
+                        if "AccessDenied" not in str(
+                            e
+                        ) and "BlockPublicAcls" not in str(e):
+                            self.console.print(
+                                f"[yellow]Warning: Could not set ACL for {key}: {e}[/yellow]"
+                            )
 
-            self.console.print("[green]✅ Public ACLs set successfully[/green]")
+            # Report accurate final status
+            if failed_acls == 0:
+                self.console.print("[green]✅ Public ACLs set successfully[/green]")
+            elif successful_acls == 0:
+                self.console.print(
+                    f"[red]❌ Could not set public ACLs on any files ({failed_acls} failed)[/red]"
+                )
+                self.console.print(
+                    "[yellow]Files uploaded successfully but are NOT publicly accessible[/yellow]"
+                )
+                self.console.print(
+                    "[yellow]This is usually due to 'Block Public Access' settings or insufficient permissions[/yellow]"
+                )
+            else:
+                self.console.print(
+                    f"[yellow]⚠️  Partial ACL success: {successful_acls} succeeded, {failed_acls} failed[/yellow]"
+                )
 
         except Exception as e:
             raise Exception(f"Failed to set public ACLs: {e}")
