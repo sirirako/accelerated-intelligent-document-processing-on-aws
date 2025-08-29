@@ -247,10 +247,10 @@ The authentication process works as follows:
 - Verify secret exists at path: `{StackName}/external-mcp-agents/credentials` (check CloudFormation outputs for exact name)
 - Check secret contains a valid JSON array format (not a single object)
 - Review CloudWatch logs for agent registration errors
-- **Lambda Caching**: The ListAvailableAgentsFunction has caching that may delay new agents appearing for up to 15 minutes. To force refresh:
-  - Find the function named `{StackName}-ListAvailableAgentsFunction-*` in AWS Console → Lambda → Functions
-  - Go to Configuration → Environment variables
-  - Add a temporary variable like `REFRESH=1` and save to restart the function
+- **Lambda Caching**: The ListAvailableAgentsFunction and AgentProcessorFunction have caching that may delay new agents appearing for up to 15 minutes. To force refresh:
+  - Find the functions named `{StackName}-ListAvailableAgentsFunction-*` and `{StackName}-AgentProcessorFunction-*` in AWS Console → Lambda → Functions
+  - Go to Configuration → Environment variables for each function
+  - Add a temporary variable like `REFRESH=1` and save to restart the functions
   - Remove the temporary variable after agents appear
 
 **Authentication Failures:**
