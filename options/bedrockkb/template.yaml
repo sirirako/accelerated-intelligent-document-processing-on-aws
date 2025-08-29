@@ -259,7 +259,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       InlineCode: |
         import cfnresponse
@@ -305,7 +305,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       InlineCode: |
         import cfnresponse
@@ -484,7 +484,7 @@ Resources:
       Handler: oss_handler.lambda_handler
       MemorySize: 1024
       Role: !GetAtt OpenSearchLambdaExecutionRole.Arn
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 840
       CodeUri: ./src/opensearch_index_custom_resource
       Environment:
@@ -756,7 +756,7 @@ Resources:
     Properties:
       Handler: handler.lambda_handler
       Role: !GetAtt "StartIngestionJobFunctionRole.Arn"
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 600
       MemorySize: 128
       Code: ./src/start_ingestion_job_custom_resource

@@ -1,6 +1,6 @@
 # Classification Service Configuration
 classification:
-  classificationMethod: multimodalPageBoundaryClassification
+  classificationMethod: multimodalPageLevelClassification
   image:
     target_height: ''
     target_width: ''
@@ -13,9 +13,9 @@ classification:
     You are a multimodal document classification expert that analyzes business documents using both visual layout and textual content. Your task is to classify single-page documents into predefined categories based on their structural patterns, visual features, and text content. Your output must be valid JSON according to the requested format.
 
     <variables>
-    DOCUMENT_TEXT: OCR-extracted text content from the document page that provides textual information for classification
-    DOCUMENT_IMAGE: Visual representation of the document page that provides layout, formatting, and visual structure information
-    CLASS_NAMES_AND_DESCRIPTIONS: List of valid document types with their descriptions that the document must be classified into
+    <document-ocr-data>: OCR-extracted text content from the document page that provides textual information for classification
+    <document-image>: Visual representation of the document page that provides layout, formatting, and visual structure information
+    <document-types>: List of valid document types with their descriptions that the document must be classified into
     </variables>
   task_prompt: >-
     <task-description>

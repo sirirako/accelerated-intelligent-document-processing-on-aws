@@ -5,6 +5,83 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+
+
+## [0.3.12]
+
+### Added
+
+- **Custom Prompt Generator Lambda Support for Patterns 2 & 3**
+  - Added `custom_prompt_lambda_arn` configuration field to enable injection of custom business logic into extraction processing
+  - **Key Features**: Lambda interface with all template placeholders (DOCUMENT_TEXT, DOCUMENT_CLASS, ATTRIBUTE_NAMES_AND_DESCRIPTIONS, DOCUMENT_IMAGE), URI-based image handling for JSON serialization, comprehensive error handling with fail-fast behavior, scoped IAM permissions requiring GENAIIDP-* function naming
+  - **Use Cases**: Document type-specific processing rules, integration with external systems for customer configurations, conditional processing based on document content, regulatory compliance and industry-specific requirements
+  - **Demo Resources**: Interactive notebook demonstration (`step3_extraction_with_custom_lambda.ipynb`), SAM deployment template for demo Lambda function, comprehensive documentation and examples in `notebooks/examples/demo-lambda/`
+  - **Benefits**: Custom business logic without core code changes, backward compatible (existing deployments unchanged), robust JSON serialization handling all object types, complete observability with detailed logging
+
+- **Refactored Document Classification Service for Enhanced Boundary Detection**
+  - Consolidated `multimodalPageLevelClassification` and the experimental `multimodalPageBoundaryClassification` (from v0.3.11) into a single enhanced `multimodalPageLevelClassification` method
+  - Implemented BIO-like sequence segmentation with document boundary indicators: "start" (new document) and "continue" (same document)
+  - Automatically segments multi-document packets, even when they contain multiple documents of the same type
+  - Added comprehensive classification guide with method comparisons and best practices
+  - **Benefits**: Simplified codebase with single multimodal classification method, improved handling of complex document packets, maintains backward compatibility
+  - **No Breaking Changes**: Existing configurations work unchanged, no configuration updates required
+
+- **Enhanced A2I Template and Workflow Management**
+  - Enhanced A2I template with improved user interface and clearer instructions for reviewers
+  - Added comprehensive instructions for reviewers in A2I template to guide the review process
+  - Implemented capture of failed review tasks with proper error handling and logging
+  - Added workflow orchestration control to stop processing when reviewer rejects A2I task
+  - Removed automatic A2I task creation when Pattern-1 Bedrock Data Automation (BDA) fails to classify document to appropriate Blueprint
+
+- **Dynamic Cost Calculation for Metering Data**
+  - Added automated unit cost and estimated cost calculation to metering table with new `unit_cost` and `estimated_cost` columns
+  - Dynamic pricing configuration loading from configuration
+  - Enhanced cost analysis capabilities with comprehensive Athena queries for cost tracking, trend analysis, and efficiency metrics
+  - Automatic cost calculation as `estimated_cost = value × unit_cost` for all metering records
+  
+- **Configuration-Based Summarization Control**
+  - Summarization can now be enabled/disabled via configuration file `summarization.enabled` property instead of CloudFormation stack parameter
+  - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
+  - **Implementation**: Always calls SummarizationStep but service skips processing when `enabled: false`
+  - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
+  - **Configuration Example**: Set `summarization.enabled: false` to disable, `enabled: true` to enable (default)
+
+- **Configuration-Based Assessment Control**
+  - Assessment can now be enabled/disabled via configuration file `assessment.enabled` property instead of CloudFormation stack parameter
+  - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
+  - **Implementation**: Always calls AssessmentStep but service skips processing when `enabled: false`
+  - **Cost Optimization**: When disabled, no LLM API calls or S3 operations are performed
+  - **Configuration Example**: Set `assessment.enabled: false` to disable, `enabled: true` to enable (default)
+
+- **New guides for setting up development environments**
+  - EC2-based Linux development environment
+  - MacOS development environment
+
+### Removed
+- **CloudFormation Parameters**: Removed `IsSummarizationEnabled` and `IsAssessmentEnabled` parameters from all pattern templates
+- **Related Conditions**: Removed parameter conditions and state machine definition substitutions for both features
+- **Conditional Logic**: Eliminated complex conditional logic from state machine definitions for summarization and assessment steps
+
+### ⚠️ Breaking Changes
+- **Configuration Migration Required**: When updating a stack that previously had `IsSummarizationEnabled` or `IsAssessmentEnabled` set to `false`, these features will now default to `enabled: true` after the update. To maintain the disabled behavior:
+  1. Update your configuration file to set `summarization.enabled: false` and/or `assessment.enabled: false` as needed
+  2. Save the configuration changes immediately after the stack update
+  3. This ensures continued cost optimization by preventing unexpected LLM API calls
+- **Action Required**: Review your current CloudFormation parameter settings before updating and update your configuration accordingly to preserve existing behavior
+
+### Changed
+- **Updated Python Lambda Runtime to 3.13**
+
+### Fixed
+- **Fixed B615 "Unsafe Hugging Face Hub download without revision pinning" security finding in Pattern-3 fine-tuning module** - Added revision pinning with to prevent supply chain attacks and ensure reproducible deployments
+- **Fixed CloudWatch Log Group Missing Retention regression**
+- **Security: Cross-Site Scripting (XSS) Vulnerability in FileViewer Component** - Fixed high-risk XSS vulnerability in `src/ui/src/components/document-viewer/FileViewer.jsx` where `innerHTML` was used with user-controlled data
+- **Add permissions boundary support to new Lambda function roles introduced in previous releases**
+- **Fixed OutOfMemory Errors in Pattern-2 OCR Lambda for Large High-Resolution Documents**
+  - **Root Cause**: Processing large PDFs with high-resolution images (7469×9623 pixels) caused memory spikes when 20 concurrent workers each held ~101MB images simultaneously, exceeding the 4GB Lambda memory limit
+  - **Optimal Solution**: Refactored image extraction to render directly at target dimensions using PyMuPDF matrix transformations, completely eliminating oversized image creation
 
 ## [0.3.11]
 

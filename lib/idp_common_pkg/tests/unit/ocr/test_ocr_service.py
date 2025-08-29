@@ -112,7 +112,9 @@ class TestOcrService:
             # Verify both Textract and S3 clients were created
             assert mock_client.call_count == 2
             mock_client.assert_any_call("textract", region_name="us-west-2", config=ANY)
-            mock_client.assert_any_call("s3")
+            mock_client.assert_any_call(
+                "s3", config=ANY
+            )  # Now includes config for connection pool
 
     def test_init_textract_with_enhanced_features(self):
         """Test initialization with enhanced Textract features."""
@@ -642,10 +644,10 @@ class TestOcrService:
                     assert "Error extracting text" in result["text"]
 
     @patch("boto3.client")
-    @patch("idp_common.image.resize_image")
     @patch("fitz.Page")
+    @patch("fitz.Matrix")
     def test_process_single_page_with_resize_config(
-        self, mock_page, mock_resize_image, mock_boto_client, mock_textract_response
+        self, mock_matrix, mock_page, mock_boto_client, mock_textract_response
     ):
         """Test single page processing with resize configuration."""
         # Mock Textract client
@@ -653,10 +655,16 @@ class TestOcrService:
         mock_textract_client.detect_document_text.return_value = mock_textract_response
         mock_boto_client.return_value = mock_textract_client
 
-        # Mock page image extraction
+        # Mock page image extraction - resize is now done directly in _extract_page_image
         mock_page_obj = MagicMock()
+        mock_page_obj.rect = MagicMock()
+        mock_page_obj.rect.width = 2048  # Large original width
+        mock_page_obj.rect.height = 1536  # Large original height
+
         mock_pixmap = MagicMock()
-        mock_pixmap.tobytes.return_value = b"original_image_data"
+        mock_pixmap.width = 1024  # Resized width
+        mock_pixmap.height = 768  # Resized height
+        mock_pixmap.tobytes.return_value = b"resized_image_data"
         mock_page_obj.get_pixmap.return_value = mock_pixmap
 
         # Mock PDF document
@@ -664,8 +672,9 @@ class TestOcrService:
         mock_pdf_doc.load_page.return_value = mock_page_obj
         mock_pdf_doc.is_pdf = True
 
-        # Mock resize
-        mock_resize_image.return_value = b"resized_image_data"
+        # Mock the matrix transformation
+        mock_matrix_instance = MagicMock()
+        mock_matrix.return_value = mock_matrix_instance
 
         resize_config = {"target_width": 1024, "target_height": 768}
         service = OcrService(resize_config=resize_config)
@@ -675,10 +684,15 @@ class TestOcrService:
                 0, mock_pdf_doc, "output-bucket", "test-prefix"
             )
 
-            # Verify resize was called
-            mock_resize_image.assert_called_once_with(b"original_image_data", 1024, 768)
+            # Verify matrix transformation was used (new resize approach)
+            mock_matrix.assert_called_once()  # Matrix created for scaling
 
-            # Verify Textract was called with resized image
+            # Verify get_pixmap was called with matrix (direct resize)
+            mock_page_obj.get_pixmap.assert_called_once_with(
+                matrix=mock_matrix_instance
+            )
+
+            # Verify Textract was called with the directly-resized image
             mock_textract_client.detect_document_text.assert_called_once_with(
                 Document={"Bytes": b"resized_image_data"}
             )

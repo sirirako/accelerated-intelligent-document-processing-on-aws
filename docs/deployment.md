@@ -27,6 +27,8 @@ You need to have the following packages installed on your computer:
 4. python 3.11 or later
 5. A local Docker daemon
 
+For guidance on setting up a development environment, see: [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) or [Development Environment Setup Guide on MacOS](./setup-development-env-macos.md)
+
 Copy the repo to your computer. Either:
 - Use the git command to clone the repo, if you have access
 - OR, download and expand the ZIP file for the repo, or use the ZIP file that has been shared with you

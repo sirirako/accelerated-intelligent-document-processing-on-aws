@@ -100,7 +100,7 @@ Resources:
       CodeUri: src/bda_project_lambda/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 300
       MemorySize: 256
       Environment:

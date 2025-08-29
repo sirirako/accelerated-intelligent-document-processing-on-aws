@@ -54,18 +54,32 @@ The assessment step is conditionally integrated into Pattern-2's ProcessSections
 
 ## Configuration
 
-### Deployment Parameter
+### Configuration-Based Control
 
-Enable assessment during stack deployment:
+Assessment can now be controlled via the configuration file rather than CloudFormation stack parameters. This provides more flexibility and eliminates the need for stack redeployment when changing assessment behavior.
 
+**Configuration-based Control (Recommended):**
 ```yaml
-Parameters:
-  IsAssessmentEnabled:
-    Type: String
-    Default: "false"
-    AllowedValues: ["true", "false"]
-    Description: Enable assessment functionality for extraction confidence evaluation
+assessment:
+  enabled: true  # Set to false to disable assessment
+  model: us.amazon.nova-lite-v1:0
+  temperature: 0.0
+  # ... other assessment settings
 ```
+
+**Key Benefits:**
+- **Runtime Control**: Enable/disable without stack redeployment  
+- **Cost Optimization**: Zero LLM costs when disabled (`enabled: false`)
+- **Simplified Architecture**: No conditional logic in state machines
+- **Backward Compatible**: Defaults to `enabled: true` when property is missing
+
+**Behavior When Disabled:**
+- Assessment lambda is still called (minimal overhead)
+- Service immediately returns with logging: "Assessment is disabled via configuration"
+- No LLM API calls or S3 operations are performed
+- Document processing continues to completion
+
+**Migration Note**: The previous `IsAssessmentEnabled` CloudFormation parameter has been removed in favor of this configuration-based approach.
 
 ### Assessment Configuration Section
 
@@ -808,7 +822,7 @@ The assessment feature implements several cost optimization techniques:
 
 1. **Text Confidence Data**: Uses condensed OCR confidence information instead of full raw OCR results (80-90% token reduction)
 2. **Conditional Image Processing**: Images only processed when `{DOCUMENT_IMAGE}` placeholder is present
-3. **Optional Deployment**: Assessment infrastructure only deployed when `IsAssessmentEnabled=true`
+3. **Configuration-Based Control**: Assessment can be enabled/disabled via configuration `enabled` property for flexible deployment
 4. **Efficient Prompting**: Optimized prompt templates minimize token usage while maintaining accuracy
 5. **Configurable Image Dimensions**: Adjust image resolution to balance assessment quality and processing costs
 6. **Granular Assessment with Caching**: For complex documents, use granular assessment with prompt caching for 60-80% cost reduction
@@ -889,7 +903,7 @@ ValueError: "Assessment prompt template formatting failed: missing required plac
 ### Common Issues
 
 1. **Assessment Not Running**
-   - Verify `IsAssessmentEnabled=true` in deployment
+   - Verify `assessment.enabled: true` in configuration file
    - Check state machine definition includes assessment step
    - Confirm assessment Lambda function deployed successfully
 

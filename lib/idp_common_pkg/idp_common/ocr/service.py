@@ -254,8 +254,15 @@ class OcrService:
                 "OCR Service initialized with 'none' backend - image-only processing"
             )
 
-        # Initialize S3 client (used by all backends for image storage)
-        self.s3_client = boto3.client("s3")
+        # Initialize S3 client with connection pool matching max_workers
+        s3_config = Config(
+            retries={"max_attempts": 10, "mode": "adaptive"},
+            max_pool_connections=max(self.max_workers, 10),
+        )
+        self.s3_client = boto3.client("s3", config=s3_config)
+        logger.info(
+            f"S3 client initialized with {max(self.max_workers, 10)} connection pool size"
+        )
 
         # Initialize document converter for non-PDF formats
         self.document_converter = DocumentConverter(dpi=self.dpi or 150)
@@ -358,37 +365,51 @@ class OcrService:
                         for i in range(num_pages)
                     }
 
-                    for future in concurrent.futures.as_completed(future_to_page):
-                        page_index = future_to_page[future]
-                        page_id = str(page_index + 1)
-                        try:
-                            ocr_result, page_metering = future.result()
+                    # Start memory monitoring in background thread
+                    memory_monitor_shutdown = self._start_memory_monitoring()
+                    completed_pages = 0
 
-                            # Create Page object and add to document
-                            document.pages[page_id] = Page(
-                                page_id=page_id,
-                                image_uri=ocr_result["image_uri"],
-                                raw_text_uri=ocr_result["raw_text_uri"],
-                                parsed_text_uri=ocr_result["parsed_text_uri"],
-                                text_confidence_uri=ocr_result["text_confidence_uri"],
-                            )
+                    try:
+                        for future in concurrent.futures.as_completed(future_to_page):
+                            page_index = future_to_page[future]
+                            page_id = str(page_index + 1)
+                            try:
+                                ocr_result, page_metering = future.result()
 
-                            # Merge metering data
-                            document.metering = utils.merge_metering_data(
-                                document.metering, page_metering
-                            )
+                                # Create Page object and add to document
+                                document.pages[page_id] = Page(
+                                    page_id=page_id,
+                                    image_uri=ocr_result["image_uri"],
+                                    raw_text_uri=ocr_result["raw_text_uri"],
+                                    parsed_text_uri=ocr_result["parsed_text_uri"],
+                                    text_confidence_uri=ocr_result[
+                                        "text_confidence_uri"
+                                    ],
+                                )
 
-                        except Exception as e:
-                            import traceback
+                                # Merge metering data
+                                document.metering = utils.merge_metering_data(
+                                    document.metering, page_metering
+                                )
 
-                            error_msg = (
-                                f"Error processing page {page_index + 1}: {str(e)}"
-                            )
-                            stack_trace = traceback.format_exc()
-                            logger.error(f"{error_msg}\nStack trace:\n{stack_trace}")
-                            document.errors.append(
-                                f"{error_msg} (see logs for full trace)"
-                            )
+                                completed_pages += 1
+
+                            except Exception as e:
+                                import traceback
+
+                                error_msg = (
+                                    f"Error processing page {page_index + 1}: {str(e)}"
+                                )
+                                stack_trace = traceback.format_exc()
+                                logger.error(
+                                    f"{error_msg}\nStack trace:\n{stack_trace}"
+                                )
+                                document.errors.append(
+                                    f"{error_msg} (see logs for full trace)"
+                                )
+                    finally:
+                        # Stop memory monitoring
+                        memory_monitor_shutdown.set()
 
                 pdf_document.close()
 
@@ -915,6 +936,51 @@ class OcrService:
 
         return result, metering
 
+    def _start_memory_monitoring(self):
+        """
+        Start background memory monitoring that logs usage every 5 seconds.
+
+        Returns:
+            Event object that can be set to stop monitoring
+        """
+        import threading
+
+        shutdown_event = threading.Event()
+
+        def monitor_memory():
+            while not shutdown_event.is_set():
+                try:
+                    import os
+
+                    import psutil
+
+                    process = psutil.Process(os.getpid())
+                    memory_info = process.memory_info()
+                    memory_mb = memory_info.rss / (1024 * 1024)  # Convert to MB
+
+                    logger.info(f"Memory usage: {memory_mb:.1f} MB")
+
+                    # Warning if memory usage is getting high
+                    if memory_mb > 3500:
+                        logger.warning(
+                            f"HIGH memory usage detected: {memory_mb:.1f} MB"
+                        )
+
+                except ImportError:
+                    logger.debug("psutil not available, skipping memory monitoring")
+                    break
+                except Exception as e:
+                    logger.debug(f"Error monitoring memory: {str(e)}")
+
+                # Wait 5 seconds or until shutdown
+                shutdown_event.wait(5.0)
+
+        # Start monitoring thread
+        monitor_thread = threading.Thread(target=monitor_memory, daemon=True)
+        monitor_thread.start()
+
+        return shutdown_event
+
     def _process_single_page_textract(
         self,
         page_index: int,
@@ -937,31 +1003,21 @@ class OcrService:
         t0 = time.time()
         page_id = page_index + 1
 
-        # Extract page image - use DPI only for PDF files to prevent upscaling of images
+        # Extract page image - now returns image at optimal size directly
         page = pdf_document.load_page(page_index)
         img_bytes = self._extract_page_image(page, pdf_document.is_pdf, page_id)
 
-        # Upload original image to S3
+        # Upload processed image to S3 (already at target size if resize config exists)
         image_key = f"{prefix}/pages/{page_id}/image.jpg"
         s3.write_content(img_bytes, output_bucket, image_key, content_type="image/jpeg")
 
         t1 = time.time()
         logger.debug(
-            f"Time for image conversion (page {page_id}): {t1 - t0:.6f} seconds"
+            f"Time for image processing (page {page_id}): {t1 - t0:.6f} seconds"
         )
 
-        # Resize image for OCR processing if configured
-        ocr_img_bytes = img_bytes  # Default to original image
-        if self.resize_config:
-            from idp_common import image
-
-            target_width = self.resize_config.get("target_width")
-            target_height = self.resize_config.get("target_height")
-
-            ocr_img_bytes = image.resize_image(img_bytes, target_width, target_height)
-            logger.debug(
-                f"Resized image for OCR processing (page {page_id}) to {target_width}x{target_height}"
-            )
+        # Use the extracted image directly for OCR (no additional resize needed)
+        ocr_img_bytes = img_bytes
 
         # Apply preprocessing if enabled (only for OCR processing, not saved image)
         if self.preprocessing_config and self.preprocessing_config.get("enabled"):
@@ -979,6 +1035,15 @@ class OcrService:
             textract_result = self.textract_client.detect_document_text(
                 Document={"Bytes": ocr_img_bytes}
             )
+
+        # Aggressive memory cleanup - clear large image variables immediately after OCR
+        img_bytes = None
+        ocr_img_bytes = None
+
+        # Force garbage collection after processing large images
+        import gc
+
+        gc.collect()
 
         # Extract metering data
         feature_combo = self._feature_combo()
@@ -1032,7 +1097,10 @@ class OcrService:
 
     def _extract_page_image(self, page: fitz.Page, is_pdf: bool, page_id: int) -> bytes:
         """
-        Extract image bytes from a page, using DPI only for PDF files.
+        Extract image bytes from a page at optimal size to prevent memory issues.
+
+        If resize config is provided, images are extracted directly at target dimensions
+        to avoid creating oversized images that cause OutOfMemory errors.
 
         Args:
             page: PyMuPDF page object
@@ -1040,18 +1108,94 @@ class OcrService:
             page_id: Page number for logging
 
         Returns:
-            Image bytes in JPEG format
+            Image bytes in JPEG format (at target size if resize config exists)
         """
-        if is_pdf:
-            # For PDF files, use specified DPI for quality rendering
-            pix = page.get_pixmap(dpi=self.dpi)
-            logger.debug(f"Processing PDF page {page_id} at {self.dpi} DPI")
-        else:
-            # For image files (JPEG, PNG, etc.), preserve original dimensions
-            pix = page.get_pixmap()
-            logger.debug(f"Processing image page {page_id} at original dimensions")
+        pix = None
+        try:
+            # Check if we should extract at target size to avoid memory issues
+            if self.resize_config:
+                target_width = self.resize_config.get("target_width")
+                target_height = self.resize_config.get("target_height")
 
-        return pix.tobytes("jpeg")
+                if target_width and target_height:
+                    # Get page dimensions to calculate scaling
+                    page_rect = page.rect
+
+                    if is_pdf:
+                        # For PDF files, calculate dimensions at specified DPI (default to 150 if None)
+                        dpi = self.dpi or 150
+                        original_width = int(page_rect.width * (dpi / 72))
+                        original_height = int(page_rect.height * (dpi / 72))
+                    else:
+                        # For image files, use actual dimensions
+                        original_width = int(page_rect.width)
+                        original_height = int(page_rect.height)
+
+                    # Apply same logic as image.resize_image - preserve aspect ratio, never upscale
+                    width_ratio = target_width / original_width
+                    height_ratio = target_height / original_height
+                    scale_factor = min(
+                        width_ratio, height_ratio
+                    )  # Preserve aspect ratio
+
+                    # Only resize if scale_factor < 1.0 (never upscale)
+                    if scale_factor < 1.0:
+                        # Extract at reduced size using matrix transformation
+                        if is_pdf:
+                            # For PDF, combine DPI scaling with size reduction
+                            dpi = self.dpi or 150
+                            base_scale = dpi / 72  # Convert PDF points to pixels
+                            final_scale = base_scale * scale_factor
+                            matrix = fitz.Matrix(final_scale, final_scale)
+                        else:
+                            # For images, just apply the scale factor
+                            matrix = fitz.Matrix(scale_factor, scale_factor)
+
+                        pix = page.get_pixmap(matrix=matrix)
+
+                        actual_width, actual_height = pix.width, pix.height
+                        logger.info(
+                            f"Extracted page {page_id} at target size: {actual_width}x{actual_height} (scale: {scale_factor:.3f})"
+                        )
+
+                    else:
+                        # No resize needed - image is already smaller than targets
+                        if is_pdf:
+                            dpi = self.dpi or 150
+                            pix = page.get_pixmap(dpi=dpi)
+                            logger.info(
+                                f"Page {page_id} already fits target size, using DPI {dpi}"
+                            )
+                        else:
+                            pix = page.get_pixmap()
+                            logger.info(
+                                f"Page {page_id} already fits target size, using original dimensions"
+                            )
+                else:
+                    # No valid target dimensions - use original extraction
+                    if is_pdf:
+                        dpi = self.dpi or 150
+                        pix = page.get_pixmap(dpi=dpi)
+                    else:
+                        pix = page.get_pixmap()
+            else:
+                # No resize config - extract at original size
+                if is_pdf:
+                    dpi = self.dpi or 150
+                    pix = page.get_pixmap(dpi=dpi)
+                    logger.debug(f"Processing PDF page {page_id} at {dpi} DPI")
+                else:
+                    pix = page.get_pixmap()
+                    logger.debug(
+                        f"Processing image page {page_id} at original dimensions"
+                    )
+
+            image_bytes = pix.tobytes("jpeg")
+            return image_bytes
+        finally:
+            # Aggressive cleanup of PyMuPDF pixmap to prevent memory leaks
+            if pix is not None:
+                pix = None
 
     def _process_single_page_bedrock(
         self,
@@ -1075,29 +1219,21 @@ class OcrService:
         t0 = time.time()
         page_id = page_index + 1
 
-        # Extract page image at specified DPI (consistent with Textract)
+        # Extract page image - now returns image at optimal size directly
         page = pdf_document.load_page(page_index)
         img_bytes = self._extract_page_image(page, pdf_document.is_pdf, page_id)
 
-        # Upload image to S3
+        # Upload processed image to S3 (already at target size if resize config exists)
         image_key = f"{prefix}/pages/{page_id}/image.jpg"
         s3.write_content(img_bytes, output_bucket, image_key, content_type="image/jpeg")
 
         t1 = time.time()
         logger.debug(
-            f"Time for image conversion (page {page_id}): {t1 - t0:.6f} seconds"
+            f"Time for image processing (page {page_id}): {t1 - t0:.6f} seconds"
         )
 
-        # Apply resize config if provided (consistent with Textract)
-        ocr_img_bytes = img_bytes  # Default to original image
-        if self.resize_config:
-            target_width = self.resize_config.get("target_width")
-            target_height = self.resize_config.get("target_height")
-
-            ocr_img_bytes = image.resize_image(img_bytes, target_width, target_height)
-            logger.debug(
-                f"Resized image for Bedrock OCR processing (page {page_id}) to {target_width}x{target_height}"
-            )
+        # Use the extracted image directly for OCR (no additional resize needed)
+        ocr_img_bytes = img_bytes
 
         # Apply preprocessing if enabled (only for OCR processing, not saved image)
         if self.preprocessing_config and self.preprocessing_config.get("enabled"):

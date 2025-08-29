@@ -17,6 +17,41 @@ This module provides document classification capabilities for the IDP Accelerato
 - Grouping of pages into sections by classification
 - Comprehensive error handling and retry mechanisms
 - **DynamoDB caching for resilient page-level classification**
+- **Sequence segmentation using BIO-like approach for document boundary detection**
+
+## Sequence Segmentation Approach
+
+The multimodal page-level classification method implements a sequence segmentation approach similar to BIO (Begin-Inside-Outside) tagging commonly used in NLP. This enables accurate segmentation of multi-document packets where a single file may contain multiple distinct documents.
+
+### How It Works
+
+Each page receives two pieces of information:
+1. **Document Type**: The classification label (e.g., "invoice", "letter", "financial_statement")
+2. **Document Boundary**: A boundary indicator that signals document transitions:
+   - `"start"`: Indicates the beginning of a new document (similar to "Begin" in BIO)
+   - `"continue"`: Indicates continuation of the current document (similar to "Inside" in BIO)
+
+### Benefits
+
+- **Multi-Document Packet Support**: Accurately segments packets containing multiple documents
+- **Type-Aware Boundaries**: Detects when a new document of the same type begins
+- **Automatic Section Creation**: Pages are grouped into sections based on both type and boundaries
+- **Improved Accuracy**: Context-aware classification that considers document flow
+
+### Example Segmentation
+
+Consider a packet with 6 pages containing two invoices and one letter:
+
+```
+Page 1: type="invoice", boundary="start"      → Section 1 (Invoice #1)
+Page 2: type="invoice", boundary="continue"   → Section 1 (Invoice #1)
+Page 3: type="letter", boundary="start"       → Section 2 (Letter)
+Page 4: type="letter", boundary="continue"    → Section 2 (Letter)
+Page 5: type="invoice", boundary="start"      → Section 3 (Invoice #2)
+Page 6: type="invoice", boundary="continue"   → Section 3 (Invoice #2)
+```
+
+The system automatically creates three sections, properly separating the two invoices despite them having the same document type.
 
 ## Usage Example
 

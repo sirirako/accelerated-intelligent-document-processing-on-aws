@@ -122,18 +122,37 @@ ocr:
   task_prompt: "Extract all text from this image..."
 ```
 
+### Memory-Optimized Image Extraction
+
+The OCR service uses advanced memory optimization to prevent OutOfMemory errors when processing large high-resolution documents:
+
+**Direct Size Extraction**: When resize configuration is provided (`target_width` and `target_height`), images are extracted directly at the target dimensions using PyMuPDF matrix transformations. This completely eliminates memory spikes from creating oversized images.
+
+**Example for Large Document:**
+- **Original approach**: Extract 7469×9623 (101MB) → Resize to 951×1268 (5MB) → Memory spike
+- **Optimized approach**: Extract directly at 951×1268 (5MB) → No memory spike
+
+**Preserved Logic**: The optimization maintains all existing resize behavior:
+- ✅ Never upscales images (only applies scaling when scale_factor < 1.0)
+- ✅ Preserves aspect ratio using `min(width_ratio, height_ratio)`
+- ✅ Handles edge cases (no config, images already smaller than targets)
+- ✅ Full backward compatibility
+
 ### DPI Configuration
 
-The DPI (dots per inch) setting controls the resolution when extracting images from PDF pages:
+The DPI (dots per inch) setting controls the base resolution when extracting images from PDF pages:
 - **Default**: 150 DPI (good balance of quality and file size)
-- **Range**: 72-300 DPI
+- **Range**: 72-300 DPI  
 - **Location**: `ocr.image.dpi` in the configuration
 - **Behavior**: 
   - Only applies to PDF files (image files maintain their original resolution)
-  - Higher DPI = better quality but larger file sizes
+  - Combined with resize configuration for optimal memory usage
+  - Higher DPI = better quality but larger file sizes (use with resize config for large documents)
   - 150 DPI is recommended for most OCR use cases
-  - 300 DPI for documents with small text or fine details
+  - 300 DPI for documents with small text or fine details (ensure resize config is set)
   - 100 DPI for simple documents to reduce processing time
+
+**Memory Considerations**: For large documents with high DPI settings, always configure `target_width` and `target_height` to prevent memory issues. The service will intelligently extract at the optimal size.
 
 
 ## Migration Guide

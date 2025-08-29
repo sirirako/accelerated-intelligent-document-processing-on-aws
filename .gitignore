@@ -19,3 +19,4 @@ __pycache__
 rvl_cdip_*
 notebooks/examples/data
 .idea/
+.dsr/

@@ -94,24 +94,6 @@ Parameters:
     AllowedPattern: "^(|^arn:aws:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
     Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
 
-  Pattern1EnableHITL:
-    Type: String
-    AllowedValues:
-      - true
-      - false
-    Default: false
-    Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction and classification of BDA is less than configured Confidence Threshold
-
-  ExistingPrivateWorkforceArn:
-    Type: String
-    Default: ""
-    AllowedPattern: "^(|arn:aws:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
-    Description: >-
-      (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
-      If provided, the template will use this existing workteam instead of creating a new one.
-      Format: arn:aws:sagemaker:region:account-id:workteam/private-crowd/workteam-name
-      Leave blank to create a new private workteam.
-
   Pattern1Configuration:
     Type: String
     Default: "lending-package-sample"
@@ -159,6 +141,26 @@ Parameters:
       - "default"
     Description: Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
 
+  # HITL (A2I) Configuration
+
+  EnableHITL:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: false
+    Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction confidence is less than configured threshold (applies to Pattern-1)
+
+  ExistingPrivateWorkforceArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^(|arn:aws:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
+    Description: >-
+      (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
+      If provided, the template will use this existing workteam instead of creating a new one.
+      Format: arn:aws:sagemaker:region:account-id:workteam/private-crowd/workteam-name
+      Leave blank to create a new private workteam.
+
   # Evaluation
   EvaluationBaselineBucketName:
     Type: String
@@ -201,23 +203,6 @@ Parameters:
       Set to true during test cycles to evaluate and compare accuracy for different patterns and prompts for each document.
       If false, evaluation is not automatically attempted for each processed document. Set to false when deployed in production.
 
-  # Summarization 
-  IsSummarizationEnabled:
-    Type: String
-    Default: true
-    AllowedValues:
-      - true
-      - false
-    Description: Enable or disable document summarization functionality across all patterns.
-
-  # Assessment
-  IsAssessmentEnabled:
-    Type: String
-    Default: true
-    AllowedValues:
-      - true
-      - false
-    Description: Enable or disable extraction confidence assessment functionality (except pattern-1 BDA, which always includes confidence scores).
 
   # Optional Knowledge Base Configuration
   DocumentKnowledgeBase:
@@ -394,7 +379,7 @@ Rules:
   ValidateExistingPrivateWorkforceArn:
     RuleCondition:
       !And [
-        !Equals [!Ref Pattern1EnableHITL, "true"],
+        !Equals [!Ref EnableHITL, "true"],
         !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
       ]
     Assertions:
@@ -438,9 +423,11 @@ Conditions:
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
   
   # HITL and Private Workforce conditions
-  IsPattern1HITLEnabled: !And [!Condition IsPattern1, !Equals [!Ref Pattern1EnableHITL, "true"]]
-  ShouldCreatePrivateWorkteam: !And [!Condition IsPattern1HITLEnabled, !Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-  ShouldUseExistingPrivateWorkteam: !And [!Condition IsPattern1HITLEnabled, !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]]
+  IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
+  IsPattern1HITLEnabled: !And [!Condition IsPattern1, !Condition IsHITLEnabled]
+  IsPattern2HITLEnabled: !And [!Condition IsPattern2, !Condition IsHITLEnabled]
+  ShouldCreatePrivateWorkteam: !And [!Condition IsHITLEnabled, !Equals [!Ref ExistingPrivateWorkforceArn, ""]]
+  ShouldUseExistingPrivateWorkteam: !And [!Condition IsHITLEnabled, !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]]
 
   # General rules
   ShouldAllowSignUpEmailDomain:
@@ -474,8 +461,6 @@ Metadata:
         Parameters:
           - Pattern1Configuration
           - Pattern1BDAProjectArn
-          - Pattern1EnableHITL
-          - ExistingPrivateWorkforceArn
       - Label:
           default: "Pattern 2 Configuration"
         Parameters:
@@ -488,13 +473,10 @@ Metadata:
           - Pattern3Configuration
           - Pattern3UDOPModelArtifactPath
       - Label:
-          default: "Summarization"
+          default: "HITL (A2I) Configuration"
         Parameters:
-          - IsSummarizationEnabled
-      - Label:
-          default: "Assessment / Confidence Scoring"
-        Parameters:
-          - IsAssessmentEnabled
+          - EnableHITL
+          - ExistingPrivateWorkforceArn
       - Label:
           default: "Evaluation"
         Parameters:
@@ -555,10 +537,10 @@ Metadata:
         default: "Pattern2 - Custom Extraction Model ARN"
       Pattern1Configuration:
         default: "Pattern1 - Configuration Preset"
-      Pattern1EnableHITL:
-        default: "Pattern1 - Enable Human In The Loop"
+      EnableHITL:
+        default: "Enable Human In The Loop"
       ExistingPrivateWorkforceArn:
-        default: "Pattern1 - Existing Private Workforce ARN"
+        default: "Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
       Pattern3UDOPModelArtifactPath:
@@ -573,10 +555,6 @@ Metadata:
         default: "Evaluation Auto Enabled"
       ReportingBucketName:
         default: "Reporting Bucket Name"
-      IsSummarizationEnabled:
-        default: "Summarization Enabled"
-      IsAssessmentEnabled:
-        default: "Assessment / Confidence Scoring Enabled"
       DocumentKnowledgeBase:
         default: "Document Knowledge Base Configuration"
       KnowledgeBaseModelId:
@@ -627,7 +605,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       InlineCode: |
         import cfnresponse
         import time
@@ -686,7 +664,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 300
       InlineCode: |
         import boto3
@@ -863,19 +841,18 @@ Resources:
           - ShouldCreateBDASampleProject
           - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
           - !Ref Pattern1BDAProjectArn
-        IsSummarizationEnabled: !Ref IsSummarizationEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
-        EnableHITL: !Ref Pattern1EnableHITL
+        EnableHITL: !Ref EnableHITL
         ConfigurationDefaultS3Uri: !Sub 
           - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         SageMakerA2IReviewPortalURL: !If
-          - IsPattern1HITLEnabled
+          - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
           - ""
 
@@ -903,8 +880,6 @@ Resources:
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         CustomClassificationModelARN: !Ref Pattern2CustomClassificationModelARN
         CustomExtractionModelARN: !Ref Pattern2CustomExtractionModelARN
-        IsSummarizationEnabled: !Ref IsSummarizationEnabled
-        IsAssessmentEnabled: !Ref IsAssessmentEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
@@ -913,6 +888,11 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        EnableHITL: !Ref EnableHITL
+        SageMakerA2IReviewPortalURL: !If
+          - IsHITLEnabled
+          - !GetAtt WorkforceURLResource.PortalURL
+          - ""
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   PATTERN3STACK:
@@ -938,8 +918,6 @@ Resources:
         BedrockGuardrailId: !Ref BedrockGuardrailId
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         UDOPModelArtifactPath: !Ref Pattern3UDOPModelArtifactPath
-        IsSummarizationEnabled: !Ref IsSummarizationEnabled
-        IsAssessmentEnabled: !Ref IsAssessmentEnabled
         UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
@@ -948,6 +926,11 @@ Resources:
           - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
           - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
+        EnableHITL: !Ref EnableHITL
+        SageMakerA2IReviewPortalURL: !If
+          - IsHITLEnabled
+          - !GetAtt WorkforceURLResource.PortalURL
+          - ""
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
   ##########################################################################
@@ -1656,6 +1639,10 @@ Resources:
               Type: double
             - Name: number_of_pages
               Type: int
+            - Name: unit_cost
+              Type: double
+            - Name: estimated_cost
+              Type: double
             - Name: timestamp
               Type: timestamp
           Compressed: true
@@ -1747,6 +1734,8 @@ Resources:
                   - kms:Decrypt
                   - kms:DescribeKey
                 Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+
 
 
   EvaluationBaselineBucket:
@@ -1924,7 +1913,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       CodeUri: src/lambda/initialize_counter
       Environment:
@@ -1991,7 +1980,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       CodeUri: src/lambda/update_configuration
       Environment:
@@ -2066,7 +2055,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       CodeUri: src/lambda/update_settings
       LoggingConfig:
@@ -2215,7 +2204,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_sender/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       DeadLetterQueue:
         Type: SQS
@@ -2283,7 +2272,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_processor/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       LoggingConfig:
         LogGroup: !Ref QueueProcessorLogGroup
@@ -2395,7 +2384,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/workflow_tracker/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       DeadLetterQueue:
         Type: SQS
@@ -2507,7 +2496,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/stepfunction_subscription_publisher/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Architectures:
         - x86_64
       MemorySize: 256
@@ -2654,7 +2643,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/save_reporting_data/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 300
       MemorySize: 1024
       LoggingConfig:
@@ -2667,6 +2656,8 @@ Resources:
               - !Ref ReportingBucketName
         - S3ReadPolicy:
             BucketName: !Ref OutputBucket
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
         - Statement:
             - Effect: Allow
               Action:
@@ -2690,11 +2681,13 @@ Resources:
                 - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
                 - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
                 - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
+                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           METRIC_NAMESPACE: !Ref AWS::StackName
           STACK_NAME: !Ref AWS::StackName
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
 
   SaveReportingDataFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -2731,7 +2724,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/evaluation_function/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 900
       DeadLetterQueue:
         Type: SQS
@@ -3302,7 +3295,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/dashboard_merger
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 60
       MemorySize: 128
       Environment:
@@ -3356,7 +3349,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/lookup_function/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       LoggingConfig:
         LogGroup: !Ref LookupFunctionLogGroup
@@ -3395,6 +3388,8 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
   ##########################################################################
   # Analytics resources for text-to-analytics feature
   ##########################################################################
@@ -3439,9 +3434,10 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/analytics_request_handler/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       Environment:
         Variables:
@@ -3490,7 +3486,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/analytics_processor/
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 900
       MemorySize: 1024
       Environment:
@@ -3886,7 +3882,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Converts Stackname to lowercase and adds unique timestamp
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 30
       MemorySize: 128
       LoggingConfig:
@@ -4058,7 +4054,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Verifies email address is in allowed domain
       Handler: index.lambda_handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 10
       Environment:
         Variables:
@@ -4110,7 +4106,7 @@ Resources:
   # Cognito user pool client with generate secret as true (HITL)
   UserPoolClienta2i:
     Type: AWS::Cognito::UserPoolClient
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Properties:
       ClientName:
         Fn::Sub: ${AWS::StackName}-A2I-Client
@@ -4199,7 +4195,7 @@ Resources:
       Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
       CodeUri: src/lambda/cognito_updater_hitl
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 300
       MemorySize: 4096
       LoggingConfig:
@@ -4244,7 +4240,7 @@ Resources:
   # Separate role for SageMaker Flow Definition with minimal permissions
   A2IFlowDefinitionRole:
     Type: AWS::IAM::Role
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Properties:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -4289,7 +4285,7 @@ Resources:
 
   A2IHumanTaskUILambdaRole:
     Type: AWS::IAM::Role
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -4379,7 +4375,7 @@ Resources:
   
   CreateA2IResourcesLambda:
     Type: AWS::Serverless::Function
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -4395,7 +4391,7 @@ Resources:
       CodeUri: src/lambda/create_a2i_resources
       Handler: index.handler
       Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 900  # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
       Environment:
         Variables:
@@ -4409,7 +4405,7 @@ Resources:
       
   A2IResourcesCustomResource:
     Type: Custom::A2IResources
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Properties:
       ServiceToken: 
         Fn::GetAtt: CreateA2IResourcesLambda.Arn
@@ -4418,7 +4414,7 @@ Resources:
   
   GetWorkforceURLFunction:
     Type: AWS::Serverless::Function
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -4432,7 +4428,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: src/lambda/get-workforce-url
       Description: Lambda function to get the SageMaker Ground Truth workforce portal URL
       MemorySize: 128
@@ -4455,7 +4451,7 @@ Resources:
   
   WorkforceURLResource:
     Type: Custom::WorkforceURL
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Properties:
       ServiceToken:
         Fn::GetAtt:
@@ -4555,7 +4551,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: ./src/lambda/ipset_updater
       Handler: index.lambda_handler
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 300
       MemorySize: 256
       Environment:
@@ -4729,7 +4725,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/create_document_resolver
       Description: Lambda function to create document tracking via GraphQL API
       MemorySize: 512
@@ -4994,7 +4990,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/get_file_contents_resolver
       Description: Lambda function to return file contents via GraphQL API
       MemorySize: 512
@@ -5068,7 +5064,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/get_stepfunction_execution_resolver/
       Handler: index.lambda_handler
-      Runtime: python3.12
+      Runtime: python3.13
       Architectures:
         - x86_64
       MemorySize: 512
@@ -5148,7 +5144,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/publish_stepfunction_update_resolver/
       Handler: index.lambda_handler
-      Runtime: python3.12
+      Runtime: python3.13
       Architectures:
         - x86_64
       MemorySize: 256
@@ -5213,7 +5209,7 @@ Resources:
       Properties:
         PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]       
         Handler: index.handler
-        Runtime: python3.12
+        Runtime: python3.13
         CodeUri: ./src/lambda/configuration_resolver
         Description: Lambda function to manage configuration through GraphQL API
         MemorySize: 512
@@ -5296,7 +5292,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/copy_to_baseline_resolver
       Description: Lambda function to copy files to baseline bucket via GraphQL API
       MemorySize: 512
@@ -5387,7 +5383,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/delete_document_resolver
       Description: Lambda function to delete documents via GraphQL API
       MemorySize: 512
@@ -5461,7 +5457,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/reprocess_document_resolver
       Description: Lambda function to reprocess documents via GraphQL API
       MemorySize: 512
@@ -5529,7 +5525,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/upload_resolver
       Description: Lambda function to return signed upload URL via GraphQL API
       MemorySize: 512
@@ -5613,7 +5609,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.12
+      Runtime: python3.13
       CodeUri: ./src/lambda/query_knowledgebase_resolver
       Description: Lambda function to query Bedrock Knowledge Base via GraphQL API
       MemorySize: 512
@@ -5715,6 +5711,7 @@ Resources:
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
       Runtime: python3.13
       CodeUri: ./src/lambda/chat_with_document_resolver
@@ -6103,7 +6100,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Role: !GetAtt StartUICodeBuildExecutionRole.Arn
-      Runtime: python3.12
+      Runtime: python3.13
       Timeout: 60
       MemorySize: 128
       Handler: index.handler
@@ -6134,14 +6131,14 @@ Outputs:
     Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
   SageMakerA2IReviewPortalURL:
     Description: SageMaker HITL Review portal URL
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Value:
       Fn::GetAtt:
       - WorkforceURLResource
       - PortalURL
   LabelingConsoleURL:
     Description: SageMaker Ground Truth console URL
-    Condition: IsPattern1HITLEnabled
+    Condition: IsHITLEnabled
     Value:
       Fn::GetAtt:
       - WorkforceURLResource

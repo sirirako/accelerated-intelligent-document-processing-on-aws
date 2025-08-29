@@ -7,6 +7,14 @@ Classification service for documents using LLMs or SageMaker UDOP models.
 This module provides a service for classifying documents using various backends:
 1. Bedrock LLMs with text and image support
 2. SageMaker UDOP models for multimodal document classification
+
+Classification methods:
+- multimodalPageLevelClassification: Page-by-page classification with document boundary detection
+  using a sequence segmentation approach similar to BIO (Begin-Inside-Outside) tagging.
+  Each page receives both a document type and a boundary indicator ("start" or "continue")
+  to enable accurate segmentation of multi-document packets.
+- textbasedHolisticClassification: Holistic document analysis for segment identification
+  across the entire document packet at once.
 """
 
 import json
@@ -46,7 +54,6 @@ class ClassificationService:
     # Classification method options
     MULTIMODAL_PAGE_LEVEL = "multimodalPageLevelClassification"
     TEXTBASED_HOLISTIC = "textbasedHolisticClassification"
-    MULTIMODAL_PAGE_BOUNDARY = "multimodalPageBoundaryClassification"
 
     def __init__(
         self,
@@ -133,8 +140,6 @@ class ClassificationService:
         # Log classification method
         if self.classification_method == self.TEXTBASED_HOLISTIC:
             logger.info("Using textbased holistic packet classification method")
-        elif self.classification_method == self.MULTIMODAL_PAGE_BOUNDARY:
-            logger.info("Using multimodal page boundary classification method")
         else:
             # Default to multimodal page-level classification if value is invalid
             if self.classification_method != self.MULTIMODAL_PAGE_LEVEL:
@@ -142,7 +147,9 @@ class ClassificationService:
                     f"Invalid classification method '{self.classification_method}', falling back to '{self.MULTIMODAL_PAGE_LEVEL}'"
                 )
                 self.classification_method = self.MULTIMODAL_PAGE_LEVEL
-            logger.info("Using multimodal page-level classification method")
+            logger.info(
+                "Using multimodal page-level classification method with document boundary detection"
+            )
 
     def _load_document_types(self) -> List[DocumentType]:
         """Load document types from configuration."""
@@ -1161,9 +1168,14 @@ class ClassificationService:
 
         The classification method is determined by the 'classificationMethod' setting:
         - multimodalPageLevelClassification (default): Uses page-by-page classification
-          that can leverage both text and image content
+          with sequence segmentation similar to BIO (Begin-Inside-Outside) tagging.
+          Each page receives both a document type and a boundary indicator:
+          * "start": Marks the beginning of a new document segment
+          * "continue": Indicates continuation of the current segment
+          This enables accurate segmentation of multi-document packets where multiple
+          documents of the same or different types may be combined in a single file.
         - textbasedHolisticClassification: Processes the entire document as a packet
-          to identify document segments across pages, using a holistic approach
+          to identify document segments across pages using a holistic approach.
 
         Args:
             document: Document object to classify and update
@@ -1213,15 +1225,10 @@ class ClassificationService:
             )
             return self.holistic_classify_document(document)
 
-        # Page-level classification (with or without boundary detection)
+        # Page-level classification with document boundary detection
         t0 = time.time()
-        method_desc = (
-            "page boundary"
-            if self.classification_method == self.MULTIMODAL_PAGE_BOUNDARY
-            else "page-by-page"
-        )
         logger.info(
-            f"Classifying document with {len(document.pages)} pages using {method_desc} method with {self.backend} backend"
+            f"Classifying document with {len(document.pages)} pages using multimodal page-level classification with {self.backend} backend"
         )
 
         try:
@@ -1560,13 +1567,24 @@ class ClassificationService:
         self, results: List[PageClassification]
     ) -> List[DocumentSection]:
         """
-        Group consecutive pages with the same classification into sections.
+        Group consecutive pages into sections using sequence segmentation.
+
+        This method implements the BIO-like tagging approach by examining both:
+        1. Document type (classification)
+        2. Document boundary indicator ("start" or "continue")
+
+        A new section is created when:
+        - The document type changes from one page to the next
+        - A page has boundary="start", indicating a new document begins
+
+        This enables accurate segmentation of multi-document packets where multiple
+        documents of the same type may appear consecutively.
 
         Args:
             results: List of page classification results
 
         Returns:
-            List of document sections
+            List of document sections with properly segmented page groups
         """
         sorted_results = self._sort_page_results(results)
         sections = []

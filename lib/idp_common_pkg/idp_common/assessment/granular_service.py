@@ -998,6 +998,15 @@ class GranularAssessmentService:
         Returns:
             Document: Updated Document object with assessment results appended to extraction results
         """
+        # Check if assessment is enabled in configuration
+        assessment_config = self.config.get("assessment", {})
+        from idp_common.utils import normalize_boolean_value
+
+        enabled = normalize_boolean_value(assessment_config.get("enabled", True))
+        if not enabled:
+            logger.info("Assessment is disabled via configuration")
+            return document
+
         # Validate input document
         if not document:
             logger.error("No document provided")

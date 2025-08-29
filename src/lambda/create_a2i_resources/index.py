@@ -157,91 +157,286 @@ def create_human_task_ui(human_task_ui_name):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Document Review</title>
+        <title>Document Review - Professional Interface</title>
         <script src="https://assets.crowd.aws/crowd-html-elements.js"></script>
         <style>
             :root {
-                --primary-color: #2E5D7D;
-                --secondary-color: #F8F9FA;
-                --accent-color: #FFD700;
+                --primary-blue: #0073e6;
+                --secondary-blue: #e6f3ff;
+                --dark-blue: #004d99;
+                --light-gray: #f8f9fa;
+                --border-gray: #dee2e6;
+                --success-green: #28a745;
+                --warning-red: #dc3545;
+                --text-dark: #212529;
+                --shadow: 0 2px 10px rgba(0,0,0,0.1);
             }
 
+            * { box-sizing: border-box; }
+            
             body { 
-                font-family: 'Arial', sans-serif; 
-                margin: 0;
-                height: 100vh;
-                overflow: hidden;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                margin: 0; padding: 0;
+                height: 100vh; overflow: hidden;
+                background: var(--light-gray);
             }
+            
             .container { 
-                display: flex; 
-                height: 100vh;
+                display: flex; height: 100vh;
+                box-shadow: var(--shadow);
             }
+            
             .image-pane { 
-                width: 60%; 
-                padding: 20px;
-                background: #f0f2f5;
-                overflow: hidden;
-                position: relative;
+                width: 65%; padding: 15px;
+                background: white; position: relative;
+                border-right: 2px solid var(--border-gray);
             }
+            
             .review-pane { 
-                width: 40%; 
-                padding: 20px;
-                display: flex;
-                flex-direction: column;
-                background: white;
+                width: 35%; padding: 15px;
+                display: flex; flex-direction: column;
+                background: var(--light-gray);
             }
-            .scroll-container {
-                flex: 1;
-                overflow-y: auto;
-                padding-right: 10px;
+            
+            .controls-bar {
+                display: flex; justify-content: space-between;
+                align-items: center; margin-bottom: 15px;
+                padding: 10px; background: var(--secondary-blue);
+                border-radius: 6px; box-shadow: var(--shadow);
             }
+            
             .zoom-controls { 
-                margin-bottom: 15px;
-                display: flex;
-                gap: 10px;
+                display: flex; gap: 8px;
             }
-            .document-info { 
-                background: var(--secondary-color); 
-                padding: 20px; 
-                border-radius: 8px;
-                margin-bottom: 20px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            
+            .zoom-controls button {
+                background: var(--primary-blue);
+                color: white; border: none;
+                padding: 6px 12px; border-radius: 4px;
+                cursor: pointer; font-size: 12px;
+                transition: all 0.2s ease;
             }
-            .key-value-pair { 
-                margin-bottom: 20px; 
-                padding: 15px; 
-                border: 1px solid #e9ecef; 
-                border-radius: 6px; 
-                background: white;
-                transition: transform 0.2s ease;
-                cursor: pointer;
+            
+            .zoom-controls button:hover {
+                background: var(--dark-blue);
+                transform: translateY(-1px);
             }
+            
+            .image-container {
+                position: relative; overflow: auto;
+                height: calc(100vh - 80px);
+                border: 1px solid var(--border-gray);
+                border-radius: 6px; background: white;
+            }
+            
             #documentImage { 
-                max-width: 100%; 
-                max-height: calc(100vh - 100px);
-                cursor: crosshair; 
-                border-radius: 4px; 
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                display: block; margin: 0 auto;
+                cursor: crosshair; border-radius: 4px;
+                transition: transform 0.3s ease;
             }
+            
             .highlight-box {
-                position: absolute;
-                border: 2px solid var(--accent-color);
-                background: rgba(255,215,0,0.15);
-                pointer-events: none;
+                position: absolute; z-index: 10;
+                border: 3px solid var(--primary-blue);
+                background: rgba(0,115,230,0.15);
+                pointer-events: none; border-radius: 2px;
+                box-shadow: 0 0 10px rgba(0,115,230,0.3);
             }
-            button {
-                background: var(--primary-color);
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
+            
+            .document-info { 
+                background: white; padding: 15px;
+                border-radius: 8px; margin-bottom: 15px;
+                box-shadow: var(--shadow); border-left: 4px solid var(--primary-blue);
+            }
+            
+            .info-toggle {
+                cursor: pointer; display: flex;
+                justify-content: space-between; align-items: center;
+                color: var(--primary-blue); font-weight: 600;
+            }
+            
+            .info-content {
+                margin-top: 10px; display: none;
+                font-size: 13px; color: var(--text-dark);
+            }
+            
+            .info-content.expanded { display: block; }
+            
+            .info-content p {
+                margin: 5px 0; padding: 3px 0;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            
+            .scroll-container {
+                flex: 1; overflow-y: auto;
+                padding-right: 8px; max-height: calc(100vh - 300px);
+            }
+            
+            .key-value-pair { 
+                margin-bottom: 15px; padding: 15px;
+                border: 1px solid var(--border-gray);
+                border-radius: 8px; background: white;
+                transition: all 0.2s ease; cursor: pointer;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            
+            .key-value-pair:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                border-color: var(--primary-blue);
+            }
+            
+            .key-value-pair label {
+                display: block; font-weight: 600;
+                color: var(--primary-blue); margin-bottom: 8px;
+                font-size: 14px;
+            }
+            
+            .key-value-pair crowd-input {
+                width: 100%; margin-bottom: 8px;
+            }
+            
+            .confidence-display {
+                display: flex; justify-content: space-between;
+                align-items: center; font-size: 12px;
+                margin-top: 5px;
+            }
+            
+            .confidence-score {
+                font-weight: 600; padding: 2px 6px;
+                border-radius: 3px;
+            }
+            
+            .confidence-low { 
+                color: var(--warning-red);
+                background: rgba(220,53,69,0.1);
+            }
+            
+            .confidence-high { 
+                color: var(--success-green);
+                background: rgba(40,167,69,0.1);
+            }
+            
+            .threshold-info {
+                color: #6c757d; font-size: 11px;
+            }
+            
+            .missing-value {
+                color: var(--warning-red);
+                font-size: 12px; margin-top: 5px;
+                padding: 5px; background: rgba(220,53,69,0.1);
+                border-radius: 3px; border-left: 3px solid var(--warning-red);
+            }
+            
+            .tab-container {
+                background: white; border-radius: 8px;
+                box-shadow: var(--shadow); margin-bottom: 15px;
+            }
+            
+            .tab-buttons {
+                display: flex; border-bottom: 1px solid var(--border-gray);
+            }
+            
+            .tab-button {
+                flex: 1; padding: 12px; text-align: center;
+                background: var(--light-gray); border: none;
+                cursor: pointer; font-weight: 600;
+                color: var(--text-dark); transition: all 0.2s ease;
+                border-radius: 8px 8px 0 0;
+            }
+            
+            .tab-button.active {
+                background: white; color: var(--primary-blue);
+                border-bottom: 2px solid var(--primary-blue);
+            }
+            
+            .tab-button:hover:not(.active) {
+                background: var(--secondary-blue);
+            }
+            
+            .tab-content {
+                padding: 15px; display: none;
+            }
+            
+            .tab-content.active {
+                display: block;
+            }
+            
+            .instructions-list {
+                list-style: none; padding: 0; margin: 0;
+            }
+            
+            .instructions-list li {
+                padding: 10px 0; border-bottom: 1px solid #f0f0f0;
+                display: flex; align-items: flex-start; gap: 10px;
+            }
+            
+            .instructions-list li:last-child {
+                border-bottom: none;
+            }
+            
+            .step-number {
+                background: var(--primary-blue); color: white;
+                width: 24px; height: 24px; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 12px; font-weight: 600; flex-shrink: 0;
+            }
+            
+            .step-text {
+                flex: 1; font-size: 14px; line-height: 1.4;
+            }
+            
+            .verification-section {
+                background: white; padding: 15px;
+                border-radius: 8px; margin-top: 15px;
+                box-shadow: var(--shadow); border-left: 4px solid var(--success-green);
+            }
+            
+            .verification-checkbox {
+                display: flex; align-items: center;
+                gap: 10px; margin-bottom: 15px;
+            }
+            
+            .verification-checkbox input[type="checkbox"] {
+                width: 18px; height: 18px;
+                accent-color: var(--success-green);
+            }
+            
+            .verification-checkbox label {
+                font-weight: 600; color: var(--text-dark);
                 cursor: pointer;
-                transition: opacity 0.2s;
             }
-            button:hover { opacity: 0.85; }
-            h3 { color: var(--primary-color); margin-top: 0; }
-            .confidence-low { color: #dc3545; font-weight: 600; }
-            .confidence-high { color: #28a745; font-weight: 600; }
+            
+            .submit-button {
+                background: var(--success-green);
+                color: white; border: none;
+                padding: 12px 24px; border-radius: 6px;
+                cursor: pointer; font-weight: 600;
+                transition: all 0.2s ease; width: 100%;
+                opacity: 0.5; pointer-events: none;
+            }
+            
+            .submit-button.enabled {
+                opacity: 1; pointer-events: auto;
+            }
+            
+            .submit-button.enabled:hover {
+                background: #218838;
+                transform: translateY(-1px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            }
+            
+            h3 { 
+                color: var(--primary-blue); margin: 0 0 15px 0;
+                font-size: 18px; font-weight: 600;
+            }
+            
+            select {
+                width: 100%; padding: 8px;
+                border: 1px solid var(--border-gray);
+                border-radius: 4px; background: white;
+                color: var(--text-dark);
+            }
         </style>
     </head>
     <body>
@@ -249,71 +444,159 @@ def create_human_task_ui(human_task_ui_name):
             <div class="container">
                 <!-- Image Pane -->
                 <div class="image-pane">
-                    <div class="zoom-controls">
-                        <button type="button" onclick="zoom(1.1)">Zoom In (+)</button>
-                        <button type="button" onclick="zoom(0.9)">Zoom Out (-)</button>
+                    <div class="controls-bar">
+                        <div class="zoom-controls">
+                            <button type="button" onclick="zoom(1.2)">Zoom In (+)</button>
+                            <button type="button" onclick="zoom(0.8)">Zoom Out (-)</button>
+                            <button type="button" onclick="resetZoom()">Reset</button>
+                        </div>
+                        <div style="color: var(--primary-blue); font-weight: 600;">
+                            Document Viewer
+                        </div>
                     </div>
-                    <img id="documentImage" 
-                        src="{{ task.input.sourceDocument | grant_read_access }}" 
-                        onload="initImage()">
+                    <div class="image-container" id="imageContainer">
+                        <img id="documentImage" 
+                            src="{{ task.input.sourceDocument | grant_read_access }}" 
+                            onload="initImage()">
+                    </div>
                 </div>
 
                 <!-- Review Pane -->
                 <div class="review-pane">
                     <div class="document-info">
-                        <h3>Document Information</h3>
-                        <p><strong>Current Blueprint:</strong> {{ task.input.blueprintName | escape }}</p>
-                        <p><strong>Blueprint Confidence:</strong> {{ task.input.bp_confidence | round: 2 }}</p>
-                        <p><strong>Confidence Threshold:</strong> {{ task.input.confidenceThreshold | round: 2 }}</p>
-                        <p><strong>Page Number:</strong> {{ task.input.page_number }}</p>
-                        <p><strong>Page Array:</strong> {{ task.input.page_array }}</p>
-                        <p><strong>Execution ID:</strong> {{ task.input.execution_id }}</p>
-                        <p><strong>Record ID:</strong> {{ task.input.record_id }}</p>
-
-                        <!-- Dropdown for Blueprint Selection -->
-                        <label for="blueprintSelection"><strong>Select Blueprint:</strong></label>
-                        <select name="blueprintSelection" id="blueprintSelection" required disabled onchange="handleBlueprintChange()">
-                            {% for option in task.input.blueprintOptions %}
-                                <option value="{{ option.value | escape }}" {% if option.value == task.input.blueprintName %}selected{% endif %}>
-                                    {{ option.label | escape }}
-                                </option>
-                            {% endfor %}
-                        </select>
+                        <div class="info-toggle" onclick="toggleInfo()">
+                            <span>📄 Document Information</span>
+                            <span id="toggleIcon">▼</span>
+                        </div>
+                        <div class="info-content" id="infoContent">
+                            <p><strong>Blueprint:</strong> {{ task.input.blueprintName | escape }}</p>
+                            <p><strong>Blueprint Confidence:</strong> {{ task.input.bp_confidence | round: 2 }}</p>
+                            <p><strong>Threshold:</strong> {{ task.input.confidenceThreshold | round: 2 }}</p>
+                            <p><strong>Page:</strong> {{ task.input.page_number }}</p>
+                            <p><strong>Execution ID:</strong> {{ task.input.execution_id }}</p>
+                            
+                            <label for="blueprintSelection" style="margin-top: 10px; display: block;"><strong>Select Blueprint:</strong></label>
+                            <select name="blueprintSelection" id="blueprintSelection" required disabled onchange="handleBlueprintChange()">
+                                {% for option in task.input.blueprintOptions %}
+                                    <option value="{{ option.value | escape }}" {% if option.value == task.input.blueprintName %}selected{% endif %}>
+                                        {{ option.label | escape }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </div>
 
-                    <!-- Scrollable Key Value Section -->
-                    <div class="scroll-container">
-                        <h3>Key Value Review</h3>
-                        {% for pair in task.input.keyValuePairs %}
-                            {% assign bbox_index = forloop.index0 %}
-                            <div class="key-value-pair" 
-                                data-key="{{ pair.key | escape }}" 
-                                data-bbox="{{ task.input.boundingBoxes[bbox_index].bounding_box | to_json | escape }}"
-                                onclick="highlightBBox(this)">
-                                <label>{{ pair.key | escape }}</label>
-                                <crowd-input 
-                                    name="{{ pair.key | escape }}" 
-                                    value="{{ pair.value | escape }}"
-                                    >
-                                </crowd-input>
-                                <p class="confidence-{% if pair.confidence < task.input.confidenceThreshold %}low{% else %}high{% endif %}">
-                                    Confidence: {{ pair.confidence | round: 2 }}
-                                </p>
-                                {% if pair.value == "" %}
-                                    <p style="color: #dc3545; margin: 5px 0 0 0; font-size: 0.9em;">
-                                        ⚠️ Value missing - please verify
-                                    </p>
-                                {% endif %}
+                    <!-- Tab Container -->
+                    <div class="tab-container">
+                        <div class="tab-buttons">
+                            <button type="button" class="tab-button active" onclick="switchTab('review')">📋 Review</button>
+                            <button type="button" class="tab-button" onclick="switchTab('instructions')">📖 Instructions</button>
+                        </div>
+                        
+                        <!-- Review Tab Content -->
+                        <div id="reviewTab" class="tab-content active">
+                            <!-- Scrollable Key Value Section -->
+                            <div class="scroll-container">
+                                <h3>🔍 Field Review</h3>
+                                {% for pair in task.input.keyValuePairs %}
+                                    {% assign bbox_index = forloop.index0 %}
+                                    <div class="key-value-pair" 
+                                        data-key="{{ pair.key | escape }}" 
+                                        data-bbox="{{ task.input.boundingBoxes[bbox_index].bounding_box | to_json | escape }}"
+                                        onclick="highlightBBox(this)">
+                                        <label>{{ pair.key | escape }}</label>
+                                        <crowd-input 
+                                            name="{{ pair.key | escape }}" 
+                                            value="{{ pair.value | escape }}">
+                                        </crowd-input>
+                                        <div class="confidence-display">
+                                            <span class="confidence-score confidence-{% if pair.confidence < task.input.confidenceThreshold %}low{% else %}high{% endif %}">
+                                                {{ pair.confidence | round: 2 }}
+                                            </span>
+                                            <span class="threshold-info">
+                                                Threshold: {{ task.input.confidenceThreshold | round: 2 }}
+                                            </span>
+                                        </div>
+                                        {% if pair.value == "" %}
+                                            <div class="missing-value">
+                                                ⚠️ Value missing - please verify and complete
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
                             </div>
-                        {% endfor %}
+                        </div>
+                        
+                        <!-- Instructions Tab Content -->
+                        <div id="instructionsTab" class="tab-content">
+                            <div class="scroll-container">
+                                <h3>📖 How to Review Documents</h3>
+                                <ul class="instructions-list">
+                                    <li>
+                                        <div class="step-number">1</div>
+                                        <div class="step-text">
+                                            <strong>View the Document:</strong> Use zoom controls to examine the document clearly. The document viewer supports zoom in/out and reset functions.
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <div class="step-number">2</div>
+                                        <div class="step-text">
+                                            <strong>Click on Fields:</strong> Click any field in the Review tab to highlight its location on the document. This helps you verify the extracted information.
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <div class="step-number">3</div>
+                                        <div class="step-text">
+                                            <strong>Check Confidence Scores:</strong> Each field shows a confidence score. Red scores are below the threshold and need extra attention.
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <div class="step-number">4</div>
+                                        <div class="step-text">
+                                            <strong>Verify and Edit:</strong> Compare extracted values with the document. Edit any incorrect values directly in the input fields.
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <div class="step-number">5</div>
+                                        <div class="step-text">
+                                            <strong>Complete Missing Values:</strong> Fields marked with ⚠️ are missing values. Fill them in based on the document content.
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <div class="step-number">6</div>
+                                        <div class="step-text">
+                                            <strong>Final Review:</strong> Once satisfied with all fields, check "I have reviewed all fields" and submit your review.
+                                        </div>
+                                    </li>
+                                </ul>
+                                
+                                <div style="margin-top: 20px; padding: 15px; background: var(--secondary-blue); border-radius: 6px;">
+                                    <strong>💡 Tips:</strong>
+                                    <ul style="margin: 10px 0 0 20px; font-size: 13px;">
+                                        <li>Use Ctrl/Cmd + Plus/Minus for keyboard zoom shortcuts</li>
+                                        <li>Focus on fields with low confidence scores first</li>
+                                        <li>Click outside fields to clear highlighting</li>
+                                        <li>Expand Document Information for more context</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <crowd-button 
-                        form-action="submit" 
-                        variant="primary" 
-                        style="margin-top: 20px; align-self: flex-end;">
-                        Submit Review
-                    </crowd-button>
+                    <!-- Verification Section -->
+                    <div class="verification-section">
+                        <div class="verification-checkbox">
+                            <input type="checkbox" id="reviewComplete" onchange="toggleSubmit()">
+                            <label for="reviewComplete">I have reviewed all fields and verified their accuracy</label>
+                        </div>
+                        <crowd-button 
+                            id="submitButton"
+                            class="submit-button"
+                            form-action="submit" 
+                            variant="primary">
+                            ✓ Submit Review
+                        </crowd-button>
+                    </div>
                 </div>
             </div>
         </crowd-form>
@@ -322,17 +605,53 @@ def create_human_task_ui(human_task_ui_name):
             let currentZoom = 1;
             let currentHighlight = null;
             const imgElement = document.getElementById('documentImage');
+            const imageContainer = document.getElementById('imageContainer');
             let imgRect = null;
 
             function initImage() {
+                imgRect = imgElement.getBoundingClientRect();
+                // Fit image to container initially
+                const containerRect = imageContainer.getBoundingClientRect();
+                const imgAspect = imgElement.naturalWidth / imgElement.naturalHeight;
+                const containerAspect = containerRect.width / containerRect.height;
+                
+                if (imgAspect > containerAspect) {
+                    imgElement.style.width = '100%';
+                    imgElement.style.height = 'auto';
+                } else {
+                    imgElement.style.width = 'auto';
+                    imgElement.style.height = '100%';
+                }
+                updateImageRect();
+            }
+
+            function updateImageRect() {
                 imgRect = imgElement.getBoundingClientRect();
             }
 
             function zoom(factor) {
                 currentZoom *= factor;
+                currentZoom = Math.max(0.1, Math.min(5, currentZoom)); // Limit zoom range
                 imgElement.style.transform = `scale(${currentZoom})`;
-                imgElement.style.transformOrigin = 'top left';
-                imgRect = imgElement.getBoundingClientRect();
+                imgElement.style.transformOrigin = 'center center';
+                setTimeout(updateImageRect, 100);
+                updateHighlight();
+            }
+
+            function resetZoom() {
+                currentZoom = 1;
+                imgElement.style.transform = 'scale(1)';
+                setTimeout(updateImageRect, 100);
+                updateHighlight();
+            }
+
+            function updateHighlight() {
+                if (currentHighlight && currentHighlight.dataset.bbox) {
+                    const element = document.querySelector(`[data-bbox="${currentHighlight.dataset.bbox}"]`);
+                    if (element) {
+                        highlightBBox(element);
+                    }
+                }
             }
 
             function highlightBBox(element) {
@@ -342,43 +661,82 @@ def create_human_task_ui(human_task_ui_name):
                 if(bbox?.width > 0 && bbox?.height > 0) {
                     currentHighlight = document.createElement('div');
                     currentHighlight.className = 'highlight-box';
+                    currentHighlight.dataset.bbox = element.dataset.bbox;
 
-                    const scaleX = imgElement.naturalWidth / imgElement.offsetWidth;
-                    const scaleY = imgElement.naturalHeight / imgElement.offsetHeight;
+                    const containerRect = imageContainer.getBoundingClientRect();
+                    const imgRect = imgElement.getBoundingClientRect();
+                    
+                    // Calculate position relative to the scaled image
+                    const left = imgRect.left - containerRect.left + (bbox.left * imgRect.width);
+                    const top = imgRect.top - containerRect.top + (bbox.top * imgRect.height);
+                    const width = bbox.width * imgRect.width;
+                    const height = bbox.height * imgRect.height;
 
-                    currentHighlight.style.left = `${bbox.left * imgElement.offsetWidth + imgRect.left}px`;
-                    currentHighlight.style.top = `${bbox.top * imgElement.offsetHeight + imgRect.top}px`;
-                    currentHighlight.style.width = `${bbox.width * imgElement.offsetWidth}px`;
-                    currentHighlight.style.height = `${bbox.height * imgElement.offsetHeight}px`;
+                    currentHighlight.style.left = `${left}px`;
+                    currentHighlight.style.top = `${top}px`;
+                    currentHighlight.style.width = `${width}px`;
+                    currentHighlight.style.height = `${height}px`;
 
-                    document.body.appendChild(currentHighlight);
+                    imageContainer.appendChild(currentHighlight);
+                }
+            }
+
+            function switchTab(tabName) {
+                // Remove active class from all tabs and buttons
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                
+                // Add active class to selected tab and button
+                document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+                document.getElementById(`${tabName}Tab`).classList.add('active');
+            }
+
+            function toggleInfo() {
+                const content = document.getElementById('infoContent');
+                const icon = document.getElementById('toggleIcon');
+                
+                if (content.classList.contains('expanded')) {
+                    content.classList.remove('expanded');
+                    icon.textContent = '▼';
+                } else {
+                    content.classList.add('expanded');
+                    icon.textContent = '▲';
+                }
+            }
+
+            function toggleSubmit() {
+                const checkbox = document.getElementById('reviewComplete');
+                const submitButton = document.getElementById('submitButton');
+                
+                if (checkbox.checked) {
+                    submitButton.classList.add('enabled');
+                } else {
+                    submitButton.classList.remove('enabled');
                 }
             }
 
             function handleBlueprintChange() {
-            const dropdown = document.getElementById("blueprintSelection");
-            const selectedBlueprint = dropdown.value;
+                const dropdown = document.getElementById("blueprintSelection");
+                const selectedBlueprint = dropdown.value;
+                const initialBlueprint = "{{ task.input.blueprintName }}";
 
-            // Get initial blueprint from the template
-            const initialBlueprint = "{{ task.input.blueprintName }}";
-
-            // Disable all key-value pairs if blueprint is changed
-            const keyValuePairs = document.querySelectorAll(".key-value-pair");
-            if (selectedBlueprint !== initialBlueprint) {
-                keyValuePairs.forEach(pair => {
-                    pair.classList.add("disabled");
-                    const input = pair.querySelector("crowd-input");
-                    input.setAttribute("disabled", "true");
-                });
-            } else {
-                keyValuePairs.forEach(pair => {
-                    pair.classList.remove("disabled");
-                    const input = pair.querySelector("crowd-input");
-                    input.removeAttribute("disabled");
-                });
+                const keyValuePairs = document.querySelectorAll(".key-value-pair");
+                if (selectedBlueprint !== initialBlueprint) {
+                    keyValuePairs.forEach(pair => {
+                        pair.style.opacity = '0.5';
+                        const input = pair.querySelector("crowd-input");
+                        input.setAttribute("disabled", "true");
+                    });
+                } else {
+                    keyValuePairs.forEach(pair => {
+                        pair.style.opacity = '1';
+                        const input = pair.querySelector("crowd-input");
+                        input.removeAttribute("disabled");
+                    });
+                }
             }
-        }
 
+            // Event listeners
             document.addEventListener('click', (e) => {
                 if(!e.target.closest('.key-value-pair') && currentHighlight) {
                     currentHighlight.remove();
@@ -386,8 +744,27 @@ def create_human_task_ui(human_task_ui_name):
                 }
             });
 
-            window.addEventListener('resize', () => {
-                imgRect = imgElement.getBoundingClientRect();
+            window.addEventListener('resize', updateImageRect);
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    if (e.key === '=' || e.key === '+') {
+                        e.preventDefault();
+                        zoom(1.2);
+                    } else if (e.key === '-') {
+                        e.preventDefault();
+                        zoom(0.8);
+                    } else if (e.key === '0') {
+                        e.preventDefault();
+                        resetZoom();
+                    }
+                }
+            });
+
+            // Initialize with minimized document info
+            document.addEventListener('DOMContentLoaded', () => {
+                // Document info starts minimized by default
             });
         </script>
     </body>
