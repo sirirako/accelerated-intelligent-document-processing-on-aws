@@ -1858,48 +1858,6 @@ except Exception as e:
             f"  • Public Access: [yellow]{'Yes' if self.public else 'No'}[/yellow]"
         )
 
-        # SAM deployment commands section
-        self.console.print("\n[bold cyan]SAM Deployment Commands:[/bold cyan]")
-
-        # Main template commands
-        self.console.print("\n• [cyan]Main Template:[/cyan]")
-        deploy_cmd = f"sam deploy --template-url {template_url} --stack-name IDP --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region {self.region}"
-        self.console.print(f"  ◦ Deploy: [green]{deploy_cmd}[/green]")
-
-        update_cmd = f"sam deploy --template-url {template_url} --stack-name IDP --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region {self.region} --no-fail-on-empty-changeset"
-        self.console.print(f"  ◦ Update: [green]{update_cmd}[/green]")
-
-        validate_cmd = f"aws cloudformation validate-template --template-url {template_url} --region {self.region}"
-        self.console.print(f"  ◦ Validate: [green]{validate_cmd}[/green]")
-
-        # Pattern templates
-        self.console.print("\n• [cyan]Pattern Templates:[/cyan]")
-        pattern_templates = ["pattern-1", "pattern-2", "pattern-3"]
-        for pattern in pattern_templates:
-            pattern_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{self.prefix}/patterns/{pattern}/template.yaml"
-            self.console.print(f"  ◦ [yellow]{pattern.title()}:[/yellow]")
-            self.console.print(
-                f"    ▪ Deploy: [green]sam deploy --template-url {pattern_url} --stack-name IDP-{pattern.upper()} --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region {self.region}[/green]"
-            )
-            self.console.print(
-                f"    ▪ Validate: [green]aws cloudformation validate-template --template-url {pattern_url} --region {self.region}[/green]"
-            )
-
-        # Option templates
-        self.console.print("\n• [cyan]Option Templates:[/cyan]")
-        option_templates = ["bda-lending-project", "bedrockkb"]
-        for option in option_templates:
-            option_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{self.prefix}/options/{option}/template.yaml"
-            self.console.print(
-                f"  ◦ [yellow]{option.replace('-', ' ').title()}:[/yellow]"
-            )
-            self.console.print(
-                f"    ▪ Deploy: [green]sam deploy --template-url {option_url} --stack-name IDP-{option.upper().replace('-', '_')} --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region {self.region}[/green]"
-            )
-            self.console.print(
-                f"    ▪ Validate: [green]aws cloudformation validate-template --template-url {option_url} --region {self.region}[/green]"
-            )
-
         # Display hyperlinks with complete URLs as the display text
         self.console.print("\n[bold green]Deployment Outputs[/bold green]")
 
