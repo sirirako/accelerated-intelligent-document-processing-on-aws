@@ -1272,36 +1272,34 @@ except Exception as e:
             else:
                 self.console.print("[green]✅ Main template is up to date[/green]")
 
-        # Upload templates
-        packaged_template_path = ".aws-sam/idp-main.yaml"
-        templates = [
-            (f"{self.prefix}/{self.main_template}", "Main template"),
-            (
-                f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
-                "Versioned main template",
-            ),
-        ]
+            # Upload templates
+            packaged_template_path = ".aws-sam/idp-main.yaml"
+            templates = [
+                (f"{self.prefix}/{self.main_template}", "Main template"),
+                (
+                    f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
+                    "Versioned main template",
+                ),
+            ]
 
-        for s3_key, description in templates:
-            if main_needs_build:
-                if not os.path.exists(packaged_template_path):
-                    self.console.print(
-                        f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+            for s3_key, description in templates:
+                if main_needs_build:
+                    if not os.path.exists(packaged_template_path):
+                        self.console.print(
+                            f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+                        )
+                        raise Exception(packaged_template_path + " missing")
+                    self._upload_template_to_s3(
+                        packaged_template_path, s3_key, description
                     )
-                    sys.exit(1)
-                self._upload_template_to_s3(packaged_template_path, s3_key, description)
-            else:
-                self._check_and_upload_template(
-                    packaged_template_path, s3_key, description
-                )
+                else:
+                    self._check_and_upload_template(
+                        packaged_template_path, s3_key, description
+                    )
 
-        # Validate the template
-        template_url = (
-            f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
-        )
-        self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
-
-        try:
+            # Validate the template
+            template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
+            self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
             self.cf_client.validate_template(TemplateURL=template_url)
             self.console.print("[green]✅ Template validation passed[/green]")
 
