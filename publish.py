@@ -1272,142 +1272,32 @@ except Exception as e:
             else:
                 self.console.print("[green]✅ Main template is up to date[/green]")
 
-        # Upload main template based on whether build was required
-        final_template_key = f"{self.prefix}/{self.main_template}"
-        versioned_template_key = f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}"
+        # Upload templates
         packaged_template_path = ".aws-sam/idp-main.yaml"
+        templates = [
+            (f"{self.prefix}/{self.main_template}", "Main template"),
+            (
+                f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
+                "Versioned main template",
+            ),
+        ]
 
-        if main_needs_build:
-            # Main was rebuilt, so upload the new template
-            if not os.path.exists(packaged_template_path):
-                self.console.print(
-                    f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
-                )
-                sys.exit(1)
-
-            self.console.print(
-                f"[cyan]Uploading main template to S3: {final_template_key}[/cyan]"
-            )
-            try:
-                self.s3_client.upload_file(
-                    packaged_template_path,
-                    self.bucket,
-                    final_template_key,
-                )
-                self.console.print(
-                    "[green]✅ Main template uploaded successfully[/green]"
-                )
-            except Exception as e:
-                self.console.print(f"[red]Failed to upload main template: {e}[/red]")
-                sys.exit(1)
-
-            # Also upload versioned copy
-            self.console.print(
-                f"[cyan]Uploading versioned main template to S3: {versioned_template_key}[/cyan]"
-            )
-            try:
-                self.s3_client.upload_file(
-                    packaged_template_path,
-                    self.bucket,
-                    versioned_template_key,
-                )
-                self.console.print(
-                    "[green]✅ Versioned main template uploaded successfully[/green]"
-                )
-            except Exception as e:
-                self.console.print(
-                    f"[red]Failed to upload versioned main template: {e}[/red]"
-                )
-                sys.exit(1)
-        else:
-            # Main was not rebuilt, check if template exists in S3
-            try:
-                self.s3_client.head_object(Bucket=self.bucket, Key=final_template_key)
-                self.console.print(
-                    "[green]✅ Main template already exists in S3[/green]"
-                )
-            except self.s3_client.exceptions.NoSuchKey:
-                self.console.print(
-                    f"[yellow]Main template missing from S3, uploading: {final_template_key}[/yellow]"
-                )
+        for s3_key, description in templates:
+            if main_needs_build:
                 if not os.path.exists(packaged_template_path):
                     self.console.print(
-                        f"[red]Error: No packaged template to upload at {packaged_template_path}[/red]"
+                        f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
                     )
                     sys.exit(1)
-                try:
-                    self.s3_client.upload_file(
-                        packaged_template_path,
-                        self.bucket,
-                        final_template_key,
-                    )
-                    self.console.print(
-                        "[green]✅ Main template uploaded successfully[/green]"
-                    )
-
-                    # Also upload versioned copy
-                    self.console.print(
-                        f"[cyan]Uploading versioned main template to S3: {versioned_template_key}[/cyan]"
-                    )
-                    self.s3_client.upload_file(
-                        packaged_template_path,
-                        self.bucket,
-                        versioned_template_key,
-                    )
-                    self.console.print(
-                        "[green]✅ Versioned main template uploaded successfully[/green]"
-                    )
-                except Exception as e:
-                    self.console.print(
-                        f"[red]Failed to upload main template: {e}[/red]"
-                    )
-                    sys.exit(1)
-            except Exception as e:
-                self.console.print(
-                    f"[yellow]Could not check S3 template existence: {e}[/yellow]"
+                self._upload_template_to_s3(packaged_template_path, s3_key, description)
+            else:
+                self._check_and_upload_template(
+                    packaged_template_path, s3_key, description
                 )
-                self.console.print("[yellow]Proceeding without upload[/yellow]")
-
-            # Check versioned template separately
-            try:
-                self.s3_client.head_object(
-                    Bucket=self.bucket, Key=versioned_template_key
-                )
-                self.console.print(
-                    "[green]✅ Versioned main template already exists in S3[/green]"
-                )
-            except ClientError as e:
-                if e.response["Error"]["Code"] == "404":
-                    self.console.print(
-                        f"[yellow]Versioned template missing from S3, uploading: {versioned_template_key}[/yellow]"
-                    )
-                    if not os.path.exists(packaged_template_path):
-                        self.console.print(
-                            f"[red]Error: No packaged template to upload at {packaged_template_path}[/red]"
-                        )
-                        sys.exit(1)
-                    try:
-                        self.s3_client.upload_file(
-                            packaged_template_path,
-                            self.bucket,
-                            versioned_template_key,
-                        )
-                        self.console.print(
-                            "[green]✅ Versioned main template uploaded successfully[/green]"
-                        )
-                    except Exception as upload_e:
-                        self.console.print(
-                            f"[red]Failed to upload versioned template: {upload_e}[/red]"
-                        )
-                        sys.exit(1)
-                else:
-                    self.console.print(
-                        f"[yellow]Could not check versioned template existence: {e}[/yellow]"
-                    )
 
         # Validate the template
         template_url = (
-            f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{final_template_key}"
+            f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
         )
         self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
 
@@ -1813,70 +1703,27 @@ except Exception as e:
             self.console.print(f"[cyan]Setting ACLs on {total_files} files...[/cyan]")
 
             for i, obj in enumerate(objects, 1):
-                try:
-                    self.s3_client.put_object_acl(
-                        Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
+                self.s3_client.put_object_acl(
+                    Bucket=self.bucket, Key=obj["Key"], ACL="public-read"
+                )
+                if i % 10 == 0 or i == total_files:
+                    self.console.print(
+                        f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
                     )
-                    successful_acls += 1
-                    if i % 10 == 0 or i == total_files:  # Progress every 10 files
-                        self.console.print(
-                            f"[cyan]Progress: {i}/{total_files} files processed[/cyan]"
-                        )
-                except ClientError as e:
-                    failed_acls += 1
-                    if "AccessDenied" in str(e) or "BlockPublicAcls" in str(e):
-                        # Don't spam with individual permission error messages
-                        pass
-                    else:
-                        self.console.print(
-                            f"[yellow]Warning: Could not set ACL for {obj['Key']}: {e}[/yellow]"
-                        )
 
-            # Also set ACL for main template files (only if they exist)
+            # Set ACL for main template files
             main_template_keys = [
                 f"{self.prefix}/{self.main_template}",
                 f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
             ]
 
             for key in main_template_keys:
-                try:
-                    # Check if the key exists first
-                    self.s3_client.head_object(Bucket=self.bucket, Key=key)
-                    # If it exists, set the ACL
-                    self.s3_client.put_object_acl(
-                        Bucket=self.bucket, Key=key, ACL="public-read"
-                    )
-                    successful_acls += 1
-                except ClientError as e:
-                    if e.response["Error"]["Code"] == "404":
-                        # Key doesn't exist, skip silently
-                        continue
-                    else:
-                        failed_acls += 1
-                        if "AccessDenied" not in str(
-                            e
-                        ) and "BlockPublicAcls" not in str(e):
-                            self.console.print(
-                                f"[yellow]Warning: Could not set ACL for {key}: {e}[/yellow]"
-                            )
+                self.s3_client.head_object(Bucket=self.bucket, Key=key)
+                self.s3_client.put_object_acl(
+                    Bucket=self.bucket, Key=key, ACL="public-read"
+                )
 
-            # Report accurate final status
-            if failed_acls == 0:
-                self.console.print("[green]✅ Public ACLs set successfully[/green]")
-            elif successful_acls == 0:
-                self.console.print(
-                    f"[red]❌ Could not set public ACLs on any files ({failed_acls} failed)[/red]"
-                )
-                self.console.print(
-                    "[yellow]Files uploaded successfully but are NOT publicly accessible[/yellow]"
-                )
-                self.console.print(
-                    "[yellow]This is usually due to 'Block Public Access' settings or insufficient permissions[/yellow]"
-                )
-            else:
-                self.console.print(
-                    f"[yellow]⚠️  Partial ACL success: {successful_acls} succeeded, {failed_acls} failed[/yellow]"
-                )
+            self.console.print("[green]✅ Public ACLs set successfully[/green]")
 
         except Exception as e:
             raise Exception(f"Failed to set public ACLs: {e}")
