@@ -57,46 +57,6 @@ class IDPPublisher:
         self.s3_client = None
         self.cf_client = None
         self._is_lib_changed = False
-        self.skip_validation = False
-
-    def clean_checksums(self):
-        """Delete all .checksum files in main, patterns, options, and lib directories"""
-        self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
-
-        checksum_paths = [
-            ".checksum",  # main
-            "lib/.checksum",  # lib
-        ]
-
-        # Add patterns checksum files
-        patterns_dir = "patterns"
-        if os.path.exists(patterns_dir):
-            for item in os.listdir(patterns_dir):
-                pattern_path = os.path.join(patterns_dir, item)
-                if os.path.isdir(pattern_path):
-                    checksum_paths.append(f"{pattern_path}/.checksum")
-
-        # Add options checksum files
-        options_dir = "options"
-        if os.path.exists(options_dir):
-            for item in os.listdir(options_dir):
-                option_path = os.path.join(options_dir, item)
-                if os.path.isdir(option_path):
-                    checksum_paths.append(f"{option_path}/.checksum")
-
-        deleted_count = 0
-        for checksum_path in checksum_paths:
-            if os.path.exists(checksum_path):
-                os.remove(checksum_path)
-                self.console.print(f"[green]  ✓ Deleted {checksum_path}[/green]")
-                deleted_count += 1
-
-        if deleted_count == 0:
-            self.console.print("[dim]  No .checksum files found to delete[/dim]")
-        else:
-            self.console.print(
-                f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
-            )
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
@@ -1334,38 +1294,37 @@ except Exception as e:
             else:
                 self.console.print("[green]✅ Main template is up to date[/green]")
 
-        # Upload templates
-        packaged_template_path = ".aws-sam/idp-main.yaml"
-        templates = [
-            (f"{self.prefix}/{self.main_template}", "Main template"),
-            (
-                f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
-                "Versioned main template",
-            ),
-        ]
+            # Upload templates
+            packaged_template_path = ".aws-sam/idp-main.yaml"
+            templates = [
+                (f"{self.prefix}/{self.main_template}", "Main template"),
+                (
+                    f"{self.prefix}/{self.main_template.replace('.yaml', f'_{self.version}.yaml')}",
+                    "Versioned main template",
+                ),
+            ]
 
-        for s3_key, description in templates:
-            if main_needs_build:
-                if not os.path.exists(packaged_template_path):
-                    self.console.print(
-                        f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+            for s3_key, description in templates:
+                if main_needs_build:
+                    if not os.path.exists(packaged_template_path):
+                        self.console.print(
+                            f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"
+                        )
+                        raise Exception(packaged_template_path + " missing")
+                    self._upload_template_to_s3(
+                        packaged_template_path, s3_key, description
                     )
-                    sys.exit(1)
-                self._upload_template_to_s3(packaged_template_path, s3_key, description)
-            else:
-                self._check_and_upload_template(
-                    packaged_template_path, s3_key, description
-                )
+                else:
+                    self._check_and_upload_template(
+                        packaged_template_path, s3_key, description
+                    )
 
-        # Validate the template
-        template_url = (
-            f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
-        )
-        self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
-
-        try:
+            # Validate the template
+            template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
+            self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
             self.cf_client.validate_template(TemplateURL=template_url)
             self.console.print("[green]✅ Template validation passed[/green]")
+
         except ClientError as e:
             # Delete checksum on template validation failure
             self._delete_checksum_file(".checksum")
