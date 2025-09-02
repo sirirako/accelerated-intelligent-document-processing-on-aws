@@ -1290,14 +1290,14 @@ Resources:
                 - kms:DescribeKey
               Resource: !Ref CustomerManagedEncryptionKeyArn
             # AppSync permissions for updating document status (only if AppSync API is available)
-          - !If
-            - HasAppSyncApi
+            - !If
+              - HasAppSyncApi
               - Effect: Allow
                 Action:
                   - appsync:GraphQL
                 Resource:
                   - !Sub "${AppSyncApiArn}/types/Mutation/*"
-            - !Ref AWS::NoValue
+              - !Ref AWS::NoValue
             # SSM permissions for A2I FlowDefinition ARN
             - Effect: Allow
               Action:
