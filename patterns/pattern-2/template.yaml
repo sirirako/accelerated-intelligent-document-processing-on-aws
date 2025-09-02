@@ -486,6 +486,10 @@ Resources:
                 type: string
                 description: Model identifier
                 enum: 
+                  - !If 
+                    - HasCustomClassificationModelARN 
+                    - !Ref CustomClassificationModelARN
+                    - !Ref AWS::NoValue
                   - "us.amazon.nova-lite-v1:0"
                   - "us.amazon.nova-pro-v1:0"
                   - "us.amazon.nova-premier-v1:0"
@@ -496,10 +500,6 @@ Resources:
                   - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
                   - "us.anthropic.claude-opus-4-20250514-v1:0"
                   - "us.anthropic.claude-opus-4-1-20250805-v1:0"
-                  - !If 
-                    - HasCustomClassificationModelARN 
-                    - !Ref CustomClassificationModelARN
-                    - !Ref AWS::NoValue
                 order: 1
               classificationMethod:
                 type: string
@@ -569,6 +569,10 @@ Resources:
                 type: string
                 description: Model identifier
                 enum: 
+                  - !If 
+                    - HasCustomExtractionModelARN
+                    - !Ref CustomExtractionModelARN
+                    - !Ref AWS::NoValue
                   - "us.amazon.nova-lite-v1:0"
                   - "us.amazon.nova-pro-v1:0"
                   - "us.amazon.nova-premier-v1:0"
@@ -579,10 +583,6 @@ Resources:
                   - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
                   - "us.anthropic.claude-opus-4-20250514-v1:0"
                   - "us.anthropic.claude-opus-4-1-20250805-v1:0"
-                  - !If 
-                    - HasCustomExtractionModelARN
-                    - !Ref CustomExtractionModelARN
-                    - !Ref AWS::NoValue
                 order: 1
               temperature:
                 type: number
