@@ -328,7 +328,7 @@ class BedrockClient:
                 additional_model_fields["inferenceConfig"]["topK"] = int(top_k)
 
         # Add 1M context headers if needed
-        use_mode_id = model_id
+        use_model_id = model_id
         if model_id and model_id.endswith(':1m'):
             use_model_id = model_id[:-3]  # Remove ':1m'
             if additional_model_fields is None:
@@ -501,6 +501,7 @@ class BedrockClient:
                 
                 # Recursive call with incremented retry count
                 return self._invoke_with_retry(
+                    model_id=model_id,
                     converse_params=converse_params,
                     retry_count=retry_count + 1,
                     max_retries=max_retries,
@@ -539,6 +540,7 @@ class BedrockClient:
             
             # Recursive call with incremented retry count
             return self._invoke_with_retry(
+                model_id=model_id,
                 converse_params=converse_params,
                 retry_count=retry_count + 1,
                 max_retries=max_retries,
