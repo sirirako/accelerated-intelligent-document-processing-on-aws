@@ -33,17 +33,6 @@ graph TB
 
 ## Deployment Process
 
-### Dependencies
-
-You need to have the following packages installed on your computer:
-
-1. bash shell (Linux, MacOS, Windows-WSL)
-2. aws (AWS CLI)
-3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-4. python 3.11 or later
-5. A local Docker daemon
-6. Python packages for publish.py: `pip install boto3 rich PyYAML botocore setuptools`
-
 ### Step 1: Generate GovCloud Template
 
 First, generate the GovCloud-compatible template - this run the standard build process first to create all Lambda functions and artifacts, and then creates a stripped down version for GovCloud:
