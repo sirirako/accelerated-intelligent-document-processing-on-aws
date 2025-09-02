@@ -593,7 +593,8 @@ def create_human_task_ui(human_task_ui_name):
                             id="submitButton"
                             class="submit-button"
                             form-action="submit" 
-                            variant="primary">
+                            variant="primary"
+                            disabled="true">
                             ✓ Submit Review
                         </crowd-button>
                     </div>
@@ -710,8 +711,10 @@ def create_human_task_ui(human_task_ui_name):
                 
                 if (checkbox.checked) {
                     submitButton.classList.add('enabled');
+                    submitButton.removeAttribute('disabled');
                 } else {
                     submitButton.classList.remove('enabled');
+                    submitButton.setAttribute('disabled', 'true');
                 }
             }
 
