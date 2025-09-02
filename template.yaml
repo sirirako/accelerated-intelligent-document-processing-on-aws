@@ -138,6 +138,10 @@ Parameters:
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
 
+  Pattern2CustomConfigPath:
+    Type: String
+    Default: ""
+    Description: Custom S3 path for Pattern 2 config. For Example s3://idp-bucket/
   # Pattern 3 Parameters
 
   Pattern3UDOPModelArtifactPath:
@@ -927,6 +931,7 @@ Resources:
             - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableHITL: !Ref EnableHITL
+        IsPattern2HITLEnabled: !If [IsPattern2HITLEnabled, "true", "false"]
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -4402,6 +4407,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:GetObjectVersion
                   - s3:PutObject
                 Resource:
                   - !Sub '${OutputBucket.Arn}/*'
@@ -4409,6 +4415,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetBucketLocation
+                  - s3:ListBucket
                 Resource:
                   - !GetAtt OutputBucket.Arn
                   - !GetAtt InputBucket.Arn
