@@ -4856,6 +4856,7 @@ Resources:
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
                   - !GetAtt AgentRequestHandlerFunction.Arn
                   - !GetAtt ListAvailableAgentsFunction.Arn
+                  - !GetAtt ChatWithDocumentResolverFunction.Arn
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
