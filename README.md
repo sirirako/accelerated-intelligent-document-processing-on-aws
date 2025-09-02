@@ -39,6 +39,7 @@ White-glove customization, deployment, and integration support for production us
 - **Cost Optimization**: Pay-per-use pricing model with built-in controls
 - **Comprehensive Monitoring**: Rich CloudWatch dashboard with detailed metrics and logs
 - **Web User Interface**: Modern UI for inspecting document workflow status and results
+- **Human-in-the-Loop (HITL)**: Amazon A2I integration for human review workflows (Pattern 1 & Pattern 2)
 - **AI-Powered Evaluation**: Framework to assess accuracy against baseline data
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
