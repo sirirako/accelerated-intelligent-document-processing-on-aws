@@ -327,9 +327,10 @@ class BedrockClient:
                     additional_model_fields["inferenceConfig"] = {}
                 additional_model_fields["inferenceConfig"]["topK"] = int(top_k)
 
-       # Add 1M context headers if needed
+        # Add 1M context headers if needed
+        use_mode_id = model_id
         if model_id and model_id.endswith(':1m'):
-            model_id = model_id[:-3]  # Remove ':1m'
+            use_model_id = model_id[:-3]  # Remove ':1m'
             if additional_model_fields is None:
                 additional_model_fields = {}
             additional_model_fields["anthropic_beta"] = ["context-1m-2025-08-07"]
@@ -343,7 +344,7 @@ class BedrockClient:
         
         # Build converse parameters
         converse_params = {
-            "modelId": model_id,
+            "modelId": use_model_id,
             "messages": messages,
             "system": formatted_system_prompt,
             "inferenceConfig": inference_config,
@@ -359,6 +360,7 @@ class BedrockClient:
         
         # Call the recursive retry function
         result = self._invoke_with_retry(
+            model_id=model_id,
             converse_params=converse_params,
             retry_count=0,
             max_retries=effective_max_retries,
@@ -370,6 +372,7 @@ class BedrockClient:
 
     def _invoke_with_retry(
         self,
+        model_id: str,
         converse_params: Dict[str, Any],
         retry_count: int,
         max_retries: int,
