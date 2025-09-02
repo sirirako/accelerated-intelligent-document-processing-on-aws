@@ -298,6 +298,9 @@ class BedrockClient:
         # Add additional model fields if needed
         additional_model_fields = {}
         
+        # Initialize use_model_id early to avoid UnboundLocalError
+        use_model_id = model_id
+        
         # Handle top_k parameter
         if top_k is not None:
             # Convert top_k to float if it's a string
@@ -328,7 +331,6 @@ class BedrockClient:
                 additional_model_fields["inferenceConfig"]["topK"] = int(top_k)
 
         # Add 1M context headers if needed
-        use_model_id = model_id
         if model_id and model_id.endswith(':1m'):
             use_model_id = model_id[:-3]  # Remove ':1m'
             if additional_model_fields is None:
