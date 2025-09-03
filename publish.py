@@ -59,6 +59,45 @@ class IDPPublisher:
         self._is_lib_changed = False
         self.skip_validation = False
 
+    def clean_checksums(self):
+        """Delete all .checksum files in main, patterns, options, and lib directories"""
+        self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
+
+        checksum_paths = [
+            ".checksum",  # main
+            "lib/.checksum",  # lib
+        ]
+
+        # Add patterns checksum files
+        patterns_dir = "patterns"
+        if os.path.exists(patterns_dir):
+            for item in os.listdir(patterns_dir):
+                pattern_path = os.path.join(patterns_dir, item)
+                if os.path.isdir(pattern_path):
+                    checksum_paths.append(f"{pattern_path}/.checksum")
+
+        # Add options checksum files
+        options_dir = "options"
+        if os.path.exists(options_dir):
+            for item in os.listdir(options_dir):
+                option_path = os.path.join(options_dir, item)
+                if os.path.isdir(option_path):
+                    checksum_paths.append(f"{option_path}/.checksum")
+
+        deleted_count = 0
+        for checksum_path in checksum_paths:
+            if os.path.exists(checksum_path):
+                os.remove(checksum_path)
+                self.console.print(f"[green]  ✓ Deleted {checksum_path}[/green]")
+                deleted_count += 1
+
+        if deleted_count == 0:
+            self.console.print("[dim]  No .checksum files found to delete[/dim]")
+        else:
+            self.console.print(
+                f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
+            )
+
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
         if self.verbose:
@@ -120,7 +159,7 @@ STDERR:
         """Print usage information with Rich formatting"""
         self.console.print("\n[bold cyan]Usage:[/bold cyan]")
         self.console.print(
-            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate]"
+            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate] [--clean-build]"
         )
 
         self.console.print("\n[bold cyan]Parameters:[/bold cyan]")
@@ -143,6 +182,9 @@ STDERR:
         )
         self.console.print(
             "  [yellow][--no-validate][/yellow]: Optional. Skip CloudFormation template validation"
+        )
+        self.console.print(
+            "  [yellow][--clean-build][/yellow]: Optional. Delete all .checksum files to force full rebuild"
         )
 
     def check_parameters(self, args):
@@ -206,6 +248,8 @@ STDERR:
                 self.console.print(
                     "[yellow]CloudFormation template validation will be skipped[/yellow]"
                 )
+            elif arg == "--clean-build":
+                self.clean_checksums()
             else:
                 self.console.print(
                     f"[yellow]Warning: Unknown argument '{arg}' ignored[/yellow]"
