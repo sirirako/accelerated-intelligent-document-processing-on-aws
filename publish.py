@@ -13,7 +13,6 @@ import concurrent.futures
 import hashlib
 import json
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -53,7 +52,7 @@ class IDPPublisher:
         self.public = False
         self.main_template = "idp-main.yaml"
         self.use_container_flag = ""
-        self.stat_cmd = None
+
         self.s3_client = None
         self.cf_client = None
         self._is_lib_changed = False
@@ -227,12 +226,6 @@ STDERR:
 
         self.prefix_and_version = f"{self.prefix}/{self.version}"
         self.bucket = f"{self.bucket_basename}-{self.region}"
-
-        # Set platform-specific commands
-        if platform.machine() == "x86_64":
-            self.stat_cmd = "stat --format='%Y'"
-        else:
-            self.stat_cmd = "stat -f %m"
 
         # Set UDOP model path based on region
         if self.region == "us-east-1":
@@ -883,57 +876,33 @@ STDERR:
     def _extract_function_name(self, dir_name, template_path):
         """Extract CloudFormation function name from template by matching CodeUri."""
         try:
-            import yaml
+            with open(template_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
 
-            # Create a custom loader that ignores CloudFormation intrinsic functions
-            class CFLoader(yaml.SafeLoader):
-                pass
+            for i, line in enumerate(lines):
+                # Look for CodeUri that matches our directory
+                if "CodeUri:" in line:
+                    code_uri = (
+                        line.split("CodeUri:")[-1].strip().strip("\"'").rstrip("/")
+                    )
+                    code_dir = code_uri.split("/")[-1] if "/" in code_uri else code_uri
 
-            def construct_unknown(loader, node):
-                return None
-
-            # Add constructors for CloudFormation intrinsic functions
-            cf_functions = [
-                "!Ref",
-                "!GetAtt",
-                "!Join",
-                "!Sub",
-                "!Select",
-                "!Split",
-                "!Base64",
-                "!GetAZs",
-                "!ImportValue",
-                "!FindInMap",
-                "!Equals",
-                "!And",
-                "!Or",
-                "!Not",
-                "!If",
-                "!Condition",
-            ]
-
-            for func in cf_functions:
-                CFLoader.add_constructor(func, construct_unknown)
-
-            with open(template_path, "r") as f:
-                template = yaml.load(f, Loader=CFLoader)
-
-            resources = template.get("Resources", {})
-            for resource_name, resource_config in resources.items():
-                if (
-                    resource_config
-                    and resource_config.get("Type") == "AWS::Serverless::Function"
-                ):
-                    properties = resource_config.get("Properties", {})
-                    if properties:
-                        code_uri = properties.get("CodeUri", "")
-                        if isinstance(code_uri, str):
-                            code_uri = code_uri.rstrip("/")
-                            code_dir = (
-                                code_uri.split("/")[-1] if "/" in code_uri else code_uri
-                            )
-                            if code_dir == dir_name:
-                                return resource_name
+                    if code_dir == dir_name:
+                        # Found matching CodeUri, now look backwards for the resource name
+                        # Look for AWS::Serverless::Function type first
+                        for j in range(i - 1, max(0, i - 50), -1):
+                            if "Type: AWS::Serverless::Function" in lines[j]:
+                                # Found the function type, now look backwards for resource name
+                                for k in range(j - 1, max(0, j - 10), -1):
+                                    stripped = lines[k].strip()
+                                    # Resource names are at the start of line and end with ':'
+                                    if (
+                                        stripped
+                                        and not stripped.startswith(" ")
+                                        and stripped.endswith(":")
+                                    ):
+                                        return stripped.rstrip(":")
+                                break
 
             return dir_name
 
