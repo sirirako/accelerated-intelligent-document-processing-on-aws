@@ -458,7 +458,7 @@ class BedrockClient:
             response_with_metering = {
                 "response": response,
                 "metering": {
-                    f"{context}/bedrock/{model_id}": {
+                    f"{context}/bedrock/{'modelId'}": {
                         **usage
                     }
                 }
