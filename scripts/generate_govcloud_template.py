@@ -858,9 +858,6 @@ Examples:
     # With clean build (forces full rebuild)
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
 
-    # With clean build (forces full rebuild)
-    python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
-
     # Public artifacts
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 public
         """
@@ -893,9 +890,6 @@ Examples:
     
     if args.clean_build:
         publish_args.append('--clean-build')
-    
-    # Always skip validation in publish.py since we validate the GovCloud template separately
-    publish_args.append('--no-validate')
     
     # Add any unknown arguments
     publish_args.extend(unknown)
