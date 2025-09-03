@@ -934,15 +934,6 @@ STDERR:
     def _extract_function_name(self, dir_name, template_path):
         """Extract CloudFormation function name from template by matching CodeUri."""
         try:
-            try:
-                import yaml
-            except ImportError:
-                self.console.print("[yellow]PyYAML not found, installing...[/yellow]")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "PyYAML"], check=True
-                )
-                import yaml
-
             # Create a custom loader that ignores CloudFormation intrinsic functions
             class CFLoader(yaml.SafeLoader):
                 pass
