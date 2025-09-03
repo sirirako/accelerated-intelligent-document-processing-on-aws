@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT-0
 
 This pattern implements an intelligent document processing workflow using Amazon Bedrock Data Automation (BDA) for orchestrating ML-powered document processing tasks. It leverages BDA's ability to extract insights from documents using pre-configured templates and workflows.
 
-<img src="../../images/IDP-Pattern1-BDA.drawio.png" alt="Architecture" width="800">
+<img src="../images/IDP-Pattern1-BDA.drawio.png" alt="Architecture" width="800">
 
 ## Table of Contents
 
