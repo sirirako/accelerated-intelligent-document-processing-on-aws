@@ -28,13 +28,13 @@ export const documentsNavItems = [
       {
         type: 'link',
         text: 'README',
-        href: 'https://gitlab.aws.dev/genaiic-reusable-assets/engagement-artifacts/genaiic-idp-accelerator/-/blob/main/README.md',
+        href: 'https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/main/README.md',
         external: true,
       },
       {
         type: 'link',
         text: 'Source Code',
-        href: 'https://gitlab.aws.dev/genaiic-reusable-assets/engagement-artifacts/genaiic-idp-accelerator',
+        href: 'https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws',
         external: true,
       },
     ],

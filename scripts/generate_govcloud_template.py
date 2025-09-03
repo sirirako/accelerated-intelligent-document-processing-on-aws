@@ -855,6 +855,9 @@ Examples:
     # With verbose output and concurrency control
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --verbose --max-workers 4
 
+    # With clean build (forces full rebuild)
+    python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
+
     # Public artifacts
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 public
         """
@@ -868,6 +871,7 @@ Examples:
     parser.add_argument('--max-workers', type=int, help='Maximum number of concurrent workers')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
     parser.add_argument('--skip-build', action='store_true', help='Skip the build step and only generate/upload GovCloud template')
+    parser.add_argument('--clean-build', action='store_true', help='Delete all .checksum files to force full rebuild')
     
     # Parse known args to handle the flexible argument structure
     args, unknown = parser.parse_known_args()
@@ -883,6 +887,12 @@ Examples:
     
     if args.verbose:
         publish_args.append('--verbose')
+    
+    if args.clean_build:
+        publish_args.append('--clean-build')
+    
+    # Always skip validation in publish.py since we validate the GovCloud template separately
+    publish_args.append('--no-validate')
     
     # Add any unknown arguments
     publish_args.extend(unknown)

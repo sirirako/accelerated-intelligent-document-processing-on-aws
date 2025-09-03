@@ -13,7 +13,6 @@ import concurrent.futures
 import hashlib
 import json
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -23,6 +22,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import boto3
+import yaml
 from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.progress import (
@@ -53,10 +53,50 @@ class IDPPublisher:
         self.public = False
         self.main_template = "idp-main.yaml"
         self.use_container_flag = ""
-        self.stat_cmd = None
+
         self.s3_client = None
         self.cf_client = None
         self._is_lib_changed = False
+        self.skip_validation = False
+
+    def clean_checksums(self):
+        """Delete all .checksum files in main, patterns, options, and lib directories"""
+        self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
+
+        checksum_paths = [
+            ".checksum",  # main
+            "lib/.checksum",  # lib
+        ]
+
+        # Add patterns checksum files
+        patterns_dir = "patterns"
+        if os.path.exists(patterns_dir):
+            for item in os.listdir(patterns_dir):
+                pattern_path = os.path.join(patterns_dir, item)
+                if os.path.isdir(pattern_path):
+                    checksum_paths.append(f"{pattern_path}/.checksum")
+
+        # Add options checksum files
+        options_dir = "options"
+        if os.path.exists(options_dir):
+            for item in os.listdir(options_dir):
+                option_path = os.path.join(options_dir, item)
+                if os.path.isdir(option_path):
+                    checksum_paths.append(f"{option_path}/.checksum")
+
+        deleted_count = 0
+        for checksum_path in checksum_paths:
+            if os.path.exists(checksum_path):
+                os.remove(checksum_path)
+                self.console.print(f"[green]  ✓ Deleted {checksum_path}[/green]")
+                deleted_count += 1
+
+        if deleted_count == 0:
+            self.console.print("[dim]  No .checksum files found to delete[/dim]")
+        else:
+            self.console.print(
+                f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
+            )
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
@@ -119,7 +159,7 @@ STDERR:
         """Print usage information with Rich formatting"""
         self.console.print("\n[bold cyan]Usage:[/bold cyan]")
         self.console.print(
-            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose]"
+            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate] [--clean-build]"
         )
 
         self.console.print("\n[bold cyan]Parameters:[/bold cyan]")
@@ -139,6 +179,12 @@ STDERR:
         )
         self.console.print(
             "  [yellow][--verbose, -v][/yellow]: Optional. Enable verbose output for debugging"
+        )
+        self.console.print(
+            "  [yellow][--no-validate][/yellow]: Optional. Skip CloudFormation template validation"
+        )
+        self.console.print(
+            "  [yellow][--clean-build][/yellow]: Optional. Delete all .checksum files to force full rebuild"
         )
 
     def check_parameters(self, args):
@@ -197,6 +243,13 @@ STDERR:
             elif arg in ["--verbose", "-v"]:
                 # Verbose flag is already handled by Typer, just acknowledge it here
                 pass
+            elif arg == "--no-validate":
+                self.skip_validation = True
+                self.console.print(
+                    "[yellow]CloudFormation template validation will be skipped[/yellow]"
+                )
+            elif arg == "--clean-build":
+                self.clean_checksums()
             else:
                 self.console.print(
                     f"[yellow]Warning: Unknown argument '{arg}' ignored[/yellow]"
@@ -227,12 +280,6 @@ STDERR:
 
         self.prefix_and_version = f"{self.prefix}/{self.version}"
         self.bucket = f"{self.bucket_basename}-{self.region}"
-
-        # Set platform-specific commands
-        if platform.machine() == "x86_64":
-            self.stat_cmd = "stat --format='%Y'"
-        else:
-            self.stat_cmd = "stat -f %m"
 
         # Set UDOP model path based on region
         if self.region == "us-east-1":
@@ -528,7 +575,8 @@ STDERR:
             self._delete_checksum_file(directory)
             self.log_verbose(f"Exception in build_and_package_template: {e}")
             self.log_verbose(f"Traceback: {traceback.format_exc()}")
-            return False
+            self.console.print(f"[red]❌ Build failed for {directory}: {e}[/red]")
+            sys.exit(1)
 
         return True
 
@@ -878,18 +926,25 @@ STDERR:
 
             return False, "No idp_common_pkg found in requirements.txt"
         except Exception as e:
-            return False, f"Error reading requirements.txt: {e}"
+            self.console.print(
+                f"[red]❌ Error reading requirements.txt in {func_dir}: {e}[/red]"
+            )
+            sys.exit(1)
 
     def _extract_function_name(self, dir_name, template_path):
         """Extract CloudFormation function name from template by matching CodeUri."""
         try:
-            import yaml
-
             # Create a custom loader that ignores CloudFormation intrinsic functions
             class CFLoader(yaml.SafeLoader):
                 pass
 
             def construct_unknown(loader, node):
+                if isinstance(node, yaml.ScalarNode):
+                    return loader.construct_scalar(node)
+                elif isinstance(node, yaml.SequenceNode):
+                    return loader.construct_sequence(node)
+                elif isinstance(node, yaml.MappingNode):
+                    return loader.construct_mapping(node)
                 return None
 
             # Add constructors for CloudFormation intrinsic functions
@@ -915,17 +970,21 @@ STDERR:
             for func in cf_functions:
                 CFLoader.add_constructor(func, construct_unknown)
 
-            with open(template_path, "r") as f:
+            with open(template_path, "r", encoding="utf-8") as f:
                 template = yaml.load(f, Loader=CFLoader)
+
+            if not template or not isinstance(template, dict):
+                raise Exception(f"Failed to parse YAML template: {template_path}")
 
             resources = template.get("Resources", {})
             for resource_name, resource_config in resources.items():
                 if (
                     resource_config
+                    and isinstance(resource_config, dict)
                     and resource_config.get("Type") == "AWS::Serverless::Function"
                 ):
                     properties = resource_config.get("Properties", {})
-                    if properties:
+                    if properties and isinstance(properties, dict):
                         code_uri = properties.get("CodeUri", "")
                         if isinstance(code_uri, str):
                             code_uri = code_uri.rstrip("/")
@@ -934,12 +993,15 @@ STDERR:
                             )
                             if code_dir == dir_name:
                                 return resource_name
-
-            return dir_name
+            raise Exception(
+                f"No CloudFormation function found for directory {dir_name} in template {template_path}"
+            )
 
         except Exception as e:
-            self.log_verbose(f"Error reading template {template_path}: {e}")
-            return dir_name
+            self.console.print(
+                f"[red]❌ Error extracting function name for {dir_name} from {template_path}: {e}[/red]"
+            )
+            sys.exit(1)
 
     def _validate_idp_common_in_build(self, template_dir, function_name, source_path):
         """Validate that idp_common package exists in the built Lambda function."""
@@ -1298,10 +1360,15 @@ except Exception as e:
                     )
 
             # Validate the template
-            template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
-            self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
-            self.cf_client.validate_template(TemplateURL=template_url)
-            self.console.print("[green]✅ Template validation passed[/green]")
+            if self.skip_validation:
+                self.console.print(
+                    "[yellow]⚠️  Skipping CloudFormation template validation[/yellow]"
+                )
+            else:
+                template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
+                self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
+                self.cf_client.validate_template(TemplateURL=template_url)
+                self.console.print("[green]✅ Template validation passed[/green]")
 
         except ClientError as e:
             # Delete checksum on template validation failure
