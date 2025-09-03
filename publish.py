@@ -57,6 +57,7 @@ class IDPPublisher:
         self.s3_client = None
         self.cf_client = None
         self._is_lib_changed = False
+        self.skip_validation = False
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
@@ -119,7 +120,7 @@ STDERR:
         """Print usage information with Rich formatting"""
         self.console.print("\n[bold cyan]Usage:[/bold cyan]")
         self.console.print(
-            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate] [--clean-build]"
+            "  python3 publish.py <cfn_bucket_basename> <cfn_prefix> <region> [public] [--max-workers N] [--verbose] [--no-validate]"
         )
 
         self.console.print("\n[bold cyan]Parameters:[/bold cyan]")
@@ -142,9 +143,6 @@ STDERR:
         )
         self.console.print(
             "  [yellow][--no-validate][/yellow]: Optional. Skip CloudFormation template validation"
-        )
-        self.console.print(
-            "  [yellow][--clean-build][/yellow]: Optional. Delete all .checksum files to force full rebuild"
         )
 
     def check_parameters(self, args):
@@ -208,8 +206,6 @@ STDERR:
                 self.console.print(
                     "[yellow]CloudFormation template validation will be skipped[/yellow]"
                 )
-            elif arg == "--clean-build":
-                self.clean_checksums()
             else:
                 self.console.print(
                     f"[yellow]Warning: Unknown argument '{arg}' ignored[/yellow]"
@@ -1287,10 +1283,15 @@ except Exception as e:
                     )
 
             # Validate the template
-            template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
-            self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
-            self.cf_client.validate_template(TemplateURL=template_url)
-            self.console.print("[green]✅ Template validation passed[/green]")
+            if self.skip_validation:
+                self.console.print(
+                    "[yellow]⚠️  Skipping CloudFormation template validation[/yellow]"
+                )
+            else:
+                template_url = f"https://s3.{self.region}.amazonaws.com/{self.bucket}/{templates[0][0]}"
+                self.console.print(f"[cyan]Validating template: {template_url}[/cyan]")
+                self.cf_client.validate_template(TemplateURL=template_url)
+                self.console.print("[green]✅ Template validation passed[/green]")
 
         except ClientError as e:
             # Delete checksum on template validation failure
