@@ -90,21 +90,19 @@ check_python_version() {
 check_and_install_packages() {
     print_info "Checking required Python packages..."
     
-    # List of required packages (import_name:package_name pairs)
-    required_packages=(
-        "typer:typer"
-        "rich:rich"
-        "boto3:boto3"
-        "yaml:PyYAML"
+    # List of required packages (import_name:package_name)
+    declare -A required_packages=(
+        ["typer"]="typer"
+        ["rich"]="rich" 
+        ["boto3"]="boto3"
+        ["yaml"]="PyYAML"
     )
     missing_packages=()
     
     # Check each package
-    for package_pair in "${required_packages[@]}"; do
-        import_name="${package_pair%%:*}"
-        package_name="${package_pair##*:}"
+    for import_name in "${!required_packages[@]}"; do
         if ! $PYTHON_CMD -c "import $import_name" >/dev/null 2>&1; then
-            missing_packages+=("$package_name")
+            missing_packages+=("${required_packages[$import_name]}")
         fi
     done
     
