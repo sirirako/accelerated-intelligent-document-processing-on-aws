@@ -894,68 +894,35 @@ STDERR:
     def _extract_function_name(self, dir_name, template_path):
         """Extract CloudFormation function name from template by matching CodeUri."""
         try:
-            # Create a custom loader that ignores CloudFormation intrinsic functions
-            class CFLoader(yaml.SafeLoader):
-                pass
-
-            def construct_unknown(loader, node):
-                if isinstance(node, yaml.ScalarNode):
-                    return loader.construct_scalar(node)
-                elif isinstance(node, yaml.SequenceNode):
-                    return loader.construct_sequence(node)
-                elif isinstance(node, yaml.MappingNode):
-                    return loader.construct_mapping(node)
-                return None
-
-            # Add constructors for CloudFormation intrinsic functions
-            cf_functions = [
-                "!Ref",
-                "!GetAtt",
-                "!Join",
-                "!Sub",
-                "!Select",
-                "!Split",
-                "!Base64",
-                "!GetAZs",
-                "!ImportValue",
-                "!FindInMap",
-                "!Equals",
-                "!And",
-                "!Or",
-                "!Not",
-                "!If",
-                "!Condition",
-            ]
-
-            for func in cf_functions:
-                CFLoader.add_constructor(func, construct_unknown)
-
             with open(template_path, "r", encoding="utf-8") as f:
-                template = yaml.load(f, Loader=CFLoader)
+                lines = f.readlines()
 
-            if not template or not isinstance(template, dict):
-                raise Exception(f"Failed to parse YAML template: {template_path}")
+            for i, line in enumerate(lines):
+                # Look for CodeUri that matches our directory
+                if "CodeUri:" in line:
+                    code_uri = (
+                        line.split("CodeUri:")[-1].strip().strip("\"'").rstrip("/")
+                    )
+                    code_dir = code_uri.split("/")[-1] if "/" in code_uri else code_uri
 
-            resources = template.get("Resources", {})
-            for resource_name, resource_config in resources.items():
-                if (
-                    resource_config
-                    and isinstance(resource_config, dict)
-                    and resource_config.get("Type") == "AWS::Serverless::Function"
-                ):
-                    properties = resource_config.get("Properties", {})
-                    if properties and isinstance(properties, dict):
-                        code_uri = properties.get("CodeUri", "")
-                        if isinstance(code_uri, str):
-                            code_uri = code_uri.rstrip("/")
-                            code_dir = (
-                                code_uri.split("/")[-1] if "/" in code_uri else code_uri
-                            )
-                            if code_dir == dir_name:
-                                return resource_name
-            raise Exception(
-                f"No CloudFormation function found for directory {dir_name} in template {template_path}"
-            )
+                    if code_dir == dir_name:
+                        # Found matching CodeUri, now look backwards for the resource name
+                        # Look for AWS::Serverless::Function type first
+                        for j in range(i - 1, max(0, i - 50), -1):
+                            if "Type: AWS::Serverless::Function" in lines[j]:
+                                # Found the function type, now look backwards for resource name
+                                for k in range(j - 1, max(0, j - 10), -1):
+                                    stripped = lines[k].strip()
+                                    # Resource names are at the start of line and end with ':'
+                                    if (
+                                        stripped
+                                        and not stripped.startswith(" ")
+                                        and stripped.endswith(":")
+                                    ):
+                                        return stripped.rstrip(":")
+                                break
+
+            return dir_name
 
         except Exception as e:
             self.console.print(
