@@ -894,6 +894,9 @@ Examples:
     if args.clean_build:
         publish_args.append('--clean-build')
     
+    # Always skip validation in publish.py since we validate the GovCloud template separately
+    publish_args.append('--no-validate')
+    
     # Add any unknown arguments
     publish_args.extend(unknown)
     
