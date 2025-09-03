@@ -181,37 +181,12 @@ Each step includes comprehensive retry logic for handling transient errors:
 
 Pattern-2 supports Human-in-the-Loop (HITL) review capabilities using Amazon SageMaker Augmented AI (A2I). This feature allows human reviewers to validate and correct extracted information when the system's confidence falls below a specified threshold.
 
-#### HITL Workflow
-1. **Automatic Triggering**: 
-   - HITL is triggered when the feature is enabled in your configuration
-   - Extraction confidence score falls below your configured confidence threshold
-   - The system creates a human review task in SageMaker A2I
-
-2. **Review Process**:
-   - Reviewers access the SageMaker A2I Review Portal (URL available in CloudFormation output `SageMakerA2IReviewPortalURL`)
-   - Login credentials are the same as those used for the GenAI IDP portal (if you want to use your own Private work team, you can provide your existing private workforce work team arn as a input parameter for `Pattern2 - Existing Private Workforce ARN`)
-   - Extracted key-value pairs are presented for validation and correction
-   - Reviewers validate correct extractions or make necessary corrections
-   - After review, corrections are submitted with the "Submit" button
-
-3. **Result Integration**:
-   - Corrected key-value pairs automatically update the source results
-   - The document processing workflow continues with the human-verified data
-
-#### Configuration
+**Pattern-2 Specific Configuration:**
 - `EnableHITL`: Boolean parameter to enable/disable the HITL feature
 - `IsPattern2HITLEnabled`: Boolean parameter specific to Pattern-2 HITL enablement
-- **Confidence Threshold**: Configured through the Web UI Portal Configuration tab under "Assessment & HITL Configuration" section. This numeric value (0.0-1.0) determines when human review is triggered based on extraction confidence scores.
+- `Pattern2 - Existing Private Workforce ARN`: Optional parameter to use existing private workforce
 
-#### Configuring Confidence Threshold
-To set the confidence threshold for HITL triggering:
-
-1. **Access the Web UI**: Open the Web UI URL from your CloudFormation stack outputs
-2. **Navigate to Configuration**: Click on the "Configuration" tab in the navigation menu
-3. **Find Assessment & HITL Section**: Scroll to the "Assessment & HITL Configuration" section
-4. **Set Confidence Threshold**: 
-   - Enter a value between 0.0-1.0 (e.g., 0.8 for 80% confidence threshold)
-   - Fields with confidence scores below this threshold will trigger HITL review
+For comprehensive HITL documentation including workflow details, configuration steps, best practices, and troubleshooting, see the [Human-in-the-Loop Review Guide](./human-review.md).
 
 ### Monitoring and Metrics
 

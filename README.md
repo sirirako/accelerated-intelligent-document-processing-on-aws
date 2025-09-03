@@ -129,6 +129,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Configuration](./docs/configuration.md) - Configuration and customization options
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction
+- [Human-in-the-Loop Review](./docs/human-review.md) - Human review workflows with Amazon A2I
 - [Assessment](./docs/assessment.md) - Extraction confidence evaluation using LLMs
 - [Evaluation Framework](./docs/evaluation.md) - Accuracy assessment system with analytics database and reporting
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
