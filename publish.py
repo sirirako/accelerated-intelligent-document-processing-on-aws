@@ -1368,7 +1368,10 @@ except Exception as e:
         except ClientError as e:
             # Delete checksum on template validation failure
             self._delete_checksum_file(".checksum")
-            self.console.print(f"[red]Template validation failed: {e}[/red]")
+            self.console.print(
+                "[red]❌ CloudFormation template validation failed[/red]"
+            )
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
         except Exception as e:
             # Delete checksum on any failure to force rebuild next time
