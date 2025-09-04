@@ -282,12 +282,7 @@ STDERR:
         self.bucket = f"{self.bucket_basename}-{self.region}"
 
         # Set UDOP model path based on region
-        if self.region == "us-east-1":
-            self.public_sample_udop_model = "s3://aws-ml-blog-us-east-1/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
-        elif self.region == "us-west-2":
-            self.public_sample_udop_model = "s3://aws-ml-blog-us-west-2/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
-        else:
-            self.public_sample_udop_model = ""
+        self.public_sample_udop_model = f"s3://aws-ml-blog-{self.region}/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
 
     def check_prerequisites(self):
         """Check for required commands and versions"""
