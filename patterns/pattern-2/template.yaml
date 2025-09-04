@@ -1328,7 +1328,6 @@ Resources:
 
   HITLWaitFunction:
     Type: AWS::Serverless::Function
-    Condition: IsPattern2HITLEnabled
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -1379,7 +1378,6 @@ Resources:
 
   HITLWaitFunctionLogGroup:
     Type: AWS::Logs::LogGroup
-    Condition: IsPattern2HITLEnabled
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLWaitFunction"
@@ -1387,7 +1385,6 @@ Resources:
 
   HITLStatusUpdateFunction:
     Type: AWS::Serverless::Function
-    Condition: IsPattern2HITLEnabled
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -1418,7 +1415,6 @@ Resources:
 
   HITLStatusUpdateFunctionLogGroup:
     Type: AWS::Logs::LogGroup
-    Condition: IsPattern2HITLEnabled
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLStatusUpdateFunction"
@@ -1427,7 +1423,6 @@ Resources:
   #EventBridge Rule to check Human In the Loop Status change
   HITLEventRule:
     Type: AWS::Events::Rule
-    Condition: IsPattern2HITLEnabled
     Properties:
       Description: 'Rule for SageMaker A2I HumanLoop Status Change'
       EventPattern:
@@ -1447,7 +1442,6 @@ Resources:
 
   HITLProcessLambdaLogGroup:
     Type: AWS::Logs::LogGroup
-    Condition: IsPattern2HITLEnabled
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLProcessLambdaFunction"
@@ -1455,7 +1449,6 @@ Resources:
 
   HITLProcessLambdaFunction:
     Type: AWS::Serverless::Function
-    Condition: IsPattern2HITLEnabled
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -1484,7 +1477,6 @@ Resources:
 
   HITLProcessLambdaRole:
     Type: AWS::IAM::Role
-    Condition: IsPattern2HITLEnabled
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
@@ -1549,7 +1541,6 @@ Resources:
   #Event Bridge permissions to invoke Lambda function during HITL change 
   EventBridgeInvokeLambdaPermission:
     Type: AWS::Lambda::Permission
-    Condition: IsPattern2HITLEnabled
     Properties:
       FunctionName: !Ref HITLProcessLambdaFunction
       Action: 'lambda:InvokeFunction'
@@ -1654,8 +1645,8 @@ Resources:
         ExtractionFunctionArn: !GetAtt ExtractionFunction.Arn
         AssessmentFunctionArn: !GetAtt AssessmentFunction.Arn
         ProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
-        HITLWaitFunctionArn: !If [IsPattern2HITLEnabled, !GetAtt HITLWaitFunction.Arn, ""]
-        HITLStatusUpdateFunctionArn: !If [IsPattern2HITLEnabled, !GetAtt HITLStatusUpdateFunction.Arn, ""]
+        HITLWaitFunctionArn: !GetAtt HITLWaitFunction.Arn
+        HITLStatusUpdateFunctionArn: !GetAtt HITLStatusUpdateFunction.Arn
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
         OutputBucket: !Ref OutputBucket
       Logging:
@@ -1674,16 +1665,10 @@ Resources:
             FunctionName: !Ref AssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref ProcessResultsFunction
-        - !If
-          - IsPattern2HITLEnabled
-          - LambdaInvokePolicy:
-              FunctionName: !Ref HITLWaitFunction
-          - !Ref AWS::NoValue
-        - !If
-          - IsPattern2HITLEnabled
-          - LambdaInvokePolicy:
-              FunctionName: !Ref HITLStatusUpdateFunction
-          - !Ref AWS::NoValue
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HITLWaitFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HITLStatusUpdateFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref SummarizationFunction
         - CloudWatchLogsFullAccess
