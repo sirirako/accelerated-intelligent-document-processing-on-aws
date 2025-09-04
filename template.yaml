@@ -185,10 +185,13 @@ Parameters:
     Default: ""
     AllowedPattern: "^(|arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
     Description: >-
-      (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
-      If provided, the template will use this existing workteam instead of creating a new one.
+      ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL). 
+      If you do not have existing Private workteam and leave it blank then solution will create one. 
+      REQUIRED when deploying multiple patterns with HITL enabled, as only one private workteam can exist per AWS account.
+      If you already have a GenAI-IDP deployment with HITL enabled, provide the existing workteam ARN here.
+      Leave empty for first-time HITL deployment to create a new private workteam automatically.
+      Find the ARN in your existing stack's CloudFormation outputs under 'PrivateWorkteamArn'.
       Format: arn:${AWS::Partition}:sagemaker:region:account-id:workteam/private-crowd/workteam-name
-      Leave blank to create a new private workteam.
 
   # Evaluation
   EvaluationBaselineBucketName:

@@ -65,12 +65,11 @@ HITL review is automatically triggered when:
 
 **Pattern 1:**
 - `EnableHITL`: Boolean parameter to enable/disable the HITL feature
-- `Pattern1 - Existing Private Workforce ARN`: Optional parameter to use existing private workforce
+- `Pattern1 - Existing Private Workforce ARN`: parameter to use existing private workforce (reuse existing private workteam ARN due to AWS account limits)
 
 **Pattern 2:**
 - `EnableHITL`: Boolean parameter to enable/disable the HITL feature  
-- `IsPattern2HITLEnabled`: Boolean parameter specific to Pattern-2 HITL enablement
-- `Pattern2 - Existing Private Workforce ARN`: Optional parameter to use existing private workforce
+- `Pattern2 - Existing Private Workforce ARN`: parameter to use existing private workforce (reuse existing private workteam ARN due to AWS account limits)
 
 ### Confidence Threshold Configuration
 
