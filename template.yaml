@@ -407,16 +407,6 @@ Parameters:
 
 
 Rules:
-  # Pattern 1 rules
-  ValidateExistingPrivateWorkforceArn:
-    RuleCondition:
-      !And [
-        !Equals [!Ref EnableHITL, "true"],
-        !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-      ]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-        AssertDescription: ExistingPrivateWorkforceArn must be a valid ARN when provided and HITL is enabled.
 
   Pattern3UDOPModelArtifactPath:
     RuleCondition:
