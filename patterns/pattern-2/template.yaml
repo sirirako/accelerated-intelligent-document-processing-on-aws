@@ -1046,6 +1046,8 @@ Resources:
             reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
           - id: W11
             reason: "Cloudwatch does not support resource-level permissions, and Bedrock should support any enabled Bedrock model_id or inference profile"
+          - id: W76
+            reason: "Suppressing W76: SPCM for IAM policy document is higher than 25"
     # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
