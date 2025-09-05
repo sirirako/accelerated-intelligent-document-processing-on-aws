@@ -1308,7 +1308,7 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackName}/FlowDefinitionArn"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackName}/FlowDefinitionArn"
             # SageMaker A2I permissions for starting human loops
             - Effect: Allow
               Action:
@@ -1319,7 +1319,7 @@ Resources:
             - Effect: Allow
               Action:
                 - sagemaker:StartHumanLoop
-              Resource: "arn:aws:sagemaker:*:*:flow-definition/*"
+              Resource: !Sub "arn:${AWS::Partition}:sagemaker:*:*:flow-definition/*"
 
   ProcessResultsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -1489,7 +1489,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       Policies:
         - PolicyName: S3AccessPolicy
           PolicyDocument:
@@ -1500,14 +1500,14 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                 Resource:
-                  - !Sub "arn:aws:s3:::${OutputBucket}/*"
-                  - !Sub "arn:aws:s3:::sagemaker-*/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::sagemaker-*/*"
               - Effect: Allow
                 Action:
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:aws:s3:::${OutputBucket}"
-                  - !Sub "arn:aws:s3:::sagemaker-*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::sagemaker-*"
         - PolicyName: KMSAccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -1529,7 +1529,7 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:Query
                   - dynamodb:Scan
-                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
+                Resource: !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
         - PolicyName: StepFunctionsPolicy
           PolicyDocument:
             Version: '2012-10-17'
