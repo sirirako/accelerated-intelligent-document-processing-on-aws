@@ -5,6 +5,23 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.14]
+
+### Added
+- Support for 1m token context for Claude Sonnet 4
+- Video demo of "Chat with Document" in [](./docs/web-ui.md)
+
+### Removed
+- Windows development environment guide and setup script removed as it proved insufficiently robust
+
+### Fixed
+- Fix 1-click Launch URL output from the GovCloud template generation script
+- Add Agent Analytics to architecture diagram
+- Fix various UX and error reporting issues with the new Python publish script
+- Simplify UDOP model path construction and avoid invalid default for regions other than us-east-1 and us-west-2
+- Permission regression from previous release affecting "Chat with Document"
+
+
 ## [0.3.13]
 
 ### Added
