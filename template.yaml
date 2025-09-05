@@ -4553,7 +4553,7 @@ Resources:
           A2I_WORKTEAM_ARN: !If
             - ShouldCreatePrivateWorkteam
             - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
-            - !Ref AWS::NoValue
+            - !Ref ExistingPrivateWorkforceArn
           A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
           BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
       
@@ -6291,6 +6291,13 @@ Outputs:
       Fn::GetAtt:
       - WorkforceURLResource
       - PortalURL
+  PrivateWorkteamArn:
+    Description: SageMaker A2I Private Workteam ARN (use this ARN when deploying additional patterns with HITL enabled)
+    Condition: IsHITLEnabled
+    Value: !If
+      - ShouldCreatePrivateWorkteam
+      - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+      - !Ref ExistingPrivateWorkforceArn
   LabelingConsoleURL:
     Description: SageMaker Ground Truth console URL
     Condition: IsHITLEnabled
