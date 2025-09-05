@@ -377,7 +377,8 @@ STDERR:
                     )
                     sys.exit(1)
             else:
-                self.console.print(f"[red]Error accessing bucket: {e}[/red]")
+                self.console.print("[red]Error accessing bucket:[/red]")
+                self.console.print(str(e), style="red", markup=False)
                 sys.exit(1)
 
     def get_file_checksum(self, file_path):
@@ -568,9 +569,10 @@ STDERR:
 
             # Delete checksum on any failure to force rebuild next time
             self._delete_checksum_file(directory)
-            self.log_verbose(f"Exception in build_and_package_template: {e}")
+            self.log_verbose(f"Exception in build_and_package_template: {str(e)}")
             self.log_verbose(f"Traceback: {traceback.format_exc()}")
-            self.console.print(f"[red]❌ Build failed for {directory}: {e}[/red]")
+            self.console.print(f"[red]❌ Build failed for {directory}:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
         return True
@@ -816,9 +818,8 @@ STDERR:
                 sys.exit(1)
 
         except Exception as e:
-            self.console.print(
-                f"[red]❌ Error running lambda build validation: {e}[/red]"
-            )
+            self.console.print("[red]❌ Error running lambda build validation:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             if self.verbose:
                 import traceback
 
@@ -922,8 +923,9 @@ STDERR:
             return False, "No idp_common_pkg found in requirements.txt"
         except Exception as e:
             self.console.print(
-                f"[red]❌ Error reading requirements.txt in {func_dir}: {e}[/red]"
+                f"[red]❌ Error reading requirements.txt in {func_dir}:[/red]"
             )
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
     def _extract_function_name(self, dir_name, template_path):
@@ -994,8 +996,9 @@ STDERR:
 
         except Exception as e:
             self.console.print(
-                f"[red]❌ Error extracting function name for {dir_name} from {template_path}: {e}[/red]"
+                f"[red]❌ Error extracting function name for {dir_name} from {template_path}:[/red]"
             )
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
     def _validate_idp_common_in_build(self, template_dir, function_name, source_path):
@@ -1041,10 +1044,10 @@ try:
     from idp_common import models
     print("SUCCESS: All imports working")
 except ImportError as e:
-    print(f"IMPORT_ERROR: {e}")
+    print(f"IMPORT_ERROR: {str(e)}")
     sys.exit(1)
 except Exception as e:
-    print(f"ERROR: {e}")
+    print(f"ERROR: {str(e)}")
     sys.exit(1)
 """
 
@@ -1068,7 +1071,7 @@ except Exception as e:
         except Exception as e:
             if test_script.exists():
                 test_script.unlink()
-            return False, f"Test execution failed: {e}"
+            return False, f"Test execution failed: {str(e)}"
 
     def upload_config_library(self):
         """Upload configuration library to S3"""
@@ -1093,7 +1096,8 @@ except Exception as e:
                 try:
                     self.s3_client.upload_file(local_path, self.bucket, s3_key)
                 except ClientError as e:
-                    self.console.print(f"[red]Error uploading {local_path}: {e}[/red]")
+                    self.console.print(f"[red]Error uploading {local_path}:[/red]")
+                    self.console.print(str(e), style="red", markup=False)
                     sys.exit(1)
 
         self.console.print(
@@ -1166,7 +1170,8 @@ except Exception as e:
                     )
                     sys.exit(1)
             else:
-                self.console.print(f"[red]Error checking S3 for UI zipfile: {e}[/red]")
+                self.console.print("[red]Error checking S3 for UI zipfile:[/red]")
+                self.console.print(str(e), style="red", markup=False)
                 sys.exit(1)
 
         return zipfile_name
@@ -1178,7 +1183,8 @@ except Exception as e:
             self.s3_client.upload_file(template_path, self.bucket, s3_key)
             self.console.print(f"[green]✅ {description} uploaded successfully[/green]")
         except Exception as e:
-            self.console.print(f"[red]Failed to upload {description}: {e}[/red]")
+            self.console.print(f"[red]Failed to upload {description}:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
     def _check_and_upload_template(self, template_path, s3_key, description):
@@ -1199,8 +1205,9 @@ except Exception as e:
                 self._upload_template_to_s3(template_path, s3_key, description)
             else:
                 self.console.print(
-                    f"[yellow]Could not check {description} existence: {e}[/yellow]"
+                    f"[yellow]Could not check {description} existence:[/yellow]"
                 )
+                self.console.print(str(e), style="red", markup=False)
 
     def build_main_template(self, webui_zipfile, components_needing_rebuild):
         """Build and package main template with smart detection"""
@@ -1368,12 +1375,16 @@ except Exception as e:
         except ClientError as e:
             # Delete checksum on template validation failure
             self._delete_checksum_file(".checksum")
-            self.console.print(f"[red]Template validation failed: {e}[/red]")
+            self.console.print(
+                "[red]❌ CloudFormation template validation failed[/red]"
+            )
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
         except Exception as e:
             # Delete checksum on any failure to force rebuild next time
             self._delete_checksum_file(".checksum")
-            self.console.print(f"[red]❌ Main template build failed: {e}[/red]")
+            self.console.print("[red]❌ Main template build failed:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
     def get_source_files_checksum(self, directory):
@@ -1627,8 +1638,9 @@ except Exception as e:
                         py_compile.compile(file_path, doraise=True)
                     except py_compile.PyCompileError as e:
                         self.console.print(
-                            f"[red]❌ Python syntax error in {file_path}: {e}[/red]"
+                            f"[red]❌ Python syntax error in {file_path}[/red]"
                         )
+                        self.console.print(str(e), style="red", markup=False)
                         return False
         return True
 
@@ -1654,7 +1666,8 @@ except Exception as e:
 
         except Exception as e:
             self._delete_checksum_file("lib/.checksum")
-            self.console.print(f"[red]❌ Failed to build lib package: {e}[/red]")
+            self.console.print("[red]❌ Failed to build lib package:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
     def _delete_checksum_file(self, checksum_path):
@@ -1786,7 +1799,7 @@ except Exception as e:
             self.console.print("[green]✅ Public ACLs set successfully[/green]")
 
         except Exception as e:
-            raise Exception(f"Failed to set public ACLs: {e}")
+            raise Exception(f"Failed to set public ACLs: {str(e)}")
 
     def run(self, args):
         """Main execution method"""
@@ -1902,7 +1915,8 @@ except Exception as e:
             self.console.print("\n[yellow]Operation cancelled by user[/yellow]")
             sys.exit(1)
         except Exception as e:
-            self.console.print(f"[red]Error: {e}[/red]")
+            self.console.print("[red]Error:[/red]")
+            self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
 
