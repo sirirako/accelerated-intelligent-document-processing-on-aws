@@ -154,7 +154,19 @@ Monitor HITL performance through:
 
 - **Template Updates**: Updating SageMaker A2I Template and workflow performs deletion on A2I flow definition and custom template, then recreates resources via Lambda function. Direct updates to A2I resources through Python SDK are not supported.
 
+- **Private Workforce Cognito Limitation**: AWS SageMaker Ground Truth allows only **one private workforce per Cognito User Pool** per AWS account. This creates a critical dependency when deploying multiple GenAI-IDP stacks with HITL enabled:
+  - Each private workforce must be mapped to a unique Cognito client
+  - Multiple stacks cannot create separate private workforces if they use the same Cognito User Pool
+  - **Risk**: If the first stack (that created the private workforce) is deleted, it will break the private workteam for all other stacks using the same workforce
+  - **Recommendation**: Always reuse existing private workteam ARNs when deploying additional patterns or stacks with HITL enabled
+  - Use the `ExistingPrivateWorkforceArn` parameter to reference the workforce created by your first HITL-enabled deployment
+
 ### Workarounds
 
 - **Task Management**: Reviewers should process tasks in chronological order or use task identifiers to track specific documents
 - **Configuration Changes**: Plan A2I template updates during maintenance windows to minimize disruption
+- **Multi-Stack HITL Deployment**: 
+  1. Deploy your first HITL-enabled stack and note the `PrivateWorkteamArn` from CloudFormation outputs
+  2. For subsequent stacks, provide this ARN in the `ExistingPrivateWorkforceArn` parameter
+  3. Never delete the original stack that created the private workforce without first migrating the workforce to another stack
+  4. Consider creating a dedicated "HITL infrastructure" stack to manage the private workforce independently
