@@ -138,6 +138,10 @@ Parameters:
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
 
+  Pattern2CustomConfigPath:
+    Type: String
+    Default: ""
+    Description: Custom S3 path for Pattern 2 config. For Example s3://idp-bucket/
   # Pattern 3 Parameters
 
   Pattern3UDOPModelArtifactPath:
@@ -181,10 +185,13 @@ Parameters:
     Default: ""
     AllowedPattern: "^(|arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
     Description: >-
-      (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
-      If provided, the template will use this existing workteam instead of creating a new one.
+      ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL). 
+      If you do not have existing Private workteam and leave it blank then solution will create one. 
+      REQUIRED when deploying multiple patterns with HITL enabled, as only one private workteam can exist per AWS account.
+      If you already have a GenAI-IDP deployment with HITL enabled, provide the existing workteam ARN here.
+      Leave empty for first-time HITL deployment to create a new private workteam automatically.
+      Find the ARN in your existing stack's CloudFormation outputs under 'PrivateWorkteamArn'.
       Format: arn:${AWS::Partition}:sagemaker:region:account-id:workteam/private-crowd/workteam-name
-      Leave blank to create a new private workteam.
 
   # Evaluation
   EvaluationBaselineBucketName:
@@ -400,16 +407,6 @@ Parameters:
 
 
 Rules:
-  # Pattern 1 rules
-  ValidateExistingPrivateWorkforceArn:
-    RuleCondition:
-      !And [
-        !Equals [!Ref EnableHITL, "true"],
-        !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-      ]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-        AssertDescription: ExistingPrivateWorkforceArn must be a valid ARN when provided and HITL is enabled.
 
   Pattern3UDOPModelArtifactPath:
     RuleCondition:
@@ -927,6 +924,7 @@ Resources:
             - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableHITL: !Ref EnableHITL
+        IsPattern2HITLEnabled: !If [IsPattern2HITLEnabled, "true", "false"]
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -4408,6 +4406,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:GetObjectVersion
                   - s3:PutObject
                 Resource:
                   - !Sub '${OutputBucket.Arn}/*'
@@ -4415,6 +4414,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetBucketLocation
+                  - s3:ListBucket
                 Resource:
                   - !GetAtt OutputBucket.Arn
                   - !GetAtt InputBucket.Arn
@@ -4551,7 +4551,7 @@ Resources:
           A2I_WORKTEAM_ARN: !If
             - ShouldCreatePrivateWorkteam
             - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
-            - !Ref AWS::NoValue
+            - !Ref ExistingPrivateWorkforceArn
           A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
           BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
       
@@ -6289,6 +6289,13 @@ Outputs:
       Fn::GetAtt:
       - WorkforceURLResource
       - PortalURL
+  PrivateWorkteamArn:
+    Description: SageMaker A2I Private Workteam ARN (use this ARN when deploying additional patterns with HITL enabled)
+    Condition: IsHITLEnabled
+    Value: !If
+      - ShouldCreatePrivateWorkteam
+      - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+      - !Ref ExistingPrivateWorkforceArn
   LabelingConsoleURL:
     Description: SageMaker Ground Truth console URL
     Condition: IsHITLEnabled

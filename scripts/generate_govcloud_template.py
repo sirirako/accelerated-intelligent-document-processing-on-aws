@@ -860,6 +860,9 @@ Examples:
     # With clean build (forces full rebuild)
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
 
+    # With clean build (forces full rebuild)
+    python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
+
     # Public artifacts
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 public
         """
