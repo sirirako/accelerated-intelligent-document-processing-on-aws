@@ -808,6 +808,8 @@ class GovCloudTemplateGenerator:
         # 1-Click Launch for standard template
         encoded_standard_url = quote(standard_url, safe=":/?#[]@!$&'()*+,;=")
         standard_launch_url = f"https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_standard_url}&stackName=IDP"
+        if "us-gov" in region:
+            standard_launch_url = f"https://{region}.console.amazonaws-us-gov.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_standard_url}&stackName=IDP"
         print(f"1-Click Launch (creates new stack):")
         print(f"  {standard_launch_url}")
         print(f"Template URL (for updating existing stack):")
@@ -854,6 +856,9 @@ Examples:
 
     # With verbose output and concurrency control
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --verbose --max-workers 4
+
+    # With clean build (forces full rebuild)
+    python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
 
     # With clean build (forces full rebuild)
     python scripts/generate_govcloud_template.py my-bucket my-prefix us-east-1 --clean-build
