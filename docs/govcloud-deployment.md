@@ -65,7 +65,7 @@ aws cloudformation deploy \
   --template-file .aws-sam/idp-govcloud.yaml \
   --stack-name my-idp-govcloud-stack \
   --region us-gov-west-1 \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides \
     IDPPattern="Pattern2 - Packet processing with Textract and Bedrock"
 ```
