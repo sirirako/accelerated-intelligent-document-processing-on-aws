@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 - Support for 1m token context for Claude Sonnet 4
-- Video demo of "Chat with Document" in [](./docs/web-ui.md)
+- Video demo of "Chat with Document" in [./docs/web-ui.md](./docs/web-ui.md)
 - **Human-in-the-Loop (HITL) Support Extended to Pattern-2**
   - Added HITL review capabilities for Pattern-2 (Textract + Bedrock processing) using Amazon SageMaker Augmented AI (A2I)
   - Enables human validation and correction when extraction confidence falls below configurable threshold
