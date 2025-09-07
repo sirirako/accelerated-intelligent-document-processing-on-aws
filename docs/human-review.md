@@ -1,3 +1,5 @@
+
+https://github.com/user-attachments/assets/c243692a-7906-4c48-a43f-c13147e54dca
 # Human-in-the-Loop (HITL) Review
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -21,6 +23,11 @@ The GenAI-IDP solution supports Human-in-the-Loop (HITL) review capabilities usi
 **Supported Patterns:**
 - Pattern 1: BDA processing with HITL review
 - Pattern 2: Textract + Bedrock processing with HITL review
+
+
+https://github.com/user-attachments/assets/126c9a70-6811-46f3-9166-ef71397ea4bc
+
+
 
 ## Architecture
 
