@@ -14,7 +14,7 @@ SPDX-License-Identifier: MIT-0
   - Added HITL review capabilities for Pattern-2 (Textract + Bedrock processing) using Amazon SageMaker Augmented AI (A2I)
   - Enables human validation and correction when extraction confidence falls below configurable threshold
   - Includes same features as Pattern-1 HITL: automatic triggering, review portal integration, and seamless result updates
-  - Video demo in [./docs/human-review.md](./docs/human-review.md)
+  - Documentation and video demo in [./docs/human-review.md](./docs/human-review.md)
 
 ### Removed
 - Windows development environment guide and setup script removed as it proved insufficiently robust
