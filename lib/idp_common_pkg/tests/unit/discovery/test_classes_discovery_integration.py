@@ -190,7 +190,9 @@ class TestClassesDiscoveryIntegration:
         mock_extract_text.return_value = mock_w4_bedrock_response["response"]["output"][
             "message"
         ]["content"][0]["text"]
-        service_with_mocks._mock_bedrock_client.invoke_model.return_value = mock_w4_bedrock_response
+        service_with_mocks._mock_bedrock_client.invoke_model.return_value = (
+            mock_w4_bedrock_response
+        )
 
         # Mock existing configuration (empty initially)
         service_with_mocks._mock_table.get_item.return_value = {}
@@ -210,7 +212,9 @@ class TestClassesDiscoveryIntegration:
 
         # Verify Bedrock was called with correct parameters
         service_with_mocks._mock_bedrock_client.invoke_model.assert_called_once()
-        bedrock_call_args = service_with_mocks._mock_bedrock_client.invoke_model.call_args[1]
+        bedrock_call_args = (
+            service_with_mocks._mock_bedrock_client.invoke_model.call_args[1]
+        )
 
         assert (
             bedrock_call_args["model_id"] == "anthropic.claude-3-sonnet-20240229-v1:0"
@@ -394,7 +398,9 @@ class TestClassesDiscoveryIntegration:
         with (
             patch("idp_common.utils.s3util.S3Util.get_bytes") as mock_get_bytes,
             patch("idp_common.bedrock.extract_text_from_response") as mock_extract_text,
-            patch("idp_common.image.prepare_bedrock_image_attachment") as mock_prepare_image,
+            patch(
+                "idp_common.image.prepare_bedrock_image_attachment"
+            ) as mock_prepare_image,
         ):
             mock_get_bytes.return_value = b"fake image content"
             expected_response = {
@@ -404,16 +410,22 @@ class TestClassesDiscoveryIntegration:
             }
             mock_extract_text.return_value = json.dumps(expected_response)
             service_with_mocks._mock_bedrock_client.invoke_model.return_value = {
-                "response": {"output": {"message": {"content": [{"text": json.dumps(expected_response)}]}}},
+                "response": {
+                    "output": {
+                        "message": {
+                            "content": [{"text": json.dumps(expected_response)}]
+                        }
+                    }
+                },
                 "metering": {"tokens": 300},
             }
             service_with_mocks._mock_table.get_item.return_value = {}
-            
+
             # Mock the image preparation
             mock_prepare_image.return_value = {
                 "image": {
                     "format": "jpeg",
-                    "source": {"bytes": "base64_encoded_image_data"}
+                    "source": {"bytes": "base64_encoded_image_data"},
                 }
             }
 
@@ -425,7 +437,9 @@ class TestClassesDiscoveryIntegration:
             assert result["status"] == "SUCCESS"
 
             # Verify content structure for image
-            bedrock_call_args = service_with_mocks._mock_bedrock_client.invoke_model.call_args[1]
+            bedrock_call_args = (
+                service_with_mocks._mock_bedrock_client.invoke_model.call_args[1]
+            )
             content = bedrock_call_args["content"]
             assert len(content) == 2
             assert "image" in content[0]

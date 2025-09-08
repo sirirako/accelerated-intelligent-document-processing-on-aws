@@ -44,16 +44,16 @@ class TestBdaBlueprintService:
                                 {
                                     "name": "FirstName",
                                     "dataType": "string",
-                                    "description": "First Name of Employee"
+                                    "description": "First Name of Employee",
                                 },
                                 {
                                     "name": "LastName",
                                     "dataType": "string",
-                                    "description": "Last Name of Employee"
-                                }
-                            ]
+                                    "description": "Last Name of Employee",
+                                },
+                            ],
                         }
-                    ]
+                    ],
                 },
                 {
                     "name": "I-9",
@@ -69,13 +69,13 @@ class TestBdaBlueprintService:
                                 {
                                     "name": "FullName",
                                     "dataType": "string",
-                                    "description": "Employee full name"
+                                    "description": "Employee full name",
                                 }
-                            ]
+                            ],
                         }
-                    ]
-                }
-            ]
+                    ],
+                },
+            ],
         }
 
     @pytest.fixture
@@ -92,20 +92,18 @@ class TestBdaBlueprintService:
                     "properties": {
                         "firstname": {
                             "type": "string",
-                            "instruction": "First Name of Employee"
+                            "instruction": "First Name of Employee",
                         },
                         "lastname": {
                             "type": "string",
-                            "instruction": "Last Name of Employee"
-                        }
-                    }
+                            "instruction": "Last Name of Employee",
+                        },
+                    },
                 }
             },
             "properties": {
-                "PersonalInformation": {
-                    "$ref": "#/definitions/PersonalInformation"
-                }
-            }
+                "PersonalInformation": {"$ref": "#/definitions/PersonalInformation"}
+            },
         }
 
     @pytest.fixture
@@ -117,8 +115,8 @@ class TestBdaBlueprintService:
                 "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/w4-12345678",
                 "blueprintName": "W-4-12345678",
                 "blueprintStage": "LIVE",
-                "blueprintVersion": "1"
-            }
+                "blueprintVersion": "1",
+            },
         }
 
     @pytest.fixture
@@ -127,29 +125,29 @@ class TestBdaBlueprintService:
         with (
             patch("boto3.resource") as mock_dynamodb,
             patch("boto3.client") as mock_boto_client,
-            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"})
+            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"}),
         ):
             # Mock DynamoDB table
             mock_table = MagicMock()
             mock_dynamodb.return_value.Table.return_value = mock_table
-            
+
             # Mock boto3 client for BDABlueprintCreator
             mock_bedrock_client = MagicMock()
             mock_boto_client.return_value = mock_bedrock_client
-            
+
             service = BdaBlueprintService(
                 dataAutomationProjectArn="arn:aws:bedrock:us-west-2:123456789012:project/test-project",
-                region="us-west-2"
+                region="us-west-2",
             )
-            
+
             # Store mocks for access in tests
             service._mock_table = mock_table
-            
+
             # Replace the blueprint_creator with a mock
             mock_blueprint_creator = MagicMock()
             service.blueprint_creator = mock_blueprint_creator
             service._mock_blueprint_creator = mock_blueprint_creator
-            
+
             return service
 
     def test_init(self):
@@ -157,20 +155,31 @@ class TestBdaBlueprintService:
         with (
             patch("boto3.resource") as mock_dynamodb,
             patch("boto3.client") as mock_boto_client,
-            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table", "AWS_REGION": "us-east-1"})
+            patch.dict(
+                "os.environ",
+                {
+                    "CONFIGURATION_TABLE_NAME": "test-config-table",
+                    "AWS_REGION": "us-east-1",
+                },
+            ),
         ):
             service = BdaBlueprintService(
                 dataAutomationProjectArn="arn:aws:bedrock:us-west-2:123456789012:project/test-project",
-                region="us-west-2"
+                region="us-west-2",
             )
 
-            assert service.dataAutomationProjectArn == "arn:aws:bedrock:us-west-2:123456789012:project/test-project"
+            assert (
+                service.dataAutomationProjectArn
+                == "arn:aws:bedrock:us-west-2:123456789012:project/test-project"
+            )
             assert service.region == "us-west-2"
             assert service.configuration_table_name == "test-config-table"
-            
+
             # Verify boto3 client was called for BDABlueprintCreator
-            mock_boto_client.assert_called_with(service_name="bedrock-data-automation", region_name="us-west-2")
-            
+            mock_boto_client.assert_called_with(
+                service_name="bedrock-data-automation", region_name="us-west-2"
+            )
+
             # Verify DynamoDB table was set up
             mock_dynamodb.assert_called_once_with("dynamodb")
 
@@ -179,11 +188,14 @@ class TestBdaBlueprintService:
         with (
             patch("boto3.resource"),
             patch("boto3.client"),
-            patch.dict("os.environ", {"AWS_REGION": "us-east-1", "CONFIGURATION_TABLE_NAME": "test-table"})
+            patch.dict(
+                "os.environ",
+                {"AWS_REGION": "us-east-1", "CONFIGURATION_TABLE_NAME": "test-table"},
+            ),
         ):
             service = BdaBlueprintService(
                 dataAutomationProjectArn="arn:aws:bedrock:us-west-2:123456789012:project/test-project",
-                region=None  # Explicitly pass None to trigger environment lookup
+                region=None,  # Explicitly pass None to trigger environment lookup
             )
 
             assert service.region == "us-east-1"
@@ -198,10 +210,7 @@ class TestBdaBlueprintService:
             "boolean": True,
             "none": None,
             "list": [1, 2, "three", None],
-            "nested_dict": {
-                "inner_string": "inner",
-                "inner_number": 456
-            }
+            "nested_dict": {"inner_string": "inner", "inner_number": 456},
         }
 
         result = service._stringify_values(input_data)
@@ -239,7 +248,9 @@ class TestBdaBlueprintService:
         error_response = {
             "Error": {"Code": "ResourceNotFoundException", "Message": "Table not found"}
         }
-        service._mock_table.get_item.side_effect = ClientError(error_response, "GetItem")
+        service._mock_table.get_item.side_effect = ClientError(
+            error_response, "GetItem"
+        )
 
         with pytest.raises(Exception, match="Failed to retrieve Custom configuration"):
             service._get_configuration_item("Custom")
@@ -250,7 +261,7 @@ class TestBdaBlueprintService:
             {
                 "name": "W-4",
                 "description": "Employee's Withholding Certificate",
-                "attributes": []
+                "attributes": [],
             }
         ]
 
@@ -258,7 +269,7 @@ class TestBdaBlueprintService:
 
         assert result is True
         service._mock_table.put_item.assert_called_once()
-        
+
         # Verify the put_item call
         call_args = service._mock_table.put_item.call_args[1]
         assert call_args["Item"]["Configuration"] == "Custom"
@@ -271,18 +282,18 @@ class TestBdaBlueprintService:
         with pytest.raises(Exception, match="DynamoDB error"):
             service._handle_update_configuration([])
 
-
-
     def test_create_blueprints_from_custom_configuration_no_config(self, service):
         """Test handling when no custom configuration exists."""
         # Mock empty configuration retrieval
-        service._mock_table.get_item.return_value = {"Item": {"Configuration": "Custom", "classes": []}}
-        
+        service._mock_table.get_item.return_value = {
+            "Item": {"Configuration": "Custom", "classes": []}
+        }
+
         # This should not raise an exception but should handle empty classes gracefully
         # Note: The current implementation has a bug with len(classess) < 0 which is never true
         # We'll test the actual behavior
         result = service.create_blueprints_from_custom_configuration()
-        
+
         # Should complete without processing any classes
         assert result["status"] == "success"
         assert "No classes to process" in result["message"]
@@ -292,15 +303,15 @@ class TestBdaBlueprintService:
     def test_create_blueprints_from_custom_configuration_no_classes_key(self, service):
         """Test handling when configuration has no 'classes' key."""
         # Mock configuration without classes key
-        service._mock_table.get_item.return_value = {"Item": {"Configuration": "Custom"}}
-        
+        service._mock_table.get_item.return_value = {
+            "Item": {"Configuration": "Custom"}
+        }
+
         # Should handle missing classes key gracefully
         result = service.create_blueprints_from_custom_configuration()
-        
+
         assert result["status"] == "success"
         service.blueprint_creator.create_blueprint.assert_not_called()
-
-
 
     def test_create_blueprints_from_custom_configuration_dynamodb_error(self, service):
         """Test handling of DynamoDB error during configuration retrieval."""
@@ -308,13 +319,13 @@ class TestBdaBlueprintService:
         error_response = {
             "Error": {"Code": "ResourceNotFoundException", "Message": "Table not found"}
         }
-        service._mock_table.get_item.side_effect = ClientError(error_response, "GetItem")
-        
+        service._mock_table.get_item.side_effect = ClientError(
+            error_response, "GetItem"
+        )
+
         # Should raise exception on DynamoDB error
         with pytest.raises(Exception, match="Failed to process blueprint creation"):
             service.create_blueprints_from_custom_configuration()
-
-
 
     def test_create_blueprints_from_custom_configuration_partial_failure(
         self, service, mock_custom_configuration
@@ -322,24 +333,28 @@ class TestBdaBlueprintService:
         """Test handling when one blueprint succeeds and another fails."""
         # Mock configuration retrieval
         service._mock_table.get_item.return_value = {"Item": mock_custom_configuration}
-        
+
         # Mock first blueprint creation success, second failure
         success_response = {
             "status": "success",
             "blueprint": {
                 "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/w4-12345678",
-                "blueprintName": "W-4-12345678"
-            }
+                "blueprintName": "W-4-12345678",
+            },
         }
-        
+
         service.blueprint_creator.create_blueprint.return_value = success_response
-        service.blueprint_creator.update_blueprint.side_effect = Exception("Update failed")
-        service.blueprint_creator.create_blueprint_version.return_value = success_response
-        
+        service.blueprint_creator.update_blueprint.side_effect = Exception(
+            "Update failed"
+        )
+        service.blueprint_creator.create_blueprint_version.return_value = (
+            success_response
+        )
+
         # Should continue processing despite individual failures
         # The method should complete and update configuration with successful blueprints
         service.create_blueprints_from_custom_configuration()
-        
+
         # Should still update configuration despite partial failure
         service._mock_table.put_item.assert_called_once()
 
@@ -348,25 +363,14 @@ class TestBdaBlueprintService:
         # Test empty structures
         assert service._stringify_values({}) == {}
         assert service._stringify_values([]) == []
-        
+
         # Test deeply nested structures
-        deep_nested = {
-            "level1": {
-                "level2": {
-                    "level3": [1, 2, {"level4": True}]
-                }
-            }
-        }
+        deep_nested = {"level1": {"level2": {"level3": [1, 2, {"level4": True}]}}}
         result = service._stringify_values(deep_nested)
         assert result["level1"]["level2"]["level3"][2]["level4"] == "True"
-        
+
         # Test with special values
-        special_values = {
-            "zero": 0,
-            "empty_string": "",
-            "false": False,
-            "none": None
-        }
+        special_values = {"zero": 0, "empty_string": "", "false": False, "none": None}
         result = service._stringify_values(special_values)
         assert result["zero"] == "0"
         assert result["empty_string"] == ""
@@ -386,11 +390,11 @@ class TestBdaBlueprintService:
                             {
                                 "name": "Field1",
                                 "dataType": "string",
-                                "validations": ["required", "min_length:5"]
+                                "validations": ["required", "min_length:5"],
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
         ]
 
@@ -398,10 +402,12 @@ class TestBdaBlueprintService:
 
         assert result is True
         call_args = service._mock_table.put_item.call_args[1]
-        
+
         # Verify complex data was stringified properly
         stored_config = call_args["Item"]["classes"]
-        assert stored_config[0]["attributes"][0]["groupAttributes"][0]["validations"] == ["required", "min_length:5"]
+        assert stored_config[0]["attributes"][0]["groupAttributes"][0][
+            "validations"
+        ] == ["required", "min_length:5"]
 
     def test_check_for_updates_no_changes(self, service):
         """Test _check_for_updates when no changes are detected."""
@@ -417,74 +423,80 @@ class TestBdaBlueprintService:
                         {
                             "name": "FirstName",
                             "dataType": "string",
-                            "description": "First Name of Employee"
+                            "description": "First Name of Employee",
                         },
                         {
-                            "name": "LastName", 
+                            "name": "LastName",
                             "dataType": "string",
-                            "description": "Last Name of Employee"
-                        }
-                    ]
+                            "description": "Last Name of Employee",
+                        },
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         # Mock existing blueprint schema that matches the custom class
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {
-                        "Personalinformation": {  # Formatted section name (capitalize)
-                            "properties": {
-                                "firstname": {  # Formatted field name (lowercase)
-                                    "type": "string",
-                                    "instruction": "First Name of Employee"
-                                },
-                                "lastname": {  # Formatted field name (lowercase)
-                                    "type": "string", 
-                                    "instruction": "Last Name of Employee"
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {
+                            "Personalinformation": {  # Formatted section name (capitalize)
+                                "properties": {
+                                    "firstname": {  # Formatted field name (lowercase)
+                                        "type": "string",
+                                        "instruction": "First Name of Employee",
+                                    },
+                                    "lastname": {  # Formatted field name (lowercase)
+                                        "type": "string",
+                                        "instruction": "Last Name of Employee",
+                                    },
                                 }
                             }
-                        }
+                        },
                     }
-                })
+                )
             }
         }
-        
+
         # Mock blueprint creator get_blueprint method
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         # Execute the method
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return False (no updates needed)
         assert result is False
-        service.blueprint_creator.get_blueprint.assert_called_once_with("test-blueprint-arn", stage="LIVE")
+        service.blueprint_creator.get_blueprint.assert_called_once_with(
+            "test-blueprint-arn", stage="LIVE"
+        )
 
     def test_check_for_updates_class_name_changed(self, service):
         """Test _check_for_updates when class name has changed."""
         custom_class = {
             "name": "W-4-Updated",  # Changed name
             "description": "Employee's Withholding Certificate form",
-            "attributes": []
+            "attributes": [],
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",  # Original name
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {}
-                })
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",  # Original name
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {},
+                    }
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return True (updates needed)
         assert result is True
 
@@ -493,23 +505,25 @@ class TestBdaBlueprintService:
         custom_class = {
             "name": "W-4",
             "description": "Updated Employee's Withholding Certificate form",  # Changed description
-            "attributes": []
+            "attributes": [],
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",  # Original description
-                    "definitions": {}
-                })
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",  # Original description
+                        "definitions": {},
+                    }
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return True (updates needed)
         assert result is True
 
@@ -519,40 +533,37 @@ class TestBdaBlueprintService:
             "name": "W-4",
             "description": "Employee's Withholding Certificate form",
             "attributes": [
-                {
-                    "name": "PersonalInformation",
-                    "groupAttributes": []
-                },
+                {"name": "PersonalInformation", "groupAttributes": []},
                 {
                     "name": "NewSection",  # New group not in existing blueprint
-                    "groupAttributes": []
-                }
-            ]
+                    "groupAttributes": [],
+                },
+            ],
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {
-                        "Personalinformation": {  # Formatted section name (capitalize)
-                            "properties": {}
-                        }
-                        # Newsection is missing
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {
+                            "Personalinformation": {  # Formatted section name (capitalize)
+                                "properties": {}
+                            }
+                            # Newsection is missing
+                        },
                     }
-                })
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return True (updates needed)
         assert result is True
-
-
 
     def test_check_for_updates_field_description_changed(self, service):
         """Test _check_for_updates when a field description has changed."""
@@ -566,36 +577,38 @@ class TestBdaBlueprintService:
                         {
                             "name": "FirstName",
                             "dataType": "string",
-                            "description": "Updated first name description"  # Changed description
+                            "description": "Updated first name description",  # Changed description
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {
-                        "Personalinformation": {  # Formatted section name (capitalize)
-                            "properties": {
-                                "firstname": {  # Formatted field name (lowercase)
-                                    "type": "string",
-                                    "instruction": "First Name of Employee"  # Original description
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {
+                            "Personalinformation": {  # Formatted section name (capitalize)
+                                "properties": {
+                                    "firstname": {  # Formatted field name (lowercase)
+                                        "type": "string",
+                                        "instruction": "First Name of Employee",  # Original description
+                                    }
                                 }
                             }
-                        }
+                        },
                     }
-                })
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return True (updates needed)
         assert result is True
 
@@ -611,42 +624,44 @@ class TestBdaBlueprintService:
                         {
                             "name": "FirstName",
                             "dataType": "string",
-                            "description": "First Name of Employee"
+                            "description": "First Name of Employee",
                         },
                         {
                             "name": "MiddleName",  # New field
                             "dataType": "string",
-                            "description": "Middle Name of Employee"
-                        }
-                    ]
+                            "description": "Middle Name of Employee",
+                        },
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {
-                        "Personalinformation": {  # Formatted section name (capitalize)
-                            "properties": {
-                                "firstname": {  # Formatted field name (lowercase)
-                                    "type": "string",
-                                    "instruction": "First Name of Employee"
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {
+                            "Personalinformation": {  # Formatted section name (capitalize)
+                                "properties": {
+                                    "firstname": {  # Formatted field name (lowercase)
+                                        "type": "string",
+                                        "instruction": "First Name of Employee",
+                                    }
+                                    # middlename is missing
                                 }
-                                # middlename is missing
                             }
-                        }
+                        },
                     }
-                })
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return True (updates needed)
         assert result is True
 
@@ -655,12 +670,14 @@ class TestBdaBlueprintService:
         custom_class = {
             "name": "W-4",
             "description": "Employee's Withholding Certificate form",
-            "attributes": []
+            "attributes": [],
         }
-        
+
         # Mock blueprint creator to raise an exception
-        service.blueprint_creator.get_blueprint.side_effect = Exception("Blueprint not found")
-        
+        service.blueprint_creator.get_blueprint.side_effect = Exception(
+            "Blueprint not found"
+        )
+
         # Should raise the exception
         with pytest.raises(Exception, match="Blueprint not found"):
             service._check_for_updates(custom_class, "invalid-blueprint-arn")
@@ -670,23 +687,25 @@ class TestBdaBlueprintService:
         custom_class = {
             "name": "W-4",
             "description": "Employee's Withholding Certificate form",
-            "attributes": []  # Empty attributes
+            "attributes": [],  # Empty attributes
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {}
-                })
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {},
+                    }
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return False (no updates needed for empty attributes)
         assert result is False
 
@@ -694,24 +713,26 @@ class TestBdaBlueprintService:
         """Test _check_for_updates when attributes key is missing."""
         custom_class = {
             "name": "W-4",
-            "description": "Employee's Withholding Certificate form"
+            "description": "Employee's Withholding Certificate form",
             # Missing attributes key
         }
-        
+
         existing_blueprint = {
             "blueprint": {
-                "schema": json.dumps({
-                    "class": "W-4",
-                    "description": "Employee's Withholding Certificate form",
-                    "definitions": {}
-                })
+                "schema": json.dumps(
+                    {
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "definitions": {},
+                    }
+                )
             }
         }
-        
+
         service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-        
+
         # Should handle missing attributes gracefully
         result = service._check_for_updates(custom_class, "test-blueprint-arn")
-        
+
         # Should return False when attributes is None
         assert result is False

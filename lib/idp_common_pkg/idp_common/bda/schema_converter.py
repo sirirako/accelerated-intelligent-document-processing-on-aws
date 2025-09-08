@@ -142,7 +142,7 @@ class SchemaConverter:
         field_schema["instruction"] = field["description"]
 
         # Handle special formats
-        #if datatype == "date":
+        # if datatype == "date":
         #    field_schema["instruction"] = (
         #        " ".join(instructions) + " .Format as YYYY-MM-DD"
         #    )

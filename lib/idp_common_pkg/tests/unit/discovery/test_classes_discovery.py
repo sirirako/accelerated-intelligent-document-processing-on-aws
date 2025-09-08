@@ -35,36 +35,38 @@ class TestClassesDiscovery:
                     "message": {
                         "content": [
                             {
-                                "text": json.dumps({
-                                    "document_class": "W-4",
-                                    "document_description": "Employee's Withholding Certificate form",
-                                    "groups": [
-                                        {
-                                            "name": "PersonalInformation",
-                                            "description": "Personal information of employee",
-                                            "attributeType": "group",
-                                            "groupType": "normal",
-                                            "groupAttributes": [
-                                                {
-                                                    "name": "FirstName",
-                                                    "dataType": "string",
-                                                    "description": "First Name of Employee"
-                                                },
-                                                {
-                                                    "name": "LastName",
-                                                    "dataType": "string",
-                                                    "description": "Last Name of Employee"
-                                                }
-                                            ]
-                                        }
-                                    ]
-                                })
+                                "text": json.dumps(
+                                    {
+                                        "document_class": "W-4",
+                                        "document_description": "Employee's Withholding Certificate form",
+                                        "groups": [
+                                            {
+                                                "name": "PersonalInformation",
+                                                "description": "Personal information of employee",
+                                                "attributeType": "group",
+                                                "groupType": "normal",
+                                                "groupAttributes": [
+                                                    {
+                                                        "name": "FirstName",
+                                                        "dataType": "string",
+                                                        "description": "First Name of Employee",
+                                                    },
+                                                    {
+                                                        "name": "LastName",
+                                                        "dataType": "string",
+                                                        "description": "Last Name of Employee",
+                                                    },
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                )
                             }
                         ]
                     }
                 }
             },
-            "metering": {"tokens": 500}
+            "metering": {"tokens": 500},
         }
 
     @pytest.fixture
@@ -77,9 +79,9 @@ class TestClassesDiscovery:
                 "street": "123 Main St",
                 "city": "Anytown",
                 "state": "CA",
-                "zip": "12345"
+                "zip": "12345",
             },
-            "filing_status": "Single"
+            "filing_status": "Single",
         }
 
     @pytest.fixture
@@ -95,11 +97,11 @@ class TestClassesDiscovery:
                         {
                             "name": "PersonalInformation",
                             "description": "Personal information of employee",
-                            "attributeType": "group"
+                            "attributeType": "group",
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
 
     @pytest.fixture
@@ -108,27 +110,27 @@ class TestClassesDiscovery:
         with (
             patch("boto3.resource") as mock_dynamodb,
             patch("idp_common.bedrock.BedrockClient") as mock_bedrock_client,
-            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"})
+            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"}),
         ):
             # Mock DynamoDB table
             mock_table = MagicMock()
             mock_dynamodb.return_value.Table.return_value = mock_table
-            
+
             # Mock BedrockClient
             mock_client = MagicMock()
             mock_bedrock_client.return_value = mock_client
-            
+
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
                 bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
-                region="us-west-2"
+                region="us-west-2",
             )
-            
+
             # Store mocks for access in tests
             service._mock_table = mock_table
             service._mock_bedrock_client = mock_client
-            
+
             return service
 
     def test_init(self):
@@ -136,13 +138,13 @@ class TestClassesDiscovery:
         with (
             patch("boto3.resource") as mock_dynamodb,
             patch("idp_common.bedrock.BedrockClient") as mock_bedrock_client,
-            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"})
+            patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"}),
         ):
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
                 bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
-                region="us-west-2"
+                region="us-west-2",
             )
 
             assert service.input_bucket == "test-bucket"
@@ -150,10 +152,10 @@ class TestClassesDiscovery:
             assert service.bedrock_model_id == "anthropic.claude-3-sonnet-20240229-v1:0"
             assert service.region == "us-west-2"
             assert service.configuration_table_name == "test-config-table"
-            
+
             # Verify BedrockClient was initialized with correct region
             mock_bedrock_client.assert_called_once_with(region="us-west-2")
-            
+
             # Verify DynamoDB table was set up
             mock_dynamodb.assert_called_once_with("dynamodb")
 
@@ -162,13 +164,16 @@ class TestClassesDiscovery:
         with (
             patch("boto3.resource"),
             patch("idp_common.bedrock.BedrockClient"),
-            patch.dict("os.environ", {"AWS_REGION": "us-east-1", "CONFIGURATION_TABLE_NAME": "test-table"})
+            patch.dict(
+                "os.environ",
+                {"AWS_REGION": "us-east-1", "CONFIGURATION_TABLE_NAME": "test-table"},
+            ),
         ):
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
                 bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
-                region=None  # Explicitly pass None to trigger environment lookup
+                region=None,  # Explicitly pass None to trigger environment lookup
             )
 
             assert service.region == "us-east-1"
@@ -183,10 +188,7 @@ class TestClassesDiscovery:
             "boolean": True,
             "none": None,
             "list": [1, 2, "three", None],
-            "nested_dict": {
-                "inner_string": "inner",
-                "inner_number": 456
-            }
+            "nested_dict": {"inner_string": "inner", "inner_number": 456},
         }
 
         result = service._stringify_values(input_data)
@@ -224,7 +226,9 @@ class TestClassesDiscovery:
         error_response = {
             "Error": {"Code": "ResourceNotFoundException", "Message": "Table not found"}
         }
-        service._mock_table.get_item.side_effect = ClientError(error_response, "GetItem")
+        service._mock_table.get_item.side_effect = ClientError(
+            error_response, "GetItem"
+        )
 
         with pytest.raises(Exception, match="Failed to retrieve Custom configuration"):
             service._get_configuration_item("Custom")
@@ -235,7 +239,7 @@ class TestClassesDiscovery:
             {
                 "name": "W-4",
                 "description": "Employee's Withholding Certificate",
-                "attributes": []
+                "attributes": [],
             }
         ]
 
@@ -243,7 +247,7 @@ class TestClassesDiscovery:
 
         assert result is True
         service._mock_table.put_item.assert_called_once()
-        
+
         # Verify the put_item call
         call_args = service._mock_table.put_item.call_args[1]
         assert call_args["Item"]["Configuration"] == "Custom"
@@ -259,7 +263,12 @@ class TestClassesDiscovery:
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     @patch("idp_common.bedrock.extract_text_from_response")
     def test_discovery_classes_with_document_success(
-        self, mock_extract_text, mock_get_bytes, service, mock_bedrock_response, mock_configuration_item
+        self,
+        mock_extract_text,
+        mock_get_bytes,
+        service,
+        mock_bedrock_response,
+        mock_configuration_item,
     ):
         """Test successful document class discovery."""
         # Mock S3 file content
@@ -268,41 +277,47 @@ class TestClassesDiscovery:
 
         # Mock Bedrock response
         service._mock_bedrock_client.return_value = mock_bedrock_response
-        mock_extract_text.return_value = json.dumps({
-            "document_class": "W-4",
-            "document_description": "Employee's Withholding Certificate form",
-            "groups": [
-                {
-                    "name": "PersonalInformation",
-                    "description": "Personal information of employee",
-                    "attributeType": "group",
-                    "groupAttributes": [
-                        {
-                            "name": "FirstName",
-                            "dataType": "string",
-                            "description": "First Name of Employee"
-                        },
-                        {
-                            "name": "LastName",
-                            "dataType": "string",
-                            "description": "Last Name of Employee"
-                        }
-                    ]
-                }
-            ]
-        })
+        mock_extract_text.return_value = json.dumps(
+            {
+                "document_class": "W-4",
+                "document_description": "Employee's Withholding Certificate form",
+                "groups": [
+                    {
+                        "name": "PersonalInformation",
+                        "description": "Personal information of employee",
+                        "attributeType": "group",
+                        "groupAttributes": [
+                            {
+                                "name": "FirstName",
+                                "dataType": "string",
+                                "description": "First Name of Employee",
+                            },
+                            {
+                                "name": "LastName",
+                                "dataType": "string",
+                                "description": "Last Name of Employee",
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
 
         # Mock configuration retrieval
         service._mock_table.get_item.return_value = {"Item": mock_configuration_item}
 
         # Call the method
-        result = service.discovery_classes_with_document("test-bucket", "test-document.pdf")
+        result = service.discovery_classes_with_document(
+            "test-bucket", "test-document.pdf"
+        )
 
         # Verify result
         assert result["status"] == "SUCCESS"
 
         # Verify S3 was called
-        mock_get_bytes.assert_called_once_with(bucket="test-bucket", key="test-document.pdf")
+        mock_get_bytes.assert_called_once_with(
+            bucket="test-bucket", key="test-document.pdf"
+        )
 
         # Verify Bedrock was called
         service._mock_bedrock_client.invoke_model.assert_called_once()
@@ -315,7 +330,9 @@ class TestClassesDiscovery:
         """Test handling of S3 error during document discovery."""
         mock_get_bytes.side_effect = Exception("S3 access denied")
 
-        with pytest.raises(Exception, match="Failed to process document test-document.pdf"):
+        with pytest.raises(
+            Exception, match="Failed to process document test-document.pdf"
+        ):
             service.discovery_classes_with_document("test-bucket", "test-document.pdf")
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
@@ -327,7 +344,9 @@ class TestClassesDiscovery:
         mock_get_bytes.return_value = b"fake_content"
         service._mock_bedrock_client.side_effect = Exception("Bedrock error")
 
-        with pytest.raises(Exception, match="Failed to process document test-document.pdf"):
+        with pytest.raises(
+            Exception, match="Failed to process document test-document.pdf"
+        ):
             service.discovery_classes_with_document("test-bucket", "test-document.pdf")
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
@@ -340,13 +359,20 @@ class TestClassesDiscovery:
         service._mock_bedrock_client.return_value = {"response": {}, "metering": {}}
         mock_extract_text.return_value = "Invalid JSON response"
 
-        with pytest.raises(Exception, match="Failed to process document test-document.pdf"):
+        with pytest.raises(
+            Exception, match="Failed to process document test-document.pdf"
+        ):
             service.discovery_classes_with_document("test-bucket", "test-document.pdf")
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     @patch("idp_common.bedrock.extract_text_from_response")
     def test_discovery_classes_with_document_and_ground_truth_success(
-        self, mock_extract_text, mock_get_bytes, service, mock_ground_truth_data, mock_configuration_item
+        self,
+        mock_extract_text,
+        mock_get_bytes,
+        service,
+        mock_ground_truth_data,
+        mock_configuration_item,
     ):
         """Test successful document class discovery with ground truth."""
         # Mock S3 file content
@@ -357,13 +383,15 @@ class TestClassesDiscovery:
         # Mock Bedrock response
         service._mock_bedrock_client.return_value = {
             "response": {"output": {"message": {"content": [{"text": "{}"}]}}},
-            "metering": {"tokens": 500}
+            "metering": {"tokens": 500},
         }
-        mock_extract_text.return_value = json.dumps({
-            "document_class": "W-4",
-            "document_description": "Employee's Withholding Certificate form",
-            "groups": []
-        })
+        mock_extract_text.return_value = json.dumps(
+            {
+                "document_class": "W-4",
+                "document_description": "Employee's Withholding Certificate form",
+                "groups": [],
+            }
+        )
 
         # Mock configuration retrieval
         service._mock_table.get_item.return_value = {"Item": mock_configuration_item}
@@ -378,10 +406,12 @@ class TestClassesDiscovery:
 
         # Verify S3 was called twice (ground truth + document)
         assert mock_get_bytes.call_count == 2
-        mock_get_bytes.assert_has_calls([
-            call(bucket="test-bucket", key="ground-truth.json"),
-            call(bucket="test-bucket", key="test-document.pdf")
-        ])
+        mock_get_bytes.assert_has_calls(
+            [
+                call(bucket="test-bucket", key="ground-truth.json"),
+                call(bucket="test-bucket", key="test-document.pdf"),
+            ]
+        )
 
     def test_parse_s3_uri_valid(self, service):
         """Test parsing valid S3 URI."""
@@ -400,14 +430,18 @@ class TestClassesDiscovery:
             service._parse_s3_uri("http://example.com/file.pdf")
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
-    def test_load_ground_truth_success(self, mock_get_bytes, service, mock_ground_truth_data):
+    def test_load_ground_truth_success(
+        self, mock_get_bytes, service, mock_ground_truth_data
+    ):
         """Test successful loading of ground truth data."""
         mock_get_bytes.return_value = json.dumps(mock_ground_truth_data).encode()
 
         result = service._load_ground_truth("test-bucket", "ground-truth.json")
 
         assert result == mock_ground_truth_data
-        mock_get_bytes.assert_called_once_with(bucket="test-bucket", key="ground-truth.json")
+        mock_get_bytes.assert_called_once_with(
+            bucket="test-bucket", key="ground-truth.json"
+        )
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     def test_load_ground_truth_invalid_json(self, mock_get_bytes, service):
@@ -427,24 +461,28 @@ class TestClassesDiscovery:
 
     @patch("idp_common.image.prepare_bedrock_image_attachment")
     @patch("idp_common.bedrock.extract_text_from_response")
-    def test_extract_data_from_document_success(self, mock_extract_text, mock_prepare_image, service):
+    def test_extract_data_from_document_success(
+        self, mock_extract_text, mock_prepare_image, service
+    ):
         """Test successful data extraction from document."""
         mock_document_content = b"fake_image_content"
-        mock_extract_text.return_value = json.dumps({
-            "document_class": "W-4",
-            "document_description": "Test document",
-            "groups": []
-        })
+        mock_extract_text.return_value = json.dumps(
+            {
+                "document_class": "W-4",
+                "document_description": "Test document",
+                "groups": [],
+            }
+        )
         service._mock_bedrock_client.return_value = {
             "response": {"output": {"message": {"content": [{"text": "{}"}]}}},
-            "metering": {"tokens": 500}
+            "metering": {"tokens": 500},
         }
-        
+
         # Mock the image preparation
         mock_prepare_image.return_value = {
             "image": {
                 "format": "jpeg",
-                "source": {"bytes": "base64_encoded_image_data"}
+                "source": {"bytes": "base64_encoded_image_data"},
             }
         }
 
@@ -467,16 +505,18 @@ class TestClassesDiscovery:
     def test_extract_data_from_document_pdf(self, mock_extract_text, service):
         """Test data extraction from PDF document."""
         mock_document_content = b"fake_pdf_content"
-        mock_extract_text.return_value = json.dumps({"document_class": "Form", "groups": []})
+        mock_extract_text.return_value = json.dumps(
+            {"document_class": "Form", "groups": []}
+        )
         service._mock_bedrock_client.return_value = {
             "response": {"output": {"message": {"content": [{"text": "{}"}]}}},
-            "metering": {"tokens": 500}
+            "metering": {"tokens": 500},
         }
 
         result = service._extract_data_from_document(mock_document_content, "pdf")
 
         assert result is not None
-        
+
         # Verify the content structure for PDF
         call_args = service._mock_bedrock_client.invoke_model.call_args[1]
         content = call_args["content"]
@@ -498,13 +538,10 @@ class TestClassesDiscovery:
         """Test creating content list for image document."""
         mock_content = b"fake_image_content"
         prompt = "Test prompt"
-        
+
         # Mock the image preparation
         mock_prepare_image.return_value = {
-            "image": {
-                "format": "jpg",
-                "source": {"bytes": "base64_encoded_image_data"}
-            }
+            "image": {"format": "jpg", "source": {"bytes": "base64_encoded_image_data"}}
         }
 
         result = service._create_content_list(prompt, mock_content, "jpg")
@@ -538,20 +575,22 @@ class TestClassesDiscovery:
     ):
         """Test successful data extraction with ground truth."""
         mock_document_content = b"fake_image_content"
-        mock_extract_text.return_value = json.dumps({
-            "document_class": "W-4",
-            "document_description": "Test document",
-            "groups": []
-        })
+        mock_extract_text.return_value = json.dumps(
+            {
+                "document_class": "W-4",
+                "document_description": "Test document",
+                "groups": [],
+            }
+        )
         service._mock_bedrock_client.return_value = {
             "response": {"output": {"message": {"content": [{"text": "{}"}]}}},
-            "metering": {"tokens": 500}
+            "metering": {"tokens": 500},
         }
-        
+
         # Mock the image preparation
         mock_prepare_image.return_value = {
             "format": "jpeg",
-            "source": {"bytes": "base64_encoded_image_data"}
+            "source": {"bytes": "base64_encoded_image_data"},
         }
 
         result = service._extract_data_from_document_with_ground_truth(
@@ -565,7 +604,9 @@ class TestClassesDiscovery:
         call_args = service._mock_bedrock_client.call_args[1]
         assert call_args["context"] == "ClassesDiscoveryWithGroundTruth"
 
-    def test_extract_data_from_document_with_ground_truth_error(self, service, mock_ground_truth_data):
+    def test_extract_data_from_document_with_ground_truth_error(
+        self, service, mock_ground_truth_data
+    ):
         """Test handling of error during ground truth extraction."""
         service._mock_bedrock_client.side_effect = Exception("Bedrock error")
 
@@ -584,9 +625,13 @@ class TestClassesDiscovery:
 
         assert result == expected_base64
 
-    def test_prompt_classes_discovery_with_ground_truth(self, service, mock_ground_truth_data):
+    def test_prompt_classes_discovery_with_ground_truth(
+        self, service, mock_ground_truth_data
+    ):
         """Test prompt generation with ground truth data."""
-        result = service._prompt_classes_discovery_with_ground_truth(mock_ground_truth_data)
+        result = service._prompt_classes_discovery_with_ground_truth(
+            mock_ground_truth_data
+        )
 
         assert "GROUND_TRUTH_REFERENCE" in result
         assert json.dumps(mock_ground_truth_data, indent=2) in result
@@ -615,42 +660,40 @@ class TestClassesDiscovery:
         assert "FirstName" in result
         assert "Age" in result
 
-    def test_discovery_classes_with_document_updates_existing_class(self, service, mock_configuration_item):
+    def test_discovery_classes_with_document_updates_existing_class(
+        self, service, mock_configuration_item
+    ):
         """Test that discovery updates existing class configuration."""
         # Mock existing configuration with the same class name
         existing_config = {
             "Configuration": "Custom",
             "classes": [
-                {
-                    "name": "W-4",
-                    "description": "Old description",
-                    "attributes": []
-                },
-                {
-                    "name": "Other-Form",
-                    "description": "Other form",
-                    "attributes": []
-                }
-            ]
+                {"name": "W-4", "description": "Old description", "attributes": []},
+                {"name": "Other-Form", "description": "Other form", "attributes": []},
+            ],
         }
 
         with (
             patch("idp_common.utils.s3util.S3Util.get_bytes") as mock_get_bytes,
-            patch("idp_common.bedrock.extract_text_from_response") as mock_extract_text
+            patch("idp_common.bedrock.extract_text_from_response") as mock_extract_text,
         ):
             mock_get_bytes.return_value = b"fake_content"
-            mock_extract_text.return_value = json.dumps({
-                "document_class": "W-4",
-                "document_description": "Updated description",
-                "groups": []
-            })
+            mock_extract_text.return_value = json.dumps(
+                {
+                    "document_class": "W-4",
+                    "document_description": "Updated description",
+                    "groups": [],
+                }
+            )
             service._mock_bedrock_client.return_value = {
                 "response": {"output": {"message": {"content": [{"text": "{}"}]}}},
-                "metering": {"tokens": 500}
+                "metering": {"tokens": 500},
             }
             service._mock_table.get_item.return_value = {"Item": existing_config}
 
-            result = service.discovery_classes_with_document("test-bucket", "test-document.pdf")
+            result = service.discovery_classes_with_document(
+                "test-bucket", "test-document.pdf"
+            )
 
             assert result["status"] == "SUCCESS"
 
@@ -658,12 +701,14 @@ class TestClassesDiscovery:
             service._mock_table.put_item.assert_called_once()
             call_args = service._mock_table.put_item.call_args[1]
             updated_classes = call_args["Item"]["classes"]
-            
+
             # Should have 2 classes (Other-Form + updated W-4)
             assert len(updated_classes) == 2
-            
+
             # Find the W-4 class and verify it was updated
-            w4_class = next((cls for cls in updated_classes if cls["name"] == "W-4"), None)
+            w4_class = next(
+                (cls for cls in updated_classes if cls["name"] == "W-4"), None
+            )
             assert w4_class is not None
             assert w4_class["description"] == "Updated description"
 
@@ -671,21 +716,25 @@ class TestClassesDiscovery:
         """Test discovery when no existing configuration exists."""
         with (
             patch("idp_common.utils.s3util.S3Util.get_bytes") as mock_get_bytes,
-            patch("idp_common.bedrock.extract_text_from_response") as mock_extract_text
+            patch("idp_common.bedrock.extract_text_from_response") as mock_extract_text,
         ):
             mock_get_bytes.return_value = b"fake_content"
-            mock_extract_text.return_value = json.dumps({
-                "document_class": "W-4",
-                "document_description": "New form",
-                "groups": []
-            })
+            mock_extract_text.return_value = json.dumps(
+                {
+                    "document_class": "W-4",
+                    "document_description": "New form",
+                    "groups": [],
+                }
+            )
             service._mock_bedrock_client.return_value = {
                 "response": {"output": {"message": {"content": [{"text": "{}"}]}}},
-                "metering": {"tokens": 500}
+                "metering": {"tokens": 500},
             }
             service._mock_table.get_item.return_value = {}  # No existing config
 
-            result = service.discovery_classes_with_document("test-bucket", "test-document.pdf")
+            result = service.discovery_classes_with_document(
+                "test-bucket", "test-document.pdf"
+            )
 
             assert result["status"] == "SUCCESS"
 
@@ -693,7 +742,7 @@ class TestClassesDiscovery:
             service._mock_table.put_item.assert_called_once()
             call_args = service._mock_table.put_item.call_args[1]
             updated_classes = call_args["Item"]["classes"]
-            
+
             # Should have 1 class
             assert len(updated_classes) == 1
             assert updated_classes[0]["name"] == "W-4"
