@@ -190,11 +190,7 @@ type StepFunctionExecutionResponse @aws_cognito_user_pools @aws_iam {
 
 type DiscoveryJob  @aws_cognito_user_pools @aws_iam  {
   jobId: ID!
-  documentKey: String
-  groundTruthKey: String
   status: String!
-  createdAt: String
-  updatedAt: String
   errorMessage: String
 }
 

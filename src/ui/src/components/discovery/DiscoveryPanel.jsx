@@ -66,7 +66,7 @@ const DiscoveryPanel = () => {
   useEffect(() => {
     const originalError = console.error;
     const originalWindowError = window.onerror;
-    
+
     // Suppress console errors
     console.error = (...args) => {
       if (args[0]?.includes?.('ResizeObserver loop completed with undelivered notifications')) {
@@ -113,13 +113,13 @@ const DiscoveryPanel = () => {
 
   // Update a specific job in the list
   const updateDiscoveryJob = useCallback((updatedJob) => {
-    console.log('Updating discovery job:', updatedJob);
+    console.log('Updating discovery job status:', updatedJob);
     setDiscoveryJobs((currentJobs) => {
       const jobIndex = currentJobs.findIndex(job => job.jobId === updatedJob.jobId);
       if (jobIndex >= 0) {
         const newJobs = [...currentJobs];
         const oldJob = newJobs[jobIndex];
-        newJobs[jobIndex] = { ...oldJob, ...updatedJob };
+        newJobs[jobIndex] = { ...oldJob, status: updatedJob.status };
         console.log(`Updated job ${updatedJob.jobId}: ${oldJob.status} -> ${updatedJob.status}`);
         return newJobs;
       }
@@ -131,14 +131,14 @@ const DiscoveryPanel = () => {
   // Set up global subscription for all discovery job updates (similar to document updates)
   useEffect(() => {
     console.log('Setting up global discovery job subscription');
-    
+
     // Note: This is a simplified approach. In a production system, you might want to 
     // subscribe to all jobs or use a different pattern, but for now we'll subscribe 
     // to individual jobs as they're created.
-    
+
     // We'll set up subscriptions for active jobs, but with better lifecycle management
     const subscriptions = new Map();
-    
+
     discoveryJobs.forEach((job) => {
       if (job.status === 'PENDING' || job.status === 'IN_PROGRESS') {
         console.log(`Setting up subscription for discovery job: ${job.jobId}`);

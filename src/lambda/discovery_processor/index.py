@@ -162,13 +162,21 @@ def update_job_status_via_appsync(job_id, status, error_message=None):
         if error_message:
             mutation = """
             mutation UpdateDiscoveryJobStatus($jobId: ID!, $status: String!, $errorMessage: String) {
-                updateDiscoveryJobStatus(jobId: $jobId, status: $status, errorMessage: $errorMessage)
+                updateDiscoveryJobStatus(jobId: $jobId, status: $status, errorMessage: $errorMessage) {
+                    jobId
+                    status
+                    errorMessage
+                }
             }
             """
         else:
             mutation = """
             mutation UpdateDiscoveryJobStatus($jobId: ID!, $status: String!) {
-                updateDiscoveryJobStatus(jobId: $jobId, status: $status)
+                updateDiscoveryJobStatus(jobId: $jobId, status: $status) {
+                    jobId
+                    status
+                    errorMessage
+                }
             }
             """
         

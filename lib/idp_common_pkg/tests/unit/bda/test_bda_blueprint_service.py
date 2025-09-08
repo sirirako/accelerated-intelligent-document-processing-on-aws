@@ -12,8 +12,7 @@ import pytest
 
 # Import standard library modules first
 import json
-import uuid
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 # Import third-party modules
 from botocore.exceptions import ClientError
@@ -339,7 +338,7 @@ class TestBdaBlueprintService:
         
         # Should continue processing despite individual failures
         # The method should complete and update configuration with successful blueprints
-        result = service.create_blueprints_from_custom_configuration()
+        service.create_blueprints_from_custom_configuration()
         
         # Should still update configuration despite partial failure
         service._mock_table.put_item.assert_called_once()
