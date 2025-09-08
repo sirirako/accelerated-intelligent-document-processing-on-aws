@@ -14,6 +14,15 @@ Parameters:
   InputBucket:
     Type: String
 
+  DiscoveryBucket:
+    Type: String
+
+  DiscoveryQueueArn:
+    Type: String
+
+  DiscoveryTrackingTable:
+    Type: String
+
   ConfigurationBucket:
     Type: String
 
@@ -94,6 +103,11 @@ Parameters:
   SageMakerA2IReviewPortalURL:
     Type: String
     Description: "SageMaker A2I Review Portal URL for HITL tasks"
+
+  BedrockModelId:
+    Type: String
+    Description: "Bedrock model id to use for label extraction"
+    Default: "us.amazon.nova-pro-v1:0"
 
   PermissionsBoundaryArn:
     Type: String
@@ -580,6 +594,82 @@ Resources:
       LogGroupName: !Sub "/${AWS::StackName}/lambda/InvokeBDAFunction"
       RetentionInDays: !Ref LogRetentionDays
   
+  BDADiscoveryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    Properties:
+      CodeUri: src/bda_discovery_function/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 4096
+      Environment:
+        Variables:
+          METRIC_NAMESPACE: !Ref StackName
+          LOG_LEVEL: !Ref LogLevel
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          DISCOVERY_TRACKING_TABLE: !Ref DiscoveryTrackingTable
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          BDA_PROJECT_ARN: !Ref BDAProjectArn
+      LoggingConfig:
+        LogGroup: !Ref BDADiscoveryFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DiscoveryTrackingTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
+        - S3ReadPolicy:
+            BucketName: !Ref DiscoveryBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - S3CrudPolicy:
+            BucketName: !Ref OutputBucket
+        - Statement:
+            - Effect: Allow
+              Action: cloudwatch:PutMetricData
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !Ref CustomerManagedEncryptionKeyArn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeDataAutomationAsync
+                - bedrock:CreateDataAutomationProject
+                - bedrock:UpdateDataAutomationProject
+                - bedrock:GetDataAutomationProject
+                - bedrock:GetDataAutomationStatus
+                - bedrock:GetBlueprint
+                - bedrock:UpdateBlueprint
+                - bedrock:CreateBlueprint
+                - bedrock:CreateBlueprintVersion
+              Resource:
+                - !Ref BDAProjectArn
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
+                - !Sub "arn:aws:bedrock:${AWS::Region}:aws:blueprint/*"
+
+  BDADiscoveryFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/BDADiscoveryFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
   ProcessResultsFunction:
     Type: AWS::Serverless::Function
     Metadata:
