@@ -1453,7 +1453,11 @@ class GranularAssessmentService:
                     document.errors.append(error_message)
 
                 # Add task errors to document errors
-                task_errors = [t.error_message for t in failed_tasks if t.error_message]
+                task_errors = [
+                    t.error_message
+                    for t in failed_tasks
+                    if t.error_message and not self.is_parsing_error(t.error_message)
+                ]
                 if task_errors:
                     error_msg = self._convert_error_list_to_string(task_errors)
                     logger.error(f"*** Task Error: {error_message}")
