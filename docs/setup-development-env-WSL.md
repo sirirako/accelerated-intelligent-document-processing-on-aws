@@ -47,7 +47,7 @@ This script automatically installs:
 - Node.js 18
 - AWS CLI v2
 - AWS SAM CLI
-- Python dependencies (boto3, rich, PyYAML, botocore, ruff, pytest)
+- Python dependencies
 
 After running the setup script, go to your WSL home directory using ```cd ~```
 
@@ -61,7 +61,7 @@ source venv/bin/activate
 
 ### 3.2 Install Python Dependencies
 ```bash
-pip install setuptools wheel boto3 rich PyYAML botocore ruff pytest
+pip install setuptools wheel boto3 rich PyYAML botocore ruff pytest typer
 ```
 ### 3.3 Configure AWS CLI
 ```bash
