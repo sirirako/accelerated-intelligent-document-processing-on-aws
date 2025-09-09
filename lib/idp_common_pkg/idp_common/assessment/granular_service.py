@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from idp_common import bedrock, image, metrics, s3, utils
-from idp_common.models import Document
-from idp_common.utils import extract_json_from_text
+from idp_common.models import Document, Status
+from idp_common.utils import check_token_limit, extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -695,11 +695,17 @@ class GranularAssessmentService:
 
             # Parse response into JSON
             assessment_data = {}
+            task_failed = False
+            error_messages = []
             try:
                 assessment_data = json.loads(extract_json_from_text(assessment_text))
             except Exception as e:
                 logger.error(
                     f"Error parsing assessment LLM output for task {task.task_id}: {e}"
+                )
+                task_failed = True
+                error_messages.append(
+                    f"Error parsing assessment LLM output for task {task.task_id}"
                 )
                 # Create default assessments
                 for attr_name in task.attributes:
@@ -741,15 +747,24 @@ class GranularAssessmentService:
             )
 
             processing_time = time.time() - start_time
-
-            return AssessmentResult(
-                task_id=task.task_id,
-                success=True,
-                assessment_data=assessment_data,
-                confidence_alerts=confidence_alerts,
-                processing_time=processing_time,
-                metering=metering,
-            )
+            if task_failed:
+                return AssessmentResult(
+                    task_id=task.task_id,
+                    success=False,
+                    assessment_data=assessment_data,
+                    confidence_alerts=confidence_alerts,
+                    error_message=self._convert_error_list_to_string(error_messages),
+                    processing_time=processing_time,
+                )
+            else:
+                return AssessmentResult(
+                    task_id=task.task_id,
+                    success=True,
+                    assessment_data=assessment_data,
+                    confidence_alerts=confidence_alerts,
+                    processing_time=processing_time,
+                    metering=metering,
+                )
 
         except Exception as e:
             processing_time = time.time() - start_time
@@ -982,6 +997,7 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to read text confidence data for page {page.page_id}: {str(e)}"
                 )
+                raise
 
         # Fallback: use raw OCR data if text confidence is not available (for backward compatibility)
         if page.raw_text_uri:
@@ -998,7 +1014,7 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to generate text confidence data for page {page.page_id}: {str(e)}"
                 )
-
+                raise
         return ""
 
     def _convert_bbox_to_geometry(
@@ -1070,11 +1086,11 @@ class GranularAssessmentService:
                         logger.warning(
                             f"Invalid bounding box format for {attr_name}: {bbox_coords}"
                         )
-
                 except Exception as e:
                     logger.warning(
                         f"Failed to process bounding box for {attr_name}: {str(e)}"
                     )
+                    raise
             else:
                 # If only one of bbox/page exists, log a warning about incomplete data
                 if "bbox" in attr_assessment and "page" not in attr_assessment:
@@ -1419,7 +1435,21 @@ class GranularAssessmentService:
                 f"Assessment completed: {len(successful_tasks)}/{len(tasks)} tasks successful"
             )
             if failed_tasks:
-                logger.warning(f"Failed tasks: {[t.task_id for t in failed_tasks]}")
+                error_message = self._handle_parsing_errors(
+                    document, failed_tasks, document_text, extraction_results
+                )
+                if error_message:
+                    logger.error(f"Error: {error_message}")
+                    document.status = Status.FAILED
+                    document.errors.append(error_message)
+
+                # Add task errors to document errors
+                task_errors = [t.error_message for t in failed_tasks if t.error_message]
+                if task_errors:
+                    error_msg = self._convert_error_list_to_string(task_errors)
+                    logger.error(f"Task Error: {error_message}")
+                    document.status = Status.FAILED
+                    document.errors.append(error_msg)
 
             # Update the existing extraction result with enhanced assessment data
             extraction_data["explainability_info"] = [enhanced_assessment_data]
@@ -1450,18 +1480,16 @@ class GranularAssessmentService:
             document.metering = utils.merge_metering_data(
                 document.metering, aggregated_metering or {}
             )
-
             t5 = time.time()
             logger.info(
                 f"Total granular assessment time for section {section_id}: {t5 - t0:.2f} seconds"
             )
-
         except Exception as e:
+            # Error is processed in the final results step
             error_msg = f"Error processing granular assessment for section {section_id}: {str(e)}"
             logger.error(error_msg)
+            document.status = Status.FAILED
             document.errors.append(error_msg)
-            raise
-
         return document
 
     def assess_document(self, document: Document) -> Document:
@@ -1487,3 +1515,59 @@ class GranularAssessmentService:
 
         logger.info(f"Completed granular assessment for document {document.id}")
         return document
+
+    def _handle_parsing_errors(
+        self,
+        document: Document,
+        failed_tasks: List[str],
+        document_text: str,
+        extraction_results: Dict,
+    ) -> Optional[str]:
+        """Handle multiple parsing errors with user-friendly messaging."""
+        # Check for token limit issues
+        token_warning = check_token_limit(
+            document_text, extraction_results, self.config
+        )
+        logger.info(f"Token Warning: {token_warning}")
+        error_count = len(failed_tasks)
+        base_msg = f"Assessment failed for {error_count} tasks. "
+        if token_warning:
+            return base_msg + token_warning
+        else:
+            return None
+
+    def is_parsing_error(self, error_message: str) -> bool:
+        """Check if an error message is related to parsing issues."""
+        parsing_errors = ["parsing"]
+        return any(error.lower() in error_message.lower() for error in parsing_errors)
+
+    def _convert_error_list_to_string(self, errors) -> str:
+        """Convert list of error messages to a single user-friendly string."""
+        if not errors:
+            return ""
+
+        # Handle single string input
+        if isinstance(errors, str):
+            return errors
+
+        # Ensure we have a list of strings
+        if not isinstance(errors, list):
+            return str(errors)
+
+        # Count different types of errors
+        parsing_errors = [e for e in errors if "parsing" in e.lower()]
+        other_errors = [e for e in errors if "parsing" not in e.lower()]
+
+        if len(parsing_errors) > 10:
+            # Too many parsing errors - summarize
+            return (
+                f"Multiple parsing errors occurred {len(parsing_errors)} parsing errors, "
+                f"{len(other_errors)} other errors. This suggests document complexity or token limit issues."
+            )
+        elif len(errors) > 5:
+            # Multiple errors - show first few and summarize
+            first_errors = "; ".join(errors[:1])
+            return f"{first_errors} and {len(errors) - 1} more errors"
+        else:
+            # Few errors - show all
+            return "; ".join(errors)

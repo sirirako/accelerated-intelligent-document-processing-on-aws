@@ -9,6 +9,8 @@ import logging
 from idp_common import get_config, assessment
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from idp_common import s3
+from assessment_validator import AssessmentValidator
 
 # Configuration will be loaded in handler function
 
@@ -67,12 +69,26 @@ def handler(event, context):
     t1 = time.time()
     logger.info(f"Total extraction time: {t1-t0:.2f} seconds")
 
-    # Check if document processing failed
-    if updated_document.status == Status.FAILED:
-        error_message = f"Assessment failed for document {updated_document.id}, section {section_id}"
-        logger.error(error_message)
-        raise Exception(error_message)
-    
+    # Assessment validation
+    logger.info("--- Start: Assessment Validation ---")
+    for section in updated_document.sections:
+        if section.section_id == section_id and section.extraction_result_uri:
+            logger.info(f"Loading assessment results from: {section.extraction_result_uri}")
+            # Load extraction data with assessment results
+            extraction_data = s3.get_json_content(section.extraction_result_uri)
+            validator = AssessmentValidator(extraction_data,
+                                            assessment_config=config.get('assessment', {}),
+                                            enable_missing_check=False,
+                                            enable_count_check=False)
+            validation_results = validator.validate_all()
+            if not validation_results['is_valid']:
+                # Handle validation failure
+                updated_document.status = Status.FAILED
+                validation_errors = validation_results['validation_errors']
+                updated_document.errors.extend(validation_errors)
+                logger.error(f"Validation Error: {validation_errors}")
+    logger.info("---   End: Assessment Validation ---")
+
     # Prepare output with automatic compression if needed
     result = {
         'document': updated_document.serialize_document(working_bucket, f"assessment_{section_id}", logger),
