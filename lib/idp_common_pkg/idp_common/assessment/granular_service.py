@@ -1509,3 +1509,45 @@ class GranularAssessmentService:
 
         logger.info(f"Completed granular assessment for document {document.id}")
         return document
+
+    def _handle_parsing_errors(
+        self,
+        document: Document,
+        failed_tasks: List[str],
+        document_text: str,
+        extraction_results: Dict,
+    ) -> Optional[str]:
+        """Handle multiple parsing errors with user-friendly messaging."""
+        # Check for token limit issues
+        token_warning = check_token_limit(
+            document_text, extraction_results, self.config
+        )
+        error_count = len(failed_tasks)
+        base_msg = f"Assessment failed for {error_count} tasks. "
+        if token_warning:
+            return base_msg + token_warning
+        else:
+            return None
+
+    def _convert_error_list_to_string(self, errors: List[str]) -> str:
+        """Convert list of error messages to a single user-friendly string."""
+        if not errors:
+            return ""
+
+        # Count different types of errors
+        parsing_errors = [e for e in errors if "parsing" in e.lower()]
+        other_errors = [e for e in errors if "parsing" not in e.lower()]
+
+        if len(parsing_errors) > 10:
+            # Too many parsing errors - summarize
+            return (
+                f"Multiple parsing errors occurred {len(parsing_errors)} parsing errors, "
+                f"{len(other_errors)} other errors. This suggests document complexity or token limit issues."
+            )
+        elif len(errors) > 5:
+            # Multiple errors - show first few and summarize
+            first_errors = "; ".join(errors[:3])
+            return f"{first_errors}... and {len(errors) - 3} more errors"
+        else:
+            # Few errors - show all
+            return "; ".join(errors)
