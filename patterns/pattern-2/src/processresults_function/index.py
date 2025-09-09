@@ -401,10 +401,11 @@ def handler(event, context):
     
     # Clear sections list to rebuild from extraction results
     document.sections = []
+    validation_errors = []
     hitl_triggered = False
     
     # Combine all section results
-    for result in extraction_results:
+    for i, result in enumerate(extraction_results):
         # New optimized format - document is at the top level
         document_data = result.get("document", {})
         section_document = Document.load_document(document_data, working_bucket, logger)
@@ -463,6 +464,12 @@ def handler(event, context):
                 # Create metadata file for section output
                 if section.extraction_result_uri:
                     create_metadata_file(section.extraction_result_uri, section.classification, 'section')
+
+                if section_document.status == Status.FAILED:
+                    error_message = (f"Processing failed for section {i + 1}: "
+                                     f"{'; '.join(section_document.errors)}")
+                    validation_errors.append(error_message)
+                    logger.error(f"Error: {error_message}")
             
             # Add metering from section processing
             document.metering = utils.merge_metering_data(document.metering, section_document.metering)
@@ -494,6 +501,17 @@ def handler(event, context):
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
+
+    # Raise exception if there were validation errors
+    if validation_errors:
+        document.status = Status.FAILED
+        # Create comprehensive error message
+        error_summary = f"Processing failed for {len(validation_errors)} out of {len(extraction_results)} sections"
+        combined_errors = '; '.join(validation_errors)
+        full_error_message = f"{error_summary}: {combined_errors}"
+        logger.error(f"Error: {full_error_message}")
+        raise Exception(full_error_message)
+
     return response
 
 def create_metadata_file(file_uri, class_type, file_type=None):
