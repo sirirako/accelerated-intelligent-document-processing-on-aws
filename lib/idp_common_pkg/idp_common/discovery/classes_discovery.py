@@ -320,7 +320,7 @@ Do not extract the values."""
         for group in groups:
             groupAttributes = []
             groupAttributesArray = []
-            if not "groupAttributes" in group:
+            if "groupAttributes" not in group:
                 continue
             for groupAttribute in group["groupAttributes"]:
                 groupAttributeName = groupAttribute.get("name")

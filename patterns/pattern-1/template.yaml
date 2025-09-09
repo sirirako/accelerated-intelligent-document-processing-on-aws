@@ -776,6 +776,7 @@ Resources:
                 - bedrock:CreateBlueprint
                 - bedrock:CreateBlueprintVersion
                 - bedrock:ListBlueprints
+                - bedrock:DeletBlueprint
               Resource:
                 - !Ref BDAProjectArn
                 - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"

@@ -7,12 +7,10 @@ Tests the complete configuration flow from loading to usage.
 """
 
 import json
-import os
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-import pytest
-import yaml
+from unittest.mock import Mock, patch
 
+import yaml
 from idp_common.discovery.classes_discovery import ClassesDiscovery
 
 

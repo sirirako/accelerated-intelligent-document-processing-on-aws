@@ -6,11 +6,9 @@ Unit tests for Discovery processor configuration functionality.
 Tests the configuration loading and usage in the discovery processor.
 """
 
-import json
 import os
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-import pytest
+from unittest.mock import Mock, patch
 
 # Import the functions we want to test
 # Note: In a real scenario, you'd import from the actual module
@@ -51,8 +49,6 @@ class TestDiscoveryProcessorConfig(unittest.TestCase):
     def test_load_discovery_configuration_from_dynamodb(self, mock_boto3_resource):
         """Test loading configuration from DynamoDB."""
         # Import the function to test
-        import sys
-        import importlib.util
         
         # Mock DynamoDB response
         mock_table = Mock()
@@ -208,13 +204,13 @@ class TestDiscoveryProcessorConfig(unittest.TestCase):
             
             # Mock processing
             if ground_truth_key:
-                result = classes_discovery.discovery_classes_with_document_and_ground_truth(
+                classes_discovery.discovery_classes_with_document_and_ground_truth(
                     input_bucket=bucket,
                     input_prefix=document_key,
                     ground_truth_key=ground_truth_key
                 )
             else:
-                result = classes_discovery.discovery_classes_with_document(
+                classes_discovery.discovery_classes_with_document(
                     input_bucket=bucket,
                     input_prefix=document_key
                 )
@@ -277,13 +273,13 @@ class TestDiscoveryProcessorConfig(unittest.TestCase):
             
             # Mock processing
             if ground_truth_key:
-                result = classes_discovery.discovery_classes_with_document_and_ground_truth(
+                classes_discovery.discovery_classes_with_document_and_ground_truth(
                     input_bucket=bucket,
                     input_prefix=document_key,
                     ground_truth_key=ground_truth_key
                 )
             else:
-                result = classes_discovery.discovery_classes_with_document(
+                classes_discovery.discovery_classes_with_document(
                     input_bucket=bucket,
                     input_prefix=document_key
                 )

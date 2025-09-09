@@ -100,51 +100,56 @@ class BdaBlueprintService:
         """
         Retrieve all blueprints from the Bedrock Data Automation service.
         If project_arn is provided, retrieves blueprints associated with that project.
-        
+
         Args:
             project_arn (Optional[str]): ARN of the data automation project to filter blueprints
-            
+
         Returns:
             list: List of blueprint names and ARNs
         """
         try:
             all_blueprints = []
-            
+
             # If project ARN is provided, get blueprints from the project
             if project_arn:
                 try:
                     blueprint_response = self.blueprint_creator.list_blueprints(
-                        projectArn=project_arn,
-                        projectStage="LIVE"
+                        projectArn=project_arn, projectStage="LIVE"
                     )
-                    
+
                     blueprints = blueprint_response.get("blueprints", [])
                     for blueprint in blueprints:
                         blueprint_arn = blueprint.get("blueprintArn", None)
                         if "aws:blueprint" in blueprint_arn:
                             continue
-                        response = self.blueprint_creator.get_blueprint( blueprint_arn=blueprint_arn, stage="LIVE")
-                        _blueprint = response.get("blueprint") 
+                        response = self.blueprint_creator.get_blueprint(
+                            blueprint_arn=blueprint_arn, stage="LIVE"
+                        )
+                        _blueprint = response.get("blueprint")
                         _blueprint["blueprintVersion"] = blueprint["blueprintVersion"]
-                        all_blueprints.append( _blueprint )
-                    logger.info(f"{len(all_blueprints)} blueprints retrieved for {project_arn}")
-                    logger.info (f"blueprints retrieved {json.dumps(all_blueprints, default=str)}")
+                        all_blueprints.append(_blueprint)
+                    logger.info(
+                        f"{len(all_blueprints)} blueprints retrieved for {project_arn}"
+                    )
+                    logger.info(
+                        f"blueprints retrieved {json.dumps(all_blueprints, default=str)}"
+                    )
                     return all_blueprints
-                    
+
                 except ClientError as e:
                     logger.warning(f"Could not retrieve project {project_arn}: {e}")
                     # Fall through to list all blueprints
                     return []
-                
+
         except Exception as e:
             logger.error(f"Error retrieving blueprints: {e}")
             return []
 
     def _check_for_updates(self, custom_class: dict, blueprint: dict):
-        #blueprint = self.blueprint_creator.get_blueprint(blueprint_arn, stage="LIVE")
+        # blueprint = self.blueprint_creator.get_blueprint(blueprint_arn, stage="LIVE")
         # print(f"blueprint retrieved {blueprint}")
         # get the schema
-        schema = blueprint["schema"]
+        schema = blueprint["blueprint"]["schema"]
         schema = json.loads(schema)
         # get the document class
         definitions = schema["definitions"]
@@ -192,16 +197,15 @@ class BdaBlueprintService:
 
         return _updatesFound
 
-    def _blueprint_lookup( self, existing_blueprints, doc_class):
+    def _blueprint_lookup(self, existing_blueprints, doc_class):
         # Create a lookup dictionary for existing blueprints by name prefix
         _blueprint_prefix = f"{self.blueprint_name_prefix}-{doc_class}"
         logger.info(f"blueprint lookup using name {_blueprint_prefix}")
         for blueprint in existing_blueprints:
             blueprint_name = blueprint.get("blueprintName", "")
-            if blueprint_name.startswith( _blueprint_prefix ):
+            if blueprint_name.startswith(_blueprint_prefix):
                 return blueprint
         return None
-        
 
     def create_blueprints_from_custom_configuration(self):
         """
@@ -225,32 +229,39 @@ class BdaBlueprintService:
                 return {"status": "success", "message": "No classes to process"}
 
             classess_status = []
-            #retrieve all blueprints for this project.
-            existing_blueprints = self._retrieve_all_blueprints(self.dataAutomationProjectArn)
-            
+            # retrieve all blueprints for this project.
+            existing_blueprints = self._retrieve_all_blueprints(
+                self.dataAutomationProjectArn
+            )
+
             blueprints_updated = []
 
             for custom_class in classess:
                 try:
                     blueprint_arn = custom_class.get("blueprint_arn", None)
                     blueprint_name = custom_class.get("blueprint_name", None)
-                    blueprint_version = custom_class.get("blueprint_version", None)
                     docu_class = custom_class["name"]
                     docu_desc = custom_class["description"]
                     converter = SchemaConverter(
                         document_class=docu_class, description=docu_desc
                     )
-                    blueprint_exists =  self._blueprint_lookup( existing_blueprints, docu_class)
+                    blueprint_exists = self._blueprint_lookup(
+                        existing_blueprints, docu_class
+                    )
                     if blueprint_exists:
-                       blueprint_arn = blueprint_exists.get("blueprintArn")
-                       blueprint_name = blueprint_exists.get("blueprintName")
-                       logger.info(f"blueprint already exists for this class {docu_class} updating blueprint {blueprint_arn}")     
+                        blueprint_arn = blueprint_exists.get("blueprintArn")
+                        blueprint_name = blueprint_exists.get("blueprintName")
+                        logger.info(
+                            f"blueprint already exists for this class {docu_class} updating blueprint {blueprint_arn}"
+                        )
 
                     if blueprint_arn:
                         # Use existing blueprint
                         custom_class["blueprint_arn"] = blueprint_arn
                         custom_class["blueprint_name"] = blueprint_name
-                        logger.info(f"Found existing blueprint for class {docu_class}: {blueprint_name}")
+                        logger.info(
+                            f"Found existing blueprint for class {docu_class}: {blueprint_name}"
+                        )
 
                         # Check for updates on existing blueprint
                         if self._check_for_updates(
@@ -262,7 +273,7 @@ class BdaBlueprintService:
                             )
                             logger.info(json.dumps(blueprint_schema, indent=2))
                             logger.info("Blueprint schema generate:: END")
-                            
+
                             result = self.blueprint_creator.update_blueprint(
                                 blueprint_arn=blueprint_arn,
                                 stage="LIVE",
@@ -272,11 +283,17 @@ class BdaBlueprintService:
                                 blueprint_arn=blueprint_arn,
                                 project_arn=self.dataAutomationProjectArn,
                             )
-                            custom_class["blueprint_version"] = result.get("blueprint").get("blueprint_version")
-                            logger.info(f"Updated existing blueprint for class {docu_class}")
+                            custom_class["blueprint_version"] = result.get(
+                                "blueprint"
+                            ).get("blueprint_version")
+                            logger.info(
+                                f"Updated existing blueprint for class {docu_class}"
+                            )
                         else:
-                            logger.info(f"No updates needed for existing blueprint {blueprint_name}")
-                        blueprints_updated.append( blueprint_arn )
+                            logger.info(
+                                f"No updates needed for existing blueprint {blueprint_name}"
+                            )
+                        blueprints_updated.append(blueprint_arn)
                     else:
                         # create new blueprint
                         # Call the create_blueprint method
@@ -288,7 +305,6 @@ class BdaBlueprintService:
                         )
                         logger.info(json.dumps(blueprint_schema, indent=2))
                         logger.info("Blueprint schema generate:: END")
-                        
 
                         result = self.blueprint_creator.create_blueprint(
                             document_type="DOCUMENT",
@@ -310,8 +326,12 @@ class BdaBlueprintService:
                             blueprint_arn=blueprint_arn,
                             project_arn=self.dataAutomationProjectArn,
                         )
-                        custom_class["blueprint_version"] = result.get("blueprint").get("blueprint_version")
-                        logger.info(f"Created new blueprint for class {docu_class}: {blueprint_name}")
+                        custom_class["blueprint_version"] = result.get("blueprint").get(
+                            "blueprint_version"
+                        )
+                        logger.info(
+                            f"Created new blueprint for class {docu_class}: {blueprint_name}"
+                        )
                     classess_status.append(
                         {
                             "class": custom_class["name"],
@@ -321,8 +341,14 @@ class BdaBlueprintService:
                     )
 
                 except Exception as e:
-                    class_name = custom_class.get("name", "unknown") if custom_class else "unknown"
-                    logger.error(f"Error processing blueprint creation/update for class {class_name}: {e}")
+                    class_name = (
+                        custom_class.get("name", "unknown")
+                        if custom_class
+                        else "unknown"
+                    )
+                    logger.error(
+                        f"Error processing blueprint creation/update for class {class_name}: {e}"
+                    )
                     classess_status.append(
                         {
                             "class": class_name,
@@ -330,7 +356,10 @@ class BdaBlueprintService:
                             "error_message": f"Exception - {str(e)}",
                         }
                     )
-            self._synchronize_deletes( existing_blueprints=existing_blueprints, blueprints_updated=blueprints_updated)
+            self._synchronize_deletes(
+                existing_blueprints=existing_blueprints,
+                blueprints_updated=blueprints_updated,
+            )
             self._handle_update_configuration(classess)
             return classess_status
 
@@ -340,7 +369,7 @@ class BdaBlueprintService:
             raise Exception(f"Failed to process blueprint creation: {str(e)}")
 
     def _synchronize_deletes(self, existing_blueprints, blueprints_updated):
-        #remove all blueprints which are not in custom class
+        # remove all blueprints which are not in custom class
         blueprints_to_delete = []
         blueprints_arn_to_delete = []
         for blueprint in existing_blueprints:
@@ -349,32 +378,44 @@ class BdaBlueprintService:
             blueprint_version = blueprint.get("blueprintVersion", "")
             if blueprint_arn in blueprints_updated:
                 continue
-            if blueprint_name.startswith( self.blueprint_name_prefix ):
-                #delete detected - remove the blueprint
+            if blueprint_name.startswith(self.blueprint_name_prefix):
+                # delete detected - remove the blueprint
                 logger.info(f"deleting blueprint not in custom class {blueprint_name}")
-                blueprints_to_delete.append( blueprint )
-                blueprints_arn_to_delete.append( blueprint_arn )
-        
-        if len(blueprints_to_delete) > 0 :
-            #remove the blueprints marked for deletion for the project first before deleting them.
-            response = self.blueprint_creator.list_blueprints(self.dataAutomationProjectArn, "LIVE")
+                blueprints_to_delete.append(blueprint)
+                blueprints_arn_to_delete.append(blueprint_arn)
+
+        if len(blueprints_to_delete) > 0:
+            # remove the blueprints marked for deletion for the project first before deleting them.
+            response = self.blueprint_creator.list_blueprints(
+                self.dataAutomationProjectArn, "LIVE"
+            )
             custom_configurations = response.get("blueprints", [])
             new_custom_configurations = []
             for custom_blueprint in custom_configurations:
-                if custom_blueprint.get("blueprintArn") not in  blueprints_arn_to_delete:
-                    new_custom_configurations.append( custom_blueprint )
+                if custom_blueprint.get("blueprintArn") not in blueprints_arn_to_delete:
+                    new_custom_configurations.append(custom_blueprint)
             new_custom_configurations = {"blueprints": new_custom_configurations}
-            response = self.blueprint_creator.update_project_with_custom_configurations(self.dataAutomationProjectArn, customConfiguration=new_custom_configurations)
+            response = self.blueprint_creator.update_project_with_custom_configurations(
+                self.dataAutomationProjectArn,
+                customConfiguration=new_custom_configurations,
+            )
 
             try:
                 for _blueprint_delete in blueprints_to_delete:
-                    self.blueprint_creator.delete_blueprint( _blueprint_delete.get("blueprintArn"), _blueprint_delete.get("blueprintVersion") )
-            except Exception as e:
-                logger.error(f"Error during deleting blueprint {blueprint_name} {blueprint_arn} {blueprint_version}")
+                    self.blueprint_creator.delete_blueprint(
+                        _blueprint_delete.get("blueprintArn"),
+                        _blueprint_delete.get("blueprintVersion"),
+                    )
+            except Exception:
+                logger.error(
+                    f"Error during deleting blueprint {blueprint_name} {blueprint_arn} {blueprint_version}"
+                )
             try:
                 for _blueprint_delete in blueprints_to_delete:
-                    self.blueprint_creator.delete_blueprint( _blueprint_delete.get("blueprintArn"), None )
-            except Exception as e:
-                logger.error(f"Error during deleting blueprint {blueprint_name} {blueprint_arn} {blueprint_version}")
-
-
+                    self.blueprint_creator.delete_blueprint(
+                        _blueprint_delete.get("blueprintArn"), None
+                    )
+            except Exception:
+                logger.error(
+                    f"Error during deleting blueprint {blueprint_name} {blueprint_arn} {blueprint_version}"
+                )

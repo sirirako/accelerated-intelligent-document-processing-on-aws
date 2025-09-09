@@ -461,17 +461,11 @@ class TestBdaBlueprintService:
             }
         }
 
-        # Mock blueprint creator get_blueprint method
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
         # Execute the method
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return False (no updates needed)
         assert result is False
-        service.blueprint_creator.get_blueprint.assert_called_once_with(
-            "test-blueprint-arn", stage="LIVE"
-        )
 
     def test_check_for_updates_class_name_changed(self, service):
         """Test _check_for_updates when class name has changed."""
@@ -493,9 +487,7 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return True (updates needed)
         assert result is True
@@ -520,9 +512,7 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return True (updates needed)
         assert result is True
@@ -558,9 +548,7 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return True (updates needed)
         assert result is True
@@ -605,9 +593,7 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return True (updates needed)
         assert result is True
@@ -658,29 +644,29 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return True (updates needed)
         assert result is True
 
     def test_check_for_updates_blueprint_retrieval_error(self, service):
-        """Test _check_for_updates when blueprint retrieval fails."""
+        """Test _check_for_updates when blueprint has invalid schema."""
         custom_class = {
             "name": "W-4",
             "description": "Employee's Withholding Certificate form",
             "attributes": [],
         }
 
-        # Mock blueprint creator to raise an exception
-        service.blueprint_creator.get_blueprint.side_effect = Exception(
-            "Blueprint not found"
-        )
+        # Invalid blueprint with malformed schema
+        invalid_blueprint = {
+            "blueprint": {
+                "schema": "invalid json"
+            }
+        }
 
         # Should raise the exception
-        with pytest.raises(Exception, match="Blueprint not found"):
-            service._check_for_updates(custom_class, "invalid-blueprint-arn")
+        with pytest.raises(json.JSONDecodeError):
+            service._check_for_updates(custom_class, invalid_blueprint)
 
     def test_check_for_updates_empty_attributes(self, service):
         """Test _check_for_updates with empty attributes list."""
@@ -702,9 +688,7 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return False (no updates needed for empty attributes)
         assert result is False
@@ -729,10 +713,8 @@ class TestBdaBlueprintService:
             }
         }
 
-        service.blueprint_creator.get_blueprint.return_value = existing_blueprint
-
         # Should handle missing attributes gracefully
-        result = service._check_for_updates(custom_class, "test-blueprint-arn")
+        result = service._check_for_updates(custom_class, existing_blueprint)
 
         # Should return False when attributes is None
         assert result is False

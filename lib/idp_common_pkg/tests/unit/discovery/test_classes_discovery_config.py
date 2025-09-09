@@ -7,10 +7,8 @@ Tests the new configuration-based approach for ClassesDiscovery.
 """
 
 import json
-import os
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-import pytest
+from unittest.mock import Mock, patch
 
 from idp_common.discovery.classes_discovery import ClassesDiscovery
 
