@@ -111,7 +111,7 @@ class AssessmentValidator:
             return {
                 'is_valid': False,
                 'failed_attributes': list(expected_attributes),
-                'error_message': 'No assessment results found for the extracted attributes'
+                'error_message': 'No assessment information found for the extracted attributes.'
             }
 
         return {
