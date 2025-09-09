@@ -1444,7 +1444,11 @@ class GranularAssessmentService:
                     document.errors.append(error_message)
 
                 # Add task errors to document errors
-                task_errors = [t.error_message for t in failed_tasks if t.error_message]
+                task_errors = [
+                    t.error_message
+                    for t in failed_tasks
+                    if t.error_message and not self.is_parsing_error(t.error_message)
+                ]
                 if task_errors:
                     error_msg = self._convert_error_list_to_string(task_errors)
                     logger.error(f"Error: {error_message}")
@@ -1534,6 +1538,11 @@ class GranularAssessmentService:
             return base_msg + token_warning
         else:
             return None
+
+    def is_parsing_error(self, error_message: str) -> bool:
+        """Check if an error message is related to parsing issues."""
+        parsing_errors = ["parsing"]
+        return any(error.lower() in error_message.lower() for error in parsing_errors)
 
     def _convert_error_list_to_string(self, errors) -> str:
         """Convert list of error messages to a single user-friendly string."""
