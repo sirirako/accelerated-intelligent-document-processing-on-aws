@@ -411,6 +411,7 @@ def handler(event, context):
     # Clear sections list to rebuild from extraction results
     document.sections = []
     validation_errors = []
+    validation_errors = []
     hitl_triggered = False
     
     # Combine all section results
@@ -510,9 +511,6 @@ def handler(event, context):
     }
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
-
-    if document.errors:
-        validation_errors.extend(document.errors)
 
     # Raise exception if there were validation errors
     if validation_errors:
