@@ -103,25 +103,99 @@ class AssessmentValidator:
             'error_message': None
         }
     
-    def check_top_k_config(self):
-        """Check if top_k configuration is valid"""
-        top_k = self.assessment_config.get("top_k")
-        
-        if top_k is not None:
-            if not isinstance(top_k, (int, float)) or top_k > 100:
-                raise ValueError("top_k must be a number and not greater than 100")
-                # return {
-                #     'is_valid': False,
-                #     'failed_attributes': ['top_k'],
-                #     'error_message': 'top_k must be a number and not greater than 100'
-                # }
-        
+    def check_explainability_exists(self):
+        """Check if explainability_info has at least one element when expected attributes exist"""
+        expected_attributes = set(self.inference_result.keys())
+
+        if expected_attributes and (not self.explainability_info or not self.explainability_info[0]):
+            return {
+                'is_valid': False,
+                'failed_attributes': list(expected_attributes),
+                'error_message': 'No assessment results found for the extracted attributes'
+            }
+
         return {
             'is_valid': True,
             'failed_attributes': [],
             'error_message': None
         }
     
+    def check_top_k_config(self):
+        """Check if top_k configuration is valid"""
+        top_k = self.assessment_config.get("top_k")
+        if top_k is not None:
+            try:
+                if isinstance(top_k, str):
+                    top_k = int(top_k)
+                if not isinstance(top_k, (int, float)) or top_k > 100 or top_k < 1:
+                    raise ValueError("Assessment configuration for top_k must be a number between 1 and 100")
+            except (ValueError, TypeError):
+                raise ValueError("Assessment configuration for top_k must be a number between 1 and 100")
+        
+        return {
+            'is_valid': True,
+            'failed_attributes': [],
+            'error_message': None
+        }
+
+    def check_top_p_config(self):
+        """Check if top_p configuration is valid"""
+        top_p = self.assessment_config.get("top_p")
+        if top_p is not None:
+            try:
+                if isinstance(top_p, str):
+                    top_p = float(top_p)
+                if not isinstance(top_p, (int, float)) or top_p > 1:
+                    raise ValueError("Assessment configuration for top_p must be a decimal number and less than 1")
+            except (ValueError, TypeError):
+                raise ValueError("Assessment configuration for top_p must be a decimal number and less than 1")
+
+        return {
+            'is_valid': True,
+            'failed_attributes': [],
+            'error_message': None
+        }
+
+    def check_sampling_temperature_config(self):
+        """Check if top_p configuration is valid"""
+        temperature = self.assessment_config.get("temperature")
+        if temperature is not None:
+            try:
+                if isinstance(temperature, str):
+                    temperature = float(temperature)
+                if not isinstance(temperature, (int, float)) or temperature > 1 or temperature < 0:
+                    raise ValueError("Assessment configuration for sampling temperature must be a "
+                                     "decimal number between 0 and 1")
+            except (ValueError, TypeError):
+                raise ValueError("Assessment configuration for sampling temperature must be a "
+                                 "decimal number between 0 and 1")
+
+        return {
+            'is_valid': True,
+            'failed_attributes': [],
+            'error_message': None
+        }
+
+    def check_max_tokens_config(self):
+        """Check if max_tokens configuration is valid"""
+        max_tokens = self.assessment_config.get("max_tokens")
+        if max_tokens is not None:
+            try:
+                if isinstance(max_tokens, str):
+                    max_tokens = float(max_tokens)
+                if not isinstance(max_tokens, (int, float)) or max_tokens > 1000000:
+                    raise ValueError("Assessment configuration for max_tokens must be a number "
+                                     "and less than 1000000")
+            except (ValueError, TypeError):
+                raise ValueError("Assessment configuration for max_tokens must be a number "
+                                 "and less than 1000000")
+
+        return {
+            'is_valid': True,
+            'failed_attributes': [],
+            'error_message': None
+        }
+
     def validate_all(self):
         """Run all validations and return comprehensive results"""
         validation_results = {
@@ -129,8 +203,14 @@ class AssessmentValidator:
             'failed_attributes': [],
             'validation_errors': []
         }
-        
-        # Check missing explainability (only if enabled)
+
+        # Check Configuration
+        self.check_sampling_temperature_config()
+        self.check_top_k_config()
+        self.check_top_p_config()
+        self.check_max_tokens_config()
+
+        # Check missing explainability if enabled
         if self.enable_missing_check:
             missing_result = self.check_missing_explainability()
             if not missing_result['is_valid']:
@@ -140,7 +220,7 @@ class AssessmentValidator:
         else:
             logger.debug("Skipping missing explainability check is disabled.")
 
-        # Check count (only if enabled)
+        # Check count if enabled
         if self.enable_count_check:
             count_result = self.check_explainability_count()
             if not count_result['is_valid']:
@@ -150,12 +230,12 @@ class AssessmentValidator:
         else:
             logger.debug("Skipping explainability count check disabled.")
         
-        # Check top_k configuration
-        top_k_result = self.check_top_k_config()
-        if not top_k_result['is_valid']:
+        # Check explainability exists
+        exists_result = self.check_explainability_exists()
+        if not exists_result['is_valid']:
             validation_results['is_valid'] = False
-            validation_results['failed_attributes'].extend(top_k_result['failed_attributes'])
-            validation_results['validation_errors'].append(top_k_result['error_message'])
+            validation_results['failed_attributes'].extend(exists_result['failed_attributes'])
+            validation_results['validation_errors'].append(exists_result['error_message'])
         
         # Log final validation result
         if validation_results['is_valid']:

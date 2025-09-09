@@ -78,7 +78,8 @@ def handler(event, context):
             extraction_data = s3.get_json_content(section.extraction_result_uri)
             validator = AssessmentValidator(extraction_data,
                                             assessment_config=config.get('assessment', {}),
-                                            enable_missing_check=True)
+                                            enable_missing_check=False,
+                                            enable_count_check=False)
             validation_results = validator.validate_all()
             if not validation_results['is_valid']:
                 # Handle validation failure
