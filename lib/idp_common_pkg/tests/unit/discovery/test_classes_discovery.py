@@ -149,7 +149,9 @@ class TestClassesDiscovery:
 
             assert service.input_bucket == "test-bucket"
             assert service.input_prefix == "test-document.pdf"
-            assert service.bedrock_model_id == "anthropic.claude-3-sonnet-20240229-v1:0"
+            # Verify backward compatibility - bedrock_model_id should override config
+            assert service.without_gt_config["model_id"] == "anthropic.claude-3-sonnet-20240229-v1:0"
+            assert service.with_gt_config["model_id"] == "anthropic.claude-3-sonnet-20240229-v1:0"
             assert service.region == "us-west-2"
             assert service.configuration_table_name == "test-config-table"
 
@@ -601,7 +603,8 @@ class TestClassesDiscovery:
         assert result["document_description"] == "Test document"
 
         # Verify Bedrock was called with ground truth context
-        call_args = service._mock_bedrock_client.call_args[1]
+        service._mock_bedrock_client.invoke_model.assert_called_once()
+        call_args = service._mock_bedrock_client.invoke_model.call_args[1]
         assert call_args["context"] == "ClassesDiscoveryWithGroundTruth"
 
     def test_extract_data_from_document_with_ground_truth_error(

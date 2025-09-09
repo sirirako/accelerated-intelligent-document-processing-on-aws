@@ -300,8 +300,8 @@ class TestClassesDiscoveryIntegration:
         )
 
         # Verify Bedrock was called with ground truth context
-        service_with_mocks._mock_bedrock_client.assert_called_once()
-        bedrock_call_args = service_with_mocks._mock_bedrock_client.call_args[1]
+        service_with_mocks._mock_bedrock_client.invoke_model.assert_called_once()
+        bedrock_call_args = service_with_mocks._mock_bedrock_client.invoke_model.call_args[1]
         assert bedrock_call_args["context"] == "ClassesDiscoveryWithGroundTruth"
 
         # Verify ground truth was included in the prompt

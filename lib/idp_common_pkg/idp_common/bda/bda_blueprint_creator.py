@@ -74,6 +74,40 @@ class BDABlueprintCreator:
             logger.error(f"Failed to update data automation project: {e}")
             return None
 
+    def update_data_automation_project_with_custom_configurations(self, projectArn: str, customConfiguration):
+        """
+        Update an existing Bedrock Data Automation project with the provided blueprint.
+
+        Args:
+            projectArn (str): ARN of the project to update
+            blueprint (dict): Blueprint configuration to apply
+
+        Returns:
+            dict: Updated project details or None if error
+        """
+        try:
+            project = self.bedrock_client.get_data_automation_project(
+                projectArn=projectArn, projectStage="LIVE"
+            )
+            project = project.get("project", None)
+            logger.info(f"Updating project: {project}")
+            
+            logger.info(f"Updating updated data automation project: {projectArn}")
+            response = self.bedrock_client.update_data_automation_project(
+                projectArn=projectArn,
+                projectDescription=project.get("projectDescription"),
+                projectStage=project.get("projectStage"),
+                customOutputConfiguration=customConfiguration,
+                standardOutputConfiguration=project.get(
+                    "standardOutputConfiguration", None
+                ),
+            )
+            logger.info(f"Successfully updated data automation project: {projectArn}")
+            return response
+        except ClientError as e:
+            logger.error(f"Failed to update data automation project: {e}")
+            return None
+
     def create_data_automation_project(self, project_name, description, blueprint_arn):
         """
         Create a Bedrock Data Automation project.
@@ -316,4 +350,28 @@ class BDABlueprintCreator:
             raise e
         except Exception as e:
             logger.error(f"Error updating blueprint: {e}")
+            raise e
+
+
+    def list_blueprints(self, projectArn, projectStage ):
+        try:
+            project = self.bedrock_client.get_data_automation_project(
+                projectArn=projectArn, projectStage="LIVE"
+            )
+            project = project.get("project", None)
+            logger.info(f"Updating project: {project}")
+            customOutputConfiguration = project.get("customOutputConfiguration", None)
+            
+            return customOutputConfiguration
+
+        except Exception as e:
+            logger.error(f"Error updating blueprint: {e}")
+            raise e
+    
+    def delete_blueprint(self, blueprint_arn, blueprint_version ):
+        try:
+            return self.bedrock_client.delete_blueprint(blueprintArn=blueprint_arn, blueprintVersion=blueprint_version )
+            
+        except Exception as e:
+            logger.error(f"Error delete_blueprint: {e}")
             raise e

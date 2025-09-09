@@ -872,7 +872,7 @@ Resources:
         StackName: !Ref AWS::StackName
         InputBucket: !Ref InputBucket
         DiscoveryBucket: !Ref DiscoveryBucket
-        DiscoveryQueueArn: !GetAtt DiscoveryQueue.Arn
+        ConfigurationQueueArn: !GetAtt ConfigurationQueue.Arn
         DiscoveryTrackingTable: !Ref DiscoveryTrackingTable
         ConfigurationBucket: !Ref ConfigurationBucket
         WorkingBucket: !Ref WorkingBucket
@@ -2136,6 +2136,23 @@ Resources:
       KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
 
 
+  ConfigurationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 900
+      MessageRetentionPeriod: 86400  # 1 day
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ConfigurationDLQ.Arn
+        maxReceiveCount: 1000
+
+  ConfigurationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 900
+      MessageRetentionPeriod: 345600  # 4 days
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+
   UpdateConfigurationFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -2158,8 +2175,7 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          CONFIGURATION_TABLE_NAME:
-            Ref: ConfigurationTable
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
       LoggingConfig:
         LogGroup: !Ref UpdateConfigurationFunctionLogGroup
       Policies:
@@ -5518,12 +5534,15 @@ Resources:
           Variables:
             LOG_LEVEL: !Ref LogLevel
             CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+            CONFIGURATION_QUEUE_URL: !Ref ConfigurationQueue
             STACK_NAME: !Ref AWS::StackName
         LoggingConfig:
           LogGroup: !Ref ConfigurationResolverFunctionLogGroup
         Policies:
           - DynamoDBCrudPolicy:
               TableName: !Ref ConfigurationTable
+          - SQSSendMessagePolicy:
+              QueueName: !GetAtt ConfigurationQueue.QueueName
           - Statement:
               - Effect: Allow
                 Action:
@@ -5538,6 +5557,7 @@ Resources:
                   - ssm:GetParameter
                   - ssm:PutParameter
                 Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+              
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup

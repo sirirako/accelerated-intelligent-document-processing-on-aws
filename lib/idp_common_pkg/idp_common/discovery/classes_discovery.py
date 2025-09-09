@@ -20,13 +20,28 @@ class ClassesDiscovery:
         self,
         input_bucket: str,
         input_prefix: str,
-        bedrock_model_id: str,
+        config: Optional[dict] = None,
+        bedrock_model_id: Optional[str] = None,  # Keep for backward compatibility
         region: Optional[str] = "us-west-2",
     ):
         self.input_bucket = input_bucket
         self.input_prefix = input_prefix
-        self.bedrock_model_id = bedrock_model_id
         self.region = region or os.environ.get("AWS_REGION", "us-east-1")
+        
+        # Load configuration
+        self.config = config or self._load_default_config()
+        
+        # Get discovery configuration
+        self.discovery_config = self.config.get("discovery", {})
+        
+        # Get model configuration for both scenarios
+        self.without_gt_config = self.discovery_config.get("without_ground_truth", {})
+        self.with_gt_config = self.discovery_config.get("with_ground_truth", {})
+        
+        # Backward compatibility: use bedrock_model_id if provided
+        if bedrock_model_id:
+            self.without_gt_config["model_id"] = bedrock_model_id
+            self.with_gt_config["model_id"] = bedrock_model_id
 
         # Initialize Bedrock client using the common pattern
         self.bedrock_client = bedrock.BedrockClient(region=self.region)
@@ -36,6 +51,81 @@ class ClassesDiscovery:
         self.configuration_table = dynamodb.Table(self.configuration_table_name)
 
         return
+
+    def _load_default_config(self):
+        """Load default discovery configuration."""
+        return {
+            "discovery": {
+                "without_ground_truth": {
+                    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+                    "temperature": 1.0,
+                    "top_p": 0.1,
+                    "max_tokens": 10000,
+                    "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Analyze forms line by line to identify field names, data types, and organizational structure. Focus on creating comprehensive blueprints for document processing without extracting actual values.",
+                    "user_prompt": """This image contains forms data. Analyze the form line by line.
+Image may contains multiple pages, process all the pages. 
+Form may contain multiple name value pair in one line. 
+Extract all the names in the form including the name value pair which doesn't have value. 
+Organize them into groups, extract field_name, data_type and field description.
+Field_name should be less than 60 characters, should not have space use '-' instead of space.
+field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form.
+Field_name should be unique within the group.
+Add two fields document_class and document_description. 
+For document_class generate a short name based on the document content like W4, I-9, Paystub. 
+For document_description generate a description about the document in less than 50 words. 
+Group the fields based on the section they are grouped in the form. Group should have attributeType as "group".
+If the group repeats and follows table format, update the attributeType as "list".      
+Do not extract the values.
+Return the extracted data in JSON format."""
+                },
+                "with_ground_truth": {
+                    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+                    "temperature": 1.0,
+                    "top_p": 0.1,
+                    "max_tokens": 10000,
+                    "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Use provided ground truth data as reference to optimize field extraction and ensure consistency with expected document structure and field definitions.",
+                    "user_prompt": """This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                        
+<GROUND_TRUTH_REFERENCE>
+{ground_truth_json}
+</GROUND_TRUTH_REFERENCE>
+Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference.
+Image may contain multiple pages, process all pages.
+Extract all field names including those without values.
+Do not change the group name and field name from ground truth in the extracted data json.
+Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field. 
+Add two fields document_class and document_description. 
+For document_class generate a short name based on the document content like W4, I-9, Paystub. 
+For document_description generate a description about the document in less than 50 words.
+If the group repeats and follows table format, update the attributeType as "list".      
+Do not extract the values."""
+                },
+                "output_format": {
+                    "sample_json": """{
+    "document_class" : "Form-1040",
+    "document_description" : "Brief summary of the document",
+    "groups" : [
+        {
+            "name" : "PersonalInformation",
+            "description" : "Personal information of Tax payer",
+            "attributeType" : "group",
+            "groupAttributes" : [
+                {
+                    "name": "FirstName",
+                    "dataType" : "string",
+                    "description" : "First Name of Taxpayer"
+                },
+                {
+                    "name": "Age",
+                    "dataType" : "number",
+                    "description" : "Age of Taxpayer"
+                }
+            ]
+        }
+    ]
+}"""
+                }
+            }
+        }
 
     """
         Recursively convert all values to strings
@@ -140,7 +230,7 @@ class ClassesDiscovery:
 
             custom_item = self._get_configuration_item("Custom")
             classes = []
-            if custom_item:
+            if custom_item and "classes" in custom_item:
                 classes = custom_item["classes"]
                 for class_obj in classes:
                     if class_obj["name"] == current_class["name"]:
@@ -230,6 +320,8 @@ class ClassesDiscovery:
         for group in groups:
             groupAttributes = []
             groupAttributesArray = []
+            if not "groupAttributes" in group:
+                continue
             for groupAttribute in group["groupAttributes"]:
                 groupAttributeName = groupAttribute.get("name")
                 if groupAttributeName in groupAttributes:
@@ -260,24 +352,34 @@ class ClassesDiscovery:
 
     def _extract_data_from_document(self, document_content, file_extension):
         try:
-            # System prompt for the model
-            system_prompt = "You are an expert in processing forms. Extracting data from images and documents"
+            # Get configuration for without ground truth
+            model_id = self.without_gt_config.get("model_id", "anthropic.claude-3-sonnet-20240229-v1:0")
+            system_prompt = self.without_gt_config.get("system_prompt", 
+                "You are an expert in processing forms. Extracting data from images and documents")
+            temperature = self.without_gt_config.get("temperature", 1.0)
+            top_p = self.without_gt_config.get("top_p", 0.1)
+            max_tokens = self.without_gt_config.get("max_tokens", 10000)
+            
+            # Create user prompt with sample format
+            user_prompt = self.without_gt_config.get("user_prompt", self._prompt_classes_discovery())
+            sample_format = self.discovery_config.get("output_format", {}).get("sample_json", self._sample_output_format())
+            full_prompt = f"{user_prompt}\nFormat the extracted data using the below JSON format:\n{sample_format}"
 
             # Create content for the user message
             content = self._create_content_list(
-                prompt=self._prompt_classes_discovery(),
+                prompt=full_prompt,
                 document_content=document_content,
                 file_extension=file_extension,
             )
 
-            # Use the common BedrockClient pattern
+            # Use the configured parameters
             response = self.bedrock_client.invoke_model(
-                model_id=self.bedrock_model_id,
+                model_id=model_id,
                 system_prompt=system_prompt,
                 content=content,
-                temperature=1.0,
-                top_p=0.1,
-                max_tokens=10000,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
                 context="ClassesDiscovery",
             )
 
@@ -319,27 +421,43 @@ class ClassesDiscovery:
     ):
         """Extract data from document using ground truth as reference."""
         try:
-            # System prompt for the model
-            system_prompt = "You are an expert in processing forms. Extracting data from images and documents"
+            # Get configuration for with ground truth
+            model_id = self.with_gt_config.get("model_id", "anthropic.claude-3-sonnet-20240229-v1:0")
+            system_prompt = self.with_gt_config.get("system_prompt", 
+                "You are an expert in processing forms. Extracting data from images and documents")
+            temperature = self.with_gt_config.get("temperature", 1.0)
+            top_p = self.with_gt_config.get("top_p", 0.1)
+            max_tokens = self.with_gt_config.get("max_tokens", 10000)
 
             # Create enhanced prompt with ground truth
-            prompt = self._prompt_classes_discovery_with_ground_truth(ground_truth_data)
+            user_prompt = self.with_gt_config.get("user_prompt", 
+                self._prompt_classes_discovery_with_ground_truth(ground_truth_data))
+            
+            # If user_prompt contains placeholder, replace it with ground truth
+            if "{ground_truth_json}" in user_prompt:
+                ground_truth_json = json.dumps(ground_truth_data, indent=2)
+                prompt = user_prompt.replace("{ground_truth_json}", ground_truth_json)
+            else:
+                prompt = self._prompt_classes_discovery_with_ground_truth(ground_truth_data)
+            
+            sample_format = self.discovery_config.get("output_format", {}).get("sample_json", self._sample_output_format())
+            full_prompt = f"{prompt}\nFormat the extracted data using the below JSON format:\n{sample_format}"
 
             # Create content for the user message
             content = self._create_content_list(
-                prompt=prompt,
+                prompt=full_prompt,
                 document_content=document_content,
                 file_extension=file_extension,
             )
 
-            # Use the common BedrockClient pattern
-            response = self.bedrock_client(
-                model_id=self.bedrock_model_id,
+            # Use the configured parameters - Fix: use invoke_model not direct call
+            response = self.bedrock_client.invoke_model(
+                model_id=model_id,
                 system_prompt=system_prompt,
                 content=content,
-                temperature=1.0,
-                top_p=0.1,
-                max_tokens=10000,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
                 context="ClassesDiscoveryWithGroundTruth",
             )
 
@@ -373,7 +491,7 @@ class ClassesDiscovery:
                         Add two fields document_class and document_description. 
                         For document_class generate a short name based on the document content like W4, I-9, Paystub. 
                         For document_description generate a description about the document in less than 50 words.
-                        If the group repeats and follows table format, add a special field group_type with value "Table"  and description field for the group.                         
+                        If the group repeats and follows table format, update the attributeType as "list".                         
                         Do not extract the values.
                         Format the extracted data using the below JSON format:
                         Format the extracted groups and fields using the below JSON format:
@@ -396,7 +514,7 @@ class ClassesDiscovery:
                         For document_description generate a description about the document in less than 50 words. 
 
                         Group the fields based on the section they are grouped in the form. Group should have attributeType as "group".
-                        If the group repeats, add an additional field groupType and set the value as "Table".
+                        If the group repeats and follows table format, update the attributeType as "list".
                         Do not extract the values.
                         Return the extracted data in JSON format.
                         Format the extracted data using the below JSON format:
@@ -414,7 +532,6 @@ class ClassesDiscovery:
                     "name" : "PersonalInformation",
                     "description" : "Personal information of Tax payer",
                     "attributeType" : "group",
-                    "groupType" : "normal",
                     "groupAttributes" : [
                         {
                             "name": "FirstName",
@@ -427,6 +544,25 @@ class ClassesDiscovery:
                             "description" : "Age of Taxpayer"
                         }
                     ]
+                },
+                {
+                    "name" : "Dependents",
+                    "description" : "Dependents of taxpayer",
+                    "attributeType" : "list",
+                    "listItemTemplate": {
+                        "itemAttributes" : [
+                            {
+                                "name": "FirstName",
+                                "dataType" : "string",
+                                "description" : "Dependent first name"
+                            },
+                            {
+                                "name": "Age",
+                                "dataType" : "number",
+                                "description" : "Dependent Age"
+                            }
+                        ]
+                    }
                 }
             ]
         }

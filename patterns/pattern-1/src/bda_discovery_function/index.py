@@ -30,7 +30,8 @@ def handler(event, context):
     """
     logger.info(f"Received event: {json.dumps(event)}")
 
-    results = []
+    batch_item_failures = []
+    sqs_batch_response = {}
     status = 'SUCCESS'
 
     try:
@@ -39,12 +40,12 @@ def handler(event, context):
         result = bdaBlueprintService.create_blueprints_from_custom_configuration()
         
     except Exception as e:
-        status = 'Failed'
-        logger.error(f"Error processing record: {str(e)}")
+            status = 'Failed'
+            logger.error(f"Error processing record: {str(e)}")
+            batch_item_failures.append({"itemIdentifier": record['messageId']})
     
-    return {
-        'status': status,
-        'body': json.dumps(result)
-    }
+    sqs_batch_response["batchItemFailures"] = batch_item_failures
+    return sqs_batch_response
+
 
 
