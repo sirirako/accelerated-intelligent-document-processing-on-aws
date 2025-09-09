@@ -1,19 +1,24 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Least Privileges Secure IAM role for deploying GenAI IDP patterns'
+Description: >
+  This template creates a dedicated IAM Service Role for CloudFormation.
+  This role grants permissions to create, update, and delete CloudFormation
+  stacks and their resources. It follows the principle of least privilege
+  by allowing only the necessary actions for stack management.
+  This role requires an existing master/IDP stack to be already deployed
+  as it only operates on stacks with the IDP prefix.
 
 Parameters:
-  MasterStackName:
+  ExistingIDPStackName:
     Type: String
-    Description: Name of the master GenAI IDP stack
-    Default: 'IDP'
-    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]*$'
-    ConstraintDescription: Must be a valid CloudFormation stack name
+    Description: Name of an existing IDP stack (must start with IDP or idp). It is assumed that the administrator has deployed the first IDP solution deployment.
+    AllowedPattern: '^[Ii][Dd][Pp][a-zA-Z0-9-]*$'
+    ConstraintDescription: Must be an existing stack name starting with IDP or idp
   
 Resources:
   AllPatternsDeployerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${MasterStackName}-AllPatterns-Deployer-Secure'
+      RoleName: 'All-Patterns-Deployer-Role-Secure'
       Description: 'Minimal secure role for deploying all GenAI IDP patterns'
       MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
@@ -21,25 +26,31 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
-            Action: 'sts:AssumeRole'
-            Condition:
-              StringEquals:
-                'aws:RequestedRegion': !Ref 'AWS::Region'
-          - Effect: Allow
-            Principal:
               Service: 'cloudformation.amazonaws.com'
             Action: 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
       Policies:
-        - PolicyName: CorePermissions
+        - PolicyName: CloudFormationPermissions
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - 'cloudformation:*'
+                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*/*'
+                Condition:
+                  StringLike:
+                    'cloudformation:StackName': 
+                      - !Sub '${ExistingIDPStackName}*'
+                      - 'IDP*'
+                      - 'idp*'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:CreateChangeSet'
+                Resource: 
+                  - 'arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31'
+                  - 'arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31-*'
+              - Effect: Allow
+                Action:
                   - 'iam:GetRole'
                   - 'iam:GetRolePolicy'
                   - 'iam:ListRolePolicies'
@@ -54,7 +65,6 @@ Resources:
                   - 'iam:UpdateRoleDescription'
                   - 'iam:UpdateAssumeRolePolicy'
                   - 'iam:TagRole'
-                  - 'iam:PassRole'
                   - 'iam:CreateServiceLinkedRole'
                   - 'lambda:*'
                   - 'kms:*'
@@ -76,9 +86,7 @@ Resources:
                 Resource: '*'
                 Condition:
                   StringNotEquals:
-                    'aws:RequestedRegion':
-                      - 'us-east-1'
-                      - 'us-west-2'
+                    'aws:RequestedRegion': !Ref 'AWS::Region'
         - PolicyName: ServicesPermissions
           PolicyDocument:
             Version: '2012-10-17'
@@ -89,6 +97,7 @@ Resources:
                   - 'textract:*'
                   - 'sagemaker:*'
                   - 'states:*'
+                  - 'apigateway:*'
                   - 'appsync:*'
                   - 'cognito-idp:*'
                   - 'cognito-identity:*'
@@ -126,6 +135,6 @@ Resources:
 
 
 Outputs:
-  AllPatternsDeployerRoleArn:
-    Description: ARN of the secure all-patterns deployer role
+  AllPatternsDeployerRoleSecureArn:
+    Description: ARN of the All-Patterns-Deployer-Role-Secure
     Value: !GetAtt AllPatternsDeployerRole.Arn
