@@ -738,10 +738,6 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to extract geometry data for task {task.task_id}: {str(e)}"
                 )
-                task_failed = True
-                error_messages.append(
-                    f"Failed to extract geometry data for task {task.task_id}"
-                )
                 # Continue with assessment even if geometry extraction fails
 
             # Check for confidence threshold alerts
