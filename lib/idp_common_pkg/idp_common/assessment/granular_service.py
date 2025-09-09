@@ -1019,7 +1019,6 @@ class GranularAssessmentService:
                     f"Failed to generate text confidence data for page {page.page_id}: {str(e)}"
                 )
                 raise
-
         return ""
 
     def _convert_bbox_to_geometry(
@@ -1091,14 +1090,11 @@ class GranularAssessmentService:
                         logger.warning(
                             f"Invalid bounding box format for {attr_name}: {bbox_coords}"
                         )
-
                 except Exception as e:
                     logger.warning(
                         f"Failed to process bounding box for {attr_name}: {str(e)}"
                     )
                     raise
-
-
             else:
                 # If only one of bbox/page exists, log a warning about incomplete data
                 if "bbox" in attr_assessment and "page" not in attr_assessment:
@@ -1482,19 +1478,16 @@ class GranularAssessmentService:
             document.metering = utils.merge_metering_data(
                 document.metering, aggregated_metering or {}
             )
-
             t5 = time.time()
             logger.info(
                 f"Total granular assessment time for section {section_id}: {t5 - t0:.2f} seconds"
             )
-
         except Exception as e:
             # Error is processed in the final results step
             error_msg = f"Error processing granular assessment for section {section_id}: {str(e)}"
             logger.error(error_msg)
             document.status = Status.FAILED
             document.errors.append(error_msg)
-
         return document
 
     def assess_document(self, document: Document) -> Document:
