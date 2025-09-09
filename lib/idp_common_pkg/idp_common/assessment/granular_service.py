@@ -1441,18 +1441,15 @@ class GranularAssessmentService:
                 )
                 logger.info(f"error_message: {error_message}")
                 if error_message:
+                    logger.error(f"** Error: {error_message}")
                     document.status = Status.FAILED
                     document.errors.append(error_message)
 
                 # Add task errors to document errors
-                task_errors = [
-                    t.error_message
-                    for t in failed_tasks
-                    if t.error_message and not self.is_parsing_error(t.error_message)
-                ]
+                task_errors = [t.error_message for t in failed_tasks if t.error_message]
                 if task_errors:
                     error_msg = self._convert_error_list_to_string(task_errors)
-                    logger.error(f"Task Error: {error_message}")
+                    logger.error(f"*** Task Error: {error_message}")
                     document.status = Status.FAILED
                     document.errors.append(error_msg)
 
@@ -1533,6 +1530,7 @@ class GranularAssessmentService:
         token_warning = check_token_limit(
             document_text, extraction_results, self.config
         )
+        logger.info(f"*** Token Warning: {token_warning}")
         error_count = len(failed_tasks)
         base_msg = f"Assessment failed for {error_count} tasks. "
         if token_warning:
