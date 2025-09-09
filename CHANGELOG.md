@@ -12,14 +12,6 @@ SPDX-License-Identifier: MIT-0
   - **Integrated Workflow**: Development setup combining Windows tools (VS Code, browsers) with native Linux environment
   - **Target Use Cases**: Windows developers needing Linux compatibility without Docker Desktop or VM overhead
 
-### Fixed
-- **GovCloud Compatibility - Hardcoded Service Domain References**
-  - Fixed hardcoded `amazonaws.com` references in CloudFormation templates that prevented GovCloud deployment
-  - Updated all service principals and endpoints to use dynamic `${AWS::URLSuffix}` expressions for automatic region-based resolution
-  - **Templates Updated**: `template.yaml` (main template), `patterns/pattern-3/sagemaker_classifier_endpoint.yaml`
-  - **Services Fixed**: EventBridge, Cognito, SageMaker, ECR, CloudFront, CodeBuild, AppSync, Lambda, DynamoDB, CloudWatch Logs, Glue
-  - Resolves GitHub Issue #50 - templates now deploy correctly in both standard AWS and GovCloud regions
-
 
 ## [0.3.14]
 
