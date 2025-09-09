@@ -1,169 +1,105 @@
-# Development Environment Setup Guide on Windows using WSL(Windows Subsystem for Linux)
-# Introduction  
+# Development Environment Setup Guide on Windows using WSL
+
+## Introduction  
 This guide establishes a WSL-based development environment on Windows, specifically designed for the GenAI IDP accelerator.
 
-Purpose: Provides a Linux development environment directly on Windows without virtualization overhead, combining native Windows tools with a complete Linux 
-development stack. This approach eliminates cross-platform compatibility issues while maintaining familiar Windows workflows.
+**Purpose**: Provides a Linux development environment directly on Windows without virtualization overhead, combining native Windows tools with a complete Linux development stack.
 
-When to use this guide:
-• You're developing on Windows and need Linux compatibility
-• You want to avoid Docker Desktop or VM overhead
-• You need consistent behavior with the project's Linux-based AWS infrastructure
-• You prefer integrated Windows/Linux development workflows
+**When to use this guide**:
+- You're developing on Windows and need Linux compatibility
+- You want to avoid Docker Desktop or VM overhead
+- You need consistent behavior with the project's Linux-based AWS infrastructure
+- You prefer integrated Windows/Linux development workflows
 
-What you'll achieve:
-A seamless development setup where you can use Windows tools (VS Code, browsers, file explorers) while running the GenAI IDP accelerator in a native Linux 
-environment, ensuring compatibility with AWS Lambda's Linux runtime and deployment targets.
-# Official Microsoft WSL Installation Guide:
-https://docs.microsoft.com/en-us/windows/wsl/install  
+**What you'll achieve**: A seamless development setup where you can use Windows tools (VS Code, browsers, file explorers) while running the GenAI IDP accelerator in a native Linux environment.
 
-# Step 1: Enable WSL on Windows
-### 1.1 Enable WSL Feature for example Ubuntu
+## Prerequisites
+
+**Official Microsoft WSL Installation Guide**: https://docs.microsoft.com/en-us/windows/wsl/install
+
+## Step 1: Enable WSL on Windows
+
+### 1.1 Install WSL with Ubuntu
 1. Open PowerShell as Administrator
 2. Run the installation command:
-```
+```bash
 wsl --install -d Ubuntu 
 ```  
-3. Restart your computer when prompted
-4. Complete Ubuntu setup with username/password
-### 1.2 Verify Installation
-```
-wsl --version
-```
-# Step 2: Install Development Tools in WSL
-Open "Ubuntu" in local machine
-### 2.1 Update System Packages
-```
-sudo apt update && sudo apt upgrade -y
-```  
-### 2.2 Install Essential Tools
-### Install Git 
-```
-sudo apt install git -y
-```
-# Step 3: Clone and Setup Project
-### Clone Repository
+3. Complete Ubuntu setup with username/password 
+4. You will enter into linux shell directly, then go to your WSL home directory using ``` cd ~ ```
+
+## Step 2: Clone Repository and Run Setup Script
+
+### 2.1  Clone Repository
 ```
 git clone https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws
 ```
-### Go to directory  
 ```
 cd accelerated-intelligent-document-processing-on-aws
 ```
-### Install Python and pip 
+
+### 2.2 Run Automated Setup Script
 ```
-sudo apt install python3 python3-pip -y
+./scripts/wsl_setup.sh
 ```
-### Verify Python version
-```
-python3 --version
-```
-### Create and setup Python Environment
+This script automatically installs:
+- Git, Python 3, pip, and build tools
+- Node.js 18
+- AWS CLI v2
+- AWS SAM CLI
+- Python dependencies (boto3, rich, PyYAML, botocore, ruff, pytest)
+
+After running the setup script, go to your WSL home directory using ```cd ~```
+
+## Step 3: Complete Manual Setup
+
+### 3.1 Create Python Virtual Environment
 ```
 python3 -m venv venv
 source venv/bin/activate
 ```
-### Build tools and make
-```
-sudo apt install build-essential make -y
-```
-### Install Node.js for UI development
-```
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-```
-```
-sudo apt-get install -y nodejs
-```
-### AWS CLI
-#### Downloads the latest AWS CLI zip file for Linux x86_64 architecture
-```
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscli.zip"
-```
-#### Unzip aws-cli-linux-x86_64.zip -d 
-```
-unzip awscli.zip
-```
-#### Installation
-```
-sudo ./aws/install
-```
-#### Remove Zip file
-```
-rm -rf aws awscli.zip
-```
-### Verify AWS CLI installation
-```
-aws --version
-```
-### AWS SAM CLI
-#### Downloads the latest AWS SAM CLI zip file for Linux x86_64 architecture from GitHub releases
-```
-wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
-```
-#### Unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
-```
-unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
-```
-#### Installation
-```
-sudo ./sam-installation/install
-```
-#### Remove Zip file
-```
-rm -rf sam-installation aws-sam-cli-linux-x86_64.zip
-```
-### Verify SAM Installation
-```
-sam --version
-```
-### Install package building tools
-```
-pip install setuptools wheel
-```
-### Install all dependencies required for python
-```
-pip install boto3 rich PyYAML botocore
-```
-### Install development tools
-```
-pip install ruff pytest
-```
-### Install IDP common package in development mode
-```
-pip install -e lib/idp_common_pkg/
-```
-# Step 4: AWS Configure
-### Refer this link for AWS configure
-https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html  
 
-# Step 5: Run Publish Script 
-## Using publish.py (Recommended)
-
-### Test publish script help
+### 3.2 Install Python Dependencies
+```bash
+pip install setuptools wheel boto3 rich PyYAML botocore ruff pytest
 ```
+### 3.3 Configure AWS CLI
+```bash
+aws configure
+```
+Enter your AWS credentials when prompted. Refer to: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html
+
+## Step 4: Test the Setup
+
+### 4.1 Verify All Tools
+```bash
+# Check versions
+python3 --version (Example: Python 3.12.3)
+aws --version (Example: aws-cli/2.28.26)
+sam --version (Example: SAM CLI, version 1.143.0)
+node --version (Example: v18.20.8)
+npm --version (Example: 10.8.2)
+```
+### 4.2 Test Build Process
+```
+cd accelerated-intelligent-document-processing-on-aws
+```
+```
+# Test publish script help
 python3 publish.py --help
+
+# Test build (replace with your S3 bucket name)
+python3 publish.py your-bucket-name build-test us-east-1
 ```
-### Test build using publish.py
+
+### 4.3 Troubleshooting Build Issues
+If the build fails, use the `--verbose` flag:
+```bash
+python3 publish.py your-bucket-name build-test us-east-1 --verbose
 ```
-python3 publish.py bucket_name build-test us-east-1
-```
-### Troubleshooting Build Issues
-If the build fails, use the `--verbose` flag to see detailed error messages:
-```
-python3 publish.py bucket_name build-test us-east-1 --verbose
-```
-The verbose flag will show:
+
+The verbose flag shows:
 - Exact SAM build commands being executed
 - Complete error output from failed builds
 - Python version compatibility issues
 - Missing dependencies or configuration problems
-
-## Using publish.sh (Legacy)
-### Test publish script help
-```
-./publish.sh --help
-```
-### Test build using publish.sh
-```
-./publish.sh bucket_name build-test us-east-1
-```
