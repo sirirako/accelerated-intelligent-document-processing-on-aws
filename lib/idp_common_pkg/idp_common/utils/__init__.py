@@ -627,7 +627,8 @@ Optional[str]:
     logger.info(f"Estimated tokens: {estimated_tokens}")
     if configured_max_tokens and int(configured_max_tokens) < estimated_tokens:
         return (
-            f"The max_tokens value of {configured_max_tokens} is too low for this document."
+            f"The max_tokens value of {configured_max_tokens} is too low for this document. "
+            f"Consider increasing the max_tokens configuration."
         )
     else:
         logger.info(f"This document is configured with {int(configured_max_tokens)} max_tokens, "

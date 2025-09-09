@@ -511,9 +511,6 @@ def handler(event, context):
     
     logger.info(f"Response: {json.dumps(response, default=str)}")
 
-    if document.errors:
-        validation_errors.extend(document.errors)
-
     # Raise exception if there were validation errors
     if validation_errors:
         document.status = Status.FAILED

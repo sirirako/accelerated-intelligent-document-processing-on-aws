@@ -1435,21 +1435,15 @@ class GranularAssessmentService:
                 f"Assessment completed: {len(successful_tasks)}/{len(tasks)} tasks successful"
             )
             if failed_tasks:
+                logger.warning(f"Failed tasks: {[t.task_id for t in failed_tasks]}")
                 error_message = self._handle_parsing_errors(
                     document, failed_tasks, document_text, extraction_results
                 )
+                logger.info(f"error_message: {error_message}")
                 if error_message:
-                    logger.error(f"Error: {error_message}")
                     document.status = Status.FAILED
                     document.errors.append(error_message)
-
-                # Add task errors to document errors
-                task_errors = [t.error_message for t in failed_tasks if t.error_message]
-                if task_errors:
-                    error_msg = self._convert_error_list_to_string(task_errors)
-                    logger.error(f"Task Error: {error_message}")
-                    document.status = Status.FAILED
-                    document.errors.append(error_msg)
+                    logger.error(f"Error: {error_message}")
 
             # Update the existing extraction result with enhanced assessment data
             extraction_data["explainability_info"] = [enhanced_assessment_data]
@@ -1515,59 +1509,3 @@ class GranularAssessmentService:
 
         logger.info(f"Completed granular assessment for document {document.id}")
         return document
-
-    def _handle_parsing_errors(
-        self,
-        document: Document,
-        failed_tasks: List[str],
-        document_text: str,
-        extraction_results: Dict,
-    ) -> Optional[str]:
-        """Handle multiple parsing errors with user-friendly messaging."""
-        # Check for token limit issues
-        token_warning = check_token_limit(
-            document_text, extraction_results, self.config
-        )
-        logger.info(f"Token Warning: {token_warning}")
-        error_count = len(failed_tasks)
-        base_msg = f"Assessment failed for {error_count} tasks. "
-        if token_warning:
-            return base_msg + token_warning
-        else:
-            return None
-
-    def is_parsing_error(self, error_message: str) -> bool:
-        """Check if an error message is related to parsing issues."""
-        parsing_errors = ["parsing"]
-        return any(error.lower() in error_message.lower() for error in parsing_errors)
-
-    def _convert_error_list_to_string(self, errors) -> str:
-        """Convert list of error messages to a single user-friendly string."""
-        if not errors:
-            return ""
-
-        # Handle single string input
-        if isinstance(errors, str):
-            return errors
-
-        # Ensure we have a list of strings
-        if not isinstance(errors, list):
-            return str(errors)
-
-        # Count different types of errors
-        parsing_errors = [e for e in errors if "parsing" in e.lower()]
-        other_errors = [e for e in errors if "parsing" not in e.lower()]
-
-        if len(parsing_errors) > 10:
-            # Too many parsing errors - summarize
-            return (
-                f"Multiple parsing errors occurred {len(parsing_errors)} parsing errors, "
-                f"{len(other_errors)} other errors. This suggests document complexity or token limit issues."
-            )
-        elif len(errors) > 5:
-            # Multiple errors - show first few and summarize
-            first_errors = "; ".join(errors[:1])
-            return f"{first_errors} and {len(errors) - 1} more errors"
-        else:
-            # Few errors - show all
-            return "; ".join(errors)
