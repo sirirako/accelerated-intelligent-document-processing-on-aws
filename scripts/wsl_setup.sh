@@ -21,7 +21,7 @@ set -ex
 sudo apt update && sudo apt upgrade -y
 
 # Install essential tools
-sudo apt install git unzip -y
+sudo apt install git -y
 sudo apt install python3 python3-pip python3-venv python3-full -y
 sudo apt install build-essential make -y
 
@@ -50,10 +50,4 @@ rm -rf sam-installation aws-sam-cli-linux-x86_64.zip
 # Verify SAM installation
 sam --version
 
-echo "DONE - WSL development environment setup complete."
-echo "Next steps:"
-echo "1. Create Python virtual environment: python3 -m venv venv"
-echo "2. Activate virtual environment: source venv/bin/activate"
-echo "3. Install Python packages: pip install setuptools wheel boto3 rich PyYAML botocore ruff pytest"
-echo "4. Install IDP common package: pip install -e lib/idp_common_pkg/"
-echo "5. Configure AWS CLI: aws configure"
+echo "Packages setup complete."
