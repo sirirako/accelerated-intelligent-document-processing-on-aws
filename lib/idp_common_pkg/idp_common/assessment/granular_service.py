@@ -738,6 +738,10 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to extract geometry data for task {task.task_id}: {str(e)}"
                 )
+                task_failed = True
+                error_messages.append(
+                    f"Failed to extract geometry data for task {task.task_id}"
+                )
                 # Continue with assessment even if geometry extraction fails
 
             # Check for confidence threshold alerts
@@ -997,6 +1001,7 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to read text confidence data for page {page.page_id}: {str(e)}"
                 )
+                raise
 
         # Fallback: use raw OCR data if text confidence is not available (for backward compatibility)
         if page.raw_text_uri:
@@ -1013,6 +1018,7 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to generate text confidence data for page {page.page_id}: {str(e)}"
                 )
+                raise
 
         return ""
 
@@ -1090,6 +1096,9 @@ class GranularAssessmentService:
                     logger.warning(
                         f"Failed to process bounding box for {attr_name}: {str(e)}"
                     )
+                    raise
+
+
             else:
                 # If only one of bbox/page exists, log a warning about incomplete data
                 if "bbox" in attr_assessment and "page" not in attr_assessment:
@@ -1480,10 +1489,11 @@ class GranularAssessmentService:
             )
 
         except Exception as e:
+            # Error is processed in the final results step
             error_msg = f"Error processing granular assessment for section {section_id}: {str(e)}"
             logger.error(error_msg)
+            document.status = Status.FAILED
             document.errors.append(error_msg)
-            raise
 
         return document
 

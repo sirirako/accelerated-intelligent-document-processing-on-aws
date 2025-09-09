@@ -119,82 +119,6 @@ class AssessmentValidator:
             'failed_attributes': [],
             'error_message': None
         }
-    
-    def check_top_k_config(self):
-        """Check if top_k configuration is valid"""
-        top_k = self.assessment_config.get("top_k")
-        if top_k is not None:
-            try:
-                if isinstance(top_k, str):
-                    top_k = int(top_k)
-                if not isinstance(top_k, (int, float)) or top_k > 100 or top_k < 1:
-                    raise ValueError("Assessment configuration for top_k must be a number between 1 and 100")
-            except (ValueError, TypeError):
-                raise ValueError("Assessment configuration for top_k must be a number between 1 and 100")
-        
-        return {
-            'is_valid': True,
-            'failed_attributes': [],
-            'error_message': None
-        }
-
-    def check_top_p_config(self):
-        """Check if top_p configuration is valid"""
-        top_p = self.assessment_config.get("top_p")
-        if top_p is not None:
-            try:
-                if isinstance(top_p, str):
-                    top_p = float(top_p)
-                if not isinstance(top_p, (int, float)) or top_p > 1:
-                    raise ValueError("Assessment configuration for top_p must be a decimal number and less than 1")
-            except (ValueError, TypeError):
-                raise ValueError("Assessment configuration for top_p must be a decimal number and less than 1")
-
-        return {
-            'is_valid': True,
-            'failed_attributes': [],
-            'error_message': None
-        }
-
-    def check_sampling_temperature_config(self):
-        """Check if top_p configuration is valid"""
-        temperature = self.assessment_config.get("temperature")
-        if temperature is not None:
-            try:
-                if isinstance(temperature, str):
-                    temperature = float(temperature)
-                if not isinstance(temperature, (int, float)) or temperature > 1 or temperature < 0:
-                    raise ValueError("Assessment configuration for sampling temperature must be a "
-                                     "decimal number between 0 and 1")
-            except (ValueError, TypeError):
-                raise ValueError("Assessment configuration for sampling temperature must be a "
-                                 "decimal number between 0 and 1")
-
-        return {
-            'is_valid': True,
-            'failed_attributes': [],
-            'error_message': None
-        }
-
-    def check_max_tokens_config(self):
-        """Check if max_tokens configuration is valid"""
-        max_tokens = self.assessment_config.get("max_tokens")
-        if max_tokens is not None:
-            try:
-                if isinstance(max_tokens, str):
-                    max_tokens = float(max_tokens)
-                if not isinstance(max_tokens, (int, float)) or max_tokens > 1000000:
-                    raise ValueError("Assessment configuration for max_tokens must be a number "
-                                     "and less than 1000000")
-            except (ValueError, TypeError):
-                raise ValueError("Assessment configuration for max_tokens must be a number "
-                                 "and less than 1000000")
-
-        return {
-            'is_valid': True,
-            'failed_attributes': [],
-            'error_message': None
-        }
 
     def validate_all(self):
         """Run all validations and return comprehensive results"""
@@ -203,12 +127,6 @@ class AssessmentValidator:
             'failed_attributes': [],
             'validation_errors': []
         }
-
-        # Check Configuration
-        self.check_sampling_temperature_config()
-        self.check_top_k_config()
-        self.check_top_p_config()
-        self.check_max_tokens_config()
 
         # Check missing explainability if enabled
         if self.enable_missing_check:
