@@ -103,3 +103,24 @@ The verbose flag shows:
 - Complete error output from failed builds
 - Python version compatibility issues
 - Missing dependencies or configuration problems
+
+## Step 5: Install Visual Studio Code on Local Machine for using WSL as a terminal
+### Visit the official website: Go to [https://code.visualstudio.com/](https://code.visualstudio.com/)
+Download: Click the "Download for Windows" button 
+- This will download the User Installer (recommended for most users) 
+- File name will be something like VSCodeUserSetup-x64-1.x.x.exe  
+
+Install:   
+   - Run the downloaded installer  
+   - Choose installation location (default is recommended)  
+
+Launch: Click "Launch Visual Studio Code" when installation completes
+
+### Install VSCode Extensions
+Install **WSL** extension
+
+### Open Project in WSL
+From WSL terminal, navigate to project and open in VSCode
+```
+cd accelerated-intelligent-document-processing-on-aws
+```
