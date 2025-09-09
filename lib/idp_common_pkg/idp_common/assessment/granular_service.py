@@ -1439,15 +1439,21 @@ class GranularAssessmentService:
                 f"Assessment completed: {len(successful_tasks)}/{len(tasks)} tasks successful"
             )
             if failed_tasks:
-                logger.warning(f"Failed tasks: {[t.task_id for t in failed_tasks]}")
                 error_message = self._handle_parsing_errors(
                     document, failed_tasks, document_text, extraction_results
                 )
-                logger.info(f"error_message: {error_message}")
                 if error_message:
+                    logger.error(f"Error: {error_message}")
                     document.status = Status.FAILED
                     document.errors.append(error_message)
+
+                # Add task errors to document errors
+                task_errors = [t.error_message for t in failed_tasks if t.error_message]
+                if task_errors:
+                    error_msg = self._convert_error_list_to_string(task_errors)
                     logger.error(f"Error: {error_message}")
+                    document.status = Status.FAILED
+                    document.errors.append(error_msg)
 
             # Update the existing extraction result with enhanced assessment data
             extraction_data["explainability_info"] = [enhanced_assessment_data]
@@ -1533,10 +1539,18 @@ class GranularAssessmentService:
         else:
             return None
 
-    def _convert_error_list_to_string(self, errors: List[str]) -> str:
+    def _convert_error_list_to_string(self, errors) -> str:
         """Convert list of error messages to a single user-friendly string."""
         if not errors:
             return ""
+
+        # Handle single string input
+        if isinstance(errors, str):
+            return errors
+
+        # Ensure we have a list of strings
+        if not isinstance(errors, list):
+            return str(errors)
 
         # Count different types of errors
         parsing_errors = [e for e in errors if "parsing" in e.lower()]
@@ -1550,8 +1564,8 @@ class GranularAssessmentService:
             )
         elif len(errors) > 5:
             # Multiple errors - show first few and summarize
-            first_errors = "; ".join(errors[:3])
-            return f"{first_errors}... and {len(errors) - 3} more errors"
+            first_errors = "; ".join(errors[:1])
+            return f"{first_errors} and {len(errors) - 1} more errors"
         else:
             # Few errors - show all
             return "; ".join(errors)
