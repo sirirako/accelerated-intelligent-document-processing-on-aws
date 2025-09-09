@@ -1486,7 +1486,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -1546,7 +1546,7 @@ Resources:
     Properties:
       FunctionName: !Ref HITLProcessLambdaFunction
       Action: 'lambda:InvokeFunction'
-      Principal: 'events.amazonaws.com'
+      Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt HITLEventRule.Arn
 
   SummarizationFunction:
