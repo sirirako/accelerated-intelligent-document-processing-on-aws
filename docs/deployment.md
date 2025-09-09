@@ -28,7 +28,10 @@ You need to have the following packages installed on your computer:
 5. A local Docker daemon
 6. Python packages for publish.py: `pip install boto3 rich PyYAML botocore setuptools`
 
-For guidance on setting up a development environment, see: [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) or [Development Environment Setup Guide on MacOS](./setup-development-env-macos.md)
+For guidance on setting up a development environment, see:
+- [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) 
+- [Development Environment Setup Guide on macOS](./setup-development-env-macos.md)
+- [Development Environment Setup Guide on Windows (WSL)](./setup-development-env-WSL.md)
 
 Copy the repo to your computer. Either:
 - Use the git command to clone the repo, if you have access
