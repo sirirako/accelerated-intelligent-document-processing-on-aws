@@ -155,6 +155,18 @@ Parameters:
     Description: >-
      Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
   
+  # Custom Configuration Path
+  
+  CustomConfigPath:
+    Type: String
+    Default: ""
+    Description: >-
+      S3 URI pointing to your custom configuration YAML file. When provided, this configuration overrides the selected pattern preset and applies to all processing patterns. 
+      Leave blank to use the selected pattern configuration preset. For example s3://my-bucket/custom-config/config.yaml
+    AllowedPattern: '^(|s3://[a-zA-Z0-9.\\-_]+(/.*)?)$'
+    ConstraintDescription: Must be empty or a valid S3 URI (e.g., s3://my-bucket/custom-config/config.yaml)
+ 
+
   # HITL (A2I) Configuration
 
   EnableHITL:
@@ -4098,14 +4110,14 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Federated: cognito-identity.amazonaws.com
+              Federated: !Sub "cognito-identity.${AWS::URLSuffix}"
             Action:
               - sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals:
-                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+                !Sub "cognito-identity.${AWS::URLSuffix}:aud": !Ref IdentityPool
               "ForAnyValue:StringLike":
-                "cognito-identity.amazonaws.com:amr": authenticated
+                !Sub "cognito-identity.${AWS::URLSuffix}:amr": authenticated
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: S3
@@ -6168,7 +6180,7 @@ Resources:
         SecurityHeadersConfig:
           ContentSecurityPolicy:
             Override: true
-            ContentSecurityPolicy: "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; object-src 'self' blob: data: https:; base-uri 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; connect-src 'self' https: wss://*.amazonaws.com wss://*.appsync-realtime-api.*.amazonaws.com wss://*.execute-api.*.amazonaws.com ws://localhost:*;"
+            ContentSecurityPolicy: !Sub "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; object-src 'self' blob: data: https:; base-uri 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; connect-src 'self' https: wss://*.${AWS::URLSuffix} wss://*.appsync-realtime-api.*.${AWS::URLSuffix} wss://*.execute-api.*.${AWS::URLSuffix} ws://localhost:*;"
           StrictTransportSecurity:
             Override: true
             AccessControlMaxAgeSec: 31536000
