@@ -59,7 +59,7 @@ integration_tests:
  # Add rules to only run on develop branch
   rules:
     - if: $CI_COMMIT_BRANCH == "develop"
-      when: always # always # When idp-accelerator CICD is reconfigured
+      when: manual # always # When idp-accelerator CICD is reconfigured
     - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
       when: always
     - if: $CI_COMMIT_BRANCH =~ /^fix\/.*/
