@@ -138,10 +138,6 @@ Parameters:
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
 
-  Pattern2CustomConfigPath:
-    Type: String
-    Default: ""
-    Description: Custom S3 path for Pattern 2 config. For Example s3://idp-bucket/
   # Pattern 3 Parameters
 
   Pattern3UDOPModelArtifactPath:
@@ -159,18 +155,6 @@ Parameters:
     Description: >-
      Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
   
-  # Custom Configuration Path
-  
-  CustomConfigPath:
-    Type: String
-    Default: ""
-    Description: >-
-      S3 URI pointing to your custom configuration YAML file. When provided, this configuration overrides the selected pattern preset and applies to all processing patterns. 
-      Leave blank to use the selected pattern configuration preset. For example s3://my-bucket/custom-config/config.yaml
-    AllowedPattern: '^(|s3://[a-zA-Z0-9.\\-_]+(/.*)?)$'
-    ConstraintDescription: Must be empty or a valid S3 URI (e.g., s3://my-bucket/custom-config/config.yaml)
- 
-
   # HITL (A2I) Configuration
 
   EnableHITL:
@@ -419,9 +403,6 @@ Rules:
       - Assert: !Not [!Equals [!Ref Pattern3UDOPModelArtifactPath, ""]]
         AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
 
-  # Pattern 2 rules - Custom model validation now handled in pattern templates
-
-
 Conditions:
   IsPattern1:
     !Equals [
@@ -571,12 +552,12 @@ Metadata:
         default: "Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
-      CustomConfigPath:
-        default: "Custom Configuration Path"
       Pattern3UDOPModelArtifactPath:
         default: "Pattern3 - UDOP Model Artifact Path"
       Pattern3Configuration:
         default: "Pattern3 - Configuration Preset"
+      CustomConfigPath:
+        default: "Custom Configuration Path"
       PostProcessingLambdaHookFunctionArn:
         default: "Post Processing Lambda Hook Function ARN"
       EvaluationBaselineBucketName:
