@@ -3,16 +3,35 @@ SPDX-License-Identifier: MIT-0
 
 # Discovery Module
 
-The Discovery module is an intelligent document analysis system that automatically identifies document structures, field types, and organizational patterns to create document processing blueprints. This module helps bootstrap document processing workflows by analyzing sample documents and generating configuration templates that can be used across all processing patterns.
+The Discovery module is an intelligent document analysis system that automatically identifies document structures, field types, and organizational patterns to create document processing blueprints. This module provides a **pattern-neutral discovery process** that works across all processing patterns, with specialized implementations for pattern-specific automation.
+
+## Pattern-Neutral Discovery vs Pattern-Specific Implementation
+
+The Discovery module operates on two levels:
+
+### 🌐 Pattern-Neutral Discovery Process
+- **Document Analysis**: Core discovery logic works across all patterns (Pattern 1, 2, and 3)
+- **Standardized Configuration**: Generates consistent document class definitions regardless of target pattern
+- **Flexible Output**: Produces pattern-agnostic configuration that can be adapted to any processing workflow
+- **Reusable Components**: Common discovery services and configuration management
+
+### 🎯 Pattern-Specific Implementation
+- **Pattern 1 (BDA)**: Automated BDA blueprint creation and management
+- **Pattern 2 & 3**: Direct configuration updates for Textract + Bedrock workflows
+- **Extensible Architecture**: New patterns can implement custom discovery handlers
+
+This dual approach ensures discovery insights can be leveraged across different processing architectures while enabling pattern-specific optimizations.
 
 ## Table of Contents
 
+- [Pattern-Neutral Discovery vs Pattern-Specific Implementation](#pattern-neutral-discovery-vs-pattern-specific-implementation)
 - [Overview](#overview)
   - [What is Discovery](#what-is-discovery)
   - [Key Features](#key-features)
   - [Use Cases](#use-cases)
 - [Architecture](#architecture)
-  - [Components](#components)
+  - [Pattern-Neutral Components](#pattern-neutral-components)
+  - [Pattern-Specific Implementations](#pattern-specific-implementations)
   - [Processing Flow](#processing-flow)
   - [Integration Points](#integration-points)
 - [Discovery Methods](#discovery-methods)
@@ -89,33 +108,95 @@ This analysis produces structured configuration templates that can be used to co
 
 ## Architecture
 
-### Components
+### Pattern-Neutral Components
 
 **Discovery Processor Lambda (`src/lambda/discovery_processor/index.py`):**
-- Processes discovery jobs from SQS queue
-- Orchestrates document analysis workflow
-- Manages job status and error handling
-- Updates configuration based on discovery results
+- **Universal Job Processing**: Handles discovery jobs from SQS queue across all patterns
+- **Pattern-Agnostic Analysis**: Orchestrates document analysis workflow using common services
+- **Standardized Error Handling**: Consistent job status management and error reporting
+- **Configuration Event Routing**: Triggers pattern-specific configuration updates
 
 **Classes Discovery Service (`lib/idp_common_pkg/idp_common/discovery/classes_discovery.py`):**
-- Core discovery logic and document analysis
-- Bedrock model integration for document understanding
-- Configuration management and blueprint generation
-- Ground truth processing and optimization
+- **Core Discovery Engine**: Pattern-neutral document analysis and structure identification
+- **Bedrock Integration**: LLM-powered document understanding with configurable models
+- **Universal Configuration Format**: Generates standardized document class definitions
+- **Ground Truth Processing**: Supports both guided and unguided discovery methods
 
 **Discovery Panel UI (`src/ui/src/components/discovery/DiscoveryPanel.jsx`):**
-- Web interface for initiating discovery jobs
-- Real-time job status monitoring
-- Results visualization and review
-- Configuration export and integration
+- **Pattern-Agnostic Interface**: Unified web interface for all discovery operations
+- **Real-time Monitoring**: Job status tracking via GraphQL subscriptions
+- **Universal Results Display**: Consistent visualization across all patterns
+- **Export Flexibility**: Configuration export adapted to target pattern
 
 **Discovery Tracking Table:**
-- DynamoDB table for job status tracking
-- Stores discovery job metadata and progress
-- Enables real-time status updates via GraphQL subscriptions
+- **Cross-Pattern Tracking**: DynamoDB table for job status across all patterns
+- **Metadata Storage**: Pattern-neutral job information and progress tracking
+- **Event Coordination**: Enables real-time updates and pattern-specific notifications
+
+### Pattern-Specific Implementations
+
+#### Pattern 1: BDA Blueprint Automation
+
+**BDA Discovery Function (`patterns/pattern-1/src/bda_discovery_function/index.py`):**
+- **Configuration Event Handler**: Processes configuration update events from discovery jobs
+- **Automated Blueprint Management**: Creates and updates BDA blueprints based on discovery results
+- **Project Integration**: Seamlessly integrates with existing BDA projects
+
+**BDA Blueprint Service (`lib/idp_common_pkg/idp_common/bda/bda_blueprint_service.py`):**
+- **Blueprint Lifecycle Management**: Automated creation, updating, and versioning of BDA blueprints
+- **Schema Conversion**: Transforms discovery results into BDA-compatible schemas
+- **Project Synchronization**: Maintains consistency between discovery configuration and BDA projects
+- **Change Detection**: Intelligent updates only when configuration changes are detected
+
+**Schema Converter (`lib/idp_common_pkg/idp_common/bda/schema_converter.py`):**
+- **Format Translation**: Converts pattern-neutral discovery results to BDA blueprint schemas
+- **Field Mapping**: Transforms discovery field definitions to BDA-compatible formats
+- **Validation**: Ensures generated schemas meet BDA requirements
+
+**Key Features of Pattern 1 Implementation:**
+- **🤖 Automated Blueprint Creation**: Discovery results automatically generate BDA blueprints
+- **🔄 Intelligent Updates**: Only updates blueprints when actual changes are detected
+- **📋 Version Management**: Automatic blueprint versioning and project integration
+- **🎯 Zero-Touch Deployment**: No manual blueprint configuration required
+
+#### Pattern 2 & 3: Direct Configuration Updates
+
+**Configuration Update Process:**
+- **Direct Integration**: Discovery results directly update pattern configuration
+- **Immediate Availability**: New document classes available for processing immediately
+- **Manual Review**: Optional human review before configuration activation
+- **Rollback Support**: Configuration versioning for easy rollback if needed
+
+#### Extensible Architecture for New Patterns
+
+The discovery system is designed to support additional patterns through:
+
+**Generic Configuration Events:**
+```python
+# Configuration event structure (pattern-agnostic)
+{
+    "eventType": "CONFIGURATION_UPDATE",
+    "pattern": "pattern-X",
+    "discoveryJobId": "job-12345",
+    "documentClasses": [...],
+    "metadata": {...}
+}
+```
+
+**Pattern Registration:**
+- New patterns can register configuration event handlers
+- Custom transformation logic for pattern-specific requirements
+- Standardized integration points for consistent behavior
+
+**Implementation Guide for New Patterns:**
+1. **Create Configuration Handler**: Implement pattern-specific configuration update logic
+2. **Register Event Processor**: Subscribe to configuration update events
+3. **Define Schema Transformation**: Convert discovery results to pattern format
+4. **Integrate with UI**: Ensure discovery results display correctly for the pattern
 
 ### Processing Flow
 
+#### Pattern-Neutral Discovery Flow
 ```mermaid
 graph TD
     A[Document Upload] --> B[Discovery Job Creation]
@@ -127,10 +208,35 @@ graph TD
     F --> H[Bedrock Analysis]
     G --> H
     H --> I[Structure Extraction]
-    I --> J[Blueprint Generation]
-    J --> K[Configuration Update]
-    K --> L[Job Completion]
-    L --> M[UI Notification]
+    I --> J[Pattern-Neutral Configuration]
+    J --> K{Target Pattern?}
+    K -->|Pattern 1| L[BDA Blueprint Creation]
+    K -->|Pattern 2/3| M[Direct Config Update]
+    K -->|New Pattern| N[Custom Handler]
+    L --> O[Job Completion]
+    M --> O
+    N --> O
+    O --> P[UI Notification]
+```
+
+#### Pattern 1: BDA Blueprint Automation Flow
+```mermaid
+graph TD
+    A[Configuration Update Event] --> B[BDA Discovery Function]
+    B --> C[BDA Blueprint Service]
+    C --> D{Blueprint Exists?}
+    D -->|Yes| E[Check for Changes]
+    D -->|No| F[Create New Blueprint]
+    E -->|Changes Found| G[Update Blueprint]
+    E -->|No Changes| H[Skip Update]
+    F --> I[Schema Converter]
+    G --> I
+    I --> J[Generate BDA Schema]
+    J --> K[Create/Update in BDA]
+    K --> L[Create Blueprint Version]
+    L --> M[Update Project]
+    M --> N[Success Response]
+    H --> N
 ```
 
 ### Integration Points
@@ -490,6 +596,194 @@ result = discovery.discovery_classes_with_document_and_ground_truth(
 - **Merge with Existing**: Combine with current document class definitions
 - **Create New Class**: Add as new document type to existing configuration
 
+## Configuration Event System
+
+The Discovery module uses a generic configuration event system that enables pattern-specific implementations while maintaining a consistent discovery process.
+
+### Event Architecture
+
+**Configuration Update Events:**
+Configuration events are triggered when discovery jobs complete and contain pattern-neutral results that can be processed by any pattern implementation.
+
+```json
+{
+  "eventType": "CONFIGURATION_UPDATE",
+  "source": "discovery-processor",
+  "pattern": "pattern-1",
+  "discoveryJobId": "discovery-job-12345",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "documentClasses": [
+    {
+      "name": "W4Form",
+      "description": "Employee withholding certificate",
+      "groups": [...],
+      "metadata": {
+        "confidence": 0.95,
+        "model_used": "us.amazon.nova-pro-v1:0"
+      }
+    }
+  ],
+  "processingMetadata": {
+    "groundTruthUsed": true,
+    "processingTime": "45.2s",
+    "documentCount": 1
+  }
+}
+```
+
+### Pattern 1: BDA Blueprint Implementation
+
+**Event Processing:**
+Pattern 1 implements a sophisticated blueprint management system that responds to configuration events:
+
+```python
+# BDA Discovery Function Handler
+def handler(event, context):
+    """
+    Processes configuration update events for Pattern 1.
+    Automatically creates/updates BDA blueprints based on discovery results.
+    """
+    bda_project_arn = os.environ.get("BDA_PROJECT_ARN")
+    blueprint_service = BdaBlueprintService(
+        dataAutomationProjectArn=bda_project_arn
+    )
+    
+    # Process configuration update event
+    result = blueprint_service.create_blueprints_from_custom_configuration()
+    return result
+```
+
+**Blueprint Lifecycle Management:**
+- **Creation**: New document classes automatically generate BDA blueprints
+- **Updates**: Changes in discovery results trigger blueprint updates
+- **Versioning**: Blueprint versions are managed automatically
+- **Project Integration**: Blueprints are seamlessly integrated into BDA projects
+
+**Change Detection:**
+The system intelligently detects when updates are needed:
+
+```python
+def _check_for_updates(self, custom_class: dict, blueprint: dict):
+    """
+    Compares discovery results with existing blueprint to determine if updates are needed.
+    Only triggers updates when actual changes are detected.
+    """
+    # Check document class and description changes
+    if (custom_class["name"] != schema["class"] or 
+        custom_class["description"] != schema["description"]):
+        return True
+    
+    # Check field-level changes
+    for group in groups:
+        for field in fields:
+            if field_changed(field, existing_blueprint_field):
+                return True
+    
+    return False
+```
+
+### Implementing Configuration Events for New Patterns
+
+The configuration event system is designed to be extensible for new patterns:
+
+#### Step 1: Create Event Handler
+```python
+def pattern_x_configuration_handler(event, context):
+    """
+    Custom configuration handler for Pattern X.
+    Processes discovery results according to pattern-specific requirements.
+    """
+    try:
+        # Extract discovery results from event
+        document_classes = event.get('documentClasses', [])
+        
+        # Transform to pattern-specific format
+        pattern_config = transform_to_pattern_x_format(document_classes)
+        
+        # Update pattern-specific configuration
+        update_pattern_x_configuration(pattern_config)
+        
+        return {"status": "success", "message": "Configuration updated"}
+        
+    except Exception as e:
+        logger.error(f"Pattern X configuration update failed: {e}")
+        return {"status": "error", "message": str(e)}
+```
+
+#### Step 2: Register Event Processor
+```yaml
+# CloudFormation template for Pattern X
+PatternXConfigurationHandler:
+  Type: AWS::Lambda::Function
+  Properties:
+    Handler: index.pattern_x_configuration_handler
+    Runtime: python3.9
+    Environment:
+      Variables:
+        PATTERN_NAME: "pattern-x"
+        CONFIG_TABLE: !Ref ConfigurationTable
+
+# Event source mapping
+ConfigurationEventSource:
+  Type: AWS::Lambda::EventSourceMapping
+  Properties:
+    EventSourceArn: !GetAtt ConfigurationQueue.Arn
+    FunctionName: !Ref PatternXConfigurationHandler
+```
+
+#### Step 3: Implement Schema Transformation
+```python
+class PatternXSchemaConverter:
+    """
+    Converts pattern-neutral discovery results to Pattern X format.
+    """
+    
+    def convert(self, discovery_result):
+        """
+        Transform discovery document class to Pattern X configuration.
+        """
+        pattern_x_config = {
+            "documentType": discovery_result["name"],
+            "description": discovery_result["description"],
+            "extractionRules": []
+        }
+        
+        # Transform groups and fields
+        for group in discovery_result.get("groups", []):
+            extraction_rule = self._convert_group_to_rule(group)
+            pattern_x_config["extractionRules"].append(extraction_rule)
+        
+        return pattern_x_config
+```
+
+#### Step 4: Integration Points
+```python
+# Configuration update integration
+def update_pattern_x_configuration(config):
+    """
+    Update Pattern X configuration with discovery results.
+    """
+    # Store in configuration database
+    config_table.put_item(
+        Item={
+            "ConfigurationType": "PatternX",
+            "DocumentClasses": config,
+            "UpdatedAt": datetime.utcnow().isoformat()
+        }
+    )
+    
+    # Trigger any pattern-specific post-processing
+    notify_pattern_x_services(config)
+```
+
+### Benefits of the Generic Event System
+
+**🔄 Loose Coupling**: Patterns can implement discovery integration independently
+**📈 Scalability**: New patterns can be added without modifying core discovery logic
+**🎯 Flexibility**: Each pattern can optimize configuration handling for its specific needs
+**🔧 Maintainability**: Clear separation between discovery logic and pattern-specific implementation
+**⚡ Performance**: Asynchronous event processing enables parallel pattern updates
+
 ## Configuration Management
 
 ### Schema Definition
@@ -575,6 +869,173 @@ discovery:
 - Define custom field naming conventions
 - Specify required field types and formats
 - Configure grouping and organizational patterns
+
+## Pattern 1: BDA Blueprint Management
+
+Pattern 1 provides the most advanced discovery implementation with automated BDA blueprint creation and management.
+
+### Automated Blueprint Creation
+
+**Zero-Touch Blueprint Generation:**
+When discovery completes for Pattern 1, the system automatically:
+
+1. **Analyzes Discovery Results**: Processes pattern-neutral discovery output
+2. **Converts to BDA Schema**: Transforms field definitions to BDA-compatible format
+3. **Creates/Updates Blueprints**: Manages blueprint lifecycle in BDA project
+4. **Versions Blueprints**: Automatically creates new versions when changes are detected
+5. **Integrates with Project**: Ensures blueprints are available for document processing
+
+**Blueprint Naming Convention:**
+```
+{StackName}-{DocumentClass}-{UniqueId}
+Example: IDP-W4Form-a1b2c3d4
+```
+
+### Intelligent Update Detection
+
+The system only updates blueprints when actual changes are detected:
+
+**Change Detection Logic:**
+- **Document Class Changes**: Name or description modifications
+- **Field Changes**: New fields, modified descriptions, or data type changes
+- **Group Changes**: Structural changes in field organization
+- **Schema Changes**: Any modification that affects BDA blueprint structure
+
+**Update Process:**
+```python
+# Example of intelligent update detection
+if blueprint_exists:
+    if self._check_for_updates(custom_class, existing_blueprint):
+        # Update existing blueprint
+        self.blueprint_creator.update_blueprint(
+            blueprint_arn=blueprint_arn,
+            stage="LIVE",
+            schema=json.dumps(blueprint_schema)
+        )
+        # Create new version
+        self.blueprint_creator.create_blueprint_version(
+            blueprint_arn=blueprint_arn,
+            project_arn=self.dataAutomationProjectArn
+        )
+    else:
+        logger.info("No updates needed - blueprint unchanged")
+```
+
+### BDA Schema Conversion
+
+**Field Type Mapping:**
+Discovery field types are automatically converted to BDA-compatible formats:
+
+| Discovery Type | BDA Schema Type | Description |
+|----------------|-----------------|-------------|
+| `string` | `string` | Text fields, names, addresses |
+| `number` | `number` | Numeric values, amounts |
+| `date` | `string` with date format | Date fields with validation |
+| `boolean` | `boolean` | Yes/no, checkbox fields |
+| `array` | `array` | Lists or repeated elements |
+
+**Group Conversion:**
+- **Normal Groups**: Converted to BDA object definitions
+- **Table Groups**: Converted to BDA array structures with item templates
+- **Nested Groups**: Supported through BDA schema references
+
+**Example Schema Conversion:**
+```json
+// Discovery Result
+{
+  "name": "W4Form",
+  "description": "Employee withholding certificate",
+  "groups": [
+    {
+      "name": "PersonalInfo",
+      "groupAttributes": [
+        {
+          "name": "FirstName",
+          "dataType": "string",
+          "description": "Employee first name from line 1"
+        }
+      ]
+    }
+  ]
+}
+
+// Generated BDA Schema
+{
+  "class": "W4Form",
+  "description": "Employee withholding certificate",
+  "definitions": {
+    "PersonalInfo": {
+      "type": "object",
+      "properties": {
+        "first-name": {
+          "type": "string",
+          "instruction": "Employee first name from line 1"
+        }
+      }
+    }
+  }
+}
+```
+
+### Blueprint Lifecycle Management
+
+**Creation Workflow:**
+1. **Discovery Completion**: Pattern-neutral discovery results are generated
+2. **Configuration Event**: BDA Discovery Function receives configuration update event
+3. **Blueprint Service**: Processes configuration and manages blueprint lifecycle
+4. **Schema Generation**: Converts discovery results to BDA schema format
+5. **Blueprint Creation**: Creates new blueprint in BDA service
+6. **Project Integration**: Associates blueprint with BDA project
+7. **Version Management**: Creates initial blueprint version
+
+**Update Workflow:**
+1. **Change Detection**: Compares new discovery results with existing blueprint
+2. **Schema Update**: Generates updated BDA schema if changes detected
+3. **Blueprint Update**: Updates existing blueprint with new schema
+4. **Version Creation**: Creates new blueprint version
+5. **Project Sync**: Ensures project references latest version
+
+### Integration with BDA Projects
+
+**Project Association:**
+- Blueprints are automatically associated with the configured BDA project
+- Project ARN is specified during stack deployment
+- Multiple document classes can share the same BDA project
+
+**Version Management:**
+- Each blueprint update creates a new version
+- Versions are automatically managed by the system
+- Projects always reference the latest blueprint version
+
+**Permissions:**
+The system requires specific permissions for BDA integration:
+```yaml
+BDABlueprintPermissions:
+  - bedrock:CreateBlueprint
+  - bedrock:UpdateBlueprint
+  - bedrock:CreateBlueprintVersion
+  - bedrock:ListBlueprints
+  - bedrock:GetBlueprint
+  - bedrock:DeleteBlueprint
+```
+
+### Monitoring and Troubleshooting
+
+**CloudWatch Logs:**
+- Blueprint creation/update activities are logged
+- Schema conversion details are captured
+- Error conditions are clearly documented
+
+**Common Issues:**
+- **Permission Errors**: Ensure BDA permissions are correctly configured
+- **Schema Validation**: BDA schemas must meet specific format requirements
+- **Project Integration**: Verify BDA project ARN is correct and accessible
+
+**Success Indicators:**
+- Blueprint appears in BDA console
+- Blueprint version is created successfully
+- Project shows associated blueprints
+- Document processing uses new blueprint
 
 ## Best Practices
 
@@ -680,6 +1141,39 @@ Solutions:
 - Check S3 bucket permissions and access policies
 - Validate configuration syntax and required fields
 - Review CloudWatch logs for specific error messages
+```
+
+**Issue: Pattern 1 Blueprint Creation Fails**
+```
+Symptoms: Discovery completes but BDA blueprints are not created/updated
+Causes:
+- Missing BDA permissions
+- Invalid BDA project ARN
+- Schema conversion errors
+- BDA service throttling
+
+Solutions:
+- Verify BDA permissions in IAM role
+- Check BDA project ARN in stack parameters
+- Review BDA Discovery Function logs
+- Implement retry logic for throttling
+- Validate generated schema format
+```
+
+**Issue: Configuration Events Not Processing**
+```
+Symptoms: Discovery completes but pattern-specific updates don't occur
+Causes:
+- SQS queue configuration issues
+- Lambda function errors
+- Event routing problems
+- Permission issues
+
+Solutions:
+- Check SQS queue visibility and permissions
+- Review pattern-specific Lambda function logs
+- Verify event source mappings
+- Validate IAM permissions for event processing
 ```
 
 **Issue: Poor Field Detection Quality**
