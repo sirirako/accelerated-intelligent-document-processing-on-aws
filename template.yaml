@@ -428,8 +428,6 @@ Conditions:
   
   # HITL and Private Workforce conditions
   IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
-  IsPattern1HITLEnabled: !And [!Condition IsPattern1, !Condition IsHITLEnabled]
-  IsPattern2HITLEnabled: !And [!Condition IsPattern2, !Condition IsHITLEnabled]
   ShouldCreatePrivateWorkteam: !And [!Condition IsHITLEnabled, !Equals [!Ref ExistingPrivateWorkforceArn, ""]]
   ShouldUseExistingPrivateWorkteam: !And [!Condition IsHITLEnabled, !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]]
 
@@ -906,7 +904,6 @@ Resources:
             - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableHITL: !Ref EnableHITL
-        IsPattern2HITLEnabled: !If [IsPattern2HITLEnabled, "true", "false"]
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL

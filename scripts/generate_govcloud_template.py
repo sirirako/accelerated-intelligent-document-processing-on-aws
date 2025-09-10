@@ -194,7 +194,8 @@ class GovCloudTemplateGenerator:
             'WebUITestEnvFile',
             'SageMakerA2IReviewPortalURL',
             'LabelingConsoleURL',
-            'ExternalMCPAgentsSecretName'
+            'ExternalMCPAgentsSecretName',
+            'PrivateWorkteamArn'
         }
 
     def setup_logging(self):

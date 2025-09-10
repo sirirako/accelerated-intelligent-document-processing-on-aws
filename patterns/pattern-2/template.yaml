@@ -91,14 +91,6 @@ Parameters:
       - "false"
     Description: "Enable Human In The Loop (A2I) for document review"
 
-  IsPattern2HITLEnabled:
-    Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: "Pattern-2 specific HITL enablement flag"
-
   SageMakerA2IReviewPortalURL:
     Type: String
     Default: ""
@@ -130,8 +122,6 @@ Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
-  IsPattern2HITLEnabled: !Equals [!Ref IsPattern2HITLEnabled, "true"]
-
 
 Resources:
 
