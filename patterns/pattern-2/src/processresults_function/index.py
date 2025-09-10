@@ -269,74 +269,83 @@ def process_section_for_hitl(section: Section, section_data: dict, confidence_th
         # Extract all fields for this specific page using section-relative page number
         page_fields = extract_all_fields_from_explainability(explainability_info, str(section_page_number))
         
-        if not page_fields:
-            logger.warning(f"No fields found for page {page_id} in section {section.section_id}")
-            section_page_number += 1
-            continue
-        
-        logger.info(f"Found {len(page_fields)} fields for page {page_id}")
-        
-        # Count fields with and without specific thresholds for logging
-        fields_with_threshold = sum(1 for f in page_fields if f.get('confidence_threshold') is not None and f.get('confidence_threshold') != 0)
-        fields_without_threshold = len(page_fields) - fields_with_threshold
-        logger.info(f"Page {page_id}: {fields_with_threshold} fields with specific thresholds, {fields_without_threshold} using config threshold ({confidence_threshold})")
-        
         # Build key-value pairs and bounding boxes for all fields on this page
         kv_pairs = []
         bounding_boxes = []
         
-        for field in page_fields:
-            field_name = field['name']
-            confidence = field['confidence']
-            # Use field-specific confidence threshold if available, otherwise use config threshold
-            field_confidence_threshold = field.get('confidence_threshold')
-            if field_confidence_threshold is None or field_confidence_threshold == 0:
-                confidence_threshold_val = confidence_threshold  # Use config threshold
-                logger.debug(f"Field {field_name} using config threshold: {confidence_threshold}")
-            else:
-                confidence_threshold_val = field_confidence_threshold
-                logger.debug(f"Field {field_name} using field-specific threshold: {confidence_threshold_val}")
+        if page_fields:
+            logger.info(f"Found {len(page_fields)} fields for page {page_id}")
             
-            geometry = field['geometry']
+            # Count fields with and without specific thresholds for logging
+            fields_with_threshold = sum(1 for f in page_fields if f.get('confidence_threshold') is not None and f.get('confidence_threshold') != 0)
+            fields_without_threshold = len(page_fields) - fields_with_threshold
+            logger.info(f"Page {page_id}: {fields_with_threshold} fields with specific thresholds, {fields_without_threshold} using config threshold ({confidence_threshold})")
             
-            # Extract field value from inference_result
-            field_value = extract_field_value(inference_result, field_name)
-            
+            for field in page_fields:
+                field_name = field['name']
+                confidence = field['confidence']
+                # Use field-specific confidence threshold if available, otherwise use config threshold
+                field_confidence_threshold = field.get('confidence_threshold')
+                if field_confidence_threshold is None or field_confidence_threshold == 0:
+                    confidence_threshold_val = confidence_threshold  # Use config threshold
+                    logger.debug(f"Field {field_name} using config threshold: {confidence_threshold}")
+                else:
+                    confidence_threshold_val = field_confidence_threshold
+                    logger.debug(f"Field {field_name} using field-specific threshold: {confidence_threshold_val}")
+                
+                geometry = field['geometry']
+                
+                # Extract field value from inference_result
+                field_value = extract_field_value(inference_result, field_name)
+                
+                kv_pairs.append({
+                    'key': field_name,
+                    'value': str(field_value) if field_value is not None else '',
+                    'confidence': confidence,
+                    'confidence_threshold': confidence_threshold_val
+                })
+                
+                # Extract bounding box if available
+                if geometry and len(geometry) > 0:
+                    bbox = geometry[0].get('boundingBox', {})
+                    bounding_boxes.append({
+                        'key': field_name,
+                        'bounding_box': {
+                            'top': bbox.get('top', 0),
+                            'left': bbox.get('left', 0),
+                            'width': bbox.get('width', 0),
+                            'height': bbox.get('height', 0)
+                        }
+                    })
+                else:
+                    # Add empty bounding box to maintain index alignment
+                    bounding_boxes.append({
+                        'key': field_name,
+                        'bounding_box': {
+                            'top': 0,
+                            'left': 0,
+                            'width': 0,
+                            'height': 0
+                        }
+                    })
+        else:
+            logger.warning(f"No fields found for page {page_id} in section {section.section_id}")
+            # Create a placeholder entry to ensure A2I is still triggered for this page
             kv_pairs.append({
-                'key': field_name,
-                'value': str(field_value) if field_value is not None else '',
-                'confidence': confidence,
-                'confidence_threshold': confidence_threshold_val
+                'key': 'page_review_required',
+                'value': f'No fields found for page {page_id} in section {section.section_id}',
+                'confidence': 0.0,
+                'confidence_threshold': confidence_threshold
             })
-            
-            # Extract bounding box if available
-            if geometry and len(geometry) > 0:
-                bbox = geometry[0].get('boundingBox', {})
-                bounding_boxes.append({
-                    'key': field_name,
-                    'bounding_box': {
-                        'top': bbox.get('top', 0),
-                        'left': bbox.get('left', 0),
-                        'width': bbox.get('width', 0),
-                        'height': bbox.get('height', 0)
-                    }
-                })
-            else:
-                # Add empty bounding box to maintain index alignment
-                bounding_boxes.append({
-                    'key': field_name,
-                    'bounding_box': {
-                        'top': 0,
-                        'left': 0,
-                        'width': 0,
-                        'height': 0
-                    }
-                })
-        
-        if not kv_pairs:
-            logger.warning(f"No key-value pairs extracted for page {page_id}")
-            section_page_number += 1
-            continue
+            bounding_boxes.append({
+                'key': 'page_review_required',
+                'bounding_box': {
+                    'top': 0,
+                    'left': 0,
+                    'width': 1.0,
+                    'height': 1.0
+                }
+            })
         
         logger.info(f"Prepared {len(kv_pairs)} key-value pairs for page {page_id}")
         
