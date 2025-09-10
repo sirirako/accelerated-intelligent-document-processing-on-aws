@@ -1361,12 +1361,15 @@ Resources:
               - kms:GenerateDataKey*
               - kms:DescribeKey
             Resource: !Ref CustomerManagedEncryptionKeyArn
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
 
   HITLWaitFunctionLogGroup:
     Type: AWS::Logs::LogGroup
