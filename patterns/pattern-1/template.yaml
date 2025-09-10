@@ -779,8 +779,8 @@ Resources:
                 - bedrock:DeletBlueprint
               Resource:
                 - !Ref BDAProjectArn
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:aws:blueprint/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:aws:blueprint/*"
 
   BDADiscoveryFunctionLogGroup:
     Type: AWS::Logs::LogGroup

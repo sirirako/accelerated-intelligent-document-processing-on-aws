@@ -131,7 +131,8 @@ class SchemaConverter:
             "date": "string",
             "table": "object",
         }
-        evaluation_method = field.get("evaluationMethod", "explicit")
+        evaluation_method = "explicit"
+        # field.get("evaluationMethod", "explicit")
         field_schema = {
             "type": type_mapping.get(datatype, "string"),
             "inferenceType": evaluation_method,
