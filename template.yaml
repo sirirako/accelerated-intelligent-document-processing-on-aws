@@ -138,10 +138,6 @@ Parameters:
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
 
-  Pattern2CustomConfigPath:
-    Type: String
-    Default: ""
-    Description: Custom S3 path for Pattern 2 config. For Example s3://idp-bucket/
   # Pattern 3 Parameters
 
   Pattern3UDOPModelArtifactPath:
@@ -158,17 +154,6 @@ Parameters:
       - "default"
     Description: >-
      Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
-  
-  # Custom Configuration Path
-  
-  CustomConfigPath:
-    Type: String
-    Default: ""
-    Description: >-
-      S3 URI pointing to your custom configuration YAML file. When provided, this configuration overrides the selected pattern preset and applies to all processing patterns. 
-      Leave blank to use the selected pattern configuration preset. For example s3://my-bucket/custom-config/config.yaml
-    AllowedPattern: '^(|s3://[a-zA-Z0-9.\\-_]+(/.*)?)$'
-    ConstraintDescription: Must be empty or a valid S3 URI (e.g., s3://my-bucket/custom-config/config.yaml)
   
   # HITL (A2I) Configuration
 
@@ -418,9 +403,6 @@ Rules:
       - Assert: !Not [!Equals [!Ref Pattern3UDOPModelArtifactPath, ""]]
         AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
 
-  # Pattern 2 rules - Custom model validation now handled in pattern templates
-
-
 Conditions:
   IsPattern1:
     !Equals [
@@ -446,8 +428,6 @@ Conditions:
   
   # HITL and Private Workforce conditions
   IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
-  IsPattern1HITLEnabled: !And [!Condition IsPattern1, !Condition IsHITLEnabled]
-  IsPattern2HITLEnabled: !And [!Condition IsPattern2, !Condition IsHITLEnabled]
   ShouldCreatePrivateWorkteam: !And [!Condition IsHITLEnabled, !Equals [!Ref ExistingPrivateWorkforceArn, ""]]
   ShouldUseExistingPrivateWorkteam: !And [!Condition IsHITLEnabled, !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]]
 
@@ -570,12 +550,12 @@ Metadata:
         default: "Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
-      CustomConfigPath:
-        default: "Custom Configuration Path"
       Pattern3UDOPModelArtifactPath:
         default: "Pattern3 - UDOP Model Artifact Path"
       Pattern3Configuration:
         default: "Pattern3 - Configuration Preset"
+      CustomConfigPath:
+        default: "Custom Configuration Path"
       PostProcessingLambdaHookFunctionArn:
         default: "Post Processing Lambda Hook Function ARN"
       EvaluationBaselineBucketName:
@@ -924,7 +904,6 @@ Resources:
             - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableHITL: !Ref EnableHITL
-        IsPattern2HITLEnabled: !If [IsPattern2HITLEnabled, "true", "false"]
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -1006,7 +985,7 @@ Resources:
           - Sid: Allow DynamoDB to use the key
             Effect: Allow
             Principal:
-              Service: dynamodb.amazonaws.com
+              Service: !Sub "dynamodb.${AWS::URLSuffix}"
             Action:
               - kms:Encrypt
               - kms:Decrypt
@@ -1017,7 +996,7 @@ Resources:
           - Sid: Allow CloudWatch Logs to use the key
             Effect: Allow
             Principal:
-              Service: logs.amazonaws.com
+              Service: !Sub "logs.${AWS::URLSuffix}"
             Action:
               - kms:Encrypt
               - kms:Decrypt
@@ -1084,7 +1063,7 @@ Resources:
           - Sid: AllowS3ServerAccessLogs
             Effect: Allow
             Principal:
-              Service: logging.s3.amazonaws.com
+              Service: !Sub "logging.s3.${AWS::URLSuffix}"
             Action:
               - s3:PutObject
             Resource: !Sub "${LoggingBucket.Arn}/*"
@@ -1094,7 +1073,7 @@ Resources:
           - Sid: AllowCloudFrontLogs
             Effect: Allow
             Principal:
-              Service: cloudfront.amazonaws.com
+              Service: !Sub "cloudfront.${AWS::URLSuffix}"
             Action:
               - s3:PutObject
             Resource: !Sub "${LoggingBucket.Arn}/*"
@@ -1741,7 +1720,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: glue.amazonaws.com
+              Service: !Sub "glue.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSGlueServiceRole"
@@ -2530,7 +2509,7 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref WorkflowTracker
-      Principal: events.amazonaws.com
+      Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt WorkflowStateChangeRule.Arn
 
   ##########################################################################
@@ -2637,7 +2616,7 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref StepFunctionSubscriptionPublisher
-      Principal: events.amazonaws.com
+      Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt StepFunctionSubscriptionRule.Arn
 
   ##########################################################################
@@ -2676,7 +2655,7 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref PostProcessingLambdaHookFunctionArn
-      Principal: events.amazonaws.com
+      Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt PostProcessingLambdaHookRule.Arn
 
   ##########################################################################
@@ -2887,7 +2866,7 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref EvaluationFunction
-      Principal: events.amazonaws.com
+      Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt EvaluationFunctionRule.Arn
 
 
@@ -4241,7 +4220,7 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref CognitoUserPoolEmailDomainVerifyFunction
-      Principal: cognito-idp.amazonaws.com
+      Principal: !Sub "cognito-idp.${AWS::URLSuffix}"
       SourceAccount: !Ref AWS::AccountId
       SourceArn: !GetAtt UserPool.Arn
 
@@ -4293,7 +4272,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -4395,7 +4374,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: sagemaker.amazonaws.com
+              Service: !Sub "sagemaker.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
@@ -4447,7 +4426,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -4661,7 +4640,7 @@ Resources:
               - sts:AssumeRole
             Principal:
               Service:
-                - appsync.amazonaws.com
+                - !Sub "appsync.${AWS::URLSuffix}"
 
   # Optionally Secure API with WAF
 
@@ -4813,7 +4792,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: appsync.amazonaws.com
+              Service: !Sub "appsync.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
@@ -5996,7 +5975,7 @@ Resources:
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
         Logging:
-          Bucket: !Sub "${LoggingBucket}.s3.amazonaws.com"
+          Bucket: !Sub "${LoggingBucket}.s3.${AWS::URLSuffix}"
           Prefix: "cloudfront-logs"
           IncludeCookies: true
         CustomErrorResponses:
@@ -6053,7 +6032,7 @@ Resources:
           - Action: sts:AssumeRole
             Effect: Allow
             Principal:
-              Service: codebuild.amazonaws.com
+              Service: !Sub "codebuild.${AWS::URLSuffix}"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: ecs-service
@@ -6196,7 +6175,7 @@ Resources:
           - Effect: Allow
             Principal:
               Service:
-                - lambda.amazonaws.com
+                - !Sub "lambda.${AWS::URLSuffix}"
             Action:
               - sts:AssumeRole
       Path: "/"

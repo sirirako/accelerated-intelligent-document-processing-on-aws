@@ -2,14 +2,15 @@
 
 ## Current Task Status
 
-**Feature Implementation**: ✅ **COMPLETED** - GovCloud Template Generation System
+**Feature Implementation**: ✅ **COMPLETED** - Service Principal GovCloud Compatibility Updates
 
 ## Feature Overview
 
-Successfully created a comprehensive GovCloud-compatible version of the GenAI IDP Accelerator that addresses both key requirements:
+Successfully updated all CloudFormation templates to replace hardcoded AWS service principals with dynamic expressions for GovCloud compatibility:
 
-1. **ARN Partition Updates**: All templates now use `arn:${AWS::Partition}:` for GovCloud compatibility
-2. **Stripped-Down Template**: Created generation script that removes UI components for headless operation
+1. **Service Principal Updates**: All templates now use `!Sub "<service>.${AWS::URLSuffix}"` for GovCloud compatibility
+2. **Template Fixes**: Fixed YAML validation errors and duplicate parameter issues
+3. **Comprehensive Coverage**: Updated all templates in main, options, and patterns directories
 
 ## Implementation Summary
 

@@ -91,14 +91,6 @@ Parameters:
       - "false"
     Description: "Enable Human In The Loop (A2I) for document review"
 
-  IsPattern2HITLEnabled:
-    Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: "Pattern-2 specific HITL enablement flag"
-
   SageMakerA2IReviewPortalURL:
     Type: String
     Default: ""
@@ -130,8 +122,6 @@ Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
-  IsPattern2HITLEnabled: !Equals [!Ref IsPattern2HITLEnabled, "true"]
-
 
 Resources:
 
@@ -1371,12 +1361,15 @@ Resources:
               - kms:GenerateDataKey*
               - kms:DescribeKey
             Resource: !Ref CustomerManagedEncryptionKeyArn
-          # AppSync permissions for updating document status
-          - Effect: Allow
-            Action:
-              - appsync:GraphQL
-            Resource: 
-              - !Sub "${AppSyncApiArn}/types/Mutation/*"
+          # AppSync permissions for updating document status (only if AppSync API is available)
+          - !If
+            - HasAppSyncApi
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${AppSyncApiArn}/types/Mutation/*"
+            - !Ref AWS::NoValue
 
   HITLWaitFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -1486,7 +1479,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -1546,7 +1539,7 @@ Resources:
     Properties:
       FunctionName: !Ref HITLProcessLambdaFunction
       Action: 'lambda:InvokeFunction'
-      Principal: 'events.amazonaws.com'
+      Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt HITLEventRule.Arn
 
   SummarizationFunction:
