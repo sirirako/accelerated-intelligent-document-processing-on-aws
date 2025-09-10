@@ -22,7 +22,7 @@ class TestDiscoveryConfigIntegration(unittest.TestCase):
         self.test_bucket = "test-bucket"
         self.test_prefix = "test-document.pdf"
         self.test_region = "us-west-2"
-        
+
         # Load sample configuration from YAML (simulating real config file)
         self.yaml_config = """
 discovery:
@@ -48,9 +48,9 @@ discovery:
         "groups": []
       }
 """
-        
+
         self.config_dict = yaml.safe_load(self.yaml_config)
-        
+
         # Sample ground truth
         self.ground_truth_data = {
             "document_class": "W4Form",
@@ -59,34 +59,38 @@ discovery:
                     "name": "EmployeeInfo",
                     "attributes": [
                         {"name": "FirstName", "type": "string"},
-                        {"name": "LastName", "type": "string"}
-                    ]
+                        {"name": "LastName", "type": "string"},
+                    ],
                 }
-            ]
+            ],
         }
 
-    @patch('idp_common.discovery.classes_discovery.boto3.resource')
-    @patch('idp_common.discovery.classes_discovery.bedrock.BedrockClient')
-    @patch('idp_common.discovery.classes_discovery.bedrock.extract_text_from_response')
-    @patch('idp_common.discovery.classes_discovery.S3Util.get_bytes')
+    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
+    @patch("idp_common.discovery.classes_discovery.bedrock.extract_text_from_response")
+    @patch("idp_common.discovery.classes_discovery.S3Util.get_bytes")
     def test_end_to_end_config_flow_without_ground_truth(
-        self, mock_s3_get_bytes, mock_extract_text, mock_bedrock_client, mock_boto3_resource
+        self,
+        mock_s3_get_bytes,
+        mock_extract_text,
+        mock_bedrock_client,
+        mock_boto3_resource,
     ):
         """Test complete configuration flow for discovery without ground truth."""
         # Setup mocks
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
-        
+
         # Mock the configuration table get_item method to return empty result
         mock_table.get_item.return_value = {}
-        
+
         mock_bedrock_instance = Mock()
         mock_bedrock_client.return_value = mock_bedrock_instance
-        
+
         # Mock successful Bedrock response
         mock_response = {"response": "success"}
         mock_bedrock_instance.invoke_model.return_value = mock_response
-        
+
         expected_result = {
             "document_class": "TestForm",
             "document_description": "A test form for validation",
@@ -99,41 +103,45 @@ discovery:
                         {
                             "name": "FirstName",
                             "dataType": "string",
-                            "description": "First name field"
+                            "description": "First name field",
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         mock_extract_text.return_value = json.dumps(expected_result)
         mock_s3_get_bytes.return_value = b"mock document content"
-        
+
         # Initialize ClassesDiscovery with YAML config
         discovery = ClassesDiscovery(
             input_bucket=self.test_bucket,
             input_prefix=self.test_prefix,
             config=self.config_dict,
-            region=self.test_region
+            region=self.test_region,
         )
-        
+
         # Execute discovery without ground truth
         result = discovery.discovery_classes_with_document(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix
+            input_bucket=self.test_bucket, input_prefix=self.test_prefix
         )
-        
+
         # Verify Bedrock was called with correct configuration
         mock_bedrock_instance.invoke_model.assert_called_once()
         call_args = mock_bedrock_instance.invoke_model.call_args[1]
-        
+
         # Verify configuration parameters were used
-        self.assertEqual(call_args["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
-        self.assertEqual(call_args["system_prompt"], "You are an expert document analyzer for form discovery.")
+        self.assertEqual(
+            call_args["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        )
+        self.assertEqual(
+            call_args["system_prompt"],
+            "You are an expert document analyzer for form discovery.",
+        )
         self.assertEqual(call_args["temperature"], 0.8)
         self.assertEqual(call_args["top_p"], 0.15)
         self.assertEqual(call_args["max_tokens"], 8000)
-        
+
         # Verify user prompt contains configured text
         content = call_args["content"]
         self.assertIsInstance(content, list)
@@ -145,32 +153,36 @@ discovery:
                     prompt_found = True
                     break
         self.assertTrue(prompt_found, "Configured user prompt not found in content")
-        
+
         # Verify result
         self.assertEqual(result["status"], "SUCCESS")
 
-    @patch('idp_common.discovery.classes_discovery.boto3.resource')
-    @patch('idp_common.discovery.classes_discovery.bedrock.BedrockClient')
-    @patch('idp_common.discovery.classes_discovery.bedrock.extract_text_from_response')
-    @patch('idp_common.discovery.classes_discovery.S3Util.get_bytes')
+    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
+    @patch("idp_common.discovery.classes_discovery.bedrock.extract_text_from_response")
+    @patch("idp_common.discovery.classes_discovery.S3Util.get_bytes")
     def test_end_to_end_config_flow_with_ground_truth(
-        self, mock_s3_get_bytes, mock_extract_text, mock_bedrock_client, mock_boto3_resource
+        self,
+        mock_s3_get_bytes,
+        mock_extract_text,
+        mock_bedrock_client,
+        mock_boto3_resource,
     ):
         """Test complete configuration flow for discovery with ground truth."""
         # Setup mocks
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
-        
+
         # Mock the configuration table get_item method to return empty result
         mock_table.get_item.return_value = {}
-        
+
         mock_bedrock_instance = Mock()
         mock_bedrock_client.return_value = mock_bedrock_instance
-        
+
         # Mock successful Bedrock response
         mock_response = {"response": "success"}
         mock_bedrock_instance.invoke_model.return_value = mock_response
-        
+
         expected_result = {
             "document_class": "W4Form",
             "document_description": "Employee withholding form",
@@ -183,59 +195,64 @@ discovery:
                         {
                             "name": "FirstName",
                             "dataType": "string",
-                            "description": "Employee first name"
+                            "description": "Employee first name",
                         },
                         {
                             "name": "LastName",
                             "dataType": "string",
-                            "description": "Employee last name"
-                        }
-                    ]
+                            "description": "Employee last name",
+                        },
+                    ],
                 }
-            ]
+            ],
         }
-        
+
         mock_extract_text.return_value = json.dumps(expected_result)
-        
+
         # Mock S3 calls for both document and ground truth
         def mock_s3_side_effect(bucket, key):
             if "ground-truth" in key:
-                return json.dumps(self.ground_truth_data).encode('utf-8')
+                return json.dumps(self.ground_truth_data).encode("utf-8")
             else:
                 return b"mock document content"
-        
+
         mock_s3_get_bytes.side_effect = mock_s3_side_effect
-        
+
         # Initialize ClassesDiscovery with YAML config
         discovery = ClassesDiscovery(
             input_bucket=self.test_bucket,
             input_prefix=self.test_prefix,
             config=self.config_dict,
-            region=self.test_region
+            region=self.test_region,
         )
-        
+
         # Execute discovery with ground truth
         result = discovery.discovery_classes_with_document_and_ground_truth(
             input_bucket=self.test_bucket,
             input_prefix=self.test_prefix,
-            ground_truth_key="ground-truth.json"
+            ground_truth_key="ground-truth.json",
         )
-        
+
         # Verify Bedrock was called with correct configuration
         mock_bedrock_instance.invoke_model.assert_called_once()
         call_args = mock_bedrock_instance.invoke_model.call_args[1]
-        
+
         # Verify configuration parameters were used (with_ground_truth config)
-        self.assertEqual(call_args["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
-        self.assertEqual(call_args["system_prompt"], "You are an expert document analyzer using ground truth reference.")
+        self.assertEqual(
+            call_args["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        )
+        self.assertEqual(
+            call_args["system_prompt"],
+            "You are an expert document analyzer using ground truth reference.",
+        )
         self.assertEqual(call_args["temperature"], 0.6)
         self.assertEqual(call_args["top_p"], 0.12)
         self.assertEqual(call_args["max_tokens"], 9000)
-        
+
         # Verify ground truth was injected into prompt
         content = call_args["content"]
         self.assertIsInstance(content, list)
-        
+
         # Check that ground truth JSON is in the prompt
         prompt_found = False
         ground_truth_found = False
@@ -246,21 +263,23 @@ discovery:
                     prompt_found = True
                 if "W4Form" in text_content:  # From ground truth data
                     ground_truth_found = True
-        
+
         self.assertTrue(prompt_found, "Configured user prompt not found in content")
         self.assertTrue(ground_truth_found, "Ground truth data not found in prompt")
-        
+
         # Verify result
         self.assertEqual(result["status"], "SUCCESS")
 
-    @patch('idp_common.discovery.classes_discovery.boto3.resource')
-    @patch('idp_common.discovery.classes_discovery.bedrock.BedrockClient')
-    def test_config_validation_and_defaults(self, mock_bedrock_client, mock_boto3_resource):
+    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
+    def test_config_validation_and_defaults(
+        self, mock_bedrock_client, mock_boto3_resource
+    ):
         """Test configuration validation and default fallbacks."""
         # Setup mocks
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
-        
+
         # Test with incomplete configuration
         incomplete_config = {
             "discovery": {
@@ -270,53 +289,55 @@ discovery:
                 }
             }
         }
-        
+
         # Initialize with incomplete config
         discovery = ClassesDiscovery(
             input_bucket=self.test_bucket,
             input_prefix=self.test_prefix,
             config=incomplete_config,
-            region=self.test_region
+            region=self.test_region,
         )
-        
+
         # Verify that missing fields get default values
         without_gt_config = discovery.without_gt_config
-        
+
         # Model ID should be from config
         self.assertEqual(without_gt_config.get("model_id"), "test-model")
-        
+
         # Missing fields should get defaults when accessed
         temperature = without_gt_config.get("temperature", 1.0)
         top_p = without_gt_config.get("top_p", 0.1)
         max_tokens = without_gt_config.get("max_tokens", 10000)
-        
+
         self.assertEqual(temperature, 1.0)
         self.assertEqual(top_p, 0.1)
         self.assertEqual(max_tokens, 10000)
 
-    @patch('idp_common.discovery.classes_discovery.boto3.resource')
-    @patch('idp_common.discovery.classes_discovery.bedrock.BedrockClient')
-    def test_backward_compatibility_override(self, mock_bedrock_client, mock_boto3_resource):
+    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
+    def test_backward_compatibility_override(
+        self, mock_bedrock_client, mock_boto3_resource
+    ):
         """Test that legacy bedrock_model_id parameter overrides config."""
         # Setup mocks
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
-        
+
         legacy_model_id = "legacy-model-override"
-        
+
         # Initialize with both config and legacy parameter
         discovery = ClassesDiscovery(
             input_bucket=self.test_bucket,
             input_prefix=self.test_prefix,
             config=self.config_dict,
             bedrock_model_id=legacy_model_id,  # This should override config
-            region=self.test_region
+            region=self.test_region,
         )
-        
+
         # Verify legacy parameter overrides config
         self.assertEqual(discovery.without_gt_config["model_id"], legacy_model_id)
         self.assertEqual(discovery.with_gt_config["model_id"], legacy_model_id)
-        
+
         # But other config values should remain
         self.assertEqual(discovery.without_gt_config["temperature"], 0.8)
         self.assertEqual(discovery.with_gt_config["temperature"], 0.6)
@@ -325,29 +346,33 @@ discovery:
         """Test that YAML configuration is parsed correctly."""
         # Parse the YAML config
         parsed_config = yaml.safe_load(self.yaml_config)
-        
+
         # Verify structure
         self.assertIn("discovery", parsed_config)
         discovery_config = parsed_config["discovery"]
-        
+
         # Verify without_ground_truth section
         without_gt = discovery_config["without_ground_truth"]
-        self.assertEqual(without_gt["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
+        self.assertEqual(
+            without_gt["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        )
         self.assertEqual(without_gt["temperature"], 0.8)
         self.assertEqual(without_gt["top_p"], 0.15)
         self.assertEqual(without_gt["max_tokens"], 8000)
-        
+
         # Verify with_ground_truth section
         with_gt = discovery_config["with_ground_truth"]
-        self.assertEqual(with_gt["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
+        self.assertEqual(
+            with_gt["model_id"], "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        )
         self.assertEqual(with_gt["temperature"], 0.6)
         self.assertEqual(with_gt["top_p"], 0.12)
         self.assertEqual(with_gt["max_tokens"], 9000)
-        
+
         # Verify prompts
         self.assertIn("expert document analyzer", without_gt["system_prompt"])
         self.assertIn("{ground_truth_json}", with_gt["user_prompt"])
-        
+
         # Verify output format
         self.assertIn("output_format", discovery_config)
         self.assertIn("sample_json", discovery_config["output_format"])

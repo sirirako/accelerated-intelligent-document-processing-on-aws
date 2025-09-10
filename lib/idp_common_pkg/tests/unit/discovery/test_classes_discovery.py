@@ -150,8 +150,14 @@ class TestClassesDiscovery:
             assert service.input_bucket == "test-bucket"
             assert service.input_prefix == "test-document.pdf"
             # Verify backward compatibility - bedrock_model_id should override config
-            assert service.without_gt_config["model_id"] == "anthropic.claude-3-sonnet-20240229-v1:0"
-            assert service.with_gt_config["model_id"] == "anthropic.claude-3-sonnet-20240229-v1:0"
+            assert (
+                service.without_gt_config["model_id"]
+                == "anthropic.claude-3-sonnet-20240229-v1:0"
+            )
+            assert (
+                service.with_gt_config["model_id"]
+                == "anthropic.claude-3-sonnet-20240229-v1:0"
+            )
             assert service.region == "us-west-2"
             assert service.configuration_table_name == "test-config-table"
 

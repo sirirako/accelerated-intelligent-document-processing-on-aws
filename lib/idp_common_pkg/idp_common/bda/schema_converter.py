@@ -74,7 +74,7 @@ class SchemaConverter:
             if group_type and group_type.lower() == "list":
                 listItemTemplate = group.get("listItemTemplate", {})
                 fields = listItemTemplate.get("itemAttributes", [])
-            
+
             for field in fields:
                 field_name = self._format_field_name(field.get("name", ""))
                 if not field_name:
@@ -88,7 +88,6 @@ class SchemaConverter:
                     field_name
                 ] = field_schema
 
-            
             if group_type and group_type.lower() == "list":
                 # Create array property for tables
                 blueprint_schema["properties"][section_def_name] = {

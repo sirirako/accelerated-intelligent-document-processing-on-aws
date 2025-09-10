@@ -27,17 +27,17 @@ class ClassesDiscovery:
         self.input_bucket = input_bucket
         self.input_prefix = input_prefix
         self.region = region or os.environ.get("AWS_REGION", "us-east-1")
-        
+
         # Load configuration
         self.config = config or self._load_default_config()
-        
+
         # Get discovery configuration
         self.discovery_config = self.config.get("discovery", {})
-        
+
         # Get model configuration for both scenarios
         self.without_gt_config = self.discovery_config.get("without_ground_truth", {})
         self.with_gt_config = self.discovery_config.get("with_ground_truth", {})
-        
+
         # Backward compatibility: use bedrock_model_id if provided
         if bedrock_model_id:
             self.without_gt_config["model_id"] = bedrock_model_id
@@ -76,7 +76,7 @@ For document_description generate a description about the document in less than 
 Group the fields based on the section they are grouped in the form. Group should have attributeType as "group".
 If the group repeats and follows table format, update the attributeType as "list".      
 Do not extract the values.
-Return the extracted data in JSON format."""
+Return the extracted data in JSON format.""",
                 },
                 "with_ground_truth": {
                     "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
@@ -97,7 +97,7 @@ Add two fields document_class and document_description.
 For document_class generate a short name based on the document content like W4, I-9, Paystub. 
 For document_description generate a description about the document in less than 50 words.
 If the group repeats and follows table format, update the attributeType as "list".      
-Do not extract the values."""
+Do not extract the values.""",
                 },
                 "output_format": {
                     "sample_json": """{
@@ -123,7 +123,7 @@ Do not extract the values."""
         }
     ]
 }"""
-                }
+                },
             }
         }
 
@@ -353,16 +353,24 @@ Do not extract the values."""
     def _extract_data_from_document(self, document_content, file_extension):
         try:
             # Get configuration for without ground truth
-            model_id = self.without_gt_config.get("model_id", "anthropic.claude-3-sonnet-20240229-v1:0")
-            system_prompt = self.without_gt_config.get("system_prompt", 
-                "You are an expert in processing forms. Extracting data from images and documents")
+            model_id = self.without_gt_config.get(
+                "model_id", "anthropic.claude-3-sonnet-20240229-v1:0"
+            )
+            system_prompt = self.without_gt_config.get(
+                "system_prompt",
+                "You are an expert in processing forms. Extracting data from images and documents",
+            )
             temperature = self.without_gt_config.get("temperature", 1.0)
             top_p = self.without_gt_config.get("top_p", 0.1)
             max_tokens = self.without_gt_config.get("max_tokens", 10000)
-            
+
             # Create user prompt with sample format
-            user_prompt = self.without_gt_config.get("user_prompt", self._prompt_classes_discovery())
-            sample_format = self.discovery_config.get("output_format", {}).get("sample_json", self._sample_output_format())
+            user_prompt = self.without_gt_config.get(
+                "user_prompt", self._prompt_classes_discovery()
+            )
+            sample_format = self.discovery_config.get("output_format", {}).get(
+                "sample_json", self._sample_output_format()
+            )
             full_prompt = f"{user_prompt}\nFormat the extracted data using the below JSON format:\n{sample_format}"
 
             # Create content for the user message
@@ -422,25 +430,35 @@ Do not extract the values."""
         """Extract data from document using ground truth as reference."""
         try:
             # Get configuration for with ground truth
-            model_id = self.with_gt_config.get("model_id", "anthropic.claude-3-sonnet-20240229-v1:0")
-            system_prompt = self.with_gt_config.get("system_prompt", 
-                "You are an expert in processing forms. Extracting data from images and documents")
+            model_id = self.with_gt_config.get(
+                "model_id", "anthropic.claude-3-sonnet-20240229-v1:0"
+            )
+            system_prompt = self.with_gt_config.get(
+                "system_prompt",
+                "You are an expert in processing forms. Extracting data from images and documents",
+            )
             temperature = self.with_gt_config.get("temperature", 1.0)
             top_p = self.with_gt_config.get("top_p", 0.1)
             max_tokens = self.with_gt_config.get("max_tokens", 10000)
 
             # Create enhanced prompt with ground truth
-            user_prompt = self.with_gt_config.get("user_prompt", 
-                self._prompt_classes_discovery_with_ground_truth(ground_truth_data))
-            
+            user_prompt = self.with_gt_config.get(
+                "user_prompt",
+                self._prompt_classes_discovery_with_ground_truth(ground_truth_data),
+            )
+
             # If user_prompt contains placeholder, replace it with ground truth
             if "{ground_truth_json}" in user_prompt:
                 ground_truth_json = json.dumps(ground_truth_data, indent=2)
                 prompt = user_prompt.replace("{ground_truth_json}", ground_truth_json)
             else:
-                prompt = self._prompt_classes_discovery_with_ground_truth(ground_truth_data)
-            
-            sample_format = self.discovery_config.get("output_format", {}).get("sample_json", self._sample_output_format())
+                prompt = self._prompt_classes_discovery_with_ground_truth(
+                    ground_truth_data
+                )
+
+            sample_format = self.discovery_config.get("output_format", {}).get(
+                "sample_json", self._sample_output_format()
+            )
             full_prompt = f"{prompt}\nFormat the extracted data using the below JSON format:\n{sample_format}"
 
             # Create content for the user message

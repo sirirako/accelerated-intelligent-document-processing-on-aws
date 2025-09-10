@@ -658,11 +658,7 @@ class TestBdaBlueprintService:
         }
 
         # Invalid blueprint with malformed schema
-        invalid_blueprint = {
-            "blueprint": {
-                "schema": "invalid json"
-            }
-        }
+        invalid_blueprint = {"blueprint": {"schema": "invalid json"}}
 
         # Should raise the exception
         with pytest.raises(json.JSONDecodeError):
