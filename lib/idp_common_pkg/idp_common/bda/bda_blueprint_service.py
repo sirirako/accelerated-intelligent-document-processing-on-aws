@@ -146,8 +146,6 @@ class BdaBlueprintService:
             return []
 
     def _check_for_updates(self, custom_class: dict, blueprint: dict):
-        # blueprint = self.blueprint_creator.get_blueprint(blueprint_arn, stage="LIVE")
-        # print(f"blueprint retrieved {blueprint}")
         # get the schema
         schema = blueprint["schema"]
         schema = json.loads(schema)

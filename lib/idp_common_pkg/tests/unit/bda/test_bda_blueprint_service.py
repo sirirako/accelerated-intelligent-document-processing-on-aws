@@ -437,28 +437,26 @@ class TestBdaBlueprintService:
 
         # Mock existing blueprint schema that matches the custom class
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {
-                            "Personalinformation": {  # Formatted section name (capitalize)
-                                "properties": {
-                                    "firstname": {  # Formatted field name (lowercase)
-                                        "type": "string",
-                                        "instruction": "First Name of Employee",
-                                    },
-                                    "lastname": {  # Formatted field name (lowercase)
-                                        "type": "string",
-                                        "instruction": "Last Name of Employee",
-                                    },
-                                }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {
+                        "Personalinformation": {  # Formatted section name (capitalize)
+                            "properties": {
+                                "firstname": {  # Formatted field name (lowercase)
+                                    "type": "string",
+                                    "instruction": "First Name of Employee",
+                                },
+                                "lastname": {  # Formatted field name (lowercase)
+                                    "type": "string",
+                                    "instruction": "Last Name of Employee",
+                                },
                             }
-                        },
-                    }
-                )
-            }
+                        }
+                    },
+                }
+            )
         }
 
         # Execute the method
@@ -476,15 +474,13 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",  # Original name
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {},
-                    }
-                )
-            }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",  # Original name
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {},
+                }
+            )
         }
 
         result = service._check_for_updates(custom_class, existing_blueprint)
@@ -501,15 +497,13 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",  # Original description
-                        "definitions": {},
-                    }
-                )
-            }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",  # Original description
+                    "definitions": {},
+                }
+            )
         }
 
         result = service._check_for_updates(custom_class, existing_blueprint)
@@ -532,20 +526,18 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {
-                            "Personalinformation": {  # Formatted section name (capitalize)
-                                "properties": {}
-                            }
-                            # Newsection is missing
-                        },
-                    }
-                )
-            }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {
+                        "Personalinformation": {  # Formatted section name (capitalize)
+                            "properties": {}
+                        }
+                        # Newsection is missing
+                    },
+                }
+            )
         }
 
         result = service._check_for_updates(custom_class, existing_blueprint)
@@ -573,24 +565,22 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {
-                            "Personalinformation": {  # Formatted section name (capitalize)
-                                "properties": {
-                                    "firstname": {  # Formatted field name (lowercase)
-                                        "type": "string",
-                                        "instruction": "First Name of Employee",  # Original description
-                                    }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {
+                        "Personalinformation": {  # Formatted section name (capitalize)
+                            "properties": {
+                                "firstname": {  # Formatted field name (lowercase)
+                                    "type": "string",
+                                    "instruction": "First Name of Employee",  # Original description
                                 }
                             }
-                        },
-                    }
-                )
-            }
+                        }
+                    },
+                }
+            )
         }
 
         result = service._check_for_updates(custom_class, existing_blueprint)
@@ -623,25 +613,23 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {
-                            "Personalinformation": {  # Formatted section name (capitalize)
-                                "properties": {
-                                    "firstname": {  # Formatted field name (lowercase)
-                                        "type": "string",
-                                        "instruction": "First Name of Employee",
-                                    }
-                                    # middlename is missing
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {
+                        "Personalinformation": {  # Formatted section name (capitalize)
+                            "properties": {
+                                "firstname": {  # Formatted field name (lowercase)
+                                    "type": "string",
+                                    "instruction": "First Name of Employee",
                                 }
+                                # middlename is missing
                             }
-                        },
-                    }
-                )
-            }
+                        }
+                    },
+                }
+            )
         }
 
         result = service._check_for_updates(custom_class, existing_blueprint)
@@ -658,7 +646,7 @@ class TestBdaBlueprintService:
         }
 
         # Invalid blueprint with malformed schema
-        invalid_blueprint = {"blueprint": {"schema": "invalid json"}}
+        invalid_blueprint = {"schema": "invalid json"}
 
         # Should raise the exception
         with pytest.raises(json.JSONDecodeError):
@@ -673,15 +661,13 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {},
-                    }
-                )
-            }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {},
+                }
+            )
         }
 
         result = service._check_for_updates(custom_class, existing_blueprint)
@@ -698,15 +684,13 @@ class TestBdaBlueprintService:
         }
 
         existing_blueprint = {
-            "blueprint": {
-                "schema": json.dumps(
-                    {
-                        "class": "W-4",
-                        "description": "Employee's Withholding Certificate form",
-                        "definitions": {},
-                    }
-                )
-            }
+            "schema": json.dumps(
+                {
+                    "class": "W-4",
+                    "description": "Employee's Withholding Certificate form",
+                    "definitions": {},
+                }
+            )
         }
 
         # Should handle missing attributes gracefully
