@@ -122,7 +122,6 @@ Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
 
-
 Resources:
 
   # JSON Schema which defines the structure of the pattern configuration settings
