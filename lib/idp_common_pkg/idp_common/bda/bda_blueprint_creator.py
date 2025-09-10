@@ -74,9 +74,7 @@ class BDABlueprintCreator:
             logger.error(f"Failed to update data automation project: {e}")
             return None
 
-    def update_data_automation_project_with_custom_configurations(
-        self, projectArn: str, customConfiguration
-    ):
+    def update_project_with_custom_configurations(self, projectArn: str, customConfiguration):
         """
         Update an existing Bedrock Data Automation project with the provided blueprint.
 
@@ -93,7 +91,7 @@ class BDABlueprintCreator:
             )
             project = project.get("project", None)
             logger.info(f"Updating project: {project}")
-
+            
             logger.info(f"Updating updated data automation project: {projectArn}")
             response = self.bedrock_client.update_data_automation_project(
                 projectArn=projectArn,
@@ -354,7 +352,8 @@ class BDABlueprintCreator:
             logger.error(f"Error updating blueprint: {e}")
             raise e
 
-    def list_blueprints(self, projectArn, projectStage):
+
+    def list_blueprints(self, projectArn, projectStage ):
         try:
             project = self.bedrock_client.get_data_automation_project(
                 projectArn=projectArn, projectStage="LIVE"
@@ -362,19 +361,17 @@ class BDABlueprintCreator:
             project = project.get("project", None)
             logger.info(f"Updating project: {project}")
             customOutputConfiguration = project.get("customOutputConfiguration", None)
-
+            
             return customOutputConfiguration
 
         except Exception as e:
             logger.error(f"Error updating blueprint: {e}")
             raise e
-
-    def delete_blueprint(self, blueprint_arn, blueprint_version):
+    
+    def delete_blueprint(self, blueprint_arn, blueprint_version ):
         try:
-            return self.bedrock_client.delete_blueprint(
-                blueprintArn=blueprint_arn, blueprintVersion=blueprint_version
-            )
-
+            return self.bedrock_client.delete_blueprint(blueprintArn=blueprint_arn, blueprintVersion=blueprint_version )
+            
         except Exception as e:
             logger.error(f"Error delete_blueprint: {e}")
             raise e

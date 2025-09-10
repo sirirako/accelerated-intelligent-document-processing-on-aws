@@ -32,8 +32,6 @@ def handler(event, context):
 
     batch_item_failures = []
     sqs_batch_response = {}
-    status = 'SUCCESS'
-
     try:
         bda_project_arn = os.environ.get("BDA_PROJECT_ARN")
         bdaBlueprintService = BdaBlueprintService( dataAutomationProjectArn=bda_project_arn )

@@ -149,7 +149,7 @@ class BdaBlueprintService:
         # blueprint = self.blueprint_creator.get_blueprint(blueprint_arn, stage="LIVE")
         # print(f"blueprint retrieved {blueprint}")
         # get the schema
-        schema = blueprint["blueprint"]["schema"]
+        schema = blueprint["schema"]
         schema = json.loads(schema)
         # get the document class
         definitions = schema["definitions"]
@@ -262,6 +262,7 @@ class BdaBlueprintService:
                         logger.info(
                             f"Found existing blueprint for class {docu_class}: {blueprint_name}"
                         )
+                        blueprints_updated.append(blueprint_arn)
 
                         # Check for updates on existing blueprint
                         if self._check_for_updates(
@@ -293,7 +294,7 @@ class BdaBlueprintService:
                             logger.info(
                                 f"No updates needed for existing blueprint {blueprint_name}"
                             )
-                        blueprints_updated.append(blueprint_arn)
+                        
                     else:
                         # create new blueprint
                         # Call the create_blueprint method
@@ -329,6 +330,7 @@ class BdaBlueprintService:
                         custom_class["blueprint_version"] = result.get("blueprint").get(
                             "blueprint_version"
                         )
+                        blueprints_updated.append(blueprint_arn)
                         logger.info(
                             f"Created new blueprint for class {docu_class}: {blueprint_name}"
                         )
