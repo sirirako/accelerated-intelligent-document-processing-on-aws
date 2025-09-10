@@ -294,7 +294,7 @@ class BdaBlueprintService:
                             logger.info(
                                 f"No updates needed for existing blueprint {blueprint_name}"
                             )
-                        
+
                     else:
                         # create new blueprint
                         # Call the create_blueprint method
