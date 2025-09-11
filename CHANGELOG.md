@@ -37,6 +37,7 @@ SPDX-License-Identifier: MIT-0
   - Fixed HITL processing errors in both Pattern-1 (DynamoDB validation with empty strings) and Pattern-2 (string indices error in A2I output processing)
   - Fixed Step Function UI issues including auto-refresh button auto-disable and fetch failures for failed executions with datetime serialization errors
   - Cleaned up unused Step Function subscription infrastructure and removed duplicate code in Pattern-2 HITL function
+  - Expanded UI Visual Editor bounding box size with padding for better visibility and user interaction
 
 
 ## [0.3.14]
