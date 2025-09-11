@@ -129,7 +129,7 @@ classification:
     </document-text>
   ```
 
-## Limitations of Text-Based Holistic Classification
+##### Limitations of Text-Based Holistic Classification
 
 Despite its strengths in handling full-document context, this method has several limitations:
 
