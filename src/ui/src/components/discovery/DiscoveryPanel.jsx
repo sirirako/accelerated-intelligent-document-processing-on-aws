@@ -25,6 +25,7 @@ import uploadDiscoveryDocument from '../../graphql/queries/uploadDiscoveryDocume
 import listDiscoveryJobs from '../../graphql/queries/listDiscoveryJobs';
 import onDiscoveryJobStatusChange from '../../graphql/subscriptions/onDiscoveryJobStatusChange';
 import useSettingsContext from '../../contexts/settings';
+import { getJsonValidationError } from '../common/utilities';
 
 const DiscoveryPanel = () => {
   const { settings } = useSettingsContext();
@@ -36,6 +37,7 @@ const DiscoveryPanel = () => {
   const [prefix, setPrefix] = useState('');
   const [discoveryJobs, setDiscoveryJobs] = useState([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const [isValidatingJson, setIsValidatingJson] = useState(false);
   // Remove unused activeSubscriptions state since we manage subscriptions locally in useEffect
 
   // Debounced status update to prevent rapid DOM changes
@@ -197,13 +199,64 @@ const DiscoveryPanel = () => {
 
   const handleGroundTruthFileChange = (e) => {
     const file = e.target.files[0];
-    if (file && !file.name.toLowerCase().endsWith('.json')) {
-      setError('Ground truth file must be a JSON file');
+    if (!file) {
+      setGroundTruthFile(null);
+      setUploadStatus([]);
+      setError(null);
+      setIsValidatingJson(false);
       return;
     }
-    setGroundTruthFile(file);
-    setUploadStatus([]);
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      setError('Ground truth file must be a JSON file');
+      setIsValidatingJson(false);
+      return;
+    }
+
+    // Start validation
+    setIsValidatingJson(true);
     setError(null);
+
+    // Validate JSON content
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target.result;
+        
+        // Check if file is empty
+        if (!content || content.trim().length === 0) {
+          setError('Ground truth file is empty. Please select a valid JSON file.');
+          setGroundTruthFile(null);
+          setIsValidatingJson(false);
+          e.target.value = '';
+          return;
+        }
+        
+        JSON.parse(content); // This will throw if invalid JSON
+        
+        // JSON is valid, set the file
+        setGroundTruthFile(file);
+        setUploadStatus([]);
+        setError(null);
+        setIsValidatingJson(false);
+      } catch (jsonError) {
+        const friendlyError = getJsonValidationError(jsonError);
+        setError(`Invalid JSON format in ground truth file: ${friendlyError}`);
+        setGroundTruthFile(null);
+        setIsValidatingJson(false);
+        // Clear the file input
+        e.target.value = '';
+      }
+    };
+    
+    reader.onerror = () => {
+      setError('Failed to read ground truth file');
+      setGroundTruthFile(null);
+      setIsValidatingJson(false);
+      e.target.value = '';
+    };
+    
+    reader.readAsText(file);
   };
 
   const handlePrefixChange = (e) => {
@@ -428,10 +481,20 @@ const DiscoveryPanel = () => {
             </FormField>
 
             <FormField label="Ground Truth File" description="Select the JSON file with expected results">
-              <input type="file" onChange={handleGroundTruthFileChange} disabled={isUploading} accept=".json" />
-              {groundTruthFile && (
+              <input 
+                type="file" 
+                onChange={handleGroundTruthFileChange} 
+                disabled={isUploading || isValidatingJson} 
+                accept=".json" 
+              />
+              {isValidatingJson && (
                 <Box margin={{ top: 'xs' }}>
-                  <StatusIndicator type="success">Selected: {groundTruthFile.name}</StatusIndicator>
+                  <StatusIndicator type="in-progress">Validating JSON format...</StatusIndicator>
+                </Box>
+              )}
+              {groundTruthFile && !isValidatingJson && (
+                <Box margin={{ top: 'xs' }}>
+                  <StatusIndicator type="success">Selected: {groundTruthFile.name} (Valid JSON)</StatusIndicator>
                 </Box>
               )}
             </FormField>
@@ -446,7 +509,12 @@ const DiscoveryPanel = () => {
             />
           </FormField>
 
-          <Button variant="primary" onClick={uploadFiles} loading={isUploading} disabled={!documentFile || isUploading}>
+          <Button 
+            variant="primary" 
+            onClick={uploadFiles} 
+            loading={isUploading} 
+            disabled={!documentFile || isUploading || isValidatingJson}
+          >
             Start Discovery
           </Button>
 

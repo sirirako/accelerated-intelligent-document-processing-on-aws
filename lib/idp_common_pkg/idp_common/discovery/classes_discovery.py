@@ -21,7 +21,6 @@ class ClassesDiscovery:
         input_bucket: str,
         input_prefix: str,
         config: Optional[dict] = None,
-        bedrock_model_id: Optional[str] = None,  # Keep for backward compatibility
         region: Optional[str] = "us-west-2",
     ):
         self.input_bucket = input_bucket
@@ -37,11 +36,6 @@ class ClassesDiscovery:
         # Get model configuration for both scenarios
         self.without_gt_config = self.discovery_config.get("without_ground_truth", {})
         self.with_gt_config = self.discovery_config.get("with_ground_truth", {})
-
-        # Backward compatibility: use bedrock_model_id if provided
-        if bedrock_model_id:
-            self.without_gt_config["model_id"] = bedrock_model_id
-            self.with_gt_config["model_id"] = bedrock_model_id
 
         # Initialize Bedrock client using the common pattern
         self.bedrock_client = bedrock.BedrockClient(region=self.region)

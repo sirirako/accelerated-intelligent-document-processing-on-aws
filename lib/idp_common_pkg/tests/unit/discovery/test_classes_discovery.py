@@ -123,7 +123,6 @@ class TestClassesDiscovery:
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
-                bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
                 region="us-west-2",
             )
 
@@ -143,7 +142,6 @@ class TestClassesDiscovery:
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
-                bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
                 region="us-west-2",
             )
 
@@ -180,7 +178,6 @@ class TestClassesDiscovery:
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
-                bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
                 region=None,  # Explicitly pass None to trigger environment lookup
             )
 

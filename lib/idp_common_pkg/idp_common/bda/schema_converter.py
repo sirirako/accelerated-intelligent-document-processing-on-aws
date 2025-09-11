@@ -128,6 +128,7 @@ class SchemaConverter:
             "number": "number",
             "currency": "number",
             "checkbox": "boolean",
+            "boolean": "boolean",
             "date": "string",
             "table": "object",
         }

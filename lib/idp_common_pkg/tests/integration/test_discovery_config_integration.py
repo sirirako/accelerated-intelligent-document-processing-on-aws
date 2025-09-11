@@ -313,34 +313,8 @@ discovery:
         self.assertEqual(top_p, 0.1)
         self.assertEqual(max_tokens, 10000)
 
-    @patch("idp_common.discovery.classes_discovery.boto3.resource")
-    @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
-    def test_backward_compatibility_override(
-        self, mock_bedrock_client, mock_boto3_resource
-    ):
-        """Test that legacy bedrock_model_id parameter overrides config."""
-        # Setup mocks
-        mock_table = Mock()
-        mock_boto3_resource.return_value.Table.return_value = mock_table
-
-        legacy_model_id = "legacy-model-override"
-
-        # Initialize with both config and legacy parameter
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.config_dict,
-            bedrock_model_id=legacy_model_id,  # This should override config
-            region=self.test_region,
-        )
-
-        # Verify legacy parameter overrides config
-        self.assertEqual(discovery.without_gt_config["model_id"], legacy_model_id)
-        self.assertEqual(discovery.with_gt_config["model_id"], legacy_model_id)
-
-        # But other config values should remain
-        self.assertEqual(discovery.without_gt_config["temperature"], 0.8)
-        self.assertEqual(discovery.with_gt_config["temperature"], 0.6)
+    # Note: bedrock_model_id parameter was removed from ClassesDiscovery constructor
+    # Model configuration is now handled through the config parameter only
 
     def test_yaml_config_parsing(self):
         """Test that YAML configuration is parsed correctly."""

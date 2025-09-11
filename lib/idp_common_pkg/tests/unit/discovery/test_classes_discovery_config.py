@@ -108,30 +108,8 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         self.assertIn("with_ground_truth", discovery.discovery_config)
         self.assertIn("output_format", discovery.discovery_config)
 
-    @patch("idp_common.discovery.classes_discovery.boto3.resource")
-    @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
-    def test_backward_compatibility_with_bedrock_model_id(
-        self, mock_bedrock_client, mock_boto3_resource
-    ):
-        """Test backward compatibility when bedrock_model_id is provided."""
-        # Setup mocks
-        mock_table = Mock()
-        mock_boto3_resource.return_value.Table.return_value = mock_table
-
-        test_model_id = "legacy-model-id"
-
-        # Initialize with legacy bedrock_model_id parameter
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.sample_config,
-            bedrock_model_id=test_model_id,
-            region=self.test_region,
-        )
-
-        # Verify legacy model_id overrides config
-        self.assertEqual(discovery.without_gt_config["model_id"], test_model_id)
-        self.assertEqual(discovery.with_gt_config["model_id"], test_model_id)
+    # Note: bedrock_model_id parameter was removed from ClassesDiscovery constructor
+    # Configuration is now handled through the config parameter
 
     @patch("idp_common.discovery.classes_discovery.boto3.resource")
     @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")

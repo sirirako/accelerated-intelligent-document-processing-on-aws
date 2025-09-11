@@ -162,7 +162,6 @@ class TestClassesDiscoveryIntegration:
             service = ClassesDiscovery(
                 input_bucket="test-discovery-bucket",
                 input_prefix="forms/w4-sample.pdf",
-                bedrock_model_id="anthropic.claude-3-sonnet-20240229-v1:0",
                 region="us-west-2",
             )
 
