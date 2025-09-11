@@ -57,7 +57,9 @@ This dual approach ensures discovery insights can be leveraged across different 
 - [Troubleshooting](#troubleshooting)
   - [Common Issues](#common-issues)
   - [Error Handling](#error-handling)
-  - [Performance Optimization](#performance-optimization)
+  [Limitations](#limitations)
+  - [Known Limitations](#known-limitations)
+  
 
 ## Overview
 
@@ -133,6 +135,10 @@ This analysis produces structured configuration templates that can be used to co
 - **Metadata Storage**: Pattern-neutral job information and progress tracking
 - **Event Coordination**: Enables real-time updates and pattern-specific notifications
 
+**Configuration Table:**
+- **Metadata Storage**: Discovered classes are stored in configuration table as "custom" configuration classes
+
+
 ### Pattern-Specific Implementations
 
 #### Pattern 1: BDA Blueprint Automation
@@ -176,8 +182,6 @@ The discovery system is designed to support additional patterns through:
 # Configuration event structure (pattern-agnostic)
 {
     "eventType": "CONFIGURATION_UPDATE",
-    "pattern": "pattern-X",
-    "discoveryJobId": "job-12345",
     "documentClasses": [...],
     "metadata": {...}
 }
@@ -209,28 +213,24 @@ graph TD
     G --> H
     H --> I[Structure Extraction]
     I --> J[Pattern-Neutral Configuration]
-    J --> K{Target Pattern?}
-    K -->|Pattern 1| L[BDA Blueprint Creation]
-    K -->|Pattern 2/3| M[Direct Config Update]
-    K -->|New Pattern| N[Custom Handler]
-    L --> O[Job Completion]
-    M --> O
-    N --> O
-    O --> P[UI Notification]
+    J --> K[Configuration Table Update]
+    K --> P[Job Completion]
+    P --> O[UI Notification]
 ```
 
 #### Pattern 1: BDA Blueprint Automation Flow
 ```mermaid
 graph TD
-    A[Configuration Update Event] --> B[BDA Discovery Function]
-    B --> C[BDA Blueprint Service]
-    C --> D{Blueprint Exists?}
-    D -->|Yes| E[Check for Changes]
-    D -->|No| F[Create New Blueprint]
-    E -->|Changes Found| G[Update Blueprint]
-    E -->|No Changes| H[Skip Update]
-    F --> I[Schema Converter]
-    G --> I
+    A[View/Edit Configuration UI] --> B[Save Changes]
+    B --> C[Configuration Update Event]
+    C --> D[BDA Discovery Lambda - Blueprint Service]
+    D --> E{Blueprint Exists?}
+    E -->|Yes| F[Check for Changes]
+    E -->|No| G[Create New Blueprint]
+    F -->|Changes Found| H[Update Blueprint]
+    F -->|No Changes| N[Skip Update]
+    G --> I[Schema Converter]
+    H --> I[Schema Converter]
     I --> J[Generate BDA Schema]
     J --> K[Create/Update in BDA]
     K --> L[Create Blueprint Version]
@@ -492,7 +492,7 @@ discovery:
 
 **Group Types:**
 - `normal` - Standard field groupings
-- `Table` - Repeating tabular data structures
+- `List` - Repeating tabular data structures
 
 ## Using the Discovery Module
 
@@ -609,25 +609,7 @@ Configuration events are triggered when discovery jobs complete and contain patt
 {
   "eventType": "CONFIGURATION_UPDATE",
   "source": "discovery-processor",
-  "pattern": "pattern-1",
-  "discoveryJobId": "discovery-job-12345",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "documentClasses": [
-    {
-      "name": "W4Form",
-      "description": "Employee withholding certificate",
-      "groups": [...],
-      "metadata": {
-        "confidence": 0.95,
-        "model_used": "us.amazon.nova-pro-v1:0"
-      }
-    }
-  ],
-  "processingMetadata": {
-    "groundTruthUsed": true,
-    "processingTime": "45.2s",
-    "documentCount": 1
-  }
+  "timestamp": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -695,10 +677,10 @@ def pattern_x_configuration_handler(event, context):
     """
     try:
         # Extract discovery results from event
-        document_classes = event.get('documentClasses', [])
+        # retrieve custom classes from configuration table for processing.
         
         # Transform to pattern-specific format
-        pattern_config = transform_to_pattern_x_format(document_classes)
+        pattern_config = transform_to_pattern_x_format(custom_classes)
         
         # Update pattern-specific configuration
         update_pattern_x_configuration(pattern_config)
@@ -729,51 +711,6 @@ ConfigurationEventSource:
   Properties:
     EventSourceArn: !GetAtt ConfigurationQueue.Arn
     FunctionName: !Ref PatternXConfigurationHandler
-```
-
-#### Step 3: Implement Schema Transformation
-```python
-class PatternXSchemaConverter:
-    """
-    Converts pattern-neutral discovery results to Pattern X format.
-    """
-    
-    def convert(self, discovery_result):
-        """
-        Transform discovery document class to Pattern X configuration.
-        """
-        pattern_x_config = {
-            "documentType": discovery_result["name"],
-            "description": discovery_result["description"],
-            "extractionRules": []
-        }
-        
-        # Transform groups and fields
-        for group in discovery_result.get("groups", []):
-            extraction_rule = self._convert_group_to_rule(group)
-            pattern_x_config["extractionRules"].append(extraction_rule)
-        
-        return pattern_x_config
-```
-
-#### Step 4: Integration Points
-```python
-# Configuration update integration
-def update_pattern_x_configuration(config):
-    """
-    Update Pattern X configuration with discovery results.
-    """
-    # Store in configuration database
-    config_table.put_item(
-        Item={
-            "ConfigurationType": "PatternX",
-            "DocumentClasses": config,
-            "UpdatedAt": datetime.utcnow().isoformat()
-        }
-    )
-    
-    # Trigger any pattern-specific post-processing
-    notify_pattern_x_services(config)
 ```
 
 ### Benefits of the Generic Event System
@@ -1278,90 +1215,15 @@ def discovery_with_fallback(discovery_service, document_key, ground_truth_key=No
         )
 ```
 
-### Performance Optimization
+## Limitations
 
-**Document Preprocessing:**
-```python
-def optimize_document_for_discovery(document_path):
-    """Optimize document for better discovery performance."""
-    # Resize images to optimal dimensions
-    if document_path.lower().endswith(('.jpg', '.jpeg', '.png')):
-        optimize_image_resolution(document_path, target_dpi=150)
-    
-    # Split large PDFs into manageable sections
-    elif document_path.lower().endswith('.pdf'):
-        page_count = get_pdf_page_count(document_path)
-        if page_count > 10:
-            return split_pdf_into_sections(document_path, max_pages=10)
-    
-    return [document_path]
-```
+### Known Limitations
+**Configuration Table**
+- Discovery feature stores all custom classes as an array in Configuration table with "custom" key. 
+- DynamoDB has hard limit of 440 KB per item. We have to refactor to store classes in multiple items in DynamoDB.
+**Discovery Output Format**
+- Output format is configuration via View/Edit configuration. JSON format should follow custom classes format.  
+- Output in any other format will result in failure.
 
-**Batch Processing:**
-```python
-def batch_discovery_processing(document_list, batch_size=5):
-    """Process multiple documents efficiently."""
-    results = []
-    
-    for i in range(0, len(document_list), batch_size):
-        batch = document_list[i:i + batch_size]
-        
-        # Process batch concurrently
-        with ThreadPoolExecutor(max_workers=batch_size) as executor:
-            futures = [
-                executor.submit(process_single_document, doc)
-                for doc in batch
-            ]
-            
-            batch_results = [
-                future.result() for future in as_completed(futures)
-            ]
-            
-        results.extend(batch_results)
-        
-        # Rate limiting between batches
-        time.sleep(1)
-    
-    return results
-```
-
-**Caching and Reuse:**
-```python
-def cached_discovery_analysis(document_hash, config_hash):
-    """Cache discovery results for reuse."""
-    cache_key = f"discovery:{document_hash}:{config_hash}"
-    
-    # Check cache first
-    cached_result = get_from_cache(cache_key)
-    if cached_result:
-        return cached_result
-    
-    # Perform discovery if not cached
-    result = perform_discovery_analysis()
-    
-    # Cache result for future use
-    set_cache(cache_key, result, ttl=3600)  # 1 hour TTL
-    
-    return result
-```
-
-**Monitoring and Metrics:**
-```python
-def track_discovery_metrics(job_id, start_time, result):
-    """Track discovery performance metrics."""
-    processing_time = time.time() - start_time
-    
-    metrics = {
-        'job_id': job_id,
-        'processing_time_seconds': processing_time,
-        'fields_discovered': count_discovered_fields(result),
-        'groups_identified': count_groups(result),
-        'model_used': result.get('metadata', {}).get('model_id'),
-        'success': result.get('status') == 'SUCCESS'
-    }
-    
-    # Send to CloudWatch or monitoring system
-    publish_metrics(metrics)
-```
 
 The Discovery module provides a powerful foundation for understanding and processing new document types. By following these guidelines and best practices, you can effectively leverage the module to bootstrap document processing workflows and continuously improve their accuracy and coverage.
