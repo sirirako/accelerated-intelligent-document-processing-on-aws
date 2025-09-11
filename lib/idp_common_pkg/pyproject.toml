@@ -92,8 +92,7 @@ appsync = [
 agents = [
     "strands-agents>=1.0.0",
     "strands-agents-tools>=0.2.2",
-    "bedrock-agentcore>=0.1.1", # Specifically for the code interpreter tool
-    "regex>=2024.0.0,<2026.0.0"  # Pin regex version to avoid conflicts
+    "bedrock-agentcore>=0.1.1" # Specifically for the code interpreter tool
 ]
 
 # Document service factory dependencies (includes both appsync and dynamodb support)
