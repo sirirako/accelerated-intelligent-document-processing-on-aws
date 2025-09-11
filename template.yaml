@@ -6076,13 +6076,16 @@ Resources:
           LOG_LEVEL: !Ref LogLevel
           OUTPUT_BUCKET: !Ref OutputBucket
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          TRACKING_TABLE_NAME: !Ref TrackingTable
       LoggingConfig:
         LogGroup: !Ref ChatWithDocumentResolverFunctionLogGroup
       Policies:
-        - S3ReadPolicy:
+        - S3CrudPolicy:
             BucketName: !Ref OutputBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - Statement: 
           - !If
             - ShouldUseDocumentKnowledgeBase
@@ -6098,6 +6101,10 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
               - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+            Resource: "*"
           - Effect: Allow
             Action:
               - "bedrock:GetInferenceProfile"
