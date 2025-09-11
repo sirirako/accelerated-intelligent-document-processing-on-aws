@@ -13,6 +13,8 @@ SPDX-License-Identifier: MIT-0
   - **Target Use Cases**: Windows developers needing Linux compatibility without Docker Desktop or VM overhead
 
 ### Fixed
+- **Security Vulnerability Mitigation - Package Updates**
+
 - **GovCloud Compatibility - Hardcoded Service Domain References**
   - Fixed hardcoded `amazonaws.com` references in CloudFormation templates that prevented GovCloud deployment
   - Updated all service principals and endpoints to use dynamic `${AWS::URLSuffix}` expressions for automatic region-based resolution
