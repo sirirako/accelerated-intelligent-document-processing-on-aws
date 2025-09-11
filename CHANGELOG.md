@@ -6,6 +6,7 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
+
 - **Intelligent Document Discovery Module for Automated Configuration Generation**
   - Added Discovery module that automatically analyzes document samples to identify structure, field types, and organizational patterns
   - **Pattern-Neutral Design**: Works across all processing patterns (1, 2, 3) with unified discovery process and pattern-specific implementations
@@ -17,6 +18,17 @@ SPDX-License-Identifier: MIT-0
   - **Use Cases**: New document exploration, configuration improvement, rapid prototyping, and document understanding
   - **Documentation**: Guide in `docs/discovery.md` with architecture details, best practices, and troubleshooting
 
+- **Optional Pattern-2 Regex-Based Classification for Enhanced Performance**
+  - Added support for optional regex patterns in document class definitions for performance optimization
+  - **Document Name Regex**: Match against document ID/name to classify all pages without LLM processing when all pages should be the same class
+  - **Document Page Content Regex**: Match against page text content during multi-modal page-level classification for fast page classification
+  - **Key Benefits**: Significant performance improvements and cost savings by bypassing LLM calls for pattern-matched documents, deterministic classification results for known document patterns, seamless fallback to existing LLM classification when regex patterns don't match
+  - **Configuration**: Optional `document_name_regex` and `document_page_content_regex` fields in class definitions with automatic regex compilation and validation
+  - **Logging**: Comprehensive info-level logging when regex patterns match for observability and debugging
+  - **CloudFormation Integration**: Updated Pattern-2 schema to support regex configuration through the Web UI
+  - **Demonstration**: New `step2_classification_with_regex.ipynb` notebook showcasing regex configuration and performance comparisons
+  - **Documentation**: Enhanced classification module README and main documentation with regex usage examples and best practices
+  
 - **Windows WSL Development Environment Setup Guide**
   - Added WSL-based development environment setup guide for Windows developers in `docs/setup-development-env-WSL.md`
   - **Key Features**: Automated setup script (`wsl_setup.sh`) for quick installation of Git, Python, Node.js, AWS CLI, and SAM CLI

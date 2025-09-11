@@ -262,6 +262,14 @@ Resources:
                 description:
                   type: string
                   description: Class description. Instruct LLM how to identify the class from the context provided in the classification prompt.
+                document_name_regex:
+                  type: string
+                  description: "Optional regex pattern to match against document ID/name. When matched, all pages will be classified as this class type without LLM processing. Use only when all pages should be the same class."
+                  order: 2.5
+                document_page_content_regex:
+                  type: string
+                  description: "Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page will be classified as this class type without LLM processing."
+                  order: 2.6
                 examples:
                   type: array
                   description: Class few-shot examples

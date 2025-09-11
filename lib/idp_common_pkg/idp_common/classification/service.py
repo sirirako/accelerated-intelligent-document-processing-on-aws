@@ -152,7 +152,7 @@ class ClassificationService:
             )
 
     def _load_document_types(self) -> List[DocumentType]:
-        """Load document types from configuration."""
+        """Load document types from configuration with regex patterns."""
         doc_types = []
 
         # Get document types from config
@@ -162,6 +162,10 @@ class ClassificationService:
                 DocumentType(
                     type_name=class_obj.get("name", ""),
                     description=class_obj.get("description", ""),
+                    document_name_regex=class_obj.get("document_name_regex", None),
+                    document_page_content_regex=class_obj.get(
+                        "document_page_content_regex", None
+                    ),
                 )
             )
 
@@ -178,6 +182,55 @@ class ClassificationService:
             )
 
         return doc_types
+
+    def _check_document_name_regex(self, document: Document) -> Optional[str]:
+        """
+        Check if document name matches any class regex patterns.
+
+        Args:
+            document: Document object to check
+
+        Returns:
+            Matched class name if found, None otherwise
+        """
+        # Check document name against all class regex patterns
+        for doc_type in self.document_types:
+            if doc_type._compiled_name_regex and doc_type._compiled_name_regex.search(
+                document.id
+            ):
+                logger.info(
+                    f"Document name regex match: '{document.id}' matched pattern '{doc_type.document_name_regex}' for class '{doc_type.type_name}'"
+                )
+                return doc_type.type_name
+        return None
+
+    def _check_page_content_regex(self, text_content: str) -> Optional[str]:
+        """
+        Check if page content matches any class regex patterns.
+
+        Args:
+            text_content: Page text content to check
+
+        Returns:
+            Matched class name if found, None otherwise
+        """
+        # Only apply page content regex for multi-modal page-level classification
+        if self.classification_method != self.MULTIMODAL_PAGE_LEVEL:
+            return None
+
+        if not text_content:
+            return None
+
+        for doc_type in self.document_types:
+            if (
+                doc_type._compiled_content_regex
+                and doc_type._compiled_content_regex.search(text_content)
+            ):
+                logger.info(
+                    f"Page content regex match: Content matched pattern '{doc_type.document_page_content_regex}' for class '{doc_type.type_name}'"
+                )
+                return doc_type.type_name
+        return None
 
     def _format_classes_list(self) -> str:
         """Format document classes as a simple list for the prompt."""
@@ -634,6 +687,30 @@ class ClassificationService:
             except Exception as e:
                 logger.warning(f"Failed to load image content from {image_uri}: {e}")
                 # Continue without image content
+
+        # Check for page content regex match (multi-modal page-level classification only)
+        if text_content:
+            regex_matched_class = self._check_page_content_regex(text_content)
+            if regex_matched_class:
+                logger.info(
+                    f"Page {page_id} classified as '{regex_matched_class}' based on content regex match. Skipping LLM classification."
+                )
+
+                # Create and return classification result with regex match
+                return PageClassification(
+                    page_id=page_id,
+                    classification=DocumentClassification(
+                        doc_type=regex_matched_class,
+                        confidence=1.0,  # High confidence for regex matches
+                        metadata={
+                            "regex_matched": True,
+                            "document_boundary": "continue",  # Default boundary
+                        },
+                    ),
+                    image_uri=image_uri,
+                    text_uri=text_uri,
+                    raw_text_uri=raw_text_uri,
+                )
 
         # Verify we have at least some content to classify
         if not text_content and not image_content:
@@ -1190,6 +1267,33 @@ class ClassificationService:
                 success=False,
                 error_message="Document has no pages to classify",
             )
+
+        # Check for document name regex match (single-class configurations only)
+        regex_matched_class = self._check_document_name_regex(document)
+        if regex_matched_class:
+            logger.info(
+                f"Classifying all pages as '{regex_matched_class}' based on document name regex match. Skipping LLM classification."
+            )
+
+            # Set all pages to the regex-matched class
+            for page_id, page in document.pages.items():
+                page.classification = regex_matched_class
+                page.confidence = 1.0
+
+            # Create a single section containing all pages
+            page_ids = list(document.pages.keys())
+            section = self._create_section(
+                section_id="1",
+                doc_type=regex_matched_class,
+                pages=page_ids,
+                confidence=1.0,
+            )
+            document.sections = [section]
+
+            # Update document status
+            document = self._update_document_status(document)
+
+            return document
 
         # If there's only one document class defined, automatically classify all pages as that class
         # without calling any backend service
