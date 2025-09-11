@@ -738,10 +738,6 @@ class GranularAssessmentService:
                 logger.warning(
                     f"Failed to extract geometry data for task {task.task_id}: {str(e)}"
                 )
-                task_failed = True
-                error_messages.append(
-                    f"Failed to extract geometry data for task {task.task_id}"
-                )
                 # Continue with assessment even if geometry extraction fails
 
             # Check for confidence threshold alerts
@@ -1019,7 +1015,6 @@ class GranularAssessmentService:
                     f"Failed to generate text confidence data for page {page.page_id}: {str(e)}"
                 )
                 raise
-
         return ""
 
     def _convert_bbox_to_geometry(
@@ -1096,8 +1091,6 @@ class GranularAssessmentService:
                         f"Failed to process bounding box for {attr_name}: {str(e)}"
                     )
                     raise
-
-
             else:
                 # If only one of bbox/page exists, log a warning about incomplete data
                 if "bbox" in attr_assessment and "page" not in attr_assessment:
@@ -1448,8 +1441,7 @@ class GranularAssessmentService:
                 )
                 logger.info(f"error_message: {error_message}")
                 if error_message:
-                    logger.error(f"** Error: {error_message}")
-                    logger.error(f"** Error: {error_message}")
+                    logger.error(f"Error: {error_message}")
                     document.status = Status.FAILED
                     document.errors.append(error_message)
 
@@ -1457,7 +1449,7 @@ class GranularAssessmentService:
                 task_errors = [t.error_message for t in failed_tasks if t.error_message]
                 if task_errors:
                     error_msg = self._convert_error_list_to_string(task_errors)
-                    logger.error(f"*** Task Error: {error_message}")
+                    logger.error(f"Task Error: {error_message}")
                     document.status = Status.FAILED
                     document.errors.append(error_msg)
 
@@ -1500,7 +1492,6 @@ class GranularAssessmentService:
             logger.error(error_msg)
             document.status = Status.FAILED
             document.errors.append(error_msg)
-
         return document
 
     def assess_document(self, document: Document) -> Document:
@@ -1539,6 +1530,7 @@ class GranularAssessmentService:
         token_warning = check_token_limit(
             document_text, extraction_results, self.config
         )
+        logger.info(f"Token Warning: {token_warning}")
         error_count = len(failed_tasks)
         base_msg = f"Assessment failed for {error_count} tasks. "
         if token_warning:
@@ -1546,10 +1538,23 @@ class GranularAssessmentService:
         else:
             return None
 
-    def _convert_error_list_to_string(self, errors: List[str]) -> str:
+    def is_parsing_error(self, error_message: str) -> bool:
+        """Check if an error message is related to parsing issues."""
+        parsing_errors = ["parsing"]
+        return any(error.lower() in error_message.lower() for error in parsing_errors)
+
+    def _convert_error_list_to_string(self, errors) -> str:
         """Convert list of error messages to a single user-friendly string."""
         if not errors:
             return ""
+
+        # Handle single string input
+        if isinstance(errors, str):
+            return errors
+
+        # Ensure we have a list of strings
+        if not isinstance(errors, list):
+            return str(errors)
 
         # Count different types of errors
         parsing_errors = [e for e in errors if "parsing" in e.lower()]
@@ -1563,8 +1568,8 @@ class GranularAssessmentService:
             )
         elif len(errors) > 5:
             # Multiple errors - show first few and summarize
-            first_errors = "; ".join(errors[:3])
-            return f"{first_errors}... and {len(errors) - 3} more errors"
+            first_errors = "; ".join(errors[:1])
+            return f"{first_errors} and {len(errors) - 1} more errors"
         else:
             # Few errors - show all
             return "; ".join(errors)
