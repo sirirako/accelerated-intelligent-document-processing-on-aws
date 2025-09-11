@@ -138,7 +138,7 @@ class AssessmentValidator:
         else:
             logger.debug("Skipping missing explainability check is disabled.")
 
-        # Check count (only if enabled)
+        # Check count if enabled
         if self.enable_count_check:
             count_result = self.check_explainability_count()
             if not count_result['is_valid']:
@@ -148,12 +148,12 @@ class AssessmentValidator:
         else:
             logger.debug("Skipping explainability count check disabled.")
         
-        # Check top_k configuration
-        top_k_result = self.check_top_k_config()
-        if not top_k_result['is_valid']:
+        # Check explainability exists
+        exists_result = self.check_explainability_exists()
+        if not exists_result['is_valid']:
             validation_results['is_valid'] = False
-            validation_results['failed_attributes'].extend(top_k_result['failed_attributes'])
-            validation_results['validation_errors'].append(top_k_result['error_message'])
+            validation_results['failed_attributes'].extend(exists_result['failed_attributes'])
+            validation_results['validation_errors'].append(exists_result['error_message'])
         
         # Log final validation result
         if validation_results['is_valid']:

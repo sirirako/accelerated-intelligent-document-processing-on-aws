@@ -78,7 +78,8 @@ def handler(event, context):
             extraction_data = s3.get_json_content(section.extraction_result_uri)
             validator = AssessmentValidator(extraction_data,
                                             assessment_config=config.get('assessment', {}),
-                                            enable_missing_check=True)
+                                            enable_missing_check=False,
+                                            enable_count_check=False)
             validation_results = validator.validate_all()
             if not validation_results['is_valid']:
                 # Handle validation failure
@@ -88,12 +89,6 @@ def handler(event, context):
                 logger.error(f"Validation Error: {validation_errors}")
     logger.info("---   End: Assessment Validation ---")
 
-    # # Check if document processing failed
-    # if updated_document.status == Status.FAILED:
-    #     error_message = f"Assessment failed for document {updated_document.id}, section {section_id}"
-    #     logger.error(error_message)
-    #     raise Exception(error_message)
-    
     # Prepare output with automatic compression if needed
     result = {
         'document': updated_document.serialize_document(working_bucket, f"assessment_{section_id}", logger),

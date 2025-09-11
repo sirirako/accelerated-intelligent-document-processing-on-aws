@@ -1435,11 +1435,9 @@ class GranularAssessmentService:
                 f"Assessment completed: {len(successful_tasks)}/{len(tasks)} tasks successful"
             )
             if failed_tasks:
-                logger.warning(f"Failed tasks: {[t.task_id for t in failed_tasks]}")
                 error_message = self._handle_parsing_errors(
                     document, failed_tasks, document_text, extraction_results
                 )
-                logger.info(f"error_message: {error_message}")
                 if error_message:
                     logger.error(f"Error: {error_message}")
                     document.status = Status.FAILED
