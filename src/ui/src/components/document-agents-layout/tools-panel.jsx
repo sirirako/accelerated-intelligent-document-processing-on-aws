@@ -6,7 +6,7 @@ import { HelpPanel, Icon } from '@awsui/components-react';
 const ToolsPanel = () => {
   return (
     <HelpPanel
-      header={<h2>Document Analytics</h2>}
+      header={<h2>Agent Analysis</h2>}
       footer={
         <div>
           <h3>
@@ -14,7 +14,7 @@ const ToolsPanel = () => {
           </h3>
           <ul>
             <li>
-              <a href="https://gitlab.aws.dev/genaiic-reusable-assets/engagement-artifacts/genaiic-idp-accelerator/-/blob/main/README.md">
+              <a href="https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/main/README.md">
                 GenAI IDP Accelerator Documentation
               </a>
             </li>
@@ -24,8 +24,8 @@ const ToolsPanel = () => {
     >
       <div>
         <p>
-          Use the Document Analytics feature to query your document processing data using natural language and receive
-          interactive visualizations and insights.
+          Use Agent Analysis to interact with AI agents using natural language and receive interactive visualizations
+          and insights.
         </p>
         <h3>How to use</h3>
         <ol>

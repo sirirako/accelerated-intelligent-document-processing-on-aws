@@ -29,8 +29,8 @@ sudo yum groupinstall "Development Tools" -y
 # python/pip/conda
 sudo dnf update -y
 sudo dnf install python3.12 -y
-sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
-sudo alternatives --install /usr/bin/python python /usr/bin/python3.13 1
+sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+sudo alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 python3.12 -m ensurepip --upgrade
 pip3 install --upgrade pip
 pip3 install virtualenv

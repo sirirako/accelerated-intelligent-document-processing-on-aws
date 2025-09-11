@@ -13,6 +13,8 @@ The Assessment service is designed to assess the confidence and accuracy of extr
 
 - **LLM-powered confidence assessment** using Amazon Bedrock models
 - **Multi-modal analysis** with support for both document text and images
+- **Automatic bounding box processing** with spatial localization of extracted fields
+- **UI-compatible geometry output** for immediate visualization
 - **Optimized token usage** with pre-generated text confidence data (80-90% reduction)
 - **Structured confidence output** with scores and explanations per attribute
 - **Prompt template support** with placeholder substitution
@@ -20,6 +22,7 @@ The Assessment service is designed to assess the confidence and accuracy of extr
 - **Fallback mechanisms** for robust error handling
 - **Metering integration** for usage tracking
 - **Direct Document model integration**
+- **Both regular and granular assessment support** with identical bounding box capabilities
 
 ## Usage Example
 
@@ -163,6 +166,121 @@ The text confidence data provides essential information in a minimal format:
   ]
 }
 ```
+
+## Automatic Bounding Box Processing
+
+The assessment service now includes **automatic spatial localization** capabilities that convert LLM-provided bounding box coordinates to UI-compatible geometry format without any configuration.
+
+### How It Works
+
+1. **Enhanced Prompts**: Prompt templates request both confidence scores and spatial coordinates
+2. **Automatic Detection**: Service detects when LLM provides `bbox` and `page` data
+3. **Coordinate Conversion**: Converts from 0-1000 normalized scale to 0-1 geometry format
+4. **UI Integration**: Outputs geometry format compatible with existing visualization
+
+### Example Assessment with Spatial Data
+
+**LLM Response (with bbox data):**
+```json
+{
+  "InvoiceNumber": {
+    "confidence": 0.95,
+    "confidence_reason": "Clear text with high OCR confidence",
+    "bbox": [100, 200, 300, 250],
+    "page": 1
+  },
+  "VendorAddress": {
+    "State": {
+      "confidence": 0.99,
+      "confidence_reason": "State clearly visible",
+      "bbox": [230, 116, 259, 126], 
+      "page": 1
+    }
+  }
+}
+```
+
+**Automatic Conversion Output:**
+```json
+{
+  "InvoiceNumber": {
+    "confidence": 0.95,
+    "confidence_reason": "Clear text with high OCR confidence",
+    "confidence_threshold": 0.9,
+    "geometry": [{
+      "boundingBox": {
+        "top": 0.2,
+        "left": 0.1,
+        "width": 0.2,
+        "height": 0.05
+      },
+      "page": 1
+    }]
+  },
+  "VendorAddress": {
+    "State": {
+      "confidence": 0.99,
+      "confidence_reason": "State clearly visible",
+      "confidence_threshold": 0.9,
+      "geometry": [{
+        "boundingBox": {
+          "top": 0.116,
+          "left": 0.23,
+          "width": 0.029,
+          "height": 0.01
+        },
+        "page": 1
+      }]
+    }
+  }
+}
+```
+
+### Supported Attribute Types
+
+**All attribute types support automatic bounding box processing:**
+
+- ✅ **Simple Attributes**: Direct conversion of bbox → geometry
+- ✅ **Group Attributes**: Recursive processing of nested bbox data
+- ✅ **List Attributes**: Individual bbox conversion for each list item
+
+### Enhanced Prompt Requirements
+
+To enable spatial localization, include these instructions in your `task_prompt`:
+
+```yaml
+assessment:
+  task_prompt: |
+    <spatial-localization-guidelines>
+    For each field, provide bounding box coordinates:
+    - bbox: [x1, y1, x2, y2] coordinates in normalized 0-1000 scale
+    - page: Page number where the field appears (starting from 1)
+    
+    Coordinate system:
+    - Use normalized scale 0-1000 for both x and y axes
+    - x1, y1 = top-left corner of bounding box
+    - x2, y2 = bottom-right corner of bounding box
+    - Ensure x2 > x1 and y2 > y1
+    - Make bounding boxes tight around the actual text content
+    </spatial-localization-guidelines>
+    
+    For each attribute, provide:
+    {
+      "attribute_name": {
+        "confidence": 0.95,
+        "confidence_reason": "Clear explanation",
+        "bbox": [100, 200, 300, 250],
+        "page": 1
+      }
+    }
+```
+
+### Benefits
+
+- **No Configuration Required**: Works automatically when LLM provides bbox data
+- **Backward Compatible**: Existing assessments without bbox continue working
+- **UI Ready**: Geometry format works immediately with existing visualizations
+- **All Services Supported**: Both regular and granular assessment include this capability
 
 ## Multimodal Assessment
 

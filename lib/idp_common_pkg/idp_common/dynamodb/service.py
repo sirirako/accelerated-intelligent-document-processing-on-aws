@@ -11,12 +11,33 @@ storage and retrieval through direct DynamoDB operations, bypassing AppSync.
 import datetime
 import json
 import logging
+from decimal import Decimal
 from typing import Any, Dict, Optional
 
 from idp_common.dynamodb.client import DynamoDBClient
 from idp_common.models import Document, Page, Section, Status
 
 logger = logging.getLogger(__name__)
+
+
+def convert_floats_to_decimal(obj):
+    """
+    Recursively convert float values to Decimal for DynamoDB compatibility.
+
+    Args:
+        obj: Object that may contain float values
+
+    Returns:
+        Object with floats converted to Decimal
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {key: convert_floats_to_decimal(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_decimal(item) for item in obj]
+    else:
+        return obj
 
 
 class DocumentDynamoDBService:
@@ -203,11 +224,15 @@ class DocumentDynamoDBService:
                 if section.confidence_threshold_alerts:
                     alerts_data = []
                     for alert in section.confidence_threshold_alerts:
-                        alert_data = {
-                            "attributeName": alert.get("attribute_name"),
-                            "confidence": alert.get("confidence"),
-                            "confidenceThreshold": alert.get("confidence_threshold"),
-                        }
+                        alert_data = convert_floats_to_decimal(
+                            {
+                                "attributeName": alert.get("attribute_name"),
+                                "confidence": alert.get("confidence"),
+                                "confidenceThreshold": alert.get(
+                                    "confidence_threshold"
+                                ),
+                            }
+                        )
                         alerts_data.append(alert_data)
                     section_data["ConfidenceThresholdAlerts"] = alerts_data
 
@@ -242,6 +267,8 @@ class DocumentDynamoDBService:
             expression_values[":SummaryReportUri"] = document.summary_report_uri
 
         update_expression = "SET " + ", ".join(set_expressions)
+        # Convert any float values to Decimal for DynamoDB compatibility
+        expression_values = convert_floats_to_decimal(expression_values)
 
         return update_expression, expression_names, expression_values
 

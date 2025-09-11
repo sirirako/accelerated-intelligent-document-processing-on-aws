@@ -129,9 +129,9 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
       Required by some organizations with Service Control Policies (SCPs).
-      Format: arn:aws:iam::account-id:policy/policy-name
+      Format: arn:${AWS::Partition}:iam::account-id:policy/policy-name
       Leave blank if no Permissions Boundary is required.
-    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
 Metadata:
@@ -259,7 +259,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       InlineCode: |
         import cfnresponse
@@ -305,7 +305,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       InlineCode: |
         import cfnresponse
@@ -382,8 +382,9 @@ Resources:
           "ResourceType": "collection"}, {"ResourceType": "index", "Resource": ["index/${CollName}/*"],
           "Permission": ["aoss:CreateIndex", "aoss:DescribeIndex", "aoss:ReadDocument",
           "aoss:WriteDocument", "aoss:UpdateIndex", "aoss:DeleteIndex"]}],
-          "Principal": ["arn:aws:iam::${AWS::AccountId}:role/${KnowledgeBaseServiceRole}"]}]'
+          "Principal": ["${ServiceRoleArn}"]}]'
         - CollName: !Sub "${AdjustedStackName.OutputString}"
+          ServiceRoleArn: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${KnowledgeBaseServiceRole}"
 
   #
   # Custom resource code to initialize OpenSearch Serverless index
@@ -422,7 +423,7 @@ Resources:
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
-            Resource: arn:aws:logs:*:*:*
+            Resource: !Sub "arn:${AWS::Partition}:logs:*:*:*"
       - PolicyName: AllowS3 # Reference: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazons3.html
         PolicyDocument:
           Version: '2012-10-17'
@@ -433,7 +434,7 @@ Resources:
             - s3:GetObject*
             - s3:DeleteObject*
             Resource:
-              Fn::Sub: arn:aws:s3:::*
+              Fn::Sub: arn:${AWS::Partition}:s3:::*
       - PolicyName: AOSSPermissionsPart1 # References: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/security-iam-serverless.html, https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonopensearchserverless.html
         PolicyDocument:
           Version: '2012-10-17'
@@ -459,7 +460,7 @@ Resources:
             - aoss:UpdateCollection
             - aoss:APIAccessAll
             Resource:
-              Fn::Sub: arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*
+              Fn::Sub: arn:${AWS::Partition}:aoss:${AWS::Region}:${AWS::AccountId}:collection/*
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -484,7 +485,7 @@ Resources:
       Handler: oss_handler.lambda_handler
       MemorySize: 1024
       Role: !GetAtt OpenSearchLambdaExecutionRole.Arn
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 840
       CodeUri: ./src/opensearch_index_custom_resource
       Environment:
@@ -530,7 +531,7 @@ Resources:
               StringEquals:
                 aws:SourceAccount: !Sub ${AWS::AccountId}
               ArnLike:
-                aws:SourceArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: bedrock-invoke-model
@@ -541,7 +542,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - bedrock:InvokeModel
-                Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/*
+                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/*"
         - PolicyName: oss-api-access
           PolicyDocument:
             Version: "2012-10-17"
@@ -561,12 +562,12 @@ Resources:
                   Effect: Allow
                   Action:
                     - s3:ListBucket
-                  Resource: !Sub arn:aws:s3:::${pKnowledgeBaseBucketName}
+                  Resource: !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
                 - Sid: S3GetObject
                   Effect: Allow
                   Action:
                     - s3:GetObject
-                  Resource: !Sub arn:aws:s3:::${pKnowledgeBaseBucketName}/*
+                  Resource: !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
           - !Ref "AWS::NoValue"
         - !If
           - IsCustomerManagedKey
@@ -597,7 +598,7 @@ Resources:
         Type: VECTOR
         VectorKnowledgeBaseConfiguration:
           EmbeddingModelArn:
-            Fn::Sub: arn:aws:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}
+            Fn::Sub: arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}
       Name: !Sub "${AWS::StackName}"
       RoleArn: !GetAtt KnowledgeBaseServiceRole.Arn
       StorageConfiguration:
@@ -625,7 +626,7 @@ Resources:
         Type: S3
         S3Configuration:
           BucketArn:
-            Fn::Sub: arn:aws:s3:::${pKnowledgeBaseBucketName}
+            Fn::Sub: arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}
           InclusionPrefixes:
             Fn::If:
               - HasInputDocumentUploadFolderPrefix
@@ -727,7 +728,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyDocument:
@@ -749,6 +750,8 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
@@ -756,7 +759,7 @@ Resources:
     Properties:
       Handler: handler.lambda_handler
       Role: !GetAtt "StartIngestionJobFunctionRole.Arn"
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 600
       MemorySize: 128
       Code: ./src/start_ingestion_job_custom_resource
@@ -792,7 +795,7 @@ Resources:
       ScheduleExpressionTimezone: "UTC"
       State: "ENABLED"
       Target:
-        Arn: "arn:aws:scheduler:::aws-sdk:bedrockagent:startIngestionJob"
+        Arn: !Sub "arn:${AWS::Partition}:scheduler:::aws-sdk:bedrockagent:startIngestionJob"
         RoleArn: !GetAtt  DataSourceSchedulerRole.Arn
         Input: !Sub |
               {
@@ -812,7 +815,7 @@ Resources:
       ScheduleExpressionTimezone: "UTC"
       State: "ENABLED"
       Target:
-        Arn: "arn:aws:scheduler:::aws-sdk:bedrockagent:startIngestionJob"
+        Arn: !Sub "arn:${AWS::Partition}:scheduler:::aws-sdk:bedrockagent:startIngestionJob"
         RoleArn: !GetAtt  DataSourceSchedulerRole.Arn
         Input: !Sub |
               {

@@ -106,7 +106,11 @@ class TestOcrService:
             assert service.max_workers == 20
             assert service.dpi == 150  # Now defaults to 150
             assert service.enhanced_features is False
-            assert service.resize_config is None
+            # NEW: Default image sizing is now applied automatically
+            assert service.resize_config == {
+                "target_width": 951,
+                "target_height": 1268,
+            }
             assert service.preprocessing_config is None
 
             # Verify both Textract and S3 clients were created
@@ -186,6 +190,105 @@ class TestOcrService:
             service = OcrService(resize_config=resize_config)
 
             assert service.resize_config == resize_config
+
+    def test_init_config_pattern_default_sizing(self):
+        """Test initialization with new config pattern applying default sizing."""
+        config = {"ocr": {"image": {"dpi": 200}}}  # No sizing specified
+
+        with patch("boto3.client"):
+            service = OcrService(config=config)
+
+            # Verify defaults are applied
+            assert service.resize_config == {
+                "target_width": 951,
+                "target_height": 1268,
+            }
+            assert service.dpi == 200
+
+    def test_init_config_pattern_explicit_sizing(self):
+        """Test initialization with explicit sizing overrides defaults."""
+        config = {
+            "ocr": {
+                "image": {
+                    "dpi": 150,
+                    "target_width": 800,
+                    "target_height": 600,
+                }
+            }
+        }
+
+        with patch("boto3.client"):
+            service = OcrService(config=config)
+
+            # Verify explicit configuration is used
+            assert service.resize_config == {
+                "target_width": 800,
+                "target_height": 600,
+            }
+            assert service.dpi == 150
+
+    def test_init_config_pattern_empty_strings_apply_defaults(self):
+        """Test initialization with empty strings applies defaults (same as no config)."""
+        config = {
+            "ocr": {
+                "image": {
+                    "dpi": 150,
+                    "target_width": "",
+                    "target_height": "",
+                }
+            }
+        }
+
+        with patch("boto3.client"):
+            service = OcrService(config=config)
+
+            # Verify defaults are applied (empty strings treated same as None)
+            assert service.resize_config == {
+                "target_width": 951,
+                "target_height": 1268,
+            }
+            assert service.dpi == 150
+
+    def test_init_config_pattern_partial_sizing(self):
+        """Test initialization with partial sizing configuration preserves existing behavior."""
+        config = {
+            "ocr": {
+                "image": {
+                    "dpi": 150,
+                    "target_width": 800,
+                    # target_height missing - should disable defaults
+                }
+            }
+        }
+
+        with patch("boto3.client"):
+            service = OcrService(config=config)
+
+            # Verify partial config disables defaults
+            assert service.resize_config is None
+            assert service.dpi == 150
+
+    def test_init_config_pattern_invalid_sizing_fallback(self):
+        """Test initialization with invalid sizing values falls back to defaults."""
+        config = {
+            "ocr": {
+                "image": {
+                    "dpi": 150,
+                    "target_width": "invalid",
+                    "target_height": "also_invalid",
+                }
+            }
+        }
+
+        with patch("boto3.client"):
+            service = OcrService(config=config)
+
+            # Verify fallback to defaults on invalid values
+            assert service.resize_config == {
+                "target_width": 951,
+                "target_height": 1268,
+            }
+            assert service.dpi == 150
 
     def test_init_with_preprocessing_config(self):
         """Test initialization with preprocessing configuration."""

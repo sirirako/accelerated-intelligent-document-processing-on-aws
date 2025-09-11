@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 """
-Lambda function to process analytics queries using Strands agents.
+Lambda function to process agent queries using Strands agents.
 """
 
 import json
@@ -17,7 +17,8 @@ from aws_requests_auth.aws_auth import AWSRequestsAuth
 from botocore.exceptions import ClientError
 
 # Import the analytics agent and configuration utilities from idp_common
-from idp_common.agents.analytics import create_analytics_agent, get_analytics_config, parse_agent_response
+from idp_common.agents.analytics import get_analytics_config, parse_agent_response
+from idp_common.agents.factory import agent_factory
 from idp_common.agents.common.config import configure_logging
 
 # Configure logging for both application and Strands framework
@@ -33,7 +34,7 @@ session = boto3.Session()
 credentials = session.get_credentials()
 
 # Get environment variables
-ANALYTICS_TABLE = os.environ.get("ANALYTICS_TABLE")
+AGENT_TABLE = os.environ.get("AGENT_TABLE")
 APPSYNC_API_URL = os.environ.get("APPSYNC_API_URL")
 
 
@@ -55,7 +56,7 @@ def validate_job_ownership(table, user_id, job_id):
     try:
         response = table.get_item(
             Key={
-                "PK": f"analytics#{user_id}",
+                "PK": f"agent#{user_id}",
                 "SK": job_id
             }
         )
@@ -75,35 +76,62 @@ def validate_job_ownership(table, user_id, job_id):
         raise ValueError(error_msg)
 
 
-def process_analytics_query(query: str, job_id: str = None, user_id: str = None) -> dict:
+def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id: str = None) -> dict:
     """
-    Process an analytics query using the Strands agent.
+    Process an agent query using either a single agent or orchestrator.
     
     Args:
         query: The natural language query to process
-        job_id: Analytics job ID for monitoring (optional)
+        agent_ids: List of agent IDs to use
+        job_id: Agent job ID for monitoring (optional)
         user_id: User ID for monitoring (optional)
         
     Returns:
-        Dict containing the analytics result
+        Dict containing the agent result
     """
+    
     try:
+        # Validate agent_ids is not empty
+        if not agent_ids:
+            raise ValueError("At least one agent ID is required")
+            
+        logger.info(f"Processing query with agent IDs: {agent_ids}")
+        
         # Get analytics configuration
         config = get_analytics_config()
         logger.info("Analytics configuration loaded successfully")
         
-        # Create the analytics agent with monitoring context
-        agent = create_analytics_agent(
-            config, 
-            session, 
-            job_id=job_id, 
-            user_id=user_id
-        )
-        logger.info("Analytics agent created successfully")
+        # Determine whether to use single agent or orchestrator
+        if len(agent_ids) == 1:
+            # Single agent - use directly
+            agent_id = agent_ids[0]
+            logger.info(f"Using single agent: {agent_id}")
+            
+            agent = agent_factory.create_agent(
+                agent_id=agent_id,
+                config=config,
+                session=session,
+                job_id=job_id,
+                user_id=user_id
+            )
+            logger.info("Single agent created successfully")
+        else:
+            # Multiple agents - use orchestrator
+            logger.info(f"Using orchestrator with {len(agent_ids)} agents: {agent_ids}")
+            
+            agent = agent_factory.create_orchestrator_agent(
+                agent_ids=agent_ids,
+                config=config,
+                session=session,
+                job_id=job_id,
+                user_id=user_id
+            )
+            logger.info("Orchestrator agent created successfully")
         
-        # Process the query
+        # Process the query using context manager for MCP agents
         logger.info(f"Processing query: {query}")
-        response = agent(query)
+        with agent:
+            response = agent(query)
         logger.info("Query processed successfully")
         
         # Parse the response using the new parsing function
@@ -121,7 +149,7 @@ def process_analytics_query(query: str, job_id: str = None, user_id: str = None)
             }
             
     except Exception as e:
-        logger.exception(f"Error processing analytics query: {str(e)}")
+        logger.exception(f"Error processing agent query: {str(e)}")
         # Re-raise the exception so the retry logic can handle it properly
         raise
 
@@ -160,8 +188,8 @@ def update_job_status_in_appsync(job_id, status, user_id, result=None):
     try:
         # Prepare the simplified mutation
         mutation = """
-        mutation UpdateAnalyticsJobStatus($jobId: ID!, $status: String!, $userId: String!, $result: String) {
-            updateAnalyticsJobStatus(jobId: $jobId, status: $status, userId: $userId, result: $result)
+        mutation UpdateAgentJobStatus($jobId: ID!, $status: String!, $userId: String!, $result: String) {
+            updateAgentJobStatus(jobId: $jobId, status: $status, userId: $userId, result: $result)
         }
         """
         
@@ -239,7 +267,7 @@ def update_job_status_in_appsync(job_id, status, user_id, result=None):
 
 def handler(event, context):
     """
-    Process analytics queries.
+    Process agent queries.
     
     Args:
         event: The event dict with userId and jobId
@@ -264,7 +292,7 @@ def handler(event, context):
             }
         
         # Get the DynamoDB table
-        table = dynamodb.Table(ANALYTICS_TABLE)
+        table = dynamodb.Table(AGENT_TABLE)
         
         # Validate job ownership
         try:
@@ -279,7 +307,7 @@ def handler(event, context):
         update_job_status_in_appsync(job_id, "PROCESSING", user_id)
         logger.info(f"Updated job status to PROCESSING: {job_id}")
         
-        # Process the analytics query using the agent with retry logic
+        # Process the agent query using the agent with retry logic
         # This retries the entire workflow -- if something dies, it restarts
         # from scratch with the initial query.
         max_retries = 3
@@ -289,23 +317,40 @@ def handler(event, context):
         
         for attempt in range(max_retries):
             try:
-                logger.info(f"Processing analytics query (attempt {attempt + 1}/{max_retries}): {job_id}")
+                logger.info(f"Processing agent query (attempt {attempt + 1}/{max_retries}): {job_id}")
                 
-                # Process the query using the analytics agent
-                result = process_analytics_query(job_record.get("query"), job_id, user_id)
-                logger.info(f"Successfully processed analytics query on attempt {attempt + 1}: {job_id}")
+                # Parse agentIds from JSON string
+                agent_ids_str = job_record.get("agentIds", "[]")
+                try:
+                    agent_ids = json.loads(agent_ids_str) if isinstance(agent_ids_str, str) else agent_ids_str
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON in agentIds for job {job_id}, using empty list")
+                    agent_ids = []
+                
+                # Validate that agentIds are provided
+                if not agent_ids:
+                    raise ValueError("No agentIds provided - at least one agent ID is required")
+                
+                # Process the query using the agent
+                result = process_agent_query(
+                    job_record.get("query"), 
+                    agent_ids, 
+                    job_id, 
+                    user_id
+                )
+                logger.info(f"Successfully processed agent query on attempt {attempt + 1}: {job_id}")
                 break  # Success, exit retry loop
                 
             except Exception as e:
-                logger.warning(f"Analytics query processing failed on attempt {attempt + 1}/{max_retries} for job {job_id}: {str(e)}")
+                logger.warning(f"Agent query processing failed on attempt {attempt + 1}/{max_retries} for job {job_id}: {str(e)}")
                 processing_error = e
                 
                 if attempt < max_retries - 1:  # Not the last attempt
                     logger.info(f"Waiting {retry_delay} seconds before retry {attempt + 2}/{max_retries} for job {job_id}")
-                    time.sleep(retry_delay)
+                    time.sleep(retry_delay) # semgrep-ignore: arbitrary-sleep - Intentional delay. Duration is hardcoded and not user-controlled.
                 else:
                     # Last attempt failed
-                    logger.error(f"All {max_retries} attempts failed for analytics query processing, job {job_id}: {str(e)}")
+                    logger.error(f"All {max_retries} attempts failed for agent query processing, job {job_id}: {str(e)}")
         
         # Check if processing was successful
         if result is not None:
@@ -362,7 +407,7 @@ def handler(event, context):
         
         # Failure path - all retries failed or result processing failed
         if processing_error:
-            error_msg = f"Analytics query processing failed: {str(processing_error)}"
+            error_msg = f"Agent query processing failed: {str(processing_error)}"
             logger.error(error_msg)
             
             # Update the job status to FAILED via AppSync

@@ -86,12 +86,23 @@ Parameters:
     Description: >-
       Built-in IDP workflow patterns - see README for pattern descriptions.
 
+  # Custom Configuration Path
+  
+  CustomConfigPath:
+    Type: String
+    Default: ""
+    Description: >-
+      S3 URI pointing to your custom configuration YAML file. When provided, this configuration overrides the selected pattern preset and applies to all processing patterns. 
+      Leave blank to use the selected pattern configuration preset. For example s3://my-bucket/custom-config/config.yaml
+    AllowedPattern: '^(|s3://[a-zA-Z0-9.\\-_]+(/.*)?)$'
+    ConstraintDescription: Must be empty or a valid S3 URI (e.g., s3://my-bucket/custom-config/config.yaml)
+
   # Pattern 1 Parameters
 
   Pattern1BDAProjectArn:
     Type: String
     Default: ""
-    AllowedPattern: "^(|^arn:aws:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
+    AllowedPattern: "^(|^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:.+:data-automation-project/.+)$"
     Description: For Pattern-1, provide a Bedrock Data Automation (BDA) project ARN, or leave blank to create a sample project for processing the sample lending package.
 
   Pattern1Configuration:
@@ -100,8 +111,9 @@ Parameters:
     AllowedValues:
       - "lending-package-sample"
       - "default"
-    Description: Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
-
+    Description: >-
+     Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
+    
   # Pattern 2 Parameters
 
   Pattern2Configuration:
@@ -113,7 +125,8 @@ Parameters:
       - "rvl-cdip-package-sample-with-few-shot-examples"
       - "bank-statement-sample"
       - "default"
-    Description: Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
+    Description: >-
+     Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
 
   Pattern2CustomClassificationModelARN:
     Type: String
@@ -125,6 +138,10 @@ Parameters:
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
 
+  Pattern2CustomConfigPath:
+    Type: String
+    Default: ""
+    Description: Custom S3 path for Pattern 2 config. For Example s3://idp-bucket/
   # Pattern 3 Parameters
 
   Pattern3UDOPModelArtifactPath:
@@ -139,8 +156,20 @@ Parameters:
     AllowedValues:
       - "rvl-cdip-package-sample"
       - "default"
-    Description: Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md.
-
+    Description: >-
+     Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
+  
+  # Custom Configuration Path
+  
+  CustomConfigPath:
+    Type: String
+    Default: ""
+    Description: >-
+      S3 URI pointing to your custom configuration YAML file. When provided, this configuration overrides the selected pattern preset and applies to all processing patterns. 
+      Leave blank to use the selected pattern configuration preset. For example s3://my-bucket/custom-config/config.yaml
+    AllowedPattern: '^(|s3://[a-zA-Z0-9.\\-_]+(/.*)?)$'
+    ConstraintDescription: Must be empty or a valid S3 URI (e.g., s3://my-bucket/custom-config/config.yaml)
+  
   # HITL (A2I) Configuration
 
   EnableHITL:
@@ -154,12 +183,15 @@ Parameters:
   ExistingPrivateWorkforceArn:
     Type: String
     Default: ""
-    AllowedPattern: "^(|arn:aws:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
     Description: >-
-      (Optional) ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL).
-      If provided, the template will use this existing workteam instead of creating a new one.
-      Format: arn:aws:sagemaker:region:account-id:workteam/private-crowd/workteam-name
-      Leave blank to create a new private workteam.
+      ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL). 
+      If you do not have existing Private workteam and leave it blank then solution will create one. 
+      REQUIRED when deploying multiple patterns with HITL enabled, as only one private workteam can exist per AWS account.
+      If you already have a GenAI-IDP deployment with HITL enabled, provide the existing workteam ARN here.
+      Leave empty for first-time HITL deployment to create a new private workteam automatically.
+      Find the ARN in your existing stack's CloudFormation outputs under 'PrivateWorkteamArn'.
+      Format: arn:${AWS::Partition}:sagemaker:region:account-id:workteam/private-crowd/workteam-name
 
   # Evaluation
   EvaluationBaselineBucketName:
@@ -244,7 +276,7 @@ Parameters:
   PostProcessingLambdaHookFunctionArn:
     Default: ""
     Type: String
-    AllowedPattern: "^(|arn:aws:lambda:.*)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:lambda:.*)$"
     Description: >
       (Optional) The specified Lambda function is invoked by EventBridge after the document processing workflow is processed.
       This function can implement custom logic to initiate downstream processing on the output of the processing pattern.
@@ -296,9 +328,9 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
       Required by some organizations with Service Control Policies (SCPs).
-      Format: arn:aws:iam::account-id:policy/policy-name
+      Format: arn:${AWS::Partition}:iam::account-id:policy/policy-name
       Leave blank if no Permissions Boundary is required.
-    AllowedPattern: "^(|arn:aws:iam::[0-9]{12}:policy/.+)$"
+    AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
   # Logging configuration
@@ -375,16 +407,6 @@ Parameters:
 
 
 Rules:
-  # Pattern 1 rules
-  ValidateExistingPrivateWorkforceArn:
-    RuleCondition:
-      !And [
-        !Equals [!Ref EnableHITL, "true"],
-        !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-      ]
-    Assertions:
-      - Assert: !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]]
-        AssertDescription: ExistingPrivateWorkforceArn must be a valid ARN when provided and HITL is enabled.
 
   Pattern3UDOPModelArtifactPath:
     RuleCondition:
@@ -442,6 +464,7 @@ Conditions:
   ShouldUseDocumentKnowledgeBase: !Condition ShouldCreateDocumentKnowledgeBase
   DocumentSectionsCrawlerScheduleEnabled: !Not [!Equals [!Ref DocumentSectionsCrawlerFrequency, "Manual"]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
+  HasCustomConfigPath: !Not [!Equals [!Ref CustomConfigPath, ""]]
 
 
 Metadata:
@@ -472,6 +495,10 @@ Metadata:
         Parameters:
           - Pattern3Configuration
           - Pattern3UDOPModelArtifactPath
+      - Label:
+          default: "Custom Configuration"
+        Parameters:
+          - CustomConfigPath
       - Label:
           default: "HITL (A2I) Configuration"
         Parameters:
@@ -543,6 +570,8 @@ Metadata:
         default: "Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
+      CustomConfigPath:
+        default: "Custom Configuration Path"
       Pattern3UDOPModelArtifactPath:
         default: "Pattern3 - UDOP Model Artifact Path"
       Pattern3Configuration:
@@ -605,7 +634,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       InlineCode: |
         import cfnresponse
         import time
@@ -664,7 +693,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 300
       InlineCode: |
         import boto3
@@ -846,9 +875,12 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         EnableHITL: !Ref EnableHITL
-        ConfigurationDefaultS3Uri: !Sub 
-          - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
-          - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
+        ConfigurationDefaultS3Uri: !If
+          - HasCustomConfigPath
+          - !Ref CustomConfigPath
+          - !Sub 
+            - "s3://${ConfigurationBucket}/config_library/pattern-1/${ConfigPath}/config.yaml"
+            - ConfigPath: !FindInMap [Pattern1ConfigurationMap, !Ref Pattern1Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         SageMakerA2IReviewPortalURL: !If
@@ -884,11 +916,15 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !Sub 
-          - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
-          - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
+        ConfigurationDefaultS3Uri: !If
+          - HasCustomConfigPath
+          - !Ref CustomConfigPath
+          - !Sub 
+            - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
+            - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableHITL: !Ref EnableHITL
+        IsPattern2HITLEnabled: !If [IsPattern2HITLEnabled, "true", "false"]
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
@@ -922,9 +958,12 @@ Resources:
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
         ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !Sub 
-          - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
-          - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
+        ConfigurationDefaultS3Uri: !If
+          - HasCustomConfigPath
+          - !Ref CustomConfigPath
+          - !Sub 
+            - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
+            - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableHITL: !Ref EnableHITL
         SageMakerA2IReviewPortalURL: !If
@@ -950,13 +989,13 @@ Resources:
           - Sid: Enable IAM User Permissions
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: "*"
           - Sid: Allow lambda to access the Keys
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
             Action:
               - kms:Encrypt
               - kms:Decrypt
@@ -1705,7 +1744,7 @@ Resources:
               Service: glue.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSGlueServiceRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DocumentSectionsCrawlerS3Access
@@ -1718,13 +1757,13 @@ Resources:
                   - s3:ListBucket
                 Resource:
                   - !Sub 
-                    - "arn:aws:s3:::${Bucket}"
+                    - "arn:${AWS::Partition}:s3:::${Bucket}"
                     - Bucket: !If
                         - ShouldCreateReportingBucket
                         - !Ref ReportingBucket
                         - !Ref ReportingBucketName
                   - !Sub 
-                    - "arn:aws:s3:::${Bucket}/document_sections/*"
+                    - "arn:${AWS::Partition}:s3:::${Bucket}/document_sections/*"
                     - Bucket: !If
                         - ShouldCreateReportingBucket
                         - !Ref ReportingBucket
@@ -1913,7 +1952,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       CodeUri: src/lambda/initialize_counter
       Environment:
@@ -1980,7 +2019,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       CodeUri: src/lambda/update_configuration
       Environment:
@@ -2007,10 +2046,30 @@ Resources:
               - "s3:GetObject"
               - "s3:ListBucket"
             Resource:
-              - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>"
-              - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
-              - !Sub "arn:aws:s3:::${ConfigurationBucket}"
-              - !Sub "arn:aws:s3:::${ConfigurationBucket}/*"
+              - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>"
+              - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}"
+              - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}/*"
+          # Allow reading user-supplied config file only if CustomConfigPath is specified
+          - !If
+            - HasCustomConfigPath
+            - Effect: Allow
+              Action:
+                - "s3:GetObject"
+              Resource: !Sub
+                - "arn:${AWS::Partition}:s3:::${Path}"
+                - Path: !Select [1, !Split ["s3://", !Ref CustomConfigPath]]
+            - !Ref AWS::NoValue
+          # Allow listing the specific bucket containing the custom config file
+          - !If
+            - HasCustomConfigPath
+            - Effect: Allow
+              Action:
+                - "s3:ListBucket"
+              Resource: !Sub
+                - "arn:${AWS::Partition}:s3:::${BucketName}"
+                - BucketName: !Select [0, !Split ["/", !Select [1, !Split ["s3://", !Ref CustomConfigPath]]]]
+            - !Ref AWS::NoValue
 
   UpdateConfigurationFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -2055,7 +2114,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       CodeUri: src/lambda/update_settings
       LoggingConfig:
@@ -2067,7 +2126,7 @@ Resources:
               - ssm:GetParameter
               - ssm:PutParameter
             Resource:
-              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
 
   UpdateSettingsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -2204,7 +2263,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_sender/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       DeadLetterQueue:
         Type: SQS
@@ -2272,7 +2331,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/queue_processor/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       LoggingConfig:
         LogGroup: !Ref QueueProcessorLogGroup
@@ -2384,7 +2443,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/workflow_tracker/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       DeadLetterQueue:
         Type: SQS
@@ -2496,7 +2555,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/stepfunction_subscription_publisher/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Architectures:
         - x86_64
       MemorySize: 256
@@ -2515,7 +2574,7 @@ Resources:
                 - states:GetExecutionHistory
               Resource: 
                 - !Sub
-                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
                     - IsPattern3
                     - !GetAtt PATTERN3STACK.Outputs.StateMachineName
@@ -2643,7 +2702,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/save_reporting_data/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 300
       MemorySize: 1024
       LoggingConfig:
@@ -2678,10 +2737,10 @@ Resources:
                 - glue:UpdateTable
                 - glue:GetDatabase
               Resource:
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -2724,7 +2783,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/evaluation_function/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 900
       DeadLetterQueue:
         Type: SQS
@@ -2786,8 +2845,8 @@ Resources:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: 
-                  - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
 
   EvaluationFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -3295,7 +3354,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/dashboard_merger
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 60
       MemorySize: 128
       Environment:
@@ -3349,7 +3408,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/lookup_function/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       LoggingConfig:
         LogGroup: !Ref LookupFunctionLogGroup
@@ -3367,7 +3426,7 @@ Resources:
                 - states:GetExecutionHistory
               Resource:
                 - !Sub
-                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
                       - IsPattern3
                       - !GetAtt PATTERN3STACK.Outputs.StateMachineName
@@ -3391,11 +3450,11 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
-  # Analytics resources for text-to-analytics feature
+  # Agent resources for text-to-agent feature
   ##########################################################################
 
-  # DynamoDB table for analytics job tracking
-  AnalyticsTable:
+  # DynamoDB table for agent job tracking
+  AgentTable:
     Type: AWS::DynamoDB::Table
     Properties:
       PointInTimeRecoverySpecification:
@@ -3419,8 +3478,17 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
-  # Lambda function for analytics request handler
-  AnalyticsRequestHandlerFunction:
+  # Secrets Manager secret for External MCP Agent credentials
+  ExternalMCPAgentsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/external-mcp-agents/credentials"
+      Description: "Credentials for External MCP Agents - JSON array with required fields: mcp_url, cognito_user_pool_id, cognito_client_id, cognito_username, cognito_password. Optional fields: agent_name, agent_description"
+      SecretString: "[]"
+      KmsKeyId: !Ref CustomerManagedEncryptionKey
+
+  # Lambda function for agent request handler
+  AgentRequestHandlerFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3435,23 +3503,23 @@ Resources:
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      CodeUri: src/lambda/analytics_request_handler/
+      CodeUri: src/lambda/agent_request_handler/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          ANALYTICS_TABLE: !Ref AnalyticsTable
-          ANALYTICS_PROCESSOR_FUNCTION: !Ref AnalyticsProcessorFunction
+          AGENT_TABLE: !Ref AgentTable
+          AGENT_PROCESSOR_FUNCTION: !Ref AgentProcessorFunction
           DATA_RETENTION_DAYS: !Ref DataRetentionInDays
       LoggingConfig:
-        LogGroup: !Ref AnalyticsRequestHandlerLogGroup
+        LogGroup: !Ref AgentRequestHandlerLogGroup
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalyticsTable
+            TableName: !Ref AgentTable
         - LambdaInvokePolicy:
-            FunctionName: !Ref AnalyticsProcessorFunction
+            FunctionName: !Ref AgentProcessorFunction
         - Statement:
             - Effect: Allow
               Action:
@@ -3462,14 +3530,14 @@ Resources:
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
 
-  AnalyticsRequestHandlerLogGroup:
+  AgentRequestHandlerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # Lambda function for analytics processor
-  AnalyticsProcessorFunction:
+  # Lambda function for agent processor
+  AgentProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3478,22 +3546,26 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for Cfn Custom Resource function"
+          - id: W76
+            reason: "Suppressing W76: SPCM for IAM policy document is higher than 25"
     # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
     # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      CodeUri: src/lambda/analytics_processor/
+      CodeUri: src/lambda/agent_processor/
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 900
       MemorySize: 1024
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           STRANDS_LOG_LEVEL: !Ref LogLevel
-          ANALYTICS_TABLE: !Ref AnalyticsTable
+          AGENT_TABLE: !Ref AgentTable
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           ATHENA_DATABASE: !Ref ReportingDatabase
           ATHENA_OUTPUT_LOCATION: !Sub 
@@ -3503,11 +3575,12 @@ Resources:
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
           DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
+          AWS_STACK_NAME: !Ref AWS::StackName
       LoggingConfig:
-        LogGroup: !Ref AnalyticsProcessorLogGroup
+        LogGroup: !Ref AgentProcessorLogGroup
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref AnalyticsTable
+            TableName: !Ref AgentTable
         - S3CrudPolicy:
             BucketName: !If
               - ShouldCreateReportingBucket
@@ -3520,8 +3593,8 @@ Resources:
                 - athena:GetQueryExecution
                 - athena:GetQueryResults
               Resource: 
-                - !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
-                - !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
             - Effect: Allow
               Action:
                 - glue:GetTable
@@ -3530,16 +3603,16 @@ Resources:
                 - glue:GetDatabases
                 - glue:GetPartitions
               Resource: 
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
-                - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
               Resource: 
-                - !Sub "arn:aws:bedrock:*::foundation-model/*"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
             - Effect: Allow
               Action:
                 - appsync:GraphQL
@@ -3561,43 +3634,114 @@ Resources:
                 - bedrock-agentcore:GetCodeInterpreterSession
                 - bedrock-agentcore:ListCodeInterpreterSessions
               Resource: 
-                - !Sub "arn:aws:bedrock-agentcore:*:aws:code-interpreter/*"
+                - !Sub "arn:${AWS::Partition}:bedrock-agentcore:*:aws:code-interpreter/*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref ExternalMCPAgentsSecret
 
-  AnalyticsProcessorLogGroup:
+  AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # AppSync resolvers for analytics operations
-  SubmitAnalyticsQueryResolver:
+  # Lambda function for listing available agents
+  ListAvailableAgentsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with local agent factory"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with local agent factory"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      CodeUri: src/lambda/list_available_agents/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 30
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          AWS_STACK_NAME: !Ref AWS::StackName
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref ExternalMCPAgentsSecret
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+      LoggingConfig:
+        LogGroup: !Ref ListAvailableAgentsLogGroup
+
+  ListAvailableAgentsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # AppSync resolvers for agent operations
+  ListAvailableAgentsResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: submitAnalyticsQuery
-      DataSourceName: !GetAtt AnalyticsRequestHandlerDataSource.Name
+      FieldName: listAvailableAgents
+      DataSourceName: !GetAtt ListAvailableAgentsDataSource.Name
 
-  AnalyticsRequestHandlerDataSource:
+  ListAvailableAgentsDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AnalyticsRequestHandlerDataSource
-      Description: Lambda function for handling analytics query requests
+      Name: ListAvailableAgentsDataSource
+      Description: Lambda function for listing available agents
       Type: AWS_LAMBDA
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       LambdaConfig:
-        LambdaFunctionArn: !GetAtt AnalyticsRequestHandlerFunction.Arn
+        LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
 
-  GetAnalyticsJobStatusResolver:
+  SubmitAgentQueryResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: getAnalyticsJobStatus
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: submitAgentQuery
+      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
+
+  AgentRequestHandlerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentRequestHandlerDataSource
+      Description: Lambda function for handling agent query requests
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
+
+  GetAgentJobStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3610,7 +3754,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "GetItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           }
         }
@@ -3622,6 +3766,7 @@ Resources:
             "jobId": $util.toJson($ctx.result.SK),
             "status": $util.toJson($ctx.result.status),
             "query": $util.toJson($ctx.result.query),
+            "agentIds": $util.toJson($ctx.result.agentIds),
             "createdAt": $util.toJson($ctx.result.createdAt),
             "completedAt": $util.toJson($ctx.result.completedAt),
             "result": $util.toJson($ctx.result.result),
@@ -3630,14 +3775,14 @@ Resources:
           }
         #end
 
-  ListAnalyticsJobsResolver:
+  ListAgentJobsResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Query
-      FieldName: listAnalyticsJobs
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: listAgentJobs
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3652,7 +3797,7 @@ Resources:
           "query": {
             "expression": "PK = :pk",
             "expressionValues": {
-              ":pk": $util.dynamodb.toDynamoDBJson("analytics#${userId}")
+              ":pk": $util.dynamodb.toDynamoDBJson("agent#${userId}")
             }
           },
           #if($ctx.args.limit)
@@ -3671,6 +3816,7 @@ Resources:
                 "jobId": $util.toJson($item.SK),
                 "status": $util.toJson($item.status),
                 "query": $util.toJson($item.query),
+                "agentIds": $util.toJson($item.agentIds),
                 "createdAt": $util.toJson($item.createdAt),
                 "completedAt": $util.toJson($item.completedAt),
                 "result": $util.toJson($item.result),
@@ -3681,14 +3827,14 @@ Resources:
           "nextToken": $util.toJson($ctx.result.nextToken)
         }
 
-  UpdateAnalyticsJobStatusResolver:
+  UpdateAgentJobStatusResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Mutation
-      FieldName: updateAnalyticsJobStatus
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: updateAgentJobStatus
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |-
         #set($userId = $ctx.args.userId)
         #set($expNames = {})
@@ -3717,7 +3863,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "UpdateItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           },
           "update": {
@@ -3729,14 +3875,14 @@ Resources:
       ResponseMappingTemplate: |-
         true
 
-  DeleteAnalyticsJobResolver:
+  DeleteAgentJobResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       TypeName: Mutation
-      FieldName: deleteAnalyticsJob
-      DataSourceName: !GetAtt AnalyticsTableDataSource.Name
+      FieldName: deleteAgentJob
+      DataSourceName: !GetAtt AgentTableDataSource.Name
       RequestMappingTemplate: |-
         #set($userId = $context.identity.username)
         #if(!$userId)
@@ -3749,7 +3895,7 @@ Resources:
           "version": "2018-05-29",
           "operation": "DeleteItem",
           "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("analytics#${userId}"),
+            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
             "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
           }
         }
@@ -3760,16 +3906,16 @@ Resources:
           true
         #end
 
-  AnalyticsTableDataSource:
+  AgentTableDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AnalyticsTableDataSource
-      Description: DynamoDB table for analytics job tracking
+      Name: AgentTableDataSource
+      Description: DynamoDB table for agent job tracking
       Type: AMAZON_DYNAMODB
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       DynamoDBConfig:
-        TableName: !Ref AnalyticsTable
+        TableName: !Ref AgentTable
         AwsRegion: !Ref AWS::Region
         
   ##########################################################################
@@ -3882,7 +4028,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Converts Stackname to lowercase and adds unique timestamp
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 30
       MemorySize: 128
       LoggingConfig:
@@ -3961,12 +4107,12 @@ Resources:
                   - "s3:GetObject"
                   - "s3:ListBucket"
                 Resource:
-                  - !Sub "arn:aws:s3:::${OutputBucket}"
-                  - !Sub "arn:aws:s3:::${OutputBucket}/*"
-                  - !Sub "arn:aws:s3:::${InputBucket}"
-                  - !Sub "arn:aws:s3:::${InputBucket}/*"
-                  - !Sub "arn:aws:s3:::${ConfigurationBucket}"
-                  - !Sub "arn:aws:s3:::${ConfigurationBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${ConfigurationBucket}/*"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -3983,7 +4129,7 @@ Resources:
                 Action:
                   - "ssm:GetParameter"
                 Resource:
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
         - PolicyName: GraphQL
           PolicyDocument:
             Version: 2012-10-17
@@ -4054,7 +4200,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Description: Verifies email address is in allowed domain
       Handler: index.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 10
       Environment:
         Variables:
@@ -4150,7 +4296,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: CognitoClientUpdaterPolicy
@@ -4186,6 +4332,8 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
@@ -4195,7 +4343,7 @@ Resources:
       Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
       CodeUri: src/lambda/cognito_updater_hitl
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 300
       MemorySize: 4096
       LoggingConfig:
@@ -4258,6 +4406,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:GetObjectVersion
                   - s3:PutObject
                 Resource:
                   - !Sub '${OutputBucket.Arn}/*'
@@ -4265,6 +4414,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetBucketLocation
+                  - s3:ListBucket
                 Resource:
                   - !GetAtt OutputBucket.Arn
                   - !GetAtt InputBucket.Arn
@@ -4273,7 +4423,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -4300,7 +4450,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: SageMakerA2IAccess
@@ -4337,10 +4487,10 @@ Resources:
                   - s3:GetBucketLocation
                   - s3:GetObject
                 Resource:
-                  - Fn::Sub: arn:aws:s3:::${OutputBucket}
-                  - Fn::Sub: arn:aws:s3:::${OutputBucket}/*
-                  - Fn::Sub: arn:aws:s3:::${InputBucket}
-                  - Fn::Sub: arn:aws:s3:::${InputBucket}/*
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${OutputBucket}
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${OutputBucket}/*
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${InputBucket}
+                  - Fn::Sub: arn:${AWS::Partition}:s3:::${InputBucket}/*
         - PolicyName: LambdaSSMAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4349,7 +4499,7 @@ Resources:
                 Action:
                   - ssm:PutParameter
                 Resource: 
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
         - PolicyName: KMSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -4370,8 +4520,8 @@ Resources:
                 Action:
                   - s3:PutObject
                 Resource:
-                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*'
-                  - 'arn:aws:s3:::cloudformation-custom-resource-response-*/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::cloudformation-custom-resource-response-*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::cloudformation-custom-resource-response-*/*'
   
   CreateA2IResourcesLambda:
     Type: AWS::Serverless::Function
@@ -4383,6 +4533,8 @@ Resources:
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
             reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
@@ -4391,15 +4543,15 @@ Resources:
       CodeUri: src/lambda/create_a2i_resources
       Handler: index.handler
       Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 900  # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
       Environment:
         Variables:
           STACK_NAME: !Ref AWS::StackName
           A2I_WORKTEAM_ARN: !If
             - ShouldCreatePrivateWorkteam
-            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
-            - !Ref AWS::NoValue
+            - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Ref ExistingPrivateWorkforceArn
           A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
           BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
       
@@ -4428,7 +4580,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: src/lambda/get-workforce-url
       Description: Lambda function to get the SageMaker Ground Truth workforce portal URL
       MemorySize: 128
@@ -4446,7 +4598,7 @@ Resources:
           - sagemaker:DescribeWorkteam
           Resource: !If
             - ShouldCreatePrivateWorkteam
-            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+            - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
             - !Ref ExistingPrivateWorkforceArn
   
   WorkforceURLResource:
@@ -4499,7 +4651,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -4551,7 +4703,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: ./src/lambda/ipset_updater
       Handler: index.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 300
       MemorySize: 256
       Environment:
@@ -4664,7 +4816,7 @@ Resources:
               Service: appsync.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:
         - PolicyName: DynamoDBAccess
@@ -4680,8 +4832,8 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AnalyticsTable}
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -4703,7 +4855,8 @@ Resources:
                   - !GetAtt DeleteDocumentResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
-                  - !GetAtt AnalyticsRequestHandlerFunction.Arn
+                  - !GetAtt AgentRequestHandlerFunction.Arn
+                  - !GetAtt ListAvailableAgentsFunction.Arn
                   - !GetAtt ChatWithDocumentResolverFunction.Arn
 
   # Lambda function for Create Document resolver
@@ -4725,7 +4878,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/create_document_resolver
       Description: Lambda function to create document tracking via GraphQL API
       MemorySize: 512
@@ -4990,7 +5143,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/get_file_contents_resolver
       Description: Lambda function to return file contents via GraphQL API
       MemorySize: 512
@@ -5064,7 +5217,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/get_stepfunction_execution_resolver/
       Handler: index.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.12
       Architectures:
         - x86_64
       MemorySize: 512
@@ -5079,7 +5232,7 @@ Resources:
                 - states:GetExecutionHistory
               Resource: 
                 - !Sub
-                  - "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
+                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
                   - StateMachineName: !If
                       - IsPattern3
                       - !GetAtt PATTERN3STACK.Outputs.StateMachineName
@@ -5144,7 +5297,7 @@ Resources:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       CodeUri: src/lambda/publish_stepfunction_update_resolver/
       Handler: index.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.12
       Architectures:
         - x86_64
       MemorySize: 256
@@ -5209,7 +5362,7 @@ Resources:
       Properties:
         PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]       
         Handler: index.handler
-        Runtime: python3.13
+        Runtime: python3.12
         CodeUri: ./src/lambda/configuration_resolver
         Description: Lambda function to manage configuration through GraphQL API
         MemorySize: 512
@@ -5237,7 +5390,7 @@ Resources:
                 Action:
                   - ssm:GetParameter
                   - ssm:PutParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn'
 
   ConfigurationResolverFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -5292,7 +5445,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/copy_to_baseline_resolver
       Description: Lambda function to copy files to baseline bucket via GraphQL API
       MemorySize: 512
@@ -5383,7 +5536,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/delete_document_resolver
       Description: Lambda function to delete documents via GraphQL API
       MemorySize: 512
@@ -5457,7 +5610,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/reprocess_document_resolver
       Description: Lambda function to reprocess documents via GraphQL API
       MemorySize: 512
@@ -5525,7 +5678,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/upload_resolver
       Description: Lambda function to return signed upload URL via GraphQL API
       MemorySize: 512
@@ -5609,7 +5762,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/query_knowledgebase_resolver
       Description: Lambda function to query Bedrock Knowledge Base via GraphQL API
       MemorySize: 512
@@ -5635,26 +5788,26 @@ Resources:
               Action:
                 - bedrock:Retrieve
                 - bedrock:RetrieveAndGenerate
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
               - "bedrock:InvokeModel"
             Resource:
-              - !Sub "arn:aws:bedrock:*::foundation-model/*"
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - Effect: Allow
             Action:
               - "bedrock:GetInferenceProfile"
             Resource:
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action:
                 - "bedrock:ApplyGuardrail"
               Resource:
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
@@ -5713,7 +5866,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Handler: index.handler
-      Runtime: python3.13
+      Runtime: python3.12
       CodeUri: ./src/lambda/chat_with_document_resolver
       Description: Lambda function to chat with the document via GraphQL API
       MemorySize: 512
@@ -5737,26 +5890,26 @@ Resources:
               Action:
                 - bedrock:Retrieve
                 - bedrock:RetrieveAndGenerate
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
               - "bedrock:InvokeModel"
             Resource:
-              - !Sub "arn:aws:bedrock:*::foundation-model/*"
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - Effect: Allow
             Action:
               - "bedrock:GetInferenceProfile"
             Resource:
-              - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
           - !If
             - HasGuardrailConfig
             - Effect: Allow
               Action:
                 - "bedrock:ApplyGuardrail"
               Resource:
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
@@ -5908,8 +6061,8 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Resource:
-                  - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>"
-                  - !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>"
+                  - !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/*"
                 Effect: Allow
                 Action:
                   - s3:GetObject
@@ -5919,8 +6072,8 @@ Resources:
                   - s3:PutObject
                   - s3:ListBucket
               - Resource:
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*:*"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*:*"
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -5931,7 +6084,7 @@ Resources:
                   - s3:PutObject
                   - s3:DeleteObject
                 Resource:
-                  - !Sub "arn:aws:s3:::${WebUIBucket}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${WebUIBucket}/*"
               - Effect: Allow
                 Action:
                   - cloudfront:CreateInvalidation
@@ -5950,7 +6103,7 @@ Resources:
         Type: NO_ARTIFACTS
       Source:
         # Publish script substitutes the tokens in the filename here during package build
-        Location: !Sub "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
+        Location: !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
         Type: S3
         BuildSpec: |
           version: 0.2
@@ -6100,7 +6253,7 @@ Resources:
     Properties:
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Role: !GetAtt StartUICodeBuildExecutionRole.Arn
-      Runtime: python3.13
+      Runtime: python3.12
       Timeout: 60
       MemorySize: 128
       Handler: index.handler
@@ -6123,7 +6276,7 @@ Resources:
       SettingsParameter: !Ref SettingsParameter
       # Force codebuild to rerun when source code changes (filename will change), and to correctly roll back to
       # previous version if build fails.
-      CodeLocation: "arn:aws:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
+      CodeLocation: !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
 
 Outputs:
   ApplicationWebURL:
@@ -6136,6 +6289,13 @@ Outputs:
       Fn::GetAtt:
       - WorkforceURLResource
       - PortalURL
+  PrivateWorkteamArn:
+    Description: SageMaker A2I Private Workteam ARN (use this ARN when deploying additional patterns with HITL enabled)
+    Condition: IsHITLEnabled
+    Value: !If
+      - ShouldCreatePrivateWorkteam
+      - !Sub 'arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}'
+      - !Ref ExistingPrivateWorkforceArn
   LabelingConsoleURL:
     Description: SageMaker Ground Truth console URL
     Condition: IsHITLEnabled
@@ -6243,12 +6403,12 @@ Outputs:
   DynamoDBConfigurationTableConsoleURL:
     Description: DynamoDB table console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${ConfigurationTable}
-  DynamoDBAnalyticsTableName:
-    Description: Name of the DynamoDB table for analytics job tracking
-    Value: !Ref AnalyticsTable
-  DynamoDBAnalyticsTableConsoleURL:
-    Description: DynamoDB table console URL for analytics job tracking
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AnalyticsTable}
+  DynamoDBAgentTableName:
+    Description: Name of the DynamoDB table for agent job tracking
+    Value: !Ref AgentTable
+  DynamoDBAgentTableConsoleURL:
+    Description: DynamoDB table console URL for agent job tracking
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#item-explorer?maximize=true&operation=QUERY&table=${AgentTable}
   LambdaLookupFunctionName:
     Description: Name of the Lookup function
     Value: !Ref LookupFunction
@@ -6270,3 +6430,6 @@ Outputs:
       REACT_APP_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       REACT_APP_AWS_REGION=${AWS::Region}
       REACT_APP_SETTINGS_PARAMETER=${SettingsParameter}
+  ExternalMCPAgentsSecretConsoleURL:
+    Description: External MCP Agents secret console URL - configure MCP server credentials here (JSON array format)
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/secretsmanager/secret?name=${AWS::StackName}/external-mcp-agents/credentials&region=${AWS::Region}"
