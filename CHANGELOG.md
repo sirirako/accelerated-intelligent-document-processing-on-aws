@@ -6,6 +6,17 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
+- **Intelligent Document Discovery Module for Automated Configuration Generation**
+  - Added Discovery module that automatically analyzes document samples to identify structure, field types, and organizational patterns
+  - **Pattern-Neutral Design**: Works across all processing patterns (1, 2, 3) with unified discovery process and pattern-specific implementations
+  - **Dual Discovery Methods**: Discovery without ground truth (exploratory analysis) and with ground truth (optimization using labeled data)
+  - **Automated Blueprint Creation**: Pattern 1 includes zero-touch BDA blueprint generation with intelligent change detection and version management
+  - **Web UI Integration**: Real-time discovery job monitoring, interactive results review, and seamless configuration integration
+  - **Advanced Features**: Multi-model support (Nova, Claude), customizable prompts, configurable parameters, ground truth processing, schema conversion, and lifecycle management
+  - **Key Benefits**: Rapid new document type onboarding, reduced time-to-production, configuration optimization, and automated workflow bootstrapping
+  - **Use Cases**: New document exploration, configuration improvement, rapid prototyping, and document understanding
+  - **Documentation**: Guide in `docs/discovery.md` with architecture details, best practices, and troubleshooting
+
 - **Windows WSL Development Environment Setup Guide**
   - Added WSL-based development environment setup guide for Windows developers in `docs/setup-development-env-WSL.md`
   - **Key Features**: Automated setup script (`wsl_setup.sh`) for quick installation of Git, Python, Node.js, AWS CLI, and SAM CLI
@@ -21,6 +32,11 @@ SPDX-License-Identifier: MIT-0
   - **Templates Updated**: `template.yaml` (main template), `patterns/pattern-3/sagemaker_classifier_endpoint.yaml`
   - **Services Fixed**: EventBridge, Cognito, SageMaker, ECR, CloudFront, CodeBuild, AppSync, Lambda, DynamoDB, CloudWatch Logs, Glue
   - Resolves GitHub Issue #50 - templates now deploy correctly in both standard AWS and GovCloud regions
+
+- **Bug Fixes and Code Improvements**
+  - Fixed HITL processing errors in both Pattern-1 (DynamoDB validation with empty strings) and Pattern-2 (string indices error in A2I output processing)
+  - Fixed Step Function UI issues including auto-refresh button auto-disable and fetch failures for failed executions with datetime serialization errors
+  - Cleaned up unused Step Function subscription infrastructure and removed duplicate code in Pattern-2 HITL function
 
 
 ## [0.3.14]
