@@ -257,7 +257,6 @@ Parameters:
       - "us.anthropic.claude-sonnet-4-20250514-v1:0"
     Description: Model to use for Document Analysis Agent (analytics queries). Model access MUST be enabled in Amazon Bedrock.
 
-  #Optional - Discovery Model 
   # Optional - Post processing Lambda hook
   PostProcessingLambdaHookFunctionArn:
     Default: ""
