@@ -120,8 +120,8 @@ Conditions:
   HasCustomClassificationModelARN: !Not [!Equals [!Ref CustomClassificationModelARN, ""]]
   HasCustomExtractionModelARN: !Not [!Equals [!Ref CustomExtractionModelARN, ""]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
-  IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
+
 
 Resources:
 
