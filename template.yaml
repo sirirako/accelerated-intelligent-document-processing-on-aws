@@ -6486,8 +6486,8 @@ Resources:
                 - echo `ls -altr`
                 - echo `pwd`
                 - echo Installing NodeJS
-                - n 18.20.4
-                - npm install -g npm@10.7.0
+                - n 22.14.0
+                - npm install -g npm@11.1.0
                 - echo Installing Web UI dependencies
                 - npm install
             build:
