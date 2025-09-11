@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Added
-- **Optional Regex-Based Classification for Enhanced Performance**
+- **Optional Pattern-2 Regex-Based Classification for Enhanced Performance**
   - Added support for optional regex patterns in document class definitions for performance optimization
   - **Document Name Regex**: Match against document ID/name to classify all pages without LLM processing when all pages should be the same class
   - **Document Page Content Regex**: Match against page text content during multi-modal page-level classification for fast page classification
