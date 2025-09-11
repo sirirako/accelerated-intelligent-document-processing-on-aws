@@ -70,24 +70,26 @@ def handler(event, context):
     logger.info(f"Total extraction time: {t1-t0:.2f} seconds")
 
     # Assessment validation
-    logger.info("--- Start: Assessment Validation ---")
-    for section in updated_document.sections:
-        if section.section_id == section_id and section.extraction_result_uri:
-            logger.info(f"Loading assessment results from: {section.extraction_result_uri}")
-            # Load extraction data with assessment results
-            extraction_data = s3.get_json_content(section.extraction_result_uri)
-            validator = AssessmentValidator(extraction_data,
-                                            assessment_config=config.get('assessment', {}),
-                                            enable_missing_check=False,
-                                            enable_count_check=False)
-            validation_results = validator.validate_all()
-            if not validation_results['is_valid']:
-                # Handle validation failure
-                updated_document.status = Status.FAILED
-                validation_errors = validation_results['validation_errors']
-                updated_document.errors.extend(validation_errors)
-                logger.error(f"Validation Error: {validation_errors}")
-    logger.info("---   End: Assessment Validation ---")
+    assessment_enabled = config.get('assessment.enabled', False)
+    if not assessment_enabled:
+        logger.info("Assessment is disabled.")
+    else:
+        for section in updated_document.sections:
+            if section.section_id == section_id and section.extraction_result_uri:
+                logger.info(f"Loading assessment results from: {section.extraction_result_uri}")
+                # Load extraction data with assessment results
+                extraction_data = s3.get_json_content(section.extraction_result_uri)
+                validator = AssessmentValidator(extraction_data,
+                                                assessment_config=config.get('assessment', {}),
+                                                enable_missing_check=False,
+                                                enable_count_check=False)
+                validation_results = validator.validate_all()
+                if not validation_results['is_valid']:
+                    # Handle validation failure
+                    updated_document.status = Status.FAILED
+                    validation_errors = validation_results['validation_errors']
+                    updated_document.errors.extend(validation_errors)
+                    logger.error(f"Validation Error: {validation_errors}")
 
     # Prepare output with automatic compression if needed
     result = {
