@@ -5,6 +5,18 @@ SPDX-License-Identifier: MIT-0
 
 The Discovery module is an intelligent document analysis system that automatically identifies document structures, field types, and organizational patterns to create document processing blueprints. This module provides a **pattern-neutral discovery process** that works across all processing patterns, with specialized implementations for pattern-specific automation.
 
+Demo video (3m)
+
+
+https://github.com/user-attachments/assets/101f73f6-27f1-4995-b35e-fa2fb44eb254
+
+
+Demo video (10m)
+
+
+https://github.com/user-attachments/assets/ba7f863f-0cac-4778-8bcf-b4beee8a3301
+
+
 ## Pattern-Neutral Discovery vs Pattern-Specific Implementation
 
 The Discovery module operates on two levels:
