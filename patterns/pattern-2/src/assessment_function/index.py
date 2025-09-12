@@ -70,7 +70,7 @@ def handler(event, context):
     logger.info(f"Total extraction time: {t1-t0:.2f} seconds")
 
     # Assessment validation
-    assessment_enabled = config.get('assessment.enabled', False)
+    assessment_enabled = config.get('assessment', {}).get('enabled', False)
     if not assessment_enabled:
         logger.info("Assessment is disabled.")
     else:
