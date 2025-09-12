@@ -36,6 +36,10 @@ SPDX-License-Identifier: MIT-0
   - **Target Use Cases**: Windows developers needing Linux compatibility without Docker Desktop or VM overhead
 
 ### Fixed
+- **Throttling Error Detection and Retry Logic for Assessment Functions** - [GitHub Issue #45](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/45)
+  - **Assessment Function**: Enhanced throttling detection to check for throttling errors returned in `document.errors` field in addition to thrown exceptions, raising `ThrottlingException` to trigger Step Functions retry when throttling is detected
+  - **Impact**: Improved resilience for throttling scenarios, reduced redundant processing during retries, and better Step Functions retry behavior
+
 - **Security Vulnerability Mitigation - Package Updates**
 
 - **GovCloud Compatibility - Hardcoded Service Domain References**
