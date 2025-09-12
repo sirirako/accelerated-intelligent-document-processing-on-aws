@@ -26,9 +26,12 @@ You need to have the following packages installed on your computer:
 3. [sam (AWS SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 4. python 3.11 or later
 5. A local Docker daemon
-6. Python packages for publish.py: `pip install boto3 rich PyYAML botocore setuptools`
+6. Python packages for publish.py: `pip install boto3 rich typer PyYAML botocore setuptools`
 
-For guidance on setting up a development environment, see: [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) or [Development Environment Setup Guide on MacOS](./setup-development-env-macos.md)
+For guidance on setting up a development environment, see:
+- [Development Environment Setup Guide on Linux](./setup-development-env-linux.md) 
+- [Development Environment Setup Guide on macOS](./setup-development-env-macos.md)
+- [Development Environment Setup Guide on Windows (WSL)](./setup-development-env-WSL.md)
 
 Copy the repo to your computer. Either:
 - Use the git command to clone the repo, if you have access
