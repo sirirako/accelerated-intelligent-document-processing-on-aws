@@ -1734,11 +1734,16 @@ class GranularAssessmentService:
                     # Store the primary exception for easy access by caller
                     document.metadata["primary_exception"] = primary_exception
 
-                    # Cache successful task results (only when some tasks fail - for retry scenarios)
+                # Check for any failed tasks (both exceptions and unsuccessful results)
+                failed_results = [r for r in all_task_results if not r.success]
+                any_failures = bool(failed_task_exceptions or failed_results)
+
+                # Cache successful tasks only when there are failures (for retry optimization)
+                if any_failures:
                     successful_results = [r for r in all_task_results if r.success]
                     if successful_results:
                         logger.info(
-                            f"Caching {len(successful_results)} successful assessment task results for document {document.id} section {section_id} due to {len(failed_task_exceptions)} failed tasks (retry scenario)"
+                            f"Caching {len(successful_results)} successful assessment task results for document {document.id} section {section_id} due to {len(failed_results)} failed results + {len(failed_task_exceptions)} failed exceptions (retry scenario)"
                         )
                         self._cache_successful_assessment_tasks(
                             document.id,
@@ -1748,7 +1753,7 @@ class GranularAssessmentService:
                         )
                     else:
                         logger.warning(
-                            f"No successful assessment task results to cache for document {document.id} section {section_id} - all {len(failed_task_exceptions)} tasks failed"
+                            f"No successful assessment task results to cache for document {document.id} section {section_id} - all tasks failed"
                         )
                 else:
                     # All new tasks succeeded - no need to cache since there won't be retries
@@ -1868,6 +1873,69 @@ class GranularAssessmentService:
             logger.error(error_msg)
             document.status = Status.FAILED
             document.errors.append(error_msg)
+
+            # Check if this is a throttling exception and populate metadata for retry handling
+            if self._is_throttling_exception(e):
+                logger.info(
+                    f"Populating metadata for throttling exception: {type(e).__name__}"
+                )
+                document.metadata = document.metadata or {}
+                document.metadata["failed_assessment_tasks"] = {
+                    "granular_processing": {
+                        "exception_type": type(e).__name__,
+                        "exception_message": str(e),
+                        "exception_class": e.__class__.__module__
+                        + "."
+                        + e.__class__.__name__,
+                        "is_throttling": True,
+                    }
+                }
+                document.metadata["primary_exception"] = e
+
+        # Additional check: if document status is FAILED and contains throttling errors,
+        # populate metadata even if no exceptions were thrown
+        if (
+            document.status == Status.FAILED
+            and document.errors
+            and not hasattr(document, "metadata")
+            or not document.metadata
+            or "failed_assessment_tasks" not in document.metadata
+        ):
+            # Check if any errors contain throttling keywords
+            throttling_keywords = [
+                "throttlingexception",
+                "provisionedthroughputexceededexception",
+                "servicequotaexceededexception",
+                "toomanyrequestsexception",
+                "requestlimitexceeded",
+                "too many tokens",
+                "please wait before trying again",
+                "reached max retries",
+            ]
+
+            has_throttling_error = False
+            throttling_error_msg = None
+            for error_msg in document.errors:
+                error_lower = str(error_msg).lower()
+                if any(keyword in error_lower for keyword in throttling_keywords):
+                    has_throttling_error = True
+                    throttling_error_msg = error_msg
+                    break
+
+            if has_throttling_error:
+                logger.info(
+                    f"Populating metadata for throttling error found in document.errors: {throttling_error_msg}"
+                )
+                document.metadata = document.metadata or {}
+                document.metadata["failed_assessment_tasks"] = {
+                    "document_level_error": {
+                        "exception_type": "ThrottlingError",
+                        "exception_message": throttling_error_msg,
+                        "exception_class": "DocumentLevelThrottlingError",
+                        "is_throttling": True,
+                    }
+                }
+
         return document
 
     def assess_document(self, document: Document) -> Document:

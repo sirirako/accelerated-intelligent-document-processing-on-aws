@@ -12,11 +12,80 @@ from idp_common.docs_service import create_document_service
 from idp_common import s3
 from assessment_validator import AssessmentValidator
 
+# Custom exception for throttling scenarios
+class ThrottlingException(Exception):
+    """Exception raised when throttling is detected in document processing results"""
+    pass
+
+# Throttling detection constants
+THROTTLING_KEYWORDS = [
+    "throttlingexception",
+    "provisionedthroughputexceededexception", 
+    "servicequotaexceededexception",
+    "toomanyrequestsexception",
+    "requestlimitexceeded",
+    "too many tokens",
+    "please wait before trying again",
+    "reached max retries"
+]
+
+THROTTLING_EXCEPTIONS = [
+    "ThrottlingException",
+    "ProvisionedThroughputExceededException",
+    "ServiceQuotaExceededException", 
+    "TooManyRequestsException",
+    "RequestLimitExceeded"
+]
+
 # Configuration will be loaded in handler function
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
+
+def is_throttling_exception(exception):
+    """
+    Check if an exception is related to throttling.
+    
+    Args:
+        exception: The exception to check
+        
+    Returns:
+        bool: True if the exception is throttling-related, False otherwise
+    """
+    from botocore.exceptions import ClientError
+    
+    if isinstance(exception, ClientError):
+        error_code = exception.response.get('Error', {}).get('Code', '')
+        return error_code in THROTTLING_EXCEPTIONS
+    
+    exception_name = type(exception).__name__
+    exception_message = str(exception).lower()
+    
+    return (
+        exception_name in THROTTLING_EXCEPTIONS or
+        any(keyword in exception_message for keyword in THROTTLING_KEYWORDS)
+    )
+
+def check_document_for_throttling_errors(document):
+    """
+    Check if a document has throttling errors in its errors field.
+    
+    Args:
+        document: The document object to check
+        
+    Returns:
+        tuple: (has_throttling_errors: bool, first_throttling_error: str or None)
+    """
+    if document.status != Status.FAILED or not document.errors:
+        return False, None
+    
+    for error_msg in document.errors:
+        error_lower = str(error_msg).lower()
+        if any(keyword in error_lower for keyword in THROTTLING_KEYWORDS):
+            return True, error_msg
+    
+    return False, None
 
 def handler(event, context):
     """
@@ -85,55 +154,39 @@ def handler(event, context):
         t1 = time.time()
         logger.info(f"Total assessment time: {t1-t0:.2f} seconds")
         
-        # Check for failed assessment tasks that might require retry
-        if (hasattr(updated_document, 'metadata') and 
-            updated_document.metadata and 
-            'failed_assessment_tasks' in updated_document.metadata):
-            
-            failed_tasks = updated_document.metadata['failed_assessment_tasks']
-            throttling_tasks = {
-                task_id: task_info for task_id, task_info in failed_tasks.items()
-                if task_info.get('is_throttling', False)
-            }
-            
-            logger.warning(
-                f"Assessment completed with {len(failed_tasks)} failed tasks, "
-                f"{len(throttling_tasks)} due to throttling"
-            )
-            
-            if throttling_tasks:
-                logger.info(
-                    f"Throttling detected in {len(throttling_tasks)} tasks. "
-                    f"Successful tasks have been cached for retry."
+        # Check for failed assessment tasks that might require retry (granular assessment)
+        if hasattr(updated_document, 'metadata') and updated_document.metadata:
+            failed_tasks = updated_document.metadata.get('failed_assessment_tasks', {})
+            if failed_tasks:
+                throttling_tasks = {
+                    task_id: task_info for task_id, task_info in failed_tasks.items()
+                    if task_info.get('is_throttling', False)
+                }
+                
+                logger.warning(
+                    f"Assessment completed with {len(failed_tasks)} failed tasks, "
+                    f"{len(throttling_tasks)} due to throttling"
                 )
+                
+                if throttling_tasks:
+                    logger.info(
+                        f"Throttling detected in {len(throttling_tasks)} tasks. "
+                        f"Successful tasks have been cached for retry."
+                    )
+        
+        # Check for throttling errors in document status and errors field
+        has_throttling, throttling_error = check_document_for_throttling_errors(updated_document)
+        if has_throttling:
+            logger.error(f"Throttling error detected in document errors: {throttling_error}")
+            logger.error("Raising ThrottlingException to trigger Step Functions retry")
+            raise ThrottlingException(f"Throttling detected in document processing: {throttling_error}")
         
     except Exception as e:
         t1 = time.time()
         logger.error(f"Assessment failed after {t1-t0:.2f} seconds: {str(e)}")
         
         # Check if this is a throttling exception that should trigger retry
-        from botocore.exceptions import ClientError
-        throttling_exceptions = [
-            "ThrottlingException",
-            "ProvisionedThroughputExceededException",
-            "ServiceQuotaExceededException", 
-            "TooManyRequestsException",
-            "RequestLimitExceeded"
-        ]
-        
-        is_throttling = False
-        if isinstance(e, ClientError):
-            error_code = e.response.get('Error', {}).get('Code', '')
-            is_throttling = error_code in throttling_exceptions
-        else:
-            exception_name = type(e).__name__
-            exception_message = str(e).lower()
-            is_throttling = (
-                exception_name in throttling_exceptions or
-                any(throttle_term.lower() in exception_message for throttle_term in throttling_exceptions)
-            )
-        
-        if is_throttling:
+        if is_throttling_exception(e):
             logger.error(f"Throttling exception detected: {type(e).__name__}. This will trigger state machine retry.")
             # Update document status before re-raising
             document_service.update_document(docStatus)
