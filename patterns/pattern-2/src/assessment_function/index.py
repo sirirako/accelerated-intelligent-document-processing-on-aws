@@ -59,17 +59,94 @@ def handler(event, context):
     logger.info(f"Updating document status to {docStatus.status}")
     document_service.update_document(docStatus)
 
-    # Initialize assessment service
-    assessment_service = assessment.AssessmentService(config=config)
+    # Initialize assessment service with cache table for enhanced retry handling
+    cache_table = os.environ.get('TRACKING_TABLE')
+    
+    # Check if granular assessment is enabled
+    granular_config = config.get('assessment', {}).get('granular', {})
+    granular_enabled = granular_config.get('enabled', False)
+    
+    if granular_enabled:
+        # Use enhanced granular assessment service with caching and retry support
+        from idp_common.assessment.granular_service import GranularAssessmentService
+        assessment_service = GranularAssessmentService(config=config, cache_table=cache_table)
+        logger.info("Using granular assessment service with enhanced error handling and caching")
+    else:
+        # Use regular assessment service
+        assessment_service = assessment.AssessmentService(config=config)
+        logger.info("Using regular assessment service")
 
     # Process the document section for assessment
     t0 = time.time()
     logger.info(f"Starting assessment for section {section_id}")
-    updated_document = assessment_service.process_document_section(document, section_id)
-    t1 = time.time()
-    logger.info(f"Total extraction time: {t1-t0:.2f} seconds")
+    
+    try:
+        updated_document = assessment_service.process_document_section(document, section_id)
+        t1 = time.time()
+        logger.info(f"Total assessment time: {t1-t0:.2f} seconds")
+        
+        # Check for failed assessment tasks that might require retry
+        if (hasattr(updated_document, 'metadata') and 
+            updated_document.metadata and 
+            'failed_assessment_tasks' in updated_document.metadata):
+            
+            failed_tasks = updated_document.metadata['failed_assessment_tasks']
+            throttling_tasks = {
+                task_id: task_info for task_id, task_info in failed_tasks.items()
+                if task_info.get('is_throttling', False)
+            }
+            
+            logger.warning(
+                f"Assessment completed with {len(failed_tasks)} failed tasks, "
+                f"{len(throttling_tasks)} due to throttling"
+            )
+            
+            if throttling_tasks:
+                logger.info(
+                    f"Throttling detected in {len(throttling_tasks)} tasks. "
+                    f"Successful tasks have been cached for retry."
+                )
+        
+    except Exception as e:
+        t1 = time.time()
+        logger.error(f"Assessment failed after {t1-t0:.2f} seconds: {str(e)}")
+        
+        # Check if this is a throttling exception that should trigger retry
+        from botocore.exceptions import ClientError
+        throttling_exceptions = [
+            "ThrottlingException",
+            "ProvisionedThroughputExceededException",
+            "ServiceQuotaExceededException", 
+            "TooManyRequestsException",
+            "RequestLimitExceeded"
+        ]
+        
+        is_throttling = False
+        if isinstance(e, ClientError):
+            error_code = e.response.get('Error', {}).get('Code', '')
+            is_throttling = error_code in throttling_exceptions
+        else:
+            exception_name = type(e).__name__
+            exception_message = str(e).lower()
+            is_throttling = (
+                exception_name in throttling_exceptions or
+                any(throttle_term.lower() in exception_message for throttle_term in throttling_exceptions)
+            )
+        
+        if is_throttling:
+            logger.error(f"Throttling exception detected: {type(e).__name__}. This will trigger state machine retry.")
+            # Update document status before re-raising
+            document_service.update_document(docStatus)
+            # Re-raise to trigger state machine retry
+            raise
+        else:
+            logger.error(f"Non-throttling exception: {type(e).__name__}. Marking document as failed.")
+            # Set document status to failed for non-throttling exceptions
+            updated_document = document
+            updated_document.status = Status.FAILED
+            updated_document.errors.append(str(e))
 
-    # Assessment validation
+    # Assessment validation (for both regular and granular assessment)
     assessment_enabled = config.get('assessment.enabled', False)
     if not assessment_enabled:
         logger.info("Assessment is disabled.")
