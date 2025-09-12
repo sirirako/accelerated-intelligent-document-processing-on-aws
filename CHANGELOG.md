@@ -38,6 +38,7 @@ SPDX-License-Identifier: MIT-0
 ### Fixed
 - **Throttling Error Detection and Retry Logic for Assessment Functions** - [GitHub Issue #45](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/45)
   - **Assessment Function**: Enhanced throttling detection to check for throttling errors returned in `document.errors` field in addition to thrown exceptions, raising `ThrottlingException` to trigger Step Functions retry when throttling is detected
+  - **Granular Assessment Task Caching**: Fixed caching logic to properly cache successful assessment tasks when there are ANY failed tasks (both exception-based and result-based failures), enabling efficient retry optimization by only reprocessing failed tasks while preserving successful results
   - **Impact**: Improved resilience for throttling scenarios, reduced redundant processing during retries, and better Step Functions retry behavior
 
 - **Security Vulnerability Mitigation - Package Updates**
@@ -55,6 +56,7 @@ SPDX-License-Identifier: MIT-0
   - Cleaned up unused Step Function subscription infrastructure and removed duplicate code in Pattern-2 HITL function
   - Expanded UI Visual Editor bounding box size with padding for better visibility and user interaction
   - Fixed bug in list of models supporting cache points - previously claude 4 sonnet and opus had been excluded.
+  - Validations added at the assessment step for checking valid json response. The validation fails after extraction/assessment is complete if json parsing issues are encountered.
 
 
 ## [0.3.14]
