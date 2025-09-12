@@ -106,8 +106,11 @@ class AssessmentValidator:
     def check_explainability_exists(self):
         """Check if explainability_info has at least one element when expected attributes exist"""
         expected_attributes = set(self.inference_result.keys())
-
-        if expected_attributes and (not self.explainability_info or not self.explainability_info[0]):
+        assessment_enabled = self.assessment_config.get('assessment.enabled', False)
+        logger.info(f"Assessment Enabled: {assessment_enabled}")
+        if (assessment_enabled and
+                expected_attributes and
+                (not self.explainability_info or not self.explainability_info[0])):
             return {
                 'is_valid': False,
                 'failed_attributes': list(expected_attributes),
