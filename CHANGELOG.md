@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.3.15]
+
 ### Added
 
 - **Intelligent Document Discovery Module for Automated Configuration Generation**
