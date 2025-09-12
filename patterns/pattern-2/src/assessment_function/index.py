@@ -146,8 +146,8 @@ def handler(event, context):
             updated_document.status = Status.FAILED
             updated_document.errors.append(str(e))
 
-    # Assessment validation (for both regular and granular assessment)
-    assessment_enabled = config.get('assessment.enabled', False)
+    # Assessment validation
+    assessment_enabled = config.get('assessment', {}).get('enabled', False)
     if not assessment_enabled:
         logger.info("Assessment is disabled.")
     else:
