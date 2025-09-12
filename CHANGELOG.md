@@ -50,6 +50,7 @@ SPDX-License-Identifier: MIT-0
   - Fixed Step Function UI issues including auto-refresh button auto-disable and fetch failures for failed executions with datetime serialization errors
   - Cleaned up unused Step Function subscription infrastructure and removed duplicate code in Pattern-2 HITL function
   - Expanded UI Visual Editor bounding box size with padding for better visibility and user interaction
+  - Fixed bug in list of models supporting cache points - previously claude 4 sonnet and opus had been excluded.
 
 
 ## [0.3.14]
