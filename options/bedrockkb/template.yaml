@@ -400,7 +400,7 @@ Resources:
         - Effect: Allow
           Principal:
             Service:
-            - lambda.amazonaws.com
+            - !Sub "lambda.${AWS::URLSuffix}"
           Action:
           - sts:AssumeRole
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
@@ -524,7 +524,7 @@ Resources:
           - Effect: Allow
             Principal:
               Service:
-                - bedrock.amazonaws.com
+                - !Sub "bedrock.${AWS::URLSuffix}"
             Action:
               - sts:AssumeRole
             Condition:
@@ -725,7 +725,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -831,7 +831,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: scheduler.amazonaws.com
+              Service: !Sub "scheduler.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Policies:

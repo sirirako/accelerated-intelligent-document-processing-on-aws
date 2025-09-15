@@ -110,7 +110,13 @@ class GovCloudTemplateGenerator:
             'UpdateAgentJobStatusResolver',
             'DeleteAgentJobResolver',
             'ListAvailableAgentsResolver',
-            'ListAvailableAgentsDataSource'
+            'ListAvailableAgentsDataSource',
+            'DiscoveryJobsResolver',
+            'DiscoveryProcessorFunction',
+            'DiscoveryTableDataSource',
+            'DiscoveryUploadDocumentResolver',
+            'DiscoveryUploadResolverDataSource',
+            'UpdateDiscoveryJobStatusResolver'
         }
         
         self.auth_resources = {
@@ -194,7 +200,8 @@ class GovCloudTemplateGenerator:
             'WebUITestEnvFile',
             'SageMakerA2IReviewPortalURL',
             'LabelingConsoleURL',
-            'ExternalMCPAgentsSecretName'
+            'ExternalMCPAgentsSecretName',
+            'PrivateWorkteamArn'
         }
 
     def setup_logging(self):
