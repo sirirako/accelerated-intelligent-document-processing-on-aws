@@ -816,9 +816,9 @@ class GovCloudTemplateGenerator:
             # 1-Click Launch for GovCloud template
             encoded_govcloud_url = quote(govcloud_url, safe=":/?#[]@!$&'()*+,;=")
             if "us-gov" in region:
-                domain="amazonaws-us-gov.com"
+                domain="aws.amazonaws-us-gov.com"
             else:
-                domain="amazon.com"
+                domain="aws.amazon.com"
             govcloud_launch_url = f"https://{region}.console.{domain}/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
             print(f"1-Click Launch (creates new stack):")
             print(f"  {govcloud_launch_url}")
