@@ -371,6 +371,7 @@ summarization:
 
 assessment:
   enabled: true
+  validation_enabled: true
   image:
     target_height: ''
     target_width: ''
