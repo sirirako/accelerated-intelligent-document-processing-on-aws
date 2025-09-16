@@ -5,6 +5,11 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+- **GovCloud Template Generation - CloudFront Policy Removal**
+  - Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
+
+
 ## [0.3.15]
 
 ### Added
