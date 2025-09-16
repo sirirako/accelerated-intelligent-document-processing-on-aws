@@ -8,7 +8,8 @@ SPDX-License-Identifier: MIT-0
 ### Fixed
 - **GovCloud Template Generation - CloudFront Policy Removal**
   - Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
-
+- **Duplicate Glue tables created when dash used in document class name##
+  - Duplicate Glue tables are created when using a document class that contains a dash (-) resolved by replacing dash in section types with underscore character when creating the table, to align with the table name generated later by the Glue crawler.
 
 ## [0.3.15]
 
