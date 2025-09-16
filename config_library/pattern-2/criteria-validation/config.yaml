@@ -4,8 +4,7 @@
 notes: Criteria validation configuration for healthcare/insurance prior authorization
 assessment:
   enabled: true
-  validation:
-    enabled: true
+  validation_enabled: true
 criteria_validation:
   model: us.anthropic.claude-3-5-sonnet-20240620-v1:0
   temperature: 0.0

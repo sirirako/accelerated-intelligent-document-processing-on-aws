@@ -10,6 +10,7 @@ from idp_common import get_config, assessment
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
 from idp_common import s3
+from idp_common.utils import normalize_boolean_value
 from assessment_validator import AssessmentValidator
 
 # Custom exception for throttling scenarios
@@ -201,8 +202,10 @@ def handler(event, context):
 
     # Assessment validation
     assessment_config = config.get('assessment', {})
-    assessment_enabled = assessment_config.get('enabled', False)
-    validation_enabled = assessment_config.get('validation', {}).get('enabled', True)
+    assessment_enabled = normalize_boolean_value(assessment_config.get('enabled', False))
+    validation_enabled = assessment_enabled and normalize_boolean_value(assessment_config.get('validation_enabled', True))
+    logger.info(f"Assessment Enabled:{assessment_enabled}")
+    logger.info(f"Validation Enabled:{validation_enabled}")
     if not assessment_enabled:
         logger.info("Assessment is disabled.")
     elif not validation_enabled:

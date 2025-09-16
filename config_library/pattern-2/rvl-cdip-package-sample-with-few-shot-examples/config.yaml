@@ -927,8 +927,7 @@ pricing:
         price: '1.875E-5'
 assessment:
   enabled: true
-  validation:
-    enabled: true
+  validation_enabled: true
   image:
     target_height: ''
     target_width: ''

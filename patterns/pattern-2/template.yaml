@@ -632,17 +632,15 @@ Resources:
                 description: Enable or disable assessment processing
                 default: true
                 order: 0
-              validation:
-                type: object
-                sectionLabel: Assessment Validation Configuration
-                description: Configure validation checks for assessment results
+              validation_enabled:
+                type: boolean
+                description: Enable or disable assessment validation checks
+                default: true
                 order: 1
-                properties:
-                  enabled:
-                    type: boolean
-                    description: Enable or disable assessment validation checks
-                    default: true
-                    order: 0
+                dependsOn: {
+                  field: "enabled",
+                  value: true
+                }
               image:
                 type: object
                 sectionLabel: Image Processing Settings

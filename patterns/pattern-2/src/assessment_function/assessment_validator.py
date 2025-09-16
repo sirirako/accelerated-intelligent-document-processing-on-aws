@@ -1,5 +1,6 @@
 import json
 import logging
+from idp_common.utils import normalize_boolean_value
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,8 @@ class AssessmentValidator:
     def check_explainability_exists(self):
         """Check if explainability_info has at least one element when expected attributes exist"""
         expected_attributes = set(self.inference_result.keys())
-        assessment_enabled = self.assessment_config.get('enabled', False)
-        logger.info(f"Assessment Enabled: {assessment_enabled}")
+        assessment_enabled = normalize_boolean_value(self.assessment_config.get('enabled', False))
+        logger.info(f"Check Explainability Exists: {assessment_enabled}")
         if (assessment_enabled and
                 expected_attributes and
                 (not self.explainability_info or not self.explainability_info[0])):
