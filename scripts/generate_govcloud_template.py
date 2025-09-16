@@ -796,7 +796,7 @@ class GovCloudTemplateGenerator:
                 self.logger.debug(traceback.format_exc())
             return False
 
-    def print_deployment_summary(self, bucket_name: str, prefix: str, region: str, standard_url: str, govcloud_url: str = ""):
+    def print_deployment_summary(self, bucket_name: str, prefix: str, region: str, govcloud_url: str = ""):
         """Print deployment outputs in the same format as the original publish script"""
         from urllib.parse import quote
         
@@ -808,37 +808,22 @@ class GovCloudTemplateGenerator:
         print(f"  • GovCloud Template Path: {prefix}/idp-govcloud.yaml")
         
         print(f"\nDeployment Outputs")
-        
-        # Standard template outputs
-        print(f"\n🌐 Standard AWS Template:")
-        
-        # 1-Click Launch for standard template
-        encoded_standard_url = quote(standard_url, safe=":/?#[]@!$&'()*+,;=")
-        standard_launch_url = f"https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_standard_url}&stackName=IDP"
-        if "us-gov" in region:
-            standard_launch_url = f"https://{region}.console.amazonaws-us-gov.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_standard_url}&stackName=IDP"
-        print(f"1-Click Launch (creates new stack):")
-        print(f"  {standard_launch_url}")
-        print(f"Template URL (for updating existing stack):")
-        print(f"  {standard_url}")
-        
+                     
         # GovCloud template outputs (if available)
         if govcloud_url:
             print(f"\n🏛️  GovCloud Template:")
             
             # 1-Click Launch for GovCloud template
             encoded_govcloud_url = quote(govcloud_url, safe=":/?#[]@!$&'()*+,;=")
-            govcloud_launch_url = f"https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
+            if "us-gov" in region:
+                domain="amazonaws-us-gov.com"
+            else:
+                domain="amazon.com"
+            govcloud_launch_url = f"https://{region}.console.{domain}/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
             print(f"1-Click Launch (creates new stack):")
             print(f"  {govcloud_launch_url}")
             print(f"Template URL (for updating existing stack):")
             print(f"  {govcloud_url}")
-            
-            print(f"\nGovCloud Features:")
-            print(f"  • Headless operation (no web UI)")
-            print(f"  • Direct S3/CLI access for documents")
-            print(f"  • All 3 processing patterns supported")
-            print(f"  • Complete monitoring and alerting")
 
 
 def main():
@@ -965,10 +950,8 @@ Examples:
         print("STEP 4: Deployment Summary")
         print("=" * 60)
         
-        # Generate standard template URL (using standard format - works for both AWS and GovCloud)
-        standard_url = f"https://s3.{args.region}.amazonaws.com/{bucket_name}/{args.cfn_prefix}/idp-main.yaml"
-        
-        generator.print_deployment_summary(bucket_name, args.cfn_prefix, args.region, standard_url, govcloud_url)
+       
+        generator.print_deployment_summary(bucket_name, args.cfn_prefix, args.region, govcloud_url)
         
         print("✅ Complete GovCloud publication process finished successfully!")
         print("   Both standard and GovCloud templates are ready for deployment.")
