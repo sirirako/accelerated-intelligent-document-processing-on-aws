@@ -161,9 +161,9 @@ class AssessmentValidator:
         
         # Log final validation result
         if validation_results['is_valid']:
-            logger.info("Assessment validation passed - all attributes have valid confidence scores")
+            logger.info("Assessment validation: all or some attributes have confidence scores")
         else:
-            logger.error(f"Assessment validation failed: {len(validation_results['failed_attributes'])} issues found")
+            logger.info(f"Assessment validation: {len(validation_results['failed_attributes'])} issues found")
         
         return validation_results
 
