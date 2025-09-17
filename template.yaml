@@ -220,7 +220,6 @@ Parameters:
       Set to true during test cycles to evaluate and compare accuracy for different patterns and prompts for each document.
       If false, evaluation is not automatically attempted for each processed document. Set to false when deployed in production.
 
-
   # Optional Knowledge Base Configuration
   DocumentKnowledgeBase:
     Default: "BEDROCK_KNOWLEDGE_BASE (Create)"
@@ -229,6 +228,14 @@ Parameters:
       - "DISABLED"
       - "BEDROCK_KNOWLEDGE_BASE (Create)"
     Description: Use document processing results as knowledge base content. Model access for amazon.titan-embed-text-v2:0 MUST be enabled in Amazon Bedrock.
+
+  KnowledgeBaseVectorStore:
+    Type: String
+    Default: "OPENSEARCH_SERVERLESS"
+    AllowedValues:
+      - "OPENSEARCH_SERVERLESS"
+      - "S3_VECTORS"
+    Description: Choose vector store type for Bedrock Knowledge Base. OpenSearch Serverless (default) for sub-millisecond queries, S3 Vectors for cost-effective storage with sub-second latency.
 
   KnowledgeBaseModelId:
     Type: String
@@ -498,6 +505,7 @@ Metadata:
           default: "Document Knowledge Base"
         Parameters:
           - DocumentKnowledgeBase
+          - KnowledgeBaseVectorStore
           - KnowledgeBaseModelId
       - Label:
           default: "Agentic Analysis"
@@ -817,6 +825,7 @@ Resources:
         pS3SyncScheduleExpression: "cron(0/30 * ? * * *)"  # default is to sync documents every 30 minutes
         pCustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         pChunkingStrategy: 'No chunking'
+        pVectorStoreType: !Ref KnowledgeBaseVectorStore
         LogLevel: !Ref LogLevel
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
