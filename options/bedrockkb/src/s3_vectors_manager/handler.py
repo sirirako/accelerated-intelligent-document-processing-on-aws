@@ -250,17 +250,18 @@ def create_knowledge_base_s3_vectors(bedrock_agent_client, name, description, ro
     """Create Knowledge Base with S3 Vectors using Bedrock Agent API."""
     try:
         logger.info(f"Creating Knowledge Base: {name} with S3 Vectors")
+        logger.info(f"Using bucket ARN: {bucket_arn}, index name: {index_name}")
         
-        # Build S3 Vectors configuration
+        # Build S3 Vectors configuration - use correct parameter names per API documentation
         s3_vectors_config = {
-            'bucketArn': bucket_arn,
+            'vectorBucketArn': bucket_arn,  # Correct parameter name
             'indexName': index_name
         }
         
-        # Add KMS encryption if provided
+        # Note: KMS encryption is handled at the S3 vector bucket level, not in Knowledge Base config
+        # The error showed that kmsKeyArn is not supported in s3VectorsConfiguration
         if kms_key_arn:
-            s3_vectors_config['kmsKeyArn'] = kms_key_arn
-            logger.info(f"Using KMS encryption with key: {kms_key_arn}")
+            logger.info(f"KMS encryption configured at bucket level with key: {kms_key_arn}")
         
         response = bedrock_agent_client.create_knowledge_base(
             name=name,
@@ -324,6 +325,9 @@ def get_knowledge_base_info(bedrock_agent_client, kb_id):
 def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn=None):
     """Create S3 Vector bucket with optional KMS encryption. Bedrock will manage the index automatically."""
     try:
+        # Get region from client for ARN construction
+        region = s3vectors_client.meta.region_name
+        
         # Create vector bucket with optional encryption
         logger.info(f"Creating vector bucket: {bucket_name}")
         
@@ -342,22 +346,36 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         bucket_response = s3vectors_client.create_vector_bucket(**create_bucket_params)
         logger.info(f"Created vector bucket: {bucket_name}")
         
-        # Get bucket ARN from response or construct it
+        # Get bucket ARN from response or construct it properly using SANITIZED bucket name
         bucket_arn = bucket_response.get('BucketArn')
         if not bucket_arn:
-            # Construct bucket ARN if not returned
-            bucket_arn = f"arn:aws:s3vectors:{s3vectors_client.meta.region_name}:{s3vectors_client.meta.service_model.metadata['signingName']}:bucket/{bucket_name}"
+            # Construct bucket ARN using proper format with account ID and SANITIZED bucket name
+            try:
+                # Get account ID for ARN construction
+                sts_client = boto3.client('sts', region_name=region)
+                account_id = sts_client.get_caller_identity()['Account']
+                bucket_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}"
+                logger.info(f"Constructed bucket ARN with sanitized name: {bucket_arn}")
+            except Exception as arn_error:
+                logger.error(f"Could not construct bucket ARN: {arn_error}")
+                raise arn_error
         
         logger.info(f"Vector bucket ARN: {bucket_arn}")
+        logger.info(f"Sanitized bucket name used consistently: {bucket_name}")
+        
+        # Validate bucket name one more time before returning
+        if not is_valid_s3_bucket_name(bucket_name):
+            raise ValueError(f"Sanitized bucket name is still invalid: {bucket_name}")
         
         # Note: For Bedrock Knowledge Base integration, Bedrock will automatically
         # create and manage the vector index when the Knowledge Base is created.
         # We don't create the index manually here.
         
         return {
-            'BucketName': bucket_name,
-            'BucketArn': bucket_arn,
-            'IndexName': index_name,  # This will be used by Bedrock
+            'BucketName': bucket_name,        # Return sanitized name
+            'BucketArn': bucket_arn,         # Return proper ARN with sanitized name
+            'SanitizedBucketName': bucket_name,  # Explicit sanitized name for KB creation
+            'IndexName': index_name,         # This will be used by Bedrock
             'Status': 'Created'
         }
         
@@ -369,6 +387,18 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
             return get_s3_vector_info(s3vectors_client, bucket_name, index_name)
         else:
             raise
+
+
+def is_valid_s3_bucket_name(bucket_name):
+    """Validate that bucket name meets S3 requirements."""
+    import re
+    if not bucket_name or len(bucket_name) < 3 or len(bucket_name) > 63:
+        return False
+    if not re.match(r'^[a-z0-9][a-z0-9\-]*[a-z0-9]$', bucket_name):
+        return False
+    if '--' in bucket_name:  # No consecutive hyphens
+        return False
+    return True
 
 
 def delete_s3_vector_resources(s3vectors_client, bucket_name, index_name):
