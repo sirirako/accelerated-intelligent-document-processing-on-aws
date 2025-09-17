@@ -280,18 +280,14 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         logger.info(f"Creating vector bucket: {bucket_name}")
         
         create_bucket_params = {
-            'Bucket': bucket_name
+            'vectorBucketName': bucket_name
         }
         
         # Add KMS encryption if provided
         if kms_key_arn:
-            create_bucket_params['CreateBucketConfiguration'] = {
-                'BucketConfiguration': {
-                    'BucketEncryption': {
-                        'SSEAlgorithm': 'aws:kms',
-                        'KMSMasterKeyID': kms_key_arn
-                    }
-                }
+            create_bucket_params['encryptionConfiguration'] = {
+                'SSEAlgorithm': 'aws:kms',
+                'KMSMasterKeyID': kms_key_arn
             }
             logger.info(f"Using KMS encryption for bucket with key: {kms_key_arn}")
         
@@ -302,10 +298,10 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         # Step 2: Create vector index in the bucket
         logger.info(f"Creating vector index: {index_name} in bucket: {bucket_name}")
         index_response = s3vectors_client.create_vector_index(
-            Bucket=bucket_name,
-            IndexName=index_name,
-            EmbeddingConfig={
-                'EmbeddingModelArn': f"arn:aws:bedrock:*::foundation-model/{embedding_model}"
+            vectorBucketName=bucket_name,
+            indexName=index_name,
+            embeddingConfiguration={
+                'embeddingModelArn': f"arn:aws:bedrock:*::foundation-model/{embedding_model}"
             }
         )
         index_arn = index_response['IndexArn']
@@ -337,8 +333,8 @@ def delete_s3_vector_resources(s3vectors_client, bucket_name, index_name):
             try:
                 logger.info(f"Deleting vector index: {index_name} from bucket: {bucket_name}")
                 s3vectors_client.delete_vector_index(
-                    Bucket=bucket_name,
-                    IndexName=index_name
+                    vectorBucketName=bucket_name,
+                    indexName=index_name
                 )
                 logger.info(f"Deleted vector index: {index_name}")
             except ClientError as e:
@@ -350,7 +346,7 @@ def delete_s3_vector_resources(s3vectors_client, bucket_name, index_name):
             try:
                 logger.info(f"Deleting vector bucket: {bucket_name}")
                 s3vectors_client.delete_vector_bucket(
-                    Bucket=bucket_name
+                    vectorBucketName=bucket_name
                 )
                 logger.info(f"Deleted vector bucket: {bucket_name}")
             except ClientError as e:
@@ -365,13 +361,13 @@ def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
     """Get information about existing S3 Vector resources."""
     try:
         # Get bucket info
-        bucket_response = s3vectors_client.get_vector_bucket(Bucket=bucket_name)
+        bucket_response = s3vectors_client.get_vector_bucket(vectorBucketName=bucket_name)
         bucket_arn = bucket_response['BucketArn']
         
         # Get index info
         index_response = s3vectors_client.describe_vector_index(
-            Bucket=bucket_name,
-            IndexName=index_name
+            vectorBucketName=bucket_name,
+            indexName=index_name
         )
         index_arn = index_response['IndexArn']
         
