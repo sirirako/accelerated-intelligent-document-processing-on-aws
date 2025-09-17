@@ -98,11 +98,14 @@ def handle_s3_vector_resources(event, context, properties):
     """Handle S3 Vector bucket and index operations."""
     request_type = event['RequestType']
     
-    bucket_name = properties.get('BucketName', '')
+    raw_bucket_name = properties.get('BucketName', '')
+    bucket_name = sanitize_bucket_name(raw_bucket_name)
     index_name = properties.get('IndexName', '')
     embedding_model = properties.get('EmbeddingModel', '')
     region = properties.get('Region', '')
     kms_key_arn = properties.get('KmsKeyArn', '')
+    
+    logger.info(f"Raw bucket name: {raw_bucket_name}, Sanitized bucket name: {bucket_name}")
     
     # Initialize S3 Vectors client
     s3vectors_client = boto3.client('s3vectors', region_name=region)
@@ -114,7 +117,8 @@ def handle_s3_vector_resources(event, context, properties):
     elif request_type == 'Update':
         logger.info(f"Updating S3 Vector bucket: {bucket_name}")
         old_properties = event.get('OldResourceProperties', {})
-        old_bucket_name = old_properties.get('BucketName', '')
+        old_raw_bucket_name = old_properties.get('BucketName', '')
+        old_bucket_name = sanitize_bucket_name(old_raw_bucket_name)
         old_index_name = old_properties.get('IndexName', '')
         
         # If bucket or index name changed, delete old and create new
@@ -130,6 +134,50 @@ def handle_s3_vector_resources(event, context, properties):
         logger.info(f"Deleting S3 Vector bucket: {bucket_name}")
         delete_s3_vector_resources(s3vectors_client, bucket_name, index_name)
         return {'Status': 'Deleted'}
+
+
+def sanitize_bucket_name(bucket_name):
+    """
+    Sanitize bucket name to comply with S3 bucket naming rules:
+    - Must be lowercase letters, numbers, and hyphens only
+    - Must be between 3 and 63 characters long
+    - Must not start or end with a hyphen
+    - Must not contain consecutive hyphens
+    """
+    if not bucket_name:
+        return 'default-s3-vectors'
+    
+    # Convert to lowercase
+    sanitized = bucket_name.lower()
+    
+    # Replace invalid characters with hyphens
+    import re
+    sanitized = re.sub(r'[^a-z0-9\-]', '-', sanitized)
+    
+    # Remove consecutive hyphens
+    sanitized = re.sub(r'-+', '-', sanitized)
+    
+    # Remove leading and trailing hyphens
+    sanitized = sanitized.strip('-')
+    
+    # Ensure minimum length
+    if len(sanitized) < 3:
+        sanitized = f"s3vectors-{sanitized}"
+    
+    # Ensure maximum length (S3 limit is 63 characters)
+    if len(sanitized) > 63:
+        sanitized = sanitized[:60] + "-kb"
+    
+    # Ensure it doesn't start with hyphen (redundant but safe)
+    if sanitized.startswith('-'):
+        sanitized = 's3' + sanitized
+    
+    # Ensure it doesn't end with hyphen (redundant but safe) 
+    if sanitized.endswith('-'):
+        sanitized = sanitized[:-1] + 'kb'
+    
+    logger.info(f"Sanitized bucket name: {bucket_name} → {sanitized}")
+    return sanitized
 
 
 def handle_knowledge_base_resources(event, context, properties):
