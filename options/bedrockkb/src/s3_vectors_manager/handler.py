@@ -274,9 +274,9 @@ def get_knowledge_base_info(bedrock_agent_client, kb_id):
 
 
 def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn=None):
-    """Create S3 Vector bucket and index with optional KMS encryption."""
+    """Create S3 Vector bucket with optional KMS encryption. Bedrock will manage the index automatically."""
     try:
-        # Step 1: Create vector bucket with optional encryption
+        # Create vector bucket with optional encryption
         logger.info(f"Creating vector bucket: {bucket_name}")
         
         create_bucket_params = {
@@ -286,39 +286,37 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         # Add KMS encryption if provided
         if kms_key_arn:
             create_bucket_params['encryptionConfiguration'] = {
-                'SSEAlgorithm': 'aws:kms',
-                'KMSMasterKeyID': kms_key_arn
+                'sseType': 'aws:kms',
+                'kmsKeyArn': kms_key_arn
             }
             logger.info(f"Using KMS encryption for bucket with key: {kms_key_arn}")
         
         bucket_response = s3vectors_client.create_vector_bucket(**create_bucket_params)
-        bucket_arn = bucket_response['BucketArn']
-        logger.info(f"Created vector bucket with ARN: {bucket_arn}")
+        logger.info(f"Created vector bucket: {bucket_name}")
         
-        # Step 2: Create vector index in the bucket
-        logger.info(f"Creating vector index: {index_name} in bucket: {bucket_name}")
-        index_response = s3vectors_client.create_vector_index(
-            vectorBucketName=bucket_name,
-            indexName=index_name,
-            embeddingConfiguration={
-                'embeddingModelArn': f"arn:aws:bedrock:*::foundation-model/{embedding_model}"
-            }
-        )
-        index_arn = index_response['IndexArn']
-        logger.info(f"Created vector index with ARN: {index_arn}")
+        # Get bucket ARN from response or construct it
+        bucket_arn = bucket_response.get('BucketArn')
+        if not bucket_arn:
+            # Construct bucket ARN if not returned
+            bucket_arn = f"arn:aws:s3vectors:{s3vectors_client.meta.region_name}:{s3vectors_client.meta.service_model.metadata['signingName']}:bucket/{bucket_name}"
+        
+        logger.info(f"Vector bucket ARN: {bucket_arn}")
+        
+        # Note: For Bedrock Knowledge Base integration, Bedrock will automatically
+        # create and manage the vector index when the Knowledge Base is created.
+        # We don't create the index manually here.
         
         return {
             'BucketName': bucket_name,
             'BucketArn': bucket_arn,
-            'IndexName': index_name,
-            'IndexArn': index_arn,
+            'IndexName': index_name,  # This will be used by Bedrock
             'Status': 'Created'
         }
         
     except ClientError as e:
         error_code = e.response['Error']['Code']
-        if error_code in ['BucketAlreadyExists', 'IndexAlreadyExists']:
-            logger.warning(f"Resource already exists: {e}")
+        if error_code in ['BucketAlreadyExists', 'ConflictException']:
+            logger.warning(f"Vector bucket already exists: {e}")
             # Try to get existing resource info
             return get_s3_vector_info(s3vectors_client, bucket_name, index_name)
         else:
@@ -326,22 +324,11 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
 
 
 def delete_s3_vector_resources(s3vectors_client, bucket_name, index_name):
-    """Delete S3 Vector index and bucket."""
+    """Delete S3 Vector bucket. Note: Bedrock manages the index lifecycle."""
     try:
-        # Step 1: Delete vector index first
-        if index_name and bucket_name:
-            try:
-                logger.info(f"Deleting vector index: {index_name} from bucket: {bucket_name}")
-                s3vectors_client.delete_vector_index(
-                    vectorBucketName=bucket_name,
-                    indexName=index_name
-                )
-                logger.info(f"Deleted vector index: {index_name}")
-            except ClientError as e:
-                if e.response['Error']['Code'] != 'NoSuchVectorIndex':
-                    logger.warning(f"Error deleting vector index: {e}")
-        
-        # Step 2: Delete vector bucket
+        # For S3 Vectors with Bedrock integration, Bedrock manages the index lifecycle
+        # We only need to delete the vector bucket, which should be done after 
+        # the Knowledge Base is deleted to avoid dependency issues
         if bucket_name:
             try:
                 logger.info(f"Deleting vector bucket: {bucket_name}")
@@ -350,37 +337,38 @@ def delete_s3_vector_resources(s3vectors_client, bucket_name, index_name):
                 )
                 logger.info(f"Deleted vector bucket: {bucket_name}")
             except ClientError as e:
-                if e.response['Error']['Code'] != 'NoSuchBucket':
+                if e.response['Error']['Code'] not in ['NoSuchBucket', 'BucketNotEmpty']:
                     logger.warning(f"Error deleting vector bucket: {e}")
+                else:
+                    logger.info(f"Vector bucket {bucket_name} not found or not empty (expected): {e}")
                     
     except Exception as e:
         logger.warning(f"Error during deletion (continuing): {e}")
 
 
 def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
-    """Get information about existing S3 Vector resources."""
+    """Get information about existing S3 Vector bucket. Bedrock manages the index."""
     try:
         # Get bucket info
         bucket_response = s3vectors_client.get_vector_bucket(vectorBucketName=bucket_name)
-        bucket_arn = bucket_response['BucketArn']
+        bucket_arn = bucket_response.get('BucketArn')
         
-        # Get index info
-        index_response = s3vectors_client.describe_vector_index(
-            vectorBucketName=bucket_name,
-            indexName=index_name
-        )
-        index_arn = index_response['IndexArn']
+        # Construct bucket ARN if not returned in response
+        if not bucket_arn:
+            # Get account ID from STS for ARN construction
+            sts_client = boto3.client('sts', region_name=s3vectors_client.meta.region_name)
+            account_id = sts_client.get_caller_identity()['Account']
+            bucket_arn = f"arn:aws:s3vectors:{s3vectors_client.meta.region_name}:{account_id}:bucket/{bucket_name}"
         
         return {
             'BucketName': bucket_name,
             'BucketArn': bucket_arn,
-            'IndexName': index_name,
-            'IndexArn': index_arn,
+            'IndexName': index_name,  # Index name for Bedrock to use
             'Status': 'Existing'
         }
         
     except ClientError as e:
-        logger.error(f"Error getting S3 Vector info: {e}")
+        logger.error(f"Error getting S3 Vector bucket info: {e}")
         raise
 
 
