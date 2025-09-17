@@ -18,6 +18,55 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 # Get LOG_LEVEL from environment variable with INFO as default
 
+def get_guardrails():
+    client = boto3.client("bedrock", region_name=os.environ['AWS_REGION'])
+    guardrails = client.list_guardrails(
+        maxResults=10
+    )
+
+    grs = []
+    for gr in guardrails['guardrails']:
+        if gr['status'] == 'READY':
+            grs.append({'id': gr['id'], 'version': gr['version'], 'name': gr['name']})
+    
+    return grs
+
+def apply_guardrails_to_prompt(prompt):
+    br_client = boto3.client("bedrock-runtime", region_name=os.environ['AWS_REGION'])
+
+    guardrails = get_guardrails()
+    
+    try:
+        for gr in guardrails:
+            response = br_client.apply_guardrail(
+                guardrailIdentifier=gr['id'],
+                guardrailVersion=gr['version'],
+                source="INPUT",
+                content=[
+                    {
+                        "text": {
+                            "text": prompt
+                        }
+                    }
+                ]
+            )
+            
+            error_details = ""
+            if (response['action'] == 'GUARDRAIL_INTERVENED'):
+                for output in response['outputs']:
+                    error_details += output['text']
+                    
+            if len(error_details):
+                raise Exception(f"{error_details}")
+            
+        return True
+
+    except Exception as e:
+        print(f"Caught by Guardrail: {e}")
+        raise
+
+    return False
+
 def s3_object_exists(bucket, key):
     try:
         s3 = boto3.client('s3')
@@ -66,7 +115,7 @@ def get_full_text(bucket, key):
         
     except Exception as e:
         logger.error(f"Error getting document pages: {str(e)}")
-        raise
+        raise Exception(f"Error getting document pages: {str(e)}")
 
 
 def get_summarization_model():
@@ -106,61 +155,69 @@ def handler(event, context):
         full_prompt = "The history JSON object is: " + json.dumps(history) + ".\n\n"
         full_prompt += "The user's question is: " + prompt + "\n\n"
 
-        # this feature is not enabled until the model can be selected on the chat screen
-        # selectedModelId = event['arguments']['modelId']
-        selectedModelId = get_summarization_model()
+        gr_test = apply_guardrails_to_prompt(full_prompt)
 
-        logger.info(f"Processing S3 URI: {objectKey}")
-        logger.info(f"Region: {os.environ['AWS_REGION']}")
+        if gr_test:
+            # this feature is not enabled until the model can be selected on the chat screen
+            # selectedModelId = event['arguments']['modelId']
+            selectedModelId = get_summarization_model()
 
-        output_bucket = os.environ['OUTPUT_BUCKET']
+            logger.info(f"Processing S3 URI: {objectKey}")
+            logger.info(f"Region: {os.environ['AWS_REGION']}")
 
-        bedrock_runtime = boto3.client('bedrock-runtime', region_name=os.environ['AWS_REGION'])
+            output_bucket = os.environ['OUTPUT_BUCKET']
 
-        if (len(objectKey)):
-            fulltext_key = objectKey + '/summary/fulltext.txt'
-            content_str = ""
-            s3 = boto3.client('s3')
+            bedrock_runtime = boto3.client('bedrock-runtime', region_name=os.environ['AWS_REGION'])
 
-            if not s3_object_exists(output_bucket, fulltext_key):
-                logger.info(f"Creating full text file: {fulltext_key}")
-                content_str = get_full_text(output_bucket, objectKey)
+            if (len(objectKey)):
+                fulltext_key = objectKey + '/summary/fulltext.txt'
+                content_str = ""
+                s3 = boto3.client('s3')
 
-                s3.put_object(
-                    Bucket=output_bucket,
-                    Key=fulltext_key,
-                    Body=content_str.encode('utf-8')
+                if not s3_object_exists(output_bucket, fulltext_key):
+                    logger.info(f"Creating full text file: {fulltext_key}")
+                    content_str = get_full_text(output_bucket, objectKey)
+
+                    s3.put_object(
+                        Bucket=output_bucket,
+                        Key=fulltext_key,
+                        Body=content_str.encode('utf-8')
+                    )
+                else:
+                    # read full contents of the object as text
+                    response = s3.get_object(Bucket=output_bucket, Key=fulltext_key)
+                    content_str = response['Body'].read().decode('utf-8')
+
+                logger.info(f"Model: {selectedModelId}")
+                logger.info(f"Output Bucket: {output_bucket}")
+                logger.info(f"Full Text Key: {fulltext_key}")
+
+                client = BedrockClient()
+                # Content with cachepoint tags
+                content = [
+                    {
+                        "text": content_str + """
+                        <<CACHEPOINT>>
+                        """ + full_prompt
+                    }
+                ]
+
+                model_response = client.invoke_model(
+                    model_id="us.amazon.nova-pro-v1:0",
+                    system_prompt="You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\nIf you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\nAdditionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n",
+                    content=content,
+                    temperature=0.0
                 )
-            else:
-                # read full contents of the object as text
-                response = s3.get_object(Bucket=output_bucket, Key=fulltext_key)
-                content_str = response['Body'].read().decode('utf-8')
 
-            logger.info(f"Model: {selectedModelId}")
-            logger.info(f"Output Bucket: {output_bucket}")
-            logger.info(f"Full Text Key: {fulltext_key}")
+                text = client.extract_text_from_response(model_response)
+                logger.info(f"Response before guardrails check: {text}")
+                
+                chat_response = {"cr": {"content": [{"text": "I can't answer that right now"}]}}
 
-            client = BedrockClient()
-            # Content with cachepoint tags
-            content = [
-                {
-                    "text": content_str + """
-                    <<CACHEPOINT>>
-                    """ + full_prompt
-                }
-            ]
-
-            model_response = client.invoke_model(
-                model_id="us.amazon.nova-pro-v1:0",
-                system_prompt="You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\nIf you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\nAdditionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n",
-                content=content,
-                temperature=0.0
-            )
-
-            text = client.extract_text_from_response(model_response)
-            
-            chat_response = {"cr": {"content": [{"text": text}]}}
-            return json.dumps(chat_response)
+                if apply_guardrails_to_prompt(text):
+                    chat_response = {"cr": {"content": [{"text": text}]}}
+                
+                return json.dumps(chat_response)
 
     except ClientError as e:
         error_code = e.response['Error']['Code']
@@ -175,7 +232,7 @@ def handler(event, context):
             raise Exception(error_message)
             
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise Exception(f"Unexpected error: {str(e)}")
+        logger.error(f"{str(e)}")
+        raise Exception(f"{str(e)}")
     
     return response_data
