@@ -5814,6 +5814,12 @@ Resources:
       FieldName: updateDiscoveryJobStatus
       DataSourceName: !GetAtt DiscoveryTableDataSource.Name
       RequestMappingTemplate: |-
+        ## Validate status is one of the allowed values
+        #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
+        #if(!$validStatuses.contains($ctx.args.status))
+          $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
+        #end
+        
         #set($expNames = {})
         #set($expValues = {})
         

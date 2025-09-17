@@ -1,6 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
-import base64
 import json
 import logging
 import os
@@ -10,6 +9,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from idp_common import bedrock, image
+from idp_common.config import ConfigurationReader
 from idp_common.utils.s3util import S3Util
 
 logger = logging.getLogger(__name__)
@@ -20,15 +20,28 @@ class ClassesDiscovery:
         self,
         input_bucket: str,
         input_prefix: str,
-        config: Optional[dict] = None,
-        region: Optional[str] = "us-west-2",
+        region: Optional[str] = None,
     ):
         self.input_bucket = input_bucket
         self.input_prefix = input_prefix
-        self.region = region or os.environ.get("AWS_REGION", "us-east-1")
+        self.region = region or os.environ.get("AWS_REGION")
 
         # Load configuration
-        self.config = config or self._load_default_config()
+        self.configuration_table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
+
+        if not self.configuration_table_name:
+            raise ValueError(
+                "Configuration table name not provided. Set CONFIGURATION_TABLE_NAME environment variable."
+            )
+
+        try:
+            self.config_reader = ConfigurationReader(
+                table_name=self.configuration_table_name
+            )
+            self.config = self.config_reader.get_merged_configuration()
+        except Exception as e:
+            logger.error(f"Failed to load configuration from DynamoDB: {e}")
+            raise Exception(f"Failed to load configuration from DynamoDB: {str(e)}")
 
         # Get discovery configuration
         self.discovery_config = self.config.get("discovery", {})
@@ -40,86 +53,13 @@ class ClassesDiscovery:
         # Initialize Bedrock client using the common pattern
         self.bedrock_client = bedrock.BedrockClient(region=self.region)
 
-        self.configuration_table_name = os.environ.get("CONFIGURATION_TABLE_NAME", "")
-        dynamodb = boto3.resource("dynamodb")
-        self.configuration_table = dynamodb.Table(self.configuration_table_name)
+        if self.configuration_table_name:
+            dynamodb = boto3.resource("dynamodb")
+            self.configuration_table = dynamodb.Table(self.configuration_table_name)
+        else:
+            self.configuration_table = None
 
         return
-
-    def _load_default_config(self):
-        """Load default discovery configuration."""
-        return {
-            "discovery": {
-                "without_ground_truth": {
-                    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-                    "temperature": 1.0,
-                    "top_p": 0.1,
-                    "max_tokens": 10000,
-                    "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Analyze forms line by line to identify field names, data types, and organizational structure. Focus on creating comprehensive blueprints for document processing without extracting actual values.",
-                    "user_prompt": """This image contains forms data. Analyze the form line by line.
-Image may contains multiple pages, process all the pages. 
-Form may contain multiple name value pair in one line. 
-Extract all the names in the form including the name value pair which doesn't have value. 
-Organize them into groups, extract field_name, data_type and field description.
-Field_name should be less than 60 characters, should not have space use '-' instead of space.
-field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form.
-Field_name should be unique within the group.
-Add two fields document_class and document_description. 
-For document_class generate a short name based on the document content like W4, I-9, Paystub. 
-For document_description generate a description about the document in less than 50 words. 
-Group the fields based on the section they are grouped in the form. Group should have attributeType as "group".
-If the group repeats and follows table format, update the attributeType as "list".      
-Do not extract the values.
-Return the extracted data in JSON format.""",
-                },
-                "with_ground_truth": {
-                    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-                    "temperature": 1.0,
-                    "top_p": 0.1,
-                    "max_tokens": 10000,
-                    "system_prompt": "You are an expert in processing forms. Extracting data from images and documents. Use provided ground truth data as reference to optimize field extraction and ensure consistency with expected document structure and field definitions.",
-                    "user_prompt": """This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                        
-<GROUND_TRUTH_REFERENCE>
-{ground_truth_json}
-</GROUND_TRUTH_REFERENCE>
-Ground truth reference JSON has the fields we are interested in extracting from the document/image. Use the ground truth to optimize field extraction. Match field names, data types, and groupings from the reference.
-Image may contain multiple pages, process all pages.
-Extract all field names including those without values.
-Do not change the group name and field name from ground truth in the extracted data json.
-Add field_description field for every field which will contain instruction to LLM to extract the field data from the image/document. Add data_type field for every field. 
-Add two fields document_class and document_description. 
-For document_class generate a short name based on the document content like W4, I-9, Paystub. 
-For document_description generate a description about the document in less than 50 words.
-If the group repeats and follows table format, update the attributeType as "list".      
-Do not extract the values.""",
-                },
-                "output_format": {
-                    "sample_json": """{
-    "document_class" : "Form-1040",
-    "document_description" : "Brief summary of the document",
-    "groups" : [
-        {
-            "name" : "PersonalInformation",
-            "description" : "Personal information of Tax payer",
-            "attributeType" : "group",
-            "groupAttributes" : [
-                {
-                    "name": "FirstName",
-                    "dataType" : "string",
-                    "description" : "First Name of Taxpayer"
-                },
-                {
-                    "name": "Age",
-                    "dataType" : "number",
-                    "description" : "Age of Taxpayer"
-                }
-            ]
-        }
-    ]
-}"""
-                },
-            }
-        }
 
     """
         Recursively convert all values to strings
@@ -328,13 +268,6 @@ Do not extract the values.""",
             group["groupAttributes"] = groupAttributesArray
         return groups
 
-    def _parse_s3_uri(self, s3_uri: str):
-        """Parse S3 URI to extract bucket and key."""
-        if not s3_uri.startswith("s3://"):
-            raise ValueError("Invalid S3 URI format")
-        parts = s3_uri[5:].split("/", 1)
-        return parts[0], parts[1] if len(parts) > 1 else ""
-
     def _load_ground_truth(self, bucket: str, key: str):
         """Load ground truth JSON data from S3."""
         try:
@@ -347,9 +280,7 @@ Do not extract the values.""",
     def _extract_data_from_document(self, document_content, file_extension):
         try:
             # Get configuration for without ground truth
-            model_id = self.without_gt_config.get(
-                "model_id", "anthropic.claude-3-sonnet-20240229-v1:0"
-            )
+            model_id = self.without_gt_config.get("model_id", "us.amazon.nova-pro-v1:0")
             system_prompt = self.without_gt_config.get(
                 "system_prompt",
                 "You are an expert in processing forms. Extracting data from images and documents",
@@ -424,9 +355,7 @@ Do not extract the values.""",
         """Extract data from document using ground truth as reference."""
         try:
             # Get configuration for with ground truth
-            model_id = self.with_gt_config.get(
-                "model_id", "anthropic.claude-3-sonnet-20240229-v1:0"
-            )
+            model_id = self.with_gt_config.get("model_id", "us.amazon.nova-pro-v1:0")
             system_prompt = self.with_gt_config.get(
                 "system_prompt",
                 "You are an expert in processing forms. Extracting data from images and documents",
@@ -482,10 +411,6 @@ Do not extract the values.""",
         except Exception as e:
             logger.error(f"Error extracting data with Bedrock using ground truth: {e}")
             return None
-
-    def _get_base64_image(self, file_in_bytes):
-        """Get base64 encoded image data from sample image."""
-        return base64.b64encode(file_in_bytes).decode("utf-8")
 
     def _prompt_classes_discovery_with_ground_truth(self, ground_truth_data):
         ground_truth_json = json.dumps(ground_truth_data, indent=2)

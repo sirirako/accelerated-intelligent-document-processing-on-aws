@@ -113,13 +113,22 @@ discovery:
         mock_extract_text.return_value = json.dumps(expected_result)
         mock_s3_get_bytes.return_value = b"mock document content"
 
-        # Initialize ClassesDiscovery with YAML config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.config_dict,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return config_dict
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.config_dict
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize ClassesDiscovery with YAML config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Execute discovery without ground truth
         result = discovery.discovery_classes_with_document(
@@ -218,13 +227,22 @@ discovery:
 
         mock_s3_get_bytes.side_effect = mock_s3_side_effect
 
-        # Initialize ClassesDiscovery with YAML config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.config_dict,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return config_dict
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.config_dict
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize ClassesDiscovery with YAML config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Execute discovery with ground truth
         result = discovery.discovery_classes_with_document_and_ground_truth(
@@ -290,13 +308,22 @@ discovery:
             }
         }
 
-        # Initialize with incomplete config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=incomplete_config,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return incomplete config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                incomplete_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize with incomplete config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Verify that missing fields get default values
         without_gt_config = discovery.without_gt_config

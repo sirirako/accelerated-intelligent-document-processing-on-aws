@@ -12,7 +12,6 @@ import pytest
 
 # Import standard library modules first
 import json
-import base64
 from unittest.mock import MagicMock, patch, call
 
 # Import third-party modules
@@ -25,6 +24,26 @@ from idp_common.discovery.classes_discovery import ClassesDiscovery
 @pytest.mark.unit
 class TestClassesDiscovery:
     """Tests for the ClassesDiscovery class."""
+
+    @pytest.fixture
+    def mock_config(self):
+        """Fixture providing a mock configuration."""
+        return {
+            "discovery": {
+                "without_ground_truth": {
+                    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+                    "temperature": 1.0,
+                    "top_p": 0.1,
+                    "max_tokens": 10000,
+                },
+                "with_ground_truth": {
+                    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+                    "temperature": 1.0,
+                    "top_p": 0.1,
+                    "max_tokens": 10000,
+                },
+            }
+        }
 
     @pytest.fixture
     def mock_bedrock_response(self):
@@ -105,11 +124,14 @@ class TestClassesDiscovery:
         }
 
     @pytest.fixture
-    def service(self):
+    def service(self, mock_config):
         """Fixture providing a ClassesDiscovery instance."""
         with (
             patch("boto3.resource") as mock_dynamodb,
             patch("idp_common.bedrock.BedrockClient") as mock_bedrock_client,
+            patch(
+                "idp_common.discovery.classes_discovery.ConfigurationReader"
+            ) as mock_config_reader,
             patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"}),
         ):
             # Mock DynamoDB table
@@ -119,6 +141,10 @@ class TestClassesDiscovery:
             # Mock BedrockClient
             mock_client = MagicMock()
             mock_bedrock_client.return_value = mock_client
+
+            # Mock the ConfigurationReader to return the mock config
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = mock_config
 
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
@@ -132,13 +158,20 @@ class TestClassesDiscovery:
 
             return service
 
-    def test_init(self):
+    def test_init(self, mock_config):
         """Test initialization of ClassesDiscovery."""
         with (
-            patch("boto3.resource") as mock_dynamodb,
+            patch("boto3.resource"),
             patch("idp_common.bedrock.BedrockClient") as mock_bedrock_client,
+            patch(
+                "idp_common.discovery.classes_discovery.ConfigurationReader"
+            ) as mock_config_reader,
             patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"}),
         ):
+            # Mock the ConfigurationReader to return the mock config
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = mock_config
+
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
@@ -147,7 +180,7 @@ class TestClassesDiscovery:
 
             assert service.input_bucket == "test-bucket"
             assert service.input_prefix == "test-document.pdf"
-            # Verify backward compatibility - bedrock_model_id should override config
+            # Verify config is loaded correctly
             assert (
                 service.without_gt_config["model_id"]
                 == "anthropic.claude-3-sonnet-20240229-v1:0"
@@ -162,19 +195,23 @@ class TestClassesDiscovery:
             # Verify BedrockClient was initialized with correct region
             mock_bedrock_client.assert_called_once_with(region="us-west-2")
 
-            # Verify DynamoDB table was set up
-            mock_dynamodb.assert_called_once_with("dynamodb")
-
-    def test_init_with_default_region(self):
+    def test_init_with_default_region(self, mock_config):
         """Test initialization with default region from environment."""
         with (
             patch("boto3.resource"),
             patch("idp_common.bedrock.BedrockClient"),
+            patch(
+                "idp_common.discovery.classes_discovery.ConfigurationReader"
+            ) as mock_config_reader,
             patch.dict(
                 "os.environ",
                 {"AWS_REGION": "us-east-1", "CONFIGURATION_TABLE_NAME": "test-table"},
             ),
         ):
+            # Mock the ConfigurationReader to return the mock config
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = mock_config
+
             service = ClassesDiscovery(
                 input_bucket="test-bucket",
                 input_prefix="test-document.pdf",
@@ -418,22 +455,6 @@ class TestClassesDiscovery:
             ]
         )
 
-    def test_parse_s3_uri_valid(self, service):
-        """Test parsing valid S3 URI."""
-        bucket, key = service._parse_s3_uri("s3://my-bucket/path/to/file.pdf")
-        assert bucket == "my-bucket"
-        assert key == "path/to/file.pdf"
-
-        # Test with no key
-        bucket, key = service._parse_s3_uri("s3://my-bucket")
-        assert bucket == "my-bucket"
-        assert key == ""
-
-    def test_parse_s3_uri_invalid(self, service):
-        """Test parsing invalid S3 URI."""
-        with pytest.raises(ValueError, match="Invalid S3 URI format"):
-            service._parse_s3_uri("http://example.com/file.pdf")
-
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     def test_load_ground_truth_success(
         self, mock_get_bytes, service, mock_ground_truth_data
@@ -621,15 +642,6 @@ class TestClassesDiscovery:
         )
 
         assert result is None
-
-    def test_get_base64_image(self, service):
-        """Test base64 encoding of image data."""
-        mock_image_data = b"fake_image_content"
-        expected_base64 = base64.b64encode(mock_image_data).decode("utf-8")
-
-        result = service._get_base64_image(mock_image_data)
-
-        assert result == expected_base64
 
     def test_prompt_classes_discovery_with_ground_truth(
         self, service, mock_ground_truth_data

@@ -64,13 +64,22 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
 
-        # Initialize with custom config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.sample_config,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return sample config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.sample_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize with custom config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Verify configuration is loaded correctly
         self.assertEqual(discovery.config, self.sample_config)
@@ -86,20 +95,26 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
 
     @patch("idp_common.discovery.classes_discovery.boto3.resource")
     @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
+    @patch("idp_common.discovery.classes_discovery.ConfigurationReader")
     def test_init_without_config_uses_defaults(
-        self, mock_bedrock_client, mock_boto3_resource
+        self, mock_config_reader, mock_bedrock_client, mock_boto3_resource
     ):
-        """Test initialization without config uses default configuration."""
+        """Test initialization without config uses configuration from DynamoDB."""
         # Setup mocks
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
 
-        # Initialize without config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader
+        mock_reader_instance = mock_config_reader.return_value
+        mock_reader_instance.get_merged_configuration.return_value = self.sample_config
+
+        # Initialize without config but with environment variable
+        with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+            discovery = ClassesDiscovery(
+                input_bucket=self.test_bucket,
+                input_prefix=self.test_prefix,
+                region=self.test_region,
+            )
 
         # Verify default configuration is loaded
         self.assertIsNotNone(discovery.config)
@@ -136,13 +151,22 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         test_response_text = '{"document_class": "TestDoc", "groups": []}'
         mock_extract_text.return_value = test_response_text
 
-        # Initialize discovery with config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.sample_config,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return sample config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.sample_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize discovery with config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Test document content
         test_content = b"test document content"
@@ -185,13 +209,22 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         test_response_text = '{"document_class": "TestDoc", "groups": []}'
         mock_extract_text.return_value = test_response_text
 
-        # Initialize discovery with config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.sample_config,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return sample config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.sample_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize discovery with config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Test document content
         test_content = b"test document content"
@@ -226,13 +259,22 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_table = mock_table
 
-        # Initialize discovery with config
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.sample_config,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return sample config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.sample_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize discovery with config
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Test ground truth data
         ground_truth_data = {"test": "data"}
@@ -262,12 +304,22 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         mock_table = Mock()
         mock_boto3_resource.return_value.Table.return_value = mock_table
 
-        # Initialize without config to get defaults
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return sample config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.sample_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize without config to get defaults
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Verify default config structure
         self.assertIn("discovery", discovery.config)
@@ -315,13 +367,22 @@ class TestClassesDiscoveryConfig(unittest.TestCase):
         # Make bedrock call raise an exception
         mock_bedrock_instance.invoke_model.side_effect = Exception("Bedrock error")
 
-        # Initialize discovery
-        discovery = ClassesDiscovery(
-            input_bucket=self.test_bucket,
-            input_prefix=self.test_prefix,
-            config=self.sample_config,
-            region=self.test_region,
-        )
+        # Mock ConfigurationReader to return sample config
+        with patch(
+            "idp_common.discovery.classes_discovery.ConfigurationReader"
+        ) as mock_config_reader:
+            mock_reader_instance = mock_config_reader.return_value
+            mock_reader_instance.get_merged_configuration.return_value = (
+                self.sample_config
+            )
+
+            with patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-table"}):
+                # Initialize discovery
+                discovery = ClassesDiscovery(
+                    input_bucket=self.test_bucket,
+                    input_prefix=self.test_prefix,
+                    region=self.test_region,
+                )
 
         # Test document content
         test_content = b"test document content"
