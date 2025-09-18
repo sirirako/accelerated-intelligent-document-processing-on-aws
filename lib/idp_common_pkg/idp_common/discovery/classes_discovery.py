@@ -5,11 +5,9 @@ import logging
 import os
 from typing import Optional
 
-import boto3
-from botocore.exceptions import ClientError
-
 from idp_common import bedrock, image
 from idp_common.config import ConfigurationReader
+from idp_common.config.configuration_manager import ConfigurationManager
 from idp_common.utils.s3util import S3Util
 
 logger = logging.getLogger(__name__)
@@ -26,18 +24,9 @@ class ClassesDiscovery:
         self.input_prefix = input_prefix
         self.region = region or os.environ.get("AWS_REGION")
 
-        # Load configuration
-        self.configuration_table_name = os.environ.get("CONFIGURATION_TABLE_NAME")
-
-        if not self.configuration_table_name:
-            raise ValueError(
-                "Configuration table name not provided. Set CONFIGURATION_TABLE_NAME environment variable."
-            )
-
         try:
-            self.config_reader = ConfigurationReader(
-                table_name=self.configuration_table_name
-            )
+            self.config_reader = ConfigurationReader()
+            self.config_manager = ConfigurationManager()
             self.config = self.config_reader.get_merged_configuration()
         except Exception as e:
             logger.error(f"Failed to load configuration from DynamoDB: {e}")
@@ -53,63 +42,7 @@ class ClassesDiscovery:
         # Initialize Bedrock client using the common pattern
         self.bedrock_client = bedrock.BedrockClient(region=self.region)
 
-        if self.configuration_table_name:
-            dynamodb = boto3.resource("dynamodb")
-            self.configuration_table = dynamodb.Table(self.configuration_table_name)
-        else:
-            self.configuration_table = None
-
         return
-
-    """
-        Recursively convert all values to strings
-        """
-
-    def _stringify_values(self, obj):
-        if isinstance(obj, dict):
-            return {k: self._stringify_values(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._stringify_values(item) for item in obj]
-        else:
-            # Convert everything to string, except None values
-            return str(obj) if obj is not None else None
-
-    def _get_configuration_item(self, config_type):
-        """
-        Retrieve a configuration item from DynamoDB
-        """
-        try:
-            response = self.configuration_table.get_item(
-                Key={"Configuration": config_type}
-            )
-            return response.get("Item")
-        except ClientError as e:
-            logger.error(f"Error retrieving {config_type} configuration: {str(e)}")
-            raise Exception(f"Failed to retrieve {config_type} configuration")
-
-    def _handle_update_configuration(self, custom_config):
-        """
-        Handle the updateConfiguration GraphQL mutation
-        Updates the Custom or Default configuration item in DynamoDB
-        """
-        try:
-            # Handle empty configuration case
-            stringified_config = self._stringify_values(custom_config)
-
-            self.configuration_table.put_item(
-                Item={"Configuration": "Custom", "classes": stringified_config}
-            )
-
-            logger.info("Updated Custom configuration")
-
-            return True
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in customConfig: {str(e)}")
-            raise Exception(f"Invalid configuration format: {str(e)}")
-        except Exception as e:
-            logger.error(f"Error in updateConfiguration: {str(e)}")
-            raise e
 
     def discovery_classes_with_document(self, input_bucket: str, input_prefix: str):
         """
@@ -162,7 +95,7 @@ class ClassesDiscovery:
             groups = self._remove_duplicates(groups)
             current_class["attributes"] = groups
 
-            custom_item = self._get_configuration_item("Custom")
+            custom_item = self.config_manager.get_configuration("Custom")
             classes = []
             if custom_item and "classes" in custom_item:
                 classes = custom_item["classes"]
@@ -171,7 +104,10 @@ class ClassesDiscovery:
                         classes.remove(class_obj)
                         break
             classes.append(current_class)
-            self._handle_update_configuration(classes)
+
+            # Update configuration with new classes
+            config_data = {"classes": classes}
+            self.config_manager.update_configuration("Custom", config_data)
 
             return {"status": "SUCCESS"}
 
@@ -230,16 +166,19 @@ class ClassesDiscovery:
             groups = self._remove_duplicates(groups)
             current_class["attributes"] = groups
 
-            custom_item = self._get_configuration_item("Custom")
+            custom_item = self.config_manager.get_configuration("Custom")
             classes = []
-            if custom_item:
+            if custom_item and "classes" in custom_item:
                 classes = custom_item["classes"]
                 for class_obj in classes:
                     if class_obj["name"] == current_class["name"]:
                         classes.remove(class_obj)
                         break
             classes.append(current_class)
-            self._handle_update_configuration(classes)
+
+            # Update configuration with new classes
+            config_data = {"classes": classes}
+            self.config_manager.update_configuration("Custom", config_data)
 
             return {"status": "SUCCESS"}
 

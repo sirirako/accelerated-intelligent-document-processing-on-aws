@@ -65,7 +65,8 @@ discovery:
             ],
         }
 
-    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"})
+    @patch("idp_common.discovery.classes_discovery.ConfigurationManager")
     @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
     @patch("idp_common.discovery.classes_discovery.bedrock.extract_text_from_response")
     @patch("idp_common.discovery.classes_discovery.S3Util.get_bytes")
@@ -74,15 +75,15 @@ discovery:
         mock_s3_get_bytes,
         mock_extract_text,
         mock_bedrock_client,
-        mock_boto3_resource,
+        mock_config_manager,
     ):
         """Test complete configuration flow for discovery without ground truth."""
         # Setup mocks
-        mock_table = Mock()
-        mock_boto3_resource.return_value.Table.return_value = mock_table
+        mock_config_manager_instance = Mock()
+        mock_config_manager.return_value = mock_config_manager_instance
 
-        # Mock the configuration table get_item method to return empty result
-        mock_table.get_item.return_value = {}
+        # Mock the configuration manager to return empty config
+        mock_config_manager_instance.get_configuration.return_value = None
 
         mock_bedrock_instance = Mock()
         mock_bedrock_client.return_value = mock_bedrock_instance
@@ -166,7 +167,8 @@ discovery:
         # Verify result
         self.assertEqual(result["status"], "SUCCESS")
 
-    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"})
+    @patch("idp_common.discovery.classes_discovery.ConfigurationManager")
     @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
     @patch("idp_common.discovery.classes_discovery.bedrock.extract_text_from_response")
     @patch("idp_common.discovery.classes_discovery.S3Util.get_bytes")
@@ -175,15 +177,15 @@ discovery:
         mock_s3_get_bytes,
         mock_extract_text,
         mock_bedrock_client,
-        mock_boto3_resource,
+        mock_config_manager,
     ):
         """Test complete configuration flow for discovery with ground truth."""
         # Setup mocks
-        mock_table = Mock()
-        mock_boto3_resource.return_value.Table.return_value = mock_table
+        mock_config_manager_instance = Mock()
+        mock_config_manager.return_value = mock_config_manager_instance
 
-        # Mock the configuration table get_item method to return empty result
-        mock_table.get_item.return_value = {}
+        # Mock the configuration manager to return empty config
+        mock_config_manager_instance.get_configuration.return_value = None
 
         mock_bedrock_instance = Mock()
         mock_bedrock_client.return_value = mock_bedrock_instance
@@ -288,15 +290,16 @@ discovery:
         # Verify result
         self.assertEqual(result["status"], "SUCCESS")
 
-    @patch("idp_common.discovery.classes_discovery.boto3.resource")
+    @patch.dict("os.environ", {"CONFIGURATION_TABLE_NAME": "test-config-table"})
+    @patch("idp_common.discovery.classes_discovery.ConfigurationManager")
     @patch("idp_common.discovery.classes_discovery.bedrock.BedrockClient")
     def test_config_validation_and_defaults(
-        self, mock_bedrock_client, mock_boto3_resource
+        self, mock_bedrock_client, mock_config_manager
     ):
         """Test configuration validation and default fallbacks."""
         # Setup mocks
-        mock_table = Mock()
-        mock_boto3_resource.return_value.Table.return_value = mock_table
+        mock_config_manager_instance = Mock()
+        mock_config_manager.return_value = mock_config_manager_instance
 
         # Test with incomplete configuration
         incomplete_config = {
