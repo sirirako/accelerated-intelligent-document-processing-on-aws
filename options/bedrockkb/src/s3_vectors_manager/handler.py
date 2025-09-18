@@ -264,7 +264,7 @@ def create_knowledge_base_s3_vectors(bedrock_agent_client, name, description, ro
                 'vectorKnowledgeBaseConfiguration': {
                     'embeddingModelConfiguration': {
                         'bedrockEmbeddingModelConfiguration': {
-                            'dimensions': 1024,  # Console uses 1024
+                            'dimensions': 1024,  # All embedding models in picklist output 1024 
                             'embeddingDataType': 'FLOAT32'
                         }
                     },
@@ -356,7 +356,7 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
             vectorBucketName=bucket_name,
             indexName=index_name,
             dataType="float32",
-            dimension=1024,  # Console uses 1024 for Titan v2
+            dimension=1024,  # All embedding models in picklist output 1024 
             distanceMetric="cosine",
             metadataConfiguration={
                 "nonFilterableMetadataKeys": [
