@@ -397,10 +397,10 @@ Resources:
                   - s3vectors:DeleteVectorBucket
                   - s3vectors:GetVectorBucket
                   - s3vectors:ListVectorBuckets
-                  - s3vectors:CreateVectorIndex
-                  - s3vectors:DeleteVectorIndex
-                  - s3vectors:DescribeVectorIndex
-                  - s3vectors:ListVectorIndexes
+                  - s3vectors:CreateIndex
+                  - s3vectors:DeleteIndex
+                  - s3vectors:GetIndex
+                  - s3vectors:ListIndexes
                   - s3vectors:PutVectors
                   - s3vectors:GetVectors
                   - s3vectors:QueryVectors
@@ -714,13 +714,15 @@ Resources:
                     - s3vectors:QueryVectors
                     - s3vectors:DeleteVectors
                     - s3vectors:DescribeVectorIndex
+                    - s3vectors:GetIndex
+                    - s3vectors:ListIndexes
                   Resource: 
                     - !Sub
+                      - "arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${BucketName}"
+                      - BucketName: !GetAtt S3VectorBucketAndIndex.BucketName
+                    - !Sub
                       - "arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${BucketName}/*"
-                      - BucketName: !If
-                          - HasS3VectorBucketName
-                          - !Ref pS3VectorBucketName
-                          - !Sub "${AWS::StackName}-s3-vectors"
+                      - BucketName: !GetAtt S3VectorBucketAndIndex.BucketName
           - !Ref "AWS::NoValue"
         - !If
           - IsS3DataSource
@@ -798,8 +800,7 @@ Resources:
       Description: "Bedrock Knowledge Base with S3 Vectors"
       RoleArn: !GetAtt KnowledgeBaseServiceRole.Arn
       EmbeddingModelArn: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}"
-      BucketArn: !GetAtt S3VectorBucketAndIndex.BucketArn
-      IndexName: !Ref pS3VectorIndexName
+      IndexArn: !GetAtt S3VectorBucketAndIndex.IndexArn
       Region: !Ref AWS::Region
       KmsKeyArn: !If [IsCustomerManagedKey, !Ref pCustomerManagedEncryptionKeyArn, !Ref "AWS::NoValue"]
 

@@ -452,6 +452,7 @@ Conditions:
   DocumentSectionsCrawlerScheduleEnabled: !Not [!Equals [!Ref DocumentSectionsCrawlerFrequency, "Manual"]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasCustomConfigPath: !Not [!Equals [!Ref CustomConfigPath, ""]]
+  IsS3VectorsVectorStore: !Equals [!Ref KnowledgeBaseVectorStore, "S3_VECTORS"]
 
 
 Metadata:
@@ -1016,6 +1017,20 @@ Resources:
               - kms:GenerateDataKey*
               - kms:DescribeKey
             Resource: "*"
+          - !If
+            - IsS3VectorsVectorStore
+            - Sid: Allow S3 Vectors indexing service to use the key
+              Effect: Allow
+              Principal:
+                Service: !Sub "indexing.s3vectors.${AWS::URLSuffix}"
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: "*"
+            - !Ref AWS::NoValue
 
   CustomerManagedEncryptionKeyAlias:
     Type: AWS::KMS::Alias

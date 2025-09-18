@@ -188,8 +188,7 @@ def handle_knowledge_base_resources(event, context, properties):
     description = properties.get('Description', '')
     role_arn = properties.get('RoleArn', '')
     embedding_model_arn = properties.get('EmbeddingModelArn', '')
-    bucket_arn = properties.get('BucketArn', '')
-    index_name = properties.get('IndexName', '')
+    index_arn = properties.get('IndexArn', '')  # Now expects IndexArn directly
     region = properties.get('Region', '')
     kms_key_arn = properties.get('KmsKeyArn', '')
     
@@ -200,7 +199,7 @@ def handle_knowledge_base_resources(event, context, properties):
         logger.info(f"Creating Knowledge Base with S3 Vectors: {kb_name}")
         return create_knowledge_base_s3_vectors(
             bedrock_agent_client, kb_name, description, role_arn, 
-            embedding_model_arn, bucket_arn, index_name, kms_key_arn
+            embedding_model_arn, index_arn, kms_key_arn
         )
         
     elif request_type == 'Update':
@@ -215,7 +214,7 @@ def handle_knowledge_base_resources(event, context, properties):
         # Fallback: create new if we can't find existing
         return create_knowledge_base_s3_vectors(
             bedrock_agent_client, kb_name, description, role_arn, 
-            embedding_model_arn, bucket_arn, index_name, kms_key_arn
+            embedding_model_arn, index_arn, kms_key_arn
         )
             
     elif request_type == 'Delete':
@@ -246,41 +245,45 @@ def extract_knowledge_base_id_from_physical_id(physical_id):
 
 
 def create_knowledge_base_s3_vectors(bedrock_agent_client, name, description, role_arn, 
-                                   embedding_model_arn, bucket_arn, index_name, kms_key_arn=None):
-    """Create Knowledge Base with S3 Vectors using Bedrock Agent API."""
+                                   embedding_model_arn, index_arn, kms_key_arn=None):
+    """Create Knowledge Base with S3 Vectors using Console-proven approach."""
     try:
         logger.info(f"Creating Knowledge Base: {name} with S3 Vectors")
-        logger.info(f"Using bucket ARN: {bucket_arn}, index name: {index_name}")
+        logger.info(f"Using index ARN: {index_arn}")
         
-        # Build S3 Vectors configuration - use correct parameter names per API documentation
-        s3_vectors_config = {
-            'vectorBucketArn': bucket_arn,  # Correct parameter name
-            'indexName': index_name
-        }
-        
-        # Note: KMS encryption is handled at the S3 vector bucket level, not in Knowledge Base config
-        # The error showed that kmsKeyArn is not supported in s3VectorsConfiguration
-        if kms_key_arn:
-            logger.info(f"KMS encryption configured at bucket level with key: {kms_key_arn}")
+        # Use the working Console payload structure
+        import time
         
         response = bedrock_agent_client.create_knowledge_base(
+            clientToken=f"cfn-{int(time.time())}-{'a' * 20}",  # 33+ chars required
             name=name,
             description=description,
             roleArn=role_arn,
             knowledgeBaseConfiguration={
                 'type': 'VECTOR',
                 'vectorKnowledgeBaseConfiguration': {
+                    'embeddingModelConfiguration': {
+                        'bedrockEmbeddingModelConfiguration': {
+                            'dimensions': 1024,  # Console uses 1024
+                            'embeddingDataType': 'FLOAT32'
+                        }
+                    },
                     'embeddingModelArn': embedding_model_arn
                 }
             },
             storageConfiguration={
                 'type': 'S3_VECTORS',
-                's3VectorsConfiguration': s3_vectors_config
+                's3VectorsConfiguration': {
+                    'indexArn': index_arn  # Use indexArn approach (Console-proven)
+                }
             }
         )
         
         kb_id = response['knowledgeBase']['knowledgeBaseId']
         logger.info(f"Created Knowledge Base with ID: {kb_id}")
+        
+        if kms_key_arn:
+            logger.info(f"KMS encryption configured at bucket level with key: {kms_key_arn}")
         
         return {
             'KnowledgeBaseId': kb_id,
@@ -323,7 +326,7 @@ def get_knowledge_base_info(bedrock_agent_client, kb_id):
 
 
 def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn=None):
-    """Create S3 Vector bucket with optional KMS encryption. Bedrock will manage the index automatically."""
+    """Create S3 Vector bucket and index following Console approach (manual index creation required)."""
     try:
         # Get region from client for ARN construction
         region = s3vectors_client.meta.region_name
@@ -346,43 +349,50 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         bucket_response = s3vectors_client.create_vector_bucket(**create_bucket_params)
         logger.info(f"Created vector bucket: {bucket_name}")
         
-        # Get bucket ARN from response or construct it properly using SANITIZED bucket name
-        bucket_arn = bucket_response.get('BucketArn')
-        if not bucket_arn:
-            # Construct bucket ARN using proper format with account ID and SANITIZED bucket name
-            try:
-                # Get account ID for ARN construction
-                sts_client = boto3.client('sts', region_name=region)
-                account_id = sts_client.get_caller_identity()['Account']
-                bucket_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}"
-                logger.info(f"Constructed bucket ARN with sanitized name: {bucket_arn}")
-            except Exception as arn_error:
-                logger.error(f"Could not construct bucket ARN: {arn_error}")
-                raise arn_error
+        # Create S3 Vector Index (required for Knowledge Base integration)
+        logger.info(f"Creating vector index: {index_name}")
+        
+        index_response = s3vectors_client.create_index(
+            vectorBucketName=bucket_name,
+            indexName=index_name,
+            dataType="float32",
+            dimension=1024,  # Console uses 1024 for Titan v2
+            distanceMetric="cosine",
+            metadataConfiguration={
+                "nonFilterableMetadataKeys": [
+                    "AMAZON_BEDROCK_METADATA",
+                    "AMAZON_BEDROCK_TEXT_CHUNK"
+                ]
+            }
+        )
+        logger.info(f"Created vector index: {index_name}")
+        
+        # Construct ARNs
+        sts_client = boto3.client('sts', region_name=region)
+        account_id = sts_client.get_caller_identity()['Account']
+        
+        bucket_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}"
+        index_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}/index/{index_name}"
         
         logger.info(f"Vector bucket ARN: {bucket_arn}")
-        logger.info(f"Sanitized bucket name used consistently: {bucket_name}")
+        logger.info(f"Vector index ARN: {index_arn}")
         
         # Validate bucket name one more time before returning
         if not is_valid_s3_bucket_name(bucket_name):
             raise ValueError(f"Sanitized bucket name is still invalid: {bucket_name}")
         
-        # Note: For Bedrock Knowledge Base integration, Bedrock will automatically
-        # create and manage the vector index when the Knowledge Base is created.
-        # We don't create the index manually here.
-        
         return {
             'BucketName': bucket_name,        # Return sanitized name
-            'BucketArn': bucket_arn,         # Return proper ARN with sanitized name
-            'SanitizedBucketName': bucket_name,  # Explicit sanitized name for KB creation
-            'IndexName': index_name,         # This will be used by Bedrock
+            'BucketArn': bucket_arn,         # Return proper bucket ARN
+            'IndexName': index_name,         # Index name
+            'IndexArn': index_arn,           # Index ARN for Knowledge Base
             'Status': 'Created'
         }
         
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code in ['BucketAlreadyExists', 'ConflictException']:
-            logger.warning(f"Vector bucket already exists: {e}")
+            logger.warning(f"Vector resource already exists: {e}")
             # Try to get existing resource info
             return get_s3_vector_info(s3vectors_client, bucket_name, index_name)
         else:
