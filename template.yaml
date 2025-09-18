@@ -825,7 +825,8 @@ Resources:
         pInputDocumentUploadFolderPrefix: ""
         pS3SyncScheduleExpression: "cron(0/30 * ? * * *)"  # default is to sync documents every 30 minutes
         pCustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        pChunkingStrategy: 'No chunking'
+        pChunkingStrategy: 'Fixed-size chunking'
+        pMaxTokens: 8192
         pVectorStoreType: !Ref KnowledgeBaseVectorStore
         LogLevel: !Ref LogLevel
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
