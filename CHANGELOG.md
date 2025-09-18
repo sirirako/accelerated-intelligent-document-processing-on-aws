@@ -10,8 +10,7 @@ SPDX-License-Identifier: MIT-0
 ### Added
 
 - **S3 Vectors Support for Cost-Optimized Knowledge Base Storage**
-  - Added S3 Vectors as alternative vector store option to OpenSearch Serverless for Bedrock Knowledge Base with 40-60% lower storage costs
-  - Conditional KMS policy implementation that only grants S3 Vectors indexing service permissions when `KnowledgeBaseVectorStore = "S3_VECTORS"`
+  - Added S3 Vectors as alternative vector store option to OpenSearch Serverless for Bedrock Knowledge Base with lower storage costs
   - Custom resource Lambda implementation for S3 vector bucket and index management (using boto3 s3vectors client) with proper IAM permissions and resource cleanup
   - Unified Knowledge Base interface supporting both vector store types with automatic resource provisioning based on user selection
 
