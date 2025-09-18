@@ -1,79 +1,98 @@
 # CloudFormation Service Role for GenAI IDP Accelerator
 
-This directory contains the `all-patterns-deployer-role-secure.yaml` CloudFormation template that creates a dedicated IAM service role for CloudFormation to deploy, manage and modify all GenAI IDP Accelerator patterns deployments.
+This directory contains the `IDP-Cloudformation-Service-Role.yaml` CloudFormation template that creates a dedicated IAM Cloudformation service role for CloudFormation to deploy, manage and modify all GenAI IDP Accelerator patterns deployments.
 
-## What This Role Does
+## <span style="color: blue;">What This Role Does</span>
 
-The **AllPatternsDeployerRole** is a CloudFormation service role that provides the necessary permissions for AWS CloudFormation to deploy, update, and manage GenAI IDP Accelerator stacks across all patterns (Pattern 1: BDA, Pattern 2: Textract+Bedrock, Pattern 3: Textract+UDOP+Bedrock). This role can only be assumed by the CloudFormation service, not by users directly.
+The **IDPAcceleratorCloudFormationServiceRole** is a CloudFormation service role that provides the necessary permissions for AWS CloudFormation to deploy, update, and manage GenAI IDP Accelerator stacks across all patterns (Pattern 1: BDA, Pattern 2: Textract+Bedrock, Pattern 3: Textract+UDOP+Bedrock). This role can only be assumed by the CloudFormation service, not by users directly.
 
 ### Key Capabilities
-- **Full CloudFormation Management**: Create, update, delete IDP stacks - This IAM role (which CloudFormation assumes) gives necessary privileges to create/update/delete the stack which is helpful in development and sandbox environments. In production environments, admins can further limit these permissions to their discretion (e.g. disabling stack deletion).
+- **Full CloudFormation Management**: Create, update, delete IDP stacks - This IAM service role (which CloudFormation assumes) gives necessary privileges to create/update/delete the stack which is helpful in development and sandbox environments. In production environments, admins can further limit these permissions to their discretion (e.g. disabling stack deletion).
+
 - **All Pattern Support**: Works with Pattern 1 (BDA), Pattern 2 (Textract+Bedrock), and Pattern 3 (UDOP)
-- **Comprehensive AWS Service Access**: All services required by IDP Accelerator
+
+- **Comprehensive AWS Service Access**: Supports all services required by IDP Accelerator
 
 
-## Security Features
-
-### Region Restrictions
-- **Same-Region Operations**: Only allows the role to be assumed in the region where the master/existing deployment stack already exists
-- **Cross-Region Prevention**: Denies all actions outside the deployment region
-- **Regional Isolation**: Ensures all operations remain within the same region as the existing IDP infrastructure
+## <span style="color: blue;">Security Features</span>
 
 ### Session Management
-- **Session Duration**: Maximum 1 hour (3600 seconds)
-- **Forced Re-authentication**: Requires frequent credential refresh
-- **Administrator Note**: Administrators must add an inline IAM policy to users wanting to deploy CloudFormation stacks with this service role, allowing them to pass the `IDP-AllPatterns-Deployer-Secure` role to the CloudFormation principal:
+- **Administrator Note**: This role also creates an IAM Managed Policy to allow passing the Cloudformation service role.  Administrators must add the inline IAM policy to users wanting to deploy or modify CloudFormation IDP stacks with this service role, allowing them to pass the `IDPAcceleratorCloudFormationServiceRole` role to the CloudFormation principal:
 
-  ```json
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": "iam:PassRole",
-        "Resource": "arn:aws:iam::*:role/IDP-AllPatterns-Deployer-Secure"
-      }
-    ]
-  }
+  ```yaml
+  PassRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: IDP-PassRolePolicy
+      Description: Policy to allow passing the IDP CloudFormation service role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: !GetAtt CloudFormationServiceRole.Arn
   ```
 
 ### Access Control
 - **Account-Scoped**: Only IAM entities within the same AWS account can assume the role
 
 
-## Files in this Directory
+## <span style="color: blue;">Files in this Directory</span>
 
-- `all-patterns-deployer-role-secure.yaml` - CloudFormation template for the secure IAM role
+- `IDP-Cloudformation-Service-Role.yaml` - CloudFormation service role template 
 - `README.md` - This documentation file
 - `testing-guide.md` - Testing procedures and validation steps
 
-## Parameters
+## <span style="color: blue;">Console Deployment Steps</span>
 
-- **ExistingIDPStackName**: Name of an existing IDP stack (must start with IDP or idp). It is assumed that the administrator has deployed the first IDP solution deployment.
-- Must follow CloudFormation stack naming pattern: `^[Ii][Dd][Pp][a-zA-Z0-9-]*$`
+### Prerequisites
+- AWS Administrator access or IAM permissions to create roles and policies
 
-## Quick Start
+### Step-by-Step Deployment
 
-1. **Deploy the IAM Role** *(Administrator Required)*:
-   ```bash
-   aws cloudformation deploy \
-     --template-file all-patterns-deployer-role-secure.yaml \ # (Note: Ensure the template file is in your current directory or provide the full path to your template file location)
-     --stack-name idp-deployer-role \
-     --parameter-overrides ExistingIDPStackName=my-existing-idp-stack \ (the name of your existing IDP stack)
-     --capabilities CAPABILITY_NAMED_IAM
-   ```
+1. **Navigate to CloudFormation Console**
+   - Open the AWS Management Console
+   - Go to **CloudFormation** service
+   - Select your preferred region
 
-2. **Deploy IDP Accelerator**:
-   ```bash
-   aws cloudformation deploy \
-     --template-file ../../template.yaml \ (path to your template.yaml file)
-     --stack-name my-idp-stack \ (Name of your stack, starting with prefix IDP or idp)
-     --role-arn arn:aws:iam::123456789012:role/All-Patterns-Deployer-Role-Secure \ (The ARN of the idp-deployer-role provided in the Output tab of the deployed role stack)
-     --region us-east-1 \ (your selected region)
-     --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
-   ```
+2. **Create New Stack**
+   - Click **"Create stack"** → **"With new resources (standard)"**
 
-## AWS Service Permissions
+3. **Specify Template**
+   - Select **"Upload a template file"**
+   - Click **"Choose file"** and select `IDP-Cloudformation-Service-Role.yaml`
+   - Click **"Next"**
+
+4. **Stack Details**
+   - **Stack name**: Enter your stack a name
+   - **Parameters**: No parameters required
+   - Click **"Next"**
+
+5. **Configure Stack Options**
+   - **Tags** (optional): Add any desired tags
+   - **Permissions**: Leave as default
+   - **Stack failure options**: Leave as default
+   - Click **"Next"**
+
+6. **Review and Create**
+   - Review all settings
+   - **Capabilities**: Check **"I acknowledge that AWS CloudFormation might create IAM resources with custom names"**
+   - Click **"Submit"**
+
+7. **Monitor Deployment**
+   - Wait for stack status to show **"CREATE_COMPLETE"**
+   - Check the **Events** tab for any issues
+
+8. **Retrieve Role ARN**
+   - Go to the **Outputs** tab
+   - Copy the **CloudFormationServiceRoleArn** value for future use
+
+### Post-Deployment
+- The role is now ready to be used with `--role-arn` parameter in CloudFormation deployments via CLI or as a "an existing AWS Identity and Access Management (IAM) service role that CloudFormation can assume" from the Permissions-Optional section in the Cloudformation Console. 
+- Users will need `iam:PassRole` permission to use this role
+
+## <span style="color: blue;">AWS Service Permissions</span>
 
 The role provides comprehensive access to AWS services required by all IDP patterns:
 
@@ -88,6 +107,7 @@ The role provides comprehensive access to AWS services required by all IDP patte
 - **EventBridge**: `events:*` - Event rule configuration
 - **KMS**: `kms:*` - Encryption key management
 - **CloudWatch**: `logs:*`, `cloudwatch:*` - Monitoring and logging
+- **Secrets Manager**: `secretsmanager:*` - Secure credential storage and retrieval
 
 ### AI/ML Services
 - **Amazon Bedrock**: `bedrock:*` - All foundation models and features
@@ -111,53 +131,46 @@ The role provides comprehensive access to AWS services required by all IDP patte
 - **EventBridge Scheduler**: `scheduler:*`
 
 ### Additional Permissions
-- **ReadOnlyAccess**: AWS managed policy for read operations
 - **STS**: `sts:AssumeRole` for service integrations
 
-## Security Considerations
+## <span style="color: blue;">Security Considerations</span>
 
 ### Regional Restrictions
-- **Hard Limit**: All actions denied outside `us-east-1` and `us-west-2`
 - **Deployment Region**: Role assumption restricted to deployment region
 - **Compliance**: Helps meet data residency requirements
 
 ### Session Security
-- **Short Sessions**: 1-hour maximum reduces credential exposure
-- **Account Isolation**: Cannot be assumed cross-account
+- **Account Isolation**: Cannot be assumed cross-account with the current trust policy
 
 ### Permission Scope
-- **Broad Service Access**: Full service permissions for comprehensive IDP deployment
+- **Broad Service Access**: Full service permissions for comprehensive IDP deployment services
 - **No Resource Restrictions**: Allows flexibility but requires careful usage
 - **Service Trust**: CloudFormation service can assume role for stack operations
 - **Compliance Note**: Organizations may need to refine and make more granular the service action permissions based on their specific security compliance guidelines and least privilege requirements
 
-## Troubleshooting
+## <span style="color: blue;">Troubleshooting</span>
 
 ### Common Issues
 
 1. **Access Denied when Using Role**:
    - Verify your user/role has `iam:PassRole` permission for this specific role ARN
-   - Check you're in the correct AWS region (must match role deployment region)
+
    - Ensure the role exists and is in the same account
    - Remember: Users cannot assume this role directly - only CloudFormation service can
 
 2. **Region Restriction Errors**:
-   - All operations must be in `us-east-1` or `us-west-2`
-   - Deploy the role in your target deployment region
-   - Check AWS CLI region configuration
+   - Role should be deployed in same region where IDP stacks are deployed
 
 3. **Session Timeout**:
-   - Sessions expire after 1 hour maximum
    - Re-assume the role to get fresh credentials
-   - Consider automation for long-running deployments
 
 4. **CloudFormation Deployment Failures**:
-   - Ensure you're using `CAPABILITY_IAM` and `CAPABILITY_NAMED_IAM`
+   - If using the CLI, ensure you're using `CAPABILITY_IAM` and `CAPABILITY_NAMED_IAM`
    - Check CloudWatch logs for specific service errors
 
 
 
-## Best Practices
+## <span style="color: blue;">Best Practices</span>
 
 1. **Regular Auditing**: Periodically review who has access to assume this role
 2. **Least Privilege**: Only grant this role to users who need to manage IDP stacks
