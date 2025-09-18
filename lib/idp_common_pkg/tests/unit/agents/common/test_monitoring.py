@@ -126,7 +126,7 @@ class TestDynamoDBMessageTracker:
         assert not tracker.enabled
         assert tracker.db_logger is None
 
-    @patch.dict("os.environ", {"ANALYTICS_TABLE": "test-table"})
+    @patch.dict("os.environ", {"AGENT_TABLE": "test-table"})
     @patch("idp_common.agents.common.dynamodb_logger.DynamoDBMessageLogger")
     def test_tracker_initialization_enabled(self, mock_logger_class):
         """Test tracker initialization when enabled."""

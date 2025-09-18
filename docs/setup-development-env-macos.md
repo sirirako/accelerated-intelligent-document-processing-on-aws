@@ -242,10 +242,55 @@ EOF
 - SAM CLI: run `sam --version`.
 - Docker: launch Docker.app, then run `docker version` in Terminal.
 
-## **12) Configure AWS CLI**
+## **12) Install Python Dependencies for publish.py**
+
+Install the required Python packages for the publish.py script:
+
+```bash
+pip install boto3 typer rich botocore
+```
+
+## **13) Configure AWS CLI**
 ### Refer this link for AWS configure
 https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html  
-# Troubleshooting Tips
+
+## **14) Run Publish Script**
+
+### Using publish.py (Recommended)
+
+Test publish script help:
+```bash
+python3 publish.py --help
+```
+
+Test build using publish.py:
+```bash
+python3 publish.py bucket_name build-test us-east-1
+```
+
+**Troubleshooting Build Issues:**
+If the build fails, use the `--verbose` flag to see detailed error messages:
+```bash
+python3 publish.py bucket_name build-test us-east-1 --verbose
+```
+
+The verbose flag will show:
+- Exact SAM build commands being executed
+- Complete error output from failed builds
+- Python version compatibility issues
+- Missing dependencies or configuration problems
+
+### Using publish.sh (Legacy)
+
+Test publish script help:
+```bash
+./publish.sh --help
+```
+
+Test build using publish.sh:
+```bash
+./publish.sh bucket_name build-test us-east-1
+```
 
 - If `brew` is not found, add it to PATH: 
 ```bash
@@ -258,7 +303,7 @@ eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shell
 
 - Docker needs to be running before `docker` commands succeed. Launch Docker.app and wait for the whale icon to be steady.
 
-## Cline & Q Developer installation
+# Troubleshooting Tips
 ### Cline
 What it is: An AI coding assistant that runs as a VS Code extension, powered by various LLMs (Claude, GPT, etc.)  
 

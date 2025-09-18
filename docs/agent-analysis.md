@@ -3,17 +3,20 @@ SPDX-License-Identifier: MIT-0
 
 # Agent Analysis Feature
 
-The GenAIIDP solution includes an integrated Agent Analysis feature that enables you to interactively query and analyze your processed document data using natural language. This feature leverages AI agents to convert natural language questions into SQL queries, execute them against your document analytics database, and generate visualizations or tables to answer your questions.
+The GenAIIDP solution includes an integrated Agent Analysis feature that provides intelligent document analysis capabilities through multiple specialized AI agents. This feature enables you to interactively query and analyze your processed document data using natural language, with an intelligent orchestrator that routes queries to the most appropriate specialized agent.
 
 ## Overview
 
-The Agent Analysis feature provides intelligent data exploration capabilities that allow users to:
+The Agent Analysis feature provides intelligent data exploration and analysis capabilities through:
 
+- **Multi-Agent Architecture**: Multiple specialized agents handle different types of queries
+- **Intelligent Orchestration**: Automatic routing of queries to the most appropriate agent
 - **Natural Language Querying**: Ask questions about your document data in plain English
-- **Automated SQL Generation**: AI agents convert your questions into optimized SQL queries
+- **Automated SQL Generation**: Analytics agents convert questions into optimized SQL queries
 - **Interactive Visualizations**: Generate charts, graphs, and tables from query results
 - **Real-time Analysis**: Get insights from your processed documents without manual data analysis
 - **Secure Code Execution**: Python visualization code runs in isolated AWS Bedrock AgentCore sandboxes
+- **MCP Integration**: Connect external systems and tools via Model Context Protocol (MCP) servers
 
 
 https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
@@ -21,25 +24,51 @@ https://github.com/user-attachments/assets/e2dea2c5-5eb1-42f6-9af5-469afd2135a7
 
 ## Key Features
 
-- **Multi-Modal AI Agent**: Uses advanced language models (Claude 3.7 Sonnet by default) for intelligent query understanding
+- **Multi-Agent System**: Specialized agents for different types of queries (analytics, calculations, etc.)
+- **Intelligent Orchestration**: Automatic query routing based on content analysis and agent capabilities
+- **Multi-Agent Selection**: Select multiple agents simultaneously for complex analysis workflows
+- **MCP External Integration**: Connect custom external tools and systems via MCP servers
 - **Secure Architecture**: All code execution happens in AWS Bedrock AgentCore sandboxes, not in Lambda functions
-- **Database Schema Discovery**: Agents automatically explore and understand your database structure
+- **Database Schema Discovery**: Analytics agents automatically explore and understand your database structure
 - **Flexible Visualization**: Supports multiple chart types including bar charts, line charts, pie charts, and data tables
-- **Query History**: Track and manage previous analytics queries through the web interface
-- **Real-time Progress**: Live display of agent thought processes and SQL query execution
+- **Query History**: Track and manage previous questions through the web interface with agent selection memory
+- **Real-time Progress**: Live display of agent thought processes and execution steps
 - **Error Handling**: Intelligent retry logic for failed queries with automatic corrections
 
 ## Architecture
 
+The architecture of the Agent Analysis feature is shown below. The Web UI and AppSync API components are the same as used by the rest of the IDP system (with new AppSync endpoints added). Note the inclusion of Amazon Athena and the AgentCore Code Interpreter is specific to the Analytics Agent, but the Agent Request Handler and Processor lambdas along with jobs table are used for all agents, including [MCP agents](./custom-MCP-agent.md).
+
+![Architecture Diagram](../images/IDP-AnalyticsAgent.drawio.png)
+
+### Multi-Agent System
+
+The Agent Analysis feature uses a multi-agent architecture with:
+
+1. **Orchestrator Agent**: Routes queries to appropriate specialized agents based on query content and agent capabilities
+2. **Analytics Agent**: Handles data analysis, SQL generation, and visualization creation
+3. **External MCP Agents**: Custom agents connected via Model Context Protocol servers
+
+
 ### Agent Workflow
 
 1. **Question Processing**: User submits a natural language question through the web UI
-2. **Database Discovery**: Agent explores database schema using `get_database_info` tool
-3. **SQL Generation**: Agent converts the question into optimized SQL queries with proper column quoting
-4. **Query Execution**: SQL queries are executed against Amazon Athena with results stored in S3
-5. **Data Processing**: Query results are securely transferred to AWS Bedrock AgentCore sandbox
-6. **Visualization Generation**: Python code generates charts or tables from the data
-7. **Result Display**: Final visualizations are displayed in the web interface
+2. **Agent Selection**: User can choose multiple specific agents or let the orchestrator decide automatically
+3. **Query Routing**: Orchestrator analyzes the query and routes it to the most appropriate specialized agent
+4. **Specialized Processing**: Selected agent processes the query using its specific tools and capabilities
+5. **Result Generation**: Agent generates appropriate responses (visualizations, calculations, text, etc.)
+6. **Result Display**: Final results are displayed in the web interface with agent conversation history
+
+### Analytics Agent Workflow
+
+For data analysis queries, the Analytics Agent follows this workflow:
+
+1. **Database Discovery**: Agent explores database schema using `get_database_info` tool
+2. **SQL Generation**: Agent converts the question into optimized SQL queries with proper column quoting
+3. **Query Execution**: SQL queries are executed against Amazon Athena with results stored in S3
+4. **Data Processing**: Query results are securely transferred to AWS Bedrock AgentCore sandbox
+5. **Visualization Generation**: Python code generates charts or tables from the data
+6. **Result Display**: Final visualizations are displayed in the web interface
 
 ### Security Architecture
 
@@ -95,8 +124,36 @@ The analytics agent has access to four specialized tools:
 ### Accessing the Feature
 
 1. Log in to the GenAIIDP Web UI
-2. Navigate to the "Document Analytics" section in the main navigation
+2. Navigate to the "Agent Analysis" section in the main navigation
 3. You'll see a chat-like interface for querying your document data
+
+### Agent Selection
+
+The Agent Analysis interface allows you to select from multiple available agents:
+
+**Multi-Agent Selection:**
+- Select multiple agents simultaneously for complex analysis workflows
+- Use "Select All Agents" / "Deselect All Agents" for bulk selection
+- Each agent brings specialized capabilities to your analysis
+
+**Available Agent Types:**
+- **Analytics Agent**: Database queries, SQL generation, and data visualization
+- **Dummy Agent**: Simple calculations and testing capabilities  
+- **External MCP Agents**: Custom tools and systems integrated via MCP servers
+
+**Agent Selection Tips:**
+- Select specific agents when you know what type of analysis you need
+- Choose multiple agents for comprehensive analysis requiring different capabilities
+- The system intelligently routes your question to the most appropriate selected agents
+
+### MCP Integration
+
+**Custom System Integration:**
+- Click "🚀 NEW: Integrate your own systems with MCP!" to learn about connecting external tools
+- Add custom agents without code changes or redeployments
+- Integrate APIs, databases, and specialized tools via Model Context Protocol servers
+
+For detailed MCP setup instructions, see the [Custom MCP Agent Documentation](./custom-MCP-agent.md).
 
 ### Asking Questions
 

@@ -112,13 +112,50 @@ Host genai-idp-dev
 ### Refer this link for AWS configure
 https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html  
 
-# Step 6: Run Publish Script 
-## Test Build Process
-### Test publish script help
-./publish.sh --help
+# Step 6: Install Python Dependencies for publish.py
 
-### Test build (this will take 10-15 minutes)
+## Install Required Python Packages
+```bash
+pip install boto3 typer rich botocore
+```
+
+# Step 7: Run Publish Script 
+
+## Using publish.py (Recommended)
+
+### Test publish script help
+```bash
+python3 publish.py --help
+```
+
+### Test build using publish.py
+```bash
+python3 publish.py bucket_name build-test us-east-1
+```
+
+### Troubleshooting Build Issues
+If the build fails, use the `--verbose` flag to see detailed error messages:
+```bash
+python3 publish.py bucket_name build-test us-east-1 --verbose
+```
+
+The verbose flag will show:
+- Exact SAM build commands being executed
+- Complete error output from failed builds
+- Python version compatibility issues
+- Missing dependencies or configuration problems
+
+## Using publish.sh (Legacy)
+
+### Test publish script help
+```bash
+./publish.sh --help
+```
+
+### Test build using publish.sh
+```bash
 ./publish.sh bucket_name build-test us-east-1
+```
 
 # Step 7: Cline & Q Developer installation
 ### Cline

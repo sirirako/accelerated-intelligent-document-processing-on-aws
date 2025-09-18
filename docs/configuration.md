@@ -27,6 +27,37 @@ The web interface allows real-time configuration updates without stack redeploym
 
 Configuration changes are validated and applied immediately, with rollback capability if issues arise. See [web-ui.md](web-ui.md) for details on using the administration interface.
 
+## Custom Configuration Path
+
+The solution now supports specifying a custom configuration file location via the `CustomConfigPath` CloudFormation parameter. This allows you to use your own configuration files stored in S3 instead of the default configuration library.
+
+### Usage
+
+When deploying the stack, you can specify a custom configuration file:
+
+```yaml
+CustomConfigPath: "s3://my-bucket/custom-config/config.yaml"
+```
+
+**Key Features:**
+- **Override Default Configuration**: When specified, your custom configuration completely replaces the default pattern configuration
+- **S3 URI Format**: Accepts standard S3 URI format (e.g., `s3://my-bucket/custom-config/config.yaml`)
+- **Least-Privilege Security**: IAM permissions are conditionally granted only to the specific S3 bucket and object you specify
+- **All Patterns Supported**: Works with Pattern 1 (BDA), Pattern 2 (Textract + Bedrock), and Pattern 3 (Textract + UDOP + Bedrock)
+
+**Security Benefits:**
+- Eliminates wildcard S3 permissions (`arn:aws:s3:::*/*`)
+- Conditional IAM access only when CustomConfigPath is specified
+- Proper S3 URI to ARN conversion for least-privilege compliance
+- Passes security scans with minimal required permissions
+
+**Configuration File Requirements:**
+- Must be valid YAML format
+- Should include all required sections for your chosen pattern (ocr, classes, classification, extraction, etc.)
+- Follow the same structure as the default configuration files in the `config_library` directory
+
+Leave the `CustomConfigPath` parameter empty (default) to use the standard configuration library included with the solution.
+
 ## Summarization Configuration
 
 ### Enable/Disable Summarization
@@ -100,6 +131,7 @@ Key parameters that can be configured during CloudFormation deployment:
 - `WAFAllowedIPv4Ranges`: IP restrictions for web UI access (default: allow all)
 - `CloudFrontPriceClass`: Set CloudFront price class for UI distribution
 - `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access
+- `CustomConfigPath`: Optional S3 URI to a custom configuration file that overrides pattern presets. Leave blank to use selected pattern configuration. Example: s3://my-bucket/custom-config/config.yaml
 
 ### Pattern Selection
 - `IDPPattern`: Select processing pattern:
@@ -126,7 +158,7 @@ Key parameters that can be configured during CloudFormation deployment:
 - `EvaluationAutoEnabled`: Enable automatic accuracy evaluation (default: true)
 - `DocumentKnowledgeBase`: Enable document knowledge base functionality
 - `KnowledgeBaseModelId`: Bedrock model for knowledge base queries
-- `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing
+- `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing (see [post-processing-lambda-hook.md](post-processing-lambda-hook.md) for detailed implementation guidance)
 - `BedrockGuardrailId`: Optional Bedrock Guardrail ID to apply
 - `BedrockGuardrailVersion`: Version of Bedrock Guardrail to use
 
@@ -256,16 +288,7 @@ See [web-ui.md](web-ui.md) for details on using the dashboard.
 Use the included script to check document processing status via CLI:
 
 ```bash
-bash scripts/lookup_file_status.sh <STACK_NAME> <DOCUMENT_KEY>
-```
-
-or directly using the Lambda function:
-
-```bash
-aws lambda invoke \
-  --function-name <STACK_NAME>-LookupFunction \
-  --payload '{"document_key":"<DOCUMENT_KEY>"}' \
-  output.json && cat output.json | jq
+bash scripts/lookup_file_status.sh <DOCUMENT_KEY> <STACK_NAME>
 ```
 
 ### Response Format
