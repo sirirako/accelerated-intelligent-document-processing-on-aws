@@ -8,6 +8,7 @@ from idp_common.classification.service import ClassificationService
 from idp_common.models import Document, Page
 
 
+@pytest.mark.unit
 class TestMaxPagesForClassification:
     @pytest.fixture
     def mock_config(self):
@@ -15,25 +16,25 @@ class TestMaxPagesForClassification:
             "classification": {
                 "maxPagesForClassification": "ALL",
                 "classificationMethod": "multimodalPageLevelClassification",
+                "model": "us.amazon.nova-pro-v1:0",
+                "system_prompt": "Test system prompt",
+                "task_prompt": "Test task prompt",
             }
         }
 
     @pytest.fixture
     def classification_service(self, mock_config):
-        with patch(
-            "idp_common.classification.service.get_config", return_value=mock_config
-        ):
-            return ClassificationService(backend="bedrock")
+        return ClassificationService(backend="bedrock", config=mock_config)
 
     @pytest.fixture
     def sample_document(self):
         doc = Document(id="test-doc")
         doc.pages = {
-            "1": Page(page_id="1", page_number=1),
-            "2": Page(page_id="2", page_number=2),
-            "3": Page(page_id="3", page_number=3),
-            "4": Page(page_id="4", page_number=4),
-            "5": Page(page_id="5", page_number=5),
+            "1": Page(page_id="1"),
+            "2": Page(page_id="2"),
+            "3": Page(page_id="3"),
+            "4": Page(page_id="4"),
+            "5": Page(page_id="5"),
         }
         return doc
 
@@ -84,16 +85,16 @@ class TestMaxPagesForClassification:
         # Original document with 3 pages
         original_doc = Document(id="original")
         original_doc.pages = {
-            "1": Page(page_id="1", page_number=1),
-            "2": Page(page_id="2", page_number=2),
-            "3": Page(page_id="3", page_number=3),
+            "1": Page(page_id="1"),
+            "2": Page(page_id="2"),
+            "3": Page(page_id="3"),
         }
 
         # Classified document with 2 pages, both classified as "invoice"
         classified_doc = Document(id="classified")
         classified_doc.pages = {
-            "1": Page(page_id="1", page_number=1),
-            "2": Page(page_id="2", page_number=2),
+            "1": Page(page_id="1"),
+            "2": Page(page_id="2"),
         }
         classified_doc.pages["1"].classification = "invoice"
         classified_doc.pages["2"].classification = "invoice"
@@ -122,17 +123,17 @@ class TestMaxPagesForClassification:
         # Original document with 4 pages
         original_doc = Document(id="original")
         original_doc.pages = {
-            "1": Page(page_id="1", page_number=1),
-            "2": Page(page_id="2", page_number=2),
-            "3": Page(page_id="3", page_number=3),
-            "4": Page(page_id="4", page_number=4),
+            "1": Page(page_id="1"),
+            "2": Page(page_id="2"),
+            "3": Page(page_id="3"),
+            "4": Page(page_id="4"),
         }
 
         # Classified document with 2 pages, different classifications
         classified_doc = Document(id="classified")
         classified_doc.pages = {
-            "1": Page(page_id="1", page_number=1),
-            "2": Page(page_id="2", page_number=2),
+            "1": Page(page_id="1"),
+            "2": Page(page_id="2"),
         }
         classified_doc.pages["1"].classification = "payslip"
         classified_doc.pages["2"].classification = "drivers_license"
@@ -164,7 +165,7 @@ class TestMaxPagesForClassification:
     def test_apply_limited_classification_empty_sections(self, classification_service):
         """Test handling of empty sections"""
         original_doc = Document(id="original")
-        original_doc.pages = {"1": Page(page_id="1", page_number=1)}
+        original_doc.pages = {"1": Page(page_id="1")}
 
         classified_doc = Document(id="classified")
         classified_doc.sections = []
@@ -176,27 +177,31 @@ class TestMaxPagesForClassification:
         # Should return original document unchanged
         assert result == original_doc
 
-    @patch("idp_common.classification.service.get_config")
-    def test_config_integration(self, mock_get_config):
+    def test_config_integration(self):
         """Test that maxPagesForClassification is read from config"""
-        mock_get_config.return_value = {
+        mock_config = {
             "classification": {
                 "maxPagesForClassification": "2",
                 "classificationMethod": "multimodalPageLevelClassification",
+                "model": "us.amazon.nova-pro-v1:0",
+                "system_prompt": "Test system prompt",
+                "task_prompt": "Test task prompt",
             }
         }
 
-        service = ClassificationService(backend="bedrock")
+        service = ClassificationService(backend="bedrock", config=mock_config)
         assert service.max_pages_for_classification == "2"
 
-    @patch("idp_common.classification.service.get_config")
-    def test_config_default_value(self, mock_get_config):
+    def test_config_default_value(self):
         """Test default value when maxPagesForClassification not in config"""
-        mock_get_config.return_value = {
+        mock_config = {
             "classification": {
-                "classificationMethod": "multimodalPageLevelClassification"
+                "classificationMethod": "multimodalPageLevelClassification",
+                "model": "us.amazon.nova-pro-v1:0",
+                "system_prompt": "Test system prompt",
+                "task_prompt": "Test task prompt",
             }
         }
 
-        service = ClassificationService(backend="bedrock")
+        service = ClassificationService(backend="bedrock", config=mock_config)
         assert service.max_pages_for_classification == "ALL"

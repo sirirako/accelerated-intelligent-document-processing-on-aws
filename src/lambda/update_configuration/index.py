@@ -157,13 +157,6 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                         if 'extraction' in resolved_default:
                             resolved_default['extraction']['model'] = properties['CustomExtractionModelARN']
                             logger.info(f"Updated extraction model to: {properties['CustomExtractionModelARN']}")
-                    
-                    # Add MaxPagesForClassification if provided
-                    if 'MaxPagesForClassification' in properties:
-                        if 'classification' not in resolved_default:
-                            resolved_default['classification'] = {}
-                        resolved_default['classification']['maxPagesForClassification'] = properties['MaxPagesForClassification']
-                        logger.info(f"Updated maxPagesForClassification to: {properties['MaxPagesForClassification']}")
                 
                 update_configuration('Default', resolved_default)
             

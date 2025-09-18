@@ -114,17 +114,7 @@ Parameters:
     Description: >-
      Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
 
-  MaxPagesForClassification:
-    Type: String
-    Default: "ALL"
-    AllowedValues:
-      - "ALL"
-      - "1"
-      - "2"
-      - "3"
-      - "5"
-      - "10"
-    Description: "Number of pages to use for document classification. 'ALL' uses all pages, or specify a number (1-10) to limit classification to first N pages and apply result to all pages. Only applies to Pattern 2 and Pattern 3."
+
     
   # Pattern 2 Parameters
 
@@ -918,7 +908,6 @@ Resources:
             - "s3://${ConfigurationBucket}/config_library/pattern-2/${ConfigPath}/config.yaml"
             - ConfigPath: !FindInMap [Pattern2ConfigurationMap, !Ref Pattern2Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        MaxPagesForClassification: !Ref MaxPagesForClassification
         EnableHITL: !Ref EnableHITL
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
@@ -960,7 +949,6 @@ Resources:
             - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
             - ConfigPath: !FindInMap [Pattern3ConfigurationMap, !Ref Pattern3Configuration, ConfigPath]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        MaxPagesForClassification: !Ref MaxPagesForClassification
         EnableHITL: !Ref EnableHITL
         SageMakerA2IReviewPortalURL: !If
           - IsHITLEnabled
