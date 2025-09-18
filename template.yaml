@@ -813,7 +813,7 @@ Resources:
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
 
 
-  DOCUMENTBEDROCKKB:
+  DOCUMENTKB:
     DependsOn:
       - IsStacknameLengthOK
     Type: AWS::CloudFormation::Stack
@@ -5996,7 +5996,7 @@ Resources:
           LOG_LEVEL: !Ref LogLevel
           KB_ID: !If
             - ShouldUseDocumentKnowledgeBase
-            - !GetAtt DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID
+            - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
             - ""
           KB_ACCOUNT_ID: !Ref AWS::AccountId
           KB_REGION: !Ref AWS::Region
@@ -6012,7 +6012,7 @@ Resources:
               Action:
                 - bedrock:Retrieve
                 - bedrock:RetrieveAndGenerate
-              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTKB.Outputs.KnowledgeBaseID}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
@@ -6117,7 +6117,7 @@ Resources:
               Action:
                 - bedrock:Retrieve
                 - bedrock:RetrieveAndGenerate
-              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTBEDROCKKB.Outputs.KnowledgeBaseID}"
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTKB.Outputs.KnowledgeBaseID}"
             - !Ref AWS::NoValue
           - Effect: Allow
             Action:
