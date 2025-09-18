@@ -105,6 +105,11 @@ Parameters:
       - "false"
     Description: "Enable Human In The Loop (A2I) for document review"
 
+  MaxPagesForClassification:
+    Type: String
+    Default: "ALL"
+    Description: "Number of pages to use for document classification"
+
   SageMakerA2IReviewPortalURL:
     Type: String
     Default: ""
@@ -873,6 +878,7 @@ Resources:
       ServiceToken: !Ref UpdateConfigurationFunctionArn
       Default: !Ref ConfigurationDefaultS3Uri
       ConfigLibraryHash: !Ref ConfigLibraryHash
+      MaxPagesForClassification: !Ref MaxPagesForClassification
 
   
   OCRFunction:
