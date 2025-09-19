@@ -5,6 +5,12 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+- **CloudFormation Service Role for Delegated Deployment Access**
+  - Added example CloudFormation service role template that enables non-administrator users to deploy and maintain IDP stacks without requiring ongoing administrator permissions
+  - Administrators can provision the service role once with elevated privileges, then delegate deployment capabilities to developer/DevOps teams
+  - Includes comprehensive documentation and cross-referenced deployment guides explaining the security model and setup process
+
 ### Fixed
 - Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
 - Fix duplicate Glue tables are created when using a document class that contains a dash (-). Resolved by replacing dash in section types with underscore character when creating the table, to align with the table name generated later by the Glue crawler - resolves #57.
