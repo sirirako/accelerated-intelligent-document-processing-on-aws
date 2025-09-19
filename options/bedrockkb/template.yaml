@@ -686,7 +686,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - bedrock:InvokeModel
-                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/*"
+                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}"
         - !If
           - UseOpenSearchServerless
           - PolicyName: oss-api-access
@@ -708,20 +708,15 @@ Resources:
                 - Sid: S3VectorsAccess
                   Effect: Allow
                   Action:
-                    - s3vectors:GetVectors
-                    - s3vectors:PutVectors
-                    - s3vectors:QueryVectors
-                    - s3vectors:DeleteVectors
-                    - s3vectors:DescribeVectorIndex
                     - s3vectors:GetIndex
-                    - s3vectors:ListIndexes
-                  Resource: 
-                    - !Sub
-                      - "arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${BucketName}"
-                      - BucketName: !GetAtt S3VectorBucketAndIndex.BucketName
-                    - !Sub
-                      - "arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${BucketName}/*"
-                      - BucketName: !GetAtt S3VectorBucketAndIndex.BucketName
+                    - s3vectors:QueryVectors
+                    - s3vectors:PutVectors
+                    - s3vectors:GetVectors
+                    - s3vectors:DeleteVectors
+                  Resource: !GetAtt S3VectorBucketAndIndex.IndexArn
+                  Condition:
+                    StringEquals:
+                      aws:ResourceAccount: !Sub ${AWS::AccountId}
           - !Ref "AWS::NoValue"
         - !If
           - IsS3DataSource
@@ -733,12 +728,22 @@ Resources:
                   Effect: Allow
                   Action:
                     - s3:ListBucket
-                  Resource: !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
+                  Resource: 
+                    - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
+                    - !GetAtt S3VectorBucketAndIndex.BucketArn 
+                  Condition:
+                    StringEquals:
+                      aws:ResourceAccount: !Sub ${AWS::AccountId}
                 - Sid: S3GetObject
                   Effect: Allow
                   Action:
                     - s3:GetObject
-                  Resource: !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
+                  Resource:
+                    - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
+                    - !GetAtt S3VectorBucketAndIndex.BucketArn
+                  Condition:
+                    StringEquals:
+                      aws:ResourceAccount: !Sub ${AWS::AccountId}
           - !Ref "AWS::NoValue"
         - !If
           - IsCustomerManagedKey
@@ -748,12 +753,12 @@ Resources:
               Statement:
                 - Effect: Allow
                   Action:
-                    - kms:Encrypt
+                    - kms:GenerateDataKey
                     - kms:Decrypt
-                    - kms:ReEncrypt*
-                    - kms:GenerateDataKey*
-                    - kms:DescribeKey
                   Resource: !Ref pCustomerManagedEncryptionKeyArn
+                  Condition:
+                    StringEquals:
+                      kms:ViaService: !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"
           - !Ref "AWS::NoValue"
 
   #

@@ -335,11 +335,11 @@ def create_vector_index(s3vectors_client, bucket_name, index_name):
             indexName=index_name,
             dataType="float32",
             dimension=1024,  # All embedding models in picklist output 1024 
-            distanceMetric="cosine",
+            distanceMetric="euclidean",
             metadataConfiguration={
                 "nonFilterableMetadataKeys": [
                     "AMAZON_BEDROCK_METADATA",
-                    "AMAZON_BEDROCK_TEXT_CHUNK"
+                    "AMAZON_BEDROCK_TEXT"
                 ]
             }
         )
