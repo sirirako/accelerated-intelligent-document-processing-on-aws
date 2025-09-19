@@ -771,7 +771,7 @@ Resources:
         VectorKnowledgeBaseConfiguration:
           EmbeddingModelArn:
             Fn::Sub: arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}
-      Name: !Sub "${AWS::StackName}"
+      Name: !Sub "${AWS::StackName}-OpenSearchServerless"
       RoleArn: !GetAtt KnowledgeBaseServiceRole.Arn
       StorageConfiguration:
         Type: OPENSEARCH_SERVERLESS
@@ -795,7 +795,7 @@ Resources:
     Properties:
       ServiceToken: !GetAtt S3VectorManagerFunction.Arn
       ResourceType: S3VectorsKnowledgeBase
-      Name: !Sub "${AWS::StackName}"
+      Name: !Sub "${AWS::StackName}-S3Vectors"
       Description: "Bedrock Knowledge Base with S3 Vectors"
       RoleArn: !GetAtt KnowledgeBaseServiceRole.Arn
       EmbeddingModelArn: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}"
