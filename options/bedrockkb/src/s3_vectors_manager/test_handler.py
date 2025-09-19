@@ -102,7 +102,7 @@ def test_create_vector_index_function():
         metadataConfiguration={
             "nonFilterableMetadataKeys": [
                 "AMAZON_BEDROCK_METADATA",
-                "AMAZON_BEDROCK_TEXT_CHUNK"
+                "AMAZON_BEDROCK_TEXT"
             ]
         }
     )
