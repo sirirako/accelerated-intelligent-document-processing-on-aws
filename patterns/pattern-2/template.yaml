@@ -640,7 +640,7 @@ Resources:
               validation_enabled:
                 type: boolean
                 description: Enable or disable assessment validation checks
-                default: true
+                default: false
                 order: 1
                 dependsOn: {
                   field: "enabled",

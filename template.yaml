@@ -5814,6 +5814,12 @@ Resources:
       FieldName: updateDiscoveryJobStatus
       DataSourceName: !GetAtt DiscoveryTableDataSource.Name
       RequestMappingTemplate: |-
+        ## Validate status is one of the allowed values
+        #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
+        #if(!$validStatuses.contains($ctx.args.status))
+          $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
+        #end
+        
         #set($expNames = {})
         #set($expValues = {})
         
@@ -6323,7 +6329,11 @@ Resources:
                 - n 22.14.0
                 - npm install -g npm@11.1.0
                 - echo Installing Web UI dependencies
-                - npm install
+                - rm -rf node_modules
+                - npm cache clean --force
+                - npm ci
+                - echo Checking for and fixing security vulnerabilities
+                - npm audit fix || echo "Some vulnerabilities could not be automatically fixed"
             build:
               commands:
                 - echo Build started on `date`
