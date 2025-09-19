@@ -6,10 +6,8 @@ Tests for metering data transfer in limited classification scenarios.
 """
 
 import pytest
-from unittest.mock import Mock
-
 from idp_common.classification.service import ClassificationService
-from idp_common.models import Document, Page, Section, Status
+from idp_common.models import Document, Page, Section
 
 
 @pytest.mark.unit
@@ -18,7 +16,7 @@ def test_apply_limited_classification_transfers_metering():
     # Create classification service with minimal config
     config = {
         "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-        "classification": {"maxPagesForClassification": "2"}
+        "classification": {"maxPagesForClassification": "2"},
     }
     service = ClassificationService(region="us-east-1", config=config)
 
@@ -141,7 +139,12 @@ def test_apply_limited_classification_merges_existing_metering():
     assert "OCR/textract/detect_document_text" in result_doc.metering
     assert "Classification/bedrock/anthropic.claude-3-sonnet" in result_doc.metering
     assert result_doc.metering["OCR/textract/detect_document_text"]["pages"] == 1
-    assert result_doc.metering["Classification/bedrock/anthropic.claude-3-sonnet"]["inputTokens"] == 500
+    assert (
+        result_doc.metering["Classification/bedrock/anthropic.claude-3-sonnet"][
+            "inputTokens"
+        ]
+        == 500
+    )
 
 
 @pytest.mark.unit
