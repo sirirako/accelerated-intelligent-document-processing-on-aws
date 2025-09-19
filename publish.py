@@ -1143,7 +1143,10 @@ except Exception as e:
 
             with zipfile.ZipFile(zipfile_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                 ui_dir = "src/ui"
+                exclude_dirs = {"node_modules", "build"}
                 for root, dirs, files in os.walk(ui_dir):
+                    # Exclude specified directories from zipping
+                    dirs[:] = [d for d in dirs if d not in exclude_dirs]
                     for file in files:
                         file_path = os.path.join(root, file)
                         arcname = os.path.relpath(file_path, ui_dir)
