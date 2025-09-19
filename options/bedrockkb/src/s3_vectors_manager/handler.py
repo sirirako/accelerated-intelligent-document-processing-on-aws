@@ -127,8 +127,8 @@ def handle_s3_vector_resources(event, context, properties):
                 delete_s3_vector_resources(s3vectors_client, old_bucket_name, old_index_name)
             return create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn)
         else:
-            # Just return existing resource info
-            return get_s3_vector_info(s3vectors_client, bucket_name, index_name)
+            # Names haven't changed - update existing resources (recreate index)
+            return update_s3_vector_info(s3vectors_client, bucket_name, index_name)
             
     elif request_type == 'Delete':
         logger.info(f"Deleting S3 Vector bucket: {bucket_name}")
@@ -325,6 +325,28 @@ def get_knowledge_base_info(bedrock_agent_client, kb_id):
         raise
 
 
+def delete_vector_index(s3vectors_client, bucket_name, index_name):
+    """Delete a vector index from an S3 Vectors bucket."""
+    try:
+        logger.info(f"Deleting vector index: {index_name} from bucket: {bucket_name}")
+        
+        s3vectors_client.delete_index(
+            vectorBucketName=bucket_name,
+            indexName=index_name
+        )
+        logger.info(f"Successfully deleted vector index: {index_name}")
+        return True
+        
+    except ClientError as e:
+        if e.response['Error']['Code'] in ['IndexNotFound', 'ResourceNotFoundException', 'NoSuchIndex']:
+            # Index doesn't exist, which is fine for delete operations
+            logger.info(f"Index {index_name} not found (already deleted or never existed)")
+            return False
+        else:
+            logger.error(f"Error deleting vector index {index_name}: {e}")
+            raise
+
+
 def create_vector_index(s3vectors_client, bucket_name, index_name):
     """Create a vector index with standard configuration for Bedrock Knowledge Base integration."""
     try:
@@ -335,11 +357,11 @@ def create_vector_index(s3vectors_client, bucket_name, index_name):
             indexName=index_name,
             dataType="float32",
             dimension=1024,  # All embedding models in picklist output 1024 
-            distanceMetric="euclidean",
+            distanceMetric="cosine",
             metadataConfiguration={
                 "nonFilterableMetadataKeys": [
                     "AMAZON_BEDROCK_METADATA",
-                    "AMAZON_BEDROCK_TEXT"
+                    "AMAZON_BEDROCK_TEXT_CHUNK"
                 ]
             }
         )
@@ -354,6 +376,22 @@ def create_vector_index(s3vectors_client, bucket_name, index_name):
         else:
             logger.error(f"Error creating vector index {index_name}: {e}")
             raise
+
+
+def recreate_vector_index(s3vectors_client, bucket_name, index_name):
+    """Delete and recreate a vector index to ensure fresh configuration."""
+    try:
+        logger.info(f"Recreating vector index: {index_name} in bucket: {bucket_name}")
+        
+        # Delete existing index if it exists
+        delete_vector_index(s3vectors_client, bucket_name, index_name)
+        
+        # Create new index
+        return create_vector_index(s3vectors_client, bucket_name, index_name)
+        
+    except Exception as e:
+        logger.error(f"Error recreating vector index {index_name}: {e}")
+        raise
 
 
 def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn=None):
@@ -489,6 +527,47 @@ def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
         
     except ClientError as e:
         logger.error(f"Error getting S3 Vector bucket info: {e}")
+        raise
+
+
+def update_s3_vector_info(s3vectors_client, bucket_name, index_name):
+    """Update existing S3 Vector resources by recreating the index."""
+    try:
+        # Get bucket info
+        bucket_response = s3vectors_client.get_vector_bucket(vectorBucketName=bucket_name)
+        bucket_arn = bucket_response.get('BucketArn')
+        
+        # Get region and account ID for ARN construction
+        region = s3vectors_client.meta.region_name
+        sts_client = boto3.client('sts', region_name=region)
+        account_id = sts_client.get_caller_identity()['Account']
+        
+        # Construct bucket ARN if not returned in response
+        if not bucket_arn:
+            bucket_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}"
+        
+        logger.info(f"Found existing vector bucket ARN: {bucket_arn}")
+        
+        # For updates, always recreate the index to ensure fresh configuration
+        logger.info(f"Recreating vector index for update: {index_name}")
+        recreate_vector_index(s3vectors_client, bucket_name, index_name)
+        
+        # Construct index ARN (required for Knowledge Base configuration)
+        index_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}/index/{index_name}"
+        
+        logger.info(f"Vector bucket ARN: {bucket_arn}")
+        logger.info(f"Vector index ARN: {index_arn}")
+        
+        return {
+            'BucketName': bucket_name,
+            'BucketArn': bucket_arn,
+            'IndexName': index_name,
+            'IndexArn': index_arn,
+            'Status': 'Updated'
+        }
+        
+    except ClientError as e:
+        logger.error(f"Error updating S3 Vector bucket info: {e}")
         raise
 
 
