@@ -1143,8 +1143,14 @@ except Exception as e:
 
             with zipfile.ZipFile(zipfile_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                 ui_dir = "src/ui"
+                exclude_dirs = {"node_modules", "build", ".aws-sam"}
                 for root, dirs, files in os.walk(ui_dir):
+                    # Exclude specified directories from zipping
+                    dirs[:] = [d for d in dirs if d not in exclude_dirs]
                     for file in files:
+                        # Skip .env files
+                        if file == ".env" or file.startswith(".env."):
+                            continue
                         file_path = os.path.join(root, file)
                         arcname = os.path.relpath(file_path, ui_dir)
                         zipf.write(file_path, arcname)
@@ -1213,12 +1219,8 @@ except Exception as e:
         """Build and package main template with smart detection"""
         try:
             self.console.print("[bold cyan]BUILDING main[/bold cyan]")
-            # Check if main template needs rebuilding
-            main_needs_build = any(
-                comp["component"] == "main" for comp in components_needing_rebuild
-            )
-
-            if main_needs_build:
+            # Main template needs rebuilding, if any component needs rebuilding
+            if components_needing_rebuild:
                 self.console.print("[yellow]Main template needs rebuilding[/yellow]")
                 # Validate Python syntax in src directory before building
                 if not self._validate_python_syntax("src"):
@@ -1347,7 +1349,7 @@ except Exception as e:
             ]
 
             for s3_key, description in templates:
-                if main_needs_build:
+                if components_needing_rebuild:
                     if not os.path.exists(packaged_template_path):
                         self.console.print(
                             f"[red]Error: Packaged template not found at {packaged_template_path}[/red]"

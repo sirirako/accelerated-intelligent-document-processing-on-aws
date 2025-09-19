@@ -169,21 +169,28 @@ def create_human_task_ui(human_task_ui_name):
                 border-radius: 6px; box-shadow: var(--shadow);
             }
             
-            .zoom-controls { 
-                display: flex; gap: 8px;
+            .image-controls { 
+                display: flex; gap: 8px; align-items: center;
             }
             
-            .zoom-controls button {
+            .image-controls button {
                 background: var(--primary-blue);
                 color: white; border: none;
                 padding: 6px 12px; border-radius: 4px;
                 cursor: pointer; font-size: 12px;
                 transition: all 0.2s ease;
+                min-width: 32px;
             }
             
-            .zoom-controls button:hover {
+            .image-controls button:hover {
                 background: var(--dark-blue);
                 transform: translateY(-1px);
+            }
+            
+            .image-controls button:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
             }
             
             .image-container {
@@ -191,12 +198,27 @@ def create_human_task_ui(human_task_ui_name):
                 height: calc(100vh - 80px);
                 border: 1px solid var(--border-gray);
                 border-radius: 6px; background: white;
+                cursor: grab;
+            }
+            
+            .image-container:active {
+                cursor: grabbing;
+            }
+            
+            .image-wrapper {
+                display: inline-block;
+                min-width: 100%;
+                min-height: 100%;
+                text-align: center;
+                transition: width 0.2s ease, height 0.2s ease;
             }
             
             #documentImage { 
                 display: block; margin: 0 auto;
-                cursor: crosshair; border-radius: 4px;
-                transition: transform 0.3s ease;
+                max-width: none; max-height: none;
+                border-radius: 4px;
+                transition: transform 0.2s ease;
+                transform-origin: center center;
             }
             
             .highlight-box {
@@ -409,19 +431,21 @@ def create_human_task_ui(human_task_ui_name):
                 <!-- Image Pane -->
                 <div class="image-pane">
                     <div class="controls-bar">
-                        <div class="zoom-controls">
-                            <button type="button" onclick="zoom(1.2)">Zoom In (+)</button>
-                            <button type="button" onclick="zoom(0.8)">Zoom Out (-)</button>
-                            <button type="button" onclick="resetZoom()">Reset</button>
+                        <div class="image-controls">
+                            <button type="button" onclick="zoomIn()">Zoom In (+)</button>
+                            <button type="button" onclick="zoomOut()">Zoom Out (-)</button>
+                            <button type="button" onclick="resetView()">Reset</button>
                         </div>
                         <div style="color: var(--primary-blue); font-weight: 600;">
                             Document Viewer
                         </div>
                     </div>
                     <div class="image-container" id="imageContainer">
-                        <img id="documentImage" 
-                            src="{{ task.input.sourceDocument | grant_read_access }}" 
-                            onload="initImage()">
+                        <div class="image-wrapper" id="imageWrapper">
+                            <img id="documentImage" 
+                                src="{{ task.input.sourceDocument | grant_read_access }}" 
+                                onload="initImage()">
+                        </div>
                     </div>
                 </div>
 
@@ -569,13 +593,16 @@ def create_human_task_ui(human_task_ui_name):
         <script>
             let currentZoom = 1;
             let currentHighlight = null;
+            let isDragging = false;
+            let dragStart = { x: 0, y: 0 };
+            let scrollStart = { x: 0, y: 0 };
+            
             const imgElement = document.getElementById('documentImage');
             const imageContainer = document.getElementById('imageContainer');
-            let imgRect = null;
+            const imageWrapper = document.getElementById('imageWrapper');
 
             function initImage() {
-                imgRect = imgElement.getBoundingClientRect();
-                // Fit image to container initially
+                // Set initial size to fit container
                 const containerRect = imageContainer.getBoundingClientRect();
                 const imgAspect = imgElement.naturalWidth / imgElement.naturalHeight;
                 const containerAspect = containerRect.width / containerRect.height;
@@ -587,27 +614,71 @@ def create_human_task_ui(human_task_ui_name):
                     imgElement.style.width = 'auto';
                     imgElement.style.height = '100%';
                 }
-                updateImageRect();
-            }
-
-            function updateImageRect() {
-                imgRect = imgElement.getBoundingClientRect();
-            }
-
-            function zoom(factor) {
-                currentZoom *= factor;
-                currentZoom = Math.max(0.1, Math.min(5, currentZoom)); // Limit zoom range
-                imgElement.style.transform = `scale(${currentZoom})`;
-                imgElement.style.transformOrigin = 'center center';
-                setTimeout(updateImageRect, 100);
+                
+                updateWrapperSize();
                 updateHighlight();
             }
 
-            function resetZoom() {
+            function updateWrapperSize() {
+                // Calculate the actual displayed size of the image
+                const imgRect = imgElement.getBoundingClientRect();
+                const baseWidth = imgElement.offsetWidth;
+                const baseHeight = imgElement.offsetHeight;
+                
+                // Calculate the size needed for the zoomed image
+                const scaledWidth = baseWidth * currentZoom;
+                const scaledHeight = baseHeight * currentZoom;
+                
+                // Set wrapper size to accommodate the scaled image
+                imageWrapper.style.width = `${scaledWidth}px`;
+                imageWrapper.style.height = `${scaledHeight}px`;
+            }
+
+            function zoomIn() {
+                const centerX = imageContainer.scrollLeft + imageContainer.clientWidth / 2;
+                const centerY = imageContainer.scrollTop + imageContainer.clientHeight / 2;
+                
+                currentZoom = Math.min(currentZoom * 1.25, 4);
+                applyZoom();
+                
+                // Maintain center point
+                setTimeout(() => {
+                    const newCenterX = centerX * 1.25;
+                    const newCenterY = centerY * 1.25;
+                    
+                    imageContainer.scrollLeft = newCenterX - imageContainer.clientWidth / 2;
+                    imageContainer.scrollTop = newCenterY - imageContainer.clientHeight / 2;
+                }, 50);
+            }
+
+            function zoomOut() {
+                const centerX = imageContainer.scrollLeft + imageContainer.clientWidth / 2;
+                const centerY = imageContainer.scrollTop + imageContainer.clientHeight / 2;
+                
+                currentZoom = Math.max(currentZoom / 1.25, 0.25);
+                applyZoom();
+                
+                // Maintain center point
+                setTimeout(() => {
+                    const newCenterX = centerX / 1.25;
+                    const newCenterY = centerY / 1.25;
+                    
+                    imageContainer.scrollLeft = newCenterX - imageContainer.clientWidth / 2;
+                    imageContainer.scrollTop = newCenterY - imageContainer.clientHeight / 2;
+                }, 50);
+            }
+
+            function resetView() {
                 currentZoom = 1;
-                imgElement.style.transform = 'scale(1)';
-                setTimeout(updateImageRect, 100);
-                updateHighlight();
+                applyZoom();
+                imageContainer.scrollLeft = 0;
+                imageContainer.scrollTop = 0;
+            }
+
+            function applyZoom() {
+                imgElement.style.transform = `scale(${currentZoom})`;
+                updateWrapperSize();
+                setTimeout(updateHighlight, 100);
             }
 
             function updateHighlight() {
@@ -631,7 +702,6 @@ def create_human_task_ui(human_task_ui_name):
                     const containerRect = imageContainer.getBoundingClientRect();
                     const imgRect = imgElement.getBoundingClientRect();
                     
-                    // Calculate position relative to the scaled image
                     const left = imgRect.left - containerRect.left + (bbox.left * imgRect.width);
                     const top = imgRect.top - containerRect.top + (bbox.top * imgRect.height);
                     const width = bbox.width * imgRect.width;
@@ -643,15 +713,60 @@ def create_human_task_ui(human_task_ui_name):
                     currentHighlight.style.height = `${height}px`;
 
                     imageContainer.appendChild(currentHighlight);
+                    
+                    // Auto-scroll to highlight
+                    const scrollX = left - (imageContainer.clientWidth / 2) + (width / 2);
+                    const scrollY = top - (imageContainer.clientHeight / 2) + (height / 2);
+                    
+                    imageContainer.scrollTo({
+                        left: Math.max(0, scrollX),
+                        top: Math.max(0, scrollY),
+                        behavior: 'smooth'
+                    });
                 }
             }
 
+            // Mouse drag for panning
+            imageContainer.addEventListener('mousedown', (e) => {
+                if (currentZoom > 1) {
+                    isDragging = true;
+                    dragStart = { x: e.clientX, y: e.clientY };
+                    scrollStart = { x: imageContainer.scrollLeft, y: imageContainer.scrollTop };
+                    e.preventDefault();
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - dragStart.x;
+                    const deltaY = e.clientY - dragStart.y;
+                    
+                    imageContainer.scrollLeft = scrollStart.x - deltaX;
+                    imageContainer.scrollTop = scrollStart.y - deltaY;
+                    e.preventDefault();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            // Mouse wheel zoom
+            imageContainer.addEventListener('wheel', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        zoomIn();
+                    } else {
+                        zoomOut();
+                    }
+                }
+            });
+
             function switchTab(tabName) {
-                // Remove active class from all tabs and buttons
                 document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
                 
-                // Add active class to selected tab and button
                 document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
                 document.getElementById(`${tabName}Tab`).classList.add('active');
             }
@@ -711,27 +826,25 @@ def create_human_task_ui(human_task_ui_name):
                 }
             });
 
-            window.addEventListener('resize', updateImageRect);
+            window.addEventListener('resize', () => {
+                updateWrapperSize();
+                updateHighlight();
+            });
             
             // Keyboard shortcuts
             document.addEventListener('keydown', (e) => {
                 if (e.ctrlKey || e.metaKey) {
                     if (e.key === '=' || e.key === '+') {
                         e.preventDefault();
-                        zoom(1.2);
+                        zoomIn();
                     } else if (e.key === '-') {
                         e.preventDefault();
-                        zoom(0.8);
+                        zoomOut();
                     } else if (e.key === '0') {
                         e.preventDefault();
-                        resetZoom();
+                        resetView();
                     }
                 }
-            });
-
-            // Initialize with minimized document info
-            document.addEventListener('DOMContentLoaded', () => {
-                // Document info starts minimized by default
             });
         </script>
     </body>

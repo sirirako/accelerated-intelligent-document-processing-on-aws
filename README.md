@@ -128,6 +128,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
 - [Custom MCP Agent](./docs/custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
 - [Configuration](./docs/configuration.md) - Configuration and customization options
+- [Discovery](./docs/discovery.md) - Pattern-neutral discovery process and BDA blueprint automation
 - [Classification](./docs/classification.md) - Customizing document classification
 - [Extraction](./docs/extraction.md) - Customizing information extraction
 - [Human-in-the-Loop Review](./docs/human-review.md) - Human review workflows with Amazon A2I

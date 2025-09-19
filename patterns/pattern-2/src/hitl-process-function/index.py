@@ -24,33 +24,49 @@ def unflatten(data: dict) -> dict:
     """
     Convert flattened dictionary keys with array notation (e.g., 'a.b[0].c')
     into nested dictionaries/lists.
+    If keys don't contain dots, return the data as-is.
     """
+    if not data:
+        return data
+    
+    # Check if any keys contain dots (indicating nested structure)
+    has_nested_keys = any('.' in key for key in data.keys())
+    
+    # If no nested keys, return data as-is
+    if not has_nested_keys:
+        logger.info("No nested keys found in human answers, returning flat structure")
+        return data
+    
     result = defaultdict(lambda: defaultdict(dict))
     array_pattern = re.compile(r"^(.*?)\[(\d+)\]$")
 
-    for key, value in data.items():
-        current = result
-        parts = key.split('.')
-        for i, part in enumerate(parts):
-            arr_match = array_pattern.match(part)
-            if arr_match:
-                base_name = arr_match.group(1)
-                idx = int(arr_match.group(2))
-                if base_name not in current:
-                    current[base_name] = []
-                while len(current[base_name]) <= idx:
-                    current[base_name].append(defaultdict(dict))
-                if i == len(parts) - 1:
-                    current[base_name][idx] = value
+    try:
+        for key, value in data.items():
+            current = result
+            parts = key.split('.')
+            for i, part in enumerate(parts):
+                arr_match = array_pattern.match(part)
+                if arr_match:
+                    base_name = arr_match.group(1)
+                    idx = int(arr_match.group(2))
+                    if base_name not in current:
+                        current[base_name] = []
+                    while len(current[base_name]) <= idx:
+                        current[base_name].append(defaultdict(dict))
+                    if i == len(parts) - 1:
+                        current[base_name][idx] = value
+                    else:
+                        current = current[base_name][idx]
                 else:
-                    current = current[base_name][idx]
-            else:
-                if i == len(parts) - 1:
-                    current[part] = value
-                else:
-                    if part not in current:
-                        current[part] = defaultdict(dict)
-                    current = current[part]
+                    if i == len(parts) - 1:
+                        current[part] = value
+                    else:
+                        if part not in current:
+                            current[part] = defaultdict(dict)
+                        current = current[part]
+    except Exception as e:
+        logger.error(f"Error in unflatten function: {str(e)}, returning original data")
+        return data
 
     def convert(obj):
         if isinstance(obj, defaultdict):
@@ -102,36 +118,55 @@ def sync_explainability(inference_data, explainability_info):
     """
     Update explainability_info with values from inference_data, preserving types.
     """
-    if explainability_info is None:
-        return None
+    try:
+        if explainability_info is None:
+            return None
         
-    if isinstance(explainability_info, list):
-        if isinstance(inference_data, list):
-            return [
-                sync_explainability(inference_data[i], explainability_info[i])
-                if i < len(inference_data) else explainability_info[i]
-                for i in range(len(explainability_info))
-            ]
-        else:
-            return [sync_explainability(inference_data, item) for item in explainability_info]
-
-    if isinstance(explainability_info, dict):
-        updated = {}
-        for key, meta in explainability_info.items():
-            if isinstance(meta, dict) and 'value' in meta:
-                if inference_data and key in inference_data:
-                    updated[key] = {
-                        **meta,
-                        'value': convert_type(inference_data[key], meta.get('type'))
-                    }
-                else:
-                    updated[key] = meta
-            elif isinstance(meta, (dict, list)) and inference_data and key in inference_data:
-                updated[key] = sync_explainability(inference_data[key], meta)
+        # Handle case where explainability_info is a string
+        if isinstance(explainability_info, str):
+            logger.warning("explainability_info is unexpectedly a string, returning as-is")
+            return explainability_info
+        
+        # Handle case where inference_data is not a dict
+        if not isinstance(inference_data, dict):
+            return explainability_info
+            
+        if isinstance(explainability_info, list):
+            if isinstance(inference_data, list):
+                return [
+                    sync_explainability(inference_data[i], explainability_info[i])
+                    if i < len(inference_data) else explainability_info[i]
+                    for i in range(len(explainability_info))
+                ]
             else:
-                updated[key] = meta
-        return updated
-    return explainability_info
+                return [sync_explainability(inference_data, item) for item in explainability_info]
+
+        if isinstance(explainability_info, dict):
+            updated = {}
+            for key, meta in explainability_info.items():
+                try:
+                    if isinstance(meta, dict) and 'value' in meta:
+                        if inference_data and key in inference_data:
+                            updated[key] = {
+                                **meta,
+                                'value': convert_type(inference_data[key], meta.get('type'))
+                            }
+                        else:
+                            updated[key] = meta
+                    elif isinstance(meta, (dict, list)) and inference_data and key in inference_data:
+                        updated[key] = sync_explainability(inference_data[key], meta)
+                    else:
+                        updated[key] = meta
+                except Exception as e:
+                    logger.warning(f"Error processing key '{key}': {str(e)}")
+                    updated[key] = meta
+            return updated
+        
+        return explainability_info
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in sync_explainability: {str(e)}")
+        return explainability_info
 
 def decimal_default(obj):
     if isinstance(obj, Decimal):
@@ -173,7 +208,6 @@ def check_all_pages_complete(document_id, section_id, tracking_table):
         )
         
         items = response.get('Items', [])
-        logger.info(f"check_all_pages_complete_items: {items}")
         
         if not items:
             return False, []
@@ -207,7 +241,6 @@ def check_all_sections_complete(document_id, tracking_table):
         )
         
         sections = response.get('Items', [])
-        logger.info(f"check_all_sections_complete_sections: {sections}")
         
         if not sections:
             return False, False
@@ -237,7 +270,6 @@ def find_doc_task_token(document_id, tracking_table):
         )
         
         items = response.get('Items', [])
-        logger.info(f"Task token items: {items}")
         
         if items:
             return items[0].get('TaskToken')
@@ -247,29 +279,6 @@ def find_doc_task_token(document_id, tracking_table):
         return None
 
 def extract_ids_from_human_loop_name(human_loop_name):
-    """
-    Extract execution_id, section_id, and page_number from human loop name.
-    Expected format: review-section-{unique_value}-{execution_id}-{section_id}-{page_number}
-    """
-    try:
-        if human_loop_name.startswith('review-section-'):
-            remaining = human_loop_name[15:]  # Remove 'review-section-' (15 chars)
-            
-            # Split from right to get the last 3 parts (execution_id, section_id, page_number)
-            parts = remaining.rsplit('-', 3)  # Split from right, max 3 splits
-            if len(parts) == 4:
-                # parts[0] is unique_value
-                # parts[1] is execution_id
-                # parts[2] is section_id  
-                # parts[3] is page_number
-                execution_id = parts[1]
-                section_id = parts[2]
-                page_number = int(parts[3])
-                return execution_id, section_id, page_number
-    except Exception as e:
-        logger.error(f"Error parsing human loop name {human_loop_name}: {str(e)}")
-    
-    return None, None, None
     """
     Extract execution_id, section_id, and page_number from human loop name.
     Expected format: review-section-{unique_value}-{execution_id}-{section_id}-{page_number}
@@ -317,7 +326,7 @@ def process_completed_hitl(detail, execution_id, section_id, page_number, s3_buc
         response = s3_client.get_object(Bucket=bucket, Key=key)
         output_data = json.loads(response['Body'].read())
 
-        logger.info(f"A2I output data: {output_data}")
+        logger.info(f"Processing A2I output for section {section_id}")
         
         # Extract required fields
         input_content = output_data['inputContent']
@@ -343,17 +352,38 @@ def process_completed_hitl(detail, execution_id, section_id, page_number, s3_buc
             existing_result = {}
 
         # Process and merge human answers
-        nested_update = unflatten(human_answers)
+        try:
+            nested_update = unflatten(human_answers)
+        except Exception as e:
+            logger.error(f"Error in unflatten function: {str(e)}")
+            nested_update = human_answers
         
         # Get existing inference result and explainability info
         existing_inference = existing_result.get('inference_result', {})
         existing_explainability = existing_result.get('explainability_info', [])
         
-        # Merge human corrections with existing inference result
-        merged_inference = deep_merge(existing_inference, nested_update)
+        # Ensure existing_explainability is the correct type (list or dict, not string)
+        if isinstance(existing_explainability, str):
+            logger.warning("explainability_info is a string, attempting to parse as JSON")
+            try:
+                existing_explainability = json.loads(existing_explainability)
+            except json.JSONDecodeError:
+                logger.error("Failed to parse explainability_info as JSON, using empty list")
+                existing_explainability = []
         
-        # Update explainability info with corrected values (Pattern-1 approach)
-        updated_explainability = sync_explainability(merged_inference, existing_explainability)
+        # Merge human corrections with existing inference result
+        try:
+            merged_inference = deep_merge(existing_inference, nested_update)
+        except Exception as e:
+            logger.error(f"Error in deep_merge function: {str(e)}")
+            merged_inference = nested_update
+        
+        # Update explainability info with corrected values
+        try:
+            updated_explainability = sync_explainability(merged_inference, existing_explainability)
+        except Exception as e:
+            logger.error(f"Error in sync_explainability function: {str(e)}")
+            updated_explainability = existing_explainability
         
         # Update the result with corrected data
         updated_result = {
@@ -454,7 +484,6 @@ def lambda_handler(event, context):
         
         # Check if all pages in this section are complete
         all_pages_complete, failed_pages_in_section = check_all_pages_complete(document_id, section_id, tracking_table)
-        logger.info(f"all_pages_complete status: {all_pages_complete}, failed_pages: {failed_pages_in_section}")
         
         if all_pages_complete:
             # Update section token status
@@ -464,7 +493,6 @@ def lambda_handler(event, context):
             
             # Check if all sections for this document are complete
             all_sections_complete, has_failed_sections = check_all_sections_complete(document_id, tracking_table)
-            logger.info(f"all_sections_complete: {all_sections_complete}, has_failed_sections: {has_failed_sections}")
             
             if all_sections_complete:
                 section_task_token = find_doc_task_token(document_id, tracking_table)
