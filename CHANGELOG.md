@@ -11,11 +11,13 @@ SPDX-License-Identifier: MIT-0
   - Administrators can provision the service role once with elevated privileges, then delegate deployment capabilities to developer/DevOps teams
   - Includes comprehensive documentation and cross-referenced deployment guides explaining the security model and setup process
 
+
 ### Fixed
 - Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
 - Fix duplicate Glue tables are created when using a document class that contains a dash (-). Resolved by replacing dash in section types with underscore character when creating the table, to align with the table name generated later by the Glue crawler - resolves #57.
 - Fix occasional UI error 'Failed to get document details - please try again later' - resolves #58
 - Fixed UI zipfile creation to exclude .aws-sam directories and .env files from deployment package
+- Added security recommendation to set LogLevel parameter to WARN or ERROR (not INFO) for production deployments to prevent logging of sensitive information including PII data, document contents, and S3 presigned URLs
 
 ## [0.3.15]
 
