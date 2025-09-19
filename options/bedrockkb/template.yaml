@@ -482,7 +482,7 @@ Resources:
       MetadataConfiguration:
         nonFilterableMetadataKeys:
           - "AMAZON_BEDROCK_METADATA"
-          - "AMAZON_BEDROCK_TEXT_CHUNK"
+          - "AMAZON_BEDROCK_TEXT"
 
   #
   # OpenSearch Serverless resources (only when using OpenSearch)
@@ -732,16 +732,20 @@ Resources:
                   Effect: Allow
                   Action:
                     - s3:ListBucket
-                  Resource: 
-                    - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
-                    - !GetAtt S3VectorBucketAndIndex.BucketArn 
+                  Resource: !If
+                    - UseS3Vectors
+                    - - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
+                      - !GetAtt S3VectorBucketAndIndex.BucketArn
+                    - - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
                 - Sid: S3GetObject
                   Effect: Allow
                   Action:
                     - s3:GetObject
-                  Resource:
-                    - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
-                    - !GetAtt S3VectorBucketAndIndex.BucketArn
+                  Resource: !If
+                    - UseS3Vectors
+                    - - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
+                      - !GetAtt S3VectorBucketAndIndex.BucketArn
+                    - - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
           - !Ref "AWS::NoValue"
         - !If
           - IsCustomerManagedKey
@@ -1081,7 +1085,10 @@ Outputs:
     Description: S3 Vector bucket name (S3 Vectors only)
   S3VectorBucketArn:
     Condition: UseS3Vectors
-    Value: !GetAtt S3VectorBucketAndIndex.BucketArn
+    Value: !If
+      - UseS3Vectors
+      - !GetAtt S3VectorBucketAndIndex.BucketArn
+      - ""
     Description: S3 Vector bucket ARN (S3 Vectors only)
   OpenSearchCollectionName:
     Condition: UseOpenSearchServerless
