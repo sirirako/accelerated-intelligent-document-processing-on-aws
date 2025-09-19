@@ -15,6 +15,7 @@ SPDX-License-Identifier: MIT-0
 - Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
 - Fix duplicate Glue tables are created when using a document class that contains a dash (-). Resolved by replacing dash in section types with underscore character when creating the table, to align with the table name generated later by the Glue crawler - resolves #57.
 - Fix occasional UI error 'Failed to get document details - please try again later' - resolves #58
+- Fixed UI zipfile creation to exclude .aws-sam directories and .env files from deployment package
 
 ## [0.3.15]
 
