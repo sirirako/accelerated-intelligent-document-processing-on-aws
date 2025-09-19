@@ -114,8 +114,6 @@ Parameters:
     Description: >-
      Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
 
-
-    
   # Pattern 2 Parameters
 
   Pattern2Configuration:

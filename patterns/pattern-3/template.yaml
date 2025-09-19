@@ -105,8 +105,6 @@ Parameters:
       - "false"
     Description: "Enable Human In The Loop (A2I) for document review"
 
-
-
   SageMakerA2IReviewPortalURL:
     Type: String
     Default: ""
