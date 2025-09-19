@@ -914,6 +914,7 @@ classes:
         attributeType: group
 classification:
   classificationMethod: multimodalPageLevelClassification
+  maxPagesForClassification: "ALL"
   image:
     target_height: ''
     target_width: ''

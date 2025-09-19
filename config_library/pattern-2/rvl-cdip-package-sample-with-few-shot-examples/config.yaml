@@ -647,6 +647,7 @@ classes:
         imagePath: config_library/pattern-2/few_shot_example_with_multimodal_page_classification/example-images/bank-statement-pages/
 
 classification:
+  maxPagesForClassification: "ALL"
   image:
     target_height: ''
     target_width: ''
