@@ -307,6 +307,7 @@ classes:
       - name: comments
         description: Additional notes or remarks about the document. Look for sections labeled 'notes', 'remarks', or 'comments'.
 classification:
+  maxPagesForClassification: "ALL"
   image:
     target_height: ''
     target_width: ''

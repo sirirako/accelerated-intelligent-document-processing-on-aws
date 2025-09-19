@@ -68,6 +68,7 @@ classes:
         description: List of all transactions in the statement period
         attributeType: list
 classification:
+  maxPagesForClassification: "ALL"
   image:
     target_height: ''
     target_width: ''
