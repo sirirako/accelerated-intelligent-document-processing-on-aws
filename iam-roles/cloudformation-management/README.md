@@ -2,6 +2,15 @@
 
 This directory contains the `IDP-Cloudformation-Service-Role.yaml` CloudFormation template that creates a dedicated IAM Cloudformation service role for CloudFormation to deploy, manage and modify all GenAI IDP Accelerator patterns deployments.
 
+## <span style="color: blue;">Administrator Access and Deployment Options</span>
+
+**Note**: As detailed in [./docs/deployment.md](../docs/deployment.md), administrator access is required to deploy the GenAI IDP Accelerator solution. However, this directory provides an example CloudFormation service role that administrators can provision to allow other users to pass this role to CloudFormation for deploying and maintaining the solution stack without themselves needing administrator permissions.
+
+This approach enables a security model where:
+- **Administrators** deploy this service role once with their elevated privileges
+- **Developer/DevOps users** can then deploy and manage IDP stacks using this pre-provisioned service role
+- **Operational teams** can maintain the solution without requiring ongoing administrator access
+
 ## <span style="color: blue;">What This Role Does</span>
 
 The **IDPAcceleratorCloudFormationServiceRole** is a CloudFormation service role that provides the necessary permissions for AWS CloudFormation to deploy, update, and manage GenAI IDP Accelerator stacks across all patterns (Pattern 1: BDA, Pattern 2: Textract+Bedrock, Pattern 3: Textract+UDOP+Bedrock). This role can only be assumed by the CloudFormation service, not by users directly.
