@@ -468,28 +468,10 @@ def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
         
         logger.info(f"Found existing vector bucket ARN: {bucket_arn}")
         
-        # Check if index exists, create if it doesn't
-        index_exists = False
-        try:
-            # Try to describe the index to see if it exists
-            index_response = s3vectors_client.describe_index(
-                vectorBucketName=bucket_name,
-                indexName=index_name
-            )
-            index_exists = True
-            logger.info(f"Found existing vector index: {index_name}")
-            
-        except ClientError as e:
-            if e.response['Error']['Code'] in ['IndexNotFound', 'ResourceNotFoundException']:
-                logger.info(f"Index {index_name} not found in bucket {bucket_name}, will create it")
-                index_exists = False
-            else:
-                logger.error(f"Error checking index existence: {e}")
-                raise
-        
-        # Create index if it doesn't exist using modular function
-        if not index_exists:
-            create_vector_index(s3vectors_client, bucket_name, index_name)
+        # Always attempt to create the index - if it exists, we'll get ConflictException
+        # This is more robust than trying to check existence with potentially non-existent API methods
+        logger.info(f"Ensuring vector index exists: {index_name}")
+        index_created = create_vector_index(s3vectors_client, bucket_name, index_name)
         
         # Construct index ARN (required for Knowledge Base configuration)
         index_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}/index/{index_name}"
@@ -502,7 +484,7 @@ def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
             'BucketArn': bucket_arn,
             'IndexName': index_name,
             'IndexArn': index_arn,
-            'Status': 'Existing' if index_exists else 'IndexCreated'
+            'Status': 'IndexCreated' if index_created is not None else 'Existing'
         }
         
     except ClientError as e:
