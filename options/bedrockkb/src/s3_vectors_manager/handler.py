@@ -105,14 +105,29 @@ def handle_s3_vector_resources(event, context, properties):
     region = properties.get('Region', '')
     kms_key_arn = properties.get('KmsKeyArn', '')
     
+    # Extract configurable index properties
+    vector_dimension = properties.get('VectorDimension', 1024)
+    distance_metric = properties.get('DistanceMetric', 'cosine')
+    metadata_configuration = properties.get('MetadataConfiguration', {
+        'nonFilterableMetadataKeys': ['AMAZON_BEDROCK_METADATA', 'AMAZON_BEDROCK_TEXT']
+    })
+    
     logger.info(f"Raw bucket name: {raw_bucket_name}, Sanitized bucket name: {bucket_name}")
+    logger.info(f"Index properties - Dimension: {vector_dimension}, Metric: {distance_metric}, Metadata: {metadata_configuration}")
     
     # Initialize S3 Vectors client
     s3vectors_client = boto3.client('s3vectors', region_name=region)
     
+    # Create index config for passing to functions
+    index_config = {
+        'dimension': vector_dimension,
+        'distance_metric': distance_metric,
+        'metadata_configuration': metadata_configuration
+    }
+    
     if request_type == 'Create':
         logger.info(f"Creating S3 Vector bucket: {bucket_name}")
-        return create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn)
+        return create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn, index_config)
         
     elif request_type == 'Update':
         logger.info(f"Updating S3 Vector bucket: {bucket_name}")
@@ -125,10 +140,10 @@ def handle_s3_vector_resources(event, context, properties):
         if old_bucket_name != bucket_name or old_index_name != index_name:
             if old_bucket_name and old_index_name:
                 delete_s3_vector_resources(s3vectors_client, old_bucket_name, old_index_name)
-            return create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn)
+            return create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn, index_config)
         else:
             # Names haven't changed - update existing resources (recreate index)
-            return update_s3_vector_info(s3vectors_client, bucket_name, index_name)
+            return update_s3_vector_info(s3vectors_client, bucket_name, index_name, index_config)
             
     elif request_type == 'Delete':
         logger.info(f"Deleting S3 Vector bucket: {bucket_name}")
@@ -347,23 +362,25 @@ def delete_vector_index(s3vectors_client, bucket_name, index_name):
             raise
 
 
-def create_vector_index(s3vectors_client, bucket_name, index_name):
-    """Create a vector index with standard configuration for Bedrock Knowledge Base integration."""
+def create_vector_index(s3vectors_client, bucket_name, index_name, dimension=1024, distance_metric="cosine", metadata_configuration=None):
+    """Create a vector index with configurable settings for Bedrock Knowledge Base integration."""
     try:
         logger.info(f"Creating vector index: {index_name} in bucket: {bucket_name}")
+        logger.info(f"Index configuration - Dimension: {dimension}, Distance Metric: {distance_metric}, Metadata Config: {metadata_configuration}")
+        
+        # Default metadata configuration if none provided
+        if metadata_configuration is None:
+            metadata_configuration = {
+                "nonFilterableMetadataKeys": ["AMAZON_BEDROCK_METADATA", "AMAZON_BEDROCK_TEXT"]
+            }
         
         index_response = s3vectors_client.create_index(
             vectorBucketName=bucket_name,
             indexName=index_name,
             dataType="float32",
-            dimension=1024,  # All embedding models in picklist output 1024 
-            distanceMetric="cosine",
-            metadataConfiguration={
-                "nonFilterableMetadataKeys": [
-                    "AMAZON_BEDROCK_METADATA",
-                    "AMAZON_BEDROCK_TEXT_CHUNK"
-                ]
-            }
+            dimension=int(dimension),
+            distanceMetric=distance_metric,
+            metadataConfiguration=metadata_configuration
         )
         logger.info(f"Successfully created vector index: {index_name}")
         return index_response
@@ -378,7 +395,7 @@ def create_vector_index(s3vectors_client, bucket_name, index_name):
             raise
 
 
-def recreate_vector_index(s3vectors_client, bucket_name, index_name):
+def recreate_vector_index(s3vectors_client, bucket_name, index_name, index_config):
     """Delete and recreate a vector index to ensure fresh configuration."""
     try:
         logger.info(f"Recreating vector index: {index_name} in bucket: {bucket_name}")
@@ -386,15 +403,22 @@ def recreate_vector_index(s3vectors_client, bucket_name, index_name):
         # Delete existing index if it exists
         delete_vector_index(s3vectors_client, bucket_name, index_name)
         
-        # Create new index
-        return create_vector_index(s3vectors_client, bucket_name, index_name)
+        # Create new index with configuration
+        return create_vector_index(
+            s3vectors_client, 
+            bucket_name, 
+            index_name,
+            dimension=index_config['dimension'],
+            distance_metric=index_config['distance_metric'],
+            metadata_configuration=index_config['metadata_configuration']
+        )
         
     except Exception as e:
         logger.error(f"Error recreating vector index {index_name}: {e}")
         raise
 
 
-def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn=None):
+def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedding_model, kms_key_arn=None, index_config=None):
     """Create S3 Vector bucket and index following Console approach."""
     try:
         # Get region from client for ARN construction
@@ -418,8 +442,18 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         bucket_response = s3vectors_client.create_vector_bucket(**create_bucket_params)
         logger.info(f"Created vector bucket: {bucket_name}")
         
-        # Create S3 Vector Index using modular function
-        create_vector_index(s3vectors_client, bucket_name, index_name)
+        # Create S3 Vector Index using modular function with configuration
+        if index_config:
+            create_vector_index(
+                s3vectors_client, 
+                bucket_name, 
+                index_name,
+                dimension=index_config['dimension'],
+                distance_metric=index_config['distance_metric'],
+                metadata_configuration=index_config['metadata_configuration']
+            )
+        else:
+            create_vector_index(s3vectors_client, bucket_name, index_name)
         
         # Construct ARNs
         sts_client = boto3.client('sts', region_name=region)
@@ -447,8 +481,8 @@ def create_s3_vector_resources(s3vectors_client, bucket_name, index_name, embedd
         error_code = e.response['Error']['Code']
         if error_code in ['BucketAlreadyExists', 'ConflictException']:
             logger.warning(f"Vector resource already exists: {e}")
-            # Try to get existing resource info
-            return get_s3_vector_info(s3vectors_client, bucket_name, index_name)
+            # Try to get existing resource info (need to pass index_config here too)
+            return get_s3_vector_info(s3vectors_client, bucket_name, index_name, index_config)
         else:
             raise
 
@@ -488,7 +522,7 @@ def delete_s3_vector_resources(s3vectors_client, bucket_name, index_name):
         logger.warning(f"Error during deletion (continuing): {e}")
 
 
-def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
+def get_s3_vector_info(s3vectors_client, bucket_name, index_name, index_config=None):
     """Get information about existing S3 Vector bucket and ensure index exists."""
     try:
         # Get bucket info
@@ -509,7 +543,17 @@ def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
         # Always attempt to create the index - if it exists, we'll get ConflictException
         # This is more robust than trying to check existence with potentially non-existent API methods
         logger.info(f"Ensuring vector index exists: {index_name}")
-        index_created = create_vector_index(s3vectors_client, bucket_name, index_name)
+        if index_config:
+            index_created = create_vector_index(
+                s3vectors_client, 
+                bucket_name, 
+                index_name,
+                dimension=index_config['dimension'],
+                distance_metric=index_config['distance_metric'],
+                metadata_configuration=index_config['metadata_configuration']
+            )
+        else:
+            index_created = create_vector_index(s3vectors_client, bucket_name, index_name)
         
         # Construct index ARN (required for Knowledge Base configuration)
         index_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}/index/{index_name}"
@@ -530,7 +574,7 @@ def get_s3_vector_info(s3vectors_client, bucket_name, index_name):
         raise
 
 
-def update_s3_vector_info(s3vectors_client, bucket_name, index_name):
+def update_s3_vector_info(s3vectors_client, bucket_name, index_name, index_config):
     """Update existing S3 Vector resources by recreating the index."""
     try:
         # Get bucket info
@@ -550,7 +594,7 @@ def update_s3_vector_info(s3vectors_client, bucket_name, index_name):
         
         # For updates, always recreate the index to ensure fresh configuration
         logger.info(f"Recreating vector index for update: {index_name}")
-        recreate_vector_index(s3vectors_client, bucket_name, index_name)
+        recreate_vector_index(s3vectors_client, bucket_name, index_name, index_config)
         
         # Construct index ARN (required for Knowledge Base configuration)
         index_arn = f"arn:aws:s3vectors:{region}:{account_id}:bucket/{bucket_name}/index/{index_name}"

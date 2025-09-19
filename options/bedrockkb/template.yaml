@@ -43,6 +43,7 @@ Parameters:
     Description: >-
       Name for S3 vector index. Only used when pVectorStoreType is S3_VECTORS.
 
+
   pKnowledgeBaseBucketName:
     Type: String
     Default: ""
@@ -476,6 +477,12 @@ Resources:
       EmbeddingModel: !Ref pEmbedModel
       Region: !Ref AWS::Region
       KmsKeyArn: !If [IsCustomerManagedKey, !Ref pCustomerManagedEncryptionKeyArn, !Ref "AWS::NoValue"]
+      VectorDimension: 1024
+      DistanceMetric: "cosine"
+      MetadataConfiguration:
+        nonFilterableMetadataKeys:
+          - "AMAZON_BEDROCK_METADATA"
+          - "AMAZON_BEDROCK_TEXT_CHUNK"
 
   #
   # OpenSearch Serverless resources (only when using OpenSearch)
