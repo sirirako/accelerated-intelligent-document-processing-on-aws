@@ -303,6 +303,20 @@ class ClassificationService:
         )
         original_document.sections = [section]
 
+        # Transfer metering data from classified document to original document
+        if classified_document.metering:
+            original_document.metering = utils.merge_metering_data(
+                original_document.metering, classified_document.metering
+            )
+
+        # Transfer errors from classification
+        if classified_document.errors:
+            original_document.errors.extend(classified_document.errors)
+
+        # Transfer metadata from classification
+        if classified_document.metadata:
+            original_document.metadata.update(classified_document.metadata)
+
         logger.info(
             f"Applied classification '{primary_classification}' from {len(classified_document.pages)} pages to all {len(original_document.pages)} pages"
         )
