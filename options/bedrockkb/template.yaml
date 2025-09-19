@@ -936,7 +936,7 @@ Resources:
                 Action:
                   - "bedrock:StartIngestionJob"
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:knowledge-base/${KnowledgeBase}"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:knowledge-base/${KnowledgeBase.Value}"
           PolicyName: BedrockPolicy
 
   StartIngestionJobFunction:
