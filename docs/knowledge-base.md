@@ -5,6 +5,11 @@ SPDX-License-Identifier: MIT-0
 
 The GenAIIDP solution includes an integrated Document Knowledge Base query feature that enables you to interactively ask questions about your processed document collection using natural language. This feature leverages the processed data to create a searchable knowledge base.
 
+
+https://github.com/user-attachments/assets/991b4112-0fc9-4e4d-98ab-ef4e3cbae04a
+
+
+
 ## How It Works
 
 1. **Document Processing & Indexing**
