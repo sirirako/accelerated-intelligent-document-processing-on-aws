@@ -714,9 +714,6 @@ Resources:
                     - s3vectors:GetVectors
                     - s3vectors:DeleteVectors
                   Resource: !GetAtt S3VectorBucketAndIndex.IndexArn
-                  Condition:
-                    StringEquals:
-                      aws:ResourceAccount: !Sub ${AWS::AccountId}
           - !Ref "AWS::NoValue"
         - !If
           - IsS3DataSource
@@ -731,9 +728,6 @@ Resources:
                   Resource: 
                     - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}"
                     - !GetAtt S3VectorBucketAndIndex.BucketArn 
-                  Condition:
-                    StringEquals:
-                      aws:ResourceAccount: !Sub ${AWS::AccountId}
                 - Sid: S3GetObject
                   Effect: Allow
                   Action:
@@ -741,9 +735,6 @@ Resources:
                   Resource:
                     - !Sub "arn:${AWS::Partition}:s3:::${pKnowledgeBaseBucketName}/*"
                     - !GetAtt S3VectorBucketAndIndex.BucketArn
-                  Condition:
-                    StringEquals:
-                      aws:ResourceAccount: !Sub ${AWS::AccountId}
           - !Ref "AWS::NoValue"
         - !If
           - IsCustomerManagedKey
@@ -753,12 +744,12 @@ Resources:
               Statement:
                 - Effect: Allow
                   Action:
-                    - kms:GenerateDataKey
+                    - kms:Encrypt
                     - kms:Decrypt
+                    - kms:ReEncrypt*
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
                   Resource: !Ref pCustomerManagedEncryptionKeyArn
-                  Condition:
-                    StringEquals:
-                      kms:ViaService: !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"
           - !Ref "AWS::NoValue"
 
   #
