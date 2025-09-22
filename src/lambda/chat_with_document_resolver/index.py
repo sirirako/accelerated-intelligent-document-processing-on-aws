@@ -9,6 +9,7 @@ import mimetypes
 import base64
 import hashlib
 import os
+import re 
 from urllib.parse import urlparse
 from botocore.exceptions import ClientError
 from idp_common.bedrock.client import BedrockClient
@@ -16,57 +17,20 @@ from idp_common.bedrock.client import BedrockClient
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+
+def remove_text_between_brackets(text):
+    # Find position of first opening bracket
+    start = text.find('{')
+    # Find position of last closing bracket
+    end = text.rfind('}')
+    
+    # If both brackets exist, remove text between them including brackets
+    if start != -1 and end != -1:
+        return text[:start] + text[end+1:]
+    # If brackets not found, return original string
+    return text
+
 # Get LOG_LEVEL from environment variable with INFO as default
-
-def get_guardrails():
-    client = boto3.client("bedrock", region_name=os.environ['AWS_REGION'])
-    guardrails = client.list_guardrails(
-        maxResults=10
-    )
-
-    grs = []
-    for gr in guardrails['guardrails']:
-        if gr['status'] == 'READY':
-            grs.append({'id': gr['id'], 'version': gr['version'], 'name': gr['name']})
-    
-    return grs
-
-def apply_guardrails_to_prompt(prompt):
-    br_client = boto3.client("bedrock-runtime", region_name=os.environ['AWS_REGION'])
-
-    guardrails = get_guardrails()
-    
-    try:
-        for gr in guardrails:
-            response = br_client.apply_guardrail(
-                guardrailIdentifier=gr['id'],
-                guardrailVersion=gr['version'],
-                source="INPUT",
-                content=[
-                    {
-                        "text": {
-                            "text": prompt
-                        }
-                    }
-                ]
-            )
-            
-            error_details = ""
-            if (response['action'] == 'GUARDRAIL_INTERVENED'):
-                for output in response['outputs']:
-                    error_details += output['text']
-                    
-            if len(error_details):
-                raise Exception(f"{error_details}")
-            
-        return True
-
-    except Exception as e:
-        print(f"Caught by Guardrail: {e}")
-        raise
-
-    return False
-
 def s3_object_exists(bucket, key):
     try:
         s3 = boto3.client('s3')
@@ -147,7 +111,6 @@ def handler(event, context):
 
     try:
         # logger.info(f"Received event: {json.dumps(event)}")
-
         objectKey = event['arguments']['s3Uri']
         prompt = event['arguments']['prompt']
         history = event['arguments']['history']
@@ -155,69 +118,74 @@ def handler(event, context):
         full_prompt = "The history JSON object is: " + json.dumps(history) + ".\n\n"
         full_prompt += "The user's question is: " + prompt + "\n\n"
 
-        gr_test = apply_guardrails_to_prompt(full_prompt)
+        # this feature is not enabled until the model can be selected on the chat screen
+        # selectedModelId = event['arguments']['modelId']
+        selectedModelId = get_summarization_model()
 
-        if gr_test:
-            # this feature is not enabled until the model can be selected on the chat screen
-            # selectedModelId = event['arguments']['modelId']
-            selectedModelId = get_summarization_model()
+        logger.info(f"Processing S3 URI: {objectKey}")
+        logger.info(f"Region: {os.environ['AWS_REGION']}")
 
-            logger.info(f"Processing S3 URI: {objectKey}")
-            logger.info(f"Region: {os.environ['AWS_REGION']}")
+        output_bucket = os.environ['OUTPUT_BUCKET']
 
-            output_bucket = os.environ['OUTPUT_BUCKET']
+        if (len(objectKey)):
+            fulltext_key = objectKey + '/summary/fulltext.txt'
+            content_str = ""
+            s3 = boto3.client('s3')
 
-            bedrock_runtime = boto3.client('bedrock-runtime', region_name=os.environ['AWS_REGION'])
+            if not s3_object_exists(output_bucket, fulltext_key):
+                logger.info(f"Creating full text file: {fulltext_key}")
+                content_str = get_full_text(output_bucket, objectKey)
 
-            if (len(objectKey)):
-                fulltext_key = objectKey + '/summary/fulltext.txt'
-                content_str = ""
-                s3 = boto3.client('s3')
-
-                if not s3_object_exists(output_bucket, fulltext_key):
-                    logger.info(f"Creating full text file: {fulltext_key}")
-                    content_str = get_full_text(output_bucket, objectKey)
-
-                    s3.put_object(
-                        Bucket=output_bucket,
-                        Key=fulltext_key,
-                        Body=content_str.encode('utf-8')
-                    )
-                else:
-                    # read full contents of the object as text
-                    response = s3.get_object(Bucket=output_bucket, Key=fulltext_key)
-                    content_str = response['Body'].read().decode('utf-8')
-
-                logger.info(f"Model: {selectedModelId}")
-                logger.info(f"Output Bucket: {output_bucket}")
-                logger.info(f"Full Text Key: {fulltext_key}")
-
-                client = BedrockClient()
-                # Content with cachepoint tags
-                content = [
-                    {
-                        "text": content_str + """
-                        <<CACHEPOINT>>
-                        """ + full_prompt
-                    }
-                ]
-
-                model_response = client.invoke_model(
-                    model_id="us.amazon.nova-pro-v1:0",
-                    system_prompt="You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\nIf you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\nAdditionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n",
-                    content=content,
-                    temperature=0.0
+                s3.put_object(
+                    Bucket=output_bucket,
+                    Key=fulltext_key,
+                    Body=content_str.encode('utf-8')
                 )
+            else:
+                # read full contents of the object as text
+                response = s3.get_object(Bucket=output_bucket, Key=fulltext_key)
+                content_str = response['Body'].read().decode('utf-8')
 
-                text = client.extract_text_from_response(model_response)
-                logger.info(f"Response before guardrails check: {text}")
-                
-                chat_response = {"cr": {"content": [{"text": "I can't answer that right now"}]}}
+            logger.info(f"Model: {selectedModelId}")
+            logger.info(f"Output Bucket: {output_bucket}")
+            logger.info(f"Full Text Key: {fulltext_key}")
 
-                if apply_guardrails_to_prompt(text):
-                    chat_response = {"cr": {"content": [{"text": text}]}}
-                
-                return json.dumps(chat_response)
+            # Content with cachepoint tags
+            content = [
+                {
+                    "text": content_str + """
+                    <<CACHEPOINT>>
+                    """ + full_prompt
+                }
+            ]
+
+            client = BedrockClient(
+                region=os.environ['AWS_REGION'],
+                max_retries=5,
+                initial_backoff=1.5,
+                max_backoff=300,
+                metrics_enabled=True
+            )
+
+            # Invoke a model
+            response = client.invoke_model(
+                model_id=selectedModelId,
+                system_prompt="You are an assistant that's responsible for getting details from document text attached here based on questions from the user.\n\nIf you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\nAdditionally, use the user and assistant responses in the following JSON object to see what's been asked and what the resposes were in the past.\n\n",
+                content=content,
+                temperature=0.0
+            )
+
+            text = client.extract_text_from_response(response)
+            logger.info(f"Full response: {text}")
+
+            # right now, there is a JSON object before the full response when a guardrail is tripped
+            # need to remove that JSON object first
+            logger.info(f"New response: {remove_text_between_brackets(text).strip("\n")}")
+            cleaned_up_text = remove_text_between_brackets(text).strip("\n")
+            
+            chat_response = {"cr": {"content": [{"text": cleaned_up_text}]}}
+            
+            return json.dumps(chat_response)
 
     except ClientError as e:
         error_code = e.response['Error']['Code']
