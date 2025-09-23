@@ -11,9 +11,9 @@ from typing import Any, Dict
 
 import boto3
 import strands
-from strands.models import BedrockModel
 
 from ..common.config import load_result_format_description
+from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .config import load_python_plot_generation_examples
 from .tools import CodeInterpreterTools, get_database_info, run_athena_query
 from .utils import register_code_interpreter_tools
@@ -138,7 +138,9 @@ def create_analytics_agent(
     # Get model ID from environment variable
     model_id = os.environ.get("DOCUMENT_ANALYSIS_AGENT_MODEL_ID")
 
-    bedrock_model = BedrockModel(model_id=model_id, boto_session=session)
+    bedrock_model = create_strands_bedrock_model(
+        model_id=model_id, boto_session=session
+    )
 
     # Create the Strands agent with tools and system prompt
     strands_agent = strands.Agent(

@@ -3608,6 +3608,7 @@ Resources:
                 - !Ref ReportingBucketName
           DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
           AWS_STACK_NAME: !Ref AWS::StackName
+          GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
       LoggingConfig:
         LogGroup: !Ref AgentProcessorLogGroup
       Policies:
@@ -3645,6 +3646,14 @@ Resources:
               Resource: 
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - !If
+              - HasGuardrailConfig
+              - Effect: Allow
+                Action:
+                  - "bedrock:ApplyGuardrail"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              - !Ref AWS::NoValue
             - Effect: Allow
               Action:
                 - appsync:GraphQL
@@ -3905,7 +3914,16 @@ Resources:
           }
         }
       ResponseMappingTemplate: |-
-        true
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        
+        ## Return false if no item was updated (item not found)
+        #if(!$ctx.result)
+          false
+        #else
+          true
+        #end
 
   DeleteAgentJobResolver:
     Type: AWS::AppSync::Resolver
