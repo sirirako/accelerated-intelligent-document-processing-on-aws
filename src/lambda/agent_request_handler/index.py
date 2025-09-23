@@ -78,8 +78,8 @@ def handler(event, context):
             logger.error(error_msg)
             raise Exception(error_msg)
             
-        if len(query) > 5000:
-            error_msg = "Query exceeds maximum length of 5000 characters"
+        if len(query) > 100000:
+            error_msg = "Query exceeds maximum length of 100000 characters"
             logger.error(f"{error_msg}. Query length: {len(query)}")
             raise Exception(error_msg)
             
