@@ -199,8 +199,9 @@ const DocumentsAgentsLayout = () => {
       }, 1000);
     } catch (err) {
       logger.error('Error submitting query:', err);
+      const errorMessage = err.errors?.[0]?.message || err.message || 'Failed to submit query';
       updateAnalyticsState({
-        error: err.message || 'Failed to submit query',
+        error: errorMessage,
         jobStatus: 'FAILED',
       });
     } finally {
