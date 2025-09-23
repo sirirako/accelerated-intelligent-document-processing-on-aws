@@ -136,12 +136,12 @@ aws cloudformation update-stack \
 
 
 **Pattern Parameter Options:**
-* `Pattern1` - Packet or Media processing with Bedrock Data Automation (BDA)
+* `Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)`
   * Can use an existing BDA project or create a new demo project
-* `Pattern2` - Packet processing with Textract and Bedrock
+* `Pattern2 - Packet processing with Textract and Bedrock`
   * Supports both page-level and holistic classification
   * Recommended for first-time users
-* `Pattern3` - Packet processing with Textract, SageMaker(UDOP), and Bedrock
+* `Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock`
   * Requires a UDOP model in S3 that will be deployed on SageMaker
 
 After deployment, check the Outputs tab in the CloudFormation console to find links to dashboards, buckets, workflows, and other solution resources.
