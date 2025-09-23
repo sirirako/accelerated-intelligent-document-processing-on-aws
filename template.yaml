@@ -6107,6 +6107,7 @@ Resources:
           OUTPUT_BUCKET: !Ref OutputBucket
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           TRACKING_TABLE_NAME: !Ref TrackingTable
+          GUARDRAIL_ID_AND_VERSION: !If [HasGuardrailConfig, !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}", ""]
       LoggingConfig:
         LogGroup: !Ref ChatWithDocumentResolverFunctionLogGroup
       Policies:
