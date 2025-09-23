@@ -81,6 +81,14 @@ def handler(event, context):
                 "body": error_msg
             }
             
+        if len(query) > 5000:
+            error_msg = "Query exceeds maximum length of 5000 characters"
+            logger.error(f"{error_msg}. Query length: {len(query)}")
+            return {
+                "statusCode": 400,
+                "body": error_msg
+            }
+            
         if not agent_ids:
             error_msg = "At least one agent ID is required"
             logger.error(error_msg)
