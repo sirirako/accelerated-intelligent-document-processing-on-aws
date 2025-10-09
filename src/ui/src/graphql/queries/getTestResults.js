@@ -1,0 +1,23 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+const GET_TEST_RUN = `
+  query GetTestRun($testRunId: String!) {
+    getTestRun(testRunId: $testRunId) {
+      testRunId
+      testSetName
+      status
+      filesCount
+      completedFiles
+      failedFiles
+      overallAccuracy
+      averageConfidence
+      totalCost
+      costBreakdown
+      createdAt
+      completedAt
+    }
+  }
+`;
+
+export default GET_TEST_RUN;

@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useEffect, useState } from 'react';
-import { Table, Pagination, TextFilter } from '@awsui/components-react';
+import { Table, Pagination, TextFilter, Modal } from '@awsui/components-react';
 import { useCollection } from '@awsui/collection-hooks';
-import { Logger } from 'aws-amplify';
+import { Logger, API, graphqlOperation } from 'aws-amplify';
 
 import useDocumentsContext from '../../contexts/documents';
 import useSettingsContext from '../../contexts/settings';
@@ -14,6 +14,9 @@ import useLocalStorage from '../common/local-storage';
 import { exportToExcel } from '../common/download-func';
 import DeleteDocumentModal from '../common/DeleteDocumentModal';
 import ReprocessDocumentModal from '../common/ReprocessDocumentModal';
+import TestRunnerModal from '../common/TestRunnerModal';
+import TestResultsList from '../test-results/TestResultsList';
+import START_TEST_RUN from '../../graphql/queries/startTestRun';
 
 import {
   DocumentsPreferences,
@@ -35,6 +38,9 @@ const DocumentList = () => {
   const [documentList, setDocumentList] = useState([]);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isReprocessModalVisible, setIsReprocessModalVisible] = useState(false);
+  const [isTestRunnerModalVisible, setIsTestRunnerModalVisible] = useState(false);
+  const [testRunnerLoading, setTestRunnerLoading] = useState(false);
+  const [isTestResultsModalVisible, setIsTestResultsModalVisible] = useState(false);
   const { settings } = useSettingsContext();
 
   const {
@@ -110,6 +116,25 @@ const DocumentList = () => {
     actions.setSelectedItems([]);
   };
 
+  const handleRunTestSet = async (input) => {
+    try {
+      setTestRunnerLoading(true);
+      const result = await API.graphql(graphqlOperation(START_TEST_RUN, { input }));
+
+      if (!result?.data?.startTestRun) {
+        throw new Error('No response data from startTestRun mutation');
+      }
+
+      logger.info('Test run started:', result.data.startTestRun);
+      return result.data.startTestRun;
+    } catch (error) {
+      logger.error('Failed to start test run:', error);
+      throw error;
+    } finally {
+      setTestRunnerLoading(false);
+    }
+  };
+
   /* eslint-disable react/jsx-props-no-spreading */
   return (
     <>
@@ -130,6 +155,8 @@ const DocumentList = () => {
             downloadToExcel={() => exportToExcel(documentList, 'Document-List')}
             onReprocess={() => setIsReprocessModalVisible(true)}
             onDelete={() => setIsDeleteModalVisible(true)}
+            onTestRunner={() => setIsTestRunnerModalVisible(true)}
+            onTestResults={() => setIsTestResultsModalVisible(true)}
             // eslint-disable-next-line max-len, prettier/prettier
           />
         }
@@ -168,6 +195,22 @@ const DocumentList = () => {
         onConfirm={handleReprocessConfirm}
         selectedItems={collectionProps.selectedItems}
       />
+
+      <TestRunnerModal
+        visible={isTestRunnerModalVisible}
+        onDismiss={() => setIsTestRunnerModalVisible(false)}
+        onRunTest={handleRunTestSet}
+        loading={testRunnerLoading}
+      />
+
+      <Modal
+        visible={isTestResultsModalVisible}
+        onDismiss={() => setIsTestResultsModalVisible(false)}
+        size="large"
+        header="Test Results"
+      >
+        <TestResultsList />
+      </Modal>
     </>
   );
 };
