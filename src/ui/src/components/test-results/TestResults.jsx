@@ -11,49 +11,83 @@ const CostBreakdown = ({ costBreakdown }) => {
     return <Box>No cost data available</Box>;
   }
 
+  const formatLabel = (key) => {
+    return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
   return (
     <SpaceBetween direction="vertical" size="xs">
-      {costBreakdown.bedrock_tokens && (
+      {costBreakdown.test_total_cost && (
         <Box>
-          <strong>Bedrock Tokens:</strong> {costBreakdown.bedrock_tokens.input} input,{' '}
-          {costBreakdown.bedrock_tokens.output} output
+          <strong>Test Cost:</strong> ${costBreakdown.test_total_cost}
         </Box>
       )}
-      {costBreakdown.bda_pages && (
+      {costBreakdown.baseline_total_cost && (
         <Box>
-          <strong>BDA Pages:</strong> {costBreakdown.bda_pages.standard} standard, {costBreakdown.bda_pages.custom}{' '}
-          custom
+          <strong>Baseline Cost:</strong> ${costBreakdown.baseline_total_cost}
         </Box>
       )}
-      {costBreakdown.lambda && (
-        <Box>
-          <strong>Lambda:</strong> {costBreakdown.lambda.invocations} invocations,{' '}
-          {costBreakdown.lambda.gb_seconds.toFixed(2)} GB-seconds
-        </Box>
-      )}
+      {/* Render all similarity metrics dynamically */}
+      {Object.entries(costBreakdown)
+        .filter(([, value]) => typeof value === 'number')
+        .filter(([key]) => key.includes('_similarity'))
+        .map(([key, value]) => (
+          <Box key={key}>
+            <strong>{formatLabel(key.replace('_similarity', ''))}:</strong>
+            <Badge color={value >= 0 ? 'green' : 'red'}>
+              {value > 0 ? '+' : ''}
+              {value}%
+            </Badge>
+          </Box>
+        ))}
+    </SpaceBetween>
+  );
+};
+
+const UsageBreakdown = ({ usageBreakdown }) => {
+  if (!usageBreakdown || Object.keys(usageBreakdown).length === 0) {
+    return <Box>No usage data available</Box>;
+  }
+
+  const formatLabel = (key) => {
+    return key
+      .replace(/_usage_similarity$/, '')
+      .replace(/\//g, ' ')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
+  return (
+    <SpaceBetween direction="vertical" size="xs">
+      {Object.entries(usageBreakdown)
+        .filter(([, value]) => typeof value === 'number')
+        .map(([key, value]) => (
+          <Box key={key}>
+            <strong>{formatLabel(key)}:</strong>
+            <Badge color={value >= 0 ? 'green' : 'red'}>
+              {value > 0 ? '+' : ''}
+              {value}%
+            </Badge>
+          </Box>
+        ))}
     </SpaceBetween>
   );
 };
 
 CostBreakdown.propTypes = {
-  costBreakdown: PropTypes.shape({
-    bedrock_tokens: PropTypes.shape({
-      input: PropTypes.number,
-      output: PropTypes.number,
-    }),
-    bda_pages: PropTypes.shape({
-      standard: PropTypes.number,
-      custom: PropTypes.number,
-    }),
-    lambda: PropTypes.shape({
-      invocations: PropTypes.number,
-      gb_seconds: PropTypes.number,
-    }),
-  }),
+  costBreakdown: PropTypes.objectOf(PropTypes.oneOfType([PropTypes.number, PropTypes.string])),
 };
 
 CostBreakdown.defaultProps = {
   costBreakdown: null,
+};
+
+UsageBreakdown.propTypes = {
+  usageBreakdown: PropTypes.objectOf(PropTypes.number),
+};
+
+UsageBreakdown.defaultProps = {
+  usageBreakdown: null,
 };
 
 const TestResults = ({ testRunId }) => {
@@ -136,8 +170,16 @@ const TestResults = ({ testRunId }) => {
         {/* Cost Breakdown */}
         {results.costBreakdown && (
           <Box>
-            <Header variant="h3">Cost Breakdown</Header>
+            <Header variant="h3">Cost Comparison</Header>
             <CostBreakdown costBreakdown={results.costBreakdown} />
+          </Box>
+        )}
+
+        {/* Usage Breakdown */}
+        {results.usageBreakdown && (
+          <Box>
+            <Header variant="h3">Usage Comparison</Header>
+            <UsageBreakdown usageBreakdown={results.usageBreakdown} />
           </Box>
         )}
 

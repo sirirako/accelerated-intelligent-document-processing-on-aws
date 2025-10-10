@@ -253,6 +253,7 @@ type TestRun @aws_cognito_user_pools @aws_iam {
   averageConfidence: Float
   totalCost: Float
   costBreakdown: AWSJSON
+  usageBreakdown: AWSJSON
   createdAt: AWSDateTime!
   completedAt: AWSDateTime
 }

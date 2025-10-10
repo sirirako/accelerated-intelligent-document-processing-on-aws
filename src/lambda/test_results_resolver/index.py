@@ -1,12 +1,24 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import os
-import boto3
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from decimal import Decimal
+
+import boto3
+
+
+def decimal_to_float(obj):
+    """Convert Decimal objects to float for JSON serialization"""
+    if isinstance(obj, dict):
+        return {k: decimal_to_float(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [decimal_to_float(v) for v in obj]
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    return obj
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -92,27 +104,70 @@ def get_test_results(test_run_id):
     )
     
     if 'Item' not in response:
-        return None
+        raise ValueError(f"Test run {test_run_id} not found")
         
     metadata = response['Item']
+    current_status = metadata.get('Status')
     
-    # Query reporting database for accuracy metrics
+    # Update status if not completed
+    if current_status not in ['COMPLETE', 'PARTIAL_COMPLETE']:
+        status_result = get_test_run_status(test_run_id)
+        if status_result:
+            current_status = status_result['status']
+    
+    # Raise error if status is still not complete
+    if current_status not in ['COMPLETE', 'PARTIAL_COMPLETE']:
+        raise ValueError(f"Test run {test_run_id} is not complete. Current status: {current_status}")
+    
+    # Check if cached results exist
+    if metadata.get('testRunResult') is not None:
+        logger.info(f"Retrieved cached testRunResult for test run: {test_run_id}")
+        return metadata.get('testRunResult')
+    
+    # Calculate metrics if not cached
     accuracy_data = _query_accuracy_metrics(test_run_id)
-    
-    return {
+    # Build result with native types (keep Decimals for DynamoDB compatibility)
+    result = {
         'testRunId': test_run_id,
         'testSetName': metadata.get('TestSetName'),
-        'status': metadata.get('Status'),
+        'status': current_status,
         'filesCount': metadata.get('FilesCount', 0),
         'completedFiles': metadata.get('CompletedFiles', 0),
         'failedFiles': metadata.get('FailedFiles', 0),
         'overallAccuracy': accuracy_data.get('overall_accuracy'),
         'averageConfidence': accuracy_data.get('average_confidence'),
         'totalCost': accuracy_data.get('total_cost'),
-        'costBreakdown': json.dumps(accuracy_data.get('cost_breakdown', {})),
+        'costBreakdown': json.dumps(decimal_to_float(accuracy_data.get('cost_breakdown', {}))),
+        'usageBreakdown': json.dumps(decimal_to_float(accuracy_data.get('usage_breakdown', {}))),
         'createdAt': _format_datetime(metadata.get('CreatedAt')),
         'completedAt': _format_datetime(metadata.get('CompletedAt'))
     }
+
+    # Cache results (DynamoDB handles Decimals natively)
+    try:
+        logger.info(f"Caching test results for test run: {test_run_id}")
+        
+        # Convert floats to Decimals for DynamoDB storage
+        def float_to_decimal(obj):
+            if isinstance(obj, float):
+                return Decimal(str(obj))
+            elif isinstance(obj, dict):
+                return {k: float_to_decimal(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [float_to_decimal(v) for v in obj]
+            return obj
+        
+        table.update_item(
+            Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'},
+            UpdateExpression='SET testRunResult = :testRunResult',
+            ExpressionAttributeValues={':testRunResult': float_to_decimal(result)}
+        )
+        logger.info(f"Successfully cached test results for test run: {test_run_id}")
+    except Exception as e:
+        logger.warning(f"Failed to cache results for {test_run_id}: {e}")
+    
+    logger.info(f"Returning test results for test run: {test_run_id}")
+    return result
 
 def get_test_runs(time_period_hours=2):
     """Get list of test runs within specified time period"""
@@ -268,20 +323,94 @@ def get_test_run_status(test_run_id):
         logger.error(f"Error getting test run status for {test_run_id}: {e}")
         return None
     
+def _parse_s3_uri(uri):
+    """Parse S3 URI into bucket and key"""
+    if uri and uri.startswith('s3://'):
+        parts = uri[5:].split('/', 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+    return None, None
+
+def _calculate_accuracy_from_data(test_data, baseline_data):
+    """Calculate accuracy from downloaded report data"""
+    try:
+        if not test_data or not baseline_data:
+            return None
+            
+        test_metrics = test_data.get('overall_metrics', {})
+        baseline_metrics = baseline_data.get('overall_metrics', {})
+        
+        if not test_metrics or not baseline_metrics:
+            return None
+            
+        # Compare metrics
+        matching_metrics = 0
+        total_metrics = 0
+        
+        for key in baseline_metrics:
+            if key in test_metrics:
+                total_metrics += 1
+                if abs(test_metrics[key] - baseline_metrics[key]) < 0.001:
+                    matching_metrics += 1
+        
+        return matching_metrics / total_metrics if total_metrics > 0 else None
+        
+    except Exception as e:
+        logger.warning(f"Error calculating accuracy from data: {e}")
+        return None
+
+def _calculate_confidence_from_data(test_data, baseline_data):
+    """Calculate confidence from downloaded report data"""
+    try:
+        if not test_data or not baseline_data:
+            return None
+            
+        # Extract confidence scores from all sections (same logic as original)
+        test_confidences = []
+        baseline_confidences = []
+        
+        for section in test_data.get('section_results', []):
+            for attr in section.get('attributes', []):
+                if attr.get('confidence') is not None:
+                    test_confidences.append(float(attr['confidence']))
+        
+        for section in baseline_data.get('section_results', []):
+            for attr in section.get('attributes', []):
+                if attr.get('confidence') is not None:
+                    baseline_confidences.append(float(attr['confidence']))
+        
+        if not test_confidences or not baseline_confidences:
+            return None
+        
+        # Calculate average confidence for each
+        test_avg_confidence = sum(test_confidences) / len(test_confidences)
+        baseline_avg_confidence = sum(baseline_confidences) / len(baseline_confidences)
+        
+        # Calculate similarity (percentage difference) - same as original
+        if baseline_avg_confidence > 0:
+            percentage_diff = ((test_avg_confidence - baseline_avg_confidence) / baseline_avg_confidence) * 100
+            similarity = -percentage_diff  # Negative if test has lower confidence
+        else:
+            similarity = 0.0
+        
+        logger.info(f"Confidence comparison: test_avg={test_avg_confidence:.3f}, baseline_avg={baseline_avg_confidence:.3f}, similarity={similarity:.1f}%")
+        return similarity
+        
+    except Exception as e:
+        logger.warning(f"Error calculating confidence from data: {e}")
+        return None
+
 def _query_accuracy_metrics(test_run_id):
     """Query evaluation reports for accuracy metrics using EvaluationReportUri and bucket files"""
-    import boto3
-    import json
-    from decimal import Decimal
+    import time
+    start_time = time.time()
+    logger.info(f"Starting accuracy metrics query for test run: {test_run_id}")
     
-    s3 = boto3.client('s3')
     table = dynamodb.Table(os.environ['TRACKING_TABLE'])
     
     try:
-        baseline_bucket = os.environ.get('BASELINE_BUCKET')
-        output_bucket = os.environ.get('OUTPUT_BUCKET')
-        
         # Scan for documents for this test run
+        scan_start = time.time()
         response = table.scan(
             FilterExpression='begins_with(PK, :pk) AND SK = :sk',
             ExpressionAttributeValues={
@@ -289,365 +418,411 @@ def _query_accuracy_metrics(test_run_id):
                 ':sk': 'none'
             }
         )
+        scan_time = time.time() - scan_start
+        logger.info(f"DynamoDB scan completed in {scan_time:.2f}s")
         
-        total_accuracy = 0
-        doc_count = 0
-        cost_breakdown = {
-            'bedrock_tokens': {'input': 0, 'output': 0, 'total': 0},
-            'bda_pages': {'standard': 0, 'custom': 0},
-            'textract_pages': 0,
-            'sagemaker_inference': 0,
-            'lambda': {'invocations': 0, 'gb_seconds': 0},
-            's3_requests': {'get': 0, 'put': 0},
-            'stepfunctions_transitions': 0,
-            'dynamodb': {'read_units': 0, 'write_units': 0}
-        }
+        items = response.get('Items', [])
+        if not items:
+            raise ValueError(f"No documents found for test run {test_run_id}")
         
-        for item in response['Items']:
-            # Extract filename from document PK
-            doc_key = item['PK'].replace('doc#', '')  # test_run_id/filename
-            filename = doc_key.split('/', 1)[1]  # Extract filename
+        logger.info(f"Found {len(items)} documents to process")
+        
+        # Process documents in parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        def process_document(item):
+            doc_start = time.time()
+            local_s3 = boto3.client('s3')
+            local_table = dynamodb.Table(os.environ['TRACKING_TABLE'])
             
-            # Get test document's EvaluationReportUri
-            test_evaluation_uri = item.get('EvaluationReportUri')
+            doc_key = item['PK'].replace('doc#', '')
+            filename = doc_key.split('/', 1)[1]
+            logger.info(f"Starting processing document: {filename}")
             
             # Get baseline document record
-            baseline_response = table.get_item(Key={'PK': f'doc#{filename}', 'SK': 'none'})
+            baseline_start = time.time()
+            baseline_response = local_table.get_item(Key={'PK': f'doc#{filename}', 'SK': 'none'})
+            baseline_time = time.time() - baseline_start
+            logger.info(f"Baseline lookup for {filename}: {baseline_time:.2f}s")
+            
             if 'Item' not in baseline_response:
-                continue
+                logger.warning(f"No baseline found for {filename}")
+                return None
                 
             baseline_doc = baseline_response['Item']
+            test_evaluation_uri = item.get('EvaluationReportUri')
             baseline_evaluation_uri = baseline_doc.get('EvaluationReportUri')
             
-            accuracy = None
+            if not (test_evaluation_uri and baseline_evaluation_uri):
+                logger.warning(f"Missing evaluation URIs for {filename}")
+                return {'accuracy': None, 'confidence': None, 'cost_comparison': None, 'usage_comparison': {}}
             
-            # Method 1: Compare evaluation reports if both exist
-            if test_evaluation_uri and baseline_evaluation_uri:
-                accuracy = _compare_evaluation_reports(s3, test_evaluation_uri, baseline_evaluation_uri)
+            # Download all S3 files concurrently
+            download_start = time.time()
+            logger.info(f"Starting concurrent S3 downloads for {filename}")
             
-            # Method 2: Compare files from buckets if evaluation reports not available
-            if accuracy is None and baseline_bucket and output_bucket:
-                accuracy = _compare_bucket_files(s3, output_bucket, baseline_bucket, test_run_id, filename)
+            def download_file(uri, file_type):
+                try:
+                    json_uri = uri.replace('report.md', 'results.json')
+                    bucket, key = _parse_s3_uri(json_uri)
+                    if bucket and key:
+                        obj = local_s3.get_object(Bucket=bucket, Key=key)
+                        data = json.loads(obj['Body'].read())
+                        logger.info(f"Downloaded {file_type} for {filename}")
+                        return data
+                except Exception as e:
+                    logger.warning(f"Failed to download {file_type} for {filename}: {e}")
+                return None
             
-            if accuracy is not None:
-                total_accuracy += accuracy
-                doc_count += 1
+            # Download both evaluation reports concurrently
+            with ThreadPoolExecutor(max_workers=2) as download_executor:
+                test_future = download_executor.submit(download_file, test_evaluation_uri, "test report")
+                baseline_future = download_executor.submit(download_file, baseline_evaluation_uri, "baseline report")
+                
+                test_data = test_future.result(timeout=30)
+                baseline_data = baseline_future.result(timeout=30)
             
-            # Process metering data
-            metering = item.get('Metering', {})
-            for service, metrics in metering.items():
-                if 'bedrock' in service:
-                    cost_breakdown['bedrock_tokens']['input'] += int(metrics.get('inputTokens', 0))
-                    cost_breakdown['bedrock_tokens']['output'] += int(metrics.get('outputTokens', 0))
-                    cost_breakdown['bedrock_tokens']['total'] += int(metrics.get('totalTokens', 0))
-                elif 'bda/documents-standard' in service:
-                    cost_breakdown['bda_pages']['standard'] += int(metrics.get('pages', 0))
-                elif 'bda/documents-custom' in service:
-                    cost_breakdown['bda_pages']['custom'] += int(metrics.get('pages', 0))
-                elif 'lambda/requests' in service:
-                    cost_breakdown['lambda']['invocations'] += int(metrics.get('invocations', 0))
-                elif 'lambda/duration' in service:
-                    cost_breakdown['lambda']['gb_seconds'] += float(metrics.get('gb_seconds', 0))
-        
-        if doc_count > 0:
-            # Calculate total cost from breakdown
-            bedrock_cost = (cost_breakdown['bedrock_tokens']['input'] * 0.00003 + 
-                          cost_breakdown['bedrock_tokens']['output'] * 0.00015)
-            bda_cost = (cost_breakdown['bda_pages']['standard'] * 0.05 + 
-                       cost_breakdown['bda_pages']['custom'] * 0.10)
-            lambda_cost = cost_breakdown['lambda']['gb_seconds'] * 0.0000166667
+            download_time = time.time() - download_start
+            logger.info(f"S3 downloads for {filename} completed in {download_time:.2f}s")
             
-            total_calculated_cost = bedrock_cost + bda_cost + lambda_cost
+            # Process data concurrently
+            concurrent_start = time.time()
+            logger.info(f"Starting concurrent processing for {filename}")
+            
+            def get_accuracy():
+                op_start = time.time()
+                result = _calculate_accuracy_from_data(test_data, baseline_data)
+                op_time = time.time() - op_start
+                logger.info(f"Accuracy calculation for {filename}: {op_time:.2f}s")
+                return result
+            
+            def get_confidence():
+                op_start = time.time()
+                result = _calculate_confidence_from_data(test_data, baseline_data)
+                op_time = time.time() - op_start
+                logger.info(f"Confidence calculation for {filename}: {op_time:.2f}s")
+                return result
+            
+            def get_cost_comparison():
+                op_start = time.time()
+                # Get completion dates from already-loaded tracking records
+                test_completion_date = None
+                baseline_completion_date = None
+                
+                # Extract completion date from test document (item)
+                if 'CompletionTime' in item:
+                    from datetime import datetime
+                    completion_time = item['CompletionTime']
+                    completion_date = datetime.fromisoformat(completion_time)
+                    test_completion_date = completion_date.strftime('%Y-%m-%d')
+                
+                # Extract completion date from baseline document (baseline_doc)
+                if 'CompletionTime' in baseline_doc:
+                    from datetime import datetime
+                    completion_time = baseline_doc['CompletionTime']
+                    completion_date = datetime.fromisoformat(completion_time)
+                    baseline_completion_date = completion_date.strftime('%Y-%m-%d')
+                
+                result = _compare_document_costs(doc_key, filename, test_completion_date, baseline_completion_date)
+                op_time = time.time() - op_start
+                logger.info(f"Cost comparison for {filename}: {op_time:.2f}s")
+                return result
+            
+            def get_usage_comparison():
+                op_start = time.time()
+                test_metering = item.get('Metering', {})
+                baseline_metering = baseline_doc.get('Metering', {})
+                result = _compare_metering_usage(test_metering, baseline_metering) if test_metering and baseline_metering else {}
+                op_time = time.time() - op_start
+                logger.info(f"Usage comparison for {filename}: {op_time:.2f}s")
+                return result
+            
+            # Execute processing concurrently
+            with ThreadPoolExecutor(max_workers=4) as process_executor:
+                logger.info(f"Submitting 4 concurrent processing tasks for {filename}")
+                accuracy_future = process_executor.submit(get_accuracy)
+                confidence_future = process_executor.submit(get_confidence)
+                cost_future = process_executor.submit(get_cost_comparison)
+                usage_future = process_executor.submit(get_usage_comparison)
+                
+                # Collect results
+                accuracy = confidence = cost_comparison = None
+                usage_comparison = {}
+                
+                try:
+                    accuracy = accuracy_future.result(timeout=30)
+                except Exception as e:
+                    logger.warning(f"Accuracy calculation failed for {filename}: {e}")
+                
+                try:
+                    confidence = confidence_future.result(timeout=30)
+                except Exception as e:
+                    logger.warning(f"Confidence calculation failed for {filename}: {e}")
+                
+                try:
+                    cost_comparison = cost_future.result(timeout=30)
+                except Exception as e:
+                    logger.warning(f"Cost comparison failed for {filename}: {e}")
+                
+                try:
+                    usage_comparison = usage_future.result(timeout=30)
+                except Exception as e:
+                    logger.warning(f"Usage comparison failed for {filename}: {e}")
+                    usage_comparison = {}
+            
+            concurrent_time = time.time() - concurrent_start
+            doc_time = time.time() - doc_start
+            logger.info(f"Concurrent processing for {filename} completed in {concurrent_time:.2f}s")
+            logger.info(f"Document {filename} total processing time: {doc_time:.2f}s")
             
             return {
+                'accuracy': accuracy,
+                'confidence': confidence,
+                'cost_comparison': cost_comparison,
+                'usage_comparison': usage_comparison
+            }
+        
+        # Execute in parallel with max 5 threads
+        results = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_item = {executor.submit(process_document, item): item for item in items}
+            for future in as_completed(future_to_item):
+                result = future.result()
+                if result:
+                    results.append(result)
+        
+        # Aggregate results
+        total_accuracy = 0
+        total_confidence = 0
+        doc_count = 0
+        confidence_count = 0
+        final_cost_metrics = {}
+        final_usage_metrics = {}
+        
+        for result in results:
+            if result['accuracy'] is not None:
+                total_accuracy += result['accuracy']
+                doc_count += 1
+            
+            if result['confidence'] is not None:
+                total_confidence += result['confidence']
+                confidence_count += 1
+            
+            if result['cost_comparison']:
+                final_cost_metrics.update(result['cost_comparison'])
+            
+            if result['usage_comparison']:
+                final_usage_metrics.update(result['usage_comparison'])
+        
+        if doc_count > 0:
+            total_time = time.time() - start_time
+            logger.info(f"Accuracy metrics query completed in {total_time:.2f}s for {doc_count} documents")
+            return {
                 'overall_accuracy': round((total_accuracy / doc_count) * 100, 2),
-                'average_confidence': round((total_accuracy / doc_count) * 100, 2),
-                'total_cost': round(total_calculated_cost, 4),
-                'cost_breakdown': cost_breakdown,
+                'average_confidence': round((total_confidence / confidence_count) * 100, 2) if confidence_count > 0 else None,
+                'total_cost': final_cost_metrics.get('test_total_cost'),
+                'cost_breakdown': final_cost_metrics,
+                'usage_breakdown': final_usage_metrics,
                 'confidence_accuracy': []
             }
     
     except Exception as e:
-        logger.error(f"Error querying accuracy metrics for {test_run_id}: {e}")
-    
-    return _get_empty_metrics()
+        total_time = time.time() - start_time
+        logger.error(f"Error querying accuracy metrics for {test_run_id} after {total_time:.2f}s: {e}")
+        raise
 
-def _compare_bucket_files(s3, output_bucket, baseline_bucket, test_run_id, filename):
-    """Compare files from output and baseline buckets for additional evaluation"""
-    try:
-        # Look for evaluation files in output bucket for this test run
-        test_prefix = f"{test_run_id}/{filename}/"
-        test_objects = s3.list_objects_v2(Bucket=output_bucket, Prefix=test_prefix)
-        
-        # Look for baseline files
-        baseline_prefix = f"{filename}/"
-        baseline_objects = s3.list_objects_v2(Bucket=baseline_bucket, Prefix=baseline_prefix)
-        
-        if 'Contents' not in test_objects or 'Contents' not in baseline_objects:
-            return None
-        
-        # Find matching evaluation files
-        test_files = {obj['Key'].split('/')[-1]: obj['Key'] for obj in test_objects['Contents'] 
-                     if obj['Key'].endswith('.json')}
-        baseline_files = {obj['Key'].split('/')[-1]: obj['Key'] for obj in baseline_objects['Contents'] 
-                         if obj['Key'].endswith('.json')}
-        
-        # Compare common files
-        common_files = set(test_files.keys()) & set(baseline_files.keys())
-        if not common_files:
-            return None
-        
-        total_accuracy = 0
-        file_count = 0
-        
-        for file_name in common_files:
-            try:
-                # Download test file
-                test_obj = s3.get_object(Bucket=output_bucket, Key=test_files[file_name])
-                test_data = json.loads(test_obj['Body'].read())
-                
-                # Download baseline file
-                baseline_obj = s3.get_object(Bucket=baseline_bucket, Key=baseline_files[file_name])
-                baseline_data = json.loads(baseline_obj['Body'].read())
-                
-                # Compare the files
-                file_accuracy = _calculate_file_accuracy(baseline_data, test_data)
-                if file_accuracy is not None:
-                    total_accuracy += file_accuracy
-                    file_count += 1
-                    
-            except Exception as e:
-                logger.warning(f"Could not compare file {file_name}: {e}")
-                continue
-        
-        return (total_accuracy / file_count) if file_count > 0 else None
-        
-    except Exception as e:
-        logger.warning(f"Could not compare bucket files for {filename}: {e}")
-        return None
-
-def _calculate_file_accuracy(baseline_data, test_data):
-    """Calculate accuracy between baseline and test file data"""
-    if not baseline_data or not test_data:
-        return None
-    
-    # Try different comparison strategies based on file structure
-    
-    # Strategy 1: Compare extraction results
-    if 'extraction_results' in baseline_data and 'extraction_results' in test_data:
-        return _calculate_extraction_accuracy(baseline_data['extraction_results'], test_data['extraction_results'])
-    
-    # Strategy 2: Compare evaluation metrics
-    if 'evaluation_metrics' in baseline_data and 'evaluation_metrics' in test_data:
-        return _calculate_evaluation_accuracy(baseline_data, test_data)
-    
-    # Strategy 3: Direct field comparison
-    if isinstance(baseline_data, dict) and isinstance(test_data, dict):
-        total_fields = 0
-        matching_fields = 0
-        
-        for key in baseline_data:
-            if key in test_data:
-                total_fields += 1
-                if baseline_data[key] == test_data[key]:
-                    matching_fields += 1
-        
-        return (matching_fields / total_fields) if total_fields > 0 else None
-    
-    return None
-
-def _compare_evaluation_reports(s3, test_report_uri, baseline_report_uri):
-    """Compare evaluation reports from S3 URIs"""
-    try:
-        # Parse S3 URIs
-        def parse_s3_uri(uri):
-            if uri.startswith('s3://'):
-                parts = uri[5:].split('/', 1)
-                return parts[0], parts[1]
-            return None, None
-        
-        test_bucket, test_key = parse_s3_uri(test_report_uri)
-        baseline_bucket, baseline_key = parse_s3_uri(baseline_report_uri)
-        
-        if not all([test_bucket, test_key, baseline_bucket, baseline_key]):
-            logger.warning(f"Invalid S3 URIs: {test_report_uri}, {baseline_report_uri}")
-            return None
-        
-        # Download evaluation reports
-        try:
-            test_report = s3.get_object(Bucket=test_bucket, Key=test_key)
-            test_content = test_report['Body'].read().decode('utf-8').strip()
-            if not test_content:
-                logger.warning(f"Empty test report file: {test_report_uri}")
-                return None
-            test_data = json.loads(test_content)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Invalid JSON in test report {test_report_uri}: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"Error reading test report {test_report_uri}: {e}")
-            return None
-        
-        try:
-            baseline_report = s3.get_object(Bucket=baseline_bucket, Key=baseline_key)
-            baseline_content = baseline_report['Body'].read().decode('utf-8').strip()
-            if not baseline_content:
-                logger.warning(f"Empty baseline report file: {baseline_report_uri}")
-                return None
-            baseline_data = json.loads(baseline_content)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Invalid JSON in baseline report {baseline_report_uri}: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"Error reading baseline report {baseline_report_uri}: {e}")
-            return None
-        
-        # Compare evaluation results
-        return _calculate_evaluation_accuracy(baseline_data, test_data)
-        
-    except Exception as e:
-        logger.warning(f"Could not compare evaluation reports: {e}")
-        return None
 
 def _calculate_evaluation_accuracy(baseline_data, test_data):
     """Calculate accuracy between baseline and test evaluation reports"""
+    logger.info("Starting evaluation accuracy calculation")
     if not baseline_data or not test_data:
+        logger.warning("Missing baseline or test data")
         return 0
     
-    # Compare key metrics from evaluation reports
-    baseline_metrics = baseline_data.get('evaluation_metrics', {})
-    test_metrics = test_data.get('evaluation_metrics', {})
+    # Compare overall metrics from evaluation reports
+    baseline_metrics = baseline_data.get('overall_metrics', {})
+    test_metrics = test_data.get('overall_metrics', {})
+    
+    logger.info(f"Baseline metrics keys: {list(baseline_metrics.keys()) if baseline_metrics else 'None'}")
+    logger.info(f"Test metrics keys: {list(test_metrics.keys()) if test_metrics else 'None'}")
     
     if not baseline_metrics or not test_metrics:
-        # Fallback to comparing extraction results if evaluation_metrics not available
-        baseline_results = baseline_data.get('extraction_results', {})
-        test_results = test_data.get('extraction_results', {})
-        return _calculate_extraction_accuracy(baseline_results, test_results)
+        logger.warning("No overall_metrics found in reports")
+        return 0
     
-    # Simple accuracy calculation based on matching fields
-    total_fields = 0
-    matching_fields = 0
+    # Calculate similarity based on how close metrics are
+    total_similarity = 0
+    metric_count = 0
     
     for key in baseline_metrics:
         if key in test_metrics:
-            total_fields += 1
-            if baseline_metrics[key] == test_metrics[key]:
-                matching_fields += 1
-    
-    return (matching_fields / total_fields) if total_fields > 0 else 0
-
-def _compare_with_baseline(s3, baseline_bucket, test_run_id, filename, doc_item):
-    """Compare document results and metering with baseline"""
-    try:
-        table = dynamodb.Table(os.environ['TRACKING_TABLE'])
-        
-        baseline_response = table.get_item(Key={'PK': f'doc#{filename}', 'SK': 'none'})
-        
-        if 'Item' not in baseline_response:
-            logger.warning(f"No baseline document record found for {filename}")
-            return None
+            baseline_val = baseline_metrics[key]
+            test_val = test_metrics[key]
             
-        baseline_doc = baseline_response['Item']
+            # Calculate similarity for numeric values
+            if isinstance(baseline_val, (int, float)) and isinstance(test_val, (int, float)):
+                if baseline_val == 0 and test_val == 0:
+                    similarity = 1.0
+                elif baseline_val == 0:
+                    similarity = 0.0
+                else:
+                    # Calculate percentage similarity (1 - relative difference)
+                    diff = abs(baseline_val - test_val) / baseline_val
+                    similarity = max(0, 1 - diff)
+                
+                total_similarity += similarity
+                metric_count += 1
+                logger.debug(f"Metric '{key}': baseline={baseline_val}, test={test_val}, similarity={similarity:.3f}")
+    
+    accuracy = (total_similarity / metric_count) if metric_count > 0 else 0
+    logger.info(f"Overall similarity: {total_similarity:.3f}/{metric_count} metrics, accuracy={accuracy:.3f}")
+    return accuracy
+
+def _get_document_costs_from_reporting_db(document_id, completion_date):
+    """Get actual costs from S3 Parquet files using provided completion date"""
+    try:
+        import boto3
+        import pyarrow.compute as pc
+        import pyarrow.fs as fs
+        import pyarrow.parquet as pq
         
-        # Compare extraction results
-        baseline_results = baseline_doc.get('ExtractionResults', {})
-        actual_results = doc_item.get('ExtractionResults', {})
+        # Get reporting bucket from environment
+        reporting_bucket = os.environ.get('REPORTING_BUCKET')
+        if not reporting_bucket:
+            return {}
         
-        accuracy = _calculate_extraction_accuracy(baseline_results, actual_results)
+        logger.info(f"Using completion date {completion_date} for document {document_id}")
         
-        # Compare metering data
-        baseline_metering = baseline_doc.get('Metering', {})
-        actual_metering = doc_item.get('Metering', {})
+        # List files in the specific date partition
+        s3 = boto3.client('s3')
+        partition_prefix = f"metering/date={completion_date}/"
         
-        metering_comparison = _compare_metering(baseline_metering, actual_metering)
+        response = s3.list_objects_v2(Bucket=reporting_bucket, Prefix=partition_prefix)
         
-        return {
-            'accuracy': accuracy,
-            'metering_comparison': metering_comparison
-        }
+        if 'Contents' not in response:
+            logger.warning(f"No files found in partition {completion_date}")
+            return {}
+        
+        # Find the parquet file for this document
+        document_pattern = document_id.replace('/', '_')
+        
+        for obj in response['Contents']:
+            if obj['Key'].endswith('_results.parquet') and document_pattern in obj['Key']:
+                logger.info(f"Reading parquet file: {obj['Key']}")
+                
+                # Read parquet file using pyarrow
+                s3_fs = fs.S3FileSystem()
+                parquet_file = f"{reporting_bucket}/{obj['Key']}"
+                
+                table_data = pq.read_table(parquet_file, filesystem=s3_fs)
+                
+                # Filter by document_id if column exists
+                if 'document_id' in table_data.column_names:
+                    mask = pc.equal(table_data['document_id'], document_id)
+                    table_data = table_data.filter(mask)
+                
+                if table_data.num_rows == 0:
+                    return {}
+                
+                # Convert to Python dict for processing
+                data = table_data.to_pydict()
+                
+                # Group and sum costs manually
+                cost_groups = {}
+                for i in range(len(data['context'])):
+                    context = data['context'][i]
+                    service_api = data['service_api'][i]
+                    unit = data['unit'][i]
+                    cost = float(data['estimated_cost'][i])
+                    
+                    key = f"{context}_{service_api}_{unit}"
+                    cost_groups[key] = cost_groups.get(key, 0) + cost
+                
+                return cost_groups
+        
+        logger.warning(f"No parquet file found for {document_id} in {completion_date}")
+        return {}
         
     except Exception as e:
-        logger.warning(f"Could not compare with baseline for {filename}: {e}")
-        return None
+        logger.warning(f"Failed to get costs from parquet for {document_id}: {e}")
+        return {}
 
-def _calculate_extraction_accuracy(baseline_results, actual_results):
-    """Calculate accuracy between baseline and actual extraction results"""
-    if not baseline_results or not actual_results:
-        return 0
-        
-    # Compare section summaries if available
-    baseline_sections = baseline_results.get('section_summaries', {})
-    actual_sections = actual_results.get('section_summaries', {})
+def _compare_document_costs(test_document_id, baseline_document_id, test_completion_date=None, baseline_completion_date=None):
+    """Compare actual costs between test and baseline documents"""
+    from concurrent.futures import ThreadPoolExecutor
     
-    if baseline_sections and actual_sections:
-        total_sections = len(baseline_sections)
-        matching_sections = 0
+    # Run both Parquet queries in parallel
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        test_future = executor.submit(_get_document_costs_from_reporting_db, test_document_id, test_completion_date)
+        baseline_future = executor.submit(_get_document_costs_from_reporting_db, baseline_document_id, baseline_completion_date)
         
-        for section_name in baseline_sections:
-            if section_name in actual_sections:
-                baseline_class = section_name.split('_')[0]
-                actual_class = actual_sections[section_name].get('classification', '')
-                if baseline_class == actual_class:
-                    matching_sections += 1
-        
-        return matching_sections / total_sections if total_sections > 0 else 0
+        test_costs = test_future.result()
+        baseline_costs = baseline_future.result()
     
-    return 0
-
-def _compare_metering(baseline_metering, actual_metering):
-    """Compare metering data between baseline and actual"""
-    comparison = {}
+    if not test_costs and not baseline_costs:
+        return {}
     
-    # Get all unique service keys
-    all_services = set(baseline_metering.keys()) | set(actual_metering.keys())
+    all_services = set(test_costs.keys()) | set(baseline_costs.keys())
+    cost_comparison = {}
+    
+    test_total = sum(test_costs.values())
+    baseline_total = sum(baseline_costs.values())
     
     for service in all_services:
-        baseline_metrics = baseline_metering.get(service, {})
-        actual_metrics = actual_metering.get(service, {})
+        test_cost = test_costs.get(service, 0)
+        baseline_cost = baseline_costs.get(service, 0)
         
-        service_comparison = {}
+        # Calculate percentage difference (negative = higher cost than baseline)
+        if baseline_cost > 0:
+            percentage_diff = ((test_cost - baseline_cost) / baseline_cost) * 100
+            similarity = -percentage_diff  # Negative if test costs more (bad)
+        else:
+            similarity = 0.0 if test_cost > 0 else 0.0
         
-        # Compare common metrics
-        all_metric_keys = set(baseline_metrics.keys()) | set(actual_metrics.keys())
-        
-        for metric_key in all_metric_keys:
-            baseline_value = baseline_metrics.get(metric_key, 0)
-            actual_value = actual_metrics.get(metric_key, 0)
-            
-            if baseline_value > 0:
-                change_percent = ((actual_value - baseline_value) / baseline_value) * 100
-            else:
-                change_percent = 100 if actual_value > 0 else 0
-                
-            service_comparison[metric_key] = {
-                'baseline': baseline_value,
-                'actual': actual_value,
-                'change_percent': round(change_percent, 2)
-            }
-        
-        comparison[service] = service_comparison
+        cost_comparison[f"{service}_cost_similarity"] = round(similarity, 1)
     
-    return comparison
+    # Overall cost similarity
+    if baseline_total > 0:
+        percentage_diff = ((test_total - baseline_total) / baseline_total) * 100
+        overall_similarity = -percentage_diff
+    else:
+        overall_similarity = 0.0 if test_total > 0 else 0.0
+    
+    cost_comparison['overall_cost_similarity'] = round(overall_similarity, 1)
+    cost_comparison['test_total_cost'] = round(test_total, 4)
+    cost_comparison['baseline_total_cost'] = round(baseline_total, 4)
+    
+    return cost_comparison
 
-def _get_empty_metrics():
-    """Return empty metrics structure"""
-    return {
-        'overall_accuracy': None,
-        'average_confidence': None,
-        'total_cost': None,
-        'cost_breakdown': {},
-        'confidence_accuracy': []
-    }
-
-def _get_file_results(file_items, test_run_id):
-    """Get individual file results"""
-    return [{
-        'fileName': item['FileKey'],
-        'status': item.get('Status', 'PROCESSING'),
-        'accuracy': 85.0,  # Would query from reporting DB
-        'confidence': 78.5,
-        'cost': 2.15
-    } for item in file_items]
+def _compare_metering_usage(test_metering, baseline_metering):
+    """Compare usage metrics from DynamoDB metering data"""
+    usage_comparison = {}
+    
+    # Get all service keys from both test and baseline
+    all_services = set(test_metering.keys()) | set(baseline_metering.keys())
+    
+    for service in all_services:
+        test_metrics = test_metering.get(service, {})
+        baseline_metrics = baseline_metering.get(service, {})
+        
+        # Compare each metric type (tokens, pages, invocations, etc.)
+        all_metric_types = set(test_metrics.keys()) | set(baseline_metrics.keys())
+        
+        for metric_type in all_metric_types:
+            test_value = test_metrics.get(metric_type, 0)
+            baseline_value = baseline_metrics.get(metric_type, 0)
+            
+            # Calculate percentage difference (negative = higher usage than baseline)
+            if baseline_value > 0:
+                percentage_diff = ((test_value - baseline_value) / baseline_value) * 100
+                similarity = -percentage_diff  # Negative if test uses more (bad)
+            else:
+                similarity = 0.0 if test_value > 0 else 0.0
+            
+            key = f"{service}_{metric_type}_usage_similarity"
+            usage_comparison[key] = round(similarity, 3)
+    
+    return usage_comparison
 
 def _get_test_run_config(test_run_id):
     """Get test run configuration"""

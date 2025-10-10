@@ -2,7 +2,17 @@
 # SPDX-License-Identifier: MIT-0
 
 
+import os
+import sys
+from unittest.mock import Mock, patch
+
 import pytest
+
+# Add the lambda function to the path for testing
+lambda_path = os.path.join(
+    os.path.dirname(__file__), "../../../../src/lambda/test_results_resolver"
+)
+sys.path.insert(0, lambda_path)
 
 
 @pytest.mark.unit
@@ -35,6 +45,145 @@ def test_get_test_results_structure():
     assert result["testSetName"] == "lending-test"
     assert result["status"] == "COMPLETE"
     assert result["totalFiles"] == 2
+
+
+@pytest.mark.unit
+@patch.dict(os.environ, {"REPORTING_BUCKET": "test-bucket"})
+@patch("index.boto3.client")
+@patch("index.pyarrow.parquet.read_table")
+@patch("index.pyarrow.fs.S3FileSystem")
+def test_get_document_costs_from_parquet_success(
+    mock_s3fs, mock_read_table, mock_boto3
+):
+    """Test successful Parquet cost retrieval"""
+    import index
+
+    # Mock S3 list_objects_v2 response
+    mock_s3_client = Mock()
+    mock_boto3.return_value = mock_s3_client
+    mock_s3_client.list_objects_v2.return_value = {
+        "Contents": [
+            {
+                "Key": "metering/date=2025-10-08/test_doc_20251008_123456_001_results.parquet"
+            }
+        ]
+    }
+
+    # Mock PyArrow table
+    mock_table = Mock()
+    mock_read_table.return_value = mock_table
+    mock_table.column_names = [
+        "document_id",
+        "context",
+        "service_api",
+        "unit",
+        "estimated_cost",
+    ]
+    mock_table.filter.return_value = mock_table
+    mock_table.num_rows = 2
+    mock_table.to_pydict.return_value = {
+        "context": ["test", "test"],
+        "service_api": ["bedrock", "textract"],
+        "unit": ["tokens", "pages"],
+        "estimated_cost": [1.50, 2.25],
+    }
+
+    result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
+
+    assert result == {"test_bedrock_tokens": 1.50, "test_textract_pages": 2.25}
+    mock_s3_client.list_objects_v2.assert_called_once()
+
+
+@pytest.mark.unit
+@patch.dict(os.environ, {"REPORTING_BUCKET": "test-bucket"})
+@patch("index.boto3.client")
+def test_get_document_costs_no_files_found(mock_boto3):
+    """Test when no Parquet files are found"""
+    import index
+
+    mock_s3_client = Mock()
+    mock_boto3.return_value = mock_s3_client
+    mock_s3_client.list_objects_v2.return_value = {}  # No Contents key
+
+    result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
+
+    assert result == {}
+
+
+@pytest.mark.unit
+@patch.dict(os.environ, {"REPORTING_BUCKET": ""})
+def test_get_document_costs_no_bucket():
+    """Test when REPORTING_BUCKET is not set"""
+    import index
+
+    result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
+
+    assert result == {}
+
+
+@pytest.mark.unit
+@patch("index.ThreadPoolExecutor")
+def test_compare_document_costs_parallel_execution(mock_executor):
+    """Test parallel execution of cost comparison"""
+    import index
+
+    # Mock ThreadPoolExecutor
+    mock_executor_instance = Mock()
+    mock_executor.return_value.__enter__.return_value = mock_executor_instance
+
+    # Mock futures
+    mock_test_future = Mock()
+    mock_baseline_future = Mock()
+    mock_test_future.result.return_value = {"test_bedrock_tokens": 1.50}
+    mock_baseline_future.result.return_value = {"test_bedrock_tokens": 1.25}
+
+    mock_executor_instance.submit.side_effect = [mock_test_future, mock_baseline_future]
+
+    index._compare_document_costs(
+        "test-doc", "baseline-doc", "2025-10-08", "2025-10-07"
+    )
+
+    # Verify parallel execution was set up
+    assert mock_executor_instance.submit.call_count == 2
+
+
+@pytest.mark.unit
+def test_calculate_accuracy_from_data():
+    """Test accuracy calculation from downloaded data"""
+    import index
+
+    test_data = {"overall_metrics": {"accuracy": 0.85, "precision": 0.90}}
+
+    baseline_data = {"overall_metrics": {"accuracy": 0.80, "precision": 0.85}}
+
+    result = index._calculate_accuracy_from_data(test_data, baseline_data)
+
+    # Should return a similarity score between 0 and 1
+    assert isinstance(result, float)
+    assert 0 <= result <= 1
+
+
+@pytest.mark.unit
+def test_calculate_confidence_from_data():
+    """Test confidence calculation from downloaded data"""
+    import index
+
+    test_data = {
+        "section_results": [
+            {"attributes": [{"confidence": 0.85}, {"confidence": 0.90}]}
+        ]
+    }
+
+    baseline_data = {
+        "section_results": [
+            {"attributes": [{"confidence": 0.80}, {"confidence": 0.88}]}
+        ]
+    }
+
+    result = index._calculate_confidence_from_data(test_data, baseline_data)
+
+    # Should return a similarity percentage
+    assert isinstance(result, float)
 
 
 @pytest.mark.unit

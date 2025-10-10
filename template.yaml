@@ -5752,6 +5752,7 @@ Resources:
           TRACKING_TABLE: !Ref TrackingTable
           BASELINE_BUCKET: !Ref EvaluationBaselineBucket
           OUTPUT_BUCKET: !Ref OutputBucket
+          REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
       LoggingConfig:
         LogGroup: !Ref TestResultsResolverFunctionLogGroup
       Policies:
@@ -5761,6 +5762,8 @@ Resources:
             BucketName: !Ref EvaluationBaselineBucket
         - S3ReadPolicy:
             BucketName: !Ref OutputBucket
+        - S3ReadPolicy:
+            BucketName: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
         - Statement:
             - Effect: Allow
               Action:

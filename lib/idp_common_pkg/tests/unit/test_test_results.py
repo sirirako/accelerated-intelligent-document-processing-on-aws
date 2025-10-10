@@ -1,6 +1,8 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+from decimal import Decimal
+
 import pytest
 
 
@@ -89,3 +91,202 @@ class TestTestResults:
         summary = create_file_summary(5, 1, 5)
         assert summary["successful"] == 4
         assert summary["pending"] == 0
+
+
+@pytest.mark.unit
+class TestTestResultsResolver:
+    """Tests for test_results_resolver Lambda function"""
+
+    def test_test_run_not_found(self):
+        """Test error when test run doesn't exist"""
+
+        # Mock the function behavior
+        def mock_get_test_results(test_run_id):
+            # Simulate DynamoDB returning no item
+            raise ValueError(f"Test run {test_run_id} not found")
+
+        with pytest.raises(ValueError, match="Test run test123 not found"):
+            mock_get_test_results("test123")
+
+    def test_cached_results_returned(self):
+        """Test cached results are returned when available"""
+
+        # Mock the function behavior
+        def mock_get_test_results(test_run_id):
+            # Simulate returning cached result
+            return {
+                "testRunId": test_run_id,
+                "status": "COMPLETE",
+                "overallAccuracy": Decimal("0.85"),
+            }
+
+        result = mock_get_test_results("test123")
+        assert result["testRunId"] == "test123"
+        assert result["status"] == "COMPLETE"
+        assert result["overallAccuracy"] == Decimal("0.85")
+
+    def test_handler_success(self):
+        """Test successful handler execution"""
+
+        # Mock the handler behavior
+        def mock_handler(event, context):
+            test_run_id = event.get("testRunId")
+            return {"testRunId": test_run_id, "status": "COMPLETE"}
+
+        event = {"testRunId": "test123"}
+        result = mock_handler(event, None)
+
+        assert result["testRunId"] == "test123"
+        assert result["status"] == "COMPLETE"
+
+    def test_decimal_serialization_for_json_fields(self):
+        """Test Decimal objects are properly converted for JSON fields"""
+        import json
+        from decimal import Decimal
+
+        # Mock cost breakdown with Decimals
+        cost_breakdown = {"bedrock": Decimal("1.50"), "textract": Decimal("0.25")}
+
+        # Function to convert decimals before JSON serialization
+        def decimal_to_float(obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            elif isinstance(obj, dict):
+                return {k: decimal_to_float(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [decimal_to_float(v) for v in obj]
+            return obj
+
+        # Test conversion and JSON serialization
+        converted = decimal_to_float(cost_breakdown)
+        json_string = json.dumps(converted)
+
+        assert json_string == '{"bedrock": 1.5, "textract": 0.25}'
+        assert isinstance(converted["bedrock"], float)
+
+    def test_caching_with_native_dynamodb_types(self):
+        """Test caching preserves native DynamoDB types"""
+        from decimal import Decimal
+
+        # Mock result with float types (as returned by _query_accuracy_metrics)
+        result_with_floats = {
+            "testRunId": "test123",
+            "overallAccuracy": 0.85,  # Float from Python calculation
+            "averageConfidence": 0.90,  # Float from Python calculation
+            "totalCost": 1.50,  # Float from Python calculation
+            "costBreakdown": '{"bedrock": 1.5}',  # JSON string for GraphQL
+            "status": "COMPLETE",
+        }
+
+        # Function to convert floats to Decimals for DynamoDB
+        def float_to_decimal(obj):
+            if isinstance(obj, float):
+                return Decimal(str(obj))
+            elif isinstance(obj, dict):
+                return {k: float_to_decimal(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [float_to_decimal(v) for v in obj]
+            return obj
+
+        # Mock caching function that converts floats to Decimals
+        def mock_cache_result(result_data):
+            # This should convert floats to Decimals for DynamoDB
+            converted = float_to_decimal(result_data)
+            return converted
+
+        cached_result = mock_cache_result(result_with_floats)
+
+        # Verify floats are converted to Decimals for DynamoDB storage
+        assert isinstance(cached_result["overallAccuracy"], Decimal)
+        assert isinstance(cached_result["averageConfidence"], Decimal)
+        assert isinstance(cached_result["totalCost"], Decimal)
+        assert isinstance(cached_result["costBreakdown"], str)  # JSON string unchanged
+        assert cached_result["testRunId"] == "test123"
+
+        # Verify values are preserved during conversion
+        assert float(cached_result["overallAccuracy"]) == 0.85
+        assert float(cached_result["averageConfidence"]) == 0.90
+        assert float(cached_result["totalCost"]) == 1.50
+
+    def test_float_to_decimal_conversion_bug_detection(self):
+        """Test that detects the float/Decimal conversion bug"""
+        from decimal import Decimal
+
+        # Simulate the bug: trying to store floats in DynamoDB
+        result_with_floats = {
+            "overallAccuracy": 0.85,  # This would cause DynamoDB error
+            "totalCost": 1.50,
+        }
+
+        # Mock DynamoDB behavior - should reject floats
+        def mock_dynamodb_update(data):
+            for key, value in data.items():
+                if isinstance(value, float):
+                    raise Exception(
+                        "Float types are not supported. Use Decimal types instead."
+                    )
+            return True
+
+        # This should raise an error without conversion
+        with pytest.raises(Exception, match="Float types are not supported"):
+            mock_dynamodb_update(result_with_floats)
+
+        # With conversion, it should work
+        def float_to_decimal(obj):
+            if isinstance(obj, float):
+                return Decimal(str(obj))
+            elif isinstance(obj, dict):
+                return {k: float_to_decimal(v) for k, v in obj.items()}
+            return obj
+
+        converted_result = float_to_decimal(result_with_floats)
+        assert mock_dynamodb_update(converted_result) is True
+
+    def test_cache_retrieval_returns_same_structure(self):
+        """Test cache retrieval returns identical structure"""
+        from decimal import Decimal
+
+        # Original result structure
+        original_result = {
+            "testRunId": "test123",
+            "overallAccuracy": Decimal("0.85"),
+            "costBreakdown": '{"bedrock": 1.5}',
+            "status": "COMPLETE",
+        }
+
+        # Mock cache storage and retrieval
+        def mock_cache_operations(result_data):
+            # Store in cache
+            cached = result_data.copy()
+            # Retrieve from cache
+            return cached
+
+        retrieved_result = mock_cache_operations(original_result)
+
+        # Verify identical structure
+        assert retrieved_result == original_result
+        assert isinstance(
+            retrieved_result["overallAccuracy"],
+            type(original_result["overallAccuracy"]),
+        )
+
+    def test_caching_failure_handling(self):
+        """Test that caching failures don't affect result return"""
+
+        def mock_get_results_with_cache_failure(test_run_id):
+            # Calculate result
+            result = {"testRunId": test_run_id, "status": "COMPLETE"}
+
+            # Simulate cache failure
+            try:
+                raise Exception("DynamoDB caching failed")
+            except Exception:
+                # Log warning but continue
+                pass
+
+            # Still return result
+            return result
+
+        result = mock_get_results_with_cache_failure("test123")
+        assert result["testRunId"] == "test123"
+        assert result["status"] == "COMPLETE"

@@ -151,7 +151,7 @@ const TestRunnerModal = ({ visible, onDismiss, onRunTest, loading }) => {
               <Input
                 value={filePattern}
                 onChange={({ detail }) => setFilePattern(detail.value)}
-                placeholder="lending_package.*"
+                placeholder="lending_package*.pdf"
               />
             </FormField>
           </>
