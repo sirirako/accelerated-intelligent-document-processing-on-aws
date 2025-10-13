@@ -49,9 +49,13 @@ const TestResultsList = () => {
       setLoading(true);
       console.log('Fetching test runs with timePeriodHours:', timePeriodHours);
       const result = await API.graphql(graphqlOperation(GET_TEST_RUNS, { timePeriodHours }));
+      console.log('Raw GraphQL result:', result);
+      console.log('getTestRuns data:', result.data.getTestRuns);
+      console.log('Number of test runs returned:', result.data.getTestRuns?.length || 0);
       setTestRuns(result.data.getTestRuns || []);
       setError(null);
     } catch (err) {
+      console.error('Error fetching test runs:', err);
       const errorMessage =
         err.errors?.length > 0 ? err.errors.map((e) => e.message).join('; ') : 'Failed to load test runs';
       setError(errorMessage);
@@ -66,25 +70,12 @@ const TestResultsList = () => {
 
   const downloadToExcel = () => {
     // Convert test runs data to CSV format
-    const headers = [
-      'Test Run ID',
-      'Test Set',
-      'Status',
-      'Files Count',
-      'Overall Accuracy',
-      'Average Confidence',
-      'Total Cost',
-      'Created At',
-      'Completed At',
-    ];
+    const headers = ['Test Run ID', 'Test Set', 'Status', 'Files Count', 'Created At', 'Completed At'];
     const csvData = testRuns.map((run) => [
       run.testRunId,
       run.testSetName || '',
       run.status,
       run.filesCount || 0,
-      run.overallAccuracy ? `${run.overallAccuracy}%` : '',
-      run.averageConfidence ? `${run.averageConfidence}%` : '',
-      run.totalCost ? `$${run.totalCost}` : '',
       run.createdAt || '',
       run.completedAt || '',
     ]);
@@ -207,7 +198,7 @@ const TestResultsList = () => {
         size="large"
         header="Test Comparison"
       >
-        <TestComparison preSelectedTestRunIds={selectedTestRunIds} />
+        <TestComparison preSelectedTestRunIds={selectedTestRunIds} onTestRunSelect={setSelectedTestRunId} />
       </Modal>
     </Container>
   );

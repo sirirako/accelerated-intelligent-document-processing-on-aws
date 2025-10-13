@@ -182,9 +182,11 @@ def _store_test_run_metadata(tracking_table, test_run_id, test_set_name, config,
                 'TestRunId': test_run_id,
                 'Status': 'RUNNING',
                 'FilesCount': len(files),
+                'CompletedFiles': 0,
+                'FailedFiles': 0,
                 'Files': files,
                 'Config': config,
-                'CreatedAt': datetime.utcnow().isoformat()
+                'CreatedAt': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             }
         )
         logger.info(f"Stored test run metadata for {test_run_id}")

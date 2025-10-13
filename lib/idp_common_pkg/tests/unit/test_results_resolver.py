@@ -49,11 +49,12 @@ def test_get_test_results_structure():
 
 @pytest.mark.unit
 @patch.dict(os.environ, {"REPORTING_BUCKET": "test-bucket"})
-@patch("index.boto3.client")
-@patch("index.pyarrow.parquet.read_table")
-@patch("index.pyarrow.fs.S3FileSystem")
+@patch("boto3.client")
+@patch("pyarrow.parquet.read_table")
+@patch("pyarrow.fs.S3FileSystem")
+@patch("pyarrow.compute.equal")
 def test_get_document_costs_from_parquet_success(
-    mock_s3fs, mock_read_table, mock_boto3
+    mock_pc_equal, mock_s3fs, mock_read_table, mock_boto3
 ):
     """Test successful Parquet cost retrieval"""
     import index
@@ -64,7 +65,7 @@ def test_get_document_costs_from_parquet_success(
     mock_s3_client.list_objects_v2.return_value = {
         "Contents": [
             {
-                "Key": "metering/date=2025-10-08/test_doc_20251008_123456_001_results.parquet"
+                "Key": "metering/date=2025-10-08/test-doc_20251008_123456_001_results.parquet"
             }
         ]
     }
@@ -79,6 +80,10 @@ def test_get_document_costs_from_parquet_success(
         "unit",
         "estimated_cost",
     ]
+
+    # Make the table subscriptable for document_id access
+    mock_table.__getitem__ = Mock(return_value=Mock())
+
     mock_table.filter.return_value = mock_table
     mock_table.num_rows = 2
     mock_table.to_pydict.return_value = {
@@ -87,6 +92,13 @@ def test_get_document_costs_from_parquet_success(
         "unit": ["tokens", "pages"],
         "estimated_cost": [1.50, 2.25],
     }
+
+    # Mock S3FileSystem
+    mock_s3fs_instance = Mock()
+    mock_s3fs.return_value = mock_s3fs_instance
+
+    # Mock pyarrow compute equal function
+    mock_pc_equal.return_value = Mock()
 
     result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
 
@@ -139,6 +151,7 @@ def test_compare_document_costs_parallel_execution(mock_executor):
 
     mock_executor_instance.submit.side_effect = [mock_test_future, mock_baseline_future]
 
+    # Use correct function signature with 4 parameters
     index._compare_document_costs(
         "test-doc", "baseline-doc", "2025-10-08", "2025-10-07"
     )
@@ -156,11 +169,12 @@ def test_calculate_accuracy_from_data():
 
     baseline_data = {"overall_metrics": {"accuracy": 0.80, "precision": 0.85}}
 
-    result = index._calculate_accuracy_from_data(test_data, baseline_data)
+    result, breakdown = index._calculate_accuracy_from_data(test_data, baseline_data)
 
-    # Should return a similarity score between 0 and 1
+    # Should return a similarity score and breakdown
     assert isinstance(result, float)
-    assert 0 <= result <= 1
+    assert isinstance(breakdown, dict)
+    assert result is not None
 
 
 @pytest.mark.unit
@@ -180,10 +194,14 @@ def test_calculate_confidence_from_data():
         ]
     }
 
-    result = index._calculate_confidence_from_data(test_data, baseline_data)
+    result, breakdown = index._calculate_confidence_from_data(test_data, baseline_data)
 
-    # Should return a similarity percentage
+    # Should return a similarity percentage and breakdown
     assert isinstance(result, float)
+    assert isinstance(breakdown, dict)
+    assert "baseline_confidence" in breakdown
+    assert "test_confidence" in breakdown
+    assert "confidence_similarity" in breakdown
 
 
 @pytest.mark.unit

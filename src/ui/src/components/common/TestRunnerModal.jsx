@@ -103,27 +103,26 @@ const TestRunnerModal = ({ visible, onDismiss, onRunTest, loading }) => {
 
   return (
     <Modal
-      onDismiss={testCompleted ? handleDismiss : undefined} // Only allow dismiss when completed
+      onDismiss={!testStarted ? handleDismiss : undefined}
       visible={visible && !isMinimized}
-      closeAriaLabel="Close modal"
       size="medium"
       footer={
         <Box float="right">
           <SpaceBetween direction="horizontal" size="xs">
-            {!testStarted && (
-              <Button variant="link" onClick={handleDismiss}>
-                Cancel
-              </Button>
-            )}
             {testStarted && !testCompleted && (
               <Button variant="normal" onClick={handleMinimize}>
                 Minimize
               </Button>
             )}
-            {!testCompleted && !testStarted && (
-              <Button variant="primary" onClick={handleRunTest} loading={loading}>
-                Run Test
-              </Button>
+            {!testStarted && (
+              <>
+                <Button variant="link" onClick={handleDismiss}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleRunTest} loading={loading}>
+                  Run Test
+                </Button>
+              </>
             )}
           </SpaceBetween>
         </Box>

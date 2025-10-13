@@ -34,7 +34,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    const interval = setInterval(fetchStatus, 10000);
     return () => clearInterval(interval);
   }, [testRunId, onComplete]);
 

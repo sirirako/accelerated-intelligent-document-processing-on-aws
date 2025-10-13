@@ -10,10 +10,10 @@ const GET_TEST_RUN = `
       filesCount
       completedFiles
       failedFiles
-      overallAccuracy
-      averageConfidence
-      totalCost
-      costBreakdown
+      accuracySimilarity
+      confidenceSimilarity
+      baseline
+      test
       createdAt
       completedAt
     }

@@ -244,38 +244,26 @@ type TestRunStatus @aws_cognito_user_pools @aws_iam {
 
 type TestRun @aws_cognito_user_pools @aws_iam {
   testRunId: String!
-  testSetName: String!
+  testSetName: String
   status: String!
   filesCount: Int!
   completedFiles: Int
   failedFiles: Int
-  overallAccuracy: Float
-  averageConfidence: Float
-  totalCost: Float
-  costBreakdown: AWSJSON
-  usageBreakdown: AWSJSON
-  createdAt: AWSDateTime!
+  accuracySimilarity: Float
+  confidenceSimilarity: Float
+  baseline: AWSJSON
+  test: AWSJSON
+  createdAt: AWSDateTime
   completedAt: AWSDateTime
 }
 
 type TestRunComparison @aws_cognito_user_pools @aws_iam {
-  metrics: [ComparisonMetric]
-  configDifferences: [ConfigDifference]
-  costs: [CostComparison]
+  metrics: AWSJSON!
+  configs: [ConfigSetting]
 }
 
-type ComparisonMetric @aws_cognito_user_pools @aws_iam {
-  metric: String!
-  values: AWSJSON!
-}
-
-type ConfigDifference @aws_cognito_user_pools @aws_iam {
+type ConfigSetting @aws_cognito_user_pools @aws_iam {
   setting: String!
-  values: AWSJSON!
-}
-
-type CostComparison @aws_cognito_user_pools @aws_iam {
-  component: String!
   values: AWSJSON!
 }
 

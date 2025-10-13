@@ -4,16 +4,9 @@
 const COMPARE_TEST_RUNS = `
   query CompareTestRuns($testRunIds: [String!]!) {
     compareTestRuns(testRunIds: $testRunIds) {
-      metrics {
-        metric
-        values
-      }
-      configDifferences {
+      metrics
+      configs {
         setting
-        values
-      }
-      costs {
-        component
         values
       }
     }
