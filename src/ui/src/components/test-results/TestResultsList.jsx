@@ -2,11 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Table, Button, Header, SpaceBetween, ButtonDropdown, Modal } from '@awsui/components-react';
+import {
+  Table,
+  Button,
+  SpaceBetween,
+  ButtonDropdown,
+  Modal,
+  Pagination,
+  Box,
+  TextFilter,
+  Flashbar,
+} from '@awsui/components-react';
+import { useCollection } from '@awsui/collection-hooks';
 import { API, graphqlOperation } from 'aws-amplify';
 import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
+import DELETE_TESTS from '../../graphql/mutations/deleteTests';
 import TestResults from './TestResults';
 import TestComparison from '../test-comparison/TestComparison';
+import DeleteDocumentModal from '../common/DeleteDocumentModal';
+import { paginationLabels } from '../common/labels';
+import { TableHeader } from '../common/table';
 
 const TIME_PERIOD_OPTIONS = [
   { id: 'refresh-2h', hours: 2, text: '2 hrs' },
@@ -37,12 +52,34 @@ const TestResultsList = () => {
   const [testRuns, setTestRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [timePeriodHours, setTimePeriodHours] = useState(2);
   const [isComparisonModalVisible, setIsComparisonModalVisible] = useState(false);
   const [selectedTestRunIds, setSelectedTestRunIds] = useState([]);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
 
-  const getTestRunIdCell = (item) => <TestRunIdCell item={item} onSelect={setSelectedTestRunId} />;
+  // Use collection hook for pagination, filtering, and sorting
+  const { items, collectionProps, paginationProps, filterProps } = useCollection(testRuns, {
+    filtering: {
+      empty: 'No test runs found',
+      noMatch: 'No test runs match the filter',
+    },
+    pagination: { pageSize },
+    sorting: { defaultState: { sortingColumn: { sortingField: 'createdAt' }, isDescending: true } },
+    selection: {
+      keepSelection: false,
+      trackBy: 'testRunId',
+    },
+  });
+
+  const handleTestRunSelect = (testRunId) => {
+    setSelectedTestRunId(testRunId);
+  };
+
+  const getTestRunIdCell = (item) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
 
   const fetchTestRuns = async () => {
     try {
@@ -105,6 +142,34 @@ const TestResultsList = () => {
     }
   };
 
+  const confirmDelete = async () => {
+    try {
+      setDeleteLoading(true);
+      const testRunIds = selectedItems.map((item) => item.testRunId);
+      console.log('Attempting to delete test runs:', testRunIds);
+
+      const result = await API.graphql(graphqlOperation(DELETE_TESTS, { testRunIds }));
+      console.log('Delete result:', result);
+
+      const count = selectedItems.length;
+      setSuccessMessage(`Successfully deleted ${count} test run${count > 1 ? 's' : ''}`);
+      setSelectedItems([]);
+      setIsDeleteModalVisible(false);
+      fetchTestRuns(); // Refresh the list
+
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccessMessage(null), 5000);
+
+      return result.data.deleteTests;
+    } catch (err) {
+      console.error('Error deleting test runs:', err);
+      console.error('Error details:', err.errors);
+      return false;
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   if (selectedTestRunId) {
     return (
       <div>
@@ -120,72 +185,130 @@ const TestResultsList = () => {
   if (error) return <div>Error loading test runs: {error}</div>;
 
   return (
-    <Container
-      header={
-        <Header
-          variant="h2"
-          actions={
-            <SpaceBetween direction="horizontal" size="xs">
-              <ButtonDropdown
-                loading={loading}
-                onItemClick={({ detail }) => {
-                  const selectedOption = TIME_PERIOD_OPTIONS.find((opt) => opt.id === detail.id);
-                  if (selectedOption) {
-                    setTimePeriodHours(selectedOption.hours);
-                  }
-                }}
-                items={TIME_PERIOD_OPTIONS}
-              >
-                {`Load: ${TIME_PERIOD_OPTIONS.find((opt) => opt.hours === timePeriodHours)?.text || '2 hrs'}`}
-              </ButtonDropdown>
-              <Button iconName="refresh" variant="normal" loading={loading} onClick={handleRefresh} />
-              <Button iconName="download" variant="normal" loading={loading} onClick={downloadToExcel} />
-              {selectedItems.length > 1 && (
-                <Button iconName="compare" variant="normal" onClick={handleCompare}>
-                  Test Comparison
-                </Button>
-              )}
-            </SpaceBetween>
-          }
-        >
-          Test Results
-        </Header>
-      }
-    >
+    <SpaceBetween size="s">
+      {successMessage && (
+        <Flashbar
+          items={[
+            {
+              type: 'success',
+              content: successMessage,
+              dismissible: true,
+              onDismiss: () => setSuccessMessage(null),
+            },
+          ]}
+        />
+      )}
+      <TableHeader
+        title={`Test Results (${testRuns.length})`}
+        actionButtons={
+          <SpaceBetween direction="horizontal" size="xs">
+            <ButtonDropdown
+              loading={loading}
+              onItemClick={({ detail }) => {
+                const selectedOption = TIME_PERIOD_OPTIONS.find((opt) => opt.id === detail.id);
+                if (selectedOption) {
+                  setTimePeriodHours(selectedOption.hours);
+                }
+              }}
+              items={TIME_PERIOD_OPTIONS}
+            >
+              {`Load: ${TIME_PERIOD_OPTIONS.find((opt) => opt.hours === timePeriodHours)?.text || '2 hrs'}`}
+            </ButtonDropdown>
+            <Button iconName="refresh" variant="normal" loading={loading} onClick={handleRefresh} />
+            <Button iconName="download" variant="normal" loading={loading} onClick={downloadToExcel} />
+            <Button
+              iconName="remove"
+              variant="normal"
+              onClick={() => setIsDeleteModalVisible(true)}
+              disabled={selectedItems.length === 0}
+              loading={deleteLoading}
+            />
+            {selectedItems.length > 1 && (
+              <Button iconName="compare" variant="normal" onClick={handleCompare}>
+                Test Comparison
+              </Button>
+            )}
+          </SpaceBetween>
+        }
+      />
       <Table
-        items={testRuns}
+        items={items}
+        selectedItems={selectedItems}
+        onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
+        sortingColumn={collectionProps.sortingColumn}
+        sortingDescending={collectionProps.sortingDescending}
+        onSortingChange={collectionProps.onSortingChange}
         columnDefinitions={[
           {
             id: 'testRunId',
             header: 'Test Run ID',
             cell: getTestRunIdCell,
+            sortingField: 'testRunId',
           },
           {
             id: 'testSetName',
             header: 'Test Set Name',
             cell: (item) => item.testSetName,
+            sortingField: 'testSetName',
           },
           {
             id: 'status',
             header: 'Status',
             cell: (item) => item.status,
+            sortingField: 'status',
           },
           {
             id: 'filesCount',
             header: 'Files Count',
             cell: (item) => item.filesCount,
+            sortingField: 'filesCount',
           },
           {
             id: 'createdAt',
             header: 'Created At',
             cell: (item) => new Date(item.createdAt).toLocaleString(),
+            sortingField: 'createdAt',
           },
         ]}
         selectionType="multi"
-        selectedItems={selectedItems}
-        onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
-        empty="No test runs found"
+        filter={
+          <TextFilter
+            filteringText={filterProps.filteringText}
+            onChange={filterProps.onChange}
+            filteringAriaLabel="Filter test runs"
+            filteringPlaceholder="Find test runs"
+          />
+        }
+        empty={
+          <Box textAlign="center" color="inherit">
+            <b>No test runs found</b>
+            <Box variant="p" color="inherit">
+              No test runs available for the selected time period.
+            </Box>
+          </Box>
+        }
         loading={loading}
+        stickyHeader
+        pagination={
+          <Pagination
+            currentPageIndex={paginationProps.currentPageIndex}
+            pagesCount={paginationProps.pagesCount}
+            onChange={paginationProps.onChange}
+            ariaLabels={paginationLabels}
+          />
+        }
+        preferences={
+          <Button
+            variant="icon"
+            iconName="settings"
+            ariaLabel="Page size settings"
+            onClick={() => {
+              if (pageSize === 10) setPageSize(20);
+              else if (pageSize === 20) setPageSize(50);
+              else setPageSize(10);
+            }}
+          />
+        }
       />
 
       <Modal
@@ -200,12 +323,22 @@ const TestResultsList = () => {
       >
         <TestComparison preSelectedTestRunIds={selectedTestRunIds} onTestRunSelect={setSelectedTestRunId} />
       </Modal>
-    </Container>
+
+      <DeleteDocumentModal
+        visible={isDeleteModalVisible}
+        onDismiss={() => setIsDeleteModalVisible(false)}
+        onConfirm={confirmDelete}
+        selectedItems={selectedItems}
+        itemType="test run"
+      />
+    </SpaceBetween>
   );
 };
 
 TestResultsList.propTypes = {};
 
-TestResultsList.defaultProps = {};
+TestResultsList.defaultProps = {
+  onSelectTestRun: null,
+};
 
 export default TestResultsList;

@@ -14,6 +14,7 @@ import useAppContext from '../contexts/app';
 import DocumentsRoutes from './DocumentsRoutes';
 import DocumentsQueryRoutes from './DocumentsQueryRoutes';
 import DocumentsAnalyticsRoutes from './DocumentsAnalyticsRoutes';
+import TestStudioRoutes from './TestStudioRoutes';
 
 import {
   DOCUMENTS_PATH,
@@ -22,6 +23,7 @@ import {
   LOGOUT_PATH,
   DOCUMENTS_KB_QUERY_PATH,
   DOCUMENTS_ANALYTICS_PATH,
+  TEST_STUDIO_PATH,
 } from './constants';
 
 const logger = new Logger('AuthRoutes');
@@ -40,6 +42,15 @@ const AuthRoutes = ({ redirectParam }) => {
   return (
     <SettingsContext.Provider value={settingsContextValue}>
       <Switch>
+        <Route path={DOCUMENTS_KB_QUERY_PATH}>
+          <DocumentsQueryRoutes />
+        </Route>
+        <Route path={DOCUMENTS_ANALYTICS_PATH}>
+          <DocumentsAnalyticsRoutes />
+        </Route>
+        <Route path={TEST_STUDIO_PATH}>
+          <TestStudioRoutes />
+        </Route>
         <Route path={DOCUMENTS_PATH}>
           <DocumentsRoutes />
         </Route>
@@ -48,12 +59,6 @@ const AuthRoutes = ({ redirectParam }) => {
         </Route>
         <Route path={LOGOUT_PATH}>
           <Button onClick={signOut}>Sign Out</Button>
-        </Route>
-        <Route path={DOCUMENTS_KB_QUERY_PATH}>
-          <DocumentsQueryRoutes />
-        </Route>
-        <Route path={DOCUMENTS_ANALYTICS_PATH}>
-          <DocumentsAnalyticsRoutes />
         </Route>
         <Route>
           <Redirect to={DEFAULT_PATH} />

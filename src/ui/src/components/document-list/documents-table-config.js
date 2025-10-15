@@ -175,8 +175,6 @@ export const DocumentsCommonHeader = ({
   selectedItems = [],
   onDelete,
   onReprocess,
-  onTestRunner,
-  onTestResults,
   ...props
 }) => {
   const onPeriodToLoadChange = ({ detail }) => {
@@ -211,16 +209,6 @@ export const DocumentsCommonHeader = ({
             loading={props.loading}
             onClick={() => props.downloadToExcel()}
           />
-          {onTestRunner && (
-            <Button iconName="settings" variant="normal" onClick={onTestRunner}>
-              Test Runner
-            </Button>
-          )}
-          {onTestResults && (
-            <Button iconName="status-info" variant="normal" onClick={onTestResults}>
-              Test Results
-            </Button>
-          )}
           {onReprocess && (
             <Button iconName="arrow-right" variant="normal" disabled={!hasSelectedItems} onClick={onReprocess}>
               Reprocess

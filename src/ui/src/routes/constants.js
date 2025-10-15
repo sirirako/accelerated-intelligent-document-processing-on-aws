@@ -7,6 +7,7 @@ export const DEFAULT_PATH = DOCUMENTS_PATH;
 export const REDIRECT_URL_PARAM = 'redirect';
 export const DOCUMENTS_KB_QUERY_PATH = `${DOCUMENTS_PATH}/query`;
 export const DOCUMENTS_ANALYTICS_PATH = `${DOCUMENTS_PATH}/agents`;
+export const TEST_STUDIO_PATH = `${DOCUMENTS_PATH}/test-studio`;
 export const CONFIGURATION_PATH = `${DOCUMENTS_PATH}/config`;
 export const UPLOAD_DOCUMENT_PATH = `${DOCUMENTS_PATH}/upload`;
 export const DISCOVERY_PATH = `${DOCUMENTS_PATH}/discovery`;

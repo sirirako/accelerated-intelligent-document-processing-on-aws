@@ -9,6 +9,7 @@ import {
   DOCUMENTS_PATH,
   DOCUMENTS_KB_QUERY_PATH,
   DOCUMENTS_ANALYTICS_PATH,
+  TEST_STUDIO_PATH,
   DEFAULT_PATH,
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
@@ -20,6 +21,15 @@ export const documentsNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Agent Analysis', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
+  {
+    type: 'section',
+    text: 'Test Studio',
+    items: [
+      { type: 'link', text: 'Test Sets', href: `#${TEST_STUDIO_PATH}?tab=sets` },
+      { type: 'link', text: 'Test Runs', href: `#${TEST_STUDIO_PATH}?tab=runner` },
+      { type: 'link', text: 'Test Results', href: `#${TEST_STUDIO_PATH}?tab=results` },
+    ],
+  },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
   { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
@@ -72,6 +82,17 @@ const Navigation = ({
     activeHref = `#${DOCUMENTS_KB_QUERY_PATH}`;
   } else if (path.includes(DOCUMENTS_ANALYTICS_PATH)) {
     activeHref = `#${DOCUMENTS_ANALYTICS_PATH}`;
+  } else if (path.includes(TEST_STUDIO_PATH)) {
+    // Handle Test Studio sub-navigation based on URL params
+    const urlParams = new URLSearchParams(location.search);
+    const tab = urlParams.get('tab');
+    if (tab === 'results') {
+      activeHref = `#${TEST_STUDIO_PATH}?tab=results`;
+    } else if (tab === 'sets') {
+      activeHref = `#${TEST_STUDIO_PATH}?tab=sets`;
+    } else {
+      activeHref = `#${TEST_STUDIO_PATH}?tab=runner`;
+    }
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
   } else if (path.includes(DISCOVERY_PATH)) {
