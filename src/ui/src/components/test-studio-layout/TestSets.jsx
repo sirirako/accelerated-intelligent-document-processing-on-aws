@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
-import PropTypes from 'prop-types';
 import {
   Container,
   Header,
@@ -15,33 +14,17 @@ import {
   Alert,
   Badge,
 } from '@awsui/components-react';
-
-// Cell renderers moved outside component to avoid nested component warnings
-const FilePatternCell = ({ item }) => <code>{item.filePattern}</code>;
-FilePatternCell.propTypes = {
-  item: PropTypes.shape({
-    filePattern: PropTypes.string.isRequired,
-  }).isRequired,
-};
-
-const FileCountCell = ({ item }) => <Badge color="blue">{item.fileCount} files</Badge>;
-FileCountCell.propTypes = {
-  item: PropTypes.shape({
-    fileCount: PropTypes.number.isRequired,
-  }).isRequired,
-};
-
-const CreatedAtCell = ({ item }) => new Date(item.createdAt).toLocaleDateString();
-CreatedAtCell.propTypes = {
-  item: PropTypes.shape({
-    createdAt: PropTypes.string.isRequired,
-  }).isRequired,
-};
+import { API, graphqlOperation } from 'aws-amplify';
+import ADD_TEST_SET from '../../graphql/mutations/addTestSet';
+import DELETE_TEST_SETS from '../../graphql/mutations/deleteTestSets';
+import GET_TEST_SETS from '../../graphql/queries/getTestSets';
+import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
 
 const TestSets = () => {
   const [testSets, setTestSets] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newTestSetName, setNewTestSetName] = useState('');
   const [filePattern, setFilePattern] = useState('');
   const [matchingFiles, setMatchingFiles] = useState([]);
@@ -50,57 +33,96 @@ const TestSets = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const loadTestSets = async () => {
+    try {
+      console.log('TestSets: Loading test sets...');
+      const result = await API.graphql(graphqlOperation(GET_TEST_SETS));
+      console.log('TestSets: GraphQL result:', result);
+      setTestSets(result.data.getTestSets || []);
+    } catch (err) {
+      console.error('TestSets: Failed to load test sets:', err);
+      setError(`Failed to load test sets: ${err.message || 'Unknown error'}`);
+    }
+  };
+
+  React.useEffect(() => {
+    loadTestSets();
+  }, []);
+
   const handleCheckFiles = async () => {
     if (!filePattern.trim()) return;
 
     setLoading(true);
     try {
-      // TODO: Replace with actual API call to list files from InputBucket
-      // Simulated file matching for now
-      const mockFiles = ['lending_package_001.pdf', 'lending_package_002.pdf', 'lending_package_003.pdf'].filter(
-        (file) => {
-          const pattern = filePattern.replace(/\*/g, '.*');
-          return new RegExp(pattern, 'i').test(file);
-        },
-      );
+      const result = await API.graphql(graphqlOperation(LIST_INPUT_BUCKET_FILES, { filePattern: filePattern.trim() }));
 
-      setMatchingFiles(mockFiles);
-      setFileCount(mockFiles.length);
+      const files = result.data.listInputBucketFiles || [];
+      setMatchingFiles(files);
+      setFileCount(files.length);
       setShowFilesModal(true);
     } catch (err) {
-      setError('Failed to check files');
+      setError(`Failed to check files: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddTestSet = () => {
+  const handleAddTestSet = async () => {
     if (!newTestSetName.trim() || !filePattern.trim()) {
       setError('Both test set name and file pattern are required');
       return;
     }
 
-    const newTestSet = {
-      id: Date.now().toString(),
-      name: newTestSetName.trim(),
-      filePattern: filePattern.trim(),
-      fileCount,
-      createdAt: new Date().toISOString(),
-    };
+    setLoading(true);
+    try {
+      const result = await API.graphql(
+        graphqlOperation(ADD_TEST_SET, {
+          name: newTestSetName.trim(),
+          filePattern: filePattern.trim(),
+          fileCount,
+        }),
+      );
 
-    setTestSets([...testSets, newTestSet]);
-    setNewTestSetName('');
-    setFilePattern('');
-    setFileCount(0);
-    setShowAddModal(false);
-    setError('');
+      console.log('GraphQL result:', result);
+      const newTestSet = result.data.addTestSet;
+      console.log('New test set data:', newTestSet);
+
+      if (newTestSet) {
+        const updatedTestSets = [...testSets, newTestSet];
+        console.log('Updating testSets from', testSets.length, 'to', updatedTestSets.length);
+        setTestSets(updatedTestSets);
+        setNewTestSetName('');
+        setFilePattern('');
+        setFileCount(0);
+        setShowAddModal(false);
+        setError('');
+      } else {
+        setError('Failed to create test set - no data returned');
+      }
+    } catch (err) {
+      setError(`Failed to add test set: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteTestSets = () => {
-    const selectedIds = selectedItems.map((item) => item.id);
-    setTestSets(testSets.filter((testSet) => !selectedIds.includes(testSet.id)));
-    setSelectedItems([]);
+  const handleDeleteTestSets = async () => {
+    const testSetIds = selectedItems.map((item) => item.id);
+
+    setLoading(true);
+    try {
+      await API.graphql(graphqlOperation(DELETE_TEST_SETS, { testSetIds }));
+      setTestSets(testSets.filter((testSet) => !testSetIds.includes(testSet.id)));
+      setSelectedItems([]);
+    } catch (err) {
+      setError(`Failed to delete test sets: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const filteredTestSets = testSets.filter((item) => item != null);
+  console.log('Filtered testSets for Table:', filteredTestSets);
 
   const columnDefinitions = [
     {
@@ -112,17 +134,17 @@ const TestSets = () => {
     {
       id: 'filePattern',
       header: 'File Pattern',
-      cell: FilePatternCell,
+      cell: (item) => item.filePattern,
     },
     {
       id: 'fileCount',
       header: 'Files',
-      cell: FileCountCell,
+      cell: (item) => item.fileCount,
     },
     {
       id: 'createdAt',
       header: 'Created',
-      cell: CreatedAtCell,
+      cell: (item) => new Date(item.createdAt).toLocaleDateString(),
       sortingField: 'createdAt',
     },
   ];
@@ -135,7 +157,7 @@ const TestSets = () => {
           description="Manage test sets for document processing"
           actions={
             <SpaceBetween direction="horizontal" size="xs">
-              <Button disabled={selectedItems.length === 0} onClick={handleDeleteTestSets}>
+              <Button disabled={selectedItems.length === 0 || loading} onClick={() => setShowDeleteModal(true)}>
                 Delete
               </Button>
               <Button variant="primary" onClick={() => setShowAddModal(true)}>
@@ -148,9 +170,15 @@ const TestSets = () => {
         </Header>
       }
     >
+      {error && (
+        <Alert type="error" dismissible onDismiss={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
       <Table
         columnDefinitions={columnDefinitions}
-        items={testSets}
+        items={filteredTestSets}
         selectedItems={selectedItems}
         onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
         selectionType="multi"
@@ -160,7 +188,6 @@ const TestSets = () => {
             <Box padding={{ bottom: 's' }} variant="p" color="inherit">
               No test sets to display.
             </Box>
-            <Button onClick={() => setShowAddModal(true)}>Add Test Set</Button>
           </Box>
         }
       />
@@ -175,7 +202,7 @@ const TestSets = () => {
               <Button variant="link" onClick={() => setShowAddModal(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleAddTestSet}>
+              <Button variant="primary" loading={loading} onClick={handleAddTestSet}>
                 Add Test Set
               </Button>
             </SpaceBetween>
@@ -211,7 +238,9 @@ const TestSets = () => {
 
           {fileCount > 0 && (
             <Box>
-              <Badge color="green">{fileCount} matching files found</Badge>
+              <Badge color="green">
+                {fileCount} {fileCount === 1 ? 'file' : 'files'} found
+              </Badge>
             </Box>
           )}
         </SpaceBetween>
@@ -237,6 +266,35 @@ const TestSets = () => {
           ) : (
             <Box textAlign="center">No matching files found</Box>
           )}
+        </Box>
+      </Modal>
+
+      <Modal
+        visible={showDeleteModal}
+        onDismiss={() => setShowDeleteModal(false)}
+        header="Confirm Delete"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowDeleteModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                loading={loading}
+                onClick={() => {
+                  handleDeleteTestSets();
+                  setShowDeleteModal(false);
+                }}
+              >
+                Delete
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <Box>
+          Are you sure you want to delete {selectedItems.length} test set{selectedItems.length > 1 ? 's' : ''}?
         </Box>
       </Modal>
     </Container>

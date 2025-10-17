@@ -1,18 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
-import { AppLayout, ContentLayout, Header, SpaceBetween, Alert } from '@awsui/components-react';
+import { AppLayout, ContentLayout, Header, SpaceBetween, Alert, Box } from '@awsui/components-react';
 import { useLocation } from 'react-router-dom';
 
 import Navigation from '../genaiidp-layout/navigation';
 import TestSets from './TestSets';
 import TestRunner from './TestRunner';
 import TestResultsAndComparison from './TestResultsAndComparison';
+import TestRunnerStatus from '../test-results/TestRunnerStatus';
 import { appLayoutLabels } from '../common/labels';
 import useAppContext from '../../contexts/app';
 
 const TestStudioLayout = () => {
-  const { navigationOpen, setNavigationOpen } = useAppContext();
+  const { navigationOpen, setNavigationOpen, currentTestRunId, setCurrentTestRunId, testStarted, setTestStarted } =
+    useAppContext();
   const location = useLocation();
   const [activeTabId, setActiveTabId] = useState('sets');
 
@@ -24,10 +26,6 @@ const TestStudioLayout = () => {
       setActiveTabId(tab);
     }
   }, [location.search]);
-
-  // Shared test state across tabs
-  const [currentTestRunId, setCurrentTestRunId] = useState(null);
-  const [testStarted, setTestStarted] = useState(false);
 
   const handleTestStart = (testRunId) => {
     setCurrentTestRunId(testRunId);
@@ -74,7 +72,13 @@ const TestStudioLayout = () => {
           }
         >
           <SpaceBetween size="l">
-            {testStarted && <Alert type="info" header={`Test Running: ${currentTestRunId}`} />}
+            {testStarted && currentTestRunId && (
+              <Alert type="info" header={`Test Running: ${currentTestRunId}`} dismissible={false}>
+                <Box>
+                  <TestRunnerStatus testRunId={currentTestRunId} onComplete={handleTestComplete} />
+                </Box>
+              </Alert>
+            )}
             {renderContent()}
           </SpaceBetween>
         </ContentLayout>

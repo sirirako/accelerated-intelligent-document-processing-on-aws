@@ -5,9 +5,9 @@ import os
 import boto3
 import json
 import logging
-import re
 from datetime import datetime
 from textwrap import dedent
+from idp_common.s3 import find_matching_files
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -21,26 +21,29 @@ def handler(event, context):
     
     try:
         input_data = event['arguments']['input']
-        test_set_name = input_data['testSetName']
-        file_pattern = input_data['filePattern']
+        test_set_id = input_data['testSetId']
         
         # Create test run identifier
         timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
-        test_run_id = f"{test_set_name}-{timestamp}"
+        test_run_id = f"{test_set_id}-{timestamp}"
         
         input_bucket = os.environ['INPUT_BUCKET']
         baseline_bucket = os.environ['BASELINE_BUCKET']
         config_table = os.environ['CONFIG_TABLE']
         tracking_table = os.environ['TRACKING_TABLE']
         
-        # Capture current config
-        config = _capture_config(config_table)
+        # Get test set
+        test_set = _get_test_set(tracking_table, test_set_id)
+        if not test_set:
+            raise ValueError(f"Test set with ID '{test_set_id}' not found")
         
-        # Find matching files
-        matching_files = _find_matching_files(input_bucket, file_pattern)
+        matching_files = find_matching_files(input_bucket, test_set['filePattern'], root_only=True)
         
         if not matching_files:
-            raise ValueError(f"No files found matching pattern: {file_pattern}")
+            raise ValueError(f"No files found matching test set pattern: {test_set['filePattern']}")
+        
+        # Capture current config
+        config = _capture_config(config_table)
         
         # Copy baseline files
         _copy_baseline_files(baseline_bucket, test_run_id, matching_files)
@@ -49,11 +52,11 @@ def handler(event, context):
         _copy_and_process_documents(input_bucket, test_run_id, matching_files)
         
         # Store test run metadata
-        _store_test_run_metadata(tracking_table, test_run_id, test_set_name, config, matching_files)
+        _store_test_run_metadata(tracking_table, test_run_id, test_set['name'], config, matching_files)
         
         return {
             'testRunId': test_run_id,
-            'testSetName': test_set_name,
+            'testSetName': test_set['name'],
             'status': 'RUNNING',
             'filesCount': len(matching_files),
             'completedFiles': 0,
@@ -63,6 +66,22 @@ def handler(event, context):
     except Exception as e:
         logger.error(f"Error in test runner: {str(e)}")
         raise
+
+def _get_test_set(tracking_table, test_set_id):
+    """Get test set by ID"""
+    table = dynamodb.Table(tracking_table)
+    
+    try:
+        response = table.get_item(
+            Key={
+                'PK': f'testset#{test_set_id}',
+                'SK': 'metadata'
+            }
+        )
+        return response.get('Item')
+    except Exception as e:
+        logger.error(f"Error getting test set {test_set_id}: {e}")
+        return None
 
 def _capture_config(config_table):
     """Capture current configuration"""
@@ -78,28 +97,6 @@ def _capture_config(config_table):
             logger.warning(f"Could not retrieve {config_type} config: {e}")
     
     return config
-
-def _find_matching_files(bucket, pattern):
-    """Find files matching the pattern"""
-    files = []
-    
-    paginator = s3.get_paginator('list_objects_v2')
-    
-    try:
-        for page in paginator.paginate(Bucket=bucket):
-            if 'Contents' in page:
-                for obj in page['Contents']:
-                    if _matches_pattern(obj['Key'], pattern):
-                        files.append(obj['Key'])
-    except Exception as e:
-        logger.error(f"Error listing files: {e}")
-        raise
-    
-    return files
-
-def _matches_pattern(key, pattern):
-    """Pattern matching using regex"""
-    return re.match(f'^{pattern}$', key) is not None
 
 def _copy_baseline_files(baseline_bucket, test_run_id, files):
     """Copy baseline files to test run prefix and validate baseline documents exist"""
