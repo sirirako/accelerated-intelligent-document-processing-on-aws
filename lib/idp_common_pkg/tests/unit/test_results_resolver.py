@@ -2,17 +2,22 @@
 # SPDX-License-Identifier: MIT-0
 
 
+import importlib.util
 import os
-import sys
 from unittest.mock import Mock, patch
 
 import pytest
 
-# Add the lambda function to the path for testing
-lambda_path = os.path.join(
-    os.path.dirname(__file__), "../../../../src/lambda/test_results_resolver"
+# Import the specific lambda module using importlib to avoid conflicts
+spec = importlib.util.spec_from_file_location(
+    "results_index",
+    os.path.join(
+        os.path.dirname(__file__),
+        "../../../../src/lambda/test_results_resolver/index.py",
+    ),
 )
-sys.path.insert(0, lambda_path)
+index = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(index)
 
 
 @pytest.mark.unit
@@ -57,7 +62,6 @@ def test_get_document_costs_from_parquet_success(
     mock_pc_equal, mock_s3fs, mock_read_table, mock_boto3
 ):
     """Test successful Parquet cost retrieval"""
-    import index
 
     # Mock S3 list_objects_v2 response
     mock_s3_client = Mock()
@@ -111,7 +115,6 @@ def test_get_document_costs_from_parquet_success(
 @patch("index.boto3.client")
 def test_get_document_costs_no_files_found(mock_boto3):
     """Test when no Parquet files are found"""
-    import index
 
     mock_s3_client = Mock()
     mock_boto3.return_value = mock_s3_client
@@ -126,7 +129,6 @@ def test_get_document_costs_no_files_found(mock_boto3):
 @patch.dict(os.environ, {"REPORTING_BUCKET": ""})
 def test_get_document_costs_no_bucket():
     """Test when REPORTING_BUCKET is not set"""
-    import index
 
     result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
 
@@ -134,36 +136,27 @@ def test_get_document_costs_no_bucket():
 
 
 @pytest.mark.unit
-@patch("index.ThreadPoolExecutor")
-def test_compare_document_costs_parallel_execution(mock_executor):
+def test_compare_document_costs_parallel_execution():
     """Test parallel execution of cost comparison"""
-    import index
 
-    # Mock ThreadPoolExecutor
-    mock_executor_instance = Mock()
-    mock_executor.return_value.__enter__.return_value = mock_executor_instance
+    with patch.object(index, "_get_document_costs_from_reporting_db") as mock_get_costs:
+        mock_get_costs.side_effect = [
+            {"test_bedrock_tokens": 1.50},  # test document
+            {"test_bedrock_tokens": 1.25},  # baseline document
+        ]
 
-    # Mock futures
-    mock_test_future = Mock()
-    mock_baseline_future = Mock()
-    mock_test_future.result.return_value = {"test_bedrock_tokens": 1.50}
-    mock_baseline_future.result.return_value = {"test_bedrock_tokens": 1.25}
+        result = index._compare_document_costs(
+            "test-doc", "baseline-doc", "2025-10-08", "2025-10-07"
+        )
 
-    mock_executor_instance.submit.side_effect = [mock_test_future, mock_baseline_future]
-
-    # Use correct function signature with 4 parameters
-    index._compare_document_costs(
-        "test-doc", "baseline-doc", "2025-10-08", "2025-10-07"
-    )
-
-    # Verify parallel execution was set up
-    assert mock_executor_instance.submit.call_count == 2
+        # Verify both documents were queried
+        assert mock_get_costs.call_count == 2
+        assert result is not None
 
 
 @pytest.mark.unit
 def test_calculate_accuracy_from_data():
     """Test accuracy calculation from downloaded data"""
-    import index
 
     test_data = {"overall_metrics": {"accuracy": 0.85, "precision": 0.90}}
 
@@ -180,7 +173,6 @@ def test_calculate_accuracy_from_data():
 @pytest.mark.unit
 def test_calculate_confidence_from_data():
     """Test confidence calculation from downloaded data"""
-    import index
 
     test_data = {
         "section_results": [
