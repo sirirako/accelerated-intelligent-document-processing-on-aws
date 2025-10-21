@@ -171,6 +171,7 @@ const useConfiguration = () => {
 
       // Merge default and custom configurations
       const merged = deepMerge(normalizedDefaultObj, normalizedCustomObj);
+
       console.log('Merged configuration result:', merged);
       // Double check the classification and extraction sections
       if (merged.classification) {
@@ -178,6 +179,9 @@ const useConfiguration = () => {
       }
       if (merged.extraction) {
         console.log('Final extraction data:', merged.extraction);
+      }
+      if (merged.classes) {
+        console.log('Final classes (JSON Schema) data:', merged.classes);
       }
       setMergedConfig(merged);
     } catch (err) {

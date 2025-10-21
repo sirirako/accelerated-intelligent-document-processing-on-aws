@@ -22,6 +22,7 @@ import Editor from '@monaco-editor/react';
 import yaml from 'js-yaml';
 import useConfiguration from '../../hooks/use-configuration';
 import FormView from './FormView';
+import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
 
 const ConfigurationLayout = () => {
   const {
@@ -50,6 +51,7 @@ const ConfigurationLayout = () => {
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
+  const [extractionSchema, setExtractionSchema] = useState(null);
 
   const editorRef = useRef(null);
 
@@ -61,6 +63,11 @@ const ConfigurationLayout = () => {
       // Make a deep copy to ensure we're not dealing with references
       const formData = JSON.parse(JSON.stringify(mergedConfig));
       setFormValues(formData);
+
+      // Initialize extraction schema from config (stored in classes field)
+      if (mergedConfig.classes) {
+        setExtractionSchema(mergedConfig.classes);
+      }
 
       // Set both JSON and YAML content
       const jsonString = JSON.stringify(mergedConfig, null, 2);
@@ -890,6 +897,11 @@ const ConfigurationLayout = () => {
         }
 
         if (importedConfig && typeof importedConfig === 'object') {
+          // If the imported config has classes, use them (should be JSON Schema format)
+          if (importedConfig.classes) {
+            setExtractionSchema(importedConfig.classes);
+          }
+
           handleFormChange(importedConfig);
           setSaveSuccess(false);
           setSaveError(null);
@@ -1054,6 +1066,7 @@ const ConfigurationLayout = () => {
                   onChange={({ detail }) => setViewMode(detail.selectedId)}
                   options={[
                     { id: 'form', text: 'Form View' },
+                    { id: 'schema', text: 'Schema Builder' },
                     { id: 'json', text: 'JSON View' },
                     { id: 'yaml', text: 'YAML View' },
                   ]}
@@ -1135,12 +1148,47 @@ const ConfigurationLayout = () => {
           <Box padding="s">
             {viewMode === 'form' && (
               <FormView
-                schema={schema}
+                schema={{
+                  ...schema,
+                  properties: Object.fromEntries(
+                    Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes'),
+                  ),
+                }}
                 formValues={formValues}
                 defaultConfig={defaultConfig}
                 isCustomized={isCustomized}
                 onResetToDefault={resetToDefault}
                 onChange={handleFormChange}
+              />
+            )}
+
+            {viewMode === 'schema' && (
+              <SchemaBuilder
+                initialSchema={extractionSchema}
+                onChange={(schemaData, isDirty) => {
+                  setExtractionSchema(schemaData);
+                  if (isDirty) {
+                    const updatedConfig = { ...formValues };
+                    if (schemaData && schemaData.length > 0) {
+                      // Store as 'classes' field with JSON Schema content
+                      updatedConfig.classes = schemaData;
+                    }
+                    setFormValues(updatedConfig);
+                    setJsonContent(JSON.stringify(updatedConfig, null, 2));
+                    try {
+                      setYamlContent(yaml.dump(updatedConfig));
+                    } catch (e) {
+                      console.error('Error converting to YAML:', e);
+                    }
+                  }
+                }}
+                onValidate={(valid, errors) => {
+                  if (!valid) {
+                    setValidationErrors(errors.map((e) => ({ message: `Schema: ${e.path} - ${e.message}` })));
+                  } else {
+                    setValidationErrors([]);
+                  }
+                }}
               />
             )}
 

@@ -1,0 +1,489 @@
+import { useState, useCallback, useEffect } from 'react';
+import { produce } from 'immer';
+
+const convertJsonSchemaToClasses = (jsonSchema) => {
+  if (!jsonSchema) return [];
+
+  // Handle array input
+  if (Array.isArray(jsonSchema)) {
+    // Check if it's already in class array format (has 'attributes' property)
+    if (jsonSchema.length > 0 && jsonSchema[0].attributes) {
+      return jsonSchema.map((cls) => {
+        if (!cls.id) {
+          return {
+            ...cls,
+            id: `class-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          };
+        }
+        return cls;
+      });
+    }
+
+    // Handle array of JSON schemas (multi-document-type format)
+    const allClasses = [];
+    const processedDefs = new Map();
+    const timestamp = Date.now();
+
+    jsonSchema.forEach((schema, schemaIndex) => {
+      // Convert root schema to document type class
+      const docTypeClass = {
+        id: `class-${timestamp}-doc-${schemaIndex}`,
+        name: schema.$id || schema['x-aws-idp-document-type'] || `DocumentType${schemaIndex + 1}`,
+        description: schema.description,
+        'x-aws-idp-document-type': true,
+        attributes: {
+          type: 'object',
+          properties: schema.properties || {},
+          required: schema.required || [],
+        },
+      };
+      allClasses.push(docTypeClass);
+
+      // Process $defs (non-document-type classes)
+      if (schema.$defs) {
+        Object.entries(schema.$defs).forEach(([defName, defSchema]) => {
+          if (!processedDefs.has(defName)) {
+            const defClass = {
+              id: `class-${timestamp}-def-${defName}`,
+              name: defName,
+              description: defSchema.description,
+              'x-aws-idp-document-type': false,
+              attributes: {
+                type: 'object',
+                properties: defSchema.properties || {},
+                required: defSchema.required || [],
+              },
+            };
+            processedDefs.set(defName, defClass);
+          }
+        });
+      }
+    });
+
+    // Add all unique $defs classes
+    processedDefs.forEach((cls) => allClasses.push(cls));
+
+    return allClasses;
+  }
+
+  // Handle single JSON schema (legacy format)
+  const classes = [];
+  const timestamp = Date.now();
+
+  const mainClassId = `class-${timestamp}`;
+  const mainClass = {
+    id: mainClassId,
+    name: jsonSchema.$id || 'MainClass',
+    description: jsonSchema.description,
+    'x-aws-idp-document-type': true, // Mark as document type for backward compat
+    attributes: {
+      type: 'object',
+      properties: jsonSchema.properties || {},
+      required: jsonSchema.required || [],
+    },
+  };
+  classes.push(mainClass);
+
+  if (jsonSchema.$defs) {
+    let defIndex = 0;
+    Object.entries(jsonSchema.$defs).forEach(([defName, defSchema]) => {
+      defIndex += 1;
+      classes.push({
+        id: `class-${timestamp}-def-${defIndex}`,
+        name: defName,
+        description: defSchema.description,
+        'x-aws-idp-document-type': false, // Shared class, not a document type
+        attributes: {
+          type: 'object',
+          properties: defSchema.properties || {},
+          required: defSchema.required || [],
+        },
+      });
+    });
+  }
+
+  return classes;
+};
+
+export const useSchemaDesigner = (initialSchema = []) => {
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState(null);
+  const [selectedAttributeId, setSelectedAttributeId] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && initialSchema) {
+      const newClasses = convertJsonSchemaToClasses(initialSchema);
+      if (newClasses.length > 0) {
+        setClasses(newClasses);
+        setSelectedClassId(newClasses[0].id);
+        setInitialized(true);
+      }
+    }
+  }, [initialSchema, initialized]);
+
+  const addClass = useCallback((name, description) => {
+    const newClass = {
+      id: `class-${Date.now()}`,
+      name,
+      ...(description ? { description } : {}),
+      attributes: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    };
+    setClasses((prev) => [...prev, newClass]);
+    setSelectedClassId(newClass.id);
+    setIsDirty(true);
+    return newClass;
+  }, []);
+
+  const updateClass = useCallback((classId, updates) => {
+    setClasses((prev) =>
+      produce(prev, (draft) => {
+        const cls = draft.find((c) => c.id === classId);
+        if (cls) {
+          // Deep merge updates to ensure immer properly tracks all changes
+          // This prevents mixing external references with draft objects
+          Object.keys(updates).forEach((key) => {
+            if (key === 'attributes' && typeof updates[key] === 'object' && updates[key] !== null) {
+              // Handle nested attributes object specially
+              if (!cls.attributes) {
+                cls.attributes = { type: 'object', properties: {}, required: [] };
+              }
+              Object.keys(updates.attributes).forEach((attrKey) => {
+                cls.attributes[attrKey] = updates.attributes[attrKey];
+              });
+            } else {
+              // Direct assignment for top-level properties
+              cls[key] = updates[key];
+            }
+          });
+        }
+      }),
+    );
+    setIsDirty(true);
+  }, []);
+
+  const removeClass = useCallback(
+    (classId) => {
+      setClasses((prev) => prev.filter((cls) => cls.id !== classId));
+      if (selectedClassId === classId) {
+        setSelectedClassId(null);
+      }
+      setIsDirty(true);
+    },
+    [selectedClassId],
+  );
+
+  const addAttribute = useCallback((classId, attributeName, attributeType) => {
+    const newAttribute = {
+      id: `attr-${Date.now()}`,
+      name: attributeName,
+      type: attributeType,
+      description: '',
+    };
+
+    if (attributeType === 'object') {
+      newAttribute.properties = {};
+      newAttribute.required = [];
+    }
+
+    if (attributeType === 'array') {
+      newAttribute.items = {
+        id: `item-${Date.now()}`,
+        name: 'item',
+        type: 'string',
+        description: '',
+      };
+    }
+
+    setClasses((prev) =>
+      produce(prev, (draft) => {
+        const cls = draft.find((c) => c.id === classId);
+        if (cls) {
+          cls.attributes.properties[attributeName] = newAttribute;
+        }
+      }),
+    );
+    setIsDirty(true);
+    return newAttribute;
+  }, []);
+
+  const updateAttribute = useCallback((classId, attributeName, updates) => {
+    setClasses((prev) =>
+      produce(prev, (draft) => {
+        const cls = draft.find((c) => c.id === classId);
+        if (cls && cls.attributes.properties[attributeName]) {
+          const attr = cls.attributes.properties[attributeName];
+          if (typeof updates === 'object' && Object.keys(updates).length > 0) {
+            // Apply updates, deleting keys with undefined values
+            Object.keys(updates).forEach((key) => {
+              if (updates[key] === undefined) {
+                delete attr[key];
+              } else {
+                attr[key] = updates[key];
+              }
+            });
+          } else {
+            // Merge updates
+            Object.assign(attr, updates);
+          }
+        }
+      }),
+    );
+    setIsDirty(true);
+  }, []);
+
+  const renameAttribute = useCallback(
+    (classId, oldName, newName) => {
+      const trimmedName = newName.trim();
+      if (!trimmedName || trimmedName === oldName) {
+        return false;
+      }
+
+      let renameSuccessful = false;
+
+      setClasses((prev) =>
+        produce(prev, (draft) => {
+          const cls = draft.find((c) => c.id === classId);
+          if (!cls || !cls.attributes.properties[oldName] || cls.attributes.properties[trimmedName]) {
+            return;
+          }
+
+          // Rename the attribute
+          const attribute = cls.attributes.properties[oldName];
+          attribute.name = trimmedName;
+          cls.attributes.properties[trimmedName] = attribute;
+          delete cls.attributes.properties[oldName];
+
+          // Update required array
+          if (cls.attributes.required) {
+            const index = cls.attributes.required.indexOf(oldName);
+            if (index !== -1) {
+              cls.attributes.required[index] = trimmedName;
+            }
+          }
+
+          renameSuccessful = true;
+        }),
+      );
+
+      if (renameSuccessful) {
+        setSelectedAttributeId((prev) => (prev === oldName ? trimmedName : prev));
+        setIsDirty(true);
+      }
+
+      return renameSuccessful;
+    },
+    [setSelectedAttributeId],
+  );
+
+  const removeAttribute = useCallback(
+    (classId, attributeName) => {
+      setClasses((prev) =>
+        produce(prev, (draft) => {
+          const cls = draft.find((c) => c.id === classId);
+          if (cls) {
+            delete cls.attributes.properties[attributeName];
+            if (cls.attributes.required) {
+              cls.attributes.required = cls.attributes.required.filter((name) => name !== attributeName);
+            }
+          }
+        }),
+      );
+      if (selectedAttributeId === attributeName) {
+        setSelectedAttributeId(null);
+      }
+      setIsDirty(true);
+    },
+    [selectedAttributeId],
+  );
+
+  const reorderAttributes = useCallback((classId, oldIndex, newIndex) => {
+    setClasses((prev) =>
+      produce(prev, (draft) => {
+        const cls = draft.find((c) => c.id === classId);
+        if (cls) {
+          const entries = Object.entries(cls.attributes.properties);
+          const [removed] = entries.splice(oldIndex, 1);
+          entries.splice(newIndex, 0, removed);
+          cls.attributes.properties = Object.fromEntries(entries);
+        }
+      }),
+    );
+    setIsDirty(true);
+  }, []);
+
+  const sanitizeAttributeSchema = useCallback((attribute) => {
+    if (!attribute || typeof attribute !== 'object') {
+      return attribute;
+    }
+
+    const { id, name, ...rest } = attribute;
+    const sanitized = { ...rest };
+
+    if (sanitized.items) {
+      sanitized.items = sanitizeAttributeSchema(sanitized.items);
+    }
+
+    if (sanitized.properties) {
+      const sanitizedProperties = Object.entries(sanitized.properties).reduce((acc, [propName, propValue]) => {
+        acc[propName] = sanitizeAttributeSchema(propValue);
+        return acc;
+      }, {});
+      sanitized.properties = sanitizedProperties;
+    }
+
+    return sanitized;
+  }, []);
+
+  // Helper: Find all classes referenced by a class (recursively)
+  const findReferencedClasses = useCallback(
+    (rootClass, visited = new Set()) => {
+      const referenced = [];
+
+      const processProperties = (properties) => {
+        Object.values(properties || {}).forEach((attr) => {
+          // Check direct $ref
+          if (attr.$ref) {
+            const refName = attr.$ref.replace('#/$defs/', '');
+            if (!visited.has(refName)) {
+              const refClass = classes.find((c) => c.name === refName);
+              if (refClass && !refClass['x-aws-idp-document-type']) {
+                visited.add(refName);
+                referenced.push(refClass);
+                // Recursively find references in this class
+                referenced.push(...findReferencedClasses(refClass, visited));
+              }
+            }
+          }
+
+          // Check array items $ref
+          if (attr.items?.$ref) {
+            const refName = attr.items.$ref.replace('#/$defs/', '');
+            if (!visited.has(refName)) {
+              const refClass = classes.find((c) => c.name === refName);
+              if (refClass && !refClass['x-aws-idp-document-type']) {
+                visited.add(refName);
+                referenced.push(refClass);
+                referenced.push(...findReferencedClasses(refClass, visited));
+              }
+            }
+          }
+
+          // Check nested object properties
+          if (attr.type === 'object' && attr.properties) {
+            processProperties(attr.properties);
+          }
+        });
+      };
+
+      processProperties(rootClass.attributes.properties);
+      return referenced;
+    },
+    [classes],
+  );
+
+  const exportSchema = useCallback(() => {
+    if (classes.length === 0) {
+      return null;
+    }
+
+    // Find all document type classes
+    const docTypeClasses = classes.filter((cls) => cls['x-aws-idp-document-type'] === true);
+
+    // If no document types, fall back to treating first class as document type (backward compat)
+    const baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
+
+    // Build schema for each document type
+    const schemas = baseClasses.map((docTypeClass) => {
+      // Find classes referenced by this document type
+      const referencedClasses = findReferencedClasses(docTypeClass);
+
+      // Build $defs only for referenced classes
+      const defs = {};
+      referencedClasses.forEach((cls) => {
+        const sanitizedProps = Object.entries(cls.attributes.properties || {}).reduce((acc, [attrName, attrValue]) => {
+          acc[attrName] = sanitizeAttributeSchema(attrValue);
+          return acc;
+        }, {});
+
+        defs[cls.name] = {
+          type: 'object',
+          ...(cls.description ? { description: cls.description } : {}),
+          properties: sanitizedProps,
+          ...(cls.attributes.required?.length > 0 ? { required: cls.attributes.required } : {}),
+        };
+      });
+
+      // Build main schema properties
+      const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
+        (acc, [attrName, attrValue]) => {
+          acc[attrName] = sanitizeAttributeSchema(attrValue);
+          return acc;
+        },
+        {},
+      );
+
+      return {
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        $id: docTypeClass.name,
+        'x-aws-idp-document-type': docTypeClass.name,
+        type: 'object',
+        ...(docTypeClass.description ? { description: docTypeClass.description } : {}),
+        properties: sanitizedProps,
+        ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
+        ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
+      };
+    });
+
+    // Always return array of schemas for consistency
+    return schemas;
+  }, [classes, sanitizeAttributeSchema, findReferencedClasses]);
+
+  const importSchema = useCallback((importedClasses) => {
+    setClasses(importedClasses);
+    setSelectedClassId(importedClasses.length > 0 ? importedClasses[0].id : null);
+    setSelectedAttributeId(null);
+    setIsDirty(false);
+  }, []);
+
+  const resetDirty = useCallback(() => {
+    setIsDirty(false);
+  }, []);
+
+  const getSelectedClass = useCallback(() => {
+    return classes.find((cls) => cls.id === selectedClassId);
+  }, [classes, selectedClassId]);
+
+  const getSelectedAttribute = useCallback(() => {
+    const cls = getSelectedClass();
+    if (!cls || !selectedAttributeId) return null;
+    return cls.attributes.properties[selectedAttributeId] || null;
+  }, [getSelectedClass, selectedAttributeId]);
+
+  return {
+    classes,
+    selectedClassId,
+    setSelectedClassId,
+    selectedAttributeId,
+    setSelectedAttributeId,
+    isDirty,
+    addClass,
+    updateClass,
+    removeClass,
+    addAttribute,
+    updateAttribute,
+    renameAttribute,
+    removeAttribute,
+    reorderAttributes,
+    exportSchema,
+    importSchema,
+    resetDirty,
+    getSelectedClass,
+    getSelectedAttribute,
+  };
+};
