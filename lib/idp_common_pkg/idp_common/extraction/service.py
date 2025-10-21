@@ -12,11 +12,20 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Type
 
-from pydantic import BaseModel, Field, create_model
+from datamodel_code_generator import InputFileType, generate
+from pydantic import BaseModel
 
 from idp_common import bedrock, image, metrics, s3, utils
+from idp_common.config.schema_constants import (
+    ID_FIELD,
+    SCHEMA_EXAMPLES,
+    SCHEMA_PROPERTIES,
+    X_AWS_IDP_ATTRIBUTES_PROMPT,
+    X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_IMAGE_PATH,
+)
 from idp_common.models import Document
 
 # Conditional import for agentic extraction (requires Python 3.10+ dependencies)
@@ -53,290 +62,197 @@ class ExtractionService:
         )
         logger.info(f"Initialized extraction service with model {model_id}")
 
-    def _get_class_attributes(self, class_label: str) -> List[Dict[str, Any]]:
+    def _get_class_schema(self, class_label: str) -> Dict[str, Any]:
         """
-        Get attributes for a specific document class from configuration.
+        Get JSON Schema for a specific document class from configuration.
 
         Args:
             class_label: The document class name
 
         Returns:
-            List of attribute configurations
+            JSON Schema for the class, or empty dict if not found
         """
         classes_config = self.config.get("classes", [])
-        class_config = next(
-            (
-                class_obj
-                for class_obj in classes_config
-                if class_obj.get("name", "").lower() == class_label.lower()
-            ),
-            None,
-        )
-        if class_config is None:
-            return []
 
-        # Get attributes and ensure it's always a list, never None
-        attributes = class_config.get("attributes", [])
-        return attributes if attributes is not None else []
+        # Find class by $id or x-aws-idp-document-type using constants
+        for class_obj in classes_config:
+            class_id = class_obj.get(ID_FIELD, "") or class_obj.get(
+                X_AWS_IDP_DOCUMENT_TYPE, ""
+            )
+            if class_id.lower() == class_label.lower():
+                return class_obj
 
-    def _create_pydantic_model_from_attributes(
-        self, class_label: str, attributes: List[Dict[str, Any]]
+        return {}
+
+    def _create_pydantic_model_from_json_schema(
+        self, class_label: str, schema: Dict[str, Any]
     ) -> Type[BaseModel]:
         """
-        Dynamically create a Pydantic model from configuration attributes.
+        Dynamically create a Pydantic model from JSON Schema using datamodel-code-generator.
 
         Args:
             class_label: The document class name
-            attributes: List of attribute configurations
+            schema: JSON Schema definition
 
         Returns:
             Dynamically created Pydantic model class
+
+        Raises:
+            ValueError: If model generation fails due to circular references or other issues
         """
-        if not attributes:
-            # Return a minimal model for empty attributes
-            return create_model(f"{class_label}Model", __base__=BaseModel)
-
-        fields = {}
-
-        for attr in attributes:
-            attr_name = attr.get("name", "")
-            attr_description = attr.get("description", "")
-            attr_type = attr.get("attributeType", "simple")
-
-            if not attr_name:
-                continue
-
-            # Determine field type and default
-            if attr_type == "group":
-                # For group attributes, create nested model
-                group_attributes = attr.get("groupAttributes", [])
-                if group_attributes:
-                    nested_model = self._create_pydantic_model_from_attributes(
-                        f"{class_label}_{attr_name}", group_attributes
-                    )
-                    fields[attr_name] = (
-                        Optional[nested_model],
-                        Field(None, description=attr_description),
-                    )
-                else:
-                    fields[attr_name] = (
-                        Optional[str],
-                        Field(None, description=attr_description),
-                    )
-
-            elif attr_type == "list":
-                # For list attributes, create list of items
-                list_template = attr.get("listItemTemplate", {})
-                item_attributes = list_template.get("itemAttributes", [])
-
-                if item_attributes:
-                    item_model = self._create_pydantic_model_from_attributes(
-                        f"{class_label}_{attr_name}_Item", item_attributes
-                    )
-                    fields[attr_name] = (
-                        Optional[List[item_model]],
-                        Field(None, description=attr_description),
-                    )
-                else:
-                    fields[attr_name] = (
-                        Optional[List[str]],
-                        Field(None, description=attr_description),
-                    )
-
-            else:
-                # Simple attribute - default to optional string
-                fields[attr_name] = (
-                    Optional[str],
-                    Field(None, description=attr_description),
-                )
-
-        # Create the model with proper name
-        model_name = f"{class_label.replace(' ', '').replace('-', '_')}ExtractionModel"
-        return create_model(model_name, **fields, __base__=BaseModel)
-
-    def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
-        """
-        Format attribute descriptions for the prompt, supporting nested structures.
-
-        Args:
-            attributes: List of attribute configurations
-
-        Returns:
-            Formatted attribute descriptions as a string
-        """
-        # Defensive coding: handle None input
-        if attributes is None:
-            return ""
-
-        formatted_lines = []
-
-        for attr in attributes:
-            attr_name = attr.get("name", "")
-            attr_description = attr.get("description", "")
-            attr_type = attr.get("attributeType", "simple")
-
-            if attr_type == "group":
-                # Handle group attributes with nested groupAttributes
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                group_attributes = attr.get("groupAttributes", [])
-                for group_attr in group_attributes:
-                    group_name = group_attr.get("name", "")
-                    group_desc = group_attr.get("description", "")
-                    formatted_lines.append(f"  - {group_name}  \t[ {group_desc} ]")
-
-            elif attr_type == "list":
-                # Handle list attributes with listItemTemplate
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                list_template = attr.get("listItemTemplate", {})
-                item_description = list_template.get("itemDescription", "")
-                if item_description:
-                    formatted_lines.append(f"  Each item: {item_description}")
-
-                item_attributes = list_template.get("itemAttributes", [])
-                for item_attr in item_attributes:
-                    item_name = item_attr.get("name", "")
-                    item_desc = item_attr.get("description", "")
-                    formatted_lines.append(f"  - {item_name}  \t[ {item_desc} ]")
-
-            else:
-                # Handle simple attributes (default case for backward compatibility)
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-
-        return "\n".join(formatted_lines)
-
-    def _create_dynamic_model_from_attributes(
-        self, attributes: List[Dict[str, Any]], class_label: str
-    ) -> Type[BaseModel]:
-        """
-        Create a dynamic Pydantic model from configuration attributes.
-
-        Args:
-            attributes: List of attribute configurations from the class config
-            class_label: The document class name (for model naming)
-
-        Returns:
-            Dynamically created Pydantic model class
-        """
-        if not attributes:
-            # Create a simple model with just a raw_output field if no attributes defined
-            return create_model(
-                f"{class_label}ExtractionModel",
-                raw_output=(
-                    Optional[str],
-                    Field(None, description="Raw extraction output"),
-                ),
-            )
-
-        model_fields = {}
-
-        for attr in attributes:
-            attr_name = attr.get("name", "").replace(" ", "_").replace("-", "_")
-            if not attr_name:
-                continue
-
-            attr_description = attr.get("description", "")
-            attr_type = attr.get("attributeType", "simple")
-
-            if attr_type == "group":
-                # Handle group attributes - create nested model
-                group_fields = {}
-                group_attributes = attr.get("groupAttributes", [])
-
-                for group_attr in group_attributes:
-                    group_name = (
-                        group_attr.get("name", "").replace(" ", "_").replace("-", "_")
-                    )
-                    if group_name:
-                        group_desc = group_attr.get("description", "")
-                        group_fields[group_name] = (
-                            Optional[str],
-                            Field(None, description=group_desc),
-                        )
-
-                if group_fields:
-                    # Create nested model for the group
-                    nested_model = create_model(
-                        f"{attr_name.title()}Group", **group_fields
-                    )
-                    model_fields[attr_name] = (
-                        Optional[nested_model],
-                        Field(None, description=attr_description),
-                    )
-                else:
-                    # Fallback to optional string if no group attributes
-                    model_fields[attr_name] = (
-                        Optional[str],
-                        Field(None, description=attr_description),
-                    )
-
-            elif attr_type == "list":
-                # Handle list attributes - create list of nested items
-                list_template = attr.get("listItemTemplate", {})
-                item_attributes = list_template.get("itemAttributes", [])
-
-                if item_attributes:
-                    # Create model for list items
-                    item_fields = {}
-                    for item_attr in item_attributes:
-                        item_name = (
-                            item_attr.get("name", "")
-                            .replace(" ", "_")
-                            .replace("-", "_")
-                        )
-                        if item_name:
-                            item_desc = item_attr.get("description", "")
-                            item_fields[item_name] = (
-                                Optional[str],
-                                Field(None, description=item_desc),
-                            )
-
-                    if item_fields:
-                        # Create nested model for list items
-                        item_model = create_model(
-                            f"{attr_name.title()}Item", **item_fields
-                        )
-                        model_fields[attr_name] = (
-                            Optional[List[item_model]],
-                            Field(None, description=attr_description),
-                        )
-                    else:
-                        # Fallback to list of strings
-                        model_fields[attr_name] = (
-                            Optional[List[str]],
-                            Field(None, description=attr_description),
-                        )
-                else:
-                    # Simple list of strings
-                    model_fields[attr_name] = (
-                        Optional[List[str]],
-                        Field(None, description=attr_description),
-                    )
-
-            else:
-                # Handle simple attributes (default case)
-                model_fields[attr_name] = (
-                    Optional[str],
-                    Field(None, description=attr_description),
-                )
-
-        # Add a fallback field for any additional data
-        model_fields["additional_data"] = (
-            Optional[Dict[str, Any]],
-            Field(
-                None,
-                description="Any additional extracted data not covered by specific fields",
-            ),
+        # Clean the schema for model generation (remove IDP custom fields)
+        cleaned_schema = self._clean_schema_for_prompt(schema)
+        schema_str = (
+            json.dumps(cleaned_schema)
+            if isinstance(cleaned_schema, dict)
+            else cleaned_schema
         )
 
-        # Create the dynamic model
-        model_name = f"{class_label.replace(' ', '').replace('-', '')}ExtractionModel"
-        dynamic_model = create_model(model_name, **model_fields)
+        # Import required modules for model generation
+        import importlib.util
+        import sys
+        import tempfile
+        from pathlib import Path
 
-        logger.info(
-            f"Created dynamic Pydantic model '{model_name}' with {len(model_fields)} fields"
-        )
+        from datamodel_code_generator.model import DataModelType
 
-        return dynamic_model
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir) / f"model_{class_label}.py"
+
+            try:
+                # Generate the Pydantic model
+                generate(
+                    input_=schema_str,
+                    input_file_type=InputFileType.JsonSchema,
+                    output_model_type=DataModelType.PydanticV2BaseModel,
+                    output=tmp_path,
+                    disable_timestamp=True,
+                    use_standard_collections=True,
+                    use_union_operator=True,
+                )
+            except Exception as e:
+                error_msg = str(e)
+                if "circular reference" in error_msg.lower():
+                    raise ValueError(
+                        f"Circular reference detected in schema for '{class_label}' and not supported"
+                    )
+                else:
+                    raise ValueError(
+                        f"Model generation failed for '{class_label}': {error_msg}"
+                    )
+
+            # Import the generated module
+            module_name = f"generated_model_{class_label}"
+            spec = importlib.util.spec_from_file_location(module_name, tmp_path)
+            if spec and spec.loader:
+                generated_module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = generated_module
+                spec.loader.exec_module(generated_module)
+
+                # Find all model classes
+                all_models = [
+                    (name, obj)
+                    for name in dir(generated_module)
+                    if (obj := getattr(generated_module, name))
+                    and isinstance(obj, type)
+                    and issubclass(obj, BaseModel)
+                    and obj != BaseModel
+                    and not name.startswith("_")
+                ]
+
+                # Select model based on schema title or ID
+                schema_dict = (
+                    json.loads(schema_str)
+                    if isinstance(schema_str, str)
+                    else cleaned_schema
+                )
+                schema_title = schema_dict.get(
+                    "title", schema_dict.get("$id", class_label)
+                )
+                schema_title_pascal = "".join(
+                    word.capitalize()
+                    for word in schema_title.replace("-", " ").replace("_", " ").split()
+                )
+
+                data_model = None
+                for name, obj in all_models:
+                    if name in (
+                        schema_title_pascal,
+                        schema_title.replace(" ", ""),
+                        class_label.replace(" ", ""),
+                        "Model",
+                    ):
+                        data_model = obj
+                        break
+
+                # Use first available model if no match found
+                if not data_model and all_models:
+                    data_model = all_models[0][1]
+
+                if not data_model:
+                    raise ValueError(f"No model found for class '{class_label}'")
+
+                # Rebuild the model to ensure it's properly configured
+                data_model.model_rebuild()
+
+                logger.info(
+                    f"Created Pydantic model '{data_model.__name__}' from JSON Schema for class '{class_label}'"
+                )
+
+                # Clean up module
+                if module_name in sys.modules:
+                    del sys.modules[module_name]
+
+                return data_model
+
+    def _clean_schema_for_prompt(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Clean JSON Schema by removing IDP custom fields (x-aws-idp-*) for the prompt.
+        Keeps all standard JSON Schema fields including descriptions.
+
+        Args:
+            schema: JSON Schema definition
+
+        Returns:
+            Cleaned JSON Schema
+        """
+        cleaned = {}
+
+        for key, value in schema.items():
+            # Skip IDP custom fields
+            if key.startswith("x-aws-idp-"):
+                continue
+
+            # Recursively clean nested objects and arrays
+            if isinstance(value, dict):
+                cleaned[key] = self._clean_schema_for_prompt(value)
+            elif isinstance(value, list):
+                cleaned[key] = [
+                    self._clean_schema_for_prompt(item)
+                    if isinstance(item, dict)
+                    else item
+                    for item in value
+                ]
+            else:
+                cleaned[key] = value
+
+        return cleaned
+
+    def _format_schema_for_prompt(self, schema: Dict[str, Any]) -> str:
+        """
+        Format JSON Schema for inclusion in the extraction prompt.
+
+        Args:
+            schema: JSON Schema definition
+
+        Returns:
+            Formatted JSON Schema as a string with IDP custom fields removed
+        """
+        # Clean the schema to remove IDP custom fields
+        cleaned_schema = self._clean_schema_for_prompt(schema)
+
+        # Return the cleaned JSON Schema with nice formatting
+        return json.dumps(cleaned_schema, indent=2)
 
     def _prepare_prompt_from_template(
         self,
@@ -611,14 +527,9 @@ class ExtractionService:
             List of content items containing text and image content for examples
         """
         content = []
-        classes = self.config.get("classes", [])
 
-        # Find the specific class that matches the class_label
-        target_class = None
-        for class_obj in classes:
-            if class_obj.get("name", "").lower() == class_label.lower():
-                target_class = class_obj
-                break
+        # Find the specific class that matches the class_label (now in JSON Schema format)
+        target_class = self._get_class_schema(class_label)
 
         if not target_class:
             logger.warning(
@@ -626,21 +537,23 @@ class ExtractionService:
             )
             return content
 
-        # Get examples from the target class only
-        examples = target_class.get("examples", [])
+        # Get examples from the JSON Schema
+        examples = target_class.get(SCHEMA_EXAMPLES, [])
         for example in examples:
-            attributes_prompt = example.get("attributesPrompt")
+            # Check for attributes prompt in AWS IDP extension field
+            attributes_prompt = example.get(X_AWS_IDP_ATTRIBUTES_PROMPT)
 
             # Only process this example if it has a non-empty attributesPrompt
             if not attributes_prompt or not attributes_prompt.strip():
                 logger.info(
-                    f"Skipping example with empty attributesPrompt: {example.get('name')}"
+                    f"Skipping example with empty attributes prompt: {example.get('name')}"
                 )
                 continue
 
             content.append({"text": attributes_prompt})
 
-            image_path = example.get("imagePath")
+            # Check for image path in AWS IDP extension field
+            image_path = example.get(X_AWS_IDP_IMAGE_PATH)
             if image_path:
                 try:
                     # Load image content from the path
@@ -1051,12 +964,15 @@ class ExtractionService:
             )
             system_prompt = extraction_config.get("system_prompt", "")
 
-            # Get attributes for this document class
-            attributes = self._get_class_attributes(class_label)
-            attribute_descriptions = self._format_attribute_descriptions(attributes)
+            # Get JSON Schema for this document class
+            class_schema = self._get_class_schema(class_label)
+            attribute_descriptions = self._format_schema_for_prompt(class_schema)
 
-            # Check if attributes list is empty - if so, skip LLM invocation entirely
-            if not attributes or not attribute_descriptions.strip():
+            # Check if schema has properties - if not, skip LLM invocation entirely
+            if (
+                not class_schema.get(SCHEMA_PROPERTIES)
+                or not attribute_descriptions.strip()
+            ):
                 logger.info(
                     f"No attributes defined for class {class_label}, skipping LLM extraction"
                 )
@@ -1350,9 +1266,9 @@ class ExtractionService:
                         "Install with: pip install 'idp_common[agents]' or use agentic=False"
                     )
 
-                # Create dynamic Pydantic model from configuration attributes
-                dynamic_model = self._create_pydantic_model_from_attributes(
-                    class_label, attributes
+                # Create dynamic Pydantic model from JSON Schema
+                dynamic_model = self._create_pydantic_model_from_json_schema(
+                    class_label, class_schema
                 )
 
                 # Log the Pydantic model schema for debugging

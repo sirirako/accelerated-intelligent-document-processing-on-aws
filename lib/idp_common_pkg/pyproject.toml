@@ -63,7 +63,8 @@ classification = [
 
 # Extraction module dependencies
 extraction = [
-  "Pillow==11.2.1", # For image handling
+  "Pillow==11.2.1",  # For image handling
+  "deepdiff>=6.0.0",
 ]
 
 # Assessment module dependencies
@@ -149,6 +150,7 @@ agentic-extraction = [
   "pymupdf>=1.25.5",
   "tabulate>=0.9.0",
   "aws-lambda-powertools>=3.2.0",                          # Structured logging and observability
+  "datamodel-code-generator>=0.25.0",                      # Generate Pydantic models from JSON Schema
 ]
 
 [project.urls]
