@@ -228,8 +228,8 @@ Resources:
         BuildSpec: patterns/pattern-2/buildspec.yml
       Environment:
         ComputeType: BUILD_GENERAL1_LARGE
-        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
-        Type: ARM_CONTAINER
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type: LINUX_CONTAINER
         PrivilegedMode: true
         EnvironmentVariables:
           - Name: ECR_URI
@@ -342,7 +342,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
-      LogGroupName: !Sub "/${StackName}/lambda/Pattern2CodeBuildTrigger"
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/Pattern2CodeBuildTrigger"
       RetentionInDays: !Ref LogRetentionDays
 
   Pattern2DockerBuildRun:
@@ -1083,7 +1083,7 @@ Resources:
               task_prompt:
                 type: string
                 format: textarea
-                description: Task prompt - supports parameter {DOCUMENT_TEXT}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
+                description: Task prompt - supports parameters {DOCUMENT_TEXT} and {EXTRACTION_RESULTS}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 7
           evaluation:
             order: 7

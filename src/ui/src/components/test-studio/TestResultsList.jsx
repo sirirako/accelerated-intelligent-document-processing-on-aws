@@ -12,16 +12,18 @@ import {
   Box,
   TextFilter,
   Flashbar,
-} from '@awsui/components-react';
-import { useCollection } from '@awsui/collection-hooks';
-import { API, graphqlOperation } from 'aws-amplify';
+} from '@cloudscape-design/components';
+import { useCollection } from '@cloudscape-design/collection-hooks';
+import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
-import DELETE_TESTS from '../../graphql/mutations/deleteTests';
+import DELETE_TESTS from '../../graphql/queries/deleteTests';
 import TestResults from './TestResults';
-import TestComparison from '../test-comparison/TestComparison';
-import DeleteDocumentModal from '../common/DeleteDocumentModal';
+import TestComparison from './TestComparison';
+import DeleteTestModal from './DeleteTestModal';
 import { paginationLabels } from '../common/labels';
 import { TableHeader } from '../common/table';
+
+const client = generateClient();
 
 const TIME_PERIOD_OPTIONS = [
   { id: 'refresh-2h', hours: 2, text: '2 hrs' },
@@ -35,9 +37,18 @@ const TIME_PERIOD_OPTIONS = [
 ].map((option) => ({ ...option, text: option.text })); // Ensure text is the display text
 
 const TestRunIdCell = ({ item, onSelect }) => (
-  <Button variant="link" onClick={() => onSelect(item.testRunId)}>
-    {item.testRunId}
-  </Button>
+  <span 
+    title={item.testRunId} 
+    style={{ 
+      whiteSpace: 'nowrap',
+      cursor: 'pointer',
+      color: '#0073bb',
+      textDecoration: 'underline'
+    }}
+    onClick={() => onSelect(item.testRunId)}
+  >
+    {item.testRunId.substring(0, 8)}...
+  </span>
 );
 
 TestRunIdCell.propTypes = {
@@ -85,7 +96,10 @@ const TestResultsList = () => {
     try {
       setLoading(true);
       console.log('Fetching test runs with timePeriodHours:', timePeriodHours);
-      const result = await API.graphql(graphqlOperation(GET_TEST_RUNS, { timePeriodHours }));
+      const result = await client.graphql({ 
+        query: GET_TEST_RUNS, 
+        variables: { timePeriodHours } 
+      });
       console.log('Raw GraphQL result:', result);
       console.log('getTestRuns data:', result.data.getTestRuns);
       console.log('Number of test runs returned:', result.data.getTestRuns?.length || 0);
@@ -148,7 +162,10 @@ const TestResultsList = () => {
       const testRunIds = selectedItems.map((item) => item.testRunId);
       console.log('Attempting to delete test runs:', testRunIds);
 
-      const result = await API.graphql(graphqlOperation(DELETE_TESTS, { testRunIds }));
+      const result = await client.graphql({ 
+        query: DELETE_TESTS, 
+        variables: { testRunIds } 
+      });
       console.log('Delete result:', result);
 
       const count = selectedItems.length;
@@ -238,12 +255,14 @@ const TestResultsList = () => {
         sortingColumn={collectionProps.sortingColumn}
         sortingDescending={collectionProps.sortingDescending}
         onSortingChange={collectionProps.onSortingChange}
+        wrapLines={false}
         columnDefinitions={[
           {
             id: 'testRunId',
             header: 'Test Run ID',
             cell: getTestRunIdCell,
             sortingField: 'testRunId',
+            width: 150,
           },
           {
             id: 'testSetName',
@@ -324,12 +343,13 @@ const TestResultsList = () => {
         <TestComparison preSelectedTestRunIds={selectedTestRunIds} onTestRunSelect={setSelectedTestRunId} />
       </Modal>
 
-      <DeleteDocumentModal
+      <DeleteTestModal
         visible={isDeleteModalVisible}
         onDismiss={() => setIsDeleteModalVisible(false)}
         onConfirm={confirmDelete}
         selectedItems={selectedItems}
         itemType="test run"
+        loading={deleteLoading}
       />
     </SpaceBetween>
   );

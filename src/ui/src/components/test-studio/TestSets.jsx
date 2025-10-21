@@ -13,12 +13,14 @@ import {
   Input,
   Alert,
   Badge,
-} from '@awsui/components-react';
-import { API, graphqlOperation } from 'aws-amplify';
-import ADD_TEST_SET from '../../graphql/mutations/addTestSet';
-import DELETE_TEST_SETS from '../../graphql/mutations/deleteTestSets';
+} from '@cloudscape-design/components';
+import { generateClient } from 'aws-amplify/api';
+import ADD_TEST_SET from '../../graphql/queries/addTestSet';
+import DELETE_TEST_SETS from '../../graphql/queries/deleteTestSets';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
+
+const client = generateClient();
 
 const TestSets = () => {
   const [testSets, setTestSets] = useState([]);
@@ -32,11 +34,12 @@ const TestSets = () => {
   const [showFilesModal, setShowFilesModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const loadTestSets = async () => {
     try {
       console.log('TestSets: Loading test sets...');
-      const result = await API.graphql(graphqlOperation(GET_TEST_SETS));
+      const result = await client.graphql({ query: GET_TEST_SETS });
       console.log('TestSets: GraphQL result:', result);
       setTestSets(result.data.getTestSets || []);
     } catch (err) {
@@ -54,7 +57,10 @@ const TestSets = () => {
 
     setLoading(true);
     try {
-      const result = await API.graphql(graphqlOperation(LIST_INPUT_BUCKET_FILES, { filePattern: filePattern.trim() }));
+      const result = await client.graphql({ 
+        query: LIST_INPUT_BUCKET_FILES, 
+        variables: { filePattern: filePattern.trim() } 
+      });
 
       const files = result.data.listInputBucketFiles || [];
       setMatchingFiles(files);
@@ -75,13 +81,14 @@ const TestSets = () => {
 
     setLoading(true);
     try {
-      const result = await API.graphql(
-        graphqlOperation(ADD_TEST_SET, {
+      const result = await client.graphql({
+        query: ADD_TEST_SET,
+        variables: {
           name: newTestSetName.trim(),
           filePattern: filePattern.trim(),
           fileCount,
-        }),
-      );
+        }
+      });
 
       console.log('GraphQL result:', result);
       const newTestSet = result.data.addTestSet;
@@ -90,12 +97,14 @@ const TestSets = () => {
       if (newTestSet) {
         const updatedTestSets = [...testSets, newTestSet];
         console.log('Updating testSets from', testSets.length, 'to', updatedTestSets.length);
+        console.log('New test set added:', newTestSet);
         setTestSets(updatedTestSets);
         setNewTestSetName('');
         setFilePattern('');
         setFileCount(0);
         setShowAddModal(false);
         setError('');
+        setSuccessMessage(`Successfully created test set "${newTestSet.name}"`);
       } else {
         setError('Failed to create test set - no data returned');
       }
@@ -108,12 +117,18 @@ const TestSets = () => {
 
   const handleDeleteTestSets = async () => {
     const testSetIds = selectedItems.map((item) => item.id);
+    const deleteCount = testSetIds.length;
 
     setLoading(true);
     try {
-      await API.graphql(graphqlOperation(DELETE_TEST_SETS, { testSetIds }));
+      await client.graphql({ 
+        query: DELETE_TEST_SETS, 
+        variables: { testSetIds } 
+      });
       setTestSets(testSets.filter((testSet) => !testSetIds.includes(testSet.id)));
       setSelectedItems([]);
+      setSuccessMessage(`Successfully deleted ${deleteCount} test set${deleteCount > 1 ? 's' : ''}`);
+      setError('');
     } catch (err) {
       setError(`Failed to delete test sets: ${err.message}`);
     } finally {
@@ -173,6 +188,12 @@ const TestSets = () => {
       {error && (
         <Alert type="error" dismissible onDismiss={() => setError('')}>
           {error}
+        </Alert>
+      )}
+
+      {successMessage && (
+        <Alert type="success" dismissible onDismiss={() => setSuccessMessage('')}>
+          {successMessage}
         </Alert>
       )}
 
@@ -294,7 +315,14 @@ const TestSets = () => {
         }
       >
         <Box>
-          Are you sure you want to delete {selectedItems.length} test set{selectedItems.length > 1 ? 's' : ''}?
+          <div>Are you sure you want to delete the following test set{selectedItems.length > 1 ? 's' : ''}?</div>
+          <ul style={{ marginTop: '10px' }}>
+            {selectedItems.map((item) => (
+              <li key={item.id}>
+                <strong>{item.name}</strong> ({item.filePattern})
+              </li>
+            ))}
+          </ul>
         </Box>
       </Modal>
     </Container>

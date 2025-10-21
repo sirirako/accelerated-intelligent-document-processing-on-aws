@@ -1,14 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
-import { AppLayout, ContentLayout, Header, SpaceBetween, Alert, Box } from '@awsui/components-react';
+import { AppLayout, ContentLayout, Header, SpaceBetween, Alert, Box } from '@cloudscape-design/components';
 import { useLocation } from 'react-router-dom';
 
 import Navigation from '../genaiidp-layout/navigation';
 import TestSets from './TestSets';
 import TestRunner from './TestRunner';
-import TestResultsAndComparison from './TestResultsAndComparison';
-import TestRunnerStatus from '../test-results/TestRunnerStatus';
+import TestResultsList from './TestResultsList';
 import { appLayoutLabels } from '../common/labels';
 import useAppContext from '../../contexts/app';
 
@@ -51,7 +50,7 @@ const TestStudioLayout = () => {
           />
         );
       case 'results':
-        return <TestResultsAndComparison />;
+        return <TestResultsList />;
       default:
         return <TestSets />;
     }
@@ -72,13 +71,6 @@ const TestStudioLayout = () => {
           }
         >
           <SpaceBetween size="l">
-            {testStarted && currentTestRunId && (
-              <Alert type="info" header={`Test Running: ${currentTestRunId}`} dismissible={false}>
-                <Box>
-                  <TestRunnerStatus testRunId={currentTestRunId} onComplete={handleTestComplete} />
-                </Box>
-              </Alert>
-            )}
             {renderContent()}
           </SpaceBetween>
         </ContentLayout>

@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import { React } from 'react';
-import { Route, Switch, useLocation } from 'react-router-dom';
-import { SideNavigation } from '@awsui/components-react';
+import { useLocation } from 'react-router-dom';
+import { SideNavigation } from '@cloudscape-design/components';
 import useSettingsContext from '../../contexts/settings';
 
 import {
@@ -26,7 +26,7 @@ export const documentsNavItems = [
     text: 'Test Studio',
     items: [
       { type: 'link', text: 'Test Sets', href: `#${TEST_STUDIO_PATH}?tab=sets` },
-      { type: 'link', text: 'Test Runs', href: `#${TEST_STUDIO_PATH}?tab=runner` },
+      { type: 'link', text: 'Test Runner', href: `#${TEST_STUDIO_PATH}?tab=runner` },
       { type: 'link', text: 'Test Results', href: `#${TEST_STUDIO_PATH}?tab=results` },
     ],
   },
@@ -83,15 +83,13 @@ const Navigation = ({
   } else if (path.includes(DOCUMENTS_ANALYTICS_PATH)) {
     activeHref = `#${DOCUMENTS_ANALYTICS_PATH}`;
   } else if (path.includes(TEST_STUDIO_PATH)) {
-    // Handle Test Studio sub-navigation based on URL params
+    // Handle Test Studio sub-navigation
     const urlParams = new URLSearchParams(location.search);
     const tab = urlParams.get('tab');
-    if (tab === 'results') {
-      activeHref = `#${TEST_STUDIO_PATH}?tab=results`;
-    } else if (tab === 'sets') {
-      activeHref = `#${TEST_STUDIO_PATH}?tab=sets`;
+    if (tab) {
+      activeHref = `#${TEST_STUDIO_PATH}?tab=${tab}`;
     } else {
-      activeHref = `#${TEST_STUDIO_PATH}?tab=runner`;
+      activeHref = `#${TEST_STUDIO_PATH}?tab=sets`;
     }
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
@@ -149,16 +147,12 @@ const Navigation = ({
   }
 
   return (
-    <Switch>
-      <Route path={DOCUMENTS_PATH}>
-        <SideNavigation
-          items={navigationItems}
-          header={header || documentsNavHeader}
-          activeHref={activeHref}
-          onFollow={onFollowHandler}
-        />
-      </Route>
-    </Switch>
+    <SideNavigation
+      items={navigationItems}
+      header={header || documentsNavHeader}
+      activeHref={activeHref}
+      onFollow={onFollowHandler}
+    />
   );
 };
 

@@ -2,26 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Modal, Box, SpaceBetween, Button } from '@awsui/components-react';
+import { Modal, Box, SpaceBetween, Button } from '@cloudscape-design/components';
 
-const DeleteDocumentModal = ({ visible, onDismiss, onConfirm, selectedItems, itemType = 'document' }) => {
-  const itemCount = selectedItems.length;
-  const isMultiple = itemCount > 1;
-  const itemTypePlural = itemType === 'document' ? 'documents' : `${itemType}s`;
-
-  const getItemKey = (item) => item.objectKey || item.testRunId || item.id;
-  const getItemName = (item) => {
-    if (itemType === 'test run') {
-      return item.testRunId;
-    }
-    return item.name || item.objectKey || item.testRunId || item.id;
-  };
+const DeleteDocumentModal = ({ visible, onDismiss, onConfirm, selectedItems }) => {
+  const documentCount = selectedItems.length;
+  const isMultiple = documentCount > 1;
 
   return (
     <Modal
       visible={visible}
       onDismiss={onDismiss}
-      header={`Delete ${isMultiple ? itemTypePlural : itemType}`}
+      header={`Delete ${isMultiple ? 'Documents' : 'Document'}`}
       footer={
         <Box float="right">
           <SpaceBetween direction="horizontal" size="xs">
@@ -36,13 +27,13 @@ const DeleteDocumentModal = ({ visible, onDismiss, onConfirm, selectedItems, ite
       }
     >
       <p>
-        Are you sure you want to delete {isMultiple ? `these ${itemCount} ${itemTypePlural}` : `this ${itemType}`}? This
-        action cannot be undone.
+        Are you sure you want to delete {isMultiple ? `these ${documentCount} documents` : 'this document'}? This action
+        cannot be undone.
       </p>
       {isMultiple && (
         <ul>
           {selectedItems.map((item) => (
-            <li key={getItemKey(item)}>{getItemName(item)}</li>
+            <li key={item.objectKey}>{item.name || item.objectKey}</li>
           ))}
         </ul>
       )}
@@ -56,17 +47,10 @@ DeleteDocumentModal.propTypes = {
   onConfirm: PropTypes.func.isRequired,
   selectedItems: PropTypes.arrayOf(
     PropTypes.shape({
-      objectKey: PropTypes.string,
-      testRunId: PropTypes.string,
+      objectKey: PropTypes.string.isRequired,
       name: PropTypes.string,
-      id: PropTypes.string,
     }),
   ).isRequired,
-  itemType: PropTypes.string,
-};
-
-DeleteDocumentModal.defaultProps = {
-  itemType: 'document',
 };
 
 export default DeleteDocumentModal;

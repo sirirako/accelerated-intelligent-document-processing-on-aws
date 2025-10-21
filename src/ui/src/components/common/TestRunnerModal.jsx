@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Modal, Box, SpaceBetween, Button, FormField, Input, Alert } from '@awsui/components-react';
-import TestRunnerStatus from '../test-results/TestRunnerStatus';
+import { Modal, Box, SpaceBetween, Button, FormField, Input, Alert } from '@cloudscape-design/components';
+import TestRunnerStatus from '../test-studio/TestRunnerStatus';
 
 const TestRunnerModal = ({ visible, onDismiss, onRunTest, loading }) => {
   const [testSetName, setTestSetName] = useState('');

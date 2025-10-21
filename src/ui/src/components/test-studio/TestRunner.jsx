@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Box } from '@awsui/components-react';
-import { API, graphqlOperation, Logger } from 'aws-amplify';
+import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Box } from '@cloudscape-design/components';
+import { generateClient } from 'aws-amplify/api';
+import { ConsoleLogger } from 'aws-amplify/utils';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 
-const logger = new Logger('TestRunner');
+const client = generateClient();
+const logger = new ConsoleLogger('TestRunner');
 
 const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
   const [testSets, setTestSets] = useState([]);
@@ -18,7 +20,7 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
   const loadTestSets = async () => {
     try {
       console.log('TestRunner: Loading test sets...');
-      const result = await API.graphql(graphqlOperation(GET_TEST_SETS));
+      const result = await client.graphql({ query: GET_TEST_SETS });
       console.log('TestRunner: GraphQL result:', result);
       const testSetsData = result.data.getTestSets || [];
       console.log('TestRunner: Test sets data:', testSetsData);
@@ -42,7 +44,14 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
     setLoading(true);
     try {
       const input = { testSetId: selectedTestSet.value };
-      const result = await API.graphql(graphqlOperation(START_TEST_RUN, { input }));
+      console.log('TestRunner: Starting test run with input:', input);
+      
+      const result = await client.graphql({ 
+        query: START_TEST_RUN, 
+        variables: { input } 
+      });
+
+      console.log('TestRunner: GraphQL result:', result);
 
       if (!result?.data?.startTestRun) {
         throw new Error('No response data from startTestRun mutation');
@@ -53,9 +62,18 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
       setError('');
     } catch (err) {
       logger.error('Failed to start test run:', err);
+      console.error('TestRunner: Error details:', {
+        message: err.message,
+        errors: err.errors,
+        networkError: err.networkError,
+        graphQLErrors: err.graphQLErrors
+      });
+      
       let errorMessage = 'Failed to start test run';
       if (err.errors && err.errors.length > 0) {
         errorMessage = err.errors.map((e) => e.message).join('; ');
+      } else if (err.message) {
+        errorMessage = err.message;
       }
       setError(errorMessage);
     } finally {

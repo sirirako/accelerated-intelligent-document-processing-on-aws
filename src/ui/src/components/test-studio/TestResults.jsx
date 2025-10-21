@@ -12,9 +12,11 @@ import {
   Badge,
   Alert,
   Table,
-} from '@awsui/components-react';
-import { API, graphqlOperation } from 'aws-amplify';
+} from '@cloudscape-design/components';
+import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
+
+const client = generateClient();
 
 /* eslint-disable react/prop-types */
 const ComprehensiveBreakdown = ({ baseline, test }) => {
@@ -237,7 +239,10 @@ const TestResults = ({ testRunId }) => {
   useEffect(() => {
     const fetchResults = async () => {
       try {
-        const result = await API.graphql(graphqlOperation(GET_TEST_RUN, { testRunId }));
+        const result = await client.graphql({ 
+          query: GET_TEST_RUN, 
+          variables: { testRunId } 
+        });
         const testRun = result.data.getTestRun;
         console.log('Test results:', testRun);
         setResults(testRun);
@@ -313,7 +318,13 @@ const TestResults = ({ testRunId }) => {
       : null;
 
   return (
-    <Container>
+    <Container
+      header={
+        <Header variant="h2">
+          Test Results: {results.testRunId} ({results.testSetName})
+        </Header>
+      }
+    >
       <SpaceBetween direction="vertical" size="l">
         {/* Overall Status */}
         <Box>
@@ -332,7 +343,7 @@ const TestResults = ({ testRunId }) => {
 
         {!hasAccuracyData && results.status === 'COMPLETE' && (
           <Alert type="warning" header="No Baseline Comparison">
-            No baseline files found for comparison. Use &quot;Use as baseline&quot; on processed documents to create
+            No baseline files found for comparison. Use "Use as baseline" on processed documents to create
             ground truth data.
           </Alert>
         )}

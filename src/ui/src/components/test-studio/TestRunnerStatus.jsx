@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Badge, ProgressBar, Box } from '@awsui/components-react';
-import { API, graphqlOperation } from 'aws-amplify';
+import { Badge, ProgressBar, Box } from '@cloudscape-design/components';
+import { generateClient } from 'aws-amplify/api';
+import { graphqlOperation } from '@aws-amplify/api-graphql';
+
+const client = generateClient();
 import GET_TEST_RUN_STATUS from '../../graphql/queries/getTestRunStatus';
 
 const TestRunnerStatus = ({ testRunId, onComplete }) => {
@@ -14,7 +17,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
 
     const fetchStatus = async () => {
       try {
-        const result = await API.graphql(graphqlOperation(GET_TEST_RUN_STATUS, { testRunId }));
+        const result = await client.graphql(graphqlOperation(GET_TEST_RUN_STATUS, { testRunId }));
         const status = result?.data?.getTestRunStatus;
 
         if (!status) {
