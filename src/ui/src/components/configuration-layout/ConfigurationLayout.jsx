@@ -191,6 +191,15 @@ const ConfigurationLayout = () => {
           // Skip validation if value is undefined (already handled by required check)
           if (value === undefined) return;
 
+          // Skip deep validation for classes field - it has its own complex JSON Schema structure
+          // Just check it's an array if present
+          if (key === 'classes') {
+            if (!Array.isArray(value)) {
+              errors.push({ message: `Field 'classes' must be an array` });
+            }
+            return;
+          }
+
           // Type validation
           if (prop.type === 'number' || prop.type === 'integer') {
             // For YAML validation, we'll be more permissive
