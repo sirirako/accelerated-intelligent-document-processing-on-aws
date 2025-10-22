@@ -409,7 +409,9 @@ class TestBdaBlueprintService:
         existing_blueprint = {"schema": json.dumps(blueprint_schema)}
 
         updated_schema = deepcopy(base_schema)
-        updated_schema["properties"]["personalInformation"]["properties"]["middleName"] = {
+        updated_schema["properties"]["personalInformation"]["properties"][
+            "middleName"
+        ] = {
             "type": "string",
             "description": "Middle Name of Employee",
         }

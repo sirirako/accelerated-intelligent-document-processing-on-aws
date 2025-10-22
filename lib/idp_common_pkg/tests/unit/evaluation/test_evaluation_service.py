@@ -53,38 +53,50 @@ class TestEvaluationService:
 
     @pytest.fixture
     def mock_config(self):
-        """Fixture providing a mock configuration."""
+        """Fixture providing a mock configuration in JSON Schema format."""
         return {
             "classes": [
                 {
-                    "name": "invoice",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "invoice",
+                    "x-aws-idp-document-type": "invoice",
+                    "type": "object",
                     "description": "An invoice document",
-                    "attributes": [
-                        {
-                            "name": "invoice_number",
+                    "properties": {
+                        "invoice_number": {
+                            "type": "string",
                             "description": "The invoice number",
-                            "evaluation_method": "EXACT",
+                            "x-aws-idp-evaluation-method": "EXACT",
                         },
-                        {
-                            "name": "invoice_date",
+                        "invoice_date": {
+                            "type": "string",
                             "description": "The invoice date",
-                            "evaluation_method": "FUZZY",
+                            "x-aws-idp-evaluation-method": "FUZZY",
                             "evaluation_threshold": 0.9,
                         },
-                        {
-                            "name": "total_amount",
+                        "total_amount": {
+                            "type": "string",
                             "description": "The total amount",
-                            "evaluation_method": "LLM",
+                            "x-aws-idp-evaluation-method": "LLM",
                         },
-                    ],
+                    },
                 },
                 {
-                    "name": "receipt",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "receipt",
+                    "x-aws-idp-document-type": "receipt",
+                    "type": "object",
                     "description": "A receipt document",
-                    "attributes": [
-                        {"name": "receipt_number", "description": "The receipt number"},
-                        {"name": "date", "description": "The receipt date"},
-                    ],
+                    "properties": {
+                        "receipt_number": {
+                            "type": "string",
+                            "description": "The receipt number",
+                        },
+                        "date": {
+                            "type": "string",
+                            "description": "The receipt date",
+                        },
+                    },
                 },
             ],
             "evaluation": {
