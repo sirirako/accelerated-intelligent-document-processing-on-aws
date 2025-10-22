@@ -14,7 +14,7 @@ import os
 import time
 from typing import Any, Dict, List, Type
 
-from datamodel_code_generator import InputFileType, generate
+from datamodel_code_generator import DataModelType, InputFileType, generate
 from pydantic import BaseModel
 
 from idp_common import bedrock, image, metrics, s3, utils
@@ -113,8 +113,6 @@ class ExtractionService:
         import sys
         import tempfile
         from pathlib import Path
-
-        from datamodel_code_generator.model import DataModelType
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir) / f"model_{class_label}.py"
