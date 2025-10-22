@@ -12,10 +12,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List, Type
-
-from datamodel_code_generator import DataModelType, InputFileType, generate
-from pydantic import BaseModel
+from typing import Any, Dict, List
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.config.schema_constants import (
@@ -27,6 +24,7 @@ from idp_common.config.schema_constants import (
     X_AWS_IDP_IMAGE_PATH,
 )
 from idp_common.models import Document
+from idp_common.schema import create_pydantic_model_from_json_schema
 
 # Conditional import for agentic extraction (requires Python 3.10+ dependencies)
 try:
@@ -83,125 +81,6 @@ class ExtractionService:
                 return class_obj
 
         return {}
-
-    def _create_pydantic_model_from_json_schema(
-        self, class_label: str, schema: Dict[str, Any]
-    ) -> Type[BaseModel]:
-        """
-        Dynamically create a Pydantic model from JSON Schema using datamodel-code-generator.
-
-        Args:
-            class_label: The document class name
-            schema: JSON Schema definition
-
-        Returns:
-            Dynamically created Pydantic model class
-
-        Raises:
-            ValueError: If model generation fails due to circular references or other issues
-        """
-        # Clean the schema for model generation (remove IDP custom fields)
-        cleaned_schema = self._clean_schema_for_prompt(schema)
-        schema_str = (
-            json.dumps(cleaned_schema)
-            if isinstance(cleaned_schema, dict)
-            else cleaned_schema
-        )
-
-        # Import required modules for model generation
-        import importlib.util
-        import sys
-        import tempfile
-        from pathlib import Path
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir) / f"model_{class_label}.py"
-
-            try:
-                # Generate the Pydantic model
-                generate(
-                    input_=schema_str,
-                    input_file_type=InputFileType.JsonSchema,
-                    output_model_type=DataModelType.PydanticV2BaseModel,
-                    output=tmp_path,
-                    disable_timestamp=True,
-                    use_standard_collections=True,
-                    use_union_operator=True,
-                )
-            except Exception as e:
-                error_msg = str(e)
-                if "circular reference" in error_msg.lower():
-                    raise ValueError(
-                        f"Circular reference detected in schema for '{class_label}' and not supported"
-                    )
-                else:
-                    raise ValueError(
-                        f"Model generation failed for '{class_label}': {error_msg}"
-                    )
-
-            # Import the generated module
-            module_name = f"generated_model_{class_label}"
-            spec = importlib.util.spec_from_file_location(module_name, tmp_path)
-            if spec and spec.loader:
-                generated_module = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = generated_module
-                spec.loader.exec_module(generated_module)
-
-                # Find all model classes
-                all_models = [
-                    (name, obj)
-                    for name in dir(generated_module)
-                    if (obj := getattr(generated_module, name))
-                    and isinstance(obj, type)
-                    and issubclass(obj, BaseModel)
-                    and obj != BaseModel
-                    and not name.startswith("_")
-                ]
-
-                # Select model based on schema title or ID
-                schema_dict = (
-                    json.loads(schema_str)
-                    if isinstance(schema_str, str)
-                    else cleaned_schema
-                )
-                schema_title = schema_dict.get(
-                    "title", schema_dict.get("$id", class_label)
-                )
-                schema_title_pascal = "".join(
-                    word.capitalize()
-                    for word in schema_title.replace("-", " ").replace("_", " ").split()
-                )
-
-                data_model = None
-                for name, obj in all_models:
-                    if name in (
-                        schema_title_pascal,
-                        schema_title.replace(" ", ""),
-                        class_label.replace(" ", ""),
-                        "Model",
-                    ):
-                        data_model = obj
-                        break
-
-                # Use first available model if no match found
-                if not data_model and all_models:
-                    data_model = all_models[0][1]
-
-                if not data_model:
-                    raise ValueError(f"No model found for class '{class_label}'")
-
-                # Rebuild the model to ensure it's properly configured
-                data_model.model_rebuild()
-
-                logger.info(
-                    f"Created Pydantic model '{data_model.__name__}' from JSON Schema for class '{class_label}'"
-                )
-
-                # Clean up module
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
-
-                return data_model
 
     def _clean_schema_for_prompt(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1265,8 +1144,11 @@ class ExtractionService:
                     )
 
                 # Create dynamic Pydantic model from JSON Schema
-                dynamic_model = self._create_pydantic_model_from_json_schema(
-                    class_label, class_schema
+                # Schema is already cleaned by _clean_schema_for_prompt before being passed here
+                dynamic_model = create_pydantic_model_from_json_schema(
+                    schema=class_schema,
+                    class_label=class_label,
+                    clean_schema=False,  # Already cleaned
                 )
 
                 # Log the Pydantic model schema for debugging
