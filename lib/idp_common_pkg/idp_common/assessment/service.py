@@ -20,6 +20,18 @@ import time
 from typing import Any, Dict, List
 
 from idp_common import bedrock, image, metrics, s3, utils
+from idp_common.config.schema_constants import (
+    SCHEMA_PROPERTIES,
+    SCHEMA_TYPE,
+    SCHEMA_DESCRIPTION,
+    SCHEMA_ITEMS,
+    TYPE_OBJECT,
+    TYPE_ARRAY,
+    TYPE_STRING,
+    X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_CONFIDENCE_THRESHOLD,
+    X_AWS_IDP_LIST_ITEM_DESCRIPTION,
+)
 from idp_common.models import Document
 from idp_common.utils import extract_json_from_text
 
@@ -87,158 +99,65 @@ class AssessmentService:
         )
         logger.info(f"Initialized assessment service with model {model_id}")
 
-    def _get_class_attributes(self, class_label: str) -> List[Dict[str, Any]]:
+    def _get_class_schema(self, class_label: str) -> Dict[str, Any]:
         """
-        Get attributes for a specific document class from configuration.
+        Get JSON Schema for a specific document class.
 
         Args:
             class_label: The document class name
 
         Returns:
-            List of attribute configurations
+            JSON Schema dict for the class, or empty dict if not found
         """
-        classes_config = self.config.get("classes", [])
-        class_config = next(
-            (
-                class_obj
-                for class_obj in classes_config
-                if class_obj.get("name", "").lower() == class_label.lower()
-            ),
-            None,
-        )
-        return class_config.get("attributes", []) if class_config else []
+        classes = self.config.get("classes", [])
+        for schema in classes:
+            if schema.get(X_AWS_IDP_DOCUMENT_TYPE, "").lower() == class_label.lower():
+                return schema
+        return {}
 
-    def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
+    def _format_property_descriptions(self, schema: Dict[str, Any]) -> str:
         """
-        Format attribute descriptions for the prompt, supporting nested structures.
+        Format property descriptions from JSON Schema for the prompt.
 
         Args:
-            attributes: List of attribute configurations
+            schema: JSON Schema dict for the document class
 
         Returns:
-            Formatted attribute descriptions as a string
+            Formatted property descriptions as a string
         """
+        properties = schema.get(SCHEMA_PROPERTIES, {})
         formatted_lines = []
 
-        for attr in attributes:
-            attr_name = attr.get("name", "")
-            attr_description = attr.get("description", "")
-            attr_type = attr.get("attributeType", "simple")
+        for prop_name, prop_schema in properties.items():
+            prop_type = prop_schema.get(SCHEMA_TYPE)
+            description = prop_schema.get(SCHEMA_DESCRIPTION, "")
 
-            if attr_type == "group":
-                # Handle group attributes with nested groupAttributes
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                group_attributes = attr.get("groupAttributes", [])
-                for group_attr in group_attributes:
-                    group_name = group_attr.get("name", "")
-                    group_desc = group_attr.get("description", "")
-                    formatted_lines.append(f"  - {group_name}  \t[ {group_desc} ]")
+            if prop_type == TYPE_OBJECT:
+                formatted_lines.append(f"{prop_name}  \t[ {description} ]")
+                nested_props = prop_schema.get(SCHEMA_PROPERTIES, {})
+                for nested_name, nested_schema in nested_props.items():
+                    nested_desc = nested_schema.get(SCHEMA_DESCRIPTION, "")
+                    formatted_lines.append(f"  - {nested_name}  \t[ {nested_desc} ]")
 
-            elif attr_type == "list":
-                # Handle list attributes with listItemTemplate
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                list_template = attr.get("listItemTemplate", {})
-                item_description = list_template.get("itemDescription", "")
-                if item_description:
-                    formatted_lines.append(f"  Each item: {item_description}")
+            elif prop_type == TYPE_ARRAY:
+                formatted_lines.append(f"{prop_name}  \t[ {description} ]")
+                items_schema = prop_schema.get(SCHEMA_ITEMS, {})
 
-                item_attributes = list_template.get("itemAttributes", [])
-                for item_attr in item_attributes:
-                    item_name = item_attr.get("name", "")
-                    item_desc = item_attr.get("description", "")
-                    formatted_lines.append(f"  - {item_name}  \t[ {item_desc} ]")
+                item_desc = prop_schema.get(X_AWS_IDP_LIST_ITEM_DESCRIPTION, "")
+                if item_desc:
+                    formatted_lines.append(f"  Each item: {item_desc}")
 
+                if items_schema.get(SCHEMA_TYPE) == TYPE_OBJECT:
+                    item_props = items_schema.get(SCHEMA_PROPERTIES, {})
+                    for item_name, item_schema in item_props.items():
+                        item_prop_desc = item_schema.get(SCHEMA_DESCRIPTION, "")
+                        formatted_lines.append(
+                            f"  - {item_name}  \t[ {item_prop_desc} ]"
+                        )
             else:
-                # Handle simple attributes (default case for backward compatibility)
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+                formatted_lines.append(f"{prop_name}  \t[ {description} ]")
 
         return "\n".join(formatted_lines)
-
-    def _get_attribute_confidence_threshold(
-        self, attr_name: str, attributes: List[Dict[str, Any]], default_threshold: float
-    ) -> float:
-        """
-        Get confidence threshold for a specific attribute, supporting nested structures.
-
-        Args:
-            attr_name: Name of the attribute to find threshold for
-            attributes: List of attribute configurations
-            default_threshold: Default threshold if not found
-
-        Returns:
-            Confidence threshold for the attribute
-        """
-        # First check top-level attributes
-        for attr in attributes:
-            if attr.get("name") == attr_name:
-                return _safe_float_conversion(
-                    attr.get("confidence_threshold", default_threshold),
-                    default_threshold,
-                )
-
-        # Check nested group attributes
-        for attr in attributes:
-            if attr.get("attributeType") == "group":
-                group_attributes = attr.get("groupAttributes", [])
-                for group_attr in group_attributes:
-                    if group_attr.get("name") == attr_name:
-                        return _safe_float_conversion(
-                            group_attr.get("confidence_threshold", default_threshold),
-                            default_threshold,
-                        )
-
-        # Check nested list item attributes
-        for attr in attributes:
-            if attr.get("attributeType") == "list":
-                list_template = attr.get("listItemTemplate", {})
-                item_attributes = list_template.get("itemAttributes", [])
-                for item_attr in item_attributes:
-                    if item_attr.get("name") == attr_name:
-                        return _safe_float_conversion(
-                            item_attr.get("confidence_threshold", default_threshold),
-                            default_threshold,
-                        )
-
-        # Return default if not found
-        return default_threshold
-
-    def _get_attribute_config(
-        self, attr_name: str, attributes: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Get the configuration for a specific attribute, supporting nested structures.
-
-        Args:
-            attr_name: Name of the attribute to find
-            attributes: List of attribute configurations
-
-        Returns:
-            Attribute configuration dictionary, or empty dict if not found
-        """
-        # First check top-level attributes
-        for attr in attributes:
-            if attr.get("name") == attr_name:
-                return attr
-
-        # Check nested group attributes
-        for attr in attributes:
-            if attr.get("attributeType") == "group":
-                group_attributes = attr.get("groupAttributes", [])
-                for group_attr in group_attributes:
-                    if group_attr.get("name") == attr_name:
-                        return group_attr
-
-        # Check nested list item attributes
-        for attr in attributes:
-            if attr.get("attributeType") == "list":
-                list_template = attr.get("listItemTemplate", {})
-                item_attributes = list_template.get("itemAttributes", [])
-                for item_attr in item_attributes:
-                    if item_attr.get("name") == attr_name:
-                        return item_attr
-
-        # Return empty dict if not found
-        return {}
 
     def _enhance_dict_assessment(
         self, assessment_dict: Dict[str, Any], threshold: float
@@ -891,9 +810,12 @@ class AssessmentService:
             )
             system_prompt = assessment_config.get("system_prompt", "")
 
-            # Get attributes for this document class
-            attributes = self._get_class_attributes(class_label)
-            attribute_descriptions = self._format_attribute_descriptions(attributes)
+            # Get schema for this document class
+            class_schema = self._get_class_schema(class_label)
+            if not class_schema:
+                raise ValueError(f"No schema found for document class: {class_label}")
+
+            property_descriptions = self._format_property_descriptions(class_schema)
 
             # Prepare prompt
             prompt_template = assessment_config.get("task_prompt", "")
@@ -910,7 +832,7 @@ class AssessmentService:
                         prompt_template,
                         document_text,
                         class_label,
-                        attribute_descriptions,
+                        property_descriptions,
                         extraction_results_str,
                         ocr_text_confidence,
                         page_images,  # Pass images to the content builder
@@ -988,19 +910,31 @@ class AssessmentService:
             enhanced_assessment_data = {}
             confidence_threshold_alerts = []
 
+            # Get properties dict once for efficient access
+            properties = class_schema.get(SCHEMA_PROPERTIES, {})
+
             for attr_name, attr_assessment in assessment_data.items():
-                # Get the attribute config to check for per-attribute confidence threshold (including nested attributes)
-                attr_threshold = self._get_attribute_confidence_threshold(
-                    attr_name, attributes, default_confidence_threshold
+                # Get property schema (if it exists in schema)
+                prop_schema = properties.get(attr_name, {})
+
+                # Get threshold for this property
+                attr_threshold = _safe_float_conversion(
+                    prop_schema.get(
+                        X_AWS_IDP_CONFIDENCE_THRESHOLD, default_confidence_threshold
+                    ),
+                    default_confidence_threshold,
                 )
 
-                # Find the attribute configuration to determine its type
-                attr_config = self._get_attribute_config(attr_name, attributes)
-                attr_type = (
-                    attr_config.get("attributeType", "simple")
-                    if attr_config
-                    else "simple"
-                )
+                # Get property type
+                prop_type_json = prop_schema.get(SCHEMA_TYPE, TYPE_STRING)
+
+                # Map JSON Schema type to legacy attribute type for existing logic
+                if prop_type_json == TYPE_OBJECT:
+                    attr_type = "group"
+                elif prop_type_json == TYPE_ARRAY:
+                    attr_type = "list"
+                else:
+                    attr_type = "simple"
 
                 # Check if attr_assessment is a dictionary (expected format for simple/group attributes)
                 if isinstance(attr_assessment, dict):

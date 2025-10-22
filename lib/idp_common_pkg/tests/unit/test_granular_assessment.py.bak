@@ -141,9 +141,7 @@ class TestGranularAssessmentService:
     def test_format_attribute_descriptions(self, sample_config):
         """Test formatting attribute descriptions."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
         descriptions = service._format_attribute_descriptions(attributes)
 
         assert "sender_name" in descriptions
@@ -155,9 +153,7 @@ class TestGranularAssessmentService:
     ):
         """Test creating assessment tasks with simple attribute batching."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         tasks = service._create_assessment_tasks(
             sample_extraction_results, attributes, 0.9
@@ -176,15 +172,18 @@ class TestGranularAssessmentService:
 
     def test_create_assessment_tasks_with_group_attributes(self, sample_config):
         """Test creating assessment tasks with group attributes."""
-        # Add a group property to the config
-        sample_config["classes"][0]["properties"]["address_info"] = {
-            "type": "object",
-            "description": "Address information",
-            "properties": {
-                "street": {"type": "string", "description": "Street address"},
-                "city": {"type": "string", "description": "City name"},
-            },
-        }
+        # Add a group attribute to the config
+        sample_config["classes"][0]["attributes"].append(
+            {
+                "name": "address_info",
+                "description": "Address information",
+                "attributeType": "group",
+                "groupAttributes": [
+                    {"name": "street", "description": "Street address"},
+                    {"name": "city", "description": "City name"},
+                ],
+            }
+        )
 
         extraction_results = {
             "sender_name": "John Doe",
@@ -192,9 +191,7 @@ class TestGranularAssessmentService:
         }
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         tasks = service._create_assessment_tasks(extraction_results, attributes, 0.9)
 
@@ -206,22 +203,24 @@ class TestGranularAssessmentService:
 
     def test_create_assessment_tasks_with_list_attributes(self, sample_config):
         """Test creating assessment tasks with list attributes."""
-        # Add a list property to the config
-        sample_config["classes"][0]["properties"]["transactions"] = {
-            "type": "array",
-            "description": "List of transactions",
-            "x-aws-idp-list-item-description": "A single transaction",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "amount": {"type": "string", "description": "Transaction amount"},
-                    "description": {
-                        "type": "string",
-                        "description": "Transaction description",
-                    },
+        # Add a list attribute to the config
+        sample_config["classes"][0]["attributes"].append(
+            {
+                "name": "transactions",
+                "description": "List of transactions",
+                "attributeType": "list",
+                "listItemTemplate": {
+                    "itemDescription": "A single transaction",
+                    "itemAttributes": [
+                        {"name": "amount", "description": "Transaction amount"},
+                        {
+                            "name": "description",
+                            "description": "Transaction description",
+                        },
+                    ],
                 },
-            },
-        }
+            }
+        )
 
         extraction_results = {
             "sender_name": "John Doe",
@@ -232,9 +231,7 @@ class TestGranularAssessmentService:
         }
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         tasks = service._create_assessment_tasks(extraction_results, attributes, 0.9)
 
@@ -249,9 +246,7 @@ class TestGranularAssessmentService:
     def test_get_task_specific_attribute_descriptions(self, sample_config):
         """Test getting task-specific attribute descriptions."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         # Create a simple batch task
         task = AssessmentTask(
@@ -273,9 +268,7 @@ class TestGranularAssessmentService:
     def test_build_specific_assessment_prompt(self, sample_config):
         """Test building specific assessment prompt."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         # Mock base content with placeholders (like what would come from the real base content)
         base_content = [
@@ -369,9 +362,7 @@ class TestGranularAssessmentService:
         mock_bedrock.return_value = mock_response
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         # Create a task
         task = AssessmentTask(
@@ -408,9 +399,7 @@ class TestGranularAssessmentService:
         mock_bedrock.side_effect = Exception("Bedrock error")
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         task = AssessmentTask(
             task_id="test_batch",
@@ -465,9 +454,7 @@ class TestGranularAssessmentService:
     def test_aggregate_assessment_results(self, sample_config):
         """Test aggregating assessment results."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         # Create tasks and results
         task1 = AssessmentTask(
@@ -523,9 +510,7 @@ class TestGranularAssessmentService:
     def test_empty_extraction_results_handling(self, sample_config):
         """Test handling of empty extraction results."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         # Empty extraction results should create no tasks
         tasks = service._create_assessment_tasks({}, attributes, 0.9)
@@ -543,15 +528,11 @@ class TestGranularAssessmentService:
 
     def test_confidence_threshold_inheritance(self, sample_config):
         """Test that confidence thresholds are properly inherited."""
-        # Add property-specific threshold
-        sample_config["classes"][0]["properties"]["sender_name"][
-            "x-aws-idp-confidence-threshold"
-        ] = 0.95
+        # Add attribute-specific threshold
+        sample_config["classes"][0]["attributes"][0]["confidence_threshold"] = 0.95
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        attributes = service._get_class_attributes("letter")
 
         # Test getting threshold for attribute with specific threshold
         threshold = service._get_attribute_confidence_threshold(

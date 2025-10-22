@@ -32,98 +32,100 @@ class TestAssessmentService:
 
     @pytest.fixture
     def mock_config(self):
-        """Fixture providing a mock configuration."""
+        """Fixture providing a mock configuration in JSON Schema format."""
         return {
             "classes": [
                 {
-                    "name": "invoice",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "invoice",
+                    "x-aws-idp-document-type": "invoice",
+                    "type": "object",
                     "description": "An invoice document",
-                    "attributes": [
-                        {
-                            "name": "invoice_number",
+                    "properties": {
+                        "invoice_number": {
+                            "type": "string",
                             "description": "The invoice number",
-                            "confidence_threshold": "0.95",
+                            "x-aws-idp-confidence-threshold": 0.95,
                         },
-                        {
-                            "name": "invoice_date",
+                        "invoice_date": {
+                            "type": "string",
                             "description": "The invoice date",
-                            "confidence_threshold": "0.85",
+                            "x-aws-idp-confidence-threshold": 0.85,
                         },
-                        {
-                            "name": "total_amount",
+                        "total_amount": {
+                            "type": "string",
                             "description": "The total amount",
-                            "confidence_threshold": "0.9",
+                            "x-aws-idp-confidence-threshold": 0.9,
                         },
-                    ],
+                    },
                 },
                 {
-                    "name": "bank_statement",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "bank_statement",
+                    "x-aws-idp-document-type": "bank_statement",
+                    "type": "object",
                     "description": "Monthly bank account statement",
-                    "attributes": [
-                        {
-                            "name": "account_number",
+                    "properties": {
+                        "account_number": {
+                            "type": "string",
                             "description": "Primary account identifier",
-                            "attributeType": "simple",
-                            "confidence_threshold": "0.95",
+                            "x-aws-idp-confidence-threshold": 0.95,
                         },
-                        {
-                            "name": "account_holder_address",
+                        "account_holder_address": {
+                            "type": "object",
                             "description": "Complete address information for the account holder",
-                            "attributeType": "group",
-                            "groupAttributes": [
-                                {
-                                    "name": "street_number",
+                            "properties": {
+                                "street_number": {
+                                    "type": "string",
                                     "description": "House or building number",
-                                    "confidence_threshold": "0.9",
+                                    "x-aws-idp-confidence-threshold": 0.9,
                                 },
-                                {
-                                    "name": "street_name",
+                                "street_name": {
+                                    "type": "string",
                                     "description": "Name of the street",
-                                    "confidence_threshold": "0.8",
+                                    "x-aws-idp-confidence-threshold": 0.8,
                                 },
-                                {
-                                    "name": "city",
+                                "city": {
+                                    "type": "string",
                                     "description": "City name",
-                                    "confidence_threshold": "0.9",
+                                    "x-aws-idp-confidence-threshold": 0.9,
                                 },
-                                {
-                                    "name": "state",
+                                "state": {
+                                    "type": "string",
                                     "description": "State abbreviation",
-                                    # No confidence_threshold - should use default
                                 },
-                            ],
-                        },
-                        {
-                            "name": "transactions",
-                            "description": "List of all transactions in the statement period",
-                            "attributeType": "list",
-                            "listItemTemplate": {
-                                "itemDescription": "Individual transaction record",
-                                "itemAttributes": [
-                                    {
-                                        "name": "date",
-                                        "description": "Transaction date (MM/DD/YYYY)",
-                                        "confidence_threshold": "0.9",
-                                    },
-                                    {
-                                        "name": "description",
-                                        "description": "Transaction description or merchant name",
-                                        "confidence_threshold": "0.7",
-                                    },
-                                    {
-                                        "name": "amount",
-                                        "description": "Transaction amount",
-                                        "confidence_threshold": "0.95",
-                                    },
-                                    {
-                                        "name": "balance",
-                                        "description": "Account balance after transaction",
-                                        # No confidence_threshold - should use default
-                                    },
-                                ],
                             },
                         },
-                    ],
+                        "transactions": {
+                            "type": "array",
+                            "description": "List of all transactions in the statement period",
+                            "x-aws-idp-list-item-description": "Individual transaction record",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "description": "Transaction date (MM/DD/YYYY)",
+                                        "x-aws-idp-confidence-threshold": 0.9,
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Transaction description or merchant name",
+                                        "x-aws-idp-confidence-threshold": 0.7,
+                                    },
+                                    "amount": {
+                                        "type": "string",
+                                        "description": "Transaction amount",
+                                        "x-aws-idp-confidence-threshold": 0.95,
+                                    },
+                                    "balance": {
+                                        "type": "string",
+                                        "description": "Account balance after transaction",
+                                    },
+                                },
+                            },
+                        },
+                    },
                 },
             ],
             "assessment": {

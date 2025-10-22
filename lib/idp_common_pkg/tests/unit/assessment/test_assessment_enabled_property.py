@@ -49,14 +49,16 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
         self.base_config = {
             "classes": [
                 {
-                    "name": "Invoice",
-                    "attributes": [
-                        {
-                            "name": "invoice_number",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "Invoice",
+                    "x-aws-idp-document-type": "Invoice",
+                    "type": "object",
+                    "properties": {
+                        "invoice_number": {
+                            "type": "string",
                             "description": "The invoice number",
-                            "attributeType": "simple",
-                        }
-                    ],
+                        },
+                    },
                 }
             ],
             "assessment": {
