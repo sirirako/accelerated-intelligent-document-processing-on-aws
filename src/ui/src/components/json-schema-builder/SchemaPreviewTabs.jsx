@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { Box, Tabs, SpaceBetween, Alert, Container, Header } from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
+import { X_AWS_IDP_DOCUMENT_TYPE } from '../../constants/schemaConstants';
 
 const getSchemaStats = (schema) => {
   if (!schema) return {};
@@ -147,13 +148,13 @@ const SchemaPreviewTabs = ({ classes, selectedClassId, exportedSchemas }) => {
       id: `schema-${index}`,
       label:
         schemas.length > 1
-          ? `${schema['x-aws-idp-document-type'] || schema.$id || `Schema ${index + 1}`}`
+          ? `${schema[X_AWS_IDP_DOCUMENT_TYPE] || schema.$id || `Schema ${index + 1}`}`
           : 'JSON Schema',
       content: (
         <SpaceBetween size="m">
           <Alert type="info">
             {schemas.length > 1
-              ? `JSON Schema for document type: ${schema['x-aws-idp-document-type'] || schema.$id}`
+              ? `JSON Schema for document type: ${schema[X_AWS_IDP_DOCUMENT_TYPE] || schema.$id}`
               : 'JSON Schema draft 2020-12 representation'}
             <br />
             {schema.$defs && Object.keys(schema.$defs).length > 0 && (

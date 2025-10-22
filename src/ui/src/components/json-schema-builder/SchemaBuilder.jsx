@@ -18,7 +18,7 @@ import {
 import { useSchemaDesigner } from '../../hooks/useSchemaDesigner';
 import { useSchemaValidation } from '../../hooks/useSchemaValidation';
 import { useDebounce } from '../../hooks/useDebounce';
-import { TYPE_OPTIONS } from './constants/schemaTypes';
+import { TYPE_OPTIONS, X_AWS_IDP_DOCUMENT_TYPE } from '../../constants/schemaConstants';
 import SchemaCanvas from './SchemaCanvas';
 import SchemaInspector from './SchemaInspector';
 import SchemaPreviewTabs from './SchemaPreviewTabs';
@@ -186,8 +186,8 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
     }
   };
 
-  const docTypeCount = classes.filter((c) => c['x-aws-idp-document-type']).length;
-  const sharedCount = classes.filter((c) => !c['x-aws-idp-document-type']).length;
+  const docTypeCount = classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length;
+  const sharedCount = classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length;
 
   return (
     <SpaceBetween size="l">
@@ -260,7 +260,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                 {sharedCount} shared)
               </Header>
 
-              {classes.filter((c) => c['x-aws-idp-document-type']).length === 0 && (
+              {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
                 <Alert type="warning" header="No Document Types">
                   No classes are marked as document types. Mark at least one class as a document type to generate
                   extraction schemas.
@@ -270,13 +270,13 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
               <Box>
                 <Header variant="h4">Document Types</Header>
                 <SpaceBetween size="xs">
-                  {classes.filter((c) => c['x-aws-idp-document-type']).length === 0 && (
+                  {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
                     <Box fontSize="body-s" color="text-body-secondary" padding="s">
                       No document types yet. Add a class and mark it as a document type.
                     </Box>
                   )}
                   {classes
-                    .filter((cls) => cls['x-aws-idp-document-type'])
+                    .filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE])
                     .map((cls) => (
                       <Container
                         key={cls.id}
@@ -345,13 +345,13 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
               <Box>
                 <Header variant="h4">Shared Classes</Header>
                 <SpaceBetween size="xs">
-                  {classes.filter((c) => !c['x-aws-idp-document-type']).length === 0 && (
+                  {classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
                     <Box fontSize="body-s" color="text-body-secondary" padding="s">
                       No shared classes. Shared classes can be referenced by document types via $ref.
                     </Box>
                   )}
                   {classes
-                    .filter((cls) => !cls['x-aws-idp-document-type'])
+                    .filter((cls) => !cls[X_AWS_IDP_DOCUMENT_TYPE])
                     .map((cls) => (
                       <Container
                         key={cls.id}

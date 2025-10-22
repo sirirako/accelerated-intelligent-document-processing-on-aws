@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { produce } from 'immer';
+import { X_AWS_IDP_DOCUMENT_TYPE } from '../constants/schemaConstants';
 
 const convertJsonSchemaToClasses = (jsonSchema) => {
   if (!jsonSchema) return [];
@@ -28,9 +29,9 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
       // Convert root schema to document type class
       const docTypeClass = {
         id: `class-${timestamp}-doc-${schemaIndex}`,
-        name: schema.$id || schema['x-aws-idp-document-type'] || `DocumentType${schemaIndex + 1}`,
+        name: schema.$id || schema[X_AWS_IDP_DOCUMENT_TYPE] || `DocumentType${schemaIndex + 1}`,
         description: schema.description,
-        'x-aws-idp-document-type': true,
+        [X_AWS_IDP_DOCUMENT_TYPE]: true,
         attributes: {
           type: 'object',
           properties: schema.properties || {},
@@ -47,7 +48,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
               id: `class-${timestamp}-def-${defName}`,
               name: defName,
               description: defSchema.description,
-              'x-aws-idp-document-type': false,
+              [X_AWS_IDP_DOCUMENT_TYPE]: false,
               attributes: {
                 type: 'object',
                 properties: defSchema.properties || {},
@@ -75,7 +76,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     id: mainClassId,
     name: jsonSchema.$id || 'MainClass',
     description: jsonSchema.description,
-    'x-aws-idp-document-type': true, // Mark as document type for backward compat
+    [X_AWS_IDP_DOCUMENT_TYPE]: true, // Mark as document type for backward compat
     attributes: {
       type: 'object',
       properties: jsonSchema.properties || {},
@@ -92,7 +93,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
         id: `class-${timestamp}-def-${defIndex}`,
         name: defName,
         description: defSchema.description,
-        'x-aws-idp-document-type': false, // Shared class, not a document type
+        [X_AWS_IDP_DOCUMENT_TYPE]: false, // Shared class, not a document type
         attributes: {
           type: 'object',
           properties: defSchema.properties || {},
@@ -352,7 +353,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
             const refName = attr.$ref.replace('#/$defs/', '');
             if (!visited.has(refName)) {
               const refClass = classes.find((c) => c.name === refName);
-              if (refClass && !refClass['x-aws-idp-document-type']) {
+              if (refClass && !refClass[X_AWS_IDP_DOCUMENT_TYPE]) {
                 visited.add(refName);
                 referenced.push(refClass);
                 // Recursively find references in this class
@@ -366,7 +367,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
             const refName = attr.items.$ref.replace('#/$defs/', '');
             if (!visited.has(refName)) {
               const refClass = classes.find((c) => c.name === refName);
-              if (refClass && !refClass['x-aws-idp-document-type']) {
+              if (refClass && !refClass[X_AWS_IDP_DOCUMENT_TYPE]) {
                 visited.add(refName);
                 referenced.push(refClass);
                 referenced.push(...findReferencedClasses(refClass, visited));
@@ -393,7 +394,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
     }
 
     // Find all document type classes
-    const docTypeClasses = classes.filter((cls) => cls['x-aws-idp-document-type'] === true);
+    const docTypeClasses = classes.filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE] === true);
 
     // If no document types, fall back to treating first class as document type (backward compat)
     const baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
@@ -431,7 +432,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
       return {
         $schema: 'https://json-schema.org/draft/2020-12/schema',
         $id: docTypeClass.name,
-        'x-aws-idp-document-type': docTypeClass.name,
+        [X_AWS_IDP_DOCUMENT_TYPE]: docTypeClass.name,
         type: 'object',
         ...(docTypeClass.description ? { description: docTypeClass.description } : {}),
         properties: sanitizedProps,

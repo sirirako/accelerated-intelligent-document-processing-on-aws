@@ -1,4 +1,4 @@
-import { TYPE_COLORS } from '../constants/schemaTypes';
+import { TYPE_COLORS } from '../../../constants/schemaConstants';
 
 const typeColorCache = new Map();
 

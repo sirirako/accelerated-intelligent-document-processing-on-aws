@@ -1,7 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { Header, FormField, Input, Select } from '@cloudscape-design/components';
-import { FORMAT_OPTIONS, CONTENT_ENCODING_OPTIONS } from '../constants/schemaTypes';
+import { FORMAT_OPTIONS, CONTENT_ENCODING_OPTIONS } from '../../../constants/schemaConstants';
 
 const StringConstraints = ({ attribute, onUpdate }) => {
   if (attribute.type !== 'string') return null;

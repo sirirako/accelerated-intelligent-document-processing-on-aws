@@ -25,7 +25,10 @@ import ValueConstraints from './constraints/ValueConstraints';
 import {
   TYPE_OPTIONS,
   EVALUATION_METHOD_OPTIONS,
-} from './constants/schemaTypes';
+  X_AWS_IDP_DOCUMENT_TYPE,
+  X_AWS_IDP_EVALUATION_METHOD,
+  X_AWS_IDP_CONFIDENCE_THRESHOLD,
+} from '../../constants/schemaConstants';
 
 const SchemaInspector = ({
   selectedClass,
@@ -49,14 +52,14 @@ const SchemaInspector = ({
             description="Document types become top-level schemas. Shared classes are reusable definitions."
           >
             <Toggle
-              checked={selectedClass['x-aws-idp-document-type'] || false}
-              onChange={({ detail }) => onUpdateClass({ 'x-aws-idp-document-type': detail.checked })}
+              checked={selectedClass[X_AWS_IDP_DOCUMENT_TYPE] || false}
+              onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_DOCUMENT_TYPE]: detail.checked })}
             >
-              {selectedClass['x-aws-idp-document-type'] ? 'This is a document type' : 'This is a shared class'}
+              {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] ? 'This is a document type' : 'This is a shared class'}
             </Toggle>
           </FormField>
 
-          {selectedClass['x-aws-idp-document-type'] ? (
+          {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] ? (
             <Alert type="info">
               <strong>Document Type</strong>
               <br />
@@ -249,12 +252,12 @@ const SchemaInspector = ({
         <FormField label="Evaluation Method">
           <Select
             selectedOption={
-              EVALUATION_METHOD_OPTIONS.find((opt) => opt.value === selectedAttribute['x-aws-idp-evaluation-method']) ||
+              EVALUATION_METHOD_OPTIONS.find((opt) => opt.value === selectedAttribute[X_AWS_IDP_EVALUATION_METHOD]) ||
               null
             }
             onChange={({ detail }) =>
               onUpdate({
-                'x-aws-idp-evaluation-method': detail.selectedOption.value,
+                [X_AWS_IDP_EVALUATION_METHOD]: detail.selectedOption.value,
               })
             }
             options={EVALUATION_METHOD_OPTIONS}
@@ -268,10 +271,10 @@ const SchemaInspector = ({
             step="0.01"
             min="0"
             max="1"
-            value={selectedAttribute['x-aws-idp-confidence-threshold']?.toString() || ''}
+            value={selectedAttribute[X_AWS_IDP_CONFIDENCE_THRESHOLD]?.toString() || ''}
             onChange={({ detail }) =>
               onUpdate({
-                'x-aws-idp-confidence-threshold': detail.value ? parseFloat(detail.value) : undefined,
+                [X_AWS_IDP_CONFIDENCE_THRESHOLD]: detail.value ? parseFloat(detail.value) : undefined,
               })
             }
           />
@@ -288,7 +291,7 @@ SchemaInspector.propTypes = {
   selectedClass: PropTypes.shape({
     name: PropTypes.string,
     description: PropTypes.string,
-    'x-aws-idp-document-type': PropTypes.bool,
+    X_AWS_IDP_DOCUMENT_TYPE: PropTypes.bool,
   }),
   selectedAttribute: PropTypes.shape({}),
   selectedAttributeName: PropTypes.string,
