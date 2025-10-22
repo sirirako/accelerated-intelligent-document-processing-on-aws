@@ -96,7 +96,14 @@ const useConfiguration = () => {
       const result = await client.graphql({ query: getConfigurationQuery });
       logger.debug('API response:', result);
 
-      const { Schema, Default, Custom } = result.data.getConfiguration;
+      const response = result.data.getConfiguration;
+
+      if (!response.success) {
+        const errorMsg = response.error?.message || 'Failed to load configuration';
+        throw new Error(errorMsg);
+      }
+
+      const { Schema, Default, Custom } = response;
 
       // Log raw data types
       logger.debug('Raw data types:', {
@@ -223,14 +230,17 @@ const useConfiguration = () => {
         variables: { customConfig: configString },
       });
 
-      if (result.data.updateConfiguration) {
-        setCustomConfig(configToUpdate);
-        // Update merged config
-        const merged = deepMerge(defaultConfig, configToUpdate);
-        setMergedConfig(merged);
-        return true;
+      const response = result.data.updateConfiguration;
+
+      if (!response.success) {
+        const errorMsg = response.error?.message || 'Failed to update configuration';
+        throw new Error(errorMsg);
       }
-      return false;
+
+      setCustomConfig(configToUpdate);
+      const merged = deepMerge(defaultConfig, configToUpdate);
+      setMergedConfig(merged);
+      return true;
     } catch (err) {
       logger.error('Error updating configuration', err);
       setError(`Failed to update configuration: ${err.message}`);

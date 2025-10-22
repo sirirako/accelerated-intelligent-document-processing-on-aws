@@ -8,8 +8,20 @@ from botocore.exceptions import ClientError
 import logging
 from copy import deepcopy
 from .configuration_manager import ConfigurationManager
+from .models import (
+    IDPConfig,
+    ConfigurationRecord,
+    ExtractionConfig,
+    ClassificationConfig,
+    AssessmentConfig,
+    SummarizationConfig,
+    OCRConfig,
+    AgenticConfig,
+    ImageConfig,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class ConfigurationReader:
     def __init__(self, table_name=None):
@@ -23,20 +35,37 @@ class ConfigurationReader:
         self.manager = ConfigurationManager(table_name)
         logger.info(f"Initialized ConfigurationReader with ConfigurationManager")
 
-    def get_configuration(self, config_type: str) -> Optional[Dict[str, Any]]:
+    def get_configuration(
+        self, config_type: str, as_dict: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """
         Retrieve a configuration item from DynamoDB with automatic migration
 
         Args:
             config_type: The configuration type to retrieve ('Default' or 'Custom')
+            as_dict: If True (default), return raw dictionary for backward compatibility
 
         Returns:
             Configuration dictionary if found (auto-migrated if needed), None otherwise
         """
-        # Delegate to ConfigurationManager which handles migration automatically
-        return self.manager.get_configuration(config_type)
+        # ConfigurationManager now returns IDPConfig by default
+        idp_config = self.manager.get_configuration(config_type)
 
-    def deep_merge(self, default: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, Any]:
+        if idp_config is None:
+            return None
+
+        # Convert to dict if requested (for backward compatibility)
+        if as_dict:
+            config_dict = idp_config.model_dump(mode="python")
+            # Add Configuration key back for backward compatibility
+            config_dict["Configuration"] = config_type
+            return config_dict
+
+        return idp_config
+
+    def deep_merge(
+        self, default: Dict[str, Any], custom: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Recursively merge two dictionaries, with custom values taking precedence
 
@@ -47,55 +76,73 @@ class ConfigurationReader:
         Returns:
             Merged configuration dictionary
         """
-        # Delegate to ConfigurationManager's deep_merge method
-        return self.manager.deep_merge(default, custom)
+        # Convert dicts to IDPConfig, merge, then convert back
+        default_config = IDPConfig(**default)
+        custom_config = IDPConfig(**custom)
+        merged = self.manager.merge_configurations(default_config, custom_config)
+        return merged.model_dump(mode="python")
 
-    def get_merged_configuration(self) -> Dict[str, Any]:
+    def get_merged_configuration(self, as_model: bool = False):
         """
         Get and merge Default and Custom configurations with automatic migration
 
+        Args:
+            as_model: If True, return IDPConfig Pydantic model. If False (default), return dict.
+
         Returns:
-            Merged configuration dictionary (auto-migrated if needed)
+            Merged configuration as IDPConfig or dictionary (auto-migrated if needed)
         """
         try:
             # Get Default configuration (auto-migrated by ConfigurationManager)
-            default_config = self.get_configuration('Default')
+            default_config = self.get_configuration("Default", as_dict=True)
             if not default_config:
                 raise ValueError("Default configuration not found")
 
             # Get Custom configuration (auto-migrated by ConfigurationManager)
-            custom_config = self.get_configuration('Custom')
+            custom_config = self.get_configuration("Custom", as_dict=True)
 
-            # If no custom config exists, return default
+            # If no custom config exists, use default
             if not custom_config:
                 logger.info("No Custom configuration found, using Default only")
                 # Remove the 'Configuration' key as it's not part of the actual config
-                default_config.pop('Configuration', None)
-                return default_config
+                default_config.pop("Configuration", None)
+                merged_config = default_config
+            else:
+                # Remove the 'Configuration' key as it's not part of the actual config
+                default_config.pop("Configuration", None)
+                custom_config.pop("Configuration", None)
 
-            # Remove the 'Configuration' key as it's not part of the actual config
-            default_config.pop('Configuration', None)
-            custom_config.pop('Configuration', None)
-
-            # Merge configurations
-            merged_config = self.deep_merge(default_config, custom_config)
+                # Merge configurations
+                merged_config = self.deep_merge(default_config, custom_config)
 
             logger.info("Successfully merged configurations")
+
+            # Return Pydantic model if requested
+            if as_model:
+                try:
+                    return IDPConfig(**merged_config)
+                except Exception as e:
+                    logger.error(f"Failed to parse merged config as IDPConfig: {e}")
+                    logger.info("Returning raw dictionary as fallback")
+                    return merged_config
+
             return merged_config
 
         except Exception as e:
             logger.error(f"Error getting merged configuration: {str(e)}")
             raise
 
-def get_config(table_name=None) -> Dict[str, Any]:
+
+def get_config(table_name=None, as_model: bool = False):
     """
     Get the merged configuration using the environment variable for table name
-    
+
     Args:
         table_name: Optional override for configuration table name
-        
+        as_model: If True, return IDPConfig Pydantic model. If False (default), return dict.
+
     Returns:
-        Merged configuration dictionary
+        Merged configuration as IDPConfig or dictionary
     """
     reader = ConfigurationReader(table_name)
-    return reader.get_merged_configuration()
+    return reader.get_merged_configuration(as_model=as_model)

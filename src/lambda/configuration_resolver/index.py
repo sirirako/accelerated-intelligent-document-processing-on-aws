@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 from idp_common.config.configuration_manager import ConfigurationManager
+from pydantic import ValidationError
 import os
 import json
 import logging
@@ -15,7 +16,27 @@ logging.getLogger("idp_common.bedrock.client").setLevel(
 
 def handler(event, context):
     """
-    AWS Lambda handler for GraphQL operations related to configuration
+    AWS Lambda handler for GraphQL operations related to configuration.
+
+    Returns structured responses with success/error information:
+
+    Success response:
+    {
+        "success": true,
+        "Schema": {...},
+        "Default": {...},
+        "Custom": {...}
+    }
+
+    Error response:
+    {
+        "success": false,
+        "error": {
+            "type": "ValidationError" | "JSONDecodeError",
+            "message": "...",
+            "validationErrors": [...]  // if ValidationError
+        }
+    }
     """
     logger.info(f"Event received: {json.dumps(event)}")
 
@@ -25,37 +46,86 @@ def handler(event, context):
     # Initialize ConfigurationManager
     manager = ConfigurationManager()
 
-    if operation == "getConfiguration":
-        return handle_get_configuration(manager)
-    elif operation == "updateConfiguration":
-        args = event["arguments"]
-        custom_config = args.get("customConfig")
-        return manager.handle_update_custom_configuration(custom_config)
-    else:
-        raise Exception(f"Unsupported operation: {operation}")
+    try:
+        if operation == "getConfiguration":
+            return handle_get_configuration(manager)
+        elif operation == "updateConfiguration":
+            args = event["arguments"]
+            custom_config = args.get("customConfig")
+            success = manager.handle_update_custom_configuration(custom_config)
+            return {
+                "success": success,
+                "message": "Configuration updated successfully"
+                if success
+                else "Configuration update failed",
+            }
+        else:
+            raise Exception(f"Unsupported operation: {operation}")
+    except ValidationError as e:
+        # Pydantic validation error - return structured error for UI
+        logger.error(f"Configuration validation error: {e}")
+
+        # Build structured error response that UI can parse
+        validation_errors = []
+        for error in e.errors():
+            field_path = " -> ".join(str(loc) for loc in error["loc"])
+            validation_errors.append(
+                {"field": field_path, "message": error["msg"], "type": error["type"]}
+            )
+
+        # Return error as data (not exception) so UI can handle it
+        return {
+            "success": False,
+            "error": {
+                "type": "ValidationError",
+                "message": "Configuration validation failed",
+                "validationErrors": validation_errors,
+            },
+        }
+
+    except json.JSONDecodeError as e:
+        # JSON parsing error - return structured error
+        logger.error(f"JSON decode error: {e}")
+        return {
+            "success": False,
+            "error": {
+                "type": "JSONDecodeError",
+                "message": f"Invalid JSON format: {str(e)}",
+                "position": {
+                    "line": e.lineno if hasattr(e, "lineno") else None,
+                    "column": e.colno if hasattr(e, "colno") else None,
+                },
+            },
+        }
 
 
 def handle_get_configuration(manager):
     """
     Handle the getConfiguration GraphQL query
     Returns Schema, Default, and Custom configuration items with auto-migration support
+
+    New ConfigurationManager API returns IDPConfig directly - convert to dict for GraphQL
     """
     try:
         # Get all configurations - migration happens automatically in get_configuration
-        schema_item = manager.get_configuration("Schema")
-        schema_config = manager.remove_configuration_key(schema_item) if schema_item else {}
+        # New API returns IDPConfig, we convert to dict for GraphQL response
+        schema_config = manager.get_configuration("Schema")
+        schema_dict = schema_config.model_dump(mode="python") if schema_config else {}
 
-        default_item = manager.get_configuration("Default")
-        default_config = manager.remove_configuration_key(default_item) if default_item else {}
+        default_config = manager.get_configuration("Default")
+        default_dict = (
+            default_config.model_dump(mode="python") if default_config else {}
+        )
 
-        custom_item = manager.get_configuration("Custom")
-        custom_config = manager.remove_configuration_key(custom_item) if custom_item else {}
+        custom_config = manager.get_configuration("Custom")
+        custom_dict = custom_config.model_dump(mode="python") if custom_config else {}
 
-        # Return all configurations
+        # Return all configurations as dicts (GraphQL requires JSON-serializable)
         result = {
-            "Schema": schema_config,
-            "Default": default_config,
-            "Custom": custom_config,
+            "success": True,
+            "Schema": schema_dict,
+            "Default": default_dict,
+            "Custom": custom_dict,
         }
 
         logger.info(f"Returning configuration")

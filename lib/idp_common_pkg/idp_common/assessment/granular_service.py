@@ -17,9 +17,10 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from idp_common import bedrock, image, metrics, s3, utils
+from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     SCHEMA_DESCRIPTION,
     SCHEMA_ITEMS,
@@ -105,29 +106,34 @@ class GranularAssessmentService:
     """Enhanced assessment service with granular, cached, and parallel processing."""
 
     def __init__(
-        self, region: str = None, config: Dict[str, Any] = None, cache_table: str = None
+        self,
+        region: str = None,
+        config: Union[Dict[str, Any], IDPConfig] = None,
+        cache_table: str = None,
     ):
         """
         Initialize the granular assessment service.
 
         Args:
             region: AWS region for Bedrock
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
             cache_table: Optional DynamoDB table name for caching assessment task results
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
 
-        # Get assessment configuration
-        self.assessment_config = self.config.get("assessment", {})
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
 
-        # Granular processing configuration with safe defaults
-        self.granular_config = self.assessment_config.get("granular", {})
-        self.max_workers = int(self.granular_config.get("max_workers", 4))
-        self.simple_batch_size = int(self.granular_config.get("simple_batch_size", 3))
-        self.list_batch_size = int(self.granular_config.get("list_batch_size", 1))
+        # Granular processing configuration (type-safe access, Pydantic handles conversions)
+        self.max_workers = self.config.assessment.granular.max_workers
+        self.simple_batch_size = self.config.assessment.granular.simple_batch_size
+        self.list_batch_size = self.config.assessment.granular.list_batch_size
 
         # Ensure safe minimum values
         self.max_workers = max(1, self.max_workers)
@@ -162,8 +168,8 @@ class GranularAssessmentService:
             "RequestLimitExceeded",
         ]
 
-        # Get model_id from config for logging
-        model_id = self.config.get("model_id") or self.assessment_config.get("model")
+        # Get model_id from typed config for logging
+        model_id = self.config.assessment.model
         logger.info(f"Initialized granular assessment service with model {model_id}")
         logger.info(
             f"Granular config: max_workers={self.max_workers}, "
@@ -183,7 +189,8 @@ class GranularAssessmentService:
         Returns:
             JSON Schema dict for the class, or empty dict if not found
         """
-        classes = self.config.get("classes", [])
+        # Type-safe access to classes
+        classes = self.config.classes
         for schema in classes:
             if schema.get(X_AWS_IDP_DOCUMENT_TYPE, "").lower() == class_label.lower():
                 return schema
@@ -423,8 +430,8 @@ class GranularAssessmentService:
         Returns:
             List of content items for the cacheable portion
         """
-        # Get the base task prompt template
-        task_prompt_template = self.assessment_config.get("task_prompt", "")
+        # Get the base task prompt template (type-safe access)
+        task_prompt_template = self.config.assessment.task_prompt
 
         if not task_prompt_template:
             raise ValueError(
@@ -1453,11 +1460,8 @@ class GranularAssessmentService:
         Returns:
             Document: Updated Document object with assessment results appended to extraction results
         """
-        # Check if assessment is enabled in configuration
-        assessment_config = self.config.get("assessment", {})
-        from idp_common.utils import normalize_boolean_value
-
-        enabled = normalize_boolean_value(assessment_config.get("enabled", True))
+        # Check if assessment is enabled in typed configuration
+        enabled = self.config.assessment.enabled
         if not enabled:
             logger.info("Assessment is disabled via configuration")
             return document
@@ -1548,11 +1552,9 @@ class GranularAssessmentService:
             t2 = time.time()
             logger.info(f"Time taken to read text content: {t2 - t1:.2f} seconds")
 
-            # Read page images with configurable dimensions
-            assessment_config = self.assessment_config
-            image_config = assessment_config.get("image", {})
-            target_width = image_config.get("target_width")
-            target_height = image_config.get("target_height")
+            # Read page images with configurable dimensions (type-safe access)
+            target_width = self.config.assessment.image.target_width
+            target_height = self.config.assessment.image.target_height
 
             page_images = []
             for page_id in sorted_page_ids:
@@ -1587,23 +1589,13 @@ class GranularAssessmentService:
             t4 = time.time()
             logger.info(f"Time taken to read raw OCR results: {t4 - t3:.2f} seconds")
 
-            # Get assessment configuration
-            model_id = self.config.get("model_id") or assessment_config.get("model")
-            temperature = _safe_float_conversion(
-                assessment_config.get("temperature", 0), 0.0
-            )
-            top_k = _safe_float_conversion(assessment_config.get("top_k", 5), 5.0)
-            top_p = _safe_float_conversion(assessment_config.get("top_p", 0.1), 0.1)
-            max_tokens = (
-                int(
-                    _safe_float_conversion(
-                        assessment_config.get("max_tokens", 4096), 4096
-                    )
-                )
-                if assessment_config.get("max_tokens")
-                else None
-            )
-            system_prompt = assessment_config.get("system_prompt", "")
+            # Get assessment configuration (type-safe, Pydantic handles conversions)
+            model_id = self.config.assessment.model
+            temperature = self.config.assessment.temperature
+            top_k = self.config.assessment.top_k
+            top_p = self.config.assessment.top_p
+            max_tokens = self.config.assessment.max_tokens
+            system_prompt = self.config.assessment.system_prompt
 
             # Get schema for this document class
             class_schema = self._get_class_schema(class_label)
@@ -1613,9 +1605,9 @@ class GranularAssessmentService:
             # Get properties from JSON Schema
             properties = class_schema.get(SCHEMA_PROPERTIES, {})
 
-            # Get confidence thresholds
-            default_confidence_threshold = _safe_float_conversion(
-                assessment_config.get("default_confidence_threshold", 0.9), 0.9
+            # Get confidence thresholds (type-safe, already float from Pydantic)
+            default_confidence_threshold = (
+                self.config.assessment.default_confidence_threshold
             )
 
             # Build the cached base prompt (without attribute descriptions - those are task-specific)

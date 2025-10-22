@@ -17,9 +17,10 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from idp_common import bedrock, image, metrics, s3, utils
+from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     SCHEMA_DESCRIPTION,
     SCHEMA_ITEMS,
@@ -80,23 +81,29 @@ def _safe_float_conversion(value: Any, default: float = 0.0) -> float:
 class AssessmentService:
     """Service for assessing extraction result confidence using LLMs."""
 
-    def __init__(self, region: str = None, config: Dict[str, Any] = None):
+    def __init__(
+        self, region: str = None, config: Union[Dict[str, Any], IDPConfig] = None
+    ):
         """
         Initialize the assessment service.
 
         Args:
             region: AWS region for Bedrock
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
 
-        # Get model_id from config for logging
-        model_id = self.config.get("model_id") or self.config.get("assessment", {}).get(
-            "model"
-        )
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
+
+        # Get model_id from typed config for logging
+        model_id = self.config.assessment.model
         logger.info(f"Initialized assessment service with model {model_id}")
 
     def _get_class_schema(self, class_label: str) -> Dict[str, Any]:
@@ -109,7 +116,8 @@ class AssessmentService:
         Returns:
             JSON Schema dict for the class, or empty dict if not found
         """
-        classes = self.config.get("classes", [])
+        # Type-safe access to classes
+        classes = self.config.classes
         for schema in classes:
             if schema.get(X_AWS_IDP_DOCUMENT_TYPE, "").lower() == class_label.lower():
                 return schema
@@ -660,11 +668,8 @@ class AssessmentService:
         Returns:
             Document: Updated Document object with assessment results appended to extraction results
         """
-        # Check if assessment is enabled in configuration
-        assessment_config = self.config.get("assessment", {})
-        from idp_common.utils import normalize_boolean_value
-
-        enabled = normalize_boolean_value(assessment_config.get("enabled", True))
+        # Check if assessment is enabled in typed configuration
+        enabled = self.config.assessment.enabled
         if not enabled:
             logger.info("Assessment is disabled via configuration")
             return document
@@ -753,11 +758,9 @@ class AssessmentService:
             t2 = time.time()
             logger.info(f"Time taken to read text content: {t2 - t1:.2f} seconds")
 
-            # Read page images with configurable dimensions
-            assessment_config = self.config.get("assessment", {})
-            image_config = assessment_config.get("image", {})
-            target_width = image_config.get("target_width")
-            target_height = image_config.get("target_height")
+            # Read page images with configurable dimensions (type-safe access)
+            target_width = self.config.assessment.image.target_width
+            target_height = self.config.assessment.image.target_height
 
             page_images = []
             for page_id in sorted_page_ids:
@@ -792,23 +795,13 @@ class AssessmentService:
             t4 = time.time()
             logger.info(f"Time taken to read raw OCR results: {t4 - t3:.2f} seconds")
 
-            # Get assessment configuration
-            model_id = self.config.get("model_id") or assessment_config.get("model")
-            temperature = _safe_float_conversion(
-                assessment_config.get("temperature", 0), 0.0
-            )
-            top_k = _safe_float_conversion(assessment_config.get("top_k", 5), 5.0)
-            top_p = _safe_float_conversion(assessment_config.get("top_p", 0.1), 0.1)
-            max_tokens = (
-                int(
-                    _safe_float_conversion(
-                        assessment_config.get("max_tokens", 4096), 4096
-                    )
-                )
-                if assessment_config.get("max_tokens")
-                else None
-            )
-            system_prompt = assessment_config.get("system_prompt", "")
+            # Get assessment configuration (type-safe access, Pydantic handles conversions)
+            model_id = self.config.assessment.model
+            temperature = self.config.assessment.temperature
+            top_k = self.config.assessment.top_k
+            top_p = self.config.assessment.top_p
+            max_tokens = self.config.assessment.max_tokens
+            system_prompt = self.config.assessment.system_prompt
 
             # Get schema for this document class
             class_schema = self._get_class_schema(class_label)
@@ -817,8 +810,8 @@ class AssessmentService:
 
             property_descriptions = self._format_property_descriptions(class_schema)
 
-            # Prepare prompt
-            prompt_template = assessment_config.get("task_prompt", "")
+            # Prepare prompt (type-safe access)
+            prompt_template = self.config.assessment.task_prompt
             extraction_results_str = json.dumps(extraction_results, indent=2)
 
             if not prompt_template:
@@ -901,9 +894,9 @@ class AssessmentService:
                 logger.warning(f"Failed to extract geometry data: {str(e)}")
                 # Continue with assessment even if geometry extraction fails
 
-            # Get confidence thresholds
-            default_confidence_threshold = _safe_float_conversion(
-                assessment_config.get("default_confidence_threshold", 0.9), 0.9
+            # Get confidence thresholds (type-safe, already float from Pydantic)
+            default_confidence_threshold = (
+                self.config.assessment.default_confidence_threshold
             )
 
             # Enhance assessment data with confidence thresholds and create confidence threshold alerts

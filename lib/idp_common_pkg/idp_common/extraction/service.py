@@ -8,13 +8,16 @@ This module provides a service for extracting fields and values from documents
 using LLMs, with support for text and image content.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from idp_common import bedrock, image, metrics, s3, utils
+from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     ID_FIELD,
     SCHEMA_EXAMPLES,
@@ -41,22 +44,32 @@ logger = logging.getLogger(__name__)
 class ExtractionService:
     """Service for extracting fields from documents using LLMs."""
 
-    def __init__(self, region: str = None, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        region: str = None,
+        config: Union[Dict[str, Any], "IDPConfig"] = None,
+    ):
         """
         Initialize the extraction service.
 
         Args:
             region: AWS region for Bedrock
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
 
-        # Get model_id from config for logging
-        model_id = self.config.get("model_id") or self.config.get("extraction", {}).get(
-            "model"
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
+
+        # Get model_id from config for logging (type-safe access with fallback)
+        model_id = (
+            self.config.extraction.model if self.config.extraction else "not configured"
         )
         logger.info(f"Initialized extraction service with model {model_id}")
 
@@ -70,7 +83,8 @@ class ExtractionService:
         Returns:
             JSON Schema for the class, or empty dict if not found
         """
-        classes_config = self.config.get("classes", [])
+        # Access classes through IDPConfig - returns List of dicts
+        classes_config = self.config.classes
 
         # Find class by $id or x-aws-idp-document-type using constants
         for class_obj in classes_config:
@@ -807,11 +821,9 @@ class ExtractionService:
             t1 = time.time()
             logger.info(f"Time taken to read text content: {t1 - t0:.2f} seconds")
 
-            # Read page images with configurable dimensions
-            extraction_config = self.config.get("extraction", {})
-            image_config = extraction_config.get("image", {})
-            target_width = image_config.get("target_width")
-            target_height = image_config.get("target_height")
+            # Read page images with configurable dimensions (type-safe access)
+            target_width = self.config.extraction.image.target_width
+            target_height = self.config.extraction.image.target_height
 
             page_images = []
             for page_id in sorted_page_ids:
@@ -829,17 +841,19 @@ class ExtractionService:
             t2 = time.time()
             logger.info(f"Time taken to read images: {t2 - t1:.2f} seconds")
 
-            # Get extraction configuration
-            model_id = self.config.get("model_id") or extraction_config.get("model")
-            temperature = float(extraction_config.get("temperature", 0))
-            top_k = float(extraction_config.get("top_k", 5))
-            top_p = float(extraction_config.get("top_p", 0.1))
+            # Get extraction configuration (type-safe access, automatic type conversion)
+            model_id = self.config.extraction.model
+            temperature = (
+                self.config.extraction.temperature
+            )  # Already float, no conversion needed!
+            top_k = self.config.extraction.top_k  # Already float!
+            top_p = self.config.extraction.top_p  # Already float!
             max_tokens = (
-                int(extraction_config.get("max_tokens", 4096))
-                if extraction_config.get("max_tokens")
+                self.config.extraction.max_tokens
+                if self.config.extraction.max_tokens
                 else None
             )
-            system_prompt = extraction_config.get("system_prompt", "")
+            system_prompt = self.config.extraction.system_prompt
 
             # Get JSON Schema for this document class
             class_schema = self._get_class_schema(class_label)
@@ -894,8 +908,8 @@ class ExtractionService:
                 )
                 return document
 
-            # Check for custom prompt Lambda function
-            custom_lambda_arn = extraction_config.get("custom_prompt_lambda_arn")
+            # Check for custom prompt Lambda function (type-safe access)
+            custom_lambda_arn = self.config.extraction.custom_prompt_lambda_arn
 
             if custom_lambda_arn and custom_lambda_arn.strip():
                 logger.info(f"Using custom prompt Lambda: {custom_lambda_arn}")
@@ -920,7 +934,7 @@ class ExtractionService:
                 )
 
                 # Build default content for Lambda input
-                prompt_template = extraction_config.get("task_prompt", "")
+                prompt_template = self.config.extraction.task_prompt
                 if prompt_template:
                     # Check if task prompt contains FEW_SHOT_EXAMPLES placeholder
                     if "{FEW_SHOT_EXAMPLES}" in prompt_template:
@@ -1003,9 +1017,7 @@ class ExtractionService:
                         # Ultimate fallback to minimal payload
                         payload = {
                             "config": {
-                                "extraction": {
-                                    "model": extraction_config.get("model", "")
-                                }
+                                "extraction": {"model": self.config.extraction.model}
                             },
                             "prompt_placeholders": prompt_placeholders,
                             "default_task_prompt_content": [
@@ -1033,7 +1045,7 @@ class ExtractionService:
                 logger.info(
                     "No custom prompt Lambda configured - using default prompt generation"
                 )
-                prompt_template = extraction_config.get("task_prompt", "")
+                prompt_template = self.config.extraction.task_prompt
 
                 if not prompt_template:
                     # Default prompt if template not found
@@ -1114,29 +1126,8 @@ class ExtractionService:
             # Time the model invocation
             request_start_time = time.time()
 
-            agentic_enabled = (
-                self.config.get("extraction", {})
-                .get("agentic", {})
-                .get("enabled", False)
-            )
-
-            agentic_enabled = (
-                isinstance(agentic_enabled, str) and agentic_enabled.lower() == "true"
-            ) or (isinstance(agentic_enabled, bool) and agentic_enabled)
-
-            agentic_review_agent_enabled = self.config.get("extraction", {}).get(
-                "review_agent", False
-            )
-
-            agentic_review_agent_enabled = (
-                isinstance(agentic_review_agent_enabled, str)
-                and agentic_review_agent_enabled.lower() == "true"
-            ) or (
-                isinstance(agentic_review_agent_enabled, bool)
-                and agentic_review_agent_enabled
-            )
-
-            if agentic_enabled:
+            # Type-safe boolean access - no string conversion needed!
+            if self.config.extraction.agentic.enabled:
                 if not AGENTIC_AVAILABLE:
                     raise ImportError(
                         "Agentic extraction requires Python 3.10+ and strands-agents dependencies. "
@@ -1169,7 +1160,7 @@ class ExtractionService:
                     data_format=dynamic_model,
                     prompt=message_prompt,  # pyright: ignore[reportArgumentType]
                     custom_instruction=system_prompt,
-                    review_agent=agentic_review_agent_enabled,
+                    review_agent=self.config.extraction.agentic.review_agent,  # Type-safe boolean!
                     context="Extraction",
                 )
 

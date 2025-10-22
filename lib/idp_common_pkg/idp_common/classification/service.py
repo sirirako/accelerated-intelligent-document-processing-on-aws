@@ -37,6 +37,7 @@ from idp_common.classification.models import (
     DocumentType,
     PageClassification,
 )
+from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     X_AWS_IDP_CLASSIFICATION,
     X_AWS_IDP_DOCUMENT_TYPE,
@@ -63,7 +64,7 @@ class ClassificationService:
         self,
         region: str = None,
         max_workers: int = 20,
-        config: Dict[str, Any] = None,
+        config: Union[Dict[str, Any], IDPConfig] = None,
         backend: str = "bedrock",
         cache_table: str = None,
     ):
@@ -73,14 +74,20 @@ class ClassificationService:
         Args:
             region: AWS region for backend services
             max_workers: Maximum number of concurrent workers
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
             backend: Classification backend to use ('bedrock' or 'sagemaker')
             cache_table: Optional DynamoDB table name for caching classification results
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
+
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
         self.max_workers = max_workers
         self.document_types = self._load_document_types()
         self.valid_doc_types: Set[str] = {dt.type_name for dt in self.document_types}
@@ -111,10 +118,8 @@ class ClassificationService:
 
         # Initialize backend-specific clients
         if self.backend == "bedrock":
-            # Get model_id from config for logging
-            model_id = self.config.get("model_id") or self.config.get(
-                "classification", {}
-            ).get("model")
+            # Get model_id from typed config (type-safe access)
+            model_id = self.config.classification.model
             if not model_id:
                 raise ValueError("No model ID specified in configuration for Bedrock")
             self.bedrock_model = model_id
@@ -122,28 +127,22 @@ class ClassificationService:
                 f"Initialized classification service with Bedrock backend using model {model_id}"
             )
         else:  # sagemaker
-            endpoint_name = self.config.get(
-                "sagemaker_endpoint_name"
-            ) or os.environ.get("SAGEMAKER_ENDPOINT_NAME")
+            # Note: SageMaker endpoint name not in config models - use env var
+            endpoint_name = os.environ.get("SAGEMAKER_ENDPOINT_NAME")
             if not endpoint_name:
-                raise ValueError(
-                    "No SageMaker endpoint name specified in configuration or environment"
-                )
+                raise ValueError("No SageMaker endpoint name specified in environment")
             self.sm_client = boto3.client("sagemaker-runtime", region_name=self.region)
             self.sagemaker_endpoint = endpoint_name
             logger.info(
                 f"Initialized classification service with SageMaker backend using endpoint {endpoint_name}"
             )
 
-        # Get classification method from config
-        classification_config = self.config.get("classification", {})
-        self.classification_method = classification_config.get(
-            "classificationMethod", self.MULTIMODAL_PAGE_LEVEL
-        )
+        # Get classification method from typed config
+        self.classification_method = self.config.classification.classificationMethod
 
         # Get max pages for classification (1 to ALL)
-        self.max_pages_for_classification = classification_config.get(
-            "maxPagesForClassification", "ALL"
+        self.max_pages_for_classification = (
+            self.config.classification.maxPagesForClassification
         )
 
         # Log classification method
@@ -164,8 +163,8 @@ class ClassificationService:
         """Load document types from configuration with regex patterns."""
         doc_types = []
 
-        # Get document types from config (JSON Schema format)
-        classes = self.config.get("classes", [])
+        # Get document types from typed config (type-safe access)
+        classes = self.config.classes
         for schema in classes:
             classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
             doc_types.append(
@@ -619,25 +618,23 @@ class ClassificationService:
         Raises:
             ValueError: If required configuration values are missing
         """
-        classification_config = self.config.get("classification", {})
+        # Type-safe access to classification config (no .get() needed!)
         config = {
             "model_id": self.bedrock_model,
-            "temperature": float(classification_config.get("temperature", 0)),
-            "top_k": float(classification_config.get("top_k", 5)),
-            "top_p": float(classification_config.get("top_p", 0.1)),
-            "max_tokens": int(classification_config.get("max_tokens", 4096))
-            if classification_config.get("max_tokens")
-            else None,
+            "temperature": self.config.classification.temperature,
+            "top_k": self.config.classification.top_k,
+            "top_p": self.config.classification.top_p,
+            "max_tokens": self.config.classification.max_tokens,
         }
 
         # Validate system prompt
-        system_prompt = classification_config.get("system_prompt")
+        system_prompt = self.config.classification.system_prompt
         if not system_prompt:
             raise ValueError("No system_prompt found in classification configuration")
         config["system_prompt"] = system_prompt
 
         # Validate task prompt
-        task_prompt = classification_config.get("task_prompt")
+        task_prompt = self.config.classification.task_prompt
         if not task_prompt:
             raise ValueError("No task_prompt found in classification configuration")
         config["task_prompt"] = task_prompt
@@ -886,7 +883,7 @@ class ClassificationService:
             List of content items containing text and image content for examples
         """
         content = []
-        classes = self.config.get("classes", [])
+        classes = self.config.classes or []
 
         for schema in classes:
             classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
@@ -1045,9 +1042,9 @@ class ClassificationService:
         # Load image content from URI with configurable dimensions
         if image_uri:
             try:
-                image_config = self.config.get("classification", {}).get("image", {})
-                target_width = image_config.get("target_width")
-                target_height = image_config.get("target_height")
+                # Type-safe access to image config
+                target_width = self.config.classification.image.target_width
+                target_height = self.config.classification.image.target_height
 
                 # Just pass the values directly - prepare_image handles empty strings/None
                 image_content = image.prepare_image(
