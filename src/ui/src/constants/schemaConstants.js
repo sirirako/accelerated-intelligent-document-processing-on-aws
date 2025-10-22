@@ -87,12 +87,14 @@ export const EVALUATION_METHOD_EXACT = 'EXACT';
 export const EVALUATION_METHOD_NUMERIC_EXACT = 'NUMERIC_EXACT';
 export const EVALUATION_METHOD_FUZZY = 'FUZZY';
 export const EVALUATION_METHOD_SEMANTIC = 'SEMANTIC';
+export const EVALUATION_METHOD_LLM = 'LLM';
 
 export const VALID_EVALUATION_METHODS = [
   EVALUATION_METHOD_EXACT,
   EVALUATION_METHOD_NUMERIC_EXACT,
   EVALUATION_METHOD_FUZZY,
   EVALUATION_METHOD_SEMANTIC,
+  EVALUATION_METHOD_LLM,
 ];
 
 // UI-friendly evaluation method options
@@ -101,6 +103,7 @@ export const EVALUATION_METHOD_OPTIONS = [
   { label: 'Numeric Exact', value: EVALUATION_METHOD_NUMERIC_EXACT },
   { label: 'Fuzzy', value: EVALUATION_METHOD_FUZZY },
   { label: 'Semantic', value: EVALUATION_METHOD_SEMANTIC },
+  { label: 'LLM', value: EVALUATION_METHOD_LLM },
 ];
 
 /** Confidence threshold for evaluation (0.0 to 1.0) */

@@ -121,6 +121,12 @@ const useConfiguration = () => {
         }
       }
 
+      // Unwrap nested Schema object if present
+      if (schemaObj && schemaObj.Schema) {
+        schemaObj = schemaObj.Schema;
+        logger.debug('Unwrapped nested Schema object');
+      }
+
       // Parse default config if it's a string
       if (typeof Default === 'string') {
         try {
