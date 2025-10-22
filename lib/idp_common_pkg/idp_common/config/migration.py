@@ -1,23 +1,51 @@
 from typing import Any, Dict, List, Optional, Union
 from .schema_constants import (
     # JSON Schema standard fields
-    SCHEMA_FIELD, ID_FIELD, DEFS_FIELD, REF_FIELD,
-    SCHEMA_TYPE, SCHEMA_PROPERTIES, SCHEMA_ITEMS, SCHEMA_REQUIRED, SCHEMA_DESCRIPTION, SCHEMA_EXAMPLES,
-    TYPE_OBJECT, TYPE_ARRAY, TYPE_STRING,
+    SCHEMA_FIELD,
+    ID_FIELD,
+    DEFS_FIELD,
+    REF_FIELD,
+    SCHEMA_TYPE,
+    SCHEMA_PROPERTIES,
+    SCHEMA_ITEMS,
+    SCHEMA_REQUIRED,
+    SCHEMA_DESCRIPTION,
+    SCHEMA_EXAMPLES,
+    TYPE_OBJECT,
+    TYPE_ARRAY,
+    TYPE_STRING,
     # AWS IDP extensions
     X_AWS_IDP_DOCUMENT_TYPE,
-    X_AWS_IDP_LIST_ITEM_DESCRIPTION, X_AWS_IDP_ORIGINAL_NAME,
-    X_AWS_IDP_EVALUATION_METHOD, X_AWS_IDP_CONFIDENCE_THRESHOLD, X_AWS_IDP_PROMPT_OVERRIDE,
-    X_AWS_IDP_CLASS_PROMPT, X_AWS_IDP_ATTRIBUTES_PROMPT, X_AWS_IDP_IMAGE_PATH,
-    VALID_EVALUATION_METHODS, MAX_PROMPT_OVERRIDE_LENGTH,
+    X_AWS_IDP_LIST_ITEM_DESCRIPTION,
+    X_AWS_IDP_ORIGINAL_NAME,
+    X_AWS_IDP_EVALUATION_METHOD,
+    X_AWS_IDP_CONFIDENCE_THRESHOLD,
+    X_AWS_IDP_PROMPT_OVERRIDE,
+    X_AWS_IDP_CLASS_PROMPT,
+    X_AWS_IDP_ATTRIBUTES_PROMPT,
+    X_AWS_IDP_IMAGE_PATH,
+    VALID_EVALUATION_METHODS,
+    MAX_PROMPT_OVERRIDE_LENGTH,
     # Attribute types (for legacy migration only)
-    ATTRIBUTE_TYPE_SIMPLE, ATTRIBUTE_TYPE_GROUP, ATTRIBUTE_TYPE_LIST,
+    ATTRIBUTE_TYPE_SIMPLE,
+    ATTRIBUTE_TYPE_GROUP,
+    ATTRIBUTE_TYPE_LIST,
     # Legacy field names
-    LEGACY_ATTRIBUTES, LEGACY_NAME, LEGACY_DESCRIPTION, LEGACY_ATTRIBUTE_TYPE,
-    LEGACY_GROUP_ATTRIBUTES, LEGACY_LIST_ITEM_TEMPLATE,
-    LEGACY_ITEM_ATTRIBUTES, LEGACY_ITEM_DESCRIPTION,
-    LEGACY_EVALUATION_METHOD, LEGACY_CONFIDENCE_THRESHOLD, LEGACY_PROMPT_OVERRIDE,
-    LEGACY_EXAMPLES, LEGACY_CLASS_PROMPT, LEGACY_ATTRIBUTES_PROMPT, LEGACY_IMAGE_PATH
+    LEGACY_ATTRIBUTES,
+    LEGACY_NAME,
+    LEGACY_DESCRIPTION,
+    LEGACY_ATTRIBUTE_TYPE,
+    LEGACY_GROUP_ATTRIBUTES,
+    LEGACY_LIST_ITEM_TEMPLATE,
+    LEGACY_ITEM_ATTRIBUTES,
+    LEGACY_ITEM_DESCRIPTION,
+    LEGACY_EVALUATION_METHOD,
+    LEGACY_CONFIDENCE_THRESHOLD,
+    LEGACY_PROMPT_OVERRIDE,
+    LEGACY_EXAMPLES,
+    LEGACY_CLASS_PROMPT,
+    LEGACY_ATTRIBUTES_PROMPT,
+    LEGACY_IMAGE_PATH,
 )
 
 
@@ -114,12 +142,18 @@ def migrate_legacy_to_schema(
             LEGACY_NAME: class_config.get(LEGACY_NAME, ""),
             LEGACY_DESCRIPTION: class_config.get(LEGACY_DESCRIPTION, ""),
             X_AWS_IDP_DOCUMENT_TYPE: True,  # Mark as document type
-            LEGACY_ATTRIBUTES: {SCHEMA_TYPE: TYPE_OBJECT, SCHEMA_PROPERTIES: {}, SCHEMA_REQUIRED: []},
+            LEGACY_ATTRIBUTES: {
+                SCHEMA_TYPE: TYPE_OBJECT,
+                SCHEMA_PROPERTIES: {},
+                SCHEMA_REQUIRED: [],
+            },
         }
 
         # Migrate examples if present
         if LEGACY_EXAMPLES in class_config:
-            migrated_class[LEGACY_EXAMPLES] = _migrate_examples(class_config[LEGACY_EXAMPLES])
+            migrated_class[LEGACY_EXAMPLES] = _migrate_examples(
+                class_config[LEGACY_EXAMPLES]
+            )
 
         legacy_attributes = class_config.get(LEGACY_ATTRIBUTES, [])
 
@@ -136,7 +170,9 @@ def migrate_legacy_to_schema(
             else:
                 schema_attr = _migrate_simple_attribute(attr)
 
-            migrated_class[LEGACY_ATTRIBUTES][SCHEMA_PROPERTIES][attr_name] = schema_attr
+            migrated_class[LEGACY_ATTRIBUTES][SCHEMA_PROPERTIES][attr_name] = (
+                schema_attr
+            )
 
         migrated_classes.append(migrated_class)
 
@@ -150,22 +186,16 @@ def _validate_and_set_aws_extensions(
     schema_attr: Dict[str, Any], source_attr: Dict[str, Any]
 ) -> None:
     """
-    Validate and set AWS IDP extension fields.
+    Set AWS IDP extension fields without validation.
+
+    Migration should preserve data as-is from legacy format.
 
     Args:
         schema_attr: Target schema attribute to update
         source_attr: Source attribute with potential AWS extensions
-
-    Raises:
-        ValueError: If AWS extension values are invalid
     """
     if LEGACY_EVALUATION_METHOD in source_attr:
-        method = source_attr[LEGACY_EVALUATION_METHOD]
-        if method not in VALID_EVALUATION_METHODS:
-            raise ValueError(
-                f"Invalid evaluation_method '{method}'. Must be one of: {', '.join(VALID_EVALUATION_METHODS)}"
-            )
-        schema_attr[X_AWS_IDP_EVALUATION_METHOD] = method
+        schema_attr[X_AWS_IDP_EVALUATION_METHOD] = source_attr[LEGACY_EVALUATION_METHOD]
 
     if LEGACY_CONFIDENCE_THRESHOLD in source_attr:
         threshold = source_attr[LEGACY_CONFIDENCE_THRESHOLD]
@@ -174,32 +204,11 @@ def _validate_and_set_aws_extensions(
             try:
                 threshold = float(threshold)
             except (ValueError, TypeError):
-                raise ValueError(
-                    f"Invalid confidence_threshold '{threshold}'. Must be a number between 0 and 1."
-                )
-
-        # Validate range
-        if not isinstance(threshold, (int, float)):
-            raise ValueError(
-                f"confidence_threshold must be a number, got {type(threshold).__name__}"
-            )
-
-        if not (0 <= threshold <= 1):
-            raise ValueError(
-                f"confidence_threshold must be between 0 and 1, got {threshold}"
-            )
-
-        schema_attr[X_AWS_IDP_CONFIDENCE_THRESHOLD] = float(threshold)
+                threshold = source_attr[LEGACY_CONFIDENCE_THRESHOLD]
+        schema_attr[X_AWS_IDP_CONFIDENCE_THRESHOLD] = threshold
 
     if LEGACY_PROMPT_OVERRIDE in source_attr:
-        prompt = source_attr[LEGACY_PROMPT_OVERRIDE]
-        if not isinstance(prompt, str):
-            raise ValueError(
-                f"prompt_override must be a string, got {type(prompt).__name__}"
-            )
-        if len(prompt) > MAX_PROMPT_OVERRIDE_LENGTH:
-            raise ValueError(f"prompt_override is too long (maximum {MAX_PROMPT_OVERRIDE_LENGTH} characters)")
-        schema_attr[X_AWS_IDP_PROMPT_OVERRIDE] = prompt
+        schema_attr[X_AWS_IDP_PROMPT_OVERRIDE] = source_attr[LEGACY_PROMPT_OVERRIDE]
 
 
 def _migrate_simple_attribute(attr: Dict[str, Any]) -> Dict[str, Any]:
@@ -225,7 +234,9 @@ def _migrate_group_attribute(attr: Dict[str, Any]) -> Dict[str, Any]:
     group_attrs = attr.get(LEGACY_GROUP_ATTRIBUTES, [])
     for group_attr in group_attrs:
         attr_name = group_attr.get(LEGACY_NAME, "")
-        schema_attr[SCHEMA_PROPERTIES][attr_name] = _migrate_simple_attribute(group_attr)
+        schema_attr[SCHEMA_PROPERTIES][attr_name] = _migrate_simple_attribute(
+            group_attr
+        )
 
     _validate_and_set_aws_extensions(schema_attr, attr)
 
@@ -258,8 +269,8 @@ def _migrate_list_attribute(attr: Dict[str, Any]) -> Dict[str, Any]:
         schema_attr[SCHEMA_ITEMS] = {SCHEMA_TYPE: TYPE_OBJECT, SCHEMA_PROPERTIES: {}}
         for item_attr in item_attrs:
             attr_name = item_attr.get(LEGACY_NAME, "")
-            schema_attr[SCHEMA_ITEMS][SCHEMA_PROPERTIES][attr_name] = _migrate_simple_attribute(
-                item_attr
+            schema_attr[SCHEMA_ITEMS][SCHEMA_PROPERTIES][attr_name] = (
+                _migrate_simple_attribute(item_attr)
             )
 
     # Use the standard validation function for AWS extensions
@@ -305,7 +316,9 @@ def _migrate_examples(legacy_examples: List[Dict[str, Any]]) -> List[Dict[str, A
             migrated_example[X_AWS_IDP_CLASS_PROMPT] = example[LEGACY_CLASS_PROMPT]
 
         if LEGACY_ATTRIBUTES_PROMPT in example:
-            migrated_example[X_AWS_IDP_ATTRIBUTES_PROMPT] = example[LEGACY_ATTRIBUTES_PROMPT]
+            migrated_example[X_AWS_IDP_ATTRIBUTES_PROMPT] = example[
+                LEGACY_ATTRIBUTES_PROMPT
+            ]
 
         if LEGACY_IMAGE_PATH in example:
             migrated_example[X_AWS_IDP_IMAGE_PATH] = example[LEGACY_IMAGE_PATH]
@@ -320,7 +333,7 @@ def _migrate_examples(legacy_examples: List[Dict[str, Any]]) -> List[Dict[str, A
 
                 prompt = example[LEGACY_ATTRIBUTES_PROMPT]
                 # Look for JSON-like structure in the prompt
-                json_match = re.search(r'\{.*\}', prompt, re.DOTALL)
+                json_match = re.search(r"\{.*\}", prompt, re.DOTALL)
                 parsed = False
                 if json_match:
                     json_str = json_match.group()
@@ -335,10 +348,14 @@ def _migrate_examples(legacy_examples: List[Dict[str, Any]]) -> List[Dict[str, A
 
                 if not parsed:
                     # Try to find key-value pairs in format: "key": "value"
-                    pairs = re.findall(r'"([^"]+)":\s*("(?:[^"\\]|\\.)*"|\bnull\b)', prompt)
+                    pairs = re.findall(
+                        r'"([^"]+)":\s*("(?:[^"\\]|\\.)*"|\bnull\b)', prompt
+                    )
                     if pairs:
                         # Build a JSON object from the pairs
-                        json_str = '{' + ', '.join([f'"{k}": {v}' for k, v in pairs]) + '}'
+                        json_str = (
+                            "{" + ", ".join([f'"{k}": {v}' for k, v in pairs]) + "}"
+                        )
                         try:
                             example_values = json.loads(json_str)
                             # Add the parsed values to the example
@@ -426,7 +443,9 @@ def _find_referenced_classes(
                 and isinstance(attr[SCHEMA_ITEMS], dict)
             ):
                 if REF_FIELD in attr[SCHEMA_ITEMS]:
-                    ref_name = attr[SCHEMA_ITEMS][REF_FIELD].replace(f"#{DEFS_FIELD}/", "")
+                    ref_name = attr[SCHEMA_ITEMS][REF_FIELD].replace(
+                        f"#{DEFS_FIELD}/", ""
+                    )
                     if ref_name not in visited:
                         ref_class = next(
                             (c for c in all_classes if c[LEGACY_NAME] == ref_name), None
