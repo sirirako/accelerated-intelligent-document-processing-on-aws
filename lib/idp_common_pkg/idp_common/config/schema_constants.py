@@ -22,6 +22,9 @@ REF_FIELD = "$ref"
 # Marks a schema as a document type (top-level class)
 X_AWS_IDP_DOCUMENT_TYPE = "x-aws-idp-document-type"
 
+# Classification metadata for document type
+X_AWS_IDP_CLASSIFICATION = "x-aws-idp-classification"
+
 # ============================================================================
 # Legacy Attribute Type Values (for migration only)
 # ============================================================================
@@ -54,12 +57,14 @@ EVALUATION_METHOD_NUMERIC_EXACT = "NUMERIC_EXACT"
 EVALUATION_METHOD_FUZZY = "FUZZY"
 EVALUATION_METHOD_SEMANTIC = "SEMANTIC"
 
-VALID_EVALUATION_METHODS = frozenset([
-    EVALUATION_METHOD_EXACT,
-    EVALUATION_METHOD_NUMERIC_EXACT,
-    EVALUATION_METHOD_FUZZY,
-    EVALUATION_METHOD_SEMANTIC
-])
+VALID_EVALUATION_METHODS = frozenset(
+    [
+        EVALUATION_METHOD_EXACT,
+        EVALUATION_METHOD_NUMERIC_EXACT,
+        EVALUATION_METHOD_FUZZY,
+        EVALUATION_METHOD_SEMANTIC,
+    ]
+)
 
 # Confidence threshold for evaluation (0.0 to 1.0)
 X_AWS_IDP_CONFIDENCE_THRESHOLD = "x-aws-idp-confidence-threshold"

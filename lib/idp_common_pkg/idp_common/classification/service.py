@@ -37,6 +37,10 @@ from idp_common.classification.models import (
     DocumentType,
     PageClassification,
 )
+from idp_common.config.schema_constants import (
+    X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_CLASSIFICATION,
+)
 from idp_common.models import Document, Section, Status
 from idp_common.utils import extract_json_from_text, extract_structured_data_from_text
 
@@ -160,16 +164,17 @@ class ClassificationService:
         """Load document types from configuration with regex patterns."""
         doc_types = []
 
-        # Get document types from config
+        # Get document types from config (JSON Schema format)
         classes = self.config.get("classes", [])
-        for class_obj in classes:
+        for schema in classes:
+            classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
             doc_types.append(
                 DocumentType(
-                    type_name=class_obj.get("name", ""),
-                    description=class_obj.get("description", ""),
-                    document_name_regex=class_obj.get("document_name_regex", None),
-                    document_page_content_regex=class_obj.get(
-                        "document_page_content_regex", None
+                    type_name=schema.get(X_AWS_IDP_DOCUMENT_TYPE, ""),
+                    description=schema.get("description", ""),
+                    document_name_regex=classification_meta.get("documentNamePattern"),
+                    document_page_content_regex=classification_meta.get(
+                        "pageContentPattern"
                     ),
                 )
             )
@@ -883,8 +888,9 @@ class ClassificationService:
         content = []
         classes = self.config.get("classes", [])
 
-        for class_obj in classes:
-            examples = class_obj.get("examples", [])
+        for schema in classes:
+            classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
+            examples = classification_meta.get("examples", [])
             for example in examples:
                 class_prompt = example.get("classPrompt")
 
