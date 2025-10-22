@@ -38,8 +38,8 @@ from idp_common.classification.models import (
     PageClassification,
 )
 from idp_common.config.schema_constants import (
-    X_AWS_IDP_DOCUMENT_TYPE,
     X_AWS_IDP_CLASSIFICATION,
+    X_AWS_IDP_DOCUMENT_TYPE,
 )
 from idp_common.models import Document, Section, Status
 from idp_common.utils import extract_json_from_text, extract_structured_data_from_text

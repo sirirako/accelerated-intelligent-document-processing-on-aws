@@ -21,15 +21,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.config.schema_constants import (
-    SCHEMA_PROPERTIES,
-    SCHEMA_TYPE,
     SCHEMA_DESCRIPTION,
     SCHEMA_ITEMS,
-    TYPE_OBJECT,
+    SCHEMA_PROPERTIES,
+    SCHEMA_TYPE,
     TYPE_ARRAY,
-    TYPE_STRING,
-    X_AWS_IDP_DOCUMENT_TYPE,
+    TYPE_OBJECT,
     X_AWS_IDP_CONFIDENCE_THRESHOLD,
+    X_AWS_IDP_DOCUMENT_TYPE,
     X_AWS_IDP_LIST_ITEM_DESCRIPTION,
 )
 from idp_common.models import Document, Status
