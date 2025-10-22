@@ -449,7 +449,6 @@ class TestGranularAssessmentService:
     def test_aggregate_assessment_results(self, sample_config):
         """Test aggregating assessment results."""
         service = GranularAssessmentService(config=sample_config)
-        properties = service._get_class_schema("letter").get("properties", {})
 
         # Create tasks and results
         task1 = AssessmentTask(
