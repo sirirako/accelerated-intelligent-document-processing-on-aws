@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from datamodel_code_generator import DataModelType, InputFileType, generate
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, create_model
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,16 @@ def _find_model_in_module(
     if not all_models:
         return None, []
 
+    # Log all discovered models with their fields
+    logger.debug(
+        f"Found {len(all_models)} Pydantic models in generated code for class '{class_label}'"
+    )
+    for model_name, model_obj in all_models:
+        field_names = list(model_obj.model_fields.keys())
+        logger.debug(
+            f"  - Model '{model_name}' with {len(field_names)} fields: {field_names}"
+        )
+
     # Get schema title/id for matching
     schema_title = schema_dict.get("title", schema_dict.get("$id", class_label))
     schema_title_pascal = _normalize_class_name(schema_title)
@@ -133,11 +143,19 @@ def _find_model_in_module(
         "Model",
     ]
 
+    logger.debug(
+        f"Searching for model matching one of: {matching_names} (schema_title='{schema_title}', class_label='{class_label}')"
+    )
+
     for name, obj in all_models:
         if name in matching_names:
+            logger.debug(f"Selected model '{name}' based on name matching")
             return obj, all_models
 
     # No exact match - use first available
+    logger.debug(
+        f"No name match found, using first available model: '{all_models[0][0]}'"
+    )
     return all_models[0][1], all_models
 
 
@@ -209,6 +227,9 @@ def create_pydantic_model_from_json_schema(
                 disable_timestamp=True,
                 use_standard_collections=True,
                 use_union_operator=True,
+                field_constraints=True,
+                snake_case_field=False,
+                use_title_as_name=True,
             )
 
             # Import the generated module
@@ -229,7 +250,7 @@ def create_pydantic_model_from_json_schema(
                 else processed_schema
             )
 
-            # Find the appropriate model
+            # Find all models in the module
             data_model, all_models = _find_model_in_module(
                 generated_module, schema_dict, class_label
             )
@@ -239,15 +260,40 @@ def create_pydantic_model_from_json_schema(
                     f"No Pydantic models found in generated code for class '{class_label}'"
                 )
 
-            # Rebuild the model to ensure proper configuration
-            data_model.model_rebuild()
+            # Use the model selected by _find_model_in_module (best match based on title/label)
+            selected_model = data_model
+            original_model_name = selected_model.__name__
+
+            # Rename the model to match the schema title or class_label
+            schema_title = schema_dict.get("title", class_label)
+            normalized_name = _normalize_class_name(schema_title)
+            selected_model.__name__ = normalized_name
+
+            # Configure model to use aliases for population and serialization
+            # This is critical for handling nested objects where datamodel-code-generator
+            # adds _1 suffixes to avoid naming conflicts with nested model classes
+            final_model = create_model(
+                selected_model.__name__,
+                __base__=selected_model,
+                __config__=ConfigDict(populate_by_name=True, serialize_by_alias=True),
+            )
+
+            # Log the final model with its fields and aliases
+            field_count = len(final_model.model_fields)
+            field_info = []
+            for field_name, field in selected_model.model_fields.items():
+                if field.alias and field.alias != field_name:
+                    field_info.append(f"{field_name} (alias: {field.alias})")
+                else:
+                    field_info.append(field_name)
 
             logger.info(
-                f"Created Pydantic model '{data_model.__name__}' from JSON Schema for class '{class_label}' "
+                f"Created Pydantic model '{selected_model.__name__}' (renamed from '{original_model_name}') "
+                f"from JSON Schema for class '{class_label}' with {field_count} fields: {field_info} "
                 f"(selected from {len(all_models)} available models)"
             )
 
-            return data_model
+            return final_model
 
     finally:
         # Clean up the module from sys.modules

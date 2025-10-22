@@ -879,5 +879,253 @@ class TestEdgeCases:
         assert instance.value == "test"
 
 
+class TestNestedObjectAliases:
+    """Test handling of nested objects where datamodel-code-generator creates field aliases."""
+
+    def test_nested_object_with_alias_validation(self):
+        """Test that nested objects work with field aliases during validation."""
+        schema = {
+            "type": "object",
+            "title": "Employee",
+            "properties": {
+                "EmployeeName": {
+                    "type": "object",
+                    "properties": {
+                        "FirstName": {"type": "string"},
+                        "LastName": {"type": "string"},
+                    },
+                },
+                "EmployeeNumber": {"type": "string"},
+            },
+        }
+
+        EmployeeModel = create_pydantic_model_from_json_schema(
+            schema, "Employee", clean_schema=False
+        )
+
+        # Validate using the alias name (as returned by LLM)
+        data = {
+            "EmployeeName": {"FirstName": "John", "LastName": "Doe"},
+            "EmployeeNumber": "12345",
+        }
+
+        instance = EmployeeModel.model_validate(data)
+
+        # Access using the actual field name (may have _1 suffix)
+        assert hasattr(instance, "EmployeeName_1") or hasattr(instance, "EmployeeName")
+        assert instance.EmployeeNumber == "12345"
+
+    def test_nested_object_serialization_with_aliases(self):
+        """Test that nested objects serialize correctly using aliases by default."""
+        schema = {
+            "type": "object",
+            "title": "Company",
+            "properties": {
+                "CompanyAddress": {
+                    "type": "object",
+                    "properties": {
+                        "Line1": {"type": "string"},
+                        "City": {"type": "string"},
+                        "ZipCode": {"type": "string"},
+                    },
+                },
+                "CompanyName": {"type": "string"},
+            },
+        }
+
+        CompanyModel = create_pydantic_model_from_json_schema(
+            schema, "Company", clean_schema=False
+        )
+
+        # Create instance using alias names
+        data = {
+            "CompanyAddress": {
+                "Line1": "123 Main St",
+                "City": "New York",
+                "ZipCode": "10001",
+            },
+            "CompanyName": "Acme Corp",
+        }
+
+        instance = CompanyModel.model_validate(data)
+
+        # Test 1: Serialize WITHOUT by_alias parameter (should use alias by default due to serialize_by_alias=True)
+        output = instance.model_dump()
+
+        assert output["CompanyName"] == "Acme Corp"
+        assert output["CompanyAddress"]["Line1"] == "123 Main St"
+        assert output["CompanyAddress"]["City"] == "New York"
+        assert output["CompanyAddress"]["ZipCode"] == "10001"
+
+        # Ensure no _1 suffixes in output when using default serialization
+        assert "CompanyAddress_1" not in output
+
+        # Test 2: Verify by_alias=True gives same result
+        output_explicit = instance.model_dump(by_alias=True)
+        assert output == output_explicit
+
+        # Test 3: Verify by_alias=False shows internal field names
+        output_internal = instance.model_dump(by_alias=False)
+        # Internal field names should have _1 suffix
+        assert (
+            "CompanyAddress_1" in output_internal or "CompanyAddress" in output_internal
+        )
+
+    def test_multiple_nested_objects_with_aliases(self):
+        """Test multiple nested objects serialize by alias by default."""
+        schema = {
+            "type": "object",
+            "title": "Payslip",
+            "properties": {
+                "EmployeeName": {
+                    "type": "object",
+                    "properties": {
+                        "FirstName": {"type": "string"},
+                        "LastName": {"type": "string"},
+                        "MiddleName": {"type": "string"},
+                    },
+                },
+                "CompanyAddress": {
+                    "type": "object",
+                    "properties": {
+                        "Line1": {"type": "string"},
+                        "Line2": {"type": "string"},
+                        "City": {"type": "string"},
+                        "State": {"type": "string"},
+                        "ZipCode": {"type": "string"},
+                    },
+                },
+                "EmployeeAddress": {
+                    "type": "object",
+                    "properties": {
+                        "Line1": {"type": "string"},
+                        "City": {"type": "string"},
+                    },
+                },
+                "PayDate": {"type": "string"},
+                "CurrentGrossPay": {"type": "string"},
+            },
+        }
+
+        PayslipModel = create_pydantic_model_from_json_schema(
+            schema, "Payslip", clean_schema=False
+        )
+
+        # Create instance with all nested objects
+        data = {
+            "EmployeeName": {
+                "FirstName": "Jane",
+                "LastName": "Smith",
+                "MiddleName": "Marie",
+            },
+            "CompanyAddress": {
+                "Line1": "100 Corporate Dr",
+                "Line2": "Suite 200",
+                "City": "Boston",
+                "State": "MA",
+                "ZipCode": "02101",
+            },
+            "EmployeeAddress": {
+                "Line1": "456 Elm St",
+                "City": "Cambridge",
+            },
+            "PayDate": "2025-10-22",
+            "CurrentGrossPay": "$5,000.00",
+        }
+
+        instance = PayslipModel.model_validate(data)
+
+        # Serialize WITHOUT by_alias parameter - should use aliases by default
+        output = instance.model_dump()
+
+        # Verify all fields use proper names (no _1 suffixes) in default serialization
+        assert "EmployeeName" in output
+        assert "CompanyAddress" in output
+        assert "EmployeeAddress" in output
+        assert "EmployeeName_1" not in output
+        assert "CompanyAddress_1" not in output
+        assert "EmployeeAddress_1" not in output
+
+        # Verify nested data
+        assert output["EmployeeName"]["FirstName"] == "Jane"
+        assert output["CompanyAddress"]["City"] == "Boston"
+        assert output["EmployeeAddress"]["Line1"] == "456 Elm St"
+        assert output["PayDate"] == "2025-10-22"
+
+    def test_nested_objects_with_arrays(self):
+        """Test nested objects combined with arrays serialize by alias by default."""
+        schema = {
+            "type": "object",
+            "title": "Invoice",
+            "properties": {
+                "BillingAddress": {
+                    "type": "object",
+                    "properties": {
+                        "Line1": {"type": "string"},
+                        "City": {"type": "string"},
+                    },
+                },
+                "LineItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "Description": {"type": "string"},
+                            "Amount": {"type": "number"},
+                        },
+                    },
+                },
+                "InvoiceNumber": {"type": "string"},
+            },
+        }
+
+        InvoiceModel = create_pydantic_model_from_json_schema(
+            schema, "Invoice", clean_schema=False
+        )
+
+        data = {
+            "BillingAddress": {"Line1": "789 Oak Ave", "City": "Seattle"},
+            "LineItems": [
+                {"Description": "Widget", "Amount": 99.99},
+                {"Description": "Gadget", "Amount": 149.99},
+            ],
+            "InvoiceNumber": "INV-2025-001",
+        }
+
+        instance = InvoiceModel.model_validate(data)
+
+        # Serialize WITHOUT by_alias parameter - should use aliases by default
+        output = instance.model_dump()
+
+        # Verify structure uses aliases (no _1 suffixes)
+        assert "BillingAddress" in output
+        assert "BillingAddress_1" not in output
+        assert output["BillingAddress"]["City"] == "Seattle"
+        assert len(output["LineItems"]) == 2
+        assert output["LineItems"][0]["Amount"] == 99.99
+
+    def test_model_configuration(self):
+        """Test that model configuration is set correctly for alias support."""
+        schema = {
+            "type": "object",
+            "title": "TestModel",
+            "properties": {
+                "NestedObject": {
+                    "type": "object",
+                    "properties": {"Field": {"type": "string"}},
+                }
+            },
+        }
+
+        TestModel = create_pydantic_model_from_json_schema(
+            schema, "TestModel", clean_schema=False
+        )
+
+        # Verify model_config has both populate_by_name and serialize_by_alias
+        assert hasattr(TestModel, "model_config")
+        assert TestModel.model_config.get("populate_by_name") is True
+        assert TestModel.model_config.get("serialize_by_alias") is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
