@@ -17,7 +17,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.config.schema_constants import (
@@ -189,85 +189,146 @@ class GranularAssessmentService:
                 return schema
         return {}
 
-    def _extract_properties_as_attributes(
-        self, schema: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    def _walk_properties_for_assessment(
+        self, properties: Dict[str, Any], parent_path: str = ""
+    ) -> Generator[Dict[str, Any], None, None]:
         """
-        Extract properties from JSON Schema as legacy attribute list.
-        Temporary helper for granular service until full refactor.
+        Walk JSON Schema properties and yield assessment property information.
+        Generator pattern for efficient schema traversal.
 
         Args:
-            schema: JSON Schema dict
+            properties: JSON Schema properties dict
+            parent_path: Parent path for nested properties (e.g., "CompanyAddress")
 
-        Returns:
-            List of attribute dicts in legacy format
+        Yields:
+            Dict containing property information:
+            {
+                'path': 'CompanyAddress.Street',  # Full path
+                'name': 'Street',  # Property name
+                'parent_path': 'CompanyAddress',  # Parent path (empty string for top-level)
+                'type': 'string',  # JSON Schema type
+                'description': 'Street address',
+                'confidence_threshold': 0.9,  # From x-aws-idp-confidence-threshold
+                'prop_schema': {...}  # Full property schema for reference
+            }
         """
-        properties = schema.get(SCHEMA_PROPERTIES, {})
-        attributes = []
-
         for prop_name, prop_schema in properties.items():
             prop_type = prop_schema.get(SCHEMA_TYPE)
-            attr = {
-                "name": prop_name,
-                "description": prop_schema.get(SCHEMA_DESCRIPTION, ""),
-                "confidence_threshold": prop_schema.get(X_AWS_IDP_CONFIDENCE_THRESHOLD),
-            }
+            full_path = f"{parent_path}.{prop_name}" if parent_path else prop_name
+
+            # Get confidence threshold for this property
+            threshold = prop_schema.get(X_AWS_IDP_CONFIDENCE_THRESHOLD)
 
             if prop_type == TYPE_OBJECT:
-                attr["attributeType"] = "group"
-                nested_props = prop_schema.get(SCHEMA_PROPERTIES, {})
-                attr["groupAttributes"] = [
-                    {
-                        "name": nested_name,
-                        "description": nested_schema.get(SCHEMA_DESCRIPTION, ""),
-                        "confidence_threshold": nested_schema.get(
-                            X_AWS_IDP_CONFIDENCE_THRESHOLD
-                        ),
-                    }
-                    for nested_name, nested_schema in nested_props.items()
-                ]
+                # Yield info for the group itself
+                yield {
+                    "path": full_path,
+                    "name": prop_name,
+                    "parent_path": parent_path,
+                    "type": TYPE_OBJECT,
+                    "description": prop_schema.get(SCHEMA_DESCRIPTION, ""),
+                    "confidence_threshold": threshold,
+                    "prop_schema": prop_schema,
+                }
+                # Recurse into nested object properties
+                yield from self._walk_properties_for_assessment(
+                    prop_schema.get(SCHEMA_PROPERTIES, {}), full_path
+                )
+
             elif prop_type == TYPE_ARRAY:
-                attr["attributeType"] = "list"
-                items_schema = prop_schema.get(SCHEMA_ITEMS, {})
-                attr["listItemTemplate"] = {
-                    "itemDescription": prop_schema.get(
+                # Yield info for the list itself
+                yield {
+                    "path": full_path,
+                    "name": prop_name,
+                    "parent_path": parent_path,
+                    "type": TYPE_ARRAY,
+                    "description": prop_schema.get(SCHEMA_DESCRIPTION, ""),
+                    "confidence_threshold": threshold,
+                    "list_item_description": prop_schema.get(
                         X_AWS_IDP_LIST_ITEM_DESCRIPTION, ""
                     ),
-                    "itemAttributes": [],
+                    "prop_schema": prop_schema,
                 }
-                if items_schema.get(SCHEMA_TYPE) == TYPE_OBJECT:
-                    item_props = items_schema.get(SCHEMA_PROPERTIES, {})
-                    attr["listItemTemplate"]["itemAttributes"] = [
-                        {
-                            "name": item_name,
-                            "description": item_schema.get(SCHEMA_DESCRIPTION, ""),
-                            "confidence_threshold": item_schema.get(
-                                X_AWS_IDP_CONFIDENCE_THRESHOLD
-                            ),
-                        }
-                        for item_name, item_schema in item_props.items()
-                    ]
+                # Note: We don't recurse into array items here because list items
+                # are handled specially in task creation (one task per item)
+
             else:
-                attr["attributeType"] = "simple"
+                # Leaf property (simple type: string, number, boolean, etc.)
+                yield {
+                    "path": full_path,
+                    "name": prop_name,
+                    "parent_path": parent_path,
+                    "type": prop_type or "string",
+                    "description": prop_schema.get(SCHEMA_DESCRIPTION, ""),
+                    "confidence_threshold": threshold,
+                    "prop_schema": prop_schema,
+                }
 
-            attributes.append(attr)
-
-        return attributes
-
-    def _format_property_descriptions(self, schema: Dict[str, Any]) -> str:
+    def _get_confidence_threshold_by_path(
+        self, properties: Dict[str, Any], path: str, default: float = 0.9
+    ) -> float:
         """
-        Format property descriptions from JSON Schema for the prompt.
+        Get confidence threshold for a property path (e.g., 'CompanyAddress.Street').
+        Traverses JSON Schema following the path segments.
 
         Args:
-            schema: JSON Schema dict for the document class
+            properties: JSON Schema properties dict
+            path: Dot-separated path to the property
+            default: Default threshold if not found
+
+        Returns:
+            Confidence threshold for the property
+        """
+        parts = path.split(".")
+        current = properties
+
+        for i, part in enumerate(parts):
+            if part not in current:
+                return default
+
+            prop_schema = current[part]
+
+            # Check for threshold at this level
+            threshold_value = prop_schema.get(X_AWS_IDP_CONFIDENCE_THRESHOLD)
+            if threshold_value is not None:
+                return _safe_float_conversion(threshold_value, default)
+
+            # Navigate deeper for nested paths
+            if i < len(parts) - 1:
+                prop_type = prop_schema.get(SCHEMA_TYPE)
+                if prop_type == TYPE_OBJECT:
+                    current = prop_schema.get(SCHEMA_PROPERTIES, {})
+                elif prop_type == TYPE_ARRAY:
+                    # For array items, get the items schema properties
+                    items_schema = prop_schema.get(SCHEMA_ITEMS, {})
+                    current = items_schema.get(SCHEMA_PROPERTIES, {})
+                else:
+                    # Can't navigate further
+                    return default
+
+        return default
+
+    def _format_property_descriptions(
+        self, properties: Dict[str, Any], filter_names: Optional[List[str]] = None
+    ) -> str:
+        """
+        Format property descriptions from JSON Schema properties for the prompt.
+        Can optionally filter to specific property names.
+
+        Args:
+            properties: JSON Schema properties dict
+            filter_names: Optional list of property names to include (None = all)
 
         Returns:
             Formatted property descriptions as a string
         """
-        properties = schema.get(SCHEMA_PROPERTIES, {})
         formatted_lines = []
 
         for prop_name, prop_schema in properties.items():
+            # Skip if filtering and this property is not in the filter list
+            if filter_names is not None and prop_name not in filter_names:
+                continue
+
             prop_type = prop_schema.get(SCHEMA_TYPE)
             description = prop_schema.get(SCHEMA_DESCRIPTION, "")
 
@@ -295,49 +356,6 @@ class GranularAssessmentService:
                         )
             else:
                 formatted_lines.append(f"{prop_name}  \t[ {description} ]")
-
-        return "\n".join(formatted_lines)
-
-    def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
-        """
-        Format attribute descriptions (legacy format, for internal granular service use).
-
-        Args:
-            attributes: List of attribute dicts in legacy format
-
-        Returns:
-            Formatted attribute descriptions as a string
-        """
-        formatted_lines = []
-
-        for attr in attributes:
-            attr_name = attr.get("name", "")
-            attr_description = attr.get("description", "")
-            attr_type = attr.get("attributeType", "simple")
-
-            if attr_type == "group":
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                group_attributes = attr.get("groupAttributes", [])
-                for group_attr in group_attributes:
-                    group_name = group_attr.get("name", "")
-                    group_desc = group_attr.get("description", "")
-                    formatted_lines.append(f"  - {group_name}  \t[ {group_desc} ]")
-
-            elif attr_type == "list":
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                list_template = attr.get("listItemTemplate", {})
-                item_description = list_template.get("itemDescription", "")
-                if item_description:
-                    formatted_lines.append(f"  Each item: {item_description}")
-
-                item_attributes = list_template.get("itemAttributes", [])
-                for item_attr in item_attributes:
-                    item_name = item_attr.get("name", "")
-                    item_desc = item_attr.get("description", "")
-                    formatted_lines.append(f"  - {item_name}  \t[ {item_desc} ]")
-
-            else:
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
 
         return "\n".join(formatted_lines)
 
@@ -472,58 +490,40 @@ class GranularAssessmentService:
         return content
 
     def _get_task_specific_attribute_descriptions(
-        self, task: AssessmentTask, all_attributes: List[Dict[str, Any]]
+        self, task: AssessmentTask, properties: Dict[str, Any]
     ) -> str:
         """
-        Get attribute descriptions specific to this task.
+        Get attribute descriptions specific to this task using JSON Schema properties.
 
         Args:
             task: The assessment task
-            all_attributes: All attribute configurations
+            properties: JSON Schema properties dict
 
         Returns:
             Formatted attribute descriptions for this specific task
         """
         if task.task_type == "simple_batch":
-            # For simple batches, include only the attributes in this batch
-            task_attributes = [
-                attr
-                for attr in all_attributes
-                if attr.get("name", "") in task.attributes
-            ]
-            return self._format_attribute_descriptions(task_attributes)
+            # For simple batches, filter to only the attributes in this batch
+            return self._format_property_descriptions(
+                properties, filter_names=task.attributes
+            )
 
         elif task.task_type == "group":
-            # For groups, include the group attribute and its sub-attributes
+            # For groups, filter to just the group attribute (which includes nested props)
             group_attr_name = task.attributes[0]
-            group_attr = next(
-                (
-                    attr
-                    for attr in all_attributes
-                    if attr.get("name", "") == group_attr_name
-                ),
-                None,
+            return self._format_property_descriptions(
+                properties, filter_names=[group_attr_name]
             )
-            if group_attr:
-                return self._format_attribute_descriptions([group_attr])
-            return ""
 
         elif task.task_type == "list_item":
-            # For list items, include the list attribute template
+            # For list items, show the item schema properties
             list_attr_name = task.attributes[0]
-            list_attr = next(
-                (
-                    attr
-                    for attr in all_attributes
-                    if attr.get("name", "") == list_attr_name
-                ),
-                None,
-            )
-            if list_attr:
-                # Create a simplified version showing just the item template
-                list_template = list_attr.get("listItemTemplate", {})
-                item_attributes = list_template.get("itemAttributes", [])
-                return self._format_attribute_descriptions(item_attributes)
+            if list_attr_name in properties:
+                list_prop_schema = properties[list_attr_name]
+                items_schema = list_prop_schema.get(SCHEMA_ITEMS, {})
+                if items_schema.get(SCHEMA_TYPE) == TYPE_OBJECT:
+                    item_properties = items_schema.get(SCHEMA_PROPERTIES, {})
+                    return self._format_property_descriptions(item_properties)
             return ""
 
         return ""
@@ -532,7 +532,7 @@ class GranularAssessmentService:
         self,
         task: AssessmentTask,
         base_content: List[Dict[str, Any]],
-        all_attributes: List[Dict[str, Any]],
+        properties: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """
         Build the specific assessment prompt for a task by replacing the {EXTRACTION_RESULTS} placeholder
@@ -541,7 +541,7 @@ class GranularAssessmentService:
         Args:
             task: The assessment task
             base_content: The cached base content (which has empty {EXTRACTION_RESULTS})
-            all_attributes: All attribute configurations for task-specific filtering
+            properties: JSON Schema properties dict for task-specific filtering
 
         Returns:
             Complete content list for the assessment
@@ -562,7 +562,7 @@ class GranularAssessmentService:
 
         # Get task-specific attribute descriptions
         task_specific_attributes = self._get_task_specific_attribute_descriptions(
-            task, all_attributes
+            task, properties
         )
 
         # Create a new content list by replacing placeholders in the base content
@@ -593,15 +593,15 @@ class GranularAssessmentService:
     def _create_assessment_tasks(
         self,
         extraction_results: Dict[str, Any],
-        attributes: List[Dict[str, Any]],
+        properties: Dict[str, Any],
         default_confidence_threshold: float,
     ) -> List[AssessmentTask]:
         """
-        Create assessment tasks based on attribute types and extraction results.
+        Create assessment tasks based on JSON Schema property types and extraction results.
 
         Args:
             extraction_results: The extraction results to assess
-            attributes: List of attribute configurations
+            properties: JSON Schema properties dict
             default_confidence_threshold: Default confidence threshold
 
         Returns:
@@ -610,99 +610,97 @@ class GranularAssessmentService:
         tasks = []
         task_counter = 0
 
-        # Group attributes by type for efficient processing
-        simple_attributes = []
-        group_attributes = []
-        list_attributes = []
+        # Group properties by type for efficient processing
+        simple_props = []
+        group_props = []
+        list_props = []
 
-        for attr in attributes:
-            attr_name = attr.get("name", "")
-            attr_type = attr.get("attributeType", "simple")
+        for prop_name, prop_schema in properties.items():
+            if prop_name not in extraction_results:
+                continue  # Skip properties not in extraction results
 
-            if attr_name not in extraction_results:
-                continue  # Skip attributes not in extraction results
+            prop_type = prop_schema.get(SCHEMA_TYPE)
 
-            if attr_type == "simple":
-                simple_attributes.append(attr)
-            elif attr_type == "group":
-                group_attributes.append(attr)
-            elif attr_type == "list":
-                list_attributes.append(attr)
+            if prop_type == TYPE_OBJECT:
+                group_props.append((prop_name, prop_schema))
+            elif prop_type == TYPE_ARRAY:
+                list_props.append((prop_name, prop_schema))
+            else:
+                # Simple types: string, number, boolean, etc.
+                simple_props.append((prop_name, prop_schema))
 
-        # Create tasks for simple attributes (batch them)
-        for i in range(0, len(simple_attributes), self.simple_batch_size):
-            batch = simple_attributes[i : i + self.simple_batch_size]
-            attr_names = [attr.get("name", "") for attr in batch]
+        # Create tasks for simple properties (batch them)
+        for i in range(0, len(simple_props), self.simple_batch_size):
+            batch = simple_props[i : i + self.simple_batch_size]
+            prop_names = [name for name, _ in batch]
 
             # Build confidence thresholds for this batch
             confidence_thresholds = {}
-            for attr in batch:
-                attr_name = attr.get("name", "")
-                threshold = self._get_attribute_confidence_threshold(
-                    attr_name, attributes, default_confidence_threshold
+            for prop_name, prop_schema in batch:
+                threshold = self._get_confidence_threshold_by_path(
+                    properties, prop_name, default_confidence_threshold
                 )
-                confidence_thresholds[attr_name] = threshold
+                confidence_thresholds[prop_name] = threshold
 
             # Extract relevant data for this batch
             batch_extraction_data = {
                 name: extraction_results[name]
-                for name in attr_names
+                for name in prop_names
                 if name in extraction_results
             }
 
             task = AssessmentTask(
                 task_id=f"simple_batch_{task_counter}",
                 task_type="simple_batch",
-                attributes=attr_names,
+                attributes=prop_names,
                 extraction_data=batch_extraction_data,
                 confidence_thresholds=confidence_thresholds,
             )
             tasks.append(task)
             task_counter += 1
 
-        # Create tasks for group attributes (one per group)
-        for attr in group_attributes:
-            attr_name = attr.get("name", "")
-
-            # Build confidence thresholds for group sub-attributes
+        # Create tasks for group properties (one per group)
+        for prop_name, prop_schema in group_props:
+            # Build confidence thresholds for nested properties
             confidence_thresholds = {}
-            group_attributes_list = attr.get("groupAttributes", [])
-            for group_attr in group_attributes_list:
-                sub_attr_name = group_attr.get("name", "")
-                threshold = self._get_attribute_confidence_threshold(
-                    sub_attr_name, attributes, default_confidence_threshold
+            nested_props = prop_schema.get(SCHEMA_PROPERTIES, {})
+            for nested_name in nested_props.keys():
+                nested_path = f"{prop_name}.{nested_name}"
+                threshold = self._get_confidence_threshold_by_path(
+                    properties, nested_path, default_confidence_threshold
                 )
-                confidence_thresholds[sub_attr_name] = threshold
+                confidence_thresholds[nested_name] = threshold
 
             task = AssessmentTask(
                 task_id=f"group_{task_counter}",
                 task_type="group",
-                attributes=[attr_name],
-                extraction_data={attr_name: extraction_results[attr_name]},
+                attributes=[prop_name],
+                extraction_data={prop_name: extraction_results[prop_name]},
                 confidence_thresholds=confidence_thresholds,
             )
             tasks.append(task)
             task_counter += 1
 
-        # Create tasks for list attributes (one per list item)
-        for attr in list_attributes:
-            attr_name = attr.get("name", "")
-            list_data = extraction_results.get(attr_name, [])
+        # Create tasks for list properties (one per list item)
+        for prop_name, prop_schema in list_props:
+            list_data = extraction_results.get(prop_name, [])
 
             if not isinstance(list_data, list):
-                logger.warning(f"List attribute {attr_name} is not a list, skipping")
+                logger.warning(f"List property {prop_name} is not a list, skipping")
                 continue
 
-            # Build confidence thresholds for list item attributes
+            # Build confidence thresholds for list item properties
             confidence_thresholds = {}
-            list_template = attr.get("listItemTemplate", {})
-            item_attributes = list_template.get("itemAttributes", [])
-            for item_attr in item_attributes:
-                item_attr_name = item_attr.get("name", "")
-                threshold = self._get_attribute_confidence_threshold(
-                    item_attr_name, attributes, default_confidence_threshold
-                )
-                confidence_thresholds[item_attr_name] = threshold
+            items_schema = prop_schema.get(SCHEMA_ITEMS, {})
+            if items_schema.get(SCHEMA_TYPE) == TYPE_OBJECT:
+                item_props = items_schema.get(SCHEMA_PROPERTIES, {})
+                for item_prop_name in item_props.keys():
+                    # For list items, the path includes the list name
+                    item_path = f"{prop_name}.{item_prop_name}"
+                    threshold = self._get_confidence_threshold_by_path(
+                        properties, item_path, default_confidence_threshold
+                    )
+                    confidence_thresholds[item_prop_name] = threshold
 
             # Create tasks for list items (batch them if configured)
             for i in range(0, len(list_data), self.list_batch_size):
@@ -712,9 +710,9 @@ class GranularAssessmentService:
                     item_data = list_data[j]
 
                     task = AssessmentTask(
-                        task_id=f"list_{attr_name}_item_{j}",
+                        task_id=f"list_{prop_name}_item_{j}",
                         task_type="list_item",
-                        attributes=[attr_name],
+                        attributes=[prop_name],
                         extraction_data=item_data,
                         confidence_thresholds=confidence_thresholds,
                         list_item_index=j,
@@ -735,7 +733,7 @@ class GranularAssessmentService:
         self,
         task: AssessmentTask,
         base_content: List[Dict[str, Any]],
-        all_attributes: List[Dict[str, Any]],
+        properties: Dict[str, Any],
         model_id: str,
         system_prompt: str,
         temperature: float,
@@ -749,7 +747,7 @@ class GranularAssessmentService:
         Args:
             task: The assessment task to process
             base_content: The cached base content
-            all_attributes: All attribute configurations
+            properties: JSON Schema properties dict
             model_id: Bedrock model ID
             system_prompt: System prompt
             temperature: Temperature parameter
@@ -765,7 +763,7 @@ class GranularAssessmentService:
         try:
             # Build the complete prompt
             content = self._build_specific_assessment_prompt(
-                task, base_content, all_attributes
+                task, base_content, properties
             )
 
             logger.debug(
@@ -1147,7 +1145,6 @@ class GranularAssessmentService:
         tasks: List[AssessmentTask],
         results: List[AssessmentResult],
         extraction_results: Dict[str, Any],
-        attributes: List[Dict[str, Any]],
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Dict[str, Any]]:
         """
         Aggregate individual task results into the final assessment structure.
@@ -1156,7 +1153,6 @@ class GranularAssessmentService:
             tasks: List of assessment tasks
             results: List of assessment results
             extraction_results: Original extraction results
-            attributes: List of attribute configurations
 
         Returns:
             Tuple of (enhanced_assessment_data, confidence_alerts, aggregated_metering)
@@ -1614,8 +1610,8 @@ class GranularAssessmentService:
             if not class_schema:
                 raise ValueError(f"No schema found for document class: {class_label}")
 
-            # Extract as legacy attributes list (temporary for granular service)
-            attributes = self._extract_properties_as_attributes(class_schema)
+            # Get properties from JSON Schema
+            properties = class_schema.get(SCHEMA_PROPERTIES, {})
 
             # Get confidence thresholds
             default_confidence_threshold = _safe_float_conversion(
@@ -1633,7 +1629,7 @@ class GranularAssessmentService:
 
             # Create assessment tasks
             tasks = self._create_assessment_tasks(
-                extraction_results, attributes, default_confidence_threshold
+                extraction_results, properties, default_confidence_threshold
             )
 
             if not tasks:
@@ -1687,7 +1683,7 @@ class GranularAssessmentService:
                                 self._process_assessment_task,
                                 task,
                                 base_content,
-                                attributes,
+                                properties,
                                 model_id,
                                 system_prompt,
                                 temperature,
@@ -1739,7 +1735,7 @@ class GranularAssessmentService:
                             result = self._process_assessment_task(
                                 task,
                                 base_content,
-                                attributes,
+                                properties,
                                 model_id,
                                 system_prompt,
                                 temperature,
@@ -1854,9 +1850,7 @@ class GranularAssessmentService:
                 enhanced_assessment_data,
                 confidence_threshold_alerts,
                 aggregated_metering,
-            ) = self._aggregate_assessment_results(
-                tasks, results, extraction_results, attributes
-            )
+            ) = self._aggregate_assessment_results(tasks, results, extraction_results)
 
             # Calculate success metrics
             successful_tasks = [r for r in results if r.success]

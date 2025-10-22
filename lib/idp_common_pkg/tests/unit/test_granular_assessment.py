@@ -138,13 +138,11 @@ class TestGranularAssessmentService:
 
         assert schema == {}
 
-    def test_format_attribute_descriptions(self, sample_config):
-        """Test formatting attribute descriptions."""
+    def test_format_property_descriptions(self, sample_config):
+        """Test formatting property descriptions from JSON Schema."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
-        descriptions = service._format_attribute_descriptions(attributes)
+        properties = service._get_class_schema("letter").get("properties", {})
+        descriptions = service._format_property_descriptions(properties)
 
         assert "sender_name" in descriptions
         assert "Name of the sender" in descriptions
@@ -155,12 +153,10 @@ class TestGranularAssessmentService:
     ):
         """Test creating assessment tasks with simple attribute batching."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         tasks = service._create_assessment_tasks(
-            sample_extraction_results, attributes, 0.9
+            sample_extraction_results, properties, 0.9
         )
 
         # With 5 simple attributes and batch_size=3, we should get 2 batches
@@ -192,11 +188,9 @@ class TestGranularAssessmentService:
         }
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
-        tasks = service._create_assessment_tasks(extraction_results, attributes, 0.9)
+        tasks = service._create_assessment_tasks(extraction_results, properties, 0.9)
 
         # Should have simple batches + 1 group task
         group_tasks = [t for t in tasks if t.task_type == "group"]
@@ -232,11 +226,9 @@ class TestGranularAssessmentService:
         }
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
-        tasks = service._create_assessment_tasks(extraction_results, attributes, 0.9)
+        tasks = service._create_assessment_tasks(extraction_results, properties, 0.9)
 
         # Should have simple batches + 2 list item tasks
         list_tasks = [t for t in tasks if t.task_type == "list_item"]
@@ -249,9 +241,7 @@ class TestGranularAssessmentService:
     def test_get_task_specific_attribute_descriptions(self, sample_config):
         """Test getting task-specific attribute descriptions."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         # Create a simple batch task
         task = AssessmentTask(
@@ -263,7 +253,7 @@ class TestGranularAssessmentService:
         )
 
         descriptions = service._get_task_specific_attribute_descriptions(
-            task, attributes
+            task, properties
         )
 
         assert "sender_name" in descriptions
@@ -273,9 +263,7 @@ class TestGranularAssessmentService:
     def test_build_specific_assessment_prompt(self, sample_config):
         """Test building specific assessment prompt."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         # Mock base content with placeholders (like what would come from the real base content)
         base_content = [
@@ -293,7 +281,7 @@ class TestGranularAssessmentService:
         )
 
         content = service._build_specific_assessment_prompt(
-            task, base_content, attributes
+            task, base_content, properties
         )
 
         # Should have same number of content items as base content
@@ -369,9 +357,7 @@ class TestGranularAssessmentService:
         mock_bedrock.return_value = mock_response
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         # Create a task
         task = AssessmentTask(
@@ -387,7 +373,7 @@ class TestGranularAssessmentService:
         result = service._process_assessment_task(
             task,
             base_content,
-            attributes,
+            properties,
             "test-model",
             "system prompt",
             0.0,
@@ -408,9 +394,7 @@ class TestGranularAssessmentService:
         mock_bedrock.side_effect = Exception("Bedrock error")
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         task = AssessmentTask(
             task_id="test_batch",
@@ -425,7 +409,7 @@ class TestGranularAssessmentService:
         result = service._process_assessment_task(
             task,
             base_content,
-            attributes,
+            properties,
             "test-model",
             "system prompt",
             0.0,
@@ -465,9 +449,7 @@ class TestGranularAssessmentService:
     def test_aggregate_assessment_results(self, sample_config):
         """Test aggregating assessment results."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         # Create tasks and results
         task1 = AssessmentTask(
@@ -508,7 +490,7 @@ class TestGranularAssessmentService:
         )
 
         enhanced_data, alerts, metering = service._aggregate_assessment_results(
-            [task1, task2], [result1, result2], {}, attributes
+            [task1, task2], [result1, result2], {}
         )
 
         # Check enhanced data
@@ -523,12 +505,10 @@ class TestGranularAssessmentService:
     def test_empty_extraction_results_handling(self, sample_config):
         """Test handling of empty extraction results."""
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
         # Empty extraction results should create no tasks
-        tasks = service._create_assessment_tasks({}, attributes, 0.9)
+        tasks = service._create_assessment_tasks({}, properties, 0.9)
         assert len(tasks) == 0
 
     def test_missing_task_prompt_error(self, sample_config):
@@ -549,19 +529,17 @@ class TestGranularAssessmentService:
         ] = 0.95
 
         service = GranularAssessmentService(config=sample_config)
-        attributes = service._extract_properties_as_attributes(
-            service._get_class_schema("letter")
-        )
+        properties = service._get_class_schema("letter").get("properties", {})
 
-        # Test getting threshold for attribute with specific threshold
-        threshold = service._get_attribute_confidence_threshold(
-            "sender_name", attributes, 0.9
+        # Test getting threshold for property with specific threshold
+        threshold = service._get_confidence_threshold_by_path(
+            properties, "sender_name", 0.9
         )
         assert threshold == 0.95
 
-        # Test getting threshold for attribute without specific threshold
-        threshold = service._get_attribute_confidence_threshold(
-            "recipient_name", attributes, 0.9
+        # Test getting threshold for property without specific threshold
+        threshold = service._get_confidence_threshold_by_path(
+            properties, "recipient_name", 0.9
         )
         assert threshold == 0.9
 
