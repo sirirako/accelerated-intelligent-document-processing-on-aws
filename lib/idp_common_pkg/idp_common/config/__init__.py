@@ -3,11 +3,12 @@
 
 import boto3
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, overload, Literal
 from botocore.exceptions import ClientError
 import logging
 from copy import deepcopy
 from .configuration_manager import ConfigurationManager
+from .merge_utils import deep_update
 from .models import (
     IDPConfig,
     ConfigurationRecord,
@@ -69,26 +70,30 @@ class ConfigurationReader:
 
         return idp_config
 
-    def deep_merge(
+    def simple_merge(
         self, default: Dict[str, Any], custom: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Recursively merge two dictionaries, with custom values taking precedence
+        Deep merge with custom values overriding defaults.
+
+        Custom configuration should only contain fields that differ from default,
+        not a complete configuration tree. Nested dicts are merged recursively.
 
         Args:
             default: The default configuration dictionary
-            custom: The custom configuration dictionary
+            custom: The custom overrides dictionary
 
         Returns:
-            Merged configuration dictionary
+            Merged configuration dictionary (default updated with custom)
         """
-        # Convert dicts to IDPConfig, merge, then convert back
-        default_config = IDPConfig(**default)
-        custom_config = IDPConfig(**custom)
-        merged = self.manager.merge_configurations(default_config, custom_config)
-        return merged.model_dump(mode="python")
+        from copy import deepcopy
 
-    def get_merged_configuration(self, as_model: bool = False):
+        merged = deepcopy(default)
+        return deep_update(merged, custom)
+
+    def get_merged_configuration(
+        self, as_model: bool = False
+    ) -> Union[Dict[str, Any], IDPConfig]:
         """
         Get and merge Default and Custom configurations with automatic migration
 
@@ -118,19 +123,14 @@ class ConfigurationReader:
                 default_config.pop("Configuration", None)
                 custom_config.pop("Configuration", None)
 
-                # Merge configurations
-                merged_config = self.deep_merge(default_config, custom_config)
+                # Merge configurations - simple update since Custom only contains overrides
+                merged_config = self.simple_merge(default_config, custom_config)
 
             logger.info("Successfully merged configurations")
 
             # Return Pydantic model if requested
             if as_model:
-                try:
-                    return IDPConfig(**merged_config)
-                except Exception as e:
-                    logger.error(f"Failed to parse merged config as IDPConfig: {e}")
-                    logger.info("Returning raw dictionary as fallback")
-                    return merged_config
+                return IDPConfig(**merged_config)
 
             return merged_config
 

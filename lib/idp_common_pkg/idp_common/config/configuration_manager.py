@@ -12,6 +12,7 @@ import logging
 import datetime
 
 from .models import IDPConfig, ConfigurationRecord
+from .merge_utils import deep_update, get_diff_dict
 from .constants import (
     CONFIG_TYPE_SCHEMA,
     CONFIG_TYPE_DEFAULT,
@@ -37,9 +38,6 @@ class ConfigurationManager:
 
         # Save configuration
         manager.save_configuration(CONFIG_TYPE_CUSTOM, config)
-
-        # Merge configurations
-        merged = manager.merge_configurations(base_config, override_config)
     """
 
     def __init__(self, table_name: Optional[str] = None):
@@ -100,43 +98,100 @@ class ConfigurationManager:
             logger.error(f"Error retrieving configuration {config_type}: {e}")
             raise
 
+    def sync_custom_with_new_default(
+        self, old_default: IDPConfig, new_default: IDPConfig, old_custom: IDPConfig
+    ) -> IDPConfig:
+        """
+        Sync Custom config when Default is updated, preserving user customizations.
+
+        Algorithm:
+        1. Find what the user customized (diff between old_custom and old_default)
+        2. Start with new_default
+        3. Apply user customizations to new_default
+
+        This ensures users get all new default values except for fields they customized.
+
+        Args:
+            old_default: Previous default configuration
+            new_default: New default configuration being saved
+            old_custom: Current custom configuration
+
+        Returns:
+            New custom configuration with user changes preserved
+        """
+        from copy import deepcopy
+
+        # Convert to dicts
+        old_default_dict = old_default.model_dump(mode="python")
+        old_custom_dict = old_custom.model_dump(mode="python")
+        new_default_dict = new_default.model_dump(mode="python")
+
+        # Find what the user customized (only fields that differ)
+        user_customizations = get_diff_dict(old_default_dict, old_custom_dict)
+
+        logger.info(
+            f"User customizations to preserve: {list(user_customizations.keys())}"
+        )
+
+        # Start with new default and apply user customizations
+        new_custom_dict = deepcopy(new_default_dict)
+        deep_update(new_custom_dict, user_customizations)
+
+        return IDPConfig(**new_custom_dict)
+
     def save_configuration(
-        self, config_type: str, config: Union[IDPConfig, Dict[str, Any]]
+        self,
+        config_type: str,
+        config: Union[IDPConfig, Dict[str, Any]],
+        skip_sync: bool = False,
     ) -> None:
         """
         Save configuration to DynamoDB.
 
         This method:
         1. Converts dict to IDPConfig if needed
-        2. Creates ConfigurationRecord
-        3. Serializes to DynamoDB item
-        4. Writes to DynamoDB
-        5. Sends notification
+        2. If saving Default, syncs Custom to preserve user customizations (unless skip_sync=True)
+        3. Creates ConfigurationRecord
+        4. Serializes to DynamoDB item
+        5. Writes to DynamoDB
+        6. Sends notification
 
         Args:
             config_type: Configuration type (Schema, Default, Custom)
             config: IDPConfig model or dict (will be converted to IDPConfig)
+            skip_sync: If True, skip automatic Custom sync when saving Default (used for save-as-default)
 
         Raises:
             ClientError: If DynamoDB operation fails
         """
-        try:
-            # Convert dict to IDPConfig if needed (for backward compatibility)
-            if isinstance(config, dict):
-                config = IDPConfig(**config)
+        # Convert dict to IDPConfig if needed (for backward compatibility)
+        if isinstance(config, dict):
+            config = IDPConfig(**config)
 
-            # Create record
-            record = ConfigurationRecord(configuration_type=config_type, config=config)
+        # If updating Default, sync Custom to preserve user customizations
+        # Skip sync if this is a "save as default" operation where Custom will be deleted
+        if config_type == CONFIG_TYPE_DEFAULT and not skip_sync:
+            old_default = self.get_configuration(CONFIG_TYPE_DEFAULT)
+            old_custom = self.get_configuration(CONFIG_TYPE_CUSTOM)
 
-            # Write to DynamoDB
-            self._write_record(record)
+            if old_default and old_custom:
+                logger.info(
+                    "Syncing Custom config with new Default while preserving user customizations"
+                )
+                new_custom = self.sync_custom_with_new_default(
+                    old_default, config, old_custom
+                )
+                # Save the synced custom config
+                self.save_configuration(CONFIG_TYPE_CUSTOM, new_custom, skip_sync=True)
 
-            # Send notification
-            self._send_update_notification(config_type, config)
+        # Create record
+        record = ConfigurationRecord(configuration_type=config_type, config=config)
 
-        except ClientError as e:
-            logger.error(f"Error saving configuration {config_type}: {e}")
-            raise
+        # Write to DynamoDB
+        self._write_record(record)
+
+        # Send notification
+        self._send_update_notification(config_type, config)
 
     def delete_configuration(self, config_type: str) -> None:
         """
@@ -154,40 +209,6 @@ class ConfigurationManager:
         except ClientError as e:
             logger.error(f"Error deleting configuration {config_type}: {e}")
             raise
-
-    def merge_configurations(
-        self, base_config: IDPConfig, override_config: IDPConfig
-    ) -> IDPConfig:
-        """
-        Deep merge two configurations.
-
-        The override_config takes precedence over base_config for any overlapping fields.
-        Nested dictionaries are merged recursively.
-
-        Args:
-            base_config: Base configuration
-            override_config: Configuration to merge on top
-
-        Returns:
-            New IDPConfig with merged values
-
-        Example:
-            base = IDPConfig(extraction=ExtractionConfig(temperature=0.5))
-            override = IDPConfig(extraction=ExtractionConfig(top_p=0.9))
-            merged = manager.merge_configurations(base, override)
-            # Result has both temperature=0.5 and top_p=0.9
-        """
-        # Use Pydantic's model_dump to get clean dicts
-        # exclude_unset=True ensures we only merge fields that were explicitly set,
-        # not default values that would override meaningful base config values
-        base_dict = base_config.model_dump(mode="python")
-        override_dict = override_config.model_dump(mode="python", exclude_unset=True)
-
-        # Deep merge
-        merged_dict = self._deep_merge_dicts(base_dict, override_dict)
-
-        # Convert back to IDPConfig
-        return IDPConfig(**merged_dict)
 
     def handle_update_custom_configuration(
         self, custom_config: Union[str, Dict[str, Any], IDPConfig]
@@ -254,7 +275,8 @@ class ConfigurationManager:
             # Save as Default: Replace Default with the received config (current Custom state)
             # Frontend sends the complete merged Custom config
             # This becomes the new baseline for all users
-            self.save_configuration(CONFIG_TYPE_DEFAULT, config)
+            # Skip sync since we're about to delete Custom anyway
+            self.save_configuration(CONFIG_TYPE_DEFAULT, config, skip_sync=True)
 
             # Delete Custom since it's now the same as Default
             self.delete_configuration(CONFIG_TYPE_CUSTOM)
@@ -277,9 +299,11 @@ class ConfigurationManager:
                     self.get_configuration(CONFIG_TYPE_DEFAULT) or IDPConfig()
                 )
 
-            # Merge the diff into existing Custom
-            # This preserves all fields in Custom that aren't in the diff
-            merged_custom = self.merge_configurations(existing_custom, config)
+            # Apply the diff to existing Custom (deep update to handle nested objects)
+            existing_dict = existing_custom.model_dump(mode="python")
+            update_dict = config.model_dump(mode="python", exclude_unset=True)
+            deep_update(existing_dict, update_dict)
+            merged_custom = IDPConfig(**existing_dict)
 
             # Save updated Custom configuration
             self.save_configuration(CONFIG_TYPE_CUSTOM, merged_custom)
@@ -317,43 +341,6 @@ class ConfigurationManager:
         item = record.to_dynamodb_item()
         self.table.put_item(Item=item)
         logger.info(f"Saved configuration: {record.configuration_type}")
-
-    def _deep_merge_dicts(
-        self, target: Dict[str, Any], source: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Deep merge two dictionaries.
-
-        Empty values (None, empty strings) in source are skipped to prevent
-        overriding meaningful default values with empty custom values.
-
-        Args:
-            target: Base dictionary
-            source: Dictionary to merge on top
-
-        Returns:
-            Merged dictionary
-        """
-        result = target.copy()
-
-        if not source:
-            return result
-
-        for key, value in source.items():
-            # Skip None values and empty strings to preserve defaults
-            if value is None or (isinstance(value, str) and value == ""):
-                continue
-
-            if (
-                key in result
-                and isinstance(result[key], dict)
-                and isinstance(value, dict)
-            ):
-                result[key] = self._deep_merge_dicts(result[key], value)
-            else:
-                result[key] = value
-
-        return result
 
     def _send_update_notification(
         self, configuration_key: str, configuration_data: IDPConfig
