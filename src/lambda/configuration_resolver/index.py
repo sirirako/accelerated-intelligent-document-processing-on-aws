@@ -104,6 +104,11 @@ def handle_get_configuration(manager):
     Handle the getConfiguration GraphQL query
     Returns Schema, Default, and Custom configuration items with auto-migration support
 
+    Data Flow:
+    1. If Custom is empty on first read, copy Default → Custom
+    2. Frontend only uses Custom for display and diffing
+    3. Default is only used for "Reset to Default" operation
+
     New ConfigurationManager API returns IDPConfig directly - convert to dict for GraphQL
     """
     try:
@@ -118,6 +123,18 @@ def handle_get_configuration(manager):
         )
 
         custom_config = manager.get_configuration("Custom")
+
+        # IMPORTANT: If Custom is empty on first read, copy Default → Custom
+        # This ensures frontend always has a complete config to diff against
+        if not custom_config or not custom_config.model_dump(exclude_unset=True):
+            logger.info("Custom config is empty, copying Default → Custom")
+            if default_config:
+                manager.save_configuration("Custom", default_config)
+                custom_config = default_config
+                logger.info("Copied Default to Custom on first read")
+            else:
+                logger.warning("Default config is also empty, using empty Custom")
+
         custom_dict = custom_config.model_dump(mode="python") if custom_config else {}
 
         # Return all configurations as dicts (GraphQL requires JSON-serializable)

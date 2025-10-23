@@ -29,6 +29,7 @@ const ConfigurationLayout = () => {
     schema,
     mergedConfig,
     defaultConfig,
+    customConfig,
     loading,
     error,
     updateConfiguration,
@@ -674,14 +675,16 @@ const ConfigurationLayout = () => {
         configToSave = { ...formValues, saveAsDefault: true };
         console.log('Saving entire config as new default:', configToSave);
       } else {
-        // Create our customized config by comparing with defaults
-        console.log('DEBUG: About to compare formValues with defaultConfig:', {
+        // CRITICAL: Compare formValues against customConfig (what we loaded)
+        // This ensures we only send actual changes as the diff
+        // Backend will merge this diff into existing Custom, preserving all other fields
+        console.log('DEBUG: About to compare formValues with customConfig:', {
           formValues,
-          defaultConfig,
+          customConfig,
           granularInFormValues: formValues?.assessment?.granular,
-          granularInDefaultConfig: defaultConfig?.assessment?.granular,
+          granularInCustomConfig: customConfig?.assessment?.granular,
         });
-        const differences = compareWithDefault(formValues, defaultConfig);
+        const differences = compareWithDefault(formValues, customConfig);
         console.log('DEBUG: Differences found by compareWithDefault:', differences);
 
         // Flatten path results into a proper object structure - revised to avoid ESLint errors

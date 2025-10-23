@@ -241,9 +241,27 @@ class ConfigurationManager:
 
                 logger.info("Updated Default configuration and cleared Custom")
             else:
-                # Normal custom config update
-                self.save_configuration("Custom", config)
-                logger.info("Updated Custom configuration")
+                # Normal custom config update - merge diff into existing Custom
+                # Data Flow: Frontend sends diff, we merge into existing Custom
+                # Note: Custom should always exist (getConfiguration copies Default on first read)
+                existing_custom = self.get_configuration("Custom")
+                if not existing_custom or not existing_custom.model_dump(
+                    exclude_unset=True
+                ):
+                    # Fallback: If Custom is somehow empty, use Default as base
+                    # This should rarely happen due to auto-copy in getConfiguration
+                    logger.warning(
+                        "Custom config is empty during update, using Default as base"
+                    )
+                    existing_custom = self.get_configuration("Default") or IDPConfig()
+
+                # Merge the diff into existing Custom
+                # This preserves all fields in Custom that aren't in the diff
+                merged_custom = self.merge_configurations(existing_custom, config)
+
+                # Save updated Custom configuration
+                self.save_configuration("Custom", merged_custom)
+                logger.info("Updated Custom configuration by merging diff")
 
             return True
 

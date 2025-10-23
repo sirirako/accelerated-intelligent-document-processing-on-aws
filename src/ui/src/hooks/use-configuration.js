@@ -182,21 +182,23 @@ const useConfiguration = () => {
       setDefaultConfig(normalizedDefaultObj);
       setCustomConfig(normalizedCustomObj);
 
-      // Merge default and custom configurations
-      const merged = deepMerge(normalizedDefaultObj, normalizedCustomObj);
+      // IMPORTANT: Frontend only uses Custom config
+      // Backend ensures Custom is always populated (copies Default on first read)
+      // This way frontend always diffs against a complete config
+      const activeConfig = normalizedCustomObj;
 
-      console.log('Merged configuration result:', merged);
+      console.log('Active configuration (Custom only):', activeConfig);
       // Double check the classification and extraction sections
-      if (merged.classification) {
-        console.log('Final classification data:', merged.classification);
+      if (activeConfig.classification) {
+        console.log('Final classification data:', activeConfig.classification);
       }
-      if (merged.extraction) {
-        console.log('Final extraction data:', merged.extraction);
+      if (activeConfig.extraction) {
+        console.log('Final extraction data:', activeConfig.extraction);
       }
-      if (merged.classes) {
-        console.log('Final classes (JSON Schema) data:', merged.classes);
+      if (activeConfig.classes) {
+        console.log('Final classes (JSON Schema) data:', activeConfig.classes);
       }
-      setMergedConfig(merged);
+      setMergedConfig(activeConfig);
     } catch (err) {
       logger.error('Error fetching configuration', err);
       setError(`Failed to load configuration: ${err.message}`);
@@ -238,8 +240,7 @@ const useConfiguration = () => {
       }
 
       setCustomConfig(configToUpdate);
-      const merged = deepMerge(defaultConfig, configToUpdate);
-      setMergedConfig(merged);
+      setMergedConfig(configToUpdate); // Custom IS the active config
       return true;
     } catch (err) {
       logger.error('Error updating configuration', err);
