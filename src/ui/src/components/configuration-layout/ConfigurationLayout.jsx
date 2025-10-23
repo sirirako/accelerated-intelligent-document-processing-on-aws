@@ -21,8 +21,7 @@ import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
 import useConfiguration from '../../hooks/use-configuration';
-import FormView from './FormView';
-import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
+import ConfigBuilder from './ConfigBuilder';
 import { deepMerge } from '../../utils/configUtils';
 
 const ConfigurationLayout = () => {
@@ -1086,7 +1085,6 @@ const ConfigurationLayout = () => {
                   onChange={({ detail }) => setViewMode(detail.selectedId)}
                   options={[
                     { id: 'form', text: 'Form View' },
-                    { id: 'schema', text: 'Schema Builder' },
                     { id: 'json', text: 'JSON View' },
                     { id: 'yaml', text: 'YAML View' },
                   ]}
@@ -1176,7 +1174,7 @@ const ConfigurationLayout = () => {
 
           <Box padding="s">
             {viewMode === 'form' && (
-              <FormView
+              <ConfigBuilder
                 schema={{
                   ...schema,
                   properties: Object.fromEntries(
@@ -1188,13 +1186,8 @@ const ConfigurationLayout = () => {
                 isCustomized={isCustomized}
                 onResetToDefault={resetToDefault}
                 onChange={handleFormChange}
-              />
-            )}
-
-            {viewMode === 'schema' && (
-              <SchemaBuilder
-                initialSchema={extractionSchema}
-                onChange={(schemaData, isDirty) => {
+                extractionSchema={extractionSchema}
+                onSchemaChange={(schemaData, isDirty) => {
                   setExtractionSchema(schemaData);
                   if (isDirty) {
                     const updatedConfig = { ...formValues };
@@ -1211,7 +1204,7 @@ const ConfigurationLayout = () => {
                     }
                   }
                 }}
-                onValidate={(valid, errors) => {
+                onSchemaValidate={(valid, errors) => {
                   if (!valid) {
                     setValidationErrors(errors.map((e) => ({ message: `Schema: ${e.path} - ${e.message}` })));
                   } else {

@@ -191,6 +191,32 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
   const docTypeCount = classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length;
   const sharedCount = classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length;
 
+  // Debug: Log all classes to help identify duplicates
+  useEffect(() => {
+    console.log('=== SchemaBuilder Classes Debug ===');
+    console.log('Total classes:', classes.length);
+    classes.forEach((cls, index) => {
+      console.log(`Class ${index}:`, {
+        id: cls.id,
+        name: cls.name,
+        isDocType: cls[X_AWS_IDP_DOCUMENT_TYPE],
+        flag: X_AWS_IDP_DOCUMENT_TYPE,
+        flagValue: cls[X_AWS_IDP_DOCUMENT_TYPE]
+      });
+    });
+    
+    // Check for duplicate names
+    const nameCount = {};
+    classes.forEach(cls => {
+      nameCount[cls.name] = (nameCount[cls.name] || 0) + 1;
+    });
+    Object.entries(nameCount).forEach(([name, count]) => {
+      if (count > 1) {
+        console.warn(`⚠️ DUPLICATE CLASS NAME: "${name}" appears ${count} times`);
+      }
+    });
+  }, [classes]);
+
   return (
     <SpaceBetween size="l">
       {aggregatedValidationErrors.length > 0 && (

@@ -20,6 +20,7 @@ import {
   Tabs,
 } from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
+import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
 
 // Add custom styles for compact form layout
 const customStyles = `
@@ -328,13 +329,16 @@ ResizableColumns.propTypes = {
   columnSpacing: PropTypes.string,
 };
 
-const FormView = ({
+const ConfigBuilder = ({
   schema = { properties: {} },
   formValues = {},
   defaultConfig = null,
   isCustomized = null,
   onResetToDefault = null,
   onChange,
+  extractionSchema = null,
+  onSchemaChange = null,
+  onSchemaValidate = null,
 }) => {
   // Track expanded state for all list items across the form - default to collapsed
   const [expandedItems, setExpandedItems] = useState({});
@@ -1484,41 +1488,12 @@ const FormView = ({
             id: 'extraction-schema',
             label: 'Document Schema',
             content: (
-              <Box style={{ height: 'calc(70vh - 60px)' }} padding="s">
-                {formValues.classes ? (
-                  <Box>
-                    <SpaceBetween size="m">
-                      <Box variant="p" color="text-body-secondary">
-                        This is a read-only view of the configured extraction schema (JSON Schema format). To edit the schema, use the
-                        &quot;Schema Builder&quot; tab at the top of the page.
-                      </Box>
-                      <Editor
-                        height="calc(70vh - 120px)"
-                        defaultLanguage="json"
-                        value={JSON.stringify(formValues.classes, null, 2)}
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          scrollBeyondLastLine: false,
-                          folding: true,
-                          lineNumbers: 'on',
-                          renderLineHighlight: 'none',
-                          tabSize: 2,
-                        }}
-                      />
-                    </SpaceBetween>
-                  </Box>
-                ) : (
-                  <Box textAlign="center" padding="xxl" color="text-body-secondary">
-                    <SpaceBetween size="m">
-                      <Box fontSize="heading-m">No extraction schema configured</Box>
-                      <Box variant="p">
-                        Use the &quot;Schema Builder&quot; tab at the top of the page to create an extraction schema for
-                        your documents.
-                      </Box>
-                    </SpaceBetween>
-                  </Box>
-                )}
+              <Box style={{ height: 'calc(70vh - 60px)' }}>
+                <SchemaBuilder
+                  initialSchema={extractionSchema}
+                  onChange={onSchemaChange}
+                  onValidate={onSchemaValidate}
+                />
               </Box>
             ),
           },
@@ -1592,7 +1567,7 @@ const FormView = ({
   );
 };
 
-FormView.propTypes = {
+ConfigBuilder.propTypes = {
   schema: PropTypes.shape({
     properties: PropTypes.objectOf(
       PropTypes.shape({
@@ -1608,6 +1583,9 @@ FormView.propTypes = {
   isCustomized: PropTypes.func,
   onResetToDefault: PropTypes.func,
   onChange: PropTypes.func.isRequired,
+  extractionSchema: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  onSchemaChange: PropTypes.func,
+  onSchemaValidate: PropTypes.func,
 };
 
-export default FormView;
+export default ConfigBuilder;

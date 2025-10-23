@@ -25,6 +25,15 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     const processedDefs = new Map();
     const timestamp = Date.now();
 
+    // First pass: collect all document type names
+    const docTypeNames = new Set();
+    jsonSchema.forEach((schema) => {
+      const docTypeName = schema.$id || schema[X_AWS_IDP_DOCUMENT_TYPE] || null;
+      if (docTypeName) {
+        docTypeNames.add(docTypeName);
+      }
+    });
+
     jsonSchema.forEach((schema, schemaIndex) => {
       // Convert root schema to document type class
       const docTypeClass = {
@@ -43,6 +52,12 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
       // Process $defs (non-document-type classes)
       if (schema.$defs) {
         Object.entries(schema.$defs).forEach(([defName, defSchema]) => {
+          // Skip if this def is already a document type (prevents duplicates)
+          if (docTypeNames.has(defName)) {
+            console.log(`Skipping $def "${defName}" because it's already imported as a document type`);
+            return;
+          }
+          
           if (!processedDefs.has(defName)) {
             const defClass = {
               id: `class-${timestamp}-def-${defName}`,
