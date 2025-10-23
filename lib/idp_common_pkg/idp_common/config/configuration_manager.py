@@ -12,6 +12,12 @@ import logging
 import datetime
 
 from .models import IDPConfig, ConfigurationRecord
+from .constants import (
+    CONFIG_TYPE_SCHEMA,
+    CONFIG_TYPE_DEFAULT,
+    CONFIG_TYPE_CUSTOM,
+    VALID_CONFIG_TYPES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +33,10 @@ class ConfigurationManager:
         manager = ConfigurationManager()
 
         # Get configuration (always returns IDPConfig)
-        config = manager.get_configuration("Default")
+        config = manager.get_configuration(CONFIG_TYPE_DEFAULT)
 
         # Save configuration
-        manager.save_configuration("Custom", config)
+        manager.save_configuration(CONFIG_TYPE_CUSTOM, config)
 
         # Merge configurations
         merged = manager.merge_configurations(base_config, override_config)
@@ -191,9 +197,10 @@ class ConfigurationManager:
 
         This method:
         1. Parses the input (JSON string, dict, or IDPConfig)
-        2. Checks for saveAsDefault flag
-        3. Either updates Custom or merges into Default
-        4. Sends notifications
+        2. Validates that config is not empty (prevents data loss)
+        3. Checks for saveAsDefault flag
+        4. Either updates Custom or merges into Default
+        5. Sends notifications
 
         Args:
             custom_config: Configuration as JSON string, dict, or IDPConfig
@@ -202,78 +209,83 @@ class ConfigurationManager:
             True on success
 
         Raises:
-            Exception: If configuration update fails
+            Exception: If configuration update fails or is empty
         """
-        try:
-            # Handle empty configuration case
-            if not custom_config:
-                # Store empty Custom configuration
-                self.save_configuration("Custom", IDPConfig())
-                logger.info("Stored empty Custom configuration")
-                return True
+        # Reject completely empty configuration to prevent accidental data deletion
+        if not custom_config:
+            logger.error("Rejecting empty configuration update")
+            raise Exception(
+                "Cannot update with empty configuration. Frontend should not send empty diffs."
+            )
 
-            # Parse input
-            if isinstance(custom_config, str):
-                config_dict = json.loads(custom_config)
-            elif isinstance(custom_config, IDPConfig):
-                config_dict = custom_config.model_dump(mode="python")
-            else:
-                config_dict = custom_config
+        # Parse input
+        if isinstance(custom_config, str):
+            config_dict = json.loads(custom_config)
+        elif isinstance(custom_config, IDPConfig):
+            config_dict = custom_config.model_dump(mode="python")
+        else:
+            config_dict = custom_config
 
-            # Extract saveAsDefault flag
-            save_as_default = config_dict.pop("saveAsDefault", False)
+        # Additional validation: reject if parsed config is empty dict
+        if isinstance(config_dict, dict) and len(config_dict) == 0:
+            logger.error("Rejecting empty configuration dict")
+            raise Exception(
+                "Cannot update with empty configuration. Frontend should not send empty diffs."
+            )
 
-            # Convert to IDPConfig
-            config = IDPConfig(**config_dict)
+        # Extract special flags
+        save_as_default = config_dict.pop("saveAsDefault", False)
+        reset_to_default = config_dict.pop("resetToDefault", False)
 
-            if save_as_default:
-                # Get current default (or create empty one)
-                current_default = self.get_configuration("Default") or IDPConfig()
-
-                # Merge custom changes with current default
-                merged = self.merge_configurations(current_default, config)
-
-                # Save new default configuration
-                self.save_configuration("Default", merged)
-
-                # Clear custom configuration
-                self.save_configuration("Custom", IDPConfig())
-
-                logger.info("Updated Default configuration and cleared Custom")
-            else:
-                # Normal custom config update - merge diff into existing Custom
-                # Data Flow: Frontend sends diff, we merge into existing Custom
-                # Note: Custom should always exist (getConfiguration copies Default on first read)
-                existing_custom = self.get_configuration("Custom")
-                if not existing_custom or not existing_custom.model_dump(
-                    exclude_unset=True
-                ):
-                    # Fallback: If Custom is somehow empty, use Default as base
-                    # This should rarely happen due to auto-copy in getConfiguration
-                    logger.warning(
-                        "Custom config is empty during update, using Default as base"
-                    )
-                    existing_custom = self.get_configuration("Default") or IDPConfig()
-
-                # Merge the diff into existing Custom
-                # This preserves all fields in Custom that aren't in the diff
-                merged_custom = self.merge_configurations(existing_custom, config)
-
-                # Save updated Custom configuration
-                self.save_configuration("Custom", merged_custom)
-                logger.info("Updated Custom configuration by merging diff")
-
+        # Handle reset to default - delete Custom entirely
+        # On next getConfiguration, the auto-copy logic will repopulate Custom from Default
+        if reset_to_default:
+            logger.info("Resetting Custom configuration by deleting it")
+            self.delete_configuration(CONFIG_TYPE_CUSTOM)
+            logger.info(
+                "Custom configuration deleted, will be repopulated from Default on next read"
+            )
             return True
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in customConfig: {e}")
-            raise Exception(f"Invalid configuration format: {e}")
-        except ClientError as e:
-            logger.error(f"DynamoDB error in updateConfiguration: {e}")
-            raise Exception(f"Failed to update configuration: {e}")
-        except Exception as e:
-            logger.error(f"Error in updateConfiguration: {e}")
-            raise
+        # Convert to IDPConfig
+        config = IDPConfig(**config_dict)
+
+        if save_as_default:
+            # Save as Default: Replace Default with the received config (current Custom state)
+            # Frontend sends the complete merged Custom config
+            # This becomes the new baseline for all users
+            self.save_configuration(CONFIG_TYPE_DEFAULT, config)
+
+            # Delete Custom since it's now the same as Default
+            self.delete_configuration(CONFIG_TYPE_CUSTOM)
+
+            logger.info("Saved current Custom as new Default and cleared Custom")
+        else:
+            # Normal custom config update - merge diff into existing Custom
+            # Data Flow: Frontend sends diff, we merge into existing Custom
+            # Note: Custom should always exist (getConfiguration copies Default on first read)
+            existing_custom = self.get_configuration(CONFIG_TYPE_CUSTOM)
+            if not existing_custom or not existing_custom.model_dump(
+                exclude_unset=True
+            ):
+                # Fallback: If Custom is somehow empty, use Default as base
+                # This should rarely happen due to auto-copy in getConfiguration
+                logger.warning(
+                    "Custom config is empty during update, using Default as base"
+                )
+                existing_custom = (
+                    self.get_configuration(CONFIG_TYPE_DEFAULT) or IDPConfig()
+                )
+
+            # Merge the diff into existing Custom
+            # This preserves all fields in Custom that aren't in the diff
+            merged_custom = self.merge_configurations(existing_custom, config)
+
+            # Save updated Custom configuration
+            self.save_configuration(CONFIG_TYPE_CUSTOM, merged_custom)
+            logger.info("Updated Custom configuration by merging diff")
+
+        return True
 
     # ===== Private Methods =====
 
