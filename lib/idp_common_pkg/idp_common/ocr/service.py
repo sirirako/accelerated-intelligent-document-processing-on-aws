@@ -112,9 +112,7 @@ class OcrService:
             # Extract enhanced features (type-safe access)
             features_config = self.config.ocr.features
             if features_config:
-                self.enhanced_features = [
-                    feature["name"] for feature in features_config
-                ]
+                self.enhanced_features = [feature.name for feature in features_config]
             else:
                 self.enhanced_features = False
 
