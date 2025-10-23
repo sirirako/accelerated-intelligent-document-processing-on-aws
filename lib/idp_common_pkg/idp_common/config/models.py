@@ -18,8 +18,8 @@ Usage:
         model = config.extraction.model
 """
 
-from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, Dict, List, Optional, Union, Literal, Annotated
+from pydantic import BaseModel, ConfigDict, Field, field_validator, Discriminator
 
 
 class ImageConfig(BaseModel):
@@ -419,6 +419,32 @@ class DiscoveryConfig(BaseModel):
     )
 
 
+class SchemaConfig(BaseModel):
+    """
+    Schema configuration model.
+
+    This represents the JSON Schema configuration type stored in DynamoDB.
+    It contains the structure/definition of document schemas.
+    """
+
+    config_type: Literal["Schema"] = Field(
+        default="Schema", description="Discriminator for config type"
+    )
+
+    # Schema config contains the JSON Schema format
+    type: str = Field(default="object", description="JSON Schema type")
+    required: List[str] = Field(default_factory=list, description="Required properties")
+    properties: Dict[str, Any] = Field(
+        default_factory=dict, description="Schema properties definitions"
+    )
+    order: Optional[str] = Field(default=None, description="Display order")
+
+    model_config = ConfigDict(
+        extra="allow",  # Allow additional JSON Schema fields
+        validate_assignment=True,
+    )
+
+
 class IDPConfig(BaseModel):
     """
     Complete IDP configuration model.
@@ -433,6 +459,10 @@ class IDPConfig(BaseModel):
         if config.extraction.agentic.enabled:
             temperature = config.extraction.temperature
     """
+
+    config_type: Literal["Default", "Custom"] = Field(
+        default="Default", description="Discriminator for config type"
+    )
 
     notes: Optional[str] = Field(default=None, description="Configuration notes")
     ocr: OCRConfig = Field(default_factory=OCRConfig, description="OCR configuration")
@@ -511,7 +541,11 @@ class ConfigurationRecord(BaseModel):
     configuration_type: str = Field(
         description="Configuration type (Schema, Default, Custom)"
     )
-    config: IDPConfig = Field(description="The actual IDP configuration")
+    config: Annotated[Union[SchemaConfig, IDPConfig], Discriminator("config_type")] = (
+        Field(
+            description="The configuration - SchemaConfig for Schema type, IDPConfig for Default/Custom"
+        )
+    )
     metadata: Optional[ConfigMetadata] = Field(
         default=None, description="Optional metadata about the configuration"
     )
@@ -522,8 +556,9 @@ class ConfigurationRecord(BaseModel):
 
         This method:
         1. Exports config as a Python dict
-        2. Stringifies values (preserving booleans, converting numbers to strings)
-        3. Adds the Configuration partition key
+        2. Removes the config_type discriminator (not needed in DynamoDB)
+        3. Stringifies values (preserving booleans, converting numbers to strings)
+        4. Adds the Configuration partition key
 
         Returns:
             Dict suitable for DynamoDB put_item() with:
@@ -532,6 +567,9 @@ class ConfigurationRecord(BaseModel):
         """
         # Get config as dict using Pydantic's model_dump
         config_dict = self.config.model_dump(mode="python")
+
+        # Remove the discriminator field - it's only for Pydantic, not DynamoDB
+        config_dict.pop("config_type", None)
 
         # Stringify values (preserve booleans, convert numbers to strings)
         stringified = self._stringify_values(config_dict)
@@ -573,6 +611,9 @@ class ConfigurationRecord(BaseModel):
         # Remove DynamoDB metadata keys
         config_data = {k: v for k, v in item.items() if k != "Configuration"}
 
+        # Add config_type discriminator for Pydantic
+        config_data["config_type"] = config_type
+
         # Auto-migrate legacy format if needed
         if config_data.get("classes"):
             from .migration import is_legacy_format, migrate_legacy_to_schema
@@ -585,8 +626,10 @@ class ConfigurationRecord(BaseModel):
                     config_data["classes"]
                 )
 
-        # Parse into IDPConfig (Pydantic handles type conversions automatically)
-        config = IDPConfig(**config_data)
+        # Parse into appropriate config type - Pydantic discriminator handles this automatically
+        config = cls.model_validate(
+            {"configuration_type": config_type, "config": config_data}
+        ).config
 
         return cls(configuration_type=config_type, config=config)
 

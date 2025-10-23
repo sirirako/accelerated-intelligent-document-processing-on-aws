@@ -11,7 +11,7 @@ from botocore.exceptions import ClientError
 import logging
 import datetime
 
-from .models import IDPConfig, ConfigurationRecord
+from .models import IDPConfig, SchemaConfig, ConfigurationRecord
 from .merge_utils import deep_update, get_diff_dict
 from .constants import (
     CONFIG_TYPE_SCHEMA,
@@ -63,7 +63,9 @@ class ConfigurationManager:
         self.table_name = table_name
         logger.info(f"ConfigurationManager initialized with table: {table_name}")
 
-    def get_configuration(self, config_type: str) -> Optional[IDPConfig]:
+    def get_configuration(
+        self, config_type: str
+    ) -> Optional[Union[SchemaConfig, IDPConfig]]:
         """
         Retrieve configuration from DynamoDB.
 
@@ -71,13 +73,13 @@ class ConfigurationManager:
         1. Reads the DynamoDB item
         2. Deserializes into ConfigurationRecord (auto-migrates legacy format)
         3. Checks if migration occurred and persists if needed
-        4. Returns the IDPConfig model
+        4. Returns SchemaConfig for Schema type, IDPConfig for Default/Custom
 
         Args:
             config_type: Configuration type (Schema, Default, Custom)
 
         Returns:
-            IDPConfig model or None if not found
+            SchemaConfig for Schema type, IDPConfig for Default/Custom, or None if not found
 
         Raises:
             ClientError: If DynamoDB operation fails
@@ -142,7 +144,7 @@ class ConfigurationManager:
     def save_configuration(
         self,
         config_type: str,
-        config: Union[IDPConfig, Dict[str, Any]],
+        config: Union[SchemaConfig, IDPConfig, Dict[str, Any]],
         skip_sync: bool = False,
     ) -> None:
         """
@@ -158,23 +160,35 @@ class ConfigurationManager:
 
         Args:
             config_type: Configuration type (Schema, Default, Custom)
-            config: IDPConfig model or dict (will be converted to IDPConfig)
+            config: SchemaConfig, IDPConfig model, or dict (dict will be converted to appropriate type)
             skip_sync: If True, skip automatic Custom sync when saving Default (used for save-as-default)
 
         Raises:
             ClientError: If DynamoDB operation fails
         """
-        # Convert dict to IDPConfig if needed (for backward compatibility)
+        # Convert dict to appropriate config type if needed (for backward compatibility)
         if isinstance(config, dict):
-            config = IDPConfig(**config)
+            if config_type == CONFIG_TYPE_SCHEMA:
+                config = SchemaConfig(**config)
+            else:
+                config = IDPConfig(**config)
 
         # If updating Default, sync Custom to preserve user customizations
         # Skip sync if this is a "save as default" operation where Custom will be deleted
-        if config_type == CONFIG_TYPE_DEFAULT and not skip_sync:
+        if (
+            config_type == CONFIG_TYPE_DEFAULT
+            and not skip_sync
+            and isinstance(config, IDPConfig)
+        ):
             old_default = self.get_configuration(CONFIG_TYPE_DEFAULT)
             old_custom = self.get_configuration(CONFIG_TYPE_CUSTOM)
 
-            if old_default and old_custom:
+            if (
+                old_default
+                and old_custom
+                and isinstance(old_default, IDPConfig)
+                and isinstance(old_custom, IDPConfig)
+            ):
                 logger.info(
                     "Syncing Custom config with new Default while preserving user customizations"
                 )
@@ -343,15 +357,15 @@ class ConfigurationManager:
         logger.info(f"Saved configuration: {record.configuration_type}")
 
     def _send_update_notification(
-        self, configuration_key: str, configuration_data: IDPConfig
+        self, configuration_key: str, configuration_data: Union[SchemaConfig, IDPConfig]
     ) -> None:
         """
         Send a message to the ConfigurationQueue to notify pattern-specific processors
         about configuration updates.
 
         Args:
-            configuration_key: The configuration key that was updated ('Custom' or 'Default')
-            configuration_data: The updated configuration (IDPConfig model)
+            configuration_key: The configuration key that was updated ('Schema', 'Custom' or 'Default')
+            configuration_data: The updated configuration (SchemaConfig or IDPConfig model)
         """
         try:
             configuration_queue_url = os.environ.get("CONFIGURATION_QUEUE_URL")
