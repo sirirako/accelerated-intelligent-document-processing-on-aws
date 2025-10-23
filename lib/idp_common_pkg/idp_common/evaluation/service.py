@@ -14,9 +14,10 @@ import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from idp_common import s3
+from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     SCHEMA_DESCRIPTION,
     SCHEMA_ITEMS,
@@ -45,37 +46,45 @@ class EvaluationService:
     """Service for evaluating document extraction results."""
 
     def __init__(
-        self, region: str = None, config: Dict[str, Any] = None, max_workers: int = 10
+        self,
+        region: str = None,
+        config: Union[Dict[str, Any], IDPConfig] = None,
+        max_workers: int = 10,
     ):
         """
         Initialize the evaluation service.
 
         Args:
             region: AWS region
-            config: Configuration dictionary containing evaluation settings
+            config: Configuration dictionary or IDPConfig model containing evaluation settings
             max_workers: Maximum number of concurrent workers for section evaluation
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
+
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
         self.max_workers = max_workers
 
-        # Set default LLM evaluation settings
-        self.llm_config = self.config.get("evaluation", {}).get("llm_method", {})
-        self.default_model = self.llm_config.get(
-            "model", "anthropic.claude-3-sonnet-20240229-v1:0"
-        )
-        self.default_temperature = self.llm_config.get("temperature", 0.0)
-        self.default_top_k = self.llm_config.get("top_k", 5)
-        self.default_system_prompt = self.llm_config.get(
-            "system_prompt",
-            """You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching.""",
+        # Set default LLM evaluation settings from typed config
+        self.default_model = self.config.evaluation.llm_method.model
+        self.default_temperature = self.config.evaluation.llm_method.temperature
+        self.default_top_k = self.config.evaluation.llm_method.top_k
+        self.default_top_p = self.config.evaluation.llm_method.top_p
+        self.default_max_tokens = self.config.evaluation.llm_method.max_tokens
+        self.default_system_prompt = (
+            self.config.evaluation.llm_method.system_prompt
+            or """You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching."""
         )
 
-        self.default_task_prompt = self.llm_config.get(
-            "task_prompt",
-            """I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
+        self.default_task_prompt = (
+            self.config.evaluation.llm_method.task_prompt
+            or """I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
 
 For the attribute named "{ATTRIBUTE_NAME}" described as "{ATTRIBUTE_DESCRIPTION}":
 - Expected value: {EXPECTED_VALUE}
@@ -93,7 +102,7 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
   "score": 0.0 to 1.0,
   "reason": "Your explanation here"
 }
-            """,
+            """
         )
 
         logger.info(
@@ -111,9 +120,13 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
         Returns:
             List of attribute configurations (flattened for nested structures)
         """
-        classes = self.config.get("classes", [])
+        classes = self.config.classes
         for schema in classes:
-            if schema.get(X_AWS_IDP_DOCUMENT_TYPE, "").lower() == class_name.lower():
+            if (
+                isinstance(schema, dict)
+                and schema.get(X_AWS_IDP_DOCUMENT_TYPE, "").lower()
+                == class_name.lower()
+            ):
                 properties = schema.get(SCHEMA_PROPERTIES, {})
                 return list(self._walk_properties(properties))
 

@@ -375,6 +375,46 @@ class CriteriaValidationConfig(BaseModel):
         return int(v)
 
 
+class EvaluationLLMMethodConfig(BaseModel):
+    """Evaluation LLM method configuration"""
+
+    top_p: float = Field(default=0.1, ge=0.0, le=1.0)
+    max_tokens: int = Field(default=4096, gt=0)
+    top_k: float = Field(default=5.0, ge=0.0)
+    task_prompt: str = Field(default="", description="Task prompt for evaluation")
+    temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    model: str = Field(
+        default="us.anthropic.claude-3-haiku-20240307-v1:0",
+        description="Bedrock model ID for evaluation",
+    )
+    system_prompt: str = Field(default="", description="System prompt for evaluation")
+
+    @field_validator("temperature", "top_p", "top_k", mode="before")
+    @classmethod
+    def parse_float(cls, v: Any) -> float:
+        """Parse float from string or number"""
+        if isinstance(v, str):
+            return float(v) if v else 0.0
+        return float(v)
+
+    @field_validator("max_tokens", mode="before")
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        """Parse int from string or number"""
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
+class EvaluationConfig(BaseModel):
+    """Evaluation configuration for assessment"""
+
+    llm_method: EvaluationLLMMethodConfig = Field(
+        default_factory=EvaluationLLMMethodConfig,
+        description="LLM method configuration for evaluation",
+    )
+
+
 class DiscoveryModelConfig(BaseModel):
     """Discovery model configuration for class extraction"""
 
@@ -497,6 +537,9 @@ class IDPConfig(BaseModel):
     )
     discovery: DiscoveryConfig = Field(
         default_factory=DiscoveryConfig, description="Discovery configuration"
+    )
+    evaluation: EvaluationConfig = Field(
+        default_factory=EvaluationConfig, description="Evaluation configuration"
     )
 
     model_config = ConfigDict(
