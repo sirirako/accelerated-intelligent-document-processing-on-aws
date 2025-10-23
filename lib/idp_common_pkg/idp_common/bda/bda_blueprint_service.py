@@ -206,11 +206,15 @@ class BdaBlueprintService:
         try:
             config_item = self.config_manager.get_configuration(config_type="Custom")
 
-            if not config_item or "classes" not in config_item:
+            if (
+                not config_item
+                or not hasattr(config_item, "classes")
+                or not config_item.classes
+            ):
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
 
-            classess = config_item["classes"]
+            classess = config_item.classes
 
             if not classess or len(classess) == 0:
                 logger.info("No Custom configuration to process")

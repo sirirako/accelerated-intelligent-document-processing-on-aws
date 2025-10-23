@@ -375,6 +375,50 @@ class CriteriaValidationConfig(BaseModel):
         return int(v)
 
 
+class DiscoveryModelConfig(BaseModel):
+    """Discovery model configuration for class extraction"""
+
+    model_id: str = Field(
+        default="us.amazon.nova-pro-v1:0", description="Bedrock model ID for discovery"
+    )
+    system_prompt: str = Field(default="", description="System prompt for discovery")
+    temperature: float = Field(default=1.0, ge=0.0, le=1.0)
+    top_p: float = Field(default=0.1, ge=0.0, le=1.0)
+    max_tokens: int = Field(default=10000, gt=0)
+    user_prompt: str = Field(
+        default="", description="User prompt template for discovery"
+    )
+
+    @field_validator("temperature", "top_p", mode="before")
+    @classmethod
+    def parse_float(cls, v: Any) -> float:
+        """Parse float from string or number"""
+        if isinstance(v, str):
+            return float(v) if v else 0.0
+        return float(v)
+
+    @field_validator("max_tokens", mode="before")
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        """Parse int from string or number"""
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
+class DiscoveryConfig(BaseModel):
+    """Discovery configuration"""
+
+    without_ground_truth: DiscoveryModelConfig = Field(
+        default_factory=DiscoveryModelConfig,
+        description="Configuration for discovery without ground truth",
+    )
+    with_ground_truth: DiscoveryModelConfig = Field(
+        default_factory=DiscoveryModelConfig,
+        description="Configuration for discovery with ground truth",
+    )
+
+
 class IDPConfig(BaseModel):
     """
     Complete IDP configuration model.
@@ -421,10 +465,13 @@ class IDPConfig(BaseModel):
     classes: List[Dict[str, Any]] = Field(
         default_factory=list, description="Document class definitions (JSON Schema)"
     )
+    discovery: DiscoveryConfig = Field(
+        default_factory=DiscoveryConfig, description="Discovery configuration"
+    )
 
     model_config = ConfigDict(
-        # Allow extra fields for forward compatibility
-        extra="allow",
+        # Do not allow extra fields - all config should be explicit
+        extra="forbid",
         # Validate on assignment
         validate_assignment=True,
     )

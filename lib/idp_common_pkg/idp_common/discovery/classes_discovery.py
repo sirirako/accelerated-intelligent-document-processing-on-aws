@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import jsonschema
 from jsonschema import Draft202012Validator
@@ -11,6 +11,7 @@ from jsonschema import Draft202012Validator
 from idp_common import bedrock, image
 from idp_common.config import ConfigurationReader
 from idp_common.config.configuration_manager import ConfigurationManager
+from idp_common.config.models import IDPConfig
 from idp_common.utils.s3util import S3Util
 
 logger = logging.getLogger(__name__)
@@ -30,17 +31,19 @@ class ClassesDiscovery:
         try:
             self.config_reader = ConfigurationReader()
             self.config_manager = ConfigurationManager()
-            self.config = self.config_reader.get_merged_configuration()
+            self.config: IDPConfig = cast(
+                IDPConfig, self.config_reader.get_merged_configuration(as_model=True)
+            )
         except Exception as e:
             logger.error(f"Failed to load configuration from DynamoDB: {e}")
             raise Exception(f"Failed to load configuration from DynamoDB: {str(e)}")
 
-        # Get discovery configuration
-        self.discovery_config = self.config.get("discovery", {})
+        # Get discovery configuration from IDPConfig model
+        self.discovery_config = self.config.discovery
 
         # Get model configuration for both scenarios
-        self.without_gt_config = self.discovery_config.get("without_ground_truth", {})
-        self.with_gt_config = self.discovery_config.get("with_ground_truth", {})
+        self.without_gt_config = self.discovery_config.without_ground_truth
+        self.with_gt_config = self.discovery_config.with_ground_truth
 
         # Initialize Bedrock client using the common pattern
         self.bedrock_client = bedrock.BedrockClient(region=self.region)
@@ -93,8 +96,8 @@ class ClassesDiscovery:
 
             custom_item = self.config_manager.get_configuration("Custom")
             classes = []
-            if custom_item and "classes" in custom_item:
-                classes = custom_item["classes"]
+            if custom_item and hasattr(custom_item, "classes") and custom_item.classes:
+                classes = list(custom_item.classes)
                 # Check for existing class by $id or x-aws-idp-document-type
                 class_id = current_class.get("$id") or current_class.get(
                     "x-aws-idp-document-type"
@@ -113,7 +116,7 @@ class ClassesDiscovery:
 
             # Update configuration with new classes
             config_data = {"classes": classes}
-            self.config_manager.update_configuration("Custom", config_data)
+            self.config_manager.save_configuration("Custom", config_data)
 
             return {"status": "SUCCESS"}
 
@@ -166,8 +169,8 @@ class ClassesDiscovery:
 
             custom_item = self.config_manager.get_configuration("Custom")
             classes = []
-            if custom_item and "classes" in custom_item:
-                classes = custom_item["classes"]
+            if custom_item and hasattr(custom_item, "classes") and custom_item.classes:
+                classes = list(custom_item.classes)
                 # Check for existing class by $id or x-aws-idp-document-type
                 class_id = current_class.get("$id") or current_class.get(
                     "x-aws-idp-document-type"
@@ -186,7 +189,7 @@ class ClassesDiscovery:
 
             # Update configuration with new classes
             config_data = {"classes": classes}
-            self.config_manager.update_configuration("Custom", config_data)
+            self.config_manager.save_configuration("Custom", config_data)
 
             return {"status": "SUCCESS"}
 
@@ -266,22 +269,20 @@ class ClassesDiscovery:
     ):
         """Extract data from document with retry logic for invalid schemas."""
         # Get configuration for without ground truth
-        model_id = self.without_gt_config.get("model_id", "us.amazon.nova-pro-v1:0")
-        system_prompt = self.without_gt_config.get(
-            "system_prompt",
-            "You are an expert in processing forms. Extracting data from images and documents",
+        model_id = self.without_gt_config.model_id
+        system_prompt = (
+            self.without_gt_config.system_prompt
+            or "You are an expert in processing forms. Extracting data from images and documents"
         )
-        temperature = self.without_gt_config.get("temperature", 1.0)
-        top_p = self.without_gt_config.get("top_p", 0.1)
-        max_tokens = self.without_gt_config.get("max_tokens", 10000)
+        temperature = self.without_gt_config.temperature
+        top_p = self.without_gt_config.top_p
+        max_tokens = self.without_gt_config.max_tokens
 
         # Create user prompt with sample format
-        user_prompt = self.without_gt_config.get(
-            "user_prompt", self._prompt_classes_discovery()
+        user_prompt = (
+            self.without_gt_config.user_prompt or self._prompt_classes_discovery()
         )
-        sample_format = self.discovery_config.get("output_format", {}).get(
-            "sample_json", self._sample_output_format()
-        )
+        sample_format = self._sample_output_format()
 
         validation_feedback = ""
         for attempt in range(max_retries):
@@ -383,19 +384,19 @@ class ClassesDiscovery:
     ):
         """Extract data from document using ground truth as reference with retry logic."""
         # Get configuration for with ground truth
-        model_id = self.with_gt_config.get("model_id", "us.amazon.nova-pro-v1:0")
-        system_prompt = self.with_gt_config.get(
-            "system_prompt",
-            "You are an expert in processing forms. Extracting data from images and documents",
+        model_id = self.with_gt_config.model_id
+        system_prompt = (
+            self.with_gt_config.system_prompt
+            or "You are an expert in processing forms. Extracting data from images and documents"
         )
-        temperature = self.with_gt_config.get("temperature", 1.0)
-        top_p = self.with_gt_config.get("top_p", 0.1)
-        max_tokens = self.with_gt_config.get("max_tokens", 10000)
+        temperature = self.with_gt_config.temperature
+        top_p = self.with_gt_config.top_p
+        max_tokens = self.with_gt_config.max_tokens
 
         # Create enhanced prompt with ground truth
-        user_prompt = self.with_gt_config.get(
-            "user_prompt",
-            self._prompt_classes_discovery_with_ground_truth(ground_truth_data),
+        user_prompt = (
+            self.with_gt_config.user_prompt
+            or self._prompt_classes_discovery_with_ground_truth(ground_truth_data)
         )
 
         # If user_prompt contains placeholder, replace it with ground truth
@@ -407,9 +408,7 @@ class ClassesDiscovery:
                 ground_truth_data
             )
 
-        sample_format = self.discovery_config.get("output_format", {}).get(
-            "sample_json", self._sample_output_format()
-        )
+        sample_format = self._sample_output_format()
 
         validation_feedback = ""
         for attempt in range(max_retries):
