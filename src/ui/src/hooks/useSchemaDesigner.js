@@ -326,6 +326,14 @@ export const useSchemaDesigner = (initialSchema = []) => {
     const { id, name, ...rest } = attribute;
     const sanitized = { ...rest };
 
+    // CRITICAL FIX: Remove 'type' when '$ref' is present (invalid JSON Schema)
+    // When a $ref is used, no other schema keywords (type, properties, etc.) should be present
+    if (sanitized.$ref) {
+      delete sanitized.type;
+      delete sanitized.properties;
+      delete sanitized.required;
+    }
+
     if (sanitized.items) {
       sanitized.items = sanitizeAttributeSchema(sanitized.items);
     }
@@ -344,34 +352,53 @@ export const useSchemaDesigner = (initialSchema = []) => {
   // Helper: Find all classes referenced by a class (recursively)
   const findReferencedClasses = useCallback(
     (rootClass, visited = new Set()) => {
+      console.log(`  findReferencedClasses for: ${rootClass.name}`);
       const referenced = [];
 
       const processProperties = (properties) => {
-        Object.values(properties || {}).forEach((attr) => {
+        Object.entries(properties || {}).forEach(([attrName, attr]) => {
           // Check direct $ref
           if (attr.$ref) {
             const refName = attr.$ref.replace('#/$defs/', '');
+            console.log(`    Found $ref in "${attrName}": ${attr.$ref} -> looking for class: "${refName}"`);
+            
             if (!visited.has(refName)) {
               const refClass = classes.find((c) => c.name === refName);
-              if (refClass && !refClass[X_AWS_IDP_DOCUMENT_TYPE]) {
+              console.log(`      Class found? ${!!refClass}, isDocType? ${refClass?.[X_AWS_IDP_DOCUMENT_TYPE]}`);
+              
+              if (!refClass) {
+                console.log(`      ❌ No class found with name "${refName}". Available classes:`, classes.map(c => c.name));
+              } else {
+                console.log(`      ✅ Adding "${refName}" to referenced classes (isDocType: ${refClass[X_AWS_IDP_DOCUMENT_TYPE]})`);
                 visited.add(refName);
                 referenced.push(refClass);
                 // Recursively find references in this class
                 referenced.push(...findReferencedClasses(refClass, visited));
               }
+            } else {
+              console.log(`      Already visited "${refName}"`);
             }
           }
 
           // Check array items $ref
           if (attr.items?.$ref) {
             const refName = attr.items.$ref.replace('#/$defs/', '');
+            console.log(`    Found items.$ref in "${attrName}": ${attr.items.$ref} -> looking for class: "${refName}"`);
+            
             if (!visited.has(refName)) {
               const refClass = classes.find((c) => c.name === refName);
-              if (refClass && !refClass[X_AWS_IDP_DOCUMENT_TYPE]) {
+              console.log(`      Class found? ${!!refClass}, isDocType? ${refClass?.[X_AWS_IDP_DOCUMENT_TYPE]}`);
+              
+              if (!refClass) {
+                console.log(`      ❌ No class found with name "${refName}". Available classes:`, classes.map(c => c.name));
+              } else {
+                console.log(`      ✅ Adding "${refName}" to referenced classes (isDocType: ${refClass[X_AWS_IDP_DOCUMENT_TYPE]})`);
                 visited.add(refName);
                 referenced.push(refClass);
                 referenced.push(...findReferencedClasses(refClass, visited));
               }
+            } else {
+              console.log(`      Already visited "${refName}"`);
             }
           }
 
@@ -383,6 +410,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
       };
 
       processProperties(rootClass.attributes.properties);
+      console.log(`  Total referenced classes found: ${referenced.length}`);
       return referenced;
     },
     [classes],
@@ -399,14 +427,27 @@ export const useSchemaDesigner = (initialSchema = []) => {
     // If no document types, fall back to treating first class as document type (backward compat)
     const baseClasses = docTypeClasses.length > 0 ? docTypeClasses : [classes[0]];
 
+    console.log('=== exportSchema DEBUG ===');
+    console.log('Total classes:', classes.length);
+    console.log('All class names and flags:', classes.map(c => ({ 
+      name: c.name, 
+      isDocType: c[X_AWS_IDP_DOCUMENT_TYPE],
+      properties: Object.keys(c.attributes.properties || {})
+    })));
+    console.log('Document type classes:', baseClasses.map(c => c.name));
+
     // Build schema for each document type
     const schemas = baseClasses.map((docTypeClass) => {
+      console.log(`\n--- Building schema for: ${docTypeClass.name} ---`);
+      
       // Find classes referenced by this document type
       const referencedClasses = findReferencedClasses(docTypeClass);
+      console.log('Referenced classes found:', referencedClasses.map(c => c.name));
 
       // Build $defs only for referenced classes
       const defs = {};
       referencedClasses.forEach((cls) => {
+        console.log(`Adding to $defs: ${cls.name}`);
         const sanitizedProps = Object.entries(cls.attributes.properties || {}).reduce((acc, [attrName, attrValue]) => {
           acc[attrName] = sanitizeAttributeSchema(attrValue);
           return acc;
@@ -420,16 +461,26 @@ export const useSchemaDesigner = (initialSchema = []) => {
         };
       });
 
+      console.log('Final $defs keys:', Object.keys(defs));
+      console.log('$defs will be added?', Object.keys(defs).length > 0);
+
       // Build main schema properties
       const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
         (acc, [attrName, attrValue]) => {
+          // Check if this attribute has a $ref
+          if (attrValue.$ref) {
+            console.log(`Property "${attrName}" has $ref: ${attrValue.$ref}`);
+          }
+          if (attrValue.items?.$ref) {
+            console.log(`Property "${attrName}" array items has $ref: ${attrValue.items.$ref}`);
+          }
           acc[attrName] = sanitizeAttributeSchema(attrValue);
           return acc;
         },
         {},
       );
 
-      return {
+      const result = {
         $schema: 'https://json-schema.org/draft/2020-12/schema',
         $id: docTypeClass.name,
         [X_AWS_IDP_DOCUMENT_TYPE]: docTypeClass.name,
@@ -439,7 +490,14 @@ export const useSchemaDesigner = (initialSchema = []) => {
         ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
         ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
       };
+
+      console.log('Final schema has $defs?', '$defs' in result);
+      console.log('Final schema $defs keys:', result.$defs ? Object.keys(result.$defs) : 'NONE');
+      
+      return result;
     });
+
+    console.log('=== exportSchema COMPLETE ===\n');
 
     // Always return array of schemas for consistency
     return schemas;

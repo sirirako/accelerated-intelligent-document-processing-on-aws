@@ -23,6 +23,7 @@ import yaml from 'js-yaml';
 import useConfiguration from '../../hooks/use-configuration';
 import FormView from './FormView';
 import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
+import { deepMerge } from '../../utils/configUtils';
 
 const ConfigurationLayout = () => {
   const {
@@ -672,9 +673,13 @@ const ConfigurationLayout = () => {
       let configToSave;
 
       if (saveAsDefault) {
-        // When saving as default, save the entire current configuration
-        configToSave = { ...formValues, saveAsDefault: true };
-        console.log('Saving entire config as new default:', configToSave);
+        // When saving as default, merge form changes with complete Custom config
+        // This ensures we capture both:
+        // 1. User's form edits (formValues)
+        // 2. Fields not in form like notes, system_prompt, task_prompt (from customConfig)
+        const mergedConfig = deepMerge(customConfig || {}, formValues);
+        configToSave = { ...mergedConfig, saveAsDefault: true };
+        console.log('Saving merged config as new Default:', configToSave);
       } else {
         // CRITICAL: Compare formValues against customConfig (what we loaded)
         // This ensures we only send actual changes as the diff
@@ -845,14 +850,13 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      // Reset custom configuration to empty object
-      // Backend will copy Default -> Custom on next read
-      const success = await updateConfiguration({});
+      // Reset custom configuration by sending a special reset flag
+      // Backend will clear Custom, and on next read it will copy Default -> Custom
+      const success = await updateConfiguration({ resetToDefault: true });
 
       if (success) {
         setSaveSuccess(true);
         setShowResetModal(false);
-        // updateConfiguration refetches, UI will rehydrate without full re-render
       } else {
         setSaveError('Failed to reset configuration. Please try again.');
       }

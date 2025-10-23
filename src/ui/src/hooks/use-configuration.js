@@ -6,6 +6,7 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import getConfigurationQuery from '../graphql/queries/getConfiguration';
 import updateConfigurationMutation from '../graphql/queries/updateConfiguration';
+import { deepMerge } from '../utils/configUtils';
 
 const client = generateClient();
 const logger = new ConsoleLogger('useConfiguration');
@@ -53,31 +54,6 @@ const normalizeBooleans = (obj, schema) => {
   }
 
   return normalized;
-};
-
-// Deep merge function for combining default and custom configurations
-const deepMerge = (target, source) => {
-  const result = { ...target };
-
-  if (!source) {
-    return result;
-  }
-
-  Object.keys(source)
-    .filter((key) => Object.hasOwn(source, key))
-    .forEach((key) => {
-      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-        if (Object.hasOwn(target, key) && target[key] && typeof target[key] === 'object') {
-          result[key] = deepMerge(target[key], source[key]);
-        } else {
-          result[key] = { ...source[key] };
-        }
-      } else {
-        result[key] = source[key];
-      }
-    });
-
-  return result;
 };
 
 const useConfiguration = () => {

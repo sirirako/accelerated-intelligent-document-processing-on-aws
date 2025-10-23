@@ -139,7 +139,12 @@ const SchemaPreviewTabs = ({ classes, selectedClassId, exportedSchemas }) => {
   // Determine if we have multiple schemas
   const schemas = useMemo(() => {
     if (!exportedSchemas) return [];
-    return Array.isArray(exportedSchemas) ? exportedSchemas : [exportedSchemas];
+    const schemaArray = Array.isArray(exportedSchemas) ? exportedSchemas : [exportedSchemas];
+    
+    // Debug: Log schemas to check if $defs are present
+    console.log('SchemaPreviewTabs schemas:', JSON.stringify(schemaArray, null, 2));
+    
+    return schemaArray;
   }, [exportedSchemas]);
 
   // Generate tabs for each document type schema

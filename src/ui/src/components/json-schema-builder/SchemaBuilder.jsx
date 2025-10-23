@@ -142,6 +142,8 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
       if (newAttributeReferenceClass && newAttributeReferenceClass.value) {
         if (newAttributeType.value === 'object') {
           updates.$ref = `#/$defs/${newAttributeReferenceClass.value}`;
+          // Remove schema keywords that conflict with $ref
+          updates.type = undefined;
           updates.properties = undefined;
           updates.required = undefined;
         } else if (newAttributeType.value === 'array') {
