@@ -31,6 +31,7 @@ const ConfigurationLayout = () => {
     defaultConfig,
     customConfig,
     loading,
+    refreshing,
     error,
     updateConfiguration,
     fetchConfiguration,
@@ -767,12 +768,21 @@ const ConfigurationLayout = () => {
         // Convert the difference paths to a proper nested structure
         const builtObject = buildObjectFromPaths(differences);
         console.log('DEBUG: Built object from paths:', builtObject);
+        
+        // CRITICAL: If there are no differences, don't send update to backend
+        // This prevents unnecessary API calls and potential data issues
+        if (Object.keys(builtObject).length === 0) {
+          console.log('No changes detected, skipping save');
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+          return;
+        }
+        
         Object.assign(customConfigToSave, builtObject);
         configToSave = customConfigToSave;
         console.log('Saving customized config:', configToSave);
       }
 
-      // Make sure we send at least the Info field, even if no customizations
       const success = await updateConfiguration(configToSave);
 
       if (success) {
@@ -780,10 +790,6 @@ const ConfigurationLayout = () => {
         if (saveAsDefault) {
           setShowSaveAsDefaultModal(false);
         }
-        // Force a refresh of the configuration to ensure UI is in sync with backend
-        setTimeout(() => {
-          fetchConfiguration();
-        }, 1000);
       } else {
         setSaveError('Failed to save configuration. Please try again.');
       }
@@ -839,16 +845,14 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      // Reset custom configuration to an empty object
+      // Reset custom configuration to empty object
+      // Backend will copy Default -> Custom on next read
       const success = await updateConfiguration({});
 
       if (success) {
         setSaveSuccess(true);
         setShowResetModal(false);
-        // Force a refresh of the configuration to ensure UI is in sync with backend
-        setTimeout(() => {
-          fetchConfiguration();
-        }, 1000);
+        // updateConfiguration refetches, UI will rehydrate without full re-render
       } else {
         setSaveError('Failed to reset configuration. Please try again.');
       }
@@ -1123,6 +1127,15 @@ const ConfigurationLayout = () => {
         }
       >
         <Form>
+          {refreshing && (
+            <Alert type="info" header="Syncing configuration...">
+              <Box display="flex" alignItems="center">
+                <Spinner size="normal" />
+                <Box margin={{ left: 's' }}>Refreshing data from server</Box>
+              </Box>
+            </Alert>
+          )}
+
           {saveSuccess && (
             <Alert
               type="success"

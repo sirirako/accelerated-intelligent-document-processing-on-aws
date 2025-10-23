@@ -86,10 +86,16 @@ const useConfiguration = () => {
   const [customConfig, setCustomConfig] = useState(null);
   const [mergedConfig, setMergedConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchConfiguration = async () => {
-    setLoading(true);
+  const fetchConfiguration = async (silent = false) => {
+    // Use different loading states for initial load vs background refresh
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       logger.debug('Fetching configuration...');
@@ -203,7 +209,11 @@ const useConfiguration = () => {
       logger.error('Error fetching configuration', err);
       setError(`Failed to load configuration: ${err.message}`);
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -239,8 +249,11 @@ const useConfiguration = () => {
         throw new Error(errorMsg);
       }
 
-      setCustomConfig(configToUpdate);
-      setMergedConfig(configToUpdate); // Custom IS the active config
+      // Refetch silently to ensure backend and frontend are in sync
+      // Silent mode prevents loading state changes that cause re-renders
+      // The component will handle rehydration without full re-render
+      await fetchConfiguration(true);
+      
       return true;
     } catch (err) {
       logger.error('Error updating configuration', err);
@@ -634,6 +647,7 @@ const useConfiguration = () => {
     customConfig,
     mergedConfig,
     loading,
+    refreshing,
     error,
     fetchConfiguration,
     updateConfiguration,
