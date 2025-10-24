@@ -2,6 +2,96 @@ import { useState, useCallback, useEffect } from 'react';
 import { produce } from 'immer';
 import { X_AWS_IDP_DOCUMENT_TYPE } from '../constants/schemaConstants';
 
+const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) => {
+  const updatedProperties = {};
+  
+  Object.entries(properties).forEach(([propName, propSchema]) => {
+    // Check if this is an inline object with properties (not a $ref)
+    if (
+      propSchema.type === 'object' && 
+      propSchema.properties && 
+      Object.keys(propSchema.properties).length > 0 &&
+      !propSchema.$ref
+    ) {
+      // Extract to a shared class
+      const className = propName;
+      const classId = `class-${timestamp}-extracted-${className}`;
+      
+      // Recursively extract nested objects from this object's properties
+      const nestedProperties = extractInlineObjectsToClasses(
+        propSchema.properties,
+        extractedClasses,
+        timestamp
+      );
+      
+      extractedClasses.set(className, {
+        id: classId,
+        name: className,
+        description: propSchema.description,
+        [X_AWS_IDP_DOCUMENT_TYPE]: false,
+        attributes: {
+          type: 'object',
+          properties: nestedProperties,
+          required: propSchema.required || [],
+        },
+      });
+      
+      // Replace inline object with $ref
+      // Keep type: 'object' for UI purposes, but remove properties and required
+      const { properties, required, ...otherProps } = propSchema;
+      updatedProperties[propName] = {
+        ...otherProps,
+        $ref: `#/$defs/${className}`,
+      };
+    } else if (propSchema.type === 'array' && propSchema.items) {
+      // Check if array items are inline objects
+      if (
+        propSchema.items.type === 'object' &&
+        propSchema.items.properties &&
+        Object.keys(propSchema.items.properties).length > 0 &&
+        !propSchema.items.$ref
+      ) {
+        // Extract array item object to a shared class
+        const className = propName.endsWith('s') ? propName.slice(0, -1) : `${propName}Item`;
+        const classId = `class-${timestamp}-extracted-${className}`;
+        
+        // Recursively extract nested objects
+        const nestedProperties = extractInlineObjectsToClasses(
+          propSchema.items.properties,
+          extractedClasses,
+          timestamp
+        );
+        
+        extractedClasses.set(className, {
+          id: classId,
+          name: className,
+          description: propSchema.items.description,
+          [X_AWS_IDP_DOCUMENT_TYPE]: false,
+          attributes: {
+            type: 'object',
+            properties: nestedProperties,
+            required: propSchema.items.required || [],
+          },
+        });
+        
+        // Replace inline object with $ref
+        updatedProperties[propName] = {
+          ...propSchema,
+          items: {
+            $ref: `#/$defs/${className}`,
+          },
+        };
+      } else {
+        updatedProperties[propName] = propSchema;
+      }
+    } else {
+      updatedProperties[propName] = propSchema;
+    }
+  });
+  
+  return updatedProperties;
+};
+
 const convertJsonSchemaToClasses = (jsonSchema) => {
   if (!jsonSchema) return [];
 
@@ -23,6 +113,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     // Handle array of JSON schemas (multi-document-type format)
     const allClasses = [];
     const processedDefs = new Map();
+    const extractedClasses = new Map();
     const timestamp = Date.now();
 
     // First pass: collect all document type names
@@ -35,6 +126,13 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     });
 
     jsonSchema.forEach((schema, schemaIndex) => {
+      // Extract inline objects to classes before creating document type
+      const extractedProperties = extractInlineObjectsToClasses(
+        schema.properties || {},
+        extractedClasses,
+        timestamp
+      );
+      
       // Convert root schema to document type class
       const docTypeClass = {
         id: `class-${timestamp}-doc-${schemaIndex}`,
@@ -43,7 +141,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
         [X_AWS_IDP_DOCUMENT_TYPE]: true,
         attributes: {
           type: 'object',
-          properties: schema.properties || {},
+          properties: extractedProperties,
           required: schema.required || [],
         },
       };
@@ -59,6 +157,13 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
           }
           
           if (!processedDefs.has(defName)) {
+            // Extract inline objects from $def properties
+            const extractedDefProperties = extractInlineObjectsToClasses(
+              defSchema.properties || {},
+              extractedClasses,
+              timestamp
+            );
+            
             const defClass = {
               id: `class-${timestamp}-def-${defName}`,
               name: defName,
@@ -66,7 +171,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
               [X_AWS_IDP_DOCUMENT_TYPE]: false,
               attributes: {
                 type: 'object',
-                properties: defSchema.properties || {},
+                properties: extractedDefProperties,
                 required: defSchema.required || [],
               },
             };
@@ -76,6 +181,9 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
       }
     });
 
+    // Add extracted inline object classes first (so they're available for references)
+    extractedClasses.forEach((cls) => allClasses.push(cls));
+    
     // Add all unique $defs classes
     processedDefs.forEach((cls) => allClasses.push(cls));
 
@@ -84,7 +192,15 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
 
   // Handle single JSON schema (legacy format)
   const classes = [];
+  const extractedClasses = new Map();
   const timestamp = Date.now();
+
+  // Extract inline objects from main schema
+  const extractedProperties = extractInlineObjectsToClasses(
+    jsonSchema.properties || {},
+    extractedClasses,
+    timestamp
+  );
 
   const mainClassId = `class-${timestamp}`;
   const mainClass = {
@@ -94,7 +210,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     [X_AWS_IDP_DOCUMENT_TYPE]: true, // Mark as document type for backward compat
     attributes: {
       type: 'object',
-      properties: jsonSchema.properties || {},
+      properties: extractedProperties,
       required: jsonSchema.required || [],
     },
   };
@@ -104,6 +220,14 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     let defIndex = 0;
     Object.entries(jsonSchema.$defs).forEach(([defName, defSchema]) => {
       defIndex += 1;
+      
+      // Extract inline objects from $def properties
+      const extractedDefProperties = extractInlineObjectsToClasses(
+        defSchema.properties || {},
+        extractedClasses,
+        timestamp
+      );
+      
       classes.push({
         id: `class-${timestamp}-def-${defIndex}`,
         name: defName,
@@ -111,12 +235,15 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
         [X_AWS_IDP_DOCUMENT_TYPE]: false, // Shared class, not a document type
         attributes: {
           type: 'object',
-          properties: defSchema.properties || {},
+          properties: extractedDefProperties,
           required: defSchema.required || [],
         },
       });
     });
   }
+
+  // Add extracted inline object classes
+  extractedClasses.forEach((cls) => classes.push(cls));
 
   return classes;
 };

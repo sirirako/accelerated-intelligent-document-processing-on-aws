@@ -12,7 +12,7 @@ import {
   Alert,
 } from '@cloudscape-design/components';
 
-const SchemaCompositionEditor = ({ selectedAttribute, availableClasses, onUpdate }) => {
+const SchemaCompositionEditor = ({ selectedAttribute = null, availableClasses = [], onUpdate }) => {
   const [compositionType, setCompositionType] = useState('');
   const schemaIdCounterRef = useRef(0);
 
@@ -246,11 +246,6 @@ SchemaCompositionEditor.propTypes = {
     }),
   ),
   onUpdate: PropTypes.func.isRequired,
-};
-
-SchemaCompositionEditor.defaultProps = {
-  selectedAttribute: null,
-  availableClasses: [],
 };
 
 export default SchemaCompositionEditor;

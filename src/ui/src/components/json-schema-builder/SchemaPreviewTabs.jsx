@@ -140,10 +140,6 @@ const SchemaPreviewTabs = ({ classes, selectedClassId, exportedSchemas }) => {
   const schemas = useMemo(() => {
     if (!exportedSchemas) return [];
     const schemaArray = Array.isArray(exportedSchemas) ? exportedSchemas : [exportedSchemas];
-    
-    // Debug: Log schemas to check if $defs are present
-    console.log('SchemaPreviewTabs schemas:', JSON.stringify(schemaArray, null, 2));
-    
     return schemaArray;
   }, [exportedSchemas]);
 
@@ -167,7 +163,7 @@ const SchemaPreviewTabs = ({ classes, selectedClassId, exportedSchemas }) => {
             )}
           </Alert>
           <Editor
-            height="500px"
+            height="calc(100vh - 400px)"
             defaultLanguage="json"
             value={JSON.stringify(schema, null, 2)}
             options={{

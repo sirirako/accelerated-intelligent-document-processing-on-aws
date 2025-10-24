@@ -9,25 +9,20 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { getTypeColor, getTypeBadgeText } from './utils/badgeHelpers.jsx';
 
-const getTypeColor = (type) => {
-  switch (type) {
-    case 'string':
-      return 'blue';
-    case 'number':
-      return 'green';
-    case 'boolean':
-      return 'grey';
-    case 'object':
-      return 'red';
-    case 'array':
-      return 'purple';
-    default:
-      return 'grey';
-  }
-};
-
-const SortableAttributeItem = ({ id, name, attribute, isSelected, isRequired, onSelect, onRemove }) => {
+const SortableAttributeItem = ({
+  id,
+  name,
+  attribute,
+  isSelected,
+  isRequired,
+  onSelect,
+  onRemove,
+  onNavigateToClass,
+  onNavigateToAttribute,
+  availableClasses,
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id,
@@ -40,71 +35,97 @@ const SortableAttributeItem = ({ id, name, attribute, isSelected, isRequired, on
 
   const hasNestedProperties =
     attribute.type === 'object' && attribute.properties && Object.keys(attribute.properties).length > 0;
-  const hasArrayItems = attribute.type === 'array' && attribute.items;
   const hasComposition = attribute.oneOf || attribute.anyOf || attribute.allOf;
   const hasConditional = attribute.if;
-  const isExpandable = hasNestedProperties || hasArrayItems || hasComposition || hasConditional;
+  // Remove array items from expandable - arrays now only show badges
+  const isExpandable = hasNestedProperties || hasComposition || hasConditional;
 
-  const getBadges = () => {
-    const badges = [];
-    badges.push(
-      <Badge key="type" color={getTypeColor(attribute.type)}>
-        {attribute.type || 'any'}
-      </Badge>,
-    );
-
-    if (isRequired) {
-      badges.push(
-        <Badge key="required" color="red">
-          required
-        </Badge>,
-      );
-    }
-    if (attribute.readOnly) {
-      badges.push(<Badge key="readonly">read-only</Badge>);
-    }
-    if (attribute.writeOnly) {
-      badges.push(<Badge key="writeonly">write-only</Badge>);
-    }
-    if (attribute.deprecated) {
-      badges.push(<Badge key="deprecated">deprecated</Badge>);
-    }
-    if (attribute.const !== undefined) {
-      badges.push(
-        <Badge key="const" color="blue">
-          const
-        </Badge>,
-      );
-    }
-    if (attribute.enum) {
-      badges.push(
-        <Badge key="enum" color="blue">
-          enum
-        </Badge>,
-      );
-    }
-    if (hasComposition) {
-      let compositionType = 'allOf';
-      if (attribute.oneOf) {
-        compositionType = 'oneOf';
-      } else if (attribute.anyOf) {
-        compositionType = 'anyOf';
+  const handleBadgeClick = (e, className) => {
+    e.stopPropagation();
+    if (availableClasses) {
+      const referencedClass = availableClasses.find((cls) => cls.name === className);
+      if (referencedClass) {
+        if (onNavigateToAttribute) {
+          onNavigateToAttribute(referencedClass.id, null);
+        } else if (onNavigateToClass) {
+          onNavigateToClass(referencedClass.id);
+        }
       }
-      badges.push(
-        <Badge key="composition" color="purple">
-          {compositionType}
-        </Badge>,
-      );
     }
-    if (hasConditional) {
-      badges.push(
-        <Badge key="conditional" color="purple">
-          if/then
-        </Badge>,
+  };
+
+  // Individual badge getter functions - each returns a single badge or null
+  const getTypeBadge = () => {
+    const badgeInfo = getTypeBadgeText(attribute);
+    if (!badgeInfo) return null;
+
+    // If there's a referenced class, make it clickable
+    if (badgeInfo.className) {
+      return (
+        <span
+          onClick={(e) => handleBadgeClick(e, badgeInfo.className)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              handleBadgeClick(e, badgeInfo.className);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer' }}
+        >
+          <Badge color={badgeInfo.color}>{badgeInfo.text}</Badge>
+        </span>
       );
     }
 
-    return badges;
+    // Otherwise just return the badge
+    return <Badge color={badgeInfo.color}>{badgeInfo.text}</Badge>;
+  };
+
+  const getRequiredBadge = () => {
+    if (!isRequired) return null;
+    return <Badge color="red">required</Badge>;
+  };
+
+  const getReadOnlyBadge = () => {
+    if (!attribute.readOnly) return null;
+    return <Badge>read-only</Badge>;
+  };
+
+  const getWriteOnlyBadge = () => {
+    if (!attribute.writeOnly) return null;
+    return <Badge>write-only</Badge>;
+  };
+
+  const getDeprecatedBadge = () => {
+    if (!attribute.deprecated) return null;
+    return <Badge>deprecated</Badge>;
+  };
+
+  const getConstBadge = () => {
+    if (attribute.const === undefined) return null;
+    return <Badge color="blue">const</Badge>;
+  };
+
+  const getEnumBadge = () => {
+    if (!attribute.enum) return null;
+    return <Badge color="blue">enum</Badge>;
+  };
+
+  const getCompositionBadge = () => {
+    if (!hasComposition) return null;
+    let compositionType = 'allOf';
+    if (attribute.oneOf) {
+      compositionType = 'oneOf';
+    } else if (attribute.anyOf) {
+      compositionType = 'anyOf';
+    }
+    return <Badge color="blue">{compositionType}</Badge>;
+  };
+
+  const getConditionalBadge = () => {
+    if (!hasConditional) return null;
+    return <Badge color="blue">if/then</Badge>;
   };
 
   const renderNestedContent = () => {
@@ -123,18 +144,6 @@ const SortableAttributeItem = ({ id, name, attribute, isSelected, isRequired, on
               </Box>
             ))}
           </SpaceBetween>
-        </Box>
-      );
-    }
-
-    if (hasArrayItems) {
-      return (
-        <Box padding={{ left: 'l' }}>
-          <div style={{ fontSize: '12px', borderLeft: '2px solid #ddd', paddingLeft: '8px' }}>
-            <strong>Items:</strong>{' '}
-            {attribute.items.$ref && <Badge>{attribute.items.$ref.replace('#/$defs/', '')}</Badge>}
-            {!attribute.items.$ref && <Badge color={getTypeColor(attribute.items.type)}>{attribute.items.type}</Badge>}
-          </div>
         </Box>
       );
     }
@@ -174,7 +183,7 @@ const SortableAttributeItem = ({ id, name, attribute, isSelected, isRequired, on
       ref={setNodeRef}
       style={{
         ...style,
-        marginBottom: '8px',
+        marginBottom: '12px',
       }}
     >
       <Container
@@ -182,7 +191,7 @@ const SortableAttributeItem = ({ id, name, attribute, isSelected, isRequired, on
       >
         <div
           onClick={() => onSelect(name)}
-          onKeyPress={(e) => {
+          onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               onSelect(name);
             }
@@ -191,51 +200,65 @@ const SortableAttributeItem = ({ id, name, attribute, isSelected, isRequired, on
           tabIndex={0}
           style={{
             cursor: 'pointer',
-            borderLeft: isSelected ? '4px solid #0972d3' : '4px solid transparent',
-            paddingLeft: '8px',
-            backgroundColor: isSelected ? '#f0f8ff' : 'transparent',
+            padding: '12px',
+            borderRadius: '8px',
+            border: isSelected ? '2px solid #0972d3' : '2px solid transparent',
+            backgroundColor: isSelected ? '#e8f4fd' : 'transparent',
+            transition: 'all 0.2s ease',
           }}
         >
           <SpaceBetween size="xs">
             <Box>
-              <SpaceBetween direction="horizontal" size="xs">
+              <SpaceBetween direction="horizontal" size="s" alignItems="center">
                 <span style={{ cursor: 'grab', display: 'flex', alignItems: 'center' }} {...attributes} {...listeners}>
                   <Icon name="drag-indicator" />
                 </span>
                 {isExpandable && (
-                  <Icon
-                    name={isExpanded ? 'caret-down-filled' : 'caret-right-filled'}
+                  <span
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setIsExpanded(!isExpanded);
                     }}
-                  />
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        setIsExpanded(!isExpanded);
+                      }
+                    }}
+                    aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                  >
+                    <Icon name={isExpanded ? 'caret-down-filled' : 'caret-right-filled'} />
+                  </span>
                 )}
                 <Box fontWeight="bold">{name}</Box>
-                <SpaceBetween direction="horizontal" size="xs">
-                  {getBadges()}
-                </SpaceBetween>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {[
+                    getTypeBadge(),
+                    getRequiredBadge(),
+                    getReadOnlyBadge(),
+                    getWriteOnlyBadge(),
+                    getDeprecatedBadge(),
+                    getConstBadge(),
+                    getEnumBadge(),
+                    getCompositionBadge(),
+                    getConditionalBadge(),
+                  ].filter(Boolean).map((badge, index) => (
+                    <React.Fragment key={`badge-${index}`}>{badge}</React.Fragment>
+                  ))}
+                </div>
                 <Box float="right">
-                  <SpaceBetween direction="horizontal" size="xs">
-                    <Button
-                      variant="icon"
-                      iconName="edit"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelect(name);
-                      }}
-                      ariaLabel={`Edit ${name}`}
-                    />
-                    <Button
-                      variant="icon"
-                      iconName="close"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemove(name);
-                      }}
-                      ariaLabel={`Remove ${name}`}
-                    />
-                  </SpaceBetween>
+                  <Button
+                    variant="icon"
+                    iconName="close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemove(name);
+                    }}
+                    ariaLabel={`Remove ${name}`}
+                  />
                 </Box>
               </SpaceBetween>
             </Box>
@@ -264,12 +287,29 @@ SortableAttributeItem.propTypes = {
   isRequired: PropTypes.bool.isRequired,
   onSelect: PropTypes.func.isRequired,
   onRemove: PropTypes.func.isRequired,
+  onNavigateToClass: PropTypes.func,
+  onNavigateToAttribute: PropTypes.func,
+  availableClasses: PropTypes.arrayOf(
+    PropTypes.shape({
+      name: PropTypes.string,
+      id: PropTypes.string,
+    }),
+  ),
 };
 
 // Memoize SortableAttributeItem to prevent re-renders of unselected items
 const MemoizedSortableAttributeItem = React.memo(SortableAttributeItem);
 
-const SchemaCanvas = ({ selectedClass, selectedAttributeId, onSelectAttribute, onRemoveAttribute, onReorder }) => {
+const SchemaCanvas = ({
+  selectedClass,
+  selectedAttributeId,
+  onSelectAttribute,
+  onRemoveAttribute,
+  onReorder,
+  onNavigateToClass,
+  onNavigateToAttribute,
+  availableClasses,
+}) => {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -304,7 +344,10 @@ const SchemaCanvas = ({ selectedClass, selectedAttributeId, onSelectAttribute, o
 
   return (
     <Box>
-      <Header variant="h3" description="Click an attribute or use the edit icon to view and modify its properties">
+      <Header
+        variant="h3"
+        description="Click an attribute to view and modify its properties. Use the drag handle to reorder, or click the expand arrow to preview nested content."
+      >
         Attributes ({attributes.length})
       </Header>
       <SpaceBetween size="s">
@@ -325,6 +368,9 @@ const SchemaCanvas = ({ selectedClass, selectedAttributeId, onSelectAttribute, o
                   isRequired={requiredAttributes.includes(attributeName)}
                   onSelect={onSelectAttribute}
                   onRemove={onRemoveAttribute}
+                  onNavigateToClass={onNavigateToClass}
+                  onNavigateToAttribute={onNavigateToAttribute}
+                  availableClasses={availableClasses}
                 />
               ))}
             </SortableContext>
@@ -345,11 +391,22 @@ SchemaCanvas.propTypes = {
   onSelectAttribute: PropTypes.func.isRequired,
   onRemoveAttribute: PropTypes.func.isRequired,
   onReorder: PropTypes.func.isRequired,
+  onNavigateToClass: PropTypes.func,
+  onNavigateToAttribute: PropTypes.func,
+  availableClasses: PropTypes.arrayOf(
+    PropTypes.shape({
+      name: PropTypes.string,
+      id: PropTypes.string,
+    }),
+  ),
 };
 
 SchemaCanvas.defaultProps = {
   selectedClass: null,
   selectedAttributeId: null,
+  onNavigateToClass: null,
+  onNavigateToAttribute: null,
+  availableClasses: [],
 };
 
 // Memoize the component to prevent re-renders when props haven't changed

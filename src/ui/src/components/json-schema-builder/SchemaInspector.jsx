@@ -40,9 +40,39 @@ const SchemaInspector = ({
   availableClasses,
   isRequired,
   onToggleRequired,
+  onNavigateToClass,
+  onNavigateToAttribute,
 }) => {
   // Show class-level settings when class is selected but no attribute is selected
   if (selectedClass && (!selectedAttribute || !selectedAttributeName)) {
+    // Find where this class is being used
+    const usedIn = [];
+    if (availableClasses) {
+      availableClasses.forEach((cls) => {
+        if (cls.id === selectedClass.id) return; // Skip self
+        
+        const properties = cls.attributes?.properties || {};
+        Object.entries(properties).forEach(([attrName, attrSchema]) => {
+          // Check if attribute references this class
+          if (attrSchema.$ref === `#/$defs/${selectedClass.name}`) {
+            usedIn.push({
+              className: cls.name,
+              classId: cls.id,
+              attributeName: attrName,
+              type: 'object',
+            });
+          } else if (attrSchema.items?.$ref === `#/$defs/${selectedClass.name}`) {
+            usedIn.push({
+              className: cls.name,
+              classId: cls.id,
+              attributeName: attrName,
+              type: 'array',
+            });
+          }
+        });
+      });
+    }
+    
     return (
       <Box>
         <Header variant="h3">Class Inspector: {selectedClass.name}</Header>
@@ -83,6 +113,32 @@ const SchemaInspector = ({
               placeholder="Describe what this class represents"
             />
           </FormField>
+          
+          {usedIn.length > 0 && (
+            <FormField 
+              label="Used In" 
+              description={`This class is referenced by ${usedIn.length} attribute${usedIn.length > 1 ? 's' : ''}`}
+            >
+              <SpaceBetween size="xs">
+                {usedIn.map((usage, index) => (
+                  <Button
+                    key={`${usage.classId}-${usage.attributeName}`}
+                    variant="inline-link"
+                    iconName="external"
+                    onClick={() => {
+                      if (onNavigateToAttribute) {
+                        onNavigateToAttribute(usage.classId, usage.attributeName);
+                      } else if (onNavigateToClass) {
+                        onNavigateToClass(usage.classId);
+                      }
+                    }}
+                  >
+                    {usage.className}.{usage.attributeName} ({usage.type === 'array' ? `${selectedClass.name}[]` : selectedClass.name})
+                  </Button>
+                ))}
+              </SpaceBetween>
+            </FormField>
+          )}
         </SpaceBetween>
       </Box>
     );
@@ -151,38 +207,58 @@ const SchemaInspector = ({
               label="Reference Existing Class (Optional)"
               description="Link to a reusable class definition instead of defining properties inline"
             >
-              <Select
-                selectedOption={
-                  selectedAttribute.$ref
-                    ? {
-                        label: selectedAttribute.$ref.replace('#/$defs/', ''),
-                        value: selectedAttribute.$ref,
-                      }
-                    : null
-                }
-                onChange={({ detail }) => {
-                  if (detail.selectedOption.value) {
-                    const updates = { ...selectedAttribute, $ref: detail.selectedOption.value };
-                    delete updates.properties;
-                    delete updates.required;
-                    delete updates.minProperties;
-                    delete updates.maxProperties;
-                    delete updates.additionalProperties;
-                    onUpdate(updates);
-                  } else {
-                    const updates = { ...selectedAttribute, $ref: undefined };
-                    onUpdate(updates);
+              <SpaceBetween size="xs">
+                <Select
+                  selectedOption={
+                    selectedAttribute.$ref
+                      ? {
+                          label: selectedAttribute.$ref.replace('#/$defs/', ''),
+                          value: selectedAttribute.$ref,
+                        }
+                      : null
                   }
-                }}
-                options={[
-                  { label: 'None (inline properties)', value: '' },
-                  ...availableClasses.map((cls) => ({
-                    label: cls.name,
-                    value: `#/$defs/${cls.name}`,
-                  })),
-                ]}
-                placeholder="Select a class to reference"
-              />
+                  onChange={({ detail }) => {
+                    if (detail.selectedOption.value) {
+                      const updates = { ...selectedAttribute, $ref: detail.selectedOption.value };
+                      delete updates.properties;
+                      delete updates.required;
+                      delete updates.minProperties;
+                      delete updates.maxProperties;
+                      delete updates.additionalProperties;
+                      onUpdate(updates);
+                    } else {
+                      const updates = { ...selectedAttribute, $ref: undefined };
+                      onUpdate(updates);
+                    }
+                  }}
+                  options={[
+                    { label: 'None (inline properties)', value: '' },
+                    ...availableClasses.map((cls) => ({
+                      label: cls.name,
+                      value: `#/$defs/${cls.name}`,
+                    })),
+                  ]}
+                  placeholder="Select a class to reference"
+                />
+                {selectedAttribute.$ref && (onNavigateToClass || onNavigateToAttribute) && (
+                  <Button
+                    iconName="external"
+                    onClick={() => {
+                      const className = selectedAttribute.$ref.replace('#/$defs/', '');
+                      const referencedClass = availableClasses.find((cls) => cls.name === className);
+                      if (referencedClass) {
+                        if (onNavigateToAttribute) {
+                          onNavigateToAttribute(referencedClass.id, null);
+                        } else if (onNavigateToClass) {
+                          onNavigateToClass(referencedClass.id);
+                        }
+                      }
+                    }}
+                  >
+                    Go to {selectedAttribute.$ref.replace('#/$defs/', '')} class
+                  </Button>
+                )}
+              </SpaceBetween>
             </FormField>
 
             {!selectedAttribute.$ref && <ObjectConstraints attribute={selectedAttribute} onUpdate={onUpdate} />}
@@ -192,33 +268,53 @@ const SchemaInspector = ({
         {selectedAttribute.type === 'array' && availableClasses && availableClasses.length > 0 && (
           <>
             <FormField label="Array Item Type" description="Define what each item in the array should be">
-              <Select
-                selectedOption={
-                  selectedAttribute.items?.$ref
-                    ? {
-                        label: selectedAttribute.items.$ref.replace('#/$defs/', ''),
-                        value: selectedAttribute.items.$ref,
-                      }
-                    : {
-                        label: `Simple (${selectedAttribute.items?.type || 'string'})`,
-                        value: 'simple',
-                      }
-                }
-                onChange={({ detail }) => {
-                  if (detail.selectedOption.value === 'simple') {
-                    onUpdate({ items: { type: 'string' } });
-                  } else {
-                    onUpdate({ items: { $ref: detail.selectedOption.value } });
+              <SpaceBetween size="xs">
+                <Select
+                  selectedOption={
+                    selectedAttribute.items?.$ref
+                      ? {
+                          label: selectedAttribute.items.$ref.replace('#/$defs/', ''),
+                          value: selectedAttribute.items.$ref,
+                        }
+                      : {
+                          label: `Simple (${selectedAttribute.items?.type || 'string'})`,
+                          value: 'simple',
+                        }
                   }
-                }}
-                options={[
-                  { label: 'Simple (string)', value: 'simple' },
-                  ...availableClasses.map((cls) => ({
-                    label: `Class: ${cls.name}`,
-                    value: `#/$defs/${cls.name}`,
-                  })),
-                ]}
-              />
+                  onChange={({ detail }) => {
+                    if (detail.selectedOption.value === 'simple') {
+                      onUpdate({ items: { type: 'string' } });
+                    } else {
+                      onUpdate({ items: { $ref: detail.selectedOption.value } });
+                    }
+                  }}
+                  options={[
+                    { label: 'Simple (string)', value: 'simple' },
+                    ...availableClasses.map((cls) => ({
+                      label: `Class: ${cls.name}`,
+                      value: `#/$defs/${cls.name}`,
+                    })),
+                  ]}
+                />
+                {selectedAttribute.items?.$ref && (onNavigateToClass || onNavigateToAttribute) && (
+                  <Button
+                    iconName="external"
+                    onClick={() => {
+                      const className = selectedAttribute.items.$ref.replace('#/$defs/', '');
+                      const referencedClass = availableClasses.find((cls) => cls.name === className);
+                      if (referencedClass) {
+                        if (onNavigateToAttribute) {
+                          onNavigateToAttribute(referencedClass.id, null);
+                        } else if (onNavigateToClass) {
+                          onNavigateToClass(referencedClass.id);
+                        }
+                      }
+                    }}
+                  >
+                    Go to {selectedAttribute.items.$ref.replace('#/$defs/', '')} class
+                  </Button>
+                )}
+              </SpaceBetween>
             </FormField>
 
             <ArrayConstraints attribute={selectedAttribute} onUpdate={onUpdate} />
@@ -300,11 +396,14 @@ SchemaInspector.propTypes = {
   availableClasses: PropTypes.arrayOf(
     PropTypes.shape({
       name: PropTypes.string,
+      id: PropTypes.string,
     }),
   ),
   isRequired: PropTypes.bool,
   onToggleRequired: PropTypes.func,
   onRenameAttribute: PropTypes.func,
+  onNavigateToClass: PropTypes.func,
+  onNavigateToAttribute: PropTypes.func,
 };
 
 SchemaInspector.defaultProps = {
@@ -316,4 +415,6 @@ SchemaInspector.defaultProps = {
   onToggleRequired: () => {},
   onRenameAttribute: () => true,
   onUpdateClass: () => {},
+  onNavigateToClass: null,
+  onNavigateToAttribute: null,
 };

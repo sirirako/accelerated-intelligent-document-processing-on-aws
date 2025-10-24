@@ -57,6 +57,7 @@ const ValueConstraints = ({ attribute, onUpdate }) => {
         ) : (
           <Input
             placeholder="value1, value2, value3"
+            defaultValue=""
             onBlur={(e) => {
               const value = e.target.value.trim();
               if (value) {

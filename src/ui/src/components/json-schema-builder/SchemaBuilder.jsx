@@ -22,6 +22,7 @@ import { TYPE_OPTIONS, X_AWS_IDP_DOCUMENT_TYPE } from '../../constants/schemaCon
 import SchemaCanvas from './SchemaCanvas';
 import SchemaInspector from './SchemaInspector';
 import SchemaPreviewTabs from './SchemaPreviewTabs';
+import { formatTypeBadge, DocumentTypeBadge } from './utils/badgeHelpers.jsx';
 
 const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
   const {
@@ -191,35 +192,60 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
   const docTypeCount = classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length;
   const sharedCount = classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length;
 
-  // Debug: Log all classes to help identify duplicates
-  useEffect(() => {
-    console.log('=== SchemaBuilder Classes Debug ===');
-    console.log('Total classes:', classes.length);
-    classes.forEach((cls, index) => {
-      console.log(`Class ${index}:`, {
-        id: cls.id,
-        name: cls.name,
-        isDocType: cls[X_AWS_IDP_DOCUMENT_TYPE],
-        flag: X_AWS_IDP_DOCUMENT_TYPE,
-        flagValue: cls[X_AWS_IDP_DOCUMENT_TYPE]
-      });
-    });
-    
-    // Check for duplicate names
-    const nameCount = {};
-    classes.forEach(cls => {
-      nameCount[cls.name] = (nameCount[cls.name] || 0) + 1;
-    });
-    Object.entries(nameCount).forEach(([name, count]) => {
-      if (count > 1) {
-        console.warn(`⚠️ DUPLICATE CLASS NAME: "${name}" appears ${count} times`);
-      }
-    });
-  }, [classes]);
-
   return (
-    <SpaceBetween size="l">
-      {aggregatedValidationErrors.length > 0 && (
+    <>
+      {/* Floating breadcrumb bar showing current selection - fixed to viewport */}
+      {(selectedClassId || selectedAttributeId) && (
+        <div
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 1000,
+            backgroundColor: '#ffffff',
+            borderBottom: '2px solid #0972d3',
+            padding: '12px 20px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            marginBottom: '16px',
+          }}
+        >
+          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+            {selectedClassId && (
+              <>
+                <Box fontSize="body-m" fontWeight="bold">
+                  {getSelectedClass()?.name || 'Unknown Class'}
+                </Box>
+                {getSelectedClass()?.[X_AWS_IDP_DOCUMENT_TYPE] && <DocumentTypeBadge />}
+              </>
+            )}
+            {selectedAttributeId && (
+              <>
+                <Box fontSize="body-s" color="text-body-secondary">›</Box>
+                <Box fontSize="body-m" color="text-label">
+                  {selectedAttributeId}
+                </Box>
+                {getSelectedAttribute() && formatTypeBadge(getSelectedAttribute())}
+              </>
+            )}
+            <Box flex="1" />
+            <Button
+              variant="inline-link"
+              iconName="close"
+              onClick={() => {
+                setSelectedAttributeId(null);
+                if (!selectedAttributeId) {
+                  setSelectedClassId(null);
+                }
+              }}
+              ariaLabel="Clear selection"
+            >
+              {selectedAttributeId ? 'Deselect attribute' : 'Deselect class'}
+            </Button>
+          </SpaceBetween>
+        </div>
+      )}
+      
+      <SpaceBetween size="l">
+        {aggregatedValidationErrors.length > 0 && (
         <Alert
           type="error"
           dismissible
@@ -236,51 +262,52 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
         </Alert>
       )}
 
-      <Container
-        header={
-          <Header
-            variant="h2"
-            actions={
-              <Box>
-                <SpaceBetween direction="horizontal" size="xs">
-                  <Button onClick={handleAddClass} iconName="add-plus">
-                    Add Class
-                  </Button>
-                  <Button onClick={handleAddAttribute} disabled={!selectedClassId} iconName="add-plus">
-                    Add Attribute
-                  </Button>
-                  <Button
-                    onClick={() => setShowPreview(!showPreview)}
-                    iconName={showPreview ? 'view-vertical' : 'view-horizontal'}
-                  >
-                    {showPreview ? 'Hide' : 'Show'} Preview
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      const schema = exportSchema();
-                      const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `schema-${Date.now()}.json`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    iconName="download"
-                    disabled={classes.length === 0}
-                  >
-                    Export
-                  </Button>
-                </SpaceBetween>
-              </Box>
-            }
-            description="Build JSON Schema Draft 2020-12 compliant extraction schemas with advanced features"
-          >
-            Schema Builder
-          </Header>
-        }
-      >
-        <ColumnLayout columns={showPreview ? 2 : 3} variant="text-grid" minColumnWidth={300}>
+      <div style={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
+        <Container
+          header={
+            <Header
+              variant="h2"
+              actions={
+                <Box>
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Button onClick={handleAddClass} iconName="add-plus">
+                      Add Class
+                    </Button>
+                    <Button onClick={handleAddAttribute} disabled={!selectedClassId} iconName="add-plus">
+                      Add Attribute
+                    </Button>
+                    <Button
+                      onClick={() => setShowPreview(!showPreview)}
+                      iconName={showPreview ? 'view-vertical' : 'view-horizontal'}
+                    >
+                      {showPreview ? 'Hide' : 'Show'} Preview
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        const schema = exportSchema();
+                        const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `schema-${Date.now()}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      iconName="download"
+                      disabled={classes.length === 0}
+                    >
+                      Export
+                    </Button>
+                  </SpaceBetween>
+                </Box>
+              }
+              description="Build JSON Schema Draft 2020-12 compliant extraction schemas with advanced features"
+            >
+              Schema Builder
+            </Header>
+          }
+        >
+          <ColumnLayout columns={showPreview ? 2 : 3} variant="text-grid" minColumnWidth={300}>
           <Box>
             <SpaceBetween size="m">
               <Header variant="h3">
@@ -297,7 +324,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
 
               <Box>
                 <Header variant="h4">Document Types</Header>
-                <SpaceBetween size="xs">
+                <SpaceBetween size="s">
                   {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
                     <Box fontSize="body-s" color="text-body-secondary" padding="s">
                       No document types yet. Add a class and mark it as a document type.
@@ -314,21 +341,24 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                           role="button"
                           tabIndex={0}
                           onClick={() => setSelectedClassId(cls.id)}
-                          onKeyPress={(e) => {
+                          onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               setSelectedClassId(cls.id);
                             }
                           }}
                           style={{
                             cursor: 'pointer',
-                            borderLeft: selectedClassId === cls.id ? '4px solid #0972d3' : '4px solid transparent',
-                            paddingLeft: '8px',
+                            padding: '12px',
+                            borderRadius: '8px',
+                            border: selectedClassId === cls.id ? '2px solid #0972d3' : '2px solid transparent',
+                            backgroundColor: selectedClassId === cls.id ? '#e8f4fd' : 'transparent',
+                            transition: 'all 0.2s ease',
                           }}
                         >
                           <SpaceBetween size="xs">
                             <Box>
-                              <SpaceBetween direction="horizontal" size="xs">
-                                <Badge color="blue">Document Type</Badge>
+                              <SpaceBetween direction="horizontal" size="s" alignItems="center">
+                                <DocumentTypeBadge />
                                 <Box fontWeight="bold">{cls.name}</Box>
                                 <Box float="right">
                                   <SpaceBetween direction="horizontal" size="xs">
@@ -372,7 +402,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
 
               <Box>
                 <Header variant="h4">Shared Classes</Header>
-                <SpaceBetween size="xs">
+                <SpaceBetween size="s">
                   {classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
                     <Box fontSize="body-s" color="text-body-secondary" padding="s">
                       No shared classes. Shared classes can be referenced by document types via $ref.
@@ -389,20 +419,23 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                           role="button"
                           tabIndex={0}
                           onClick={() => setSelectedClassId(cls.id)}
-                          onKeyPress={(e) => {
+                          onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               setSelectedClassId(cls.id);
                             }
                           }}
                           style={{
                             cursor: 'pointer',
-                            borderLeft: selectedClassId === cls.id ? '4px solid #0972d3' : '4px solid transparent',
-                            paddingLeft: '8px',
+                            padding: '12px',
+                            borderRadius: '8px',
+                            border: selectedClassId === cls.id ? '2px solid #0972d3' : '2px solid transparent',
+                            backgroundColor: selectedClassId === cls.id ? '#e8f4fd' : 'transparent',
+                            transition: 'all 0.2s ease',
                           }}
                         >
                           <SpaceBetween size="xs">
                             <Box>
-                              <SpaceBetween direction="horizontal" size="xs">
+                              <SpaceBetween direction="horizontal" size="s" alignItems="center">
                                 <Box fontWeight="bold">{cls.name}</Box>
                                 <Box float="right">
                                   <SpaceBetween direction="horizontal" size="xs">
@@ -455,6 +488,15 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                 onUpdateAttribute={(name, updates) => updateAttribute(selectedClassId, name, updates)}
                 onRemoveAttribute={(name) => removeAttribute(selectedClassId, name)}
                 onReorder={(oldIndex, newIndex) => reorderAttributes(selectedClassId, oldIndex, newIndex)}
+                onNavigateToClass={(classId) => {
+                  setSelectedClassId(classId);
+                  setSelectedAttributeId(null);
+                }}
+                onNavigateToAttribute={(classId, attributeName) => {
+                  setSelectedClassId(classId);
+                  setSelectedAttributeId(attributeName);
+                }}
+                availableClasses={classes}
               />
 
               <SchemaInspector
@@ -491,6 +533,14 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                     },
                   });
                 }}
+                onNavigateToClass={(classId) => {
+                  setSelectedClassId(classId);
+                  setSelectedAttributeId(null);
+                }}
+                onNavigateToAttribute={(classId, attributeName) => {
+                  setSelectedClassId(classId);
+                  setSelectedAttributeId(attributeName);
+                }}
               />
             </>
           )}
@@ -500,6 +550,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
           )}
         </ColumnLayout>
       </Container>
+      </div>
 
       <Modal
         visible={showAddClassModal}
@@ -749,7 +800,8 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
           )}
         </SpaceBetween>
       </Modal>
-    </SpaceBetween>
+      </SpaceBetween>
+    </>
   );
 };
 
