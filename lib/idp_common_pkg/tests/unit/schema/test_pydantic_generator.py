@@ -790,6 +790,210 @@ class TestJsonSchemaConstraints:
         with pytest.raises(ValidationError):
             Model(product_code="ABCD-12345")
 
+    def test_array_contains_constraints(self):
+        """Test that array contains, minContains, and maxContains constraints are supported."""
+        schema = {
+            "type": "object",
+            "title": "OrderWithApprovedItems",
+            "properties": {
+                "OrderID": {"type": "string"},
+                "LineItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "ItemName": {"type": "string"},
+                            "Status": {"type": "string"},
+                            "Amount": {"type": "number"},
+                        },
+                    },
+                    "contains": {
+                        "type": "object",
+                        "properties": {"Status": {"const": "approved"}},
+                        "required": ["Status"],
+                    },
+                    "minContains": 2,
+                    "maxContains": 5,
+                },
+            },
+        }
+
+        # Test that model can be created (datamodel-code-generator supports these constraints)
+        OrderModel = create_pydantic_model_from_json_schema(
+            schema, "OrderWithApprovedItems", clean_schema=False
+        )
+
+        # Verify model was created
+        assert OrderModel is not None
+        assert "LineItems" in OrderModel.model_fields
+
+        # Test valid data with 2 approved items (meets minContains=2)
+        valid_order = OrderModel(
+            OrderID="ORD-001",
+            LineItems=[
+                {"ItemName": "Item1", "Status": "approved", "Amount": 100.0},
+                {"ItemName": "Item2", "Status": "approved", "Amount": 200.0},
+                {"ItemName": "Item3", "Status": "pending", "Amount": 150.0},
+            ],
+        )
+        assert valid_order.OrderID == "ORD-001"
+        assert len(valid_order.LineItems) == 3
+
+        # Test that Pydantic does NOT enforce contains/minContains at runtime
+        # (these are JSON Schema constraints not directly supported by Pydantic)
+        # Data with only 1 approved item should still validate (violates minContains=2)
+        try:
+            invalid_order = OrderModel(
+                OrderID="ORD-002",
+                LineItems=[
+                    {"ItemName": "Item1", "Status": "approved", "Amount": 100.0},
+                    {"ItemName": "Item2", "Status": "pending", "Amount": 200.0},
+                ],
+            )
+            # If we get here, Pydantic did NOT enforce the minContains constraint
+            assert invalid_order.OrderID == "ORD-002"
+            pydantic_enforces_contains = False
+        except ValidationError:
+            # If validation fails, Pydantic IS enforcing the constraint
+            pydantic_enforces_contains = True
+
+        # Document the behavior: Pydantic v2 does not enforce contains/minContains/maxContains
+        assert not pydantic_enforces_contains, (
+            "Pydantic is enforcing contains constraints - test expectations need updating"
+        )
+
+        # Conclusion: datamodel-code-generator successfully translates the schema,
+        # but Pydantic v2 does not enforce contains/minContains/maxContains at runtime.
+        # These constraints would need separate JSON Schema validation if enforcement is required.
+
+
+class TestJsonSchemaValidationEnforcement:
+    """Test JSON Schema validation enforcement for advanced constraints."""
+
+    def test_contains_constraint_enforcement_enabled(self):
+        """Test that JSON Schema validation enforces contains/minContains when enabled."""
+        schema = {
+            "type": "object",
+            "title": "OrderWithValidation",
+            "properties": {
+                "OrderID": {"type": "string"},
+                "LineItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "Status": {"type": "string"},
+                            "Amount": {"type": "number"},
+                        },
+                    },
+                    "contains": {
+                        "type": "object",
+                        "properties": {"Status": {"const": "approved"}},
+                        "required": ["Status"],
+                    },
+                    "minContains": 2,
+                },
+            },
+        }
+
+        # Create model with JSON Schema validation enabled (default)
+        OrderModel = create_pydantic_model_from_json_schema(
+            schema, "OrderWithValidation", clean_schema=False
+        )
+
+        # Valid data: 2 approved items (meets minContains=2)
+        valid_order = OrderModel(
+            OrderID="ORD-001",
+            LineItems=[
+                {"Status": "approved", "Amount": 100.0},
+                {"Status": "approved", "Amount": 200.0},
+                {"Status": "pending", "Amount": 150.0},
+            ],
+        )
+        assert valid_order.OrderID == "ORD-001"
+
+        # Invalid data: only 1 approved item (violates minContains=2)
+        # Should raise ValidationError with JSON Schema details
+        with pytest.raises(ValidationError) as exc_info:
+            OrderModel(
+                OrderID="ORD-002",
+                LineItems=[
+                    {"Status": "approved", "Amount": 100.0},
+                    {"Status": "pending", "Amount": 200.0},
+                ],
+            )
+
+        # Verify error mentions JSON Schema validation
+        error_str = str(exc_info.value)
+        assert (
+            "json schema" in error_str.lower()
+            or "schema validation" in error_str.lower()
+        )
+
+    def test_contains_constraint_enforcement_disabled(self):
+        """Test that validation can be disabled for performance."""
+        schema = {
+            "type": "object",
+            "title": "OrderWithoutValidation",
+            "properties": {
+                "OrderID": {"type": "string"},
+                "LineItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "Status": {"type": "string"},
+                            "Amount": {"type": "number"},
+                        },
+                    },
+                    "contains": {
+                        "type": "object",
+                        "properties": {"Status": {"const": "approved"}},
+                        "required": ["Status"],
+                    },
+                    "minContains": 2,
+                },
+            },
+        }
+
+        # Create model with JSON Schema validation disabled
+        OrderModel = create_pydantic_model_from_json_schema(
+            schema,
+            "OrderWithoutValidation",
+            clean_schema=False,
+            enable_json_schema_validation=False,
+        )
+
+        # Invalid data should pass (no JSON Schema validation)
+        order = OrderModel(
+            OrderID="ORD-002",
+            LineItems=[
+                {"Status": "approved", "Amount": 100.0},
+                {"Status": "pending", "Amount": 200.0},
+            ],
+        )
+        assert order.OrderID == "ORD-002"
+
+    def test_no_validation_for_simple_schemas(self):
+        """Test that simple schemas without advanced constraints don't add validation overhead."""
+        schema = {
+            "type": "object",
+            "title": "SimpleModel",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"},
+            },
+        }
+
+        # Create model - should not add JSON Schema validation
+        SimpleModel = create_pydantic_model_from_json_schema(
+            schema, "SimpleModel", clean_schema=False
+        )
+
+        # Should work normally (Pydantic validation only)
+        instance = SimpleModel(name="John", age=30)
+        assert instance.name == "John"
+
 
 class TestEdgeCases:
     """Test edge cases and error conditions."""
@@ -1125,6 +1329,61 @@ class TestNestedObjectAliases:
         assert hasattr(TestModel, "model_config")
         assert TestModel.model_config.get("populate_by_name") is True
         assert TestModel.model_config.get("serialize_by_alias") is True
+
+    def test_array_contains_constraints(self):
+        """Test that array contains, minContains, and maxContains constraints are supported."""
+        schema = {
+            "type": "object",
+            "title": "OrderWithApprovedItems",
+            "properties": {
+                "OrderID": {"type": "string"},
+                "LineItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "ItemName": {"type": "string"},
+                            "Status": {"type": "string"},
+                            "Amount": {"type": "number"},
+                        },
+                    },
+                    "contains": {
+                        "type": "object",
+                        "properties": {"Status": {"const": "approved"}},
+                        "required": ["Status"],
+                    },
+                    "minContains": 2,
+                    "maxContains": 5,
+                },
+            },
+        }
+
+        # Test that model can be created (datamodel-code-generator supports these constraints)
+        OrderModel = create_pydantic_model_from_json_schema(
+            schema, "OrderWithApprovedItems", clean_schema=False
+        )
+
+        # Verify model was created
+        assert OrderModel is not None
+        assert OrderModel.__name__ == "OrderWithApprovedItems"
+        assert "LineItems" in OrderModel.model_fields
+
+        # Test valid data with 2 approved items (meets minContains)
+        valid_order = OrderModel(
+            OrderID="ORD-001",
+            LineItems=[
+                {"ItemName": "Item1", "Status": "approved", "Amount": 100.0},
+                {"ItemName": "Item2", "Status": "approved", "Amount": 200.0},
+                {"ItemName": "Item3", "Status": "pending", "Amount": 150.0},
+            ],
+        )
+        assert valid_order.OrderID == "ORD-001"
+        assert len(valid_order.LineItems) == 3
+
+        # Note: Pydantic/datamodel-code-generator may not enforce contains/minContains/maxContains
+        # at runtime, as these are JSON Schema validation constraints. The test verifies that
+        # the schema can be converted to a Pydantic model without errors, even if the constraints
+        # aren't enforced during validation.
 
 
 if __name__ == "__main__":

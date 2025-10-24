@@ -14,10 +14,11 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
+import jsonschema
 from datamodel_code_generator import DataModelType, InputFileType, generate
-from pydantic import BaseModel, ConfigDict, create_model
+from pydantic import BaseModel, ConfigDict, create_model, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,83 @@ def _normalize_class_name(name: str) -> str:
     return "".join(
         word.capitalize() for word in name.replace("-", " ").replace("_", " ").split()
     )
+
+
+def has_advanced_constraints(schema: Dict[str, Any]) -> bool:
+    """
+    Check if schema has constraints that Pydantic doesn't enforce natively.
+
+    Args:
+        schema: JSON Schema definition
+
+    Returns:
+        True if schema has advanced constraints requiring JSON Schema validation
+    """
+    advanced_keywords = {
+        "contains",
+        "minContains",
+        "maxContains",
+        "contentMediaType",
+        "contentEncoding",
+        "dependentSchemas",
+        "dependentRequired",
+        "if",
+        "then",
+        "else",
+    }
+
+    def check_recursive(obj: Any) -> bool:
+        if isinstance(obj, dict):
+            # Check for advanced keywords at this level
+            if any(key in obj for key in advanced_keywords):
+                return True
+            # Recursively check nested objects
+            for value in obj.values():
+                if check_recursive(value):
+                    return True
+        elif isinstance(obj, list):
+            for item in obj:
+                if check_recursive(item):
+                    return True
+        return False
+
+    return check_recursive(schema)
+
+
+def create_json_schema_validator(
+    original_schema: Dict[str, Any],
+) -> Callable[[BaseModel], BaseModel]:
+    """
+    Create a Pydantic model validator that enforces JSON Schema constraints.
+
+    Args:
+        original_schema: The original JSON Schema definition
+
+    Returns:
+        A validator function that can be used with Pydantic's @model_validator
+    """
+
+    def validate_against_json_schema(value: BaseModel) -> BaseModel:
+        """Validate model data against the original JSON Schema."""
+        # Convert Pydantic model to dict for JSON Schema validation
+        data = value.model_dump()
+
+        try:
+            # Validate against JSON Schema
+            jsonschema.validate(data, original_schema)
+            return value
+        except jsonschema.ValidationError as e:
+            # Re-raise as ValueError which Pydantic will catch and convert
+            raise ValueError(
+                f"JSON Schema validation failed: {e.message}. "
+                f"Path: {'.'.join(str(p) for p in e.path) if e.path else 'root'}"
+            )
+        except jsonschema.SchemaError as e:
+            # Schema itself is invalid
+            logger.error(f"Invalid JSON Schema: {e}")
+            raise PydanticModelGenerationError(f"Invalid JSON Schema: {e}")
+
+    return validate_against_json_schema
 
 
 def _find_model_in_module(
@@ -164,6 +242,7 @@ def create_pydantic_model_from_json_schema(
     class_label: str,
     clean_schema: bool = True,
     fields_to_remove: Optional[List[str]] = None,
+    enable_json_schema_validation: bool = True,
 ) -> Type[BaseModel]:
     """
     Dynamically create a Pydantic v2 model from JSON Schema.
@@ -172,11 +251,16 @@ def create_pydantic_model_from_json_schema(
     from a JSON Schema definition. The model is generated in a temporary
     file and then dynamically imported.
 
+    When advanced JSON Schema constraints are detected (e.g., contains, minContains,
+    if/then/else), a model validator is automatically added to enforce these
+    constraints at runtime.
+
     Args:
         schema: JSON Schema definition (dict or JSON string)
         class_label: Label/name for the class (used for module naming and fallback)
         clean_schema: Whether to clean custom fields before generation (default: True)
         fields_to_remove: List of field prefixes to remove when cleaning (default: ["x-aws-idp-"])
+        enable_json_schema_validation: Add JSON Schema validation for advanced constraints (default: True)
 
     Returns:
         Dynamically created Pydantic BaseModel class
@@ -269,14 +353,46 @@ def create_pydantic_model_from_json_schema(
             normalized_name = _normalize_class_name(schema_title)
             selected_model.__name__ = normalized_name
 
-            # Configure model to use aliases for population and serialization
-            # This is critical for handling nested objects where datamodel-code-generator
-            # adds _1 suffixes to avoid naming conflicts with nested model classes
-            final_model = create_model(
-                selected_model.__name__,
-                __base__=selected_model,
-                __config__=ConfigDict(populate_by_name=True, serialize_by_alias=True),
+            # Check if we need to add JSON Schema validation
+            needs_validation = (
+                enable_json_schema_validation and has_advanced_constraints(schema)
             )
+
+            if needs_validation:
+                # Create a new model class with JSON Schema validation
+                validator_func = create_json_schema_validator(schema)
+
+                # Create class with validator using type() and decorator
+                class ModelWithValidation(selected_model):  # type: ignore
+                    model_config = ConfigDict(
+                        populate_by_name=True, serialize_by_alias=True
+                    )
+
+                    @model_validator(mode="after")  # type: ignore
+                    def validate_json_schema(self):  # type: ignore
+                        return validator_func(self)
+
+                # Set the correct name
+                ModelWithValidation.__name__ = selected_model.__name__
+                ModelWithValidation.__qualname__ = selected_model.__name__
+
+                final_model = ModelWithValidation
+
+                logger.info(
+                    f"Added JSON Schema validation to model '{selected_model.__name__}' "
+                    f"for class '{class_label}' due to advanced constraints"
+                )
+            else:
+                # Configure model to use aliases for population and serialization
+                # This is critical for handling nested objects where datamodel-code-generator
+                # adds _1 suffixes to avoid naming conflicts with nested model classes
+                final_model = create_model(
+                    selected_model.__name__,
+                    __base__=selected_model,
+                    __config__=ConfigDict(
+                        populate_by_name=True, serialize_by_alias=True
+                    ),
+                )
 
             # Log the final model with its fields and aliases
             field_count = len(final_model.model_fields)

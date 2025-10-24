@@ -369,6 +369,19 @@ wheels = [
 ]
 
 [[package]]
+name = "aws-xray-sdk"
+version = "2.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "botocore" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e0/6c/8e7fb2a45f20afc5c19d52807b560793fb48b0feca1de7de116b62a7893e/aws_xray_sdk-2.14.0.tar.gz", hash = "sha256:aab843c331af9ab9ba5cefb3a303832a19db186140894a523edafc024cc0493c", size = 93976, upload-time = "2024-06-04T22:11:38.124Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/41/69/b417833a8926fa5491e5346d7c233bf7d8a9b12ba1f4ef41ccea2494000c/aws_xray_sdk-2.14.0-py2.py3-none-any.whl", hash = "sha256:cfbe6feea3d26613a2a869d14c9246a844285c97087ad8f296f901633554ad94", size = 101922, upload-time = "2024-06-04T22:12:25.729Z" },
+]
+
+[[package]]
 name = "babel"
 version = "2.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1333,6 +1346,7 @@ dev = [
     { name = "python-dotenv" },
 ]
 docs-service = [
+    { name = "aws-xray-sdk" },
     { name = "requests" },
 ]
 evaluation = [
@@ -1388,6 +1402,7 @@ requires-dist = [
     { name = "amazon-textract-textractor", extras = ["pandas"], marker = "extra == 'all'", specifier = "==1.9.2" },
     { name = "amazon-textract-textractor", extras = ["pandas"], marker = "extra == 'ocr'", specifier = "==1.9.2" },
     { name = "aws-lambda-powertools", marker = "extra == 'agentic-extraction'", specifier = ">=3.2.0" },
+    { name = "aws-xray-sdk", marker = "extra == 'docs-service'", specifier = ">=2.12.0" },
     { name = "bedrock-agentcore", marker = "python_full_version >= '3.10' and extra == 'agents'", specifier = ">=0.1.1" },
     { name = "bedrock-agentcore", marker = "python_full_version >= '3.10' and extra == 'all'", specifier = ">=0.1.1" },
     { name = "boto3", specifier = "==1.39.7" },
