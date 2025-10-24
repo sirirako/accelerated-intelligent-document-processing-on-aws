@@ -8,14 +8,11 @@ import {
   Input,
   Select,
   Textarea,
-  TokenGroup,
   Checkbox,
   Button,
   Toggle,
   Alert,
 } from '@cloudscape-design/components';
-import SchemaCompositionEditor from './SchemaCompositionEditor';
-import SchemaConditionalEditor from './SchemaConditionalEditor';
 import StringConstraints from './constraints/StringConstraints';
 import NumberConstraints from './constraints/NumberConstraints';
 import ArrayConstraints from './constraints/ArrayConstraints';
@@ -50,7 +47,7 @@ const SchemaInspector = ({
     if (availableClasses) {
       availableClasses.forEach((cls) => {
         if (cls.id === selectedClass.id) return; // Skip self
-        
+
         const properties = cls.attributes?.properties || {};
         Object.entries(properties).forEach(([attrName, attrSchema]) => {
           // Check if attribute references this class
@@ -72,7 +69,7 @@ const SchemaInspector = ({
         });
       });
     }
-    
+
     return (
       <Box>
         <Header variant="h3">Class Inspector: {selectedClass.name}</Header>
@@ -113,14 +110,14 @@ const SchemaInspector = ({
               placeholder="Describe what this class represents"
             />
           </FormField>
-          
+
           {usedIn.length > 0 && (
-            <FormField 
-              label="Used In" 
+            <FormField
+              label="Used In"
               description={`This class is referenced by ${usedIn.length} attribute${usedIn.length > 1 ? 's' : ''}`}
             >
               <SpaceBetween size="xs">
-                {usedIn.map((usage, index) => (
+                {usedIn.map((usage) => (
                   <Button
                     key={`${usage.classId}-${usage.attributeName}`}
                     variant="inline-link"
@@ -133,7 +130,8 @@ const SchemaInspector = ({
                       }
                     }}
                   >
-                    {usage.className}.{usage.attributeName} ({usage.type === 'array' ? `${selectedClass.name}[]` : selectedClass.name})
+                    {usage.className}.{usage.attributeName} (
+                    {usage.type === 'array' ? `${selectedClass.name}[]` : selectedClass.name})
                   </Button>
                 ))}
               </SpaceBetween>
@@ -317,11 +315,9 @@ const SchemaInspector = ({
               </SpaceBetween>
             </FormField>
 
-            <ArrayConstraints attribute={selectedAttribute} onUpdate={onUpdate} />
+            <ArrayConstraints attribute={selectedAttribute} onUpdate={onUpdate} availableClasses={availableClasses} />
           </>
         )}
-
-        <Header variant="h4">Metadata</Header>
 
         <MetadataFields attribute={selectedAttribute} onUpdate={onUpdate} />
 
@@ -330,18 +326,6 @@ const SchemaInspector = ({
         <NumberConstraints attribute={selectedAttribute} onUpdate={onUpdate} />
 
         <ValueConstraints attribute={selectedAttribute} onUpdate={onUpdate} />
-
-        <SchemaCompositionEditor
-          selectedAttribute={selectedAttribute}
-          availableClasses={availableClasses}
-          onUpdate={onUpdate}
-        />
-
-        <SchemaConditionalEditor
-          selectedAttribute={selectedAttribute}
-          availableClasses={availableClasses}
-          onUpdate={onUpdate}
-        />
 
         <Header variant="h4">AWS IDP Extensions</Header>
 

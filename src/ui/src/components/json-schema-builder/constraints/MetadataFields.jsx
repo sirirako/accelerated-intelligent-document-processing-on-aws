@@ -1,59 +1,26 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Header, FormField, Input, Textarea, Checkbox } from '@cloudscape-design/components';
+import { Header, FormField, Textarea, Input } from '@cloudscape-design/components';
 import { formatValueForInput, parseInputValue } from '../utils/schemaHelpers';
 
 const MetadataFields = ({ attribute, onUpdate }) => {
   return (
     <>
-      <Header variant="h4">Metadata</Header>
-
-      <FormField label="Title" description="Human-readable title for this attribute">
-        <Input
-          value={attribute.title || ''}
-          onChange={({ detail }) => onUpdate({ title: detail.value || undefined })}
-          placeholder="e.g., Invoice Number"
-        />
-      </FormField>
-
-      <FormField label="Description" description="Detailed description of this attribute">
+      <FormField
+        label="Description"
+        description="Describe what information to extract and provide specific instructions for the LLM. Be clear about format, units, and any special handling needed."
+      >
         <Textarea
           value={attribute.description || ''}
           onChange={({ detail }) => onUpdate({ description: detail.value || undefined })}
           rows={3}
-          placeholder="Describe what this field represents and how it should be extracted"
-        />
-      </FormField>
-
-      <FormField label="Comment" description="Internal comment for developers (not for end users)">
-        <Textarea
-          value={attribute.$comment || ''}
-          onChange={({ detail }) => onUpdate({ $comment: detail.value || undefined })}
-          rows={2}
-          placeholder="Notes for developers maintaining this schema"
-        />
-      </FormField>
-
-      <FormField label="Default Value" description="Default value if attribute is not present">
-        <Input
-          value={formatValueForInput(attribute.default)}
-          onChange={({ detail }) => {
-            if (!detail.value) {
-              const updates = { ...attribute };
-              delete updates.default;
-              onUpdate(updates);
-              return;
-            }
-            const parsed = parseInputValue(detail.value, attribute.type);
-            onUpdate({ default: parsed });
-          }}
-          placeholder="e.g., 0, '', or JSON value"
+          placeholder="e.g., The total amount due including tax, formatted as a decimal number"
         />
       </FormField>
 
       <FormField
         label="Examples"
-        description="Example values (comma-separated for simple types, JSON array for complex)"
+        description="Provide example values to guide extraction. This helps the LLM understand the expected format and content. Enter comma-separated values or a JSON array."
       >
         <Textarea
           value={(() => {
@@ -80,30 +47,29 @@ const MetadataFields = ({ attribute, onUpdate }) => {
             }
           }}
           rows={2}
-          placeholder='e.g., "value1", "value2" or valid JSON array'
+          placeholder='e.g., "INV-2024-001", "PO-12345" or ["John Doe", "Jane Smith"]'
         />
       </FormField>
 
-      <Checkbox
-        checked={attribute.readOnly || false}
-        onChange={({ detail }) => onUpdate({ readOnly: detail.checked || undefined })}
+      <FormField
+        label="Default Value"
+        description="Fallback value to use if this field is not found or cannot be extracted from the document."
       >
-        Read Only (for response schemas, not user input)
-      </Checkbox>
-
-      <Checkbox
-        checked={attribute.writeOnly || false}
-        onChange={({ detail }) => onUpdate({ writeOnly: detail.checked || undefined })}
-      >
-        Write Only (for request schemas, not returned in responses)
-      </Checkbox>
-
-      <Checkbox
-        checked={attribute.deprecated || false}
-        onChange={({ detail }) => onUpdate({ deprecated: detail.checked || undefined })}
-      >
-        Deprecated (mark this field as deprecated)
-      </Checkbox>
+        <Input
+          value={formatValueForInput(attribute.default)}
+          onChange={({ detail }) => {
+            if (!detail.value) {
+              const updates = { ...attribute };
+              delete updates.default;
+              onUpdate(updates);
+              return;
+            }
+            const parsed = parseInputValue(detail.value, attribute.type);
+            onUpdate({ default: parsed });
+          }}
+          placeholder="e.g., 0, N/A, or a JSON value"
+        />
+      </FormField>
     </>
   );
 };
@@ -111,9 +77,7 @@ const MetadataFields = ({ attribute, onUpdate }) => {
 MetadataFields.propTypes = {
   attribute: PropTypes.shape({
     type: PropTypes.string,
-    title: PropTypes.string,
     description: PropTypes.string,
-    $comment: PropTypes.string,
     default: PropTypes.oneOfType([
       PropTypes.string,
       PropTypes.number,
@@ -124,9 +88,6 @@ MetadataFields.propTypes = {
     examples: PropTypes.arrayOf(
       PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.bool, PropTypes.object, PropTypes.array]),
     ),
-    readOnly: PropTypes.bool,
-    writeOnly: PropTypes.bool,
-    deprecated: PropTypes.bool,
   }).isRequired,
   onUpdate: PropTypes.func.isRequired,
 };
