@@ -5,6 +5,7 @@
 X-Ray tools for tracing analysis and performance monitoring.
 """
 
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
@@ -121,6 +122,79 @@ def _analyze_trace_segments(segments: List[Dict[str, Any]]) -> Dict[str, Any]:
         "slow_segments": slow_segments,
         "has_performance_issues": len(slow_segments) > 0 or len(error_segments) > 0,
     }
+
+
+def _parse_segment_for_lambda(segment: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Recursively parse segment for Lambda executions.
+
+    Args:
+        segment: X-Ray segment document
+
+    Returns:
+        List of Lambda execution details
+    """
+    lambda_executions = []
+
+    if segment.get("origin") == "AWS::Lambda":
+        aws_info = segment.get("aws", {})
+        function_name = segment.get("name", "Unknown")
+
+        if "resource_arn" in segment:
+            function_name = segment["resource_arn"].split(":")[-1]
+
+        lambda_executions.append(
+            {
+                "function_name": function_name,
+                "request_id": aws_info.get("request_id"),
+            }
+        )
+
+    for subsegment in segment.get("subsegments", []):
+        lambda_executions.extend(_parse_segment_for_lambda(subsegment))
+
+    return lambda_executions
+
+
+def extract_lambda_request_ids(trace_id: str) -> Dict[str, str]:
+    """
+    Extract Lambda request IDs from X-Ray trace.
+
+    Args:
+        trace_id: X-Ray trace ID
+
+    Returns:
+        Dict mapping Lambda function names to their CloudWatch request IDs
+    """
+    xray_client = boto3.client("xray")
+
+    try:
+        response = xray_client.batch_get_traces(TraceIds=[trace_id])
+        traces = response.get("Traces", [])
+
+        if not traces:
+            return {}
+
+        lambda_executions = []
+        for trace in traces:
+            for segment in trace.get("Segments", []):
+                try:
+                    segment_doc = json.loads(segment["Document"])
+                    lambda_executions.extend(_parse_segment_for_lambda(segment_doc))
+                except json.JSONDecodeError:
+                    continue
+
+        # Convert to function_name -> request_id mapping
+        result = {}
+        for execution in lambda_executions:
+            if execution["request_id"]:
+                result[execution["function_name"]] = execution["request_id"]
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error extracting Lambda request IDs: {e}")
+        return {}
 
 
 @tool
