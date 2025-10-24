@@ -130,6 +130,7 @@ input UpdateDocumentInput {
   SummaryReportUri: String
   HITLStatus: String
   HITLReviewURL: String
+  TraceId: String
 }
 
 input SectionInput {
