@@ -36,21 +36,22 @@ def _classify_query_intent(query: str) -> Tuple[str, str]:
         Tuple of (intent_type, document_id) where intent_type is either
         'document_specific' or 'general_analysis'
     """
-    # Document-specific patterns - require colon immediately after keyword
-    specific_doc_patterns = [
-        r"document:\s*([^\s]+)",  # "document: filename.pdf"
-        r"file:\s*([^\s]+)",  # "file: report.docx"
-        r"ObjectKey:\s*([^\s]+)",  # "ObjectKey: path/file.pdf"
+    # Document patterns in order of precedence (highest to lowest priority)
+    document_patterns = [
+        r"troubleshoot\s+([^\s]+)\s+for",
+        r"document:\s*([^\s]+)",
+        r"file:\s*([^\s]+)",
+        r"([^\s]+\.(?:pdf|docx?|txt|json|xml|csv|xlsx?)\b)",
     ]
 
-    # Check for specific document patterns first
-    for pattern in specific_doc_patterns:
+    # Check patterns in order of precedence, return first match
+    for pattern in document_patterns:
         match = re.search(pattern, query, re.IGNORECASE)
         if match:
             document_id = match.group(1).strip()
             return ("document_specific", document_id)
 
-    # If no specific document pattern found, it's general analysis
+    # If no document patterns found, it's general analysis
     return ("general_analysis", "")
 
 
@@ -63,6 +64,8 @@ def analyze_errors(query: str, time_range_hours: int = 1) -> Dict[str, Any]:
 
     Document-specific examples:
     - "document: lending_package.pdf"
+    - "Troubleshoot report.pdf for any failures or performance issues"
+    - "Find performance issues related to some-document.pdf"
     General analysis examples:
     - "Find failure for document processing"
 

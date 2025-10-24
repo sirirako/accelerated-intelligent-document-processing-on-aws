@@ -480,18 +480,16 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
             variant="h2"
             actions={
               <SpaceBetween direction="horizontal" size="xs">
-                {item?.objectStatus === 'FAILED' && (
-                  <Button
-                    iconName="gen-ai"
-                    variant="normal"
-                    onClick={() => {
-                      logger.info('Opening troubleshoot modal for failed document:', item.objectKey);
-                      setIsTroubleshootModalVisible(true);
-                    }}
-                  >
-                    Troubleshoot
-                  </Button>
-                )}
+                <Button
+                  iconName="gen-ai"
+                  variant="normal"
+                  onClick={() => {
+                    logger.info('Opening troubleshoot modal for document:', item.objectKey);
+                    setIsTroubleshootModalVisible(true);
+                  }}
+                >
+                  Troubleshoot
+                </Button>
                 {item?.executionArn && (
                   <Button
                     iconName="status-positive"

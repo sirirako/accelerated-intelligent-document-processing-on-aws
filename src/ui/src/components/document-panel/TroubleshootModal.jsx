@@ -27,7 +27,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
   const [subscription, setSubscription] = useState(null);
   const [availableAgents, setAvailableAgents] = useState([]);
 
-  const query = `Find the root cause of this failure for document: ${documentItem?.objectKey}`;
+  const query = `Troubleshoot ${documentItem?.objectKey} for failures or performance issues.`;
 
   const subscribeToJobCompletion = (id) => {
     try {
@@ -252,7 +252,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
       onDismiss={onDismiss}
       visible={visible}
       size="large"
-      header={<Header variant="h1">Troubleshoot Document Failure</Header>}
+      header={<Header variant="h1">Troubleshoot Document</Header>}
       footer={
         <Box float="right">
           <Button variant="primary" onClick={onDismiss}>
@@ -263,7 +263,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
     >
       <SpaceBetween size="l">
         <Alert type="info">
-          Analyzing failure for document: <strong>{documentItem?.objectKey}</strong>
+          Analyzing document: <strong>{documentItem?.objectKey}</strong>
         </Alert>
 
         {isSubmitting && (
