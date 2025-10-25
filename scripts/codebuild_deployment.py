@@ -81,11 +81,11 @@ def publish_templates():
     cmd = f"./publish.sh {bucket_basename} {prefix} {region}"
     result = run_command(cmd)
 
-    # Extract template URL from output - find any S3 URL ending with idp-main.yaml
-    template_url_pattern = r"https://s3[^/]*\.amazonaws\.com/[^\s]+/idp-main\.yaml"
+    # Extract template URL from output - match S3 URLs only
+    template_url_pattern = r"https://s3\..*?idp-main\.yaml"
     
-    # Clean output and search for URL
-    clean_stdout = re.sub(r'\s+', ' ', result.stdout.replace('\n', ' ').replace('\r', ' '))
+    # Remove line breaks that might split the URL in terminal output
+    clean_stdout = result.stdout.replace('\n', '').replace('\r', '')
     template_url_match = re.search(template_url_pattern, clean_stdout)
 
     if template_url_match:
