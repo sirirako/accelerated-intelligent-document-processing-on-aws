@@ -77,8 +77,8 @@ def publish_templates():
     bucket_basename = f"idp-sdlc-sourcecode-{account_id}-{region}"
     prefix = f"codebuild-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
-    # Run publish.py
-    cmd = f"python3 publish.py {bucket_basename} {prefix} {region}"
+    # Run publish.sh
+    cmd = f"./publish.sh {bucket_basename} {prefix} {region}"
     result = run_command(cmd)
 
     # Extract template URL from output
