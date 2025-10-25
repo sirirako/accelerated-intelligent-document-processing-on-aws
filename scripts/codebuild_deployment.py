@@ -81,11 +81,13 @@ def publish_templates():
     cmd = f"./publish.sh {bucket_basename} {prefix} {region}"
     result = run_command(cmd)
 
-    # Extract template URL from output
+    # Extract template URL from output (handle line breaks that may split the URL)
     template_url_pattern = (
-        r"https://s3\.[^/]+\.amazonaws\.com/[^/]+/[^/]+/idp-main\.yaml"
+        r"https://s3\.[^/\s]+\.amazonaws\.com/[^/\s]+/.*?/idp-main\.yaml"
     )
-    template_url_match = re.search(template_url_pattern, result.stdout)
+    # Remove line breaks and extra whitespace that might split the URL
+    clean_stdout = re.sub(r'\s+', ' ', result.stdout.replace('\n', ' ').replace('\r', ' '))
+    template_url_match = re.search(template_url_pattern, clean_stdout)
 
     if template_url_match:
         template_url = template_url_match.group(0)
