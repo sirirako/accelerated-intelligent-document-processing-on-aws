@@ -28,6 +28,7 @@ class TestProgressMonitor:
         assert monitor.stack_name == "test-stack"
         assert monitor.lookup_function == "test-lookup-function"
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     def test_init_missing_lookup_function(self):
         """Test initialization fails without LookupFunctionName"""
         resources = {}

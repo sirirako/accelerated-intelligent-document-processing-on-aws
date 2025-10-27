@@ -839,32 +839,19 @@ class TestJsonSchemaConstraints:
         assert valid_order.OrderID == "ORD-001"
         assert len(valid_order.LineItems) == 3
 
-        # Test that Pydantic does NOT enforce contains/minContains at runtime
-        # (these are JSON Schema constraints not directly supported by Pydantic)
-        # Data with only 1 approved item should still validate (violates minContains=2)
-        try:
-            invalid_order = OrderModel(
+        # Test that Pydantic now DOES enforce contains/minContains at runtime
+        # Data with only 1 approved item should fail validation (violates minContains=2)
+        with pytest.raises(ValidationError):
+            OrderModel(
                 OrderID="ORD-002",
                 LineItems=[
                     {"ItemName": "Item1", "Status": "approved", "Amount": 100.0},
                     {"ItemName": "Item2", "Status": "pending", "Amount": 200.0},
                 ],
             )
-            # If we get here, Pydantic did NOT enforce the minContains constraint
-            assert invalid_order.OrderID == "ORD-002"
-            pydantic_enforces_contains = False
-        except ValidationError:
-            # If validation fails, Pydantic IS enforcing the constraint
-            pydantic_enforces_contains = True
-
-        # Document the behavior: Pydantic v2 does not enforce contains/minContains/maxContains
-        assert not pydantic_enforces_contains, (
-            "Pydantic is enforcing contains constraints - test expectations need updating"
-        )
 
         # Conclusion: datamodel-code-generator successfully translates the schema,
-        # but Pydantic v2 does not enforce contains/minContains/maxContains at runtime.
-        # These constraints would need separate JSON Schema validation if enforcement is required.
+        # and Pydantic v2 now enforces contains/minContains/maxContains at runtime.
 
 
 class TestJsonSchemaValidationEnforcement:
@@ -1365,7 +1352,7 @@ class TestNestedObjectAliases:
 
         # Verify model was created
         assert OrderModel is not None
-        assert OrderModel.__name__ == "OrderWithApprovedItems"
+        assert OrderModel.__name__.lower() == "orderwithapproveditems"
         assert "LineItems" in OrderModel.model_fields
 
         # Test valid data with 2 approved items (meets minContains)

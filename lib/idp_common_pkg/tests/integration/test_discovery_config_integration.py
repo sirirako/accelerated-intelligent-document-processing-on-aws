@@ -43,10 +43,14 @@ discovery:
   output_format:
     sample_json: |
       {
-        "document_class": "TestForm",
-        "document_description": "Test form description",
-        "groups": []
-      }
+                                        "$schema": "http://json-schema.org/draft-07/schema#",
+                                        "$id": "testform",
+                                        "type": "object",
+                                        "title": "TestForm",
+                                        "description": "Test form description",
+                                        "x-aws-idp-document-type": "TestForm",
+                                        "properties": {}
+                                    }
 """
 
         self.config_dict = yaml.safe_load(self.yaml_config)

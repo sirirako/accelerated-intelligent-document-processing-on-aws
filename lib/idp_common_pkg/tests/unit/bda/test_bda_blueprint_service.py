@@ -259,10 +259,10 @@ class TestBdaBlueprintService:
         self, service, mock_custom_configuration
     ):
         """Test handling when one blueprint succeeds and another fails."""
-        # Mock configuration retrieval
-        service.config_manager.get_configuration.return_value = (
-            mock_custom_configuration
-        )
+        # Mock configuration retrieval - wrap dict in object with classes attribute
+        config_obj = MagicMock()
+        config_obj.classes = mock_custom_configuration["classes"]
+        service.config_manager.get_configuration.return_value = config_obj
 
         # Mock first blueprint creation success, second failure
         success_response = {

@@ -224,17 +224,12 @@ class ClassificationService:
         Returns:
             Document with limited pages for classification
         """
-        if self.max_pages_for_classification == "ALL":
+        # 0 or negative means ALL pages
+        if self.max_pages_for_classification <= 0:
             return document
 
+        max_pages = self.max_pages_for_classification
         try:
-            max_pages = int(self.max_pages_for_classification)
-            if max_pages <= 0:
-                logger.warning(
-                    f"Invalid maxPagesForClassification value: {max_pages}, using ALL pages"
-                )
-                return document
-
             if len(document.pages) <= max_pages:
                 return document
 
@@ -1557,7 +1552,8 @@ class ClassificationService:
             return document
 
         # Check for limited page classification
-        if self.max_pages_for_classification != "ALL":
+        # 0 or negative means ALL pages
+        if self.max_pages_for_classification > 0:
             logger.info(
                 f"Using limited page classification: {self.max_pages_for_classification} pages"
             )
