@@ -80,12 +80,12 @@ const SchemaInspector = ({
             label="Document Type"
             description="Document types become top-level schemas. Shared classes are reusable definitions."
           >
-            <Toggle
+            <Checkbox
               checked={selectedClass[X_AWS_IDP_DOCUMENT_TYPE] || false}
               onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_DOCUMENT_TYPE]: detail.checked })}
             >
-              {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] ? 'This is a document type' : 'This is a shared class'}
-            </Toggle>
+              This is a document type
+            </Checkbox>
           </FormField>
 
           {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] ? (
