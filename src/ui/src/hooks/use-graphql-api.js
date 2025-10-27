@@ -30,16 +30,37 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     logger.debug('setDocumentsDeduped called with:', documentValues);
     setDocuments((currentDocuments) => {
       const documentValuesdocumentIds = documentValues.map((c) => c.ObjectKey);
-      const updatedDocuments = [
-        ...currentDocuments.filter((c) => !documentValuesdocumentIds.includes(c.ObjectKey)),
-        ...documentValues.map((document) => ({
-          ...document,
-          ListPK: document.ListPK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListPK,
-          ListSK: document.ListSK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListSK,
-        })),
-      ];
-      logger.debug('Documents state updated, new count:', updatedDocuments.length);
-      return updatedDocuments;
+
+      // Remove old entries with matching ObjectKeys
+      const filteredCurrentDocuments = currentDocuments.filter((c) => !documentValuesdocumentIds.includes(c.ObjectKey));
+
+      // Add new entries with PK/SK preserved
+      const newDocuments = documentValues.map((document) => ({
+        ...document,
+        ListPK: document.ListPK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListPK,
+        ListSK: document.ListSK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListSK,
+      }));
+
+      // Combine and deduplicate by ObjectKey, keeping only the latest entry per ObjectKey
+      const allDocuments = [...filteredCurrentDocuments, ...newDocuments];
+      const deduplicatedByObjectKey = Object.values(
+        allDocuments.reduce((acc, doc) => {
+          const existing = acc[doc.ObjectKey];
+          // Keep the document with the most recent CompletionTime or InitialEventTime
+          if (!existing) {
+            acc[doc.ObjectKey] = doc;
+          } else {
+            const existingTime = existing.CompletionTime || existing.InitialEventTime || '0';
+            const newTime = doc.CompletionTime || doc.InitialEventTime || '0';
+            if (newTime > existingTime) {
+              acc[doc.ObjectKey] = doc;
+            }
+          }
+          return acc;
+        }, {}),
+      );
+
+      return deduplicatedByObjectKey;
     });
   }, []);
 

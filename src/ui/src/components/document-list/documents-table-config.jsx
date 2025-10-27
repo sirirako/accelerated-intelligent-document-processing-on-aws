@@ -8,6 +8,7 @@ import { DOCUMENTS_PATH } from '../../routes/constants';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
 
 export const KEY_COLUMN_ID = 'objectKey';
+export const UNIQUE_TRACK_ID = 'uniqueId';
 
 export const COLUMN_DEFINITIONS_MAIN = [
   {

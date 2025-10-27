@@ -4,13 +4,26 @@ import json
 import logging
 import os
 import uuid
+from copy import deepcopy
 from typing import Optional
 
 from botocore.exceptions import ClientError
+from deepdiff import DeepDiff
 
 from idp_common.bda.bda_blueprint_creator import BDABlueprintCreator
-from idp_common.bda.schema_converter import SchemaConverter
 from idp_common.config.configuration_manager import ConfigurationManager
+from idp_common.config.schema_constants import (
+    DEFS_FIELD,
+    ID_FIELD,
+    REF_FIELD,
+    SCHEMA_DESCRIPTION,
+    SCHEMA_ITEMS,
+    SCHEMA_PROPERTIES,
+    SCHEMA_TYPE,
+    TYPE_ARRAY,
+    TYPE_OBJECT,
+    X_AWS_IDP_DOCUMENT_TYPE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +36,6 @@ class BdaBlueprintService:
         self.config_manager = ConfigurationManager()
 
         return
-
-    def _format_section_name(self, section_name: str) -> str:
-        """Format section name to PascalCase for definitions."""
-        words = section_name.replace(" ", "-").split()
-        return "".join(word.capitalize() for word in words)
-
-    def _format_field_name(self, field_name: str) -> str:
-        """Format field name to snake_case for properties."""
-        # Remove any non-alphanumeric characters except spaces
-        field_name = "".join(
-            c if c.isalnum() or c.isspace() else " " for c in field_name
-        )
-        # Convert to snake_case
-        field_name = "".join(field_name.lower().split())
-        return field_name.replace("_", "-")
 
     def _retrieve_all_blueprints(self, project_arn: str):
         """
@@ -88,55 +86,104 @@ class BdaBlueprintService:
             logger.error(f"Error retrieving blueprints: {e}")
             return []
 
-    def _check_for_updates(self, custom_class: dict, blueprint: dict):
-        # get the schema
-        schema = blueprint["schema"]
-        schema = json.loads(schema)
-        # get the document class
-        definitions = schema["definitions"]
-        groups = custom_class.get("attributes", None)
-        # traverse thru definitions fist
-        if groups is None:
-            groups = []
-        logger.info(f"number of groups {len(groups)}")
-        _updatesFound = False
-        if (
-            custom_class["name"] != schema["class"]
-            or custom_class["description"] != schema["description"]
-        ):
-            _updatesFound = True
-            return _updatesFound
-        for group in groups:
-            groupName = group.get("name")
-            formattedGroupName = self._format_section_name(groupName)
-            definition = definitions.get(formattedGroupName, None)
-            if not definition:
-                logger.info(f"change found group {groupName} : {formattedGroupName}")
-                return True
-            group_type = group.get("attributeType")
-            fields = group.get("groupAttributes", [])
-            if group_type and group_type.lower() == "list":
-                listItemTemplate = group.get("listItemTemplate", {})
-                fields = listItemTemplate.get("itemAttributes", [])
-            if definition:
-                for field in fields:
-                    field_name = field.get("name")
-                    formatted_field_name = self._format_field_name(
-                        field_name=field_name
-                    )
-                    blueprint_field = definition["properties"].get(
-                        formatted_field_name, None
-                    )
-                    if not blueprint_field or blueprint_field[
-                        "instruction"
-                    ] != field.get("description", None):
-                        _updatesFound = True
-                        logger.info(
-                            f"change found for field {groupName} : {formattedGroupName} {blueprint_field} {field}"
-                        )
-                        return _updatesFound
+    def _transform_json_schema_to_bedrock_blueprint(self, json_schema: dict) -> dict:
+        """
+        Transform a standard JSON Schema to Bedrock Document Analysis blueprint format.
 
-        return _updatesFound
+        Bedrock expects:
+        - "class" and "description" at top level (not $id)
+        - "instruction" and "inferenceType" for each field property
+        - Sections in definitions with references in properties
+
+        Args:
+            json_schema: Standard JSON Schema from migration
+
+        Returns:
+            Blueprint schema in Bedrock format
+        """
+        # Start with the basic structure Bedrock expects
+        blueprint = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "class": json_schema.get(
+                ID_FIELD, json_schema.get(X_AWS_IDP_DOCUMENT_TYPE, "Document")
+            ),
+            "description": json_schema.get(
+                SCHEMA_DESCRIPTION, "Document schema for data extraction"
+            ),
+            "type": TYPE_OBJECT,
+            "definitions": deepcopy(json_schema.get(DEFS_FIELD, {})),
+            "properties": {},
+        }
+
+        # Transform each property to add Bedrock-specific fields
+        for prop_name, prop_value in json_schema.get(SCHEMA_PROPERTIES, {}).items():
+            transformed_prop = self._add_bedrock_fields_to_property(prop_value)
+            blueprint["properties"][prop_name] = transformed_prop
+
+        return blueprint
+
+    def _add_bedrock_fields_to_property(self, prop: dict) -> dict:
+        """
+        Add Bedrock-specific fields (instruction, inferenceType) to a property.
+        """
+        # If this node is a pure reference, return a safe copy without augmenting.
+        if isinstance(prop, dict) and REF_FIELD in prop:
+            return deepcopy(prop)
+
+        # Make a deep copy to avoid modifying the original schema structure.
+        result = deepcopy(prop)
+
+        # Add instruction from description if not present
+        if "instruction" not in result and SCHEMA_DESCRIPTION in result:
+            result["instruction"] = result[SCHEMA_DESCRIPTION]
+        elif "instruction" not in result:
+            result["instruction"] = "Extract this field from the document"
+
+        # Add inferenceType if not present
+        if "inferenceType" not in result:
+            result["inferenceType"] = "inferred"  # Default to inferred for most fields
+
+        # Recursively handle nested objects
+        if result.get(SCHEMA_TYPE) == TYPE_OBJECT and SCHEMA_PROPERTIES in result:
+            for nested_name, nested_value in result[SCHEMA_PROPERTIES].items():
+                result[SCHEMA_PROPERTIES][nested_name] = (
+                    self._add_bedrock_fields_to_property(nested_value)
+                )
+
+        # Handle array items
+        if result.get(SCHEMA_TYPE) == TYPE_ARRAY and SCHEMA_ITEMS in result:
+            result[SCHEMA_ITEMS] = self._add_bedrock_fields_to_property(
+                result[SCHEMA_ITEMS]
+            )
+
+        return result
+
+    def _check_for_updates(self, custom_class: dict, blueprint: dict):
+        """
+        Check if the custom_class JSON Schema differs from the existing blueprint.
+        Transform both to Bedrock format and then compare.
+        """
+        # Parse the blueprint schema
+        blueprint_schema = blueprint["schema"]
+        if isinstance(blueprint_schema, str):
+            blueprint_schema = json.loads(blueprint_schema)
+
+        # Transform the custom_class to Bedrock format for comparison
+        transformed_custom = self._transform_json_schema_to_bedrock_blueprint(
+            custom_class
+        )
+
+        # Use DeepDiff to compare the schemas
+        diff = DeepDiff(blueprint_schema, transformed_custom, ignore_order=True)
+
+        updates_found = bool(diff)
+
+        if updates_found:
+            logger.info("Schema changes detected between custom class and blueprint")
+            # Log specific differences for debugging
+            logger.info(f"Differences found: {diff}")
+
+        return updates_found
 
     def _blueprint_lookup(self, existing_blueprints, doc_class):
         # Create a lookup dictionary for existing blueprints by name prefix
@@ -159,11 +206,15 @@ class BdaBlueprintService:
         try:
             config_item = self.config_manager.get_configuration(config_type="Custom")
 
-            if not config_item or "classes" not in config_item:
+            if (
+                not config_item
+                or not hasattr(config_item, "classes")
+                or not config_item.classes
+            ):
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
 
-            classess = config_item["classes"]
+            classess = config_item.classes
 
             if not classess or len(classess) == 0:
                 logger.info("No Custom configuration to process")
@@ -181,10 +232,8 @@ class BdaBlueprintService:
                 try:
                     blueprint_arn = custom_class.get("blueprint_arn", None)
                     blueprint_name = custom_class.get("blueprint_name", None)
-                    docu_class = custom_class["name"]
-                    docu_desc = custom_class["description"]
-                    converter = SchemaConverter(
-                        document_class=docu_class, description=docu_desc
+                    docu_class = custom_class.get(
+                        ID_FIELD, custom_class.get(X_AWS_IDP_DOCUMENT_TYPE, "")
                     )
                     blueprint_exists = self._blueprint_lookup(
                         existing_blueprints, docu_class
@@ -198,8 +247,7 @@ class BdaBlueprintService:
 
                     if blueprint_arn:
                         # Use existing blueprint
-                        custom_class["blueprint_arn"] = blueprint_arn
-                        custom_class["blueprint_name"] = blueprint_name
+                        # Note: We don't modify custom_class since it's a JSON Schema
                         logger.info(
                             f"Found existing blueprint for class {docu_class}: {blueprint_name}"
                         )
@@ -209,7 +257,11 @@ class BdaBlueprintService:
                         if self._check_for_updates(
                             custom_class=custom_class, blueprint=blueprint_exists
                         ):
-                            blueprint_schema = converter.convert(custom_class)
+                            blueprint_schema = (
+                                self._transform_json_schema_to_bedrock_blueprint(
+                                    custom_class
+                                )
+                            )
                             logger.info(
                                 f"Blueprint schema generate:: for {json.dumps(custom_class, indent=2)}"
                             )
@@ -225,9 +277,7 @@ class BdaBlueprintService:
                                 blueprint_arn=blueprint_arn,
                                 project_arn=self.dataAutomationProjectArn,
                             )
-                            custom_class["blueprint_version"] = result.get(
-                                "blueprint"
-                            ).get("blueprint_version")
+                            # Note: We don't store blueprint_version in custom_class since it's a JSON Schema
                             logger.info(
                                 f"Updated existing blueprint for class {docu_class}"
                             )
@@ -241,7 +291,11 @@ class BdaBlueprintService:
                         # Call the create_blueprint method
                         blueprint_name = f"{self.blueprint_name_prefix}-{docu_class}-{uuid.uuid4().hex[:8]}"
 
-                        blueprint_schema = converter.convert(custom_class)
+                        blueprint_schema = (
+                            self._transform_json_schema_to_bedrock_blueprint(
+                                custom_class
+                            )
+                        )
                         logger.info(
                             f"Blueprint schema generate:: for {json.dumps(custom_class, indent=2)}"
                         )
@@ -260,16 +314,12 @@ class BdaBlueprintService:
 
                         blueprint_arn = result["blueprint"]["blueprintArn"]
                         blueprint_name = result["blueprint"]["blueprintName"]
-                        custom_class["blueprint_arn"] = blueprint_arn
-                        custom_class["blueprint_name"] = blueprint_name
+                        # Note: We don't store blueprint metadata in custom_class since it's a JSON Schema
                         # update the project or create new project
                         # update the project with version
                         result = self.blueprint_creator.create_blueprint_version(
                             blueprint_arn=blueprint_arn,
                             project_arn=self.dataAutomationProjectArn,
-                        )
-                        custom_class["blueprint_version"] = result.get("blueprint").get(
-                            "blueprint_version"
                         )
                         blueprints_updated.append(blueprint_arn)
                         logger.info(
@@ -277,7 +327,7 @@ class BdaBlueprintService:
                         )
                     classess_status.append(
                         {
-                            "class": custom_class["name"],
+                            "class": docu_class,  # Use the docu_class we extracted earlier
                             "blueprint_arn": blueprint_arn,
                             "status": "success",
                         }
@@ -285,7 +335,10 @@ class BdaBlueprintService:
 
                 except Exception as e:
                     class_name = (
-                        custom_class.get("name", "unknown")
+                        custom_class.get(
+                            ID_FIELD,
+                            custom_class.get(X_AWS_IDP_DOCUMENT_TYPE, "unknown"),
+                        )
                         if custom_class
                         else "unknown"
                     )

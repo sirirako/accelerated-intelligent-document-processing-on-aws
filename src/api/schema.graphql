@@ -65,10 +65,30 @@ type DocumentListItem implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
     HITLReviewURL: String
 }
 
+type ValidationError @aws_cognito_user_pools @aws_iam {
+  field: String
+  message: String
+  type: String
+}
+
+type ConfigurationError @aws_cognito_user_pools @aws_iam {
+  type: String
+  message: String
+  validationErrors: [ValidationError]
+}
+
 type ConfigurationResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
   Schema: AWSJSON
   Default: AWSJSON
   Custom: AWSJSON
+  error: ConfigurationError
+}
+
+type UpdateConfigurationResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  message: String
+  error: ConfigurationError
 }
 
 type DiscoveryJobList @aws_cognito_user_pools @aws_iam {
@@ -238,7 +258,7 @@ type Mutation  {
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
   deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
-  updateConfiguration(customConfig: AWSJSON!): Boolean @aws_cognito_user_pools
+  updateConfiguration(customConfig: AWSJSON!): UpdateConfigurationResponse @aws_cognito_user_pools
   uploadDocument(fileName: String!, contentType: String, prefix: String, bucket: String): PresignedUrlResponse! @aws_cognito_user_pools
   uploadDiscoveryDocument(fileName: String!, contentType: String, prefix: String, bucket: String, groundTruthFileName: String): DisPresignedUrlResponse! @aws_cognito_user_pools
   copyToBaseline(objectKey: String!): CopyToBaselineResponse! @aws_cognito_user_pools
