@@ -185,8 +185,10 @@ class TestClassificationService:
             # Create service instance without calling __init__
             service = ClassificationService()
 
-            # Set minimal config
-            service.config = {}
+            # Set minimal config using IDPConfig model
+            from idp_common.config.models import IDPConfig
+
+            service.config = IDPConfig()
 
             # Call the method directly
             doc_types = service._load_document_types()

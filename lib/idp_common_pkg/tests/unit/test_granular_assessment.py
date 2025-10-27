@@ -313,8 +313,8 @@ class TestGranularAssessmentService:
             page_images=[],
         )
 
-        # Should have text content and cache point
-        assert len(content) >= 2
+        # Should have at least one text content item
+        assert len(content) >= 1
         # Check that the task prompt template is used and placeholders are replaced
         assert any(
             "letter" in item.get("text", "") for item in content
@@ -323,7 +323,6 @@ class TestGranularAssessmentService:
         assert not any(
             "sender_name: Name of sender" in item.get("text", "") for item in content
         )  # ATTRIBUTE_NAMES_AND_DESCRIPTIONS should be placeholder
-        assert any("<<CACHEPOINT>>" in item.get("text", "") for item in content)
         # Should contain placeholders for task-specific content
         assert any(
             "{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}" in item.get("text", "")

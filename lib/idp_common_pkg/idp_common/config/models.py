@@ -43,8 +43,14 @@ class ImageConfig(BaseModel):
         if v is None or (isinstance(v, str) and not v.strip()):
             return None
         if isinstance(v, str):
-            return int(v) if v else None
-        return int(v)
+            try:
+                return int(v) if v else None
+            except ValueError:
+                return None  # Invalid value, return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
 
     @field_validator("dpi", mode="before")
     @classmethod
@@ -132,8 +138,9 @@ class ClassificationConfig(BaseModel):
     top_p: float = Field(default=0.1, ge=0.0, le=1.0)
     top_k: float = Field(default=5.0, ge=0.0)
     max_tokens: int = Field(default=4096, gt=0)
-    maxPagesForClassification: Union[int, str] = Field(
-        default=1, description="Max pages to use for classification (int or 'ALL')"
+    maxPagesForClassification: int = Field(
+        default=0,
+        description="Max pages to use for classification. 0 or negative = ALL pages, positive = limit to N pages",
     )
     classificationMethod: str = Field(default="multimodalPageLevelClassification")
     image: ImageConfig = Field(default_factory=ImageConfig)
@@ -156,12 +163,12 @@ class ClassificationConfig(BaseModel):
 
     @field_validator("maxPagesForClassification", mode="before")
     @classmethod
-    def parse_max_pages(cls, v: Any) -> Union[int, str]:
-        """Parse maxPagesForClassification - can be int or 'ALL'"""
+    def parse_max_pages(cls, v: Any) -> int:
+        """Parse maxPagesForClassification - can be int or 'ALL' string (converted to 0)"""
         if isinstance(v, str):
             if v.upper() == "ALL":
-                return "ALL"
-            return int(v) if v else 1
+                return 0  # 0 means ALL pages
+            return int(v) if v else 0
         return int(v)
 
 
@@ -226,7 +233,7 @@ class AssessmentConfig(BaseModel):
 class SummarizationConfig(BaseModel):
     """Document summarization configuration"""
 
-    enabled: bool = Field(default=False, description="Enable summarization")
+    enabled: bool = Field(default=True, description="Enable summarization")
     model: str = Field(
         default="us.amazon.nova-premier-v1:0",
         description="Bedrock model ID for summarization",

@@ -188,7 +188,9 @@ class TestAssessmentService:
         service = AssessmentService(region="us-west-2", config=mock_config)
 
         assert service.region == "us-west-2"
-        assert service.config == mock_config
+        # Config is converted to IDPConfig model, verify it has the expected structure
+        assert hasattr(service.config, "assessment")
+        assert service.config.assessment.model == mock_config["assessment"]["model"]
 
     def test_get_class_schema(self, service):
         """Test getting schema for a document class."""
