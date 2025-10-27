@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Type
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.config.models import IDPConfig
@@ -31,6 +31,8 @@ from idp_common.utils.few_shot_example_builder import (
 
 # Conditional import for agentic extraction (requires Python 3.10+ dependencies)
 try:
+    from pydantic import BaseModel, Field, create_model
+
     from idp_common.extraction.agentic_idp import structured_output
 
     AGENTIC_AVAILABLE = True
