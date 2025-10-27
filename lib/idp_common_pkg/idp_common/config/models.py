@@ -542,6 +542,32 @@ class IDPConfig(BaseModel):
         default_factory=EvaluationConfig, description="Evaluation configuration"
     )
 
+    # Criteria validation specific fields (used in pattern-2/criteria-validation)
+    summary: Optional[Dict[str, Any]] = Field(
+        default=None, description="Summary configuration for criteria validation"
+    )
+    criteria_types: Optional[List[str]] = Field(
+        default=None, description="List of criteria types for validation"
+    )
+    request_bucket: Optional[str] = Field(
+        default=None, description="S3 bucket for user history/request data"
+    )
+    request_history_prefix: Optional[str] = Field(
+        default=None, description="S3 prefix for request history"
+    )
+    criteria_bucket: Optional[str] = Field(
+        default=None, description="S3 bucket for criteria documents"
+    )
+    output_bucket: Optional[str] = Field(
+        default=None, description="S3 bucket for processing output"
+    )
+    textract_page_tracker: Optional[str] = Field(
+        default=None, description="S3 bucket for Textract page tracking"
+    )
+    cost_report_bucket: Optional[str] = Field(
+        default=None, description="S3 bucket for cost reports"
+    )
+
     model_config = ConfigDict(
         # Do not allow extra fields - all config should be explicit
         extra="forbid",

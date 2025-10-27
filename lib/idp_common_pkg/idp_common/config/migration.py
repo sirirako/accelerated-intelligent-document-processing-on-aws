@@ -10,12 +10,12 @@ from .schema_constants import (
     SCHEMA_ITEMS,
     SCHEMA_REQUIRED,
     SCHEMA_DESCRIPTION,
-    SCHEMA_EXAMPLES,
     TYPE_OBJECT,
     TYPE_ARRAY,
     TYPE_STRING,
     # AWS IDP extensions
     X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_EXAMPLES,
     X_AWS_IDP_LIST_ITEM_DESCRIPTION,
     X_AWS_IDP_ORIGINAL_NAME,
     X_AWS_IDP_EVALUATION_METHOD,
@@ -151,9 +151,7 @@ def migrate_legacy_to_schema(
 
         # Migrate examples if present
         if LEGACY_EXAMPLES in class_config:
-            migrated_class[LEGACY_EXAMPLES] = _migrate_examples(
-                class_config[LEGACY_EXAMPLES]
-            )
+            migrated_class[X_AWS_IDP_EXAMPLES] = class_config[LEGACY_EXAMPLES]
 
         legacy_attributes = class_config.get(LEGACY_ATTRIBUTES, [])
 
@@ -278,98 +276,6 @@ def _migrate_list_attribute(attr: Dict[str, Any]) -> Dict[str, Any]:
     _validate_and_set_aws_extensions(schema_attr, attr)
 
     return schema_attr
-
-
-def _migrate_examples(legacy_examples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Migrate legacy examples to JSON Schema examples format.
-
-    Legacy format has:
-    - classPrompt: Classification prompt
-    - attributesPrompt: Extraction prompt
-    - imagePath: Path to example image
-    - name: Example name
-
-    JSON Schema format uses standard 'examples' array with AWS extensions.
-
-    Args:
-        legacy_examples: List of legacy example dictionaries
-
-    Returns:
-        List of migrated examples in JSON Schema format
-    """
-    if not legacy_examples:
-        return []
-
-    migrated_examples = []
-
-    for example in legacy_examples:
-        # Create a JSON Schema example with AWS IDP extensions
-        migrated_example = {}
-
-        # Preserve the name if present
-        if LEGACY_NAME in example:
-            migrated_example[LEGACY_NAME] = example[LEGACY_NAME]
-
-        # Add AWS IDP extensions for few-shot learning
-        if LEGACY_CLASS_PROMPT in example:
-            migrated_example[X_AWS_IDP_CLASS_PROMPT] = example[LEGACY_CLASS_PROMPT]
-
-        if LEGACY_ATTRIBUTES_PROMPT in example:
-            migrated_example[X_AWS_IDP_ATTRIBUTES_PROMPT] = example[
-                LEGACY_ATTRIBUTES_PROMPT
-            ]
-
-        if LEGACY_IMAGE_PATH in example:
-            migrated_example[X_AWS_IDP_IMAGE_PATH] = example[LEGACY_IMAGE_PATH]
-
-        # Parse the attributes prompt to create actual example values if possible
-        # This helps with standard JSON Schema validation
-        if LEGACY_ATTRIBUTES_PROMPT in example:
-            try:
-                # Try to extract JSON values from the attributes prompt
-                import re
-                import json
-
-                prompt = example[LEGACY_ATTRIBUTES_PROMPT]
-                # Look for JSON-like structure in the prompt
-                json_match = re.search(r"\{.*\}", prompt, re.DOTALL)
-                parsed = False
-                if json_match:
-                    json_str = json_match.group()
-                    try:
-                        example_values = json.loads(json_str)
-                        if isinstance(example_values, dict):
-                            for key, value in example_values.items():
-                                migrated_example[key] = value
-                            parsed = True
-                    except (json.JSONDecodeError, ValueError):
-                        parsed = False
-
-                if not parsed:
-                    # Try to find key-value pairs in format: "key": "value"
-                    pairs = re.findall(
-                        r'"([^"]+)":\s*("(?:[^"\\]|\\.)*"|\bnull\b)', prompt
-                    )
-                    if pairs:
-                        # Build a JSON object from the pairs
-                        json_str = (
-                            "{" + ", ".join([f'"{k}": {v}' for k, v in pairs]) + "}"
-                        )
-                        try:
-                            example_values = json.loads(json_str)
-                            # Add the parsed values to the example
-                            for key, value in example_values.items():
-                                migrated_example[key] = value
-                        except (json.JSONDecodeError, ValueError):
-                            pass  # If parsing fails, just keep the prompt as-is
-            except Exception:
-                pass  # Safely ignore parsing errors
-
-        if migrated_example:  # Only add if we have content
-            migrated_examples.append(migrated_example)
-
-    return migrated_examples
 
 
 def _add_aws_extensions(legacy_attr: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -542,9 +448,13 @@ def _convert_classes_to_json_schema(
         if required:
             schema[SCHEMA_REQUIRED] = required
 
-        # Add examples if present
+        # Add examples if present (check both legacy and new key)
         if LEGACY_EXAMPLES in doc_type_class and doc_type_class[LEGACY_EXAMPLES]:
-            schema[SCHEMA_EXAMPLES] = doc_type_class[LEGACY_EXAMPLES]
+            schema[X_AWS_IDP_EXAMPLES] = doc_type_class[LEGACY_EXAMPLES]
+        elif (
+            X_AWS_IDP_EXAMPLES in doc_type_class and doc_type_class[X_AWS_IDP_EXAMPLES]
+        ):
+            schema[X_AWS_IDP_EXAMPLES] = doc_type_class[X_AWS_IDP_EXAMPLES]
 
         if defs:
             schema[DEFS_FIELD] = defs

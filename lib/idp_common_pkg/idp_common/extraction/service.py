@@ -20,14 +20,14 @@ from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     ID_FIELD,
-    SCHEMA_EXAMPLES,
     SCHEMA_PROPERTIES,
-    X_AWS_IDP_ATTRIBUTES_PROMPT,
     X_AWS_IDP_DOCUMENT_TYPE,
-    X_AWS_IDP_IMAGE_PATH,
 )
 from idp_common.models import Document
 from idp_common.schema import create_pydantic_model_from_json_schema
+from idp_common.utils.few_shot_example_builder import (
+    build_few_shot_extraction_examples_content,
+)
 
 # Conditional import for agentic extraction (requires Python 3.10+ dependencies)
 try:
@@ -428,60 +428,8 @@ class ExtractionService:
             )
             return content
 
-        # Get examples from the JSON Schema
-        examples = target_class.get(SCHEMA_EXAMPLES, [])
-        for example in examples:
-            # Check for attributes prompt in AWS IDP extension field
-            attributes_prompt = example.get(X_AWS_IDP_ATTRIBUTES_PROMPT)
-
-            # Only process this example if it has a non-empty attributesPrompt
-            if not attributes_prompt or not attributes_prompt.strip():
-                logger.info(
-                    f"Skipping example with empty attributes prompt: {example.get('name')}"
-                )
-                continue
-
-            content.append({"text": attributes_prompt})
-
-            # Check for image path in AWS IDP extension field
-            image_path = example.get(X_AWS_IDP_IMAGE_PATH)
-            if image_path:
-                try:
-                    # Load image content from the path
-
-                    from idp_common import image, s3
-
-                    # Get list of image files from the path (supports directories/prefixes)
-                    image_files = self._get_image_files_from_path(image_path)
-
-                    # Process each image file
-                    for image_file_path in image_files:
-                        try:
-                            # Load image content
-                            if image_file_path.startswith("s3://"):
-                                # Direct S3 URI
-                                image_content = s3.get_binary_content(image_file_path)
-                            else:
-                                # Local file
-                                with open(image_file_path, "rb") as f:
-                                    image_content = f.read()
-
-                            # Prepare image content for Bedrock
-                            image_attachment = image.prepare_bedrock_image_attachment(
-                                image_content
-                            )
-                            content.append(image_attachment)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to load image {image_file_path}: {e}"
-                            )
-                            continue
-
-                except Exception as e:
-                    raise ValueError(
-                        f"Failed to load example images from {image_path}: {e}"
-                    )
+        # Get examples from the JSON Schema for this specific class
+        content = build_few_shot_extraction_examples_content(target_class)
 
         return content
 

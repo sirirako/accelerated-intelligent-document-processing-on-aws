@@ -51,6 +51,10 @@ X_AWS_IDP_ORIGINAL_NAME = "x-aws-idp-original-name"
 # Evaluation method for attribute comparison
 X_AWS_IDP_EVALUATION_METHOD = "x-aws-idp-evaluation-method"
 
+
+
+X_AWS_IDP_EXAMPLES= "x-aws-idp-examples"
+
 # Valid evaluation methods
 EVALUATION_METHOD_EXACT = "EXACT"
 EVALUATION_METHOD_NUMERIC_EXACT = "NUMERIC_EXACT"
@@ -118,7 +122,6 @@ SCHEMA_PROPERTIES = "properties"
 SCHEMA_ITEMS = "items"
 SCHEMA_REQUIRED = "required"
 SCHEMA_DESCRIPTION = "description"
-SCHEMA_EXAMPLES = "examples"  # Standard JSON Schema examples field
 
 # JSON Schema type values
 TYPE_OBJECT = "object"

@@ -10,10 +10,7 @@ from idp_common.config.schema_constants import (
     LEGACY_ATTRIBUTES_PROMPT,
     LEGACY_CLASS_PROMPT,
     LEGACY_IMAGE_PATH,
-    SCHEMA_EXAMPLES,
-    X_AWS_IDP_ATTRIBUTES_PROMPT,
-    X_AWS_IDP_CLASS_PROMPT,
-    X_AWS_IDP_IMAGE_PATH,
+    X_AWS_IDP_EXAMPLES,
 )
 
 
@@ -108,56 +105,51 @@ class TestExampleMigration:
         schema = migrated[0]
 
         # Check that examples field exists
-        assert SCHEMA_EXAMPLES in schema, "Schema should contain examples field"
-        examples = schema[SCHEMA_EXAMPLES]
+        assert X_AWS_IDP_EXAMPLES in schema, "Schema should contain examples field"
+        examples = schema[X_AWS_IDP_EXAMPLES]
 
         # Check correct number of examples
         assert len(examples) == 2, "Should have 2 examples"
 
-        # Check first example structure
+        # Check first example structure (examples keep legacy keys)
         example1 = examples[0]
         assert example1.get("name") == "Letter1"
-        assert X_AWS_IDP_CLASS_PROMPT in example1
+        assert LEGACY_CLASS_PROMPT in example1
         assert (
-            example1[X_AWS_IDP_CLASS_PROMPT]
-            == "This is an example of the class 'letter'"
+            example1[LEGACY_CLASS_PROMPT] == "This is an example of the class 'letter'"
         )
-        assert X_AWS_IDP_ATTRIBUTES_PROMPT in example1
-        assert X_AWS_IDP_IMAGE_PATH in example1
+        assert LEGACY_ATTRIBUTES_PROMPT in example1
+        assert LEGACY_IMAGE_PATH in example1
         assert (
-            example1[X_AWS_IDP_IMAGE_PATH]
+            example1[LEGACY_IMAGE_PATH]
             == "config_library/pattern-2/example-images/letter1.jpg"
         )
 
         # Check second example
         example2 = examples[1]
         assert example2.get("name") == "Letter2"
-        assert X_AWS_IDP_CLASS_PROMPT in example2
-        assert X_AWS_IDP_IMAGE_PATH in example2
+        assert LEGACY_CLASS_PROMPT in example2
+        assert LEGACY_IMAGE_PATH in example2
 
-    def test_extracts_attribute_values_from_prompt(
+    def test_examples_preserve_original_structure(
         self, sample_legacy_config_with_examples
     ):
-        """Test that attribute values are extracted from the attributes prompt."""
+        """Test that examples preserve their original structure without transformation."""
         migrated = migrate_legacy_to_schema(
             sample_legacy_config_with_examples["classes"]
         )
         schema = migrated[0]
-        examples = schema[SCHEMA_EXAMPLES]
+        examples = schema[X_AWS_IDP_EXAMPLES]
 
         example1 = examples[0]
 
-        # Check if values were extracted from the prompt
-        # The migration should attempt to parse JSON-like values from the prompt
-        if "sender_name" in example1:
-            assert example1["sender_name"] == "Will E. Clark"
-        if "recipient_name" in example1:
-            assert example1["recipient_name"] == "The Honorable Wendell H. Ford"
-        if "date" in example1:
-            assert example1["date"] == "10/31/1995"
+        # Examples should keep their original structure with legacy keys
+        assert LEGACY_ATTRIBUTES_PROMPT in example1
+        assert "sender_name" in example1[LEGACY_ATTRIBUTES_PROMPT]
+        assert "recipient_name" in example1[LEGACY_ATTRIBUTES_PROMPT]
 
-    def test_extracts_values_when_prompt_contains_json_block(self):
-        """Ensure JSON blocks inside prompts are parsed into example values."""
+    def test_examples_with_json_prompt_preserved(self):
+        """Ensure examples with JSON in prompts are preserved as-is."""
         config = {
             "classes": [
                 {
@@ -177,12 +169,16 @@ class TestExampleMigration:
         }
 
         migrated = migrate_legacy_to_schema(config["classes"])
-        examples = migrated[0][SCHEMA_EXAMPLES]
+        examples = migrated[0][X_AWS_IDP_EXAMPLES]
 
         assert len(examples) == 1
         example = examples[0]
-        assert example.get("foo") == "bar"
-        assert example.get("count") == 3
+        # Examples are preserved as-is without parsing
+        assert (
+            example.get(LEGACY_ATTRIBUTES_PROMPT)
+            == 'Expected output:\\n{ "foo": "bar", "count": 3 }\\nEnd.'
+        )
+        assert example.get("name") == "JsonPrompt"
 
     def test_migration_without_examples(self, legacy_config_without_examples):
         """Test that migration works for configs without examples."""
@@ -193,8 +189,10 @@ class TestExampleMigration:
 
         # Schema should not have examples field if none were provided
         # or it should have an empty array
-        if SCHEMA_EXAMPLES in schema:
-            assert schema[SCHEMA_EXAMPLES] == [] or schema[SCHEMA_EXAMPLES] is None
+        if X_AWS_IDP_EXAMPLES in schema:
+            assert (
+                schema[X_AWS_IDP_EXAMPLES] == [] or schema[X_AWS_IDP_EXAMPLES] is None
+            )
 
     def test_preserves_example_metadata(self, sample_legacy_config_with_examples):
         """Test that all example metadata is preserved during migration."""
@@ -202,19 +200,19 @@ class TestExampleMigration:
         migrated = migrate_legacy_to_schema(
             sample_legacy_config_with_examples["classes"]
         )
-        migrated_examples = migrated[0][SCHEMA_EXAMPLES]
+        migrated_examples = migrated[0][X_AWS_IDP_EXAMPLES]
 
         for i, legacy_ex in enumerate(legacy_examples):
             migrated_ex = migrated_examples[i]
 
-            # Check that all legacy fields are preserved with new names
+            # Check that all legacy fields are preserved with their original keys
             assert migrated_ex["name"] == legacy_ex["name"]
-            assert migrated_ex[X_AWS_IDP_CLASS_PROMPT] == legacy_ex[LEGACY_CLASS_PROMPT]
+            assert migrated_ex[LEGACY_CLASS_PROMPT] == legacy_ex[LEGACY_CLASS_PROMPT]
             assert (
-                migrated_ex[X_AWS_IDP_ATTRIBUTES_PROMPT]
+                migrated_ex[LEGACY_ATTRIBUTES_PROMPT]
                 == legacy_ex[LEGACY_ATTRIBUTES_PROMPT]
             )
-            assert migrated_ex[X_AWS_IDP_IMAGE_PATH] == legacy_ex[LEGACY_IMAGE_PATH]
+            assert migrated_ex[LEGACY_IMAGE_PATH] == legacy_ex[LEGACY_IMAGE_PATH]
 
     def test_json_schema_structure_with_examples(
         self, sample_legacy_config_with_examples
@@ -232,8 +230,8 @@ class TestExampleMigration:
         assert "properties" in schema
 
         # Verify examples are at the correct level
-        assert SCHEMA_EXAMPLES in schema
-        assert isinstance(schema[SCHEMA_EXAMPLES], list)
+        assert X_AWS_IDP_EXAMPLES in schema
+        assert isinstance(schema[X_AWS_IDP_EXAMPLES], list)
 
     def test_handles_malformed_attributes_prompt(self):
         """Test that migration handles malformed attributes prompts gracefully."""
@@ -257,11 +255,12 @@ class TestExampleMigration:
 
         # Should not raise an exception
         migrated = migrate_legacy_to_schema(config["classes"])
-        examples = migrated[0][SCHEMA_EXAMPLES]
+        examples = migrated[0][X_AWS_IDP_EXAMPLES]
 
         assert len(examples) == 1
+        # Examples preserve original keys
         assert (
-            examples[0][X_AWS_IDP_ATTRIBUTES_PROMPT]
+            examples[0][LEGACY_ATTRIBUTES_PROMPT]
             == "This is not valid JSON or key-value pairs"
         )
 
@@ -282,5 +281,5 @@ class TestExampleMigration:
         schema = migrated[0]
 
         # Should either not have examples field or have empty array
-        if SCHEMA_EXAMPLES in schema:
-            assert schema[SCHEMA_EXAMPLES] == []
+        if X_AWS_IDP_EXAMPLES in schema:
+            assert schema[X_AWS_IDP_EXAMPLES] == []

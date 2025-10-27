@@ -8,8 +8,9 @@ This tests the critical behavior: when Default config is updated, Custom should
 get all new default values EXCEPT for fields the user has customized.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import boto3
 import pytest
 from idp_common.config.configuration_manager import ConfigurationManager
 from idp_common.config.models import (
@@ -19,6 +20,7 @@ from idp_common.config.models import (
     IDPConfig,
     ImageConfig,
 )
+from moto import mock_aws
 
 
 class TestSyncCustomWithNewDefault:
@@ -26,7 +28,7 @@ class TestSyncCustomWithNewDefault:
 
     def test_no_customizations_gets_all_new_defaults(self):
         """When Custom == Default, updating Default should give user all new values."""
-        manager = ConfigurationManager()
+        manager = ConfigurationManager(table_name="test-table")
 
         # Old configs are identical (no user customizations)
         old_default = IDPConfig(extraction=ExtractionConfig(temperature=0.0, top_p=0.1))
@@ -48,8 +50,8 @@ class TestSyncCustomWithNewDefault:
         assert new_custom.extraction.max_tokens == 5000
 
     def test_preserves_user_customization(self):
-        """User customizations should be preserved when Default updates."""
-        manager = ConfigurationManager()
+        """User's temperature customization should be preserved when Default updates top_p."""
+        manager = ConfigurationManager(table_name="test-table")
 
         # Old default
         old_default = IDPConfig(
@@ -80,7 +82,7 @@ class TestSyncCustomWithNewDefault:
 
     def test_multiple_customizations_at_different_levels(self):
         """Multiple user customizations across different config sections."""
-        manager = ConfigurationManager()
+        manager = ConfigurationManager(table_name="test-table")
 
         old_default = IDPConfig(
             extraction=ExtractionConfig(temperature=0.0, model="nova-pro-v1:0"),
@@ -113,7 +115,7 @@ class TestSyncCustomWithNewDefault:
 
     def test_nested_field_customization(self):
         """User customized a nested field - only that field should be preserved."""
-        manager = ConfigurationManager()
+        manager = ConfigurationManager(table_name="test-table")
 
         old_default = IDPConfig(
             extraction=ExtractionConfig(
@@ -135,20 +137,6 @@ class TestSyncCustomWithNewDefault:
             )
         )
 
-        # User customized only image.dpi
-        old_custom = IDPConfig(
-            extraction=ExtractionConfig(
-                temperature=0.0, image={"dpi": 600, "width": None}
-            )
-        )
-
-        # New default updates multiple fields
-        new_default = IDPConfig(
-            extraction=ExtractionConfig(
-                temperature=0.5, image={"dpi": 450, "width": 1024}
-            )
-        )
-
         new_custom = manager.sync_custom_with_new_default(
             old_default, new_default, old_custom
         )
@@ -162,7 +150,7 @@ class TestSyncCustomWithNewDefault:
 
     def test_user_added_new_field(self):
         """User added a field not in Default - should be preserved."""
-        manager = ConfigurationManager()
+        manager = ConfigurationManager(table_name="test-table")
 
         old_default = IDPConfig(extraction=ExtractionConfig(temperature=0.0))
 
@@ -187,7 +175,7 @@ class TestSyncCustomWithNewDefault:
 
     def test_complex_real_world_scenario(self):
         """Complex scenario with changes at multiple levels."""
-        manager = ConfigurationManager()
+        manager = ConfigurationManager(table_name="test-table")
 
         # Old system default
         old_default = IDPConfig(
@@ -261,18 +249,25 @@ class TestSyncCustomWithNewDefault:
         assert new_custom.assessment.granular.enabled
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestConfigurationManagerSync:
     """Integration tests for configuration sync behavior."""
 
-    @patch("idp_common.config.configuration_manager.boto3")
-    def test_save_default_triggers_sync(self, mock_boto3):
+    @mock_aws
+    def test_save_default_triggers_sync(self):
         """Saving Default should automatically sync Custom."""
-        # Setup mocks
-        mock_table = MagicMock()
-        mock_boto3.resource.return_value.Table.return_value = mock_table
+        # Create mock DynamoDB table
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table_name = "test-config-table"
 
-        manager = ConfigurationManager()
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        manager = ConfigurationManager(table_name=table_name)
 
         # Mock get_configuration to return old configs
         old_default = IDPConfig(extraction=ExtractionConfig(temperature=0.0))
@@ -299,13 +294,21 @@ class TestConfigurationManagerSync:
             # User's temperature should be preserved
             assert saved_custom.extraction.temperature == 0.8
 
-    @patch("idp_common.config.configuration_manager.boto3")
-    def test_save_custom_does_not_trigger_sync(self, mock_boto3):
+    @mock_aws
+    def test_save_custom_does_not_trigger_sync(self):
         """Saving Custom should NOT trigger any sync."""
-        mock_table = MagicMock()
-        mock_boto3.resource.return_value.Table.return_value = mock_table
+        # Create mock DynamoDB table
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table_name = "test-config-table"
 
-        manager = ConfigurationManager()
+        dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        manager = ConfigurationManager(table_name=table_name)
 
         custom = IDPConfig(extraction=ExtractionConfig(temperature=0.8))
 
