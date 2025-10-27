@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { produce } from 'immer';
-import { X_AWS_IDP_DOCUMENT_TYPE } from '../constants/schemaConstants';
+import { X_AWS_IDP_DOCUMENT_TYPE, X_AWS_IDP_EXAMPLES } from '../constants/schemaConstants';
 
 const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) => {
   const updatedProperties = {};
@@ -631,6 +631,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
         properties: sanitizedProps,
         ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
         ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
+        ...(docTypeClass[X_AWS_IDP_EXAMPLES]?.length > 0 ? { [X_AWS_IDP_EXAMPLES]: docTypeClass[X_AWS_IDP_EXAMPLES] } : {}),
       };
 
       console.log('Final schema has $defs?', '$defs' in result);

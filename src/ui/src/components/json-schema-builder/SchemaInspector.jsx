@@ -19,12 +19,14 @@ import ArrayConstraints from './constraints/ArrayConstraints';
 import ObjectConstraints from './constraints/ObjectConstraints';
 import MetadataFields from './constraints/MetadataFields';
 import ValueConstraints from './constraints/ValueConstraints';
+import ExamplesEditor from './constraints/ExamplesEditor';
 import {
   TYPE_OPTIONS,
   EVALUATION_METHOD_OPTIONS,
   X_AWS_IDP_DOCUMENT_TYPE,
   X_AWS_IDP_EVALUATION_METHOD,
   X_AWS_IDP_CONFIDENCE_THRESHOLD,
+  X_AWS_IDP_EXAMPLES,
 } from '../../constants/schemaConstants';
 
 const SchemaInspector = ({
@@ -110,6 +112,13 @@ const SchemaInspector = ({
               placeholder="Describe what this class represents"
             />
           </FormField>
+
+          {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] && (
+            <ExamplesEditor
+              examples={selectedClass[X_AWS_IDP_EXAMPLES] || []}
+              onChange={(examples) => onUpdateClass({ [X_AWS_IDP_EXAMPLES]: examples })}
+            />
+          )}
 
           {usedIn.length > 0 && (
             <FormField

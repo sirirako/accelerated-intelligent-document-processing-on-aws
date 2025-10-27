@@ -125,6 +125,7 @@ export const MAX_PROMPT_OVERRIDE_LENGTH = 10000;
 // AWS IDP Example Extensions
 // ============================================================================
 /** Extensions for few-shot example support */
+export const X_AWS_IDP_EXAMPLES = 'x-aws-idp-examples';
 export const X_AWS_IDP_CLASS_PROMPT = 'x-aws-idp-class-prompt';
 export const X_AWS_IDP_ATTRIBUTES_PROMPT = 'x-aws-idp-attributes-prompt';
 export const X_AWS_IDP_IMAGE_PATH = 'x-aws-idp-image-path';
