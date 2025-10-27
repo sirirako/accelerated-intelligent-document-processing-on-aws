@@ -76,7 +76,11 @@ const mapDocumentsAttributes = (documents) => {
     const hitlTriggered = hitlStatus && hitlStatus !== 'N/A';
     const hitlCompleted = isHitlCompleted(hitlStatus);
 
+    // Create a unique ID combining PK and SK for proper row tracking
+    const uniqueId = listPK && listSK ? `${listPK}#${listSK}` : objectKey;
+
     const mapping = {
+      uniqueId,
       objectKey,
       objectStatus,
       initialEventTime: formatDate(initialEventTime),
