@@ -6,6 +6,7 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import getConfigurationQuery from '../graphql/queries/getConfiguration';
 import updateConfigurationMutation from '../graphql/queries/updateConfiguration';
+import { deepMerge } from '../utils/configUtils';
 
 const client = generateClient();
 const logger = new ConsoleLogger('useConfiguration');
@@ -55,48 +56,36 @@ const normalizeBooleans = (obj, schema) => {
   return normalized;
 };
 
-// Deep merge function for combining default and custom configurations
-const deepMerge = (target, source) => {
-  const result = { ...target };
-
-  if (!source) {
-    return result;
-  }
-
-  Object.keys(source)
-    .filter((key) => Object.hasOwn(source, key))
-    .forEach((key) => {
-      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-        if (Object.hasOwn(target, key) && target[key] && typeof target[key] === 'object') {
-          result[key] = deepMerge(target[key], source[key]);
-        } else {
-          result[key] = { ...source[key] };
-        }
-      } else {
-        result[key] = source[key];
-      }
-    });
-
-  return result;
-};
-
 const useConfiguration = () => {
   const [schema, setSchema] = useState(null);
   const [defaultConfig, setDefaultConfig] = useState(null);
   const [customConfig, setCustomConfig] = useState(null);
   const [mergedConfig, setMergedConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchConfiguration = async () => {
-    setLoading(true);
+  const fetchConfiguration = async (silent = false) => {
+    // Use different loading states for initial load vs background refresh
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       logger.debug('Fetching configuration...');
       const result = await client.graphql({ query: getConfigurationQuery });
       logger.debug('API response:', result);
 
-      const { Schema, Default, Custom } = result.data.getConfiguration;
+      const response = result.data.getConfiguration;
+
+      if (!response.success) {
+        const errorMsg = response.error?.message || 'Failed to load configuration';
+        throw new Error(errorMsg);
+      }
+
+      const { Schema, Default, Custom } = response;
 
       // Log raw data types
       logger.debug('Raw data types:', {
@@ -119,6 +108,12 @@ const useConfiguration = () => {
           logger.error('Error parsing schema string:', e);
           throw new Error(`Failed to parse schema data: ${e.message}`);
         }
+      }
+
+      // Unwrap nested Schema object if present
+      if (schemaObj && schemaObj.Schema) {
+        schemaObj = schemaObj.Schema;
+        logger.debug('Unwrapped nested Schema object');
       }
 
       // Parse default config if it's a string
@@ -169,22 +164,32 @@ const useConfiguration = () => {
       setDefaultConfig(normalizedDefaultObj);
       setCustomConfig(normalizedCustomObj);
 
-      // Merge default and custom configurations
-      const merged = deepMerge(normalizedDefaultObj, normalizedCustomObj);
-      console.log('Merged configuration result:', merged);
+      // IMPORTANT: Frontend only uses Custom config
+      // Backend ensures Custom is always populated (copies Default on first read)
+      // This way frontend always diffs against a complete config
+      const activeConfig = normalizedCustomObj;
+
+      console.log('Active configuration (Custom only):', activeConfig);
       // Double check the classification and extraction sections
-      if (merged.classification) {
-        console.log('Final classification data:', merged.classification);
+      if (activeConfig.classification) {
+        console.log('Final classification data:', activeConfig.classification);
       }
-      if (merged.extraction) {
-        console.log('Final extraction data:', merged.extraction);
+      if (activeConfig.extraction) {
+        console.log('Final extraction data:', activeConfig.extraction);
       }
-      setMergedConfig(merged);
+      if (activeConfig.classes) {
+        console.log('Final classes (JSON Schema) data:', activeConfig.classes);
+      }
+      setMergedConfig(activeConfig);
     } catch (err) {
       logger.error('Error fetching configuration', err);
       setError(`Failed to load configuration: ${err.message}`);
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -213,14 +218,19 @@ const useConfiguration = () => {
         variables: { customConfig: configString },
       });
 
-      if (result.data.updateConfiguration) {
-        setCustomConfig(configToUpdate);
-        // Update merged config
-        const merged = deepMerge(defaultConfig, configToUpdate);
-        setMergedConfig(merged);
-        return true;
+      const response = result.data.updateConfiguration;
+
+      if (!response.success) {
+        const errorMsg = response.error?.message || 'Failed to update configuration';
+        throw new Error(errorMsg);
       }
-      return false;
+
+      // Refetch silently to ensure backend and frontend are in sync
+      // Silent mode prevents loading state changes that cause re-renders
+      // The component will handle rehydration without full re-render
+      await fetchConfiguration(true);
+      
+      return true;
     } catch (err) {
       logger.error('Error updating configuration', err);
       setError(`Failed to update configuration: ${err.message}`);
@@ -613,6 +623,7 @@ const useConfiguration = () => {
     customConfig,
     mergedConfig,
     loading,
+    refreshing,
     error,
     fetchConfiguration,
     updateConfiguration,

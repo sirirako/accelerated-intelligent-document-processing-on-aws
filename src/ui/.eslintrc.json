@@ -57,7 +57,6 @@
         "ignore": ["\\.css$"]
       }
     ],
-    "react/require-default-props": "off",
-    "react/default-props-match-prop-types": "off"
+    "react-hooks/exhaustive-deps": "off"
   }
 }

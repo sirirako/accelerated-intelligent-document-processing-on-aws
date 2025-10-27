@@ -14,9 +14,20 @@ import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from idp_common import s3
+from idp_common.config.models import IDPConfig
+from idp_common.config.schema_constants import (
+    SCHEMA_DESCRIPTION,
+    SCHEMA_ITEMS,
+    SCHEMA_PROPERTIES,
+    SCHEMA_TYPE,
+    TYPE_ARRAY,
+    TYPE_OBJECT,
+    X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_EVALUATION_METHOD,
+)
 from idp_common.evaluation.comparator import compare_values
 from idp_common.evaluation.metrics import calculate_metrics
 from idp_common.evaluation.models import (
@@ -35,37 +46,45 @@ class EvaluationService:
     """Service for evaluating document extraction results."""
 
     def __init__(
-        self, region: str = None, config: Dict[str, Any] = None, max_workers: int = 10
+        self,
+        region: str = None,
+        config: Union[Dict[str, Any], IDPConfig] = None,
+        max_workers: int = 10,
     ):
         """
         Initialize the evaluation service.
 
         Args:
             region: AWS region
-            config: Configuration dictionary containing evaluation settings
+            config: Configuration dictionary or IDPConfig model containing evaluation settings
             max_workers: Maximum number of concurrent workers for section evaluation
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
+
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
         self.max_workers = max_workers
 
-        # Set default LLM evaluation settings
-        self.llm_config = self.config.get("evaluation", {}).get("llm_method", {})
-        self.default_model = self.llm_config.get(
-            "model", "anthropic.claude-3-sonnet-20240229-v1:0"
-        )
-        self.default_temperature = self.llm_config.get("temperature", 0.0)
-        self.default_top_k = self.llm_config.get("top_k", 5)
-        self.default_system_prompt = self.llm_config.get(
-            "system_prompt",
-            """You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching.""",
+        # Set default LLM evaluation settings from typed config
+        self.default_model = self.config.evaluation.llm_method.model
+        self.default_temperature = self.config.evaluation.llm_method.temperature
+        self.default_top_k = self.config.evaluation.llm_method.top_k
+        self.default_top_p = self.config.evaluation.llm_method.top_p
+        self.default_max_tokens = self.config.evaluation.llm_method.max_tokens
+        self.default_system_prompt = (
+            self.config.evaluation.llm_method.system_prompt
+            or """You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching."""
         )
 
-        self.default_task_prompt = self.llm_config.get(
-            "task_prompt",
-            """I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
+        self.default_task_prompt = (
+            self.config.evaluation.llm_method.task_prompt
+            or """I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
 
 For the attribute named "{ATTRIBUTE_NAME}" described as "{ATTRIBUTE_DESCRIPTION}":
 - Expected value: {EXPECTED_VALUE}
@@ -83,7 +102,7 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
   "score": 0.0 to 1.0,
   "reason": "Your explanation here"
 }
-            """,
+            """
         )
 
         logger.info(
@@ -93,7 +112,7 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
 
     def _get_attributes_for_class(self, class_name: str) -> List[EvaluationAttribute]:
         """
-        Get attribute configurations for a document class, supporting nested structures.
+        Get attribute configurations for a document class from JSON Schema.
 
         Args:
             class_name: Document class name
@@ -101,95 +120,84 @@ IMPORTANT: Respond ONLY with a valid JSON object and nothing else. Here's the ex
         Returns:
             List of attribute configurations (flattened for nested structures)
         """
-        classes_config = self.config.get("classes", [])
-        for class_config in classes_config:
-            if class_config.get("name", "").lower() == class_name.lower():
-                attributes = []
-                for attr_config in class_config.get("attributes", []):
-                    attributes.extend(self._process_attribute_config(attr_config))
-                return attributes
+        classes = self.config.classes
+        for schema in classes:
+            if (
+                isinstance(schema, dict)
+                and schema.get(X_AWS_IDP_DOCUMENT_TYPE, "").lower()
+                == class_name.lower()
+            ):
+                properties = schema.get(SCHEMA_PROPERTIES, {})
+                return list(self._walk_properties(properties))
 
-        # Return empty list if class not found
         logger.warning(f"No attribute configuration found for class: {class_name}")
         return []
 
-    def _process_attribute_config(
-        self, attr_config: Dict[str, Any], parent_name: str = ""
-    ) -> List[EvaluationAttribute]:
+    def _walk_properties(
+        self, properties: Dict[str, Any], parent_path: str = ""
+    ) -> Generator[EvaluationAttribute, None, None]:
         """
-        Process an attribute configuration, handling nested structures.
+        Walk JSON Schema properties and yield evaluation attributes (generator pattern).
 
         Args:
-            attr_config: Attribute configuration dictionary
-            parent_name: Parent attribute name for nested structures
+            properties: Schema properties dict
+            parent_path: Parent path for nested properties
 
-        Returns:
-            List of evaluation attributes (flattened)
+        Yields:
+            EvaluationAttribute objects for each leaf property
         """
-        attributes = []
-        attr_name = attr_config.get("name", "")
-        attr_type = attr_config.get("attributeType", "simple")
+        for prop_name, prop_schema in properties.items():
+            prop_type = prop_schema.get(SCHEMA_TYPE)
+            full_path = f"{parent_path}.{prop_name}" if parent_path else prop_name
 
-        # Build full attribute name for nested structures
-        full_name = f"{parent_name}.{attr_name}" if parent_name else attr_name
-
-        if attr_type == "group":
-            # Handle group attributes with nested groupAttributes
-            group_attributes = attr_config.get("groupAttributes", [])
-            for group_attr in group_attributes:
-                attributes.extend(self._process_attribute_config(group_attr, full_name))
-
-        elif attr_type == "list":
-            # Handle list attributes with listItemTemplate
-            list_template = attr_config.get("listItemTemplate", {})
-            item_attributes = list_template.get("itemAttributes", [])
-
-            for item_attr in item_attributes:
-                # For list items, use array notation in the name
-                list_item_name = f"{full_name}[]"
-                attributes.extend(
-                    self._process_attribute_config(item_attr, list_item_name)
+            if prop_type == TYPE_OBJECT:
+                # Recurse into nested object properties
+                yield from self._walk_properties(
+                    prop_schema.get(SCHEMA_PROPERTIES, {}), full_path
                 )
 
-        else:
-            # Handle simple attributes (default case)
-            eval_method = EvaluationMethod.LLM  # Default method
-            threshold = 0.8  # Default evaluation threshold
-            comparator_type = None  # Default to None
+            elif prop_type == TYPE_ARRAY:
+                # Handle array items
+                items_schema = prop_schema.get(SCHEMA_ITEMS, {})
+                if items_schema.get(SCHEMA_TYPE) == TYPE_OBJECT:
+                    # Recurse with [] notation for list items
+                    yield from self._walk_properties(
+                        items_schema.get(SCHEMA_PROPERTIES, {}), f"{full_path}[]"
+                    )
 
-            # Get evaluation method if specified in config
-            method_str = attr_config.get("evaluation_method", "LLM")
-            try:
-                eval_method = EvaluationMethod(method_str.upper())
-            except ValueError:
-                logger.warning(
-                    f"Unknown evaluation method for '{full_name}': '{method_str}' (using LLM)"
-                )
+            else:
+                # Leaf property - yield evaluation attribute
+                method_str = prop_schema.get(X_AWS_IDP_EVALUATION_METHOD, "LLM")
+                try:
+                    eval_method = EvaluationMethod(method_str.upper())
+                except (ValueError, KeyError):
+                    logger.warning(
+                        f"Unknown evaluation method for '{full_path}': '{method_str}' (using LLM)"
+                    )
+                    eval_method = EvaluationMethod.LLM
 
-            # Get threshold if applicable
-            try:
-                if "evaluation_threshold" in attr_config:
-                    threshold = float(attr_config["evaluation_threshold"])
-            except ValueError:
-                logger.warning(
-                    f"Invalid evaluation threshold for '{full_name}': '{attr_config['evaluation_threshold']}' (using default)"
-                )
+                # Get threshold if specified
+                threshold = 0.8
+                if "evaluation_threshold" in prop_schema:
+                    try:
+                        threshold = float(prop_schema["evaluation_threshold"])
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Invalid evaluation threshold for '{full_path}' (using default)"
+                        )
 
-            # Get comparator type for Hungarian method
-            if eval_method == EvaluationMethod.HUNGARIAN:
-                comparator_type = attr_config.get("hungarian_comparator", "EXACT")
+                # Get comparator type for Hungarian method
+                comparator_type = None
+                if eval_method == EvaluationMethod.HUNGARIAN:
+                    comparator_type = prop_schema.get("hungarian_comparator", "EXACT")
 
-            attributes.append(
-                EvaluationAttribute(
-                    name=full_name,
-                    description=attr_config.get("description", ""),
+                yield EvaluationAttribute(
+                    name=full_path,
+                    description=prop_schema.get(SCHEMA_DESCRIPTION, ""),
                     evaluation_method=eval_method,
                     evaluation_threshold=threshold,
                     comparator_type=comparator_type,
                 )
-            )
-
-        return attributes
 
     def _flatten_nested_data(
         self, data: Dict[str, Any], parent_key: str = ""

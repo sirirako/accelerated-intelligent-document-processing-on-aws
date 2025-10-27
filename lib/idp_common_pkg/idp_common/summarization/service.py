@@ -17,9 +17,10 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from idp_common import bedrock, s3, utils
+from idp_common.config.models import IDPConfig
 from idp_common.models import Document, Status
 from idp_common.summarization.markdown_formatter import SummaryMarkdownFormatter
 from idp_common.summarization.models import DocumentSummarizationResult, DocumentSummary
@@ -34,7 +35,7 @@ class SummarizationService:
     def __init__(
         self,
         region: str = None,
-        config: Dict[str, Any] = None,
+        config: Union[Dict[str, Any], IDPConfig] = None,
         backend: str = "bedrock",
     ):
         """
@@ -42,13 +43,19 @@ class SummarizationService:
 
         Args:
             region: AWS region for backend services
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
             backend: Summarization backend to use ('bedrock')
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
+
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
         self.backend = backend.lower()
 
         # Validate backend choice
@@ -58,10 +65,8 @@ class SummarizationService:
 
         # Initialize backend-specific clients
         if self.backend == "bedrock":
-            # Get model_id from config for logging
-            model_id = self.config.get("model_id") or self.config.get(
-                "summarization", {}
-            ).get("model")
+            # Get model_id from typed config for logging
+            model_id = self.config.summarization.model
             if not model_id:
                 raise ValueError("No model ID specified in configuration for Bedrock")
             self.bedrock_model = model_id
@@ -81,26 +86,24 @@ class SummarizationService:
         Raises:
             ValueError: If required configuration values are missing
         """
-        summarization_config = self.config.get("summarization", {})
+        # Type-safe access to summarization config (Pydantic handles conversions)
         config = {
             "model_id": self.bedrock_model,
-            "temperature": float(summarization_config.get("temperature", 0)),
-            "top_k": float(summarization_config.get("top_k", 5)),
-            "top_p": float(summarization_config.get("top_p", 0.1)),
-            "max_tokens": int(summarization_config.get("max_tokens", 4096))
-            if summarization_config.get("max_tokens")
-            else None,
+            "temperature": self.config.summarization.temperature,
+            "top_k": self.config.summarization.top_k,
+            "top_p": self.config.summarization.top_p,
+            "max_tokens": self.config.summarization.max_tokens,
         }
 
         # Validate system prompt
-        system_prompt = summarization_config.get("system_prompt")
+        system_prompt = self.config.summarization.system_prompt
         if not system_prompt:
             raise ValueError("No system_prompt found in summarization configuration")
 
         config["system_prompt"] = system_prompt
 
         # Validate task prompt
-        task_prompt = summarization_config.get("task_prompt")
+        task_prompt = self.config.summarization.task_prompt
         if not task_prompt:
             raise ValueError("No task_prompt found in summarization configuration")
 
@@ -417,11 +420,8 @@ class SummarizationService:
         Returns:
             Document: Updated Document object with summary and summarization_result
         """
-        # Check if summarization is enabled in configuration
-        summarization_config = self.config.get("summarization", {})
-        from idp_common.utils import normalize_boolean_value
-
-        enabled = normalize_boolean_value(summarization_config.get("enabled", True))
+        # Check if summarization is enabled in typed configuration
+        enabled = self.config.summarization.enabled
         if not enabled:
             logger.info(
                 f"Summarization is disabled in configuration for document {document.id}, skipping processing"
