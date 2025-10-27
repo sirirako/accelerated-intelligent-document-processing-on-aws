@@ -14,7 +14,7 @@ import boto3
 from strands import tool
 
 from ..config import create_error_response, safe_int_conversion
-from .lambda_tool import lambda_document_context
+from .lambda_tool import lambda_lookup
 from .xray_tool import extract_lambda_request_ids
 
 logger = logging.getLogger(__name__)
@@ -284,26 +284,44 @@ def cloudwatch_document_logs(
     max_log_groups: int = 20,
 ) -> Dict[str, Any]:
     """
-    Finds document-specific errors using execution context.
-    Leverages document execution context to perform targeted log searches with precise
-    time windows and execution-specific filters for enhanced accuracy.
+    Search CloudWatch logs for errors related to a specific document.
+
+    Performs targeted log analysis using document execution context, X-Ray traces,
+    and Lambda request IDs to find precise error information for document processing failures.
+
+    Use this tool to:
+    - Find specific errors for a failed document
+    - Get detailed error messages with timestamps
+    - Identify which Lambda function failed
+    - Analyze document processing timeline
+
+    Example usage:
+    - "Find errors for document report.pdf"
+    - "What went wrong with lending_package.pdf?"
+    - "Show me the logs for document xyz.pdf"
 
     Args:
-        document_id: Document ObjectKey to search logs for
+        document_id: Document filename/ObjectKey (e.g., "report.pdf", "lending_package.pdf")
         stack_name: CloudFormation stack name for log group discovery
-        filter_pattern: CloudWatch filter pattern (default: "ERROR")
-        max_log_events: Maximum events per log group (default: 10)
-        max_log_groups: Maximum log groups to search (default: 20)
+        filter_pattern: CloudWatch filter pattern - "ERROR", "Exception", "Failed" (default: "ERROR")
+        max_log_events: Maximum log events per group to return (default: 10, max: 50)
+        max_log_groups: Maximum log groups to search (default: 20, max: 50)
 
     Returns:
-        Dict containing document-specific log search results
+        Dict with keys:
+        - analysis_type (str): "document_specific" or "document_not_found"
+        - document_id (str): The document being analyzed
+        - total_events_found (int): Number of error events found
+        - results (list): Log search results with events and metadata
+        - search_strategy (dict): Strategy used for log searching
+        - processing_time_window (dict): Time window used for search
     """
     try:
         # Use safe integer conversion with defaults
         max_log_events = safe_int_conversion(max_log_events, 10)
         max_log_groups = safe_int_conversion(max_log_groups, 20)
         # Get document execution context with enhanced request ID mapping
-        context = lambda_document_context(document_id, stack_name)
+        context = lambda_lookup(document_id, stack_name)
 
         if not context.get("document_found"):
             return {
@@ -663,7 +681,7 @@ def cloudwatch_document_logs(
 
 
 @tool
-def cloudwatch_stack_logs(
+def cloudwatch_logs(
     filter_pattern: str = "ERROR",
     hours_back: int = None,
     max_log_events: int = None,
@@ -672,20 +690,38 @@ def cloudwatch_stack_logs(
     end_time: datetime = None,
 ) -> Dict[str, Any]:
     """
-    Searches all stack-related log groups for error patterns.
-    Primary tool for system-wide log analysis. Automatically discovers relevant log groups
-    based on CloudFormation stack configuration and searches for specified patterns.
+    Search CloudWatch logs across all stack services for system-wide error patterns.
+
+    Performs comprehensive log analysis across all Lambda functions and services
+    in the CloudFormation stack to identify system-wide issues and error patterns.
+
+    Use this tool to:
+    - Find recent system-wide errors and failures
+    - Identify error patterns across multiple services
+    - Analyze system health over time periods
+    - Troubleshoot infrastructure-level issues
+
+    Example usage:
+    - "Show me recent errors in the system"
+    - "Find all failures in the last 2 hours"
+    - "What exceptions occurred today?"
 
     Args:
-        filter_pattern: CloudWatch filter pattern (default: "ERROR")
-        hours_back: Hours to look back from current time (default: 24)
-        max_log_events: Maximum events per log group (default: 10)
-        max_log_groups: Maximum log groups to search (default: 20)
-        start_time: Optional start time for search window
-        end_time: Optional end time for search window
+        filter_pattern: CloudWatch filter pattern - "ERROR", "Exception", "Failed", "Timeout" (default: "ERROR")
+        hours_back: Hours to look back from now (default: 24, max: 168 for 1 week)
+        max_log_events: Maximum events per log group (default: 10, max: 50)
+        max_log_groups: Maximum log groups to search (default: 20, max: 50)
+        start_time: Optional specific start time (overrides hours_back)
+        end_time: Optional specific end time (overrides hours_back)
 
     Returns:
-        Dict containing comprehensive log search results across all relevant groups
+        Dict with keys:
+        - stack_name (str): CloudFormation stack being analyzed
+        - total_events_found (int): Total error events found
+        - log_groups_searched (int): Number of log groups searched
+        - results (list): Log search results from each group
+        - filter_pattern (str): Pattern used for searching
+        - log_prefix_used (str): Log group prefix used for discovery
     """
     stack_name = os.environ.get("AWS_STACK_NAME", "")
 
