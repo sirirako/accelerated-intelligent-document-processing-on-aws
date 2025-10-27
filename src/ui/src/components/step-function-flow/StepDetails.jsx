@@ -46,6 +46,10 @@ const JsonDisplay = ({ data = null }) => {
   );
 };
 
+JsonDisplay.propTypes = {
+  data: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+};
+
 // Helper function to check if a step is disabled based on configuration
 const isStepDisabled = (stepName, config) => {
   if (!config) return false;
@@ -60,6 +64,11 @@ const isStepDisabled = (stepName, config) => {
   // Check if this is an assessment step
   if (stepNameLower.includes('assessment') || stepNameLower.includes('assess')) {
     return config.assessment?.enabled === false;
+  }
+
+  // Check if this is an evaluation step
+  if (stepNameLower.includes('evaluation') || stepNameLower.includes('evaluate')) {
+    return config.evaluation?.enabled === false;
   }
 
   return false;
@@ -295,6 +304,9 @@ StepDetails.propTypes = {
       enabled: PropTypes.bool,
     }),
     assessment: PropTypes.shape({
+      enabled: PropTypes.bool,
+    }),
+    evaluation: PropTypes.shape({
       enabled: PropTypes.bool,
     }),
   }),
