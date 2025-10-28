@@ -30,7 +30,7 @@ Name: genai-idp-dev-environment(example)
 AMI Selection (choose one):  
 **Option 1: Amazon Linux 2023**
 
-**Option 2: Canonical, Ubuntu, 24.04, amd64 noble image**
+**Option 2: Ubuntu 24.04**
 
 Instance Type:
 
