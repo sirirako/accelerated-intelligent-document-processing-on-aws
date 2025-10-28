@@ -72,15 +72,40 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         client.graphql({ query: getDocument, variables: { objectKey } }),
       );
       const getDocumentResolutions = await Promise.allSettled(getDocumentPromises);
+
+      // Separate rejected promises from null/undefined results
       const getDocumentRejected = getDocumentResolutions.filter((r) => r.status === 'rejected');
-      if (getDocumentRejected.length) {
+      const fulfilledResults = getDocumentResolutions.filter((r) => r.status === 'fulfilled');
+      const getDocumentNull = fulfilledResults
+        .map((r, idx) => ({ doc: r.value?.data?.getDocument, key: objectKeys[idx] }))
+        .filter((item) => !item.doc)
+        .map((item) => item.key);
+
+      // Only show error banner if ALL documents failed
+      if (getDocumentRejected.length === objectKeys.length) {
         setErrorMessage('failed to get document details - please try again later');
-        logger.error('get document promises rejected', getDocumentRejected);
+        logger.error('All document queries rejected', getDocumentRejected);
+      } else if (getDocumentRejected.length > 0 || getDocumentNull.length > 0) {
+        // Partial failure - log to console but don't block UI
+        if (getDocumentRejected.length > 0) {
+          logger.warn(`Failed to load ${getDocumentRejected.length} document(s) due to query rejection`);
+          logger.debug('Rejected promises:', getDocumentRejected);
+        }
+        if (getDocumentNull.length > 0) {
+          logger.warn(`${getDocumentNull.length} document(s) not found (returned null):`, getDocumentNull);
+          logger.debug(
+            'These documents have list entries but no corresponding document records - possible orphaned list entries',
+          );
+        }
       }
+
+      // Filter out null/undefined documents to prevent downstream errors
       const documentValues = getDocumentResolutions
         .filter((r) => r.status === 'fulfilled')
-        .map((r) => r.value?.data?.getDocument);
+        .map((r) => r.value?.data?.getDocument)
+        .filter((doc) => doc != null);
 
+      logger.debug(`Successfully loaded ${documentValues.length} of ${objectKeys.length} requested documents`);
       return documentValues;
     },
     [setErrorMessage],
@@ -256,11 +281,13 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         const documentData = await documentDataPromise;
         const objectKeys = documentData.map((item) => item.ObjectKey);
         const documentDetails = await getDocumentDetailsFromIds(objectKeys);
-        // Merge document details with PK and SK
-        return documentDetails.map((detail) => {
-          const matchingData = documentData.find((item) => item.ObjectKey === detail.ObjectKey);
-          return { ...detail, ListPK: matchingData.PK, ListSK: matchingData.SK };
-        });
+        // Merge document details with PK and SK, filtering out nulls to prevent shard-level failures
+        return documentDetails
+          .filter((detail) => detail != null)
+          .map((detail) => {
+            const matchingData = documentData.find((item) => item.ObjectKey === detail.ObjectKey);
+            return { ...detail, ListPK: matchingData.PK, ListSK: matchingData.SK };
+          });
       });
 
       const documentValuesPromises = documentDetailsPromises.map(async (documentValuesPromise) => {
