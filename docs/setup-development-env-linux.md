@@ -29,7 +29,6 @@ A hybrid development setup where your code runs on a pre-configured Amazon Linux
 Name: genai-idp-dev-environment(example)  
 AMI Selection (choose one):  
 **Option 1: Amazon Linux 2023**
-
 **Option 2: Ubuntu 24.04**
 
 Instance Type:
