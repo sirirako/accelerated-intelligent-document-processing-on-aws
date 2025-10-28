@@ -71,6 +71,66 @@ def resolve_content(content: Union[str, Dict[str, Any]]) -> Union[Dict[str, Any]
     return content
 
 
+def get_current_region() -> str:
+    """Get the current AWS region"""
+    return boto3.Session().region_name
+
+
+def is_eu_region(region: str) -> bool:
+    """Check if the region is an EU region"""
+    return region.startswith("eu-")
+
+
+def is_us_region(region: str) -> bool:
+    """Check if the region is a US region"""
+    return region.startswith("us-")
+
+
+def _should_include_model(model_id: str, region_type: str) -> bool:
+    """Check if a model should be included for the given region type"""
+    # Non-string items are always included
+    if not isinstance(model_id, str):
+        return True
+
+    # For other regions or non-prefixed models, include everything
+    if region_type not in ["us", "eu"] or not (
+        model_id.startswith("us.") or model_id.startswith("eu.")
+    ):
+        return True
+
+    # For US regions: exclude EU models
+    if region_type == "us" and model_id.startswith("eu."):
+        return False
+
+    # For EU regions: exclude US models
+    if region_type == "eu" and model_id.startswith("us."):
+        return False
+
+    return True
+
+
+def filter_models_by_region(data: Any, region_type: str) -> Any:
+    """Filter out models that don't match the region type"""
+    if isinstance(data, dict):
+        return {
+            key: (
+                [item for item in value if _should_include_model(item, region_type)]
+                if isinstance(value, list)
+                and any(
+                    isinstance(item, str) and ("us." in item or "eu." in item)
+                    for item in value
+                )
+                else filter_models_by_region(value, region_type)
+            )
+            for key, value in data.items()
+        }
+
+    if isinstance(data, list):
+        return [filter_models_by_region(item, region_type) for item in data]
+
+    return data
+
+
 def generate_physical_id(stack_id: str, logical_id: str) -> str:
     """
     Generates a consistent physical ID for the custom resource
@@ -96,6 +156,17 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         # Remove ServiceToken from properties as it's not needed in DynamoDB
         properties.pop("ServiceToken", None)
 
+        # Detect region type
+        current_region = get_current_region()
+        region_type = (
+            "eu"
+            if is_eu_region(current_region)
+            else "us"
+            if is_us_region(current_region)
+            else "other"
+        )
+        logger.info(f"Detected region: {current_region}, region type: {region_type}")
+
         # Initialize ConfigurationManager for all database operations
         manager = ConfigurationManager()
 
@@ -103,6 +174,14 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             # Update Schema configuration
             if "Schema" in properties:
                 resolved_schema = resolve_content(properties["Schema"])
+
+                # Filter models based on region
+                if region_type in ["us", "eu"]:
+                    resolved_schema = filter_models_by_region(
+                        resolved_schema, region_type
+                    )
+                    logger.info(f"Filtered schema models for {region_type} region")
+
                 # New API: save_configuration() accepts dict and converts to IDPConfig internally
                 # ConfigurationManager handles migration automatically
                 manager.save_configuration("Schema", {"Schema": resolved_schema})
