@@ -28,7 +28,7 @@ sudo apt install python3.12 python3.12-venv python3-pip unzip wget zip -y
 sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 pip3 install --upgrade pip --break-system-packages
-pip3 install virtualenv --break-system-packages
+pip3 install virtualenv typer ruff --break-system-packages
 curl -LO https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda || bash Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda -u
 
