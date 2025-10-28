@@ -81,22 +81,21 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         .filter((item) => !item.doc)
         .map((item) => item.key);
 
-      // Only show error banner if ALL documents failed
-      if (getDocumentRejected.length === objectKeys.length) {
-        setErrorMessage('failed to get document details - please try again later');
-        logger.error('All document queries rejected', getDocumentRejected);
-      } else if (getDocumentRejected.length > 0 || getDocumentNull.length > 0) {
-        // Partial failure - log to console but don't block UI
-        if (getDocumentRejected.length > 0) {
-          logger.warn(`Failed to load ${getDocumentRejected.length} document(s) due to query rejection`);
-          logger.debug('Rejected promises:', getDocumentRejected);
-        }
-        if (getDocumentNull.length > 0) {
-          logger.warn(`${getDocumentNull.length} document(s) not found (returned null):`, getDocumentNull);
-          logger.debug(
-            'These documents have list entries but no corresponding document records - possible orphaned list entries',
-          );
-        }
+      // Log partial failures but NEVER show error banner for individual document failures
+      if (getDocumentRejected.length > 0) {
+        logger.warn(
+          `Failed to load ${getDocumentRejected.length} of ${objectKeys.length} document(s) due to query rejection`,
+        );
+        logger.debug('Rejected promises:', getDocumentRejected);
+      }
+      if (getDocumentNull.length > 0) {
+        logger.warn(
+          `${getDocumentNull.length} of ${objectKeys.length} document(s) not found (returned null):`,
+          getDocumentNull,
+        );
+        logger.warn(
+          'These documents have list entries but no corresponding document records - possible orphaned list entries',
+        );
       }
 
       // Filter out null/undefined documents to prevent downstream errors
@@ -281,6 +280,19 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         const documentData = await documentDataPromise;
         const objectKeys = documentData.map((item) => item.ObjectKey);
         const documentDetails = await getDocumentDetailsFromIds(objectKeys);
+
+        // Log orphaned list entries with full PK/SK details for debugging
+        const retrievedKeys = new Set(documentDetails.map((d) => d.ObjectKey));
+        const missingDocs = documentData.filter((item) => !retrievedKeys.has(item.ObjectKey));
+        if (missingDocs.length > 0) {
+          missingDocs.forEach((item) => {
+            logger.warn(`Orphaned list entry detected:`);
+            logger.warn(`  - List entry: PK="${item.PK}", SK="${item.SK}"`);
+            logger.warn(`  - Expected doc entry: PK="doc#${item.ObjectKey}", SK="none"`);
+            logger.warn(`  - ObjectKey: "${item.ObjectKey}"`);
+          });
+        }
+
         // Merge document details with PK and SK, filtering out nulls to prevent shard-level failures
         return documentDetails
           .filter((detail) => detail != null)
@@ -306,9 +318,14 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
       setDocumentsDeduped(documentValuesReduced);
       setIsDocumentsListLoading(false);
       const getDocumentsRejected = getDocumentsPromiseResolutions.filter((r) => r.status === 'rejected');
-      if (getDocumentsRejected.length) {
+      // Only show error banner if ALL shard queries failed
+      if (getDocumentsRejected.length === documentDataPromises.length) {
         setErrorMessage('failed to get document details - please try again later');
-        logger.error('get document promises rejected', getDocumentsRejected);
+        logger.error('All shard queries rejected', getDocumentsRejected);
+      } else if (getDocumentsRejected.length > 0) {
+        // Partial failure - log but don't show error banner
+        logger.warn(`${getDocumentsRejected.length} of ${documentDataPromises.length} shard queries failed`);
+        logger.debug('Rejected shard queries:', getDocumentsRejected);
       }
     } catch (error) {
       setIsDocumentsListLoading(false);
