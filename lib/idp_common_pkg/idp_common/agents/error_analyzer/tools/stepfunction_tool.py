@@ -151,7 +151,7 @@ def _analyze_execution_timeline(events: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 @tool
-def stepfunction_execution_details(execution_arn: str) -> Dict[str, Any]:
+def stepfunction_details(execution_arn: str) -> Dict[str, Any]:
     """
     Analyze Step Function execution to identify workflow failures and state transitions.
     Retrieves execution history and performs comprehensive analysis to identify failure points,

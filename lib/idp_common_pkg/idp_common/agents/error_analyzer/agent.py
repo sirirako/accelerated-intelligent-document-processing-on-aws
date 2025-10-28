@@ -13,7 +13,17 @@ import strands
 
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .config import get_error_analyzer_config
-from .tools import analyze_errors
+from .tools import (
+    cloudwatch_document_logs,
+    cloudwatch_logs,
+    dynamodb_query,
+    dynamodb_record,
+    dynamodb_status,
+    lambda_lookup,
+    stepfunction_details,
+    xray_performance_analysis,
+    xray_trace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +50,18 @@ def create_error_analyzer_agent(
     if session is None:
         session = boto3.Session()
 
-    # Create agent
-    tools = [analyze_errors]
+    # Create agent with specific tools - let LLM choose directly
+    tools = [
+        cloudwatch_document_logs,
+        cloudwatch_logs,
+        dynamodb_record,
+        dynamodb_status,
+        dynamodb_query,
+        lambda_lookup,
+        stepfunction_details,
+        xray_trace,
+        xray_performance_analysis,
+    ]
     bedrock_model = create_strands_bedrock_model(
         model_id=config["model_id"], boto_session=session
     )

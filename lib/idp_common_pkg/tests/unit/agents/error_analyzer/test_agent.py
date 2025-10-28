@@ -30,7 +30,7 @@ class TestErrorAnalyzerAgent:
         }
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.tools = [MagicMock()]  # Only one tool now
+        mock_agent.tools = [MagicMock() for _ in range(9)]  # 9 specific tools now
         mock_agent_class.return_value = mock_agent
 
         config = {
@@ -44,7 +44,7 @@ class TestErrorAnalyzerAgent:
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 1  # Only analyze_errors tool
+        assert len(agent.tools) == 9  # All specific tools
 
     @patch("strands.Agent")
     @patch("boto3.Session")
@@ -62,14 +62,14 @@ class TestErrorAnalyzerAgent:
         }
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.tools = [MagicMock()]
+        mock_agent.tools = [MagicMock() for _ in range(9)]  # 9 specific tools
         mock_agent_class.return_value = mock_agent
 
         agent = create_error_analyzer_agent()
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 1
+        assert len(agent.tools) == 9
 
     @patch("strands.Agent")
     @patch("boto3.Session")
@@ -105,9 +105,17 @@ class TestErrorAnalyzerAgent:
         assert "Recommendations" in system_prompt
         assert "DO NOT include" in system_prompt
 
-    def test_analyze_errors_tool_import(self):
-        """Test that analyze_errors tool can be imported correctly."""
-        from idp_common.agents.error_analyzer.tools import analyze_errors
+    def test_specific_tools_import(self):
+        """Test that specific tools can be imported correctly."""
+        from idp_common.agents.error_analyzer.tools import (
+            cloudwatch_document_logs,
+            dynamodb_status,
+            xray_trace,
+        )
 
-        assert analyze_errors is not None
-        assert callable(analyze_errors)
+        assert cloudwatch_document_logs is not None
+        assert callable(cloudwatch_document_logs)
+        assert dynamodb_status is not None
+        assert callable(dynamodb_status)
+        assert xray_trace is not None
+        assert callable(xray_trace)

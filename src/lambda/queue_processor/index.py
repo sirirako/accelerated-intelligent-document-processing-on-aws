@@ -142,9 +142,12 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         object_key = document.input_key
         logger.info(f"Processing message {message_id} for object {object_key}")
 
-        # Add X-Ray annotations
+        # Add X-Ray annotations and capture trace_id early
         xray_recorder.put_annotation('document_id', document.id)
-        logger.info(f"X-Ray annotations added to segment 'queue_processor': document_id={document.id}")
+        current_segment = xray_recorder.current_segment()
+        if current_segment:
+            document.trace_id = current_segment.trace_id
+            logger.info(f"Updated {document.id} trace_id: {document.trace_id}")
 
         # Try to increment counter
         if not update_counter(increment=True):

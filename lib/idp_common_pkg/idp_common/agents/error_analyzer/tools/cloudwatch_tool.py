@@ -7,15 +7,15 @@ CloudWatch tools for error analysis.
 
 import logging
 import os
-import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import boto3
 from strands import tool
 
 from ..config import create_error_response, safe_int_conversion
-from .lambda_tool import lambda_document_context
+from .lambda_tool import lambda_lookup
+from .xray_tool import extract_lambda_request_ids
 
 logger = logging.getLogger(__name__)
 
@@ -129,8 +129,7 @@ def search_cloudwatch_logs(
 
 def _build_filter_pattern(base_pattern: str, request_id: str = None) -> str:
     """
-    Build CloudWatch filter pattern with request ID priority.
-    Uses request ID alone first for maximum precision, then combines with error patterns.
+    Build CloudWatch filter pattern combining request ID and error keywords.
 
     Args:
         base_pattern: Base filter pattern (e.g., "ERROR")
@@ -139,12 +138,16 @@ def _build_filter_pattern(base_pattern: str, request_id: str = None) -> str:
     Returns:
         Optimized filter pattern string
     """
-    if request_id:
-        # Use request ID alone for maximum precision
+    if request_id and base_pattern:
+        # Combine request ID with error pattern for precise error filtering
+        sanitized_pattern = base_pattern.replace(":", "")
+        combined_pattern = f"[{request_id}, {sanitized_pattern}]"
+        logger.debug(f"Building combined filter pattern: {combined_pattern}")
+        return combined_pattern
+    elif request_id:
         logger.debug(f"Building filter pattern with request ID: {request_id}")
         return request_id
     elif base_pattern:
-        # Fallback to base pattern only
         sanitized_pattern = base_pattern.replace(":", "")
         logger.debug(f"Building filter pattern with base pattern: {sanitized_pattern}")
         return sanitized_pattern
@@ -217,126 +220,6 @@ def _extract_prefix_from_state_machine_arn(arn: str) -> str:
     return ""
 
 
-def extract_request_ids_from_logs(
-    log_groups: List[str], execution_id: str, start_time: datetime, end_time: datetime
-) -> Dict[str, Any]:
-    """
-    Extract Lambda request IDs from CloudWatch logs using execution ID correlation.
-    Searches CloudWatch logs for the execution ID and extracts associated request IDs.
-
-    Args:
-        log_groups: List of log group names to search
-        execution_id: Step Functions execution ID for correlation
-        start_time: Start time for log search
-        end_time: End time for log search
-
-    Returns:
-        Dict containing function-to-request-ID mapping and extraction metadata
-    """
-    function_request_map = {}
-    all_request_ids = []
-
-    client = boto3.client("logs")
-    logger.info(
-        f"Extracting request IDs from {len(log_groups)} log groups using execution ID: {execution_id}"
-    )
-
-    for log_group in log_groups[:5]:  # Limit to first 5 groups for performance
-        try:
-            # Search for all logs in the time window (no filter pattern)
-            # We'll extract request IDs from any logs in the execution timeframe
-            response = client.filter_log_events(
-                logGroupName=log_group,
-                startTime=int(start_time.timestamp() * 1000),
-                endTime=int(end_time.timestamp() * 1000),
-                limit=50,  # Increased limit to find request IDs
-            )
-
-            for event in response.get("events", []):
-                message = event["message"]
-
-                # Extract request ID from log message
-                request_id = _extract_request_id_from_log_message(message)
-                if request_id:
-                    # Extract function name from log group
-                    function_name = _extract_function_name_from_log_group(log_group)
-
-                    if function_name and request_id not in all_request_ids:
-                        function_request_map[function_name] = request_id
-                        all_request_ids.append(request_id)
-                        logger.info(
-                            f"Extracted request ID '{request_id}' for function '{function_name}' from CloudWatch logs"
-                        )
-                        logger.debug(f"Request ID found in message: {message[:200]}...")
-                        break  # One request ID per function is sufficient
-
-        except Exception as e:
-            logger.debug(f"Failed to search log group {log_group}: {e}")
-            continue
-
-    logger.info(
-        f"CloudWatch extraction found {len(function_request_map)} function-request mappings"
-    )
-    return {
-        "function_request_map": function_request_map,
-        "all_request_ids": list(set(all_request_ids)),
-        "extraction_method": "cloudwatch_logs",
-        "extraction_success": len(all_request_ids) > 0,
-    }
-
-
-def _extract_request_id_from_log_message(message: str) -> Optional[str]:
-    """
-    Extract Lambda request ID from CloudWatch log message.
-    Lambda logs format: [LEVEL] timestamp request_id message
-
-    Args:
-        message: CloudWatch log message
-
-    Returns:
-        Request ID string if found, None otherwise
-    """
-    if not message:
-        return None
-
-    # Pattern for Lambda request ID in log messages
-    # Format: [INFO] 2025-10-22T18:35:40.357Z 1386c0d2-a9d1-4169-940a-8d35c8899e27 message
-    pattern = r"\[\w+\]\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s+([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})"
-
-    match = re.search(pattern, message)
-    if match:
-        return match.group(1)
-
-    # Alternative pattern for different log formats - look for any UUID
-    uuid_pattern = r"([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})"
-    matches = re.findall(uuid_pattern, message, re.IGNORECASE)
-
-    # Return first UUID that looks like a request ID (not execution ID)
-    for match in matches:
-        if len(match) == 36:  # Standard UUID length
-            return match
-
-    return None
-
-
-def _extract_function_name_from_log_group(log_group: str) -> str:
-    """
-    Extract Lambda function name from log group name.
-
-    Args:
-        log_group: CloudWatch log group name
-
-    Returns:
-        Function name string
-    """
-    # Log group format: /aws/lambda/FunctionName or /prefix/lambda/FunctionName
-    if "/lambda/" in log_group:
-        return log_group.split("/lambda/")[-1]
-
-    # Fallback: use last part of log group name
-    return log_group.split("/")[-1] if "/" in log_group else log_group
-
-
 def get_log_group_prefix(stack_name: str) -> Dict[str, Any]:
     """
     Determines CloudWatch log group prefix from CloudFormation stack.
@@ -401,26 +284,44 @@ def cloudwatch_document_logs(
     max_log_groups: int = 20,
 ) -> Dict[str, Any]:
     """
-    Finds document-specific errors using execution context.
-    Leverages document execution context to perform targeted log searches with precise
-    time windows and execution-specific filters for enhanced accuracy.
+    Search CloudWatch logs for errors related to a specific document.
+
+    Performs targeted log analysis using document execution context, X-Ray traces,
+    and Lambda request IDs to find precise error information for document processing failures.
+
+    Use this tool to:
+    - Find specific errors for a failed document
+    - Get detailed error messages with timestamps
+    - Identify which Lambda function failed
+    - Analyze document processing timeline
+
+    Example usage:
+    - "Find errors for document report.pdf"
+    - "What went wrong with lending_package.pdf?"
+    - "Show me the logs for document xyz.pdf"
 
     Args:
-        document_id: Document ObjectKey to search logs for
+        document_id: Document filename/ObjectKey (e.g., "report.pdf", "lending_package.pdf")
         stack_name: CloudFormation stack name for log group discovery
-        filter_pattern: CloudWatch filter pattern (default: "ERROR")
-        max_log_events: Maximum events per log group (default: 10)
-        max_log_groups: Maximum log groups to search (default: 20)
+        filter_pattern: CloudWatch filter pattern - "ERROR", "Exception", "Failed" (default: "ERROR")
+        max_log_events: Maximum log events per group to return (default: 10, max: 50)
+        max_log_groups: Maximum log groups to search (default: 20, max: 50)
 
     Returns:
-        Dict containing document-specific log search results
+        Dict with keys:
+        - analysis_type (str): "document_specific" or "document_not_found"
+        - document_id (str): The document being analyzed
+        - total_events_found (int): Number of error events found
+        - results (list): Log search results with events and metadata
+        - search_strategy (dict): Strategy used for log searching
+        - processing_time_window (dict): Time window used for search
     """
     try:
         # Use safe integer conversion with defaults
         max_log_events = safe_int_conversion(max_log_events, 10)
         max_log_groups = safe_int_conversion(max_log_groups, 20)
         # Get document execution context with enhanced request ID mapping
-        context = lambda_document_context(document_id, stack_name)
+        context = lambda_lookup(document_id, stack_name)
 
         if not context.get("document_found"):
             return {
@@ -472,64 +373,23 @@ def cloudwatch_document_logs(
                 f"Using time window with {buffer.total_seconds()}s buffer for batch operation isolation"
             )
 
-        # Enhanced search strategy with request ID priority
-        request_ids = context.get("lambda_request_ids", [])
-        function_request_map = context.get("function_request_map", {})
+        # X-Ray based request ID extraction
+        trace_id = context.get("trace_id")
+        function_request_map = {}
+
+        if trace_id:
+            logger.info(f"Extracting Lambda request IDs from X-Ray trace: {trace_id}")
+            function_request_map = extract_lambda_request_ids(trace_id)
+            logger.info(
+                f"X-Ray extraction found {len(function_request_map)} Lambda functions: {function_request_map}"
+            )
+        else:
+            logger.warning("No trace_id found in document context")
+
+        request_ids = list(function_request_map.values())
         failed_functions = context.get("failed_functions", [])
         primary_failed_function = context.get("primary_failed_function")
         execution_arn = context.get("execution_arn")
-        execution_events_count = context.get("execution_events_count", 0)
-
-        logger.info(
-            f"Step Functions extraction - Total request IDs: {len(request_ids)}, Failed functions: {len(failed_functions)}, Events: {execution_events_count}"
-        )
-        logger.info(
-            f"CloudWatch extraction conditions - request_ids: {len(request_ids)}, execution_arn: {bool(execution_arn)}, start_time: {bool(start_time)}, end_time: {bool(end_time)}"
-        )
-
-        # NEW: CloudWatch-based request ID extraction if Step Functions extraction failed
-        cloudwatch_extraction_used = False
-        if len(request_ids) == 0 and execution_arn and start_time and end_time:
-            logger.info(
-                "Step Functions extraction yielded 0 request IDs, attempting CloudWatch log extraction"
-            )
-
-            # Get log group names for extraction
-            group_names = [g["name"] for g in log_groups.get("log_groups", [])]
-            execution_id = execution_arn.split(":")[-1]
-
-            cloudwatch_extraction = extract_request_ids_from_logs(
-                group_names, execution_id, start_time, end_time
-            )
-
-            if cloudwatch_extraction.get("extraction_success"):
-                # Override Step Functions results with CloudWatch extraction
-                function_request_map = cloudwatch_extraction.get(
-                    "function_request_map", {}
-                )
-                request_ids = cloudwatch_extraction.get("all_request_ids", [])
-                cloudwatch_extraction_used = True
-                logger.info(
-                    f"CloudWatch extraction successful - Found {len(request_ids)} request IDs from {len(function_request_map)} functions"
-                )
-            else:
-                logger.warning("CloudWatch extraction also failed to find request IDs")
-        elif len(request_ids) == 0:
-            logger.warning(
-                f"CloudWatch extraction not attempted - missing conditions: execution_arn={bool(execution_arn)}, start_time={bool(start_time)}, end_time={bool(end_time)}"
-            )
-        else:
-            logger.info(
-                f"CloudWatch extraction not needed - Step Functions found {len(request_ids)} request IDs"
-            )
-
-        logger.info(
-            f"Total request IDs: {len(request_ids)}, Function mappings: {len(function_request_map)}"
-        )
-        logger.info(f"Function request mapping: {function_request_map}")
-        logger.info(
-            f"Extraction method: {'CloudWatch logs' if cloudwatch_extraction_used else 'Step Functions events'}"
-        )
 
         # Priority 1: Request IDs from failed functions (highest priority)
         failed_function_request_ids = []
@@ -574,6 +434,19 @@ def cloudwatch_document_logs(
 
         # Search with failed function request IDs (highest priority)
         for request_id in search_strategy["failed_function_request_ids"]:
+            # Find function name for this request ID
+            function_name = next(
+                (
+                    func
+                    for func, rid in function_request_map.items()
+                    if rid == request_id
+                ),
+                "Unknown",
+            )
+            logger.info(
+                f"Filtering logs with Lambda function: {function_name}, request_id: {request_id}"
+            )
+
             for group in groups_to_search:
                 log_group_name = group["name"]
                 search_result = search_cloudwatch_logs(
@@ -616,6 +489,19 @@ def cloudwatch_document_logs(
             for request_id in search_strategy["other_request_ids"][
                 :3
             ]:  # Limit to first 3
+                # Find function name for this request ID
+                function_name = next(
+                    (
+                        func
+                        for func, rid in function_request_map.items()
+                        if rid == request_id
+                    ),
+                    "Unknown",
+                )
+                logger.info(
+                    f"Filtering logs with Lambda function: {function_name}, request_id: {request_id}"
+                )
+
                 for group in groups_to_search:
                     log_group_name = group["name"]
 
@@ -776,10 +662,7 @@ def cloudwatch_document_logs(
             "document_status": context.get("document_status"),
             "execution_arn": execution_arn,
             "search_strategy": search_strategy,
-            "cloudwatch_extraction_used": cloudwatch_extraction_used,
-            "extraction_method": "cloudwatch_logs"
-            if cloudwatch_extraction_used
-            else "step_functions",
+            "extraction_method": "xray_trace",
             "failed_functions": failed_functions,
             "primary_failed_function": primary_failed_function,
             "processing_time_window": {
@@ -798,7 +681,7 @@ def cloudwatch_document_logs(
 
 
 @tool
-def cloudwatch_stack_logs(
+def cloudwatch_logs(
     filter_pattern: str = "ERROR",
     hours_back: int = None,
     max_log_events: int = None,
@@ -807,20 +690,38 @@ def cloudwatch_stack_logs(
     end_time: datetime = None,
 ) -> Dict[str, Any]:
     """
-    Searches all stack-related log groups for error patterns.
-    Primary tool for system-wide log analysis. Automatically discovers relevant log groups
-    based on CloudFormation stack configuration and searches for specified patterns.
+    Search CloudWatch logs across all stack services for system-wide error patterns.
+
+    Performs comprehensive log analysis across all Lambda functions and services
+    in the CloudFormation stack to identify system-wide issues and error patterns.
+
+    Use this tool to:
+    - Find recent system-wide errors and failures
+    - Identify error patterns across multiple services
+    - Analyze system health over time periods
+    - Troubleshoot infrastructure-level issues
+
+    Example usage:
+    - "Show me recent errors in the system"
+    - "Find all failures in the last 2 hours"
+    - "What exceptions occurred today?"
 
     Args:
-        filter_pattern: CloudWatch filter pattern (default: "ERROR")
-        hours_back: Hours to look back from current time (default: 24)
-        max_log_events: Maximum events per log group (default: 10)
-        max_log_groups: Maximum log groups to search (default: 20)
-        start_time: Optional start time for search window
-        end_time: Optional end time for search window
+        filter_pattern: CloudWatch filter pattern - "ERROR", "Exception", "Failed", "Timeout" (default: "ERROR")
+        hours_back: Hours to look back from now (default: 24, max: 168 for 1 week)
+        max_log_events: Maximum events per log group (default: 10, max: 50)
+        max_log_groups: Maximum log groups to search (default: 20, max: 50)
+        start_time: Optional specific start time (overrides hours_back)
+        end_time: Optional specific end time (overrides hours_back)
 
     Returns:
-        Dict containing comprehensive log search results across all relevant groups
+        Dict with keys:
+        - stack_name (str): CloudFormation stack being analyzed
+        - total_events_found (int): Total error events found
+        - log_groups_searched (int): Number of log groups searched
+        - results (list): Log search results from each group
+        - filter_pattern (str): Pattern used for searching
+        - log_prefix_used (str): Log group prefix used for discovery
     """
     stack_name = os.environ.get("AWS_STACK_NAME", "")
 
