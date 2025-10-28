@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+- **UI Robustness for Orphaned List Entries** - [#102](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/102)
+  - Fixed UI error banner "failed to get document details - please try again later" appearing when orphaned list entries exist (list# items without corresponding doc# items in DynamoDB tracking table)
+  - **Root Cause**: When a document had a list entry but no corresponding document record, the error would trigger UI banner and prevent display of all documents in the same time shard
+  - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
+  - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
+  - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
+
 ## [0.3.21]
 
 ### Added
