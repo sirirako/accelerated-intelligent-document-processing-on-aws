@@ -126,6 +126,8 @@ test = [
   "pytest-asyncio>=1.1.0",
   "typer>=0.19.2",
   "ruff>=0.14.0",
+  "deepdiff>=6.0.0",                    # Required for BDA blueprint service tests
+  "datamodel-code-generator>=0.25.0",   # Required for schema/pydantic generator tests
 ]
 
 # Full package with all dependencies
