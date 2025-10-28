@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT-0
 
 ##############################################################################################
-# Ubuntu Development Environment Setup Script
+# Linux Development Environment Setup Script
 # 
 # This script automates the installation of development tools for the GenAI IDP accelerator
 # on Ubuntu 24.04 systems. It installs Python 3.12, AWS CLI, SAM CLI, Node.js, Docker,
@@ -54,9 +54,6 @@ sudo apt install docker.io -y
 sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -a -G docker $USER
-
-# interpreter
-pip install open-interpreter --break-system-packages
 
 # local .bashrc scripts
 mkdir -p ~/.bashrc.d
