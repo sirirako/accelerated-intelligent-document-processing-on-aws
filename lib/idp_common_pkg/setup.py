@@ -8,7 +8,6 @@ from setuptools import find_packages, setup
 # Core dependencies required for all installations
 install_requires = [
     "boto3==1.39.4",  # Core dependency for AWS services
-    "deepdiff>=6.0.0",  # For schema comparison in BDA blueprint service
 ]
 
 # Optional dependencies by component
