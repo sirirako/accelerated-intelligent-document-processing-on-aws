@@ -1,16 +1,6 @@
 import React, { useState, useRef } from 'react';
 import PropTypes from 'prop-types';
-import {
-  Box,
-  SpaceBetween,
-  Header,
-  FormField,
-  Select,
-  Button,
-  Container,
-  ExpandableSection,
-  Alert,
-} from '@cloudscape-design/components';
+import { Box, SpaceBetween, Header, FormField, Select, Button, Container, ExpandableSection, Alert } from '@cloudscape-design/components';
 
 const SchemaCompositionEditor = ({ selectedAttribute = null, availableClasses = [], onUpdate }) => {
   const [compositionType, setCompositionType] = useState('');
@@ -25,8 +15,7 @@ const SchemaCompositionEditor = ({ selectedAttribute = null, availableClasses = 
   ];
 
   const hasComposition =
-    selectedAttribute &&
-    (selectedAttribute.oneOf || selectedAttribute.anyOf || selectedAttribute.allOf || selectedAttribute.not);
+    selectedAttribute && (selectedAttribute.oneOf || selectedAttribute.anyOf || selectedAttribute.allOf || selectedAttribute.not);
 
   let currentComposition = '';
   if (hasComposition) {
@@ -149,8 +138,8 @@ const SchemaCompositionEditor = ({ selectedAttribute = null, availableClasses = 
     <ExpandableSection headerText="Schema Composition (Advanced)" variant="container">
       <SpaceBetween size="m">
         <Alert type="info">
-          Schema composition allows you to combine multiple schemas using logical operators. This enables complex
-          validation scenarios like discriminated unions, polymorphic types, and conditional logic.
+          Schema composition allows you to combine multiple schemas using logical operators. This enables complex validation scenarios like
+          discriminated unions, polymorphic types, and conditional logic.
         </Alert>
 
         {!hasComposition ? (
@@ -158,9 +147,7 @@ const SchemaCompositionEditor = ({ selectedAttribute = null, availableClasses = 
             <SpaceBetween size="m">
               <FormField label="Add Composition" description="Choose how to combine multiple schemas">
                 <Select
-                  selectedOption={
-                    compositionOptions.find((opt) => opt.value === compositionType) || compositionOptions[0]
-                  }
+                  selectedOption={compositionOptions.find((opt) => opt.value === compositionType) || compositionOptions[0]}
                   onChange={({ detail }) => setCompositionType(detail.selectedOption.value)}
                   options={compositionOptions}
                   placeholder="Select composition type"
@@ -206,10 +193,7 @@ const SchemaCompositionEditor = ({ selectedAttribute = null, availableClasses = 
                       style={{ border: '1px solid #ddd', borderRadius: '4px' }}
                     >
                       <SpaceBetween size="s">
-                        <Header
-                          variant="h4"
-                          actions={<Button variant="icon" iconName="close" onClick={() => handleRemoveSchema(idx)} />}
-                        >
+                        <Header variant="h4" actions={<Button variant="icon" iconName="close" onClick={() => handleRemoveSchema(idx)} />}>
                           Schema {idx + 1}
                         </Header>
                         <FormField label="Type">

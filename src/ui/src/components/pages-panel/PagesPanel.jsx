@@ -43,12 +43,7 @@ const ThumbnailCell = ({ imageUrl }) => (
 
 const ActionsCell = ({ item }) =>
   item.TextUri ? (
-    <MarkdownJsonViewer
-      fileUri={item.TextUri}
-      textConfidenceUri={item.TextConfidenceUri}
-      fileType="text"
-      buttonText="View/Edit Data"
-    />
+    <MarkdownJsonViewer fileUri={item.TextUri} textConfidenceUri={item.TextConfidenceUri} fileType="text" buttonText="View/Edit Data" />
   ) : (
     <Box color="text-status-inactive">No text available</Box>
   );

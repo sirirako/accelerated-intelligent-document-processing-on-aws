@@ -2,14 +2,9 @@ import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import { Box, SpaceBetween, Header, Button, Badge, Icon, Container } from '@cloudscape-design/components';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getTypeColor, getTypeBadgeText } from './utils/badgeHelpers.jsx';
+import { getTypeColor, getTypeBadgeText } from './utils/badgeHelpers';
 
 const SortableAttributeItem = ({
   id,
@@ -33,8 +28,7 @@ const SortableAttributeItem = ({
     transition,
   };
 
-  const hasNestedProperties =
-    attribute.type === 'object' && attribute.properties && Object.keys(attribute.properties).length > 0;
+  const hasNestedProperties = attribute.type === 'object' && attribute.properties && Object.keys(attribute.properties).length > 0;
   const hasComposition = attribute.oneOf || attribute.anyOf || attribute.allOf;
   const hasConditional = attribute.if;
   // Remove array items from expandable - arrays now only show badges
@@ -137,9 +131,7 @@ const SortableAttributeItem = ({
               <Box key={propName} padding="xs" style={{ borderLeft: '2px solid #ddd' }}>
                 <div style={{ fontSize: '12px' }}>
                   <strong>{propName}</strong>: <Badge color={getTypeColor(propValue.type)}>{propValue.type}</Badge>
-                  {propValue.description && (
-                    <div style={{ color: '#666', marginTop: '2px' }}>{propValue.description}</div>
-                  )}
+                  {propValue.description && <div style={{ color: '#666', marginTop: '2px' }}>{propValue.description}</div>}
                 </div>
               </Box>
             ))}
@@ -186,9 +178,7 @@ const SortableAttributeItem = ({
         marginBottom: '12px',
       }}
     >
-      <Container
-        disableContentPaddings={false}
-      >
+      <Container disableContentPaddings={false}>
         <div
           onClick={() => onSelect(name)}
           onKeyDown={(e) => {
@@ -236,18 +226,20 @@ const SortableAttributeItem = ({
                 <Box fontWeight="bold">{name}</Box>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {[
-                    getTypeBadge(),
-                    getRequiredBadge(),
-                    getReadOnlyBadge(),
-                    getWriteOnlyBadge(),
-                    getDeprecatedBadge(),
-                    getConstBadge(),
-                    getEnumBadge(),
-                    getCompositionBadge(),
-                    getConditionalBadge(),
-                  ].filter(Boolean).map((badge, index) => (
-                    <React.Fragment key={`badge-${index}`}>{badge}</React.Fragment>
-                  ))}
+                    { key: 'type', component: getTypeBadge() },
+                    { key: 'required', component: getRequiredBadge() },
+                    { key: 'readonly', component: getReadOnlyBadge() },
+                    { key: 'writeonly', component: getWriteOnlyBadge() },
+                    { key: 'deprecated', component: getDeprecatedBadge() },
+                    { key: 'const', component: getConstBadge() },
+                    { key: 'enum', component: getEnumBadge() },
+                    { key: 'composition', component: getCompositionBadge() },
+                    { key: 'conditional', component: getConditionalBadge() },
+                  ]
+                    .filter((item) => item.component)
+                    .map((item) => (
+                      <React.Fragment key={item.key}>{item.component}</React.Fragment>
+                    ))}
                 </div>
                 <Box float="right">
                   <Button

@@ -236,9 +236,7 @@ const MarkdownReport = ({ reportUri, documentId, title = 'Report', emptyMessage 
     );
   }
 
-  return (
-    reportContent && <MarkdownViewer content={reportContent} documentName={documentId || 'document'} title={title} />
-  );
+  return reportContent && <MarkdownViewer content={reportContent} documentName={documentId || 'document'} title={title} />;
 };
 
 export { MarkdownReport };

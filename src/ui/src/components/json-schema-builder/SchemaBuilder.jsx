@@ -13,7 +13,6 @@ import {
   Input,
   Select,
   Textarea,
-  Badge,
 } from '@cloudscape-design/components';
 import { useSchemaDesigner } from '../../hooks/useSchemaDesigner';
 import { useSchemaValidation } from '../../hooks/useSchemaValidation';
@@ -22,7 +21,7 @@ import { TYPE_OPTIONS, X_AWS_IDP_DOCUMENT_TYPE } from '../../constants/schemaCon
 import SchemaCanvas from './SchemaCanvas';
 import SchemaInspector from './SchemaInspector';
 import SchemaPreviewTabs from './SchemaPreviewTabs';
-import { formatTypeBadge, DocumentTypeBadge } from './utils/badgeHelpers.jsx';
+import { formatTypeBadge, DocumentTypeBadge } from './utils/badgeHelpers';
 
 const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
   const {
@@ -165,9 +164,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
   };
 
   // Use TYPE_OPTIONS from constants, filtering to commonly used types
-  const attributeTypeOptions = TYPE_OPTIONS.filter((opt) =>
-    ['string', 'number', 'boolean', 'object', 'array'].includes(opt.value),
-  );
+  const attributeTypeOptions = TYPE_OPTIONS.filter((opt) => ['string', 'number', 'boolean', 'object', 'array'].includes(opt.value));
 
   const handleEditClass = (cls) => {
     setEditingClass(cls);
@@ -219,7 +216,9 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
             )}
             {selectedAttributeId && (
               <>
-                <Box fontSize="body-s" color="text-body-secondary">›</Box>
+                <Box fontSize="body-s" color="text-body-secondary">
+                  ›
+                </Box>
                 <Box fontSize="body-m" color="text-label">
                   {selectedAttributeId}
                 </Box>
@@ -243,563 +242,539 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
           </SpaceBetween>
         </div>
       )}
-      
+
       <SpaceBetween size="l">
         {aggregatedValidationErrors.length > 0 && (
-        <Alert
-          type="error"
-          dismissible
-          onDismiss={() => setAggregatedValidationErrors([])}
-          header="Schema Validation Errors"
-        >
-          <ul>
-            {aggregatedValidationErrors.map((error) => (
-              <li key={`${error.className || 'unknown'}-${error.path}-${error.message}-${error.keyword || ''}`}>
-                {error.className && <strong>{error.className}</strong>} {error.path}: {error.message}
-              </li>
-            ))}
-          </ul>
-        </Alert>
-      )}
+          <Alert type="error" dismissible onDismiss={() => setAggregatedValidationErrors([])} header="Schema Validation Errors">
+            <ul>
+              {aggregatedValidationErrors.map((error) => (
+                <li key={`${error.className || 'unknown'}-${error.path}-${error.message}-${error.keyword || ''}`}>
+                  {error.className && <strong>{error.className}</strong>} {error.path}: {error.message}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        )}
 
-      <div style={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
-        <Container
-          header={
-            <Header
-              variant="h2"
-              actions={
-                <Box>
-                  <SpaceBetween direction="horizontal" size="xs">
-                    <Button onClick={handleAddClass} iconName="add-plus">
-                      Add Class
-                    </Button>
-                    <Button onClick={handleAddAttribute} disabled={!selectedClassId} iconName="add-plus">
-                      Add Attribute
-                    </Button>
-                    <Button
-                      onClick={() => setShowPreview(!showPreview)}
-                      iconName={showPreview ? 'view-vertical' : 'view-horizontal'}
-                    >
-                      {showPreview ? 'Hide' : 'Show'} Preview
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        const schema = exportSchema();
-                        const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `schema-${Date.now()}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      iconName="download"
-                      disabled={classes.length === 0}
-                    >
-                      Export
-                    </Button>
-                  </SpaceBetween>
-                </Box>
-              }
-              description="Build JSON Schema Draft 2020-12 compliant extraction schemas with advanced features"
-            >
-              Schema Builder
-            </Header>
-          }
-        >
-          <ColumnLayout columns={showPreview ? 2 : 3} variant="text-grid" minColumnWidth={300}>
-          <Box>
-            <SpaceBetween size="m">
-              <Header variant="h3">
-                Classes ({classes.length} total: {docTypeCount} document {docTypeCount === 1 ? 'type' : 'types'},{' '}
-                {sharedCount} shared)
+        <div style={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
+          <Container
+            header={
+              <Header
+                variant="h2"
+                actions={
+                  <Box>
+                    <SpaceBetween direction="horizontal" size="xs">
+                      <Button onClick={handleAddClass} iconName="add-plus">
+                        Add Class
+                      </Button>
+                      <Button onClick={handleAddAttribute} disabled={!selectedClassId} iconName="add-plus">
+                        Add Attribute
+                      </Button>
+                      <Button onClick={() => setShowPreview(!showPreview)} iconName={showPreview ? 'view-vertical' : 'view-horizontal'}>
+                        {showPreview ? 'Hide' : 'Show'} Preview
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const schema = exportSchema();
+                          const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `schema-${Date.now()}.json`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        iconName="download"
+                        disabled={classes.length === 0}
+                      >
+                        Export
+                      </Button>
+                    </SpaceBetween>
+                  </Box>
+                }
+                description="Build JSON Schema Draft 2020-12 compliant extraction schemas with advanced features"
+              >
+                Schema Builder
               </Header>
+            }
+          >
+            <ColumnLayout columns={showPreview ? 2 : 3} variant="text-grid" minColumnWidth={300}>
+              <Box>
+                <SpaceBetween size="m">
+                  <Header variant="h3">
+                    Classes ({classes.length} total: {docTypeCount} document {docTypeCount === 1 ? 'type' : 'types'}, {sharedCount} shared)
+                  </Header>
 
-              {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
-                <Alert type="warning" header="No Document Types">
-                  No classes are marked as document types. Mark at least one class as a document type to generate
-                  extraction schemas.
-                </Alert>
+                  {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
+                    <Alert type="warning" header="No Document Types">
+                      No classes are marked as document types. Mark at least one class as a document type to generate extraction schemas.
+                    </Alert>
+                  )}
+
+                  <Box>
+                    <Header variant="h4">Document Types</Header>
+                    <SpaceBetween size="s">
+                      {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
+                        <Box fontSize="body-s" color="text-body-secondary" padding="s">
+                          No document types yet. Add a class and mark it as a document type.
+                        </Box>
+                      )}
+                      {classes
+                        .filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE])
+                        .map((cls) => (
+                          <Container key={cls.id} disableContentPaddings={false}>
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setSelectedClassId(cls.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  setSelectedClassId(cls.id);
+                                }
+                              }}
+                              style={{
+                                cursor: 'pointer',
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: selectedClassId === cls.id ? '2px solid #0972d3' : '2px solid transparent',
+                                backgroundColor: selectedClassId === cls.id ? '#e8f4fd' : 'transparent',
+                                transition: 'all 0.2s ease',
+                              }}
+                            >
+                              <SpaceBetween size="xs">
+                                <Box>
+                                  <SpaceBetween direction="horizontal" size="s" alignItems="center">
+                                    <DocumentTypeBadge />
+                                    <Box fontWeight="bold">{cls.name}</Box>
+                                    <Box float="right">
+                                      <SpaceBetween direction="horizontal" size="xs">
+                                        <Button
+                                          variant="icon"
+                                          iconName="edit"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEditClass(cls);
+                                          }}
+                                          ariaLabel={`Edit ${cls.name}`}
+                                        />
+                                        <Button
+                                          variant="icon"
+                                          iconName="close"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setClassToDelete(cls);
+                                            setShowDeleteConfirmModal(true);
+                                          }}
+                                          ariaLabel={`Delete ${cls.name}`}
+                                        />
+                                      </SpaceBetween>
+                                    </Box>
+                                  </SpaceBetween>
+                                </Box>
+                                {cls.description && (
+                                  <Box fontSize="body-s" color="text-body-secondary">
+                                    {cls.description}
+                                  </Box>
+                                )}
+                                <Box fontSize="body-s" color="text-body-secondary">
+                                  {Object.keys(cls.attributes?.properties || {}).length} attribute(s)
+                                </Box>
+                              </SpaceBetween>
+                            </div>
+                          </Container>
+                        ))}
+                    </SpaceBetween>
+                  </Box>
+
+                  <Box>
+                    <Header variant="h4">Shared Classes</Header>
+                    <SpaceBetween size="s">
+                      {classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
+                        <Box fontSize="body-s" color="text-body-secondary" padding="s">
+                          No shared classes. Shared classes can be referenced by document types via $ref.
+                        </Box>
+                      )}
+                      {classes
+                        .filter((cls) => !cls[X_AWS_IDP_DOCUMENT_TYPE])
+                        .map((cls) => (
+                          <Container key={cls.id} disableContentPaddings={false}>
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setSelectedClassId(cls.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  setSelectedClassId(cls.id);
+                                }
+                              }}
+                              style={{
+                                cursor: 'pointer',
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: selectedClassId === cls.id ? '2px solid #0972d3' : '2px solid transparent',
+                                backgroundColor: selectedClassId === cls.id ? '#e8f4fd' : 'transparent',
+                                transition: 'all 0.2s ease',
+                              }}
+                            >
+                              <SpaceBetween size="xs">
+                                <Box>
+                                  <SpaceBetween direction="horizontal" size="s" alignItems="center">
+                                    <Box fontWeight="bold">{cls.name}</Box>
+                                    <Box float="right">
+                                      <SpaceBetween direction="horizontal" size="xs">
+                                        <Button
+                                          variant="icon"
+                                          iconName="edit"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEditClass(cls);
+                                          }}
+                                          ariaLabel={`Edit ${cls.name}`}
+                                        />
+                                        <Button
+                                          variant="icon"
+                                          iconName="close"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setClassToDelete(cls);
+                                            setShowDeleteConfirmModal(true);
+                                          }}
+                                          ariaLabel={`Delete ${cls.name}`}
+                                        />
+                                      </SpaceBetween>
+                                    </Box>
+                                  </SpaceBetween>
+                                </Box>
+                                {cls.description && (
+                                  <Box fontSize="body-s" color="text-body-secondary">
+                                    {cls.description}
+                                  </Box>
+                                )}
+                                <Box fontSize="body-s" color="text-body-secondary">
+                                  {Object.keys(cls.attributes?.properties || {}).length} attribute(s)
+                                </Box>
+                              </SpaceBetween>
+                            </div>
+                          </Container>
+                        ))}
+                    </SpaceBetween>
+                  </Box>
+                </SpaceBetween>
+              </Box>
+
+              {!showPreview && (
+                <>
+                  <SchemaCanvas
+                    selectedClass={getSelectedClass()}
+                    selectedAttributeId={selectedAttributeId}
+                    onSelectAttribute={setSelectedAttributeId}
+                    onUpdateAttribute={(name, updates) => updateAttribute(selectedClassId, name, updates)}
+                    onRemoveAttribute={(name) => removeAttribute(selectedClassId, name)}
+                    onReorder={(oldIndex, newIndex) => reorderAttributes(selectedClassId, oldIndex, newIndex)}
+                    onNavigateToClass={(classId) => {
+                      setSelectedClassId(classId);
+                      setSelectedAttributeId(null);
+                    }}
+                    onNavigateToAttribute={(classId, attributeName) => {
+                      setSelectedClassId(classId);
+                      setSelectedAttributeId(attributeName);
+                    }}
+                    availableClasses={classes}
+                  />
+
+                  <SchemaInspector
+                    selectedClass={getSelectedClass()}
+                    selectedAttribute={getSelectedAttribute()}
+                    selectedAttributeName={selectedAttributeId}
+                    onUpdate={(updates) => updateAttribute(selectedClassId, selectedAttributeId, updates)}
+                    onUpdateClass={(updates) => updateClass(selectedClassId, updates)}
+                    onRenameAttribute={(newName) => renameAttribute(selectedClassId, selectedAttributeId, newName)}
+                    availableClasses={classes}
+                    isRequired={getSelectedClass()?.attributes?.required?.includes(selectedAttributeId) || false}
+                    onToggleRequired={(checked) => {
+                      const selectedClass = getSelectedClass();
+                      if (!selectedClass || !selectedClass.attributes) return;
+
+                      const currentRequired = selectedClass.attributes.required || [];
+                      let newRequired;
+
+                      if (checked) {
+                        if (!currentRequired.includes(selectedAttributeId)) {
+                          newRequired = [...currentRequired, selectedAttributeId];
+                        } else {
+                          return; // Already required
+                        }
+                      } else {
+                        newRequired = currentRequired.filter((name) => name !== selectedAttributeId);
+                      }
+
+                      // Only update the required field, not the entire attributes object
+                      // This ensures immer properly tracks the change and creates new references
+                      updateClass(selectedClassId, {
+                        attributes: {
+                          required: newRequired,
+                        },
+                      });
+                    }}
+                    onNavigateToClass={(classId) => {
+                      setSelectedClassId(classId);
+                      setSelectedAttributeId(null);
+                    }}
+                    onNavigateToAttribute={(classId, attributeName) => {
+                      setSelectedClassId(classId);
+                      setSelectedAttributeId(attributeName);
+                    }}
+                  />
+                </>
               )}
 
-              <Box>
-                <Header variant="h4">Document Types</Header>
-                <SpaceBetween size="s">
-                  {classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
-                    <Box fontSize="body-s" color="text-body-secondary" padding="s">
-                      No document types yet. Add a class and mark it as a document type.
-                    </Box>
-                  )}
-                  {classes
-                    .filter((cls) => cls[X_AWS_IDP_DOCUMENT_TYPE])
-                    .map((cls) => (
-                      <Container
-                        key={cls.id}
-                        disableContentPaddings={false}
-                      >
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => setSelectedClassId(cls.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              setSelectedClassId(cls.id);
-                            }
-                          }}
-                          style={{
-                            cursor: 'pointer',
-                            padding: '12px',
-                            borderRadius: '8px',
-                            border: selectedClassId === cls.id ? '2px solid #0972d3' : '2px solid transparent',
-                            backgroundColor: selectedClassId === cls.id ? '#e8f4fd' : 'transparent',
-                            transition: 'all 0.2s ease',
-                          }}
-                        >
-                          <SpaceBetween size="xs">
-                            <Box>
-                              <SpaceBetween direction="horizontal" size="s" alignItems="center">
-                                <DocumentTypeBadge />
-                                <Box fontWeight="bold">{cls.name}</Box>
-                                <Box float="right">
-                                  <SpaceBetween direction="horizontal" size="xs">
-                                    <Button
-                                      variant="icon"
-                                      iconName="edit"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditClass(cls);
-                                      }}
-                                      ariaLabel={`Edit ${cls.name}`}
-                                    />
-                                    <Button
-                                      variant="icon"
-                                      iconName="close"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setClassToDelete(cls);
-                                        setShowDeleteConfirmModal(true);
-                                      }}
-                                      ariaLabel={`Delete ${cls.name}`}
-                                    />
-                                  </SpaceBetween>
-                                </Box>
-                              </SpaceBetween>
-                            </Box>
-                            {cls.description && (
-                              <Box fontSize="body-s" color="text-body-secondary">
-                                {cls.description}
-                              </Box>
-                            )}
-                            <Box fontSize="body-s" color="text-body-secondary">
-                              {Object.keys(cls.attributes?.properties || {}).length} attribute(s)
-                            </Box>
-                          </SpaceBetween>
-                        </div>
-                      </Container>
-                    ))}
-                </SpaceBetween>
-              </Box>
+              {showPreview && <SchemaPreviewTabs classes={classes} selectedClassId={selectedClassId} exportedSchemas={currentSchema} />}
+            </ColumnLayout>
+          </Container>
+        </div>
 
-              <Box>
-                <Header variant="h4">Shared Classes</Header>
-                <SpaceBetween size="s">
-                  {classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length === 0 && (
-                    <Box fontSize="body-s" color="text-body-secondary" padding="s">
-                      No shared classes. Shared classes can be referenced by document types via $ref.
-                    </Box>
-                  )}
-                  {classes
-                    .filter((cls) => !cls[X_AWS_IDP_DOCUMENT_TYPE])
-                    .map((cls) => (
-                      <Container
-                        key={cls.id}
-                        disableContentPaddings={false}
-                      >
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => setSelectedClassId(cls.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              setSelectedClassId(cls.id);
-                            }
-                          }}
-                          style={{
-                            cursor: 'pointer',
-                            padding: '12px',
-                            borderRadius: '8px',
-                            border: selectedClassId === cls.id ? '2px solid #0972d3' : '2px solid transparent',
-                            backgroundColor: selectedClassId === cls.id ? '#e8f4fd' : 'transparent',
-                            transition: 'all 0.2s ease',
-                          }}
-                        >
-                          <SpaceBetween size="xs">
-                            <Box>
-                              <SpaceBetween direction="horizontal" size="s" alignItems="center">
-                                <Box fontWeight="bold">{cls.name}</Box>
-                                <Box float="right">
-                                  <SpaceBetween direction="horizontal" size="xs">
-                                    <Button
-                                      variant="icon"
-                                      iconName="edit"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditClass(cls);
-                                      }}
-                                      ariaLabel={`Edit ${cls.name}`}
-                                    />
-                                    <Button
-                                      variant="icon"
-                                      iconName="close"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setClassToDelete(cls);
-                                        setShowDeleteConfirmModal(true);
-                                      }}
-                                      ariaLabel={`Delete ${cls.name}`}
-                                    />
-                                  </SpaceBetween>
-                                </Box>
-                              </SpaceBetween>
-                            </Box>
-                            {cls.description && (
-                              <Box fontSize="body-s" color="text-body-secondary">
-                                {cls.description}
-                              </Box>
-                            )}
-                            <Box fontSize="body-s" color="text-body-secondary">
-                              {Object.keys(cls.attributes?.properties || {}).length} attribute(s)
-                            </Box>
-                          </SpaceBetween>
-                        </div>
-                      </Container>
-                    ))}
-                </SpaceBetween>
-              </Box>
-            </SpaceBetween>
-          </Box>
-
-          {!showPreview && (
-            <>
-              <SchemaCanvas
-                selectedClass={getSelectedClass()}
-                selectedAttributeId={selectedAttributeId}
-                onSelectAttribute={setSelectedAttributeId}
-                onUpdateAttribute={(name, updates) => updateAttribute(selectedClassId, name, updates)}
-                onRemoveAttribute={(name) => removeAttribute(selectedClassId, name)}
-                onReorder={(oldIndex, newIndex) => reorderAttributes(selectedClassId, oldIndex, newIndex)}
-                onNavigateToClass={(classId) => {
-                  setSelectedClassId(classId);
-                  setSelectedAttributeId(null);
-                }}
-                onNavigateToAttribute={(classId, attributeName) => {
-                  setSelectedClassId(classId);
-                  setSelectedAttributeId(attributeName);
-                }}
-                availableClasses={classes}
-              />
-
-              <SchemaInspector
-                selectedClass={getSelectedClass()}
-                selectedAttribute={getSelectedAttribute()}
-                selectedAttributeName={selectedAttributeId}
-                onUpdate={(updates) => updateAttribute(selectedClassId, selectedAttributeId, updates)}
-                onUpdateClass={(updates) => updateClass(selectedClassId, updates)}
-                onRenameAttribute={(newName) => renameAttribute(selectedClassId, selectedAttributeId, newName)}
-                availableClasses={classes}
-                isRequired={getSelectedClass()?.attributes?.required?.includes(selectedAttributeId) || false}
-                onToggleRequired={(checked) => {
-                  const selectedClass = getSelectedClass();
-                  if (!selectedClass || !selectedClass.attributes) return;
-
-                  const currentRequired = selectedClass.attributes.required || [];
-                  let newRequired;
-
-                  if (checked) {
-                    if (!currentRequired.includes(selectedAttributeId)) {
-                      newRequired = [...currentRequired, selectedAttributeId];
-                    } else {
-                      return; // Already required
-                    }
-                  } else {
-                    newRequired = currentRequired.filter((name) => name !== selectedAttributeId);
-                  }
-
-                  // Only update the required field, not the entire attributes object
-                  // This ensures immer properly tracks the change and creates new references
-                  updateClass(selectedClassId, {
-                    attributes: {
-                      required: newRequired,
-                    },
-                  });
-                }}
-                onNavigateToClass={(classId) => {
-                  setSelectedClassId(classId);
-                  setSelectedAttributeId(null);
-                }}
-                onNavigateToAttribute={(classId, attributeName) => {
-                  setSelectedClassId(classId);
-                  setSelectedAttributeId(attributeName);
-                }}
-              />
-            </>
-          )}
-
-          {showPreview && (
-            <SchemaPreviewTabs classes={classes} selectedClassId={selectedClassId} exportedSchemas={currentSchema} />
-          )}
-        </ColumnLayout>
-      </Container>
-      </div>
-
-      <Modal
-        visible={showAddClassModal}
-        onDismiss={() => {
-          setShowAddClassModal(false);
-          setNewClassName('');
-          setNewClassDescription('');
-        }}
-        header="Add New Class"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                variant="link"
-                onClick={() => {
-                  setShowAddClassModal(false);
-                  setNewClassName('');
-                  setNewClassDescription('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleConfirmAddClass} disabled={!newClassName.trim()}>
-                Add Class
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <FormField label="Class Name" description="A unique name for this extraction class">
-            <Input
-              value={newClassName}
-              onChange={({ detail }) => setNewClassName(detail.value)}
-              placeholder="e.g., Invoice, Customer, Address"
-            />
-          </FormField>
-          <FormField label="Description (Optional)" description="Describe what this class represents">
-            <Textarea
-              value={newClassDescription}
-              onChange={({ detail }) => setNewClassDescription(detail.value)}
-              placeholder="e.g., Invoice document with line items"
-              rows={3}
-            />
-          </FormField>
-        </SpaceBetween>
-      </Modal>
-
-      <Modal
-        visible={showAddAttributeModal}
-        onDismiss={() => {
-          setShowAddAttributeModal(false);
-          setNewAttributeName('');
-          setNewAttributeType({ label: 'String', value: 'string' });
-          setNewAttributeDescription('');
-          setNewAttributeReferenceClass(null);
-        }}
-        header="Add New Attribute"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                variant="link"
-                onClick={() => {
-                  setShowAddAttributeModal(false);
-                  setNewAttributeName('');
-                  setNewAttributeType({ label: 'String', value: 'string' });
-                  setNewAttributeDescription('');
-                  setNewAttributeReferenceClass(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleConfirmAddAttribute} disabled={!newAttributeName.trim()}>
-                Add Attribute
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <FormField label="Attribute Name" description="The field name to extract from documents">
-            <Input
-              value={newAttributeName}
-              onChange={({ detail }) => setNewAttributeName(detail.value)}
-              placeholder="e.g., invoiceNumber, customerName, total"
-            />
-          </FormField>
-          <FormField label="Attribute Type" description="The type of data this field contains">
-            <Select
-              selectedOption={newAttributeType}
-              onChange={({ detail }) => setNewAttributeType(detail.selectedOption)}
-              options={attributeTypeOptions}
-            />
-          </FormField>
-          <FormField label="Description (Optional)" description="Describe what this field contains">
-            <Textarea
-              value={newAttributeDescription}
-              onChange={({ detail }) => setNewAttributeDescription(detail.value)}
-              placeholder="e.g., The unique invoice number for this document"
-              rows={3}
-            />
-          </FormField>
-
-          {(newAttributeType.value === 'object' || newAttributeType.value === 'array') && classes.length > 1 && (
-            <FormField
-              label={newAttributeType.value === 'object' ? 'Object Type' : 'Array Item Type'}
-              description={
-                newAttributeType.value === 'object'
-                  ? 'Define the structure: reference an existing class or create inline properties'
-                  : 'What type of items will this array contain? Reference a class to create a list of ' +
-                    'complex objects (e.g., list of persons)'
-              }
-              info={
-                newAttributeType.value === 'array' ? (
-                  <Box>
-                    Example: If you have a &quot;person&quot; class, select it here to create an array of person objects
-                  </Box>
-                ) : undefined
-              }
-            >
-              <Select
-                selectedOption={newAttributeReferenceClass}
-                onChange={({ detail }) => setNewAttributeReferenceClass(detail.selectedOption)}
-                options={[
-                  {
-                    label: newAttributeType.value === 'object' ? '⚙️ Inline properties' : '📝 Simple values (string)',
-                    value: '',
-                    description:
-                      newAttributeType.value === 'object'
-                        ? 'Define properties directly in this object'
-                        : 'Array of simple strings',
-                  },
-                  ...classes
-                    .filter((cls) => cls.id !== selectedClassId)
-                    .map((cls) => ({
-                      label: `🔗 ${cls.name}`,
-                      value: cls.name,
-                      description: cls.description || `Reference the ${cls.name} class`,
-                    })),
-                ]}
-                placeholder={
-                  newAttributeType.value === 'array'
-                    ? 'e.g., select "person" to create list of persons'
-                    : 'Select a class or define inline'
-                }
+        <Modal
+          visible={showAddClassModal}
+          onDismiss={() => {
+            setShowAddClassModal(false);
+            setNewClassName('');
+            setNewClassDescription('');
+          }}
+          header="Add New Class"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setShowAddClassModal(false);
+                    setNewClassName('');
+                    setNewClassDescription('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleConfirmAddClass} disabled={!newClassName.trim()}>
+                  Add Class
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="m">
+            <FormField label="Class Name" description="A unique name for this extraction class">
+              <Input
+                value={newClassName}
+                onChange={({ detail }) => setNewClassName(detail.value)}
+                placeholder="e.g., Invoice, Customer, Address"
               />
             </FormField>
-          )}
-        </SpaceBetween>
-      </Modal>
+            <FormField label="Description (Optional)" description="Describe what this class represents">
+              <Textarea
+                value={newClassDescription}
+                onChange={({ detail }) => setNewClassDescription(detail.value)}
+                placeholder="e.g., Invoice document with line items"
+                rows={3}
+              />
+            </FormField>
+          </SpaceBetween>
+        </Modal>
 
-      <Modal
-        visible={showEditClassModal}
-        onDismiss={() => {
-          setShowEditClassModal(false);
-          setEditingClass(null);
-          setNewClassName('');
-          setNewClassDescription('');
-        }}
-        header="Edit Class"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                variant="link"
-                onClick={() => {
-                  setShowEditClassModal(false);
-                  setEditingClass(null);
-                  setNewClassName('');
-                  setNewClassDescription('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleConfirmEditClass} disabled={!newClassName.trim()}>
-                Save Changes
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <FormField label="Class Name" description="A unique name for this extraction class">
-            <Input
-              value={newClassName}
-              onChange={({ detail }) => setNewClassName(detail.value)}
-              placeholder="e.g., Invoice, Customer, Address"
-            />
-          </FormField>
-          <FormField label="Description (Optional)" description="Describe what this class represents">
-            <Textarea
-              value={newClassDescription}
-              onChange={({ detail }) => setNewClassDescription(detail.value)}
-              placeholder="e.g., Invoice document with line items"
-              rows={3}
-            />
-          </FormField>
-        </SpaceBetween>
-      </Modal>
+        <Modal
+          visible={showAddAttributeModal}
+          onDismiss={() => {
+            setShowAddAttributeModal(false);
+            setNewAttributeName('');
+            setNewAttributeType({ label: 'String', value: 'string' });
+            setNewAttributeDescription('');
+            setNewAttributeReferenceClass(null);
+          }}
+          header="Add New Attribute"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setShowAddAttributeModal(false);
+                    setNewAttributeName('');
+                    setNewAttributeType({ label: 'String', value: 'string' });
+                    setNewAttributeDescription('');
+                    setNewAttributeReferenceClass(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleConfirmAddAttribute} disabled={!newAttributeName.trim()}>
+                  Add Attribute
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="m">
+            <FormField label="Attribute Name" description="The field name to extract from documents">
+              <Input
+                value={newAttributeName}
+                onChange={({ detail }) => setNewAttributeName(detail.value)}
+                placeholder="e.g., invoiceNumber, customerName, total"
+              />
+            </FormField>
+            <FormField label="Attribute Type" description="The type of data this field contains">
+              <Select
+                selectedOption={newAttributeType}
+                onChange={({ detail }) => setNewAttributeType(detail.selectedOption)}
+                options={attributeTypeOptions}
+              />
+            </FormField>
+            <FormField label="Description (Optional)" description="Describe what this field contains">
+              <Textarea
+                value={newAttributeDescription}
+                onChange={({ detail }) => setNewAttributeDescription(detail.value)}
+                placeholder="e.g., The unique invoice number for this document"
+                rows={3}
+              />
+            </FormField>
 
-      <Modal
-        visible={showDeleteConfirmModal}
-        onDismiss={() => {
-          setShowDeleteConfirmModal(false);
-          setClassToDelete(null);
-        }}
-        header="Delete Class"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                variant="link"
-                onClick={() => {
-                  setShowDeleteConfirmModal(false);
-                  setClassToDelete(null);
-                }}
+            {(newAttributeType.value === 'object' || newAttributeType.value === 'array') && classes.length > 1 && (
+              <FormField
+                label={newAttributeType.value === 'object' ? 'Object Type' : 'Array Item Type'}
+                description={
+                  newAttributeType.value === 'object'
+                    ? 'Define the structure: reference an existing class or create inline properties'
+                    : 'What type of items will this array contain? Reference a class to create a list of ' +
+                      'complex objects (e.g., list of persons)'
+                }
+                info={
+                  newAttributeType.value === 'array' ? (
+                    <Box>Example: If you have a &quot;person&quot; class, select it here to create an array of person objects</Box>
+                  ) : undefined
+                }
               >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  if (classToDelete) {
-                    removeClass(classToDelete.id);
+                <Select
+                  selectedOption={newAttributeReferenceClass}
+                  onChange={({ detail }) => setNewAttributeReferenceClass(detail.selectedOption)}
+                  options={[
+                    {
+                      label: newAttributeType.value === 'object' ? '⚙️ Inline properties' : '📝 Simple values (string)',
+                      value: '',
+                      description:
+                        newAttributeType.value === 'object' ? 'Define properties directly in this object' : 'Array of simple strings',
+                    },
+                    ...classes
+                      .filter((cls) => cls.id !== selectedClassId)
+                      .map((cls) => ({
+                        label: `🔗 ${cls.name}`,
+                        value: cls.name,
+                        description: cls.description || `Reference the ${cls.name} class`,
+                      })),
+                  ]}
+                  placeholder={
+                    newAttributeType.value === 'array'
+                      ? 'e.g., select "person" to create list of persons'
+                      : 'Select a class or define inline'
                   }
-                  setShowDeleteConfirmModal(false);
-                  setClassToDelete(null);
-                }}
-              >
-                Delete
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <Alert type="warning">
-            Are you sure you want to delete the class <strong>{classToDelete?.name}</strong>? This action cannot be
-            undone.
-          </Alert>
-          {classToDelete && Object.keys(classToDelete.attributes?.properties || {}).length > 0 && (
-            <Alert type="info">
-              This class has {Object.keys(classToDelete.attributes.properties).length} attribute(s) that will also be
-              deleted.
+                />
+              </FormField>
+            )}
+          </SpaceBetween>
+        </Modal>
+
+        <Modal
+          visible={showEditClassModal}
+          onDismiss={() => {
+            setShowEditClassModal(false);
+            setEditingClass(null);
+            setNewClassName('');
+            setNewClassDescription('');
+          }}
+          header="Edit Class"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setShowEditClassModal(false);
+                    setEditingClass(null);
+                    setNewClassName('');
+                    setNewClassDescription('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleConfirmEditClass} disabled={!newClassName.trim()}>
+                  Save Changes
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="m">
+            <FormField label="Class Name" description="A unique name for this extraction class">
+              <Input
+                value={newClassName}
+                onChange={({ detail }) => setNewClassName(detail.value)}
+                placeholder="e.g., Invoice, Customer, Address"
+              />
+            </FormField>
+            <FormField label="Description (Optional)" description="Describe what this class represents">
+              <Textarea
+                value={newClassDescription}
+                onChange={({ detail }) => setNewClassDescription(detail.value)}
+                placeholder="e.g., Invoice document with line items"
+                rows={3}
+              />
+            </FormField>
+          </SpaceBetween>
+        </Modal>
+
+        <Modal
+          visible={showDeleteConfirmModal}
+          onDismiss={() => {
+            setShowDeleteConfirmModal(false);
+            setClassToDelete(null);
+          }}
+          header="Delete Class"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setShowDeleteConfirmModal(false);
+                    setClassToDelete(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    if (classToDelete) {
+                      removeClass(classToDelete.id);
+                    }
+                    setShowDeleteConfirmModal(false);
+                    setClassToDelete(null);
+                  }}
+                >
+                  Delete
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="m">
+            <Alert type="warning">
+              Are you sure you want to delete the class <strong>{classToDelete?.name}</strong>? This action cannot be undone.
             </Alert>
-          )}
-        </SpaceBetween>
-      </Modal>
+            {classToDelete && Object.keys(classToDelete.attributes?.properties || {}).length > 0 && (
+              <Alert type="info">
+                This class has {Object.keys(classToDelete.attributes.properties).length} attribute(s) that will also be deleted.
+              </Alert>
+            )}
+          </SpaceBetween>
+        </Modal>
       </SpaceBetween>
     </>
   );

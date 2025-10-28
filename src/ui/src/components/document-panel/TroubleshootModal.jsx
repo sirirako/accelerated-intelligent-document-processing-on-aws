@@ -110,11 +110,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
       const errorAnalyzer = agents.find((agent) => agent.agent_id === 'Error-Analyzer-Agent-v1');
 
       if (!errorAnalyzer) {
-        throw new Error(
-          `Error-Analyzer-Agent-v1 agent is not available. Available agents: ${agents
-            .map((a) => a.agent_id)
-            .join(', ')}`,
-        );
+        throw new Error(`Error-Analyzer-Agent-v1 agent is not available. Available agents: ${agents.map((a) => a.agent_id).join(', ')}`);
       }
 
       logger.debug('Submitting troubleshoot query for document:', documentItem.objectKey);
@@ -275,9 +271,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
 
         {error && <Alert type="error">{error}</Alert>}
 
-        {jobStatus && jobStatus !== 'FAILED' && (
-          <Alert type={jobStatus === 'COMPLETED' ? 'success' : 'info'}>Status: {jobStatus}</Alert>
-        )}
+        {jobStatus && jobStatus !== 'FAILED' && <Alert type={jobStatus === 'COMPLETED' ? 'success' : 'info'}>Status: {jobStatus}</Alert>}
 
         {jobResult && <AgentResultDisplay result={jobResult} query={query} />}
 

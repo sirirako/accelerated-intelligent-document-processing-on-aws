@@ -1,9 +1,9 @@
 /**
  * JSON Schema and AWS IDP Extension Constants
- * 
+ *
  * These constants match the backend lib/idp_common_pkg/idp_common/config/schema_constants.py
  * to ensure consistency between frontend and backend when building and processing document schemas.
- * 
+ *
  * @see lib/idp_common_pkg/idp_common/config/schema_constants.py
  */
 

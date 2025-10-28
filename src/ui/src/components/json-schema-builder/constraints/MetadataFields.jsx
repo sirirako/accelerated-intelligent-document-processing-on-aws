@@ -1,6 +1,6 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Header, FormField, Textarea, Input } from '@cloudscape-design/components';
+import { FormField, Textarea, Input } from '@cloudscape-design/components';
 import { formatValueForInput, parseInputValue } from '../utils/schemaHelpers';
 
 const MetadataFields = ({ attribute, onUpdate }) => {
@@ -78,13 +78,7 @@ MetadataFields.propTypes = {
   attribute: PropTypes.shape({
     type: PropTypes.string,
     description: PropTypes.string,
-    default: PropTypes.oneOfType([
-      PropTypes.string,
-      PropTypes.number,
-      PropTypes.bool,
-      PropTypes.object,
-      PropTypes.array,
-    ]),
+    default: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.bool, PropTypes.object, PropTypes.array]),
     examples: PropTypes.arrayOf(
       PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.bool, PropTypes.object, PropTypes.array]),
     ),

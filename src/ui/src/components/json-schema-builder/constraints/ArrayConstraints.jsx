@@ -23,10 +23,7 @@ const ArrayConstraints = ({ attribute, onUpdate, availableClasses }) => {
     <>
       <Header variant="h4">Array Constraints</Header>
 
-      <FormField
-        label="Min Items"
-        description="Minimum number of items expected in the array. Use 1 to require at least one item."
-      >
+      <FormField label="Min Items" description="Minimum number of items expected in the array. Use 1 to require at least one item.">
         <Input
           type="number"
           value={attribute.minItems?.toString() || ''}
@@ -35,10 +32,7 @@ const ArrayConstraints = ({ attribute, onUpdate, availableClasses }) => {
         />
       </FormField>
 
-      <FormField
-        label="Max Items"
-        description="Maximum number of items allowed in the array. Leave empty for unlimited."
-      >
+      <FormField label="Max Items" description="Maximum number of items allowed in the array. Leave empty for unlimited.">
         <Input
           type="number"
           value={attribute.maxItems?.toString() || ''}
@@ -47,10 +41,7 @@ const ArrayConstraints = ({ attribute, onUpdate, availableClasses }) => {
         />
       </FormField>
 
-      <Checkbox
-        checked={attribute.uniqueItems || false}
-        onChange={({ detail }) => onUpdate({ uniqueItems: detail.checked || undefined })}
-      >
+      <Checkbox checked={attribute.uniqueItems || false} onChange={({ detail }) => onUpdate({ uniqueItems: detail.checked || undefined })}>
         Unique Items (all array elements must be unique, no duplicates allowed)
       </Checkbox>
 

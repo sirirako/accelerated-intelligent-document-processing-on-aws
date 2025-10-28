@@ -344,11 +344,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
         onChange={({ detail }) => setExpanded(detail.expanded)}
       >
         <div style={{ width: '100%' }}>
-          <MeteringTable
-            meteringData={meteringData}
-            documentItem={documentItem}
-            preCalculatedTotals={{ totalCost, costPerPage }}
-          />
+          <MeteringTable meteringData={meteringData} documentItem={documentItem} preCalculatedTotals={{ totalCost, costPerPage }} />
         </div>
       </ExpandableSection>
     </Box>
@@ -521,11 +517,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         }
       >
         <SpaceBetween size="l">
-          <DocumentAttributes
-            item={enhancedItem}
-            setToolsOpen={setToolsOpen}
-            getDocumentDetailsFromIds={getDocumentDetailsFromIds}
-          />
+          <DocumentAttributes item={enhancedItem} setToolsOpen={setToolsOpen} getDocumentDetailsFromIds={getDocumentDetailsFromIds} />
 
           {item.metering && (
             <div>
@@ -534,11 +526,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
           )}
         </SpaceBetween>
       </Container>
-      <DocumentViewers
-        objectKey={item.objectKey}
-        evaluationReportUri={item.evaluationReportUri}
-        summaryReportUri={item.summaryReportUri}
-      />
+      <DocumentViewers objectKey={item.objectKey} evaluationReportUri={item.evaluationReportUri} summaryReportUri={item.summaryReportUri} />
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
       <ChatPanel objectKey={item.objectKey} />

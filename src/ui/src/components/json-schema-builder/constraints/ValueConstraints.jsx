@@ -85,9 +85,7 @@ ValueConstraints.propTypes = {
   attribute: PropTypes.shape({
     type: PropTypes.string,
     const: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.bool, PropTypes.object, PropTypes.array]),
-    enum: PropTypes.arrayOf(
-      PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.bool, PropTypes.object, PropTypes.array]),
-    ),
+    enum: PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.bool, PropTypes.object, PropTypes.array])),
   }).isRequired,
   onUpdate: PropTypes.func.isRequired,
 };

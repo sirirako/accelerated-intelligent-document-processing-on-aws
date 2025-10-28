@@ -6,7 +6,6 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import getConfigurationQuery from '../graphql/queries/getConfiguration';
 import updateConfigurationMutation from '../graphql/queries/updateConfiguration';
-import { deepMerge } from '../utils/configUtils';
 
 const client = generateClient();
 const logger = new ConsoleLogger('useConfiguration');
@@ -229,7 +228,7 @@ const useConfiguration = () => {
       // Silent mode prevents loading state changes that cause re-renders
       // The component will handle rehydration without full re-render
       await fetchConfiguration(true);
-      
+
       return true;
     } catch (err) {
       logger.error('Error updating configuration', err);
@@ -428,13 +427,9 @@ const useConfiguration = () => {
               // Simply restore the default value for this property - don't delete anything
               customArrayInNew[itemIndex][propertyName] = JSON.parse(JSON.stringify(matchingDefaultItem[propertyName]));
 
-              logger.debug(
-                `Property has been reset, but item is preserved: ${JSON.stringify(customArrayInNew[itemIndex])}`,
-              );
+              logger.debug(`Property has been reset, but item is preserved: ${JSON.stringify(customArrayInNew[itemIndex])}`);
             } else {
-              logger.debug(
-                `No matching default found for property '${propertyName}' in item '${currentItemName}'. Keeping current value.`,
-              );
+              logger.debug(`No matching default found for property '${propertyName}' in item '${currentItemName}'. Keeping current value.`);
               // Do nothing - we want to keep the current value
             }
           } else {
@@ -502,20 +497,14 @@ const useConfiguration = () => {
       // Clean up empty objects
       let cleanupPath = pathSegments.slice(0, -1);
       while (cleanupPath.length > 0) {
-        const tempObj = cleanupPath.reduce(
-          (acc, segment) => (acc && acc[segment] ? acc[segment] : undefined),
-          newCustomConfig,
-        );
+        const tempObj = cleanupPath.reduce((acc, segment) => (acc && acc[segment] ? acc[segment] : undefined), newCustomConfig);
 
         // If object is empty, remove it
         if (tempObj && Object.keys(tempObj).length === 0) {
           const parentPath = cleanupPath.slice(0, -1);
           const lastSegment = cleanupPath[cleanupPath.length - 1];
 
-          const parentObj = parentPath.reduce(
-            (acc, segment) => (acc && acc[segment] ? acc[segment] : undefined),
-            newCustomConfig,
-          );
+          const parentObj = parentPath.reduce((acc, segment) => (acc && acc[segment] ? acc[segment] : undefined), newCustomConfig);
 
           if (parentObj) {
             delete parentObj[lastSegment];

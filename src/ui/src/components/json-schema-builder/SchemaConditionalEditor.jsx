@@ -99,8 +99,7 @@ const SchemaConditionalEditor = ({ selectedAttribute, availableClasses, onUpdate
           <FormField label="Schema Type">
             <Select
               selectedOption={
-                schemaTypeOptions.find((opt) => schema.$ref === opt.value || schema.type === opt.value) ||
-                schemaTypeOptions[0]
+                schemaTypeOptions.find((opt) => schema.$ref === opt.value || schema.type === opt.value) || schemaTypeOptions[0]
               }
               onChange={({ detail }) => handleUpdateSchema(key, 'type', detail.selectedOption.value)}
               options={schemaTypeOptions}
@@ -127,8 +126,8 @@ const SchemaConditionalEditor = ({ selectedAttribute, availableClasses, onUpdate
     <ExpandableSection headerText="Conditional Schema (if/then/else)" variant="container">
       <SpaceBetween size="m">
         <Alert type="info">
-          Conditional schemas allow validation to change based on the value of the data. Use this for scenarios like:
-          different validation rules per country, required fields based on a status, or format validation based on type.
+          Conditional schemas allow validation to change based on the value of the data. Use this for scenarios like: different validation
+          rules per country, required fields based on a status, or format validation based on type.
         </Alert>
 
         {!hasConditional ? (

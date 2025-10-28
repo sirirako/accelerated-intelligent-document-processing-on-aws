@@ -34,16 +34,7 @@ const getSchemaStats = (schema) => {
       stats.arrayAttributes += 1;
     }
 
-    if (
-      attr.pattern ||
-      attr.format ||
-      attr.minLength ||
-      attr.maxLength ||
-      attr.minimum ||
-      attr.maximum ||
-      attr.enum ||
-      attr.const
-    ) {
+    if (attr.pattern || attr.format || attr.minLength || attr.maxLength || attr.minimum || attr.maximum || attr.enum || attr.const) {
       stats.withConstraints += 1;
     }
 
@@ -147,10 +138,7 @@ const SchemaPreviewTabs = ({ classes, selectedClassId, exportedSchemas }) => {
   const schemaTabs = useMemo(() => {
     return schemas.map((schema, index) => ({
       id: `schema-${index}`,
-      label:
-        schemas.length > 1
-          ? `${schema[X_AWS_IDP_DOCUMENT_TYPE] || schema.$id || `Schema ${index + 1}`}`
-          : 'JSON Schema',
+      label: schemas.length > 1 ? `${schema[X_AWS_IDP_DOCUMENT_TYPE] || schema.$id || `Schema ${index + 1}`}` : 'JSON Schema',
       content: (
         <SpaceBetween size="m">
           <Alert type="info">
@@ -198,9 +186,7 @@ const SchemaPreviewTabs = ({ classes, selectedClassId, exportedSchemas }) => {
             label: 'Statistics',
             content: (
               <SpaceBetween size="m">
-                <Alert type="info">
-                  Schema complexity and feature usage statistics (selected class: {selectedClass.name})
-                </Alert>
+                <Alert type="info">Schema complexity and feature usage statistics (selected class: {selectedClass.name})</Alert>
                 <SchemaStatsContent stats={getSchemaStats(selectedClass)} />
               </SpaceBetween>
             ),

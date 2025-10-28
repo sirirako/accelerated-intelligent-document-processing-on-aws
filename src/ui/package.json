@@ -58,7 +58,7 @@
   "scripts": {
     "dev": "vite",
     "start": "vite",
-    "build": "vite build",
+    "build": "npm run lint && vite build",
     "preview": "vite preview",
     "test": "vitest",
     "lint": "npx eslint \"src/**/*.{js,jsx}\""

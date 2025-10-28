@@ -14,10 +14,7 @@ export const renderHitlStatus = (item) => {
   }
 
   // Check for failed status first (handle both "Failed" and "FAILED")
-  if (
-    item.hitlStatus &&
-    (item.hitlStatus.toLowerCase() === 'failed' || item.hitlStatus === 'Failed' || item.hitlStatus === 'FAILED')
-  ) {
+  if (item.hitlStatus && (item.hitlStatus.toLowerCase() === 'failed' || item.hitlStatus === 'Failed' || item.hitlStatus === 'FAILED')) {
     return 'A2I Review Failed';
   }
 
