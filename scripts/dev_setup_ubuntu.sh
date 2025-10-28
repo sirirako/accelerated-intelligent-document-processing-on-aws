@@ -43,11 +43,11 @@ wget -q https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-
 unzip -q aws-sam-cli-linux-x86_64.zip -d ./sam-cli
 sudo ./sam-cli/install --update
 
-# node 18
+# node 20
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-nvm install 18
+nvm install 20
 
 # docker
 sudo apt install docker.io -y
