@@ -105,9 +105,7 @@ const AgentResultDisplay = ({ result = null, query = '' }) => {
             <Alert type="warning">Unknown response type: {responseType || 'undefined'}</Alert>
             <Box padding="s">
               <Header variant="h4">Debug Information:</Header>
-              <pre style={{ fontSize: '12px', maxHeight: '300px', overflow: 'auto' }}>
-                {JSON.stringify(parsedResult, null, 2)}
-              </pre>
+              <pre style={{ fontSize: '12px', maxHeight: '300px', overflow: 'auto' }}>{JSON.stringify(parsedResult, null, 2)}</pre>
             </Box>
           </Box>
         );

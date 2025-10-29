@@ -6,16 +6,32 @@ import './index.css';
 
 import App from './App';
 
-// Suppress ResizeObserver loop error
-// This error occurs in some browsers when resizing columns rapidly
+// Suppress ResizeObserver loop error - this is a benign browser timing issue
 const originalConsoleError = console.error;
 console.error = (...args) => {
-  if (args[0]?.includes?.('ResizeObserver loop')) {
-    // Ignore the ResizeObserver loop completed warning
+  if (args[0]?.includes?.('ResizeObserver loop') || args[0]?.message?.includes?.('ResizeObserver loop')) {
     return;
   }
   originalConsoleError(...args);
 };
+
+// Catch ResizeObserver errors at the window level
+window.addEventListener('error', (e) => {
+  if (e.message?.includes('ResizeObserver loop')) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+  return true;
+});
+
+// Catch unhandled promise rejections
+window.addEventListener('unhandledrejection', (e) => {
+  if (e.reason?.message?.includes('ResizeObserver loop')) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+  return true;
+});
 
 const root = createRoot(document.getElementById('root'));
 root.render(

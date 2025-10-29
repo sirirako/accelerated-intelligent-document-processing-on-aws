@@ -1986,7 +1986,17 @@ except Exception as e:
 
         if os.path.exists(sam_dir):
             self.log_verbose(f"Clearing entire SAM cache for {component}: {sam_dir}")
-            shutil.rmtree(sam_dir)
+            try:
+                shutil.rmtree(sam_dir)
+            except (FileNotFoundError, OSError) as e:
+                self.log_verbose(
+                    f"Warning: Error clearing SAM cache (may already be deleted): {e}"
+                )
+                # Try alternative cleanup method for broken symlinks
+                try:
+                    subprocess.run(["rm", "-rf", sam_dir], check=False)
+                except Exception as e2:
+                    self.log_verbose(f"Alternative cleanup also failed: {e2}")
 
     def _validate_python_syntax(self, directory):
         """Validate Python syntax in all .py files in the directory"""
@@ -2042,7 +2052,7 @@ except Exception as e:
                 raise Exception("Python syntax validation failed")
 
             result = subprocess.run(
-                ["python", "setup.py", "build"],
+                [sys.executable, "setup.py", "build"],
                 cwd=lib_dir,
                 capture_output=True,
                 text=True,

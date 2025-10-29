@@ -49,14 +49,16 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
         self.base_config = {
             "classes": [
                 {
-                    "name": "Invoice",
-                    "attributes": [
-                        {
-                            "name": "invoice_number",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "Invoice",
+                    "x-aws-idp-document-type": "Invoice",
+                    "type": "object",
+                    "properties": {
+                        "invoice_number": {
+                            "type": "string",
                             "description": "The invoice number",
-                            "attributeType": "simple",
-                        }
-                    ],
+                        },
+                    },
                 }
             ],
             "assessment": {
@@ -97,11 +99,17 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
 
             # Mock Bedrock response
             mock_invoke_model.return_value = {
-                "content": [
-                    {
-                        "text": '{"invoice_number": {"confidence": 0.95, "confidence_reason": "Clear text"}}'
+                "response": {
+                    "output": {
+                        "message": {
+                            "content": [
+                                {
+                                    "text": '{"invoice_number": {"confidence": 0.95, "confidence_reason": "Clear text"}}'
+                                }
+                            ]
+                        }
                     }
-                ],
+                },
                 "metering": {
                     "inputTokens": 1000,
                     "outputTokens": 200,
@@ -223,11 +231,17 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
 
             # Mock Bedrock response
             mock_invoke_model.return_value = {
-                "content": [
-                    {
-                        "text": '{"invoice_number": {"confidence": 0.95, "confidence_reason": "Clear text"}}'
+                "response": {
+                    "output": {
+                        "message": {
+                            "content": [
+                                {
+                                    "text": '{"invoice_number": {"confidence": 0.95, "confidence_reason": "Clear text"}}'
+                                }
+                            ]
+                        }
                     }
-                ],
+                },
                 "metering": {
                     "inputTokens": 1000,
                     "outputTokens": 200,
@@ -240,7 +254,7 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
                 self.document, self.section_id
             )
 
-            # Verify the service processed normally
+            # Verify the service processed normally (defaults to enabled)
             self.assertIsNotNone(result_document)
             mock_invoke_model.assert_called_once()
             mock_write_content.assert_called_once()
@@ -300,11 +314,17 @@ class TestAssessmentEnabledProperty(unittest.TestCase):
 
             # Mock Bedrock response
             mock_invoke_model.return_value = {
-                "content": [
-                    {
-                        "text": '{"invoice_number": {"confidence": 0.95, "confidence_reason": "Clear text"}}'
+                "response": {
+                    "output": {
+                        "message": {
+                            "content": [
+                                {
+                                    "text": '{"invoice_number": {"confidence": 0.95, "confidence_reason": "Clear text"}}'
+                                }
+                            ]
+                        }
                     }
-                ],
+                },
                 "metering": {
                     "inputTokens": 1000,
                     "outputTokens": 200,

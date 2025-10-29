@@ -199,6 +199,10 @@ def create_dynamic_extraction_tool_and_patch_tool(model_class: Type[TargetModel]
         extraction: model_class,  # pyright: ignore[reportInvalidTypeForm]
         agent: Agent,  # pyright: ignore[reportInvalidTypeForm]
     ) -> str:  # pyright: ignore[reportInvalidTypeForm]
+        """Use this tool to return the requested data extraction.
+        When you call this tool it overwrites the previous extraction, if you want to expand the extraction use jsonpatch.
+        This tool needs to be Successfully invoked before the patch tool can be used."""
+
         logger.info("extraction_tool called", extra={"models_extraction": extraction})
         extraction_model = model_class(**extraction)  # pyright: ignore[reportAssignmentType]
         extraction_dict = extraction_model.model_dump()
@@ -238,11 +242,6 @@ def create_dynamic_extraction_tool_and_patch_tool(model_class: Type[TargetModel]
             "patches_applied": len(patches),
         }
 
-    extraction_tool.__doc__ = f"""
-        Use this tool to return the requested data extraction.
-        When you call this tool it overwrites the previous extraction, if you want to expand the extraction use jsonpatch.
-        This tool needs to be Successfully invoked before the patch tool can be used.
-        required extraction schema is: {model_class.model_json_schema()}"""
     return extraction_tool, apply_json_patches
 
 

@@ -30,16 +30,37 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     logger.debug('setDocumentsDeduped called with:', documentValues);
     setDocuments((currentDocuments) => {
       const documentValuesdocumentIds = documentValues.map((c) => c.ObjectKey);
-      const updatedDocuments = [
-        ...currentDocuments.filter((c) => !documentValuesdocumentIds.includes(c.ObjectKey)),
-        ...documentValues.map((document) => ({
-          ...document,
-          ListPK: document.ListPK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListPK,
-          ListSK: document.ListSK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListSK,
-        })),
-      ];
-      logger.debug('Documents state updated, new count:', updatedDocuments.length);
-      return updatedDocuments;
+
+      // Remove old entries with matching ObjectKeys
+      const filteredCurrentDocuments = currentDocuments.filter((c) => !documentValuesdocumentIds.includes(c.ObjectKey));
+
+      // Add new entries with PK/SK preserved
+      const newDocuments = documentValues.map((document) => ({
+        ...document,
+        ListPK: document.ListPK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListPK,
+        ListSK: document.ListSK || currentDocuments.find((c) => c.ObjectKey === document.ObjectKey)?.ListSK,
+      }));
+
+      // Combine and deduplicate by ObjectKey, keeping only the latest entry per ObjectKey
+      const allDocuments = [...filteredCurrentDocuments, ...newDocuments];
+      const deduplicatedByObjectKey = Object.values(
+        allDocuments.reduce((acc, doc) => {
+          const existing = acc[doc.ObjectKey];
+          // Keep the document with the most recent CompletionTime or InitialEventTime
+          if (!existing) {
+            acc[doc.ObjectKey] = doc;
+          } else {
+            const existingTime = existing.CompletionTime || existing.InitialEventTime || '0';
+            const newTime = doc.CompletionTime || doc.InitialEventTime || '0';
+            if (newTime > existingTime) {
+              acc[doc.ObjectKey] = doc;
+            }
+          }
+          return acc;
+        }, {}),
+      );
+
+      return deduplicatedByObjectKey;
     });
   }, []);
 
@@ -47,19 +68,34 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     async (objectKeys) => {
       // prettier-ignore
       logger.debug('getDocumentDetailsFromIds', objectKeys);
-      const getDocumentPromises = objectKeys.map((objectKey) =>
-        client.graphql({ query: getDocument, variables: { objectKey } }),
-      );
+      const getDocumentPromises = objectKeys.map((objectKey) => client.graphql({ query: getDocument, variables: { objectKey } }));
       const getDocumentResolutions = await Promise.allSettled(getDocumentPromises);
+
+      // Separate rejected promises from null/undefined results
       const getDocumentRejected = getDocumentResolutions.filter((r) => r.status === 'rejected');
-      if (getDocumentRejected.length) {
-        setErrorMessage('failed to get document details - please try again later');
-        logger.error('get document promises rejected', getDocumentRejected);
+      const fulfilledResults = getDocumentResolutions.filter((r) => r.status === 'fulfilled');
+      const getDocumentNull = fulfilledResults
+        .map((r, idx) => ({ doc: r.value?.data?.getDocument, key: objectKeys[idx] }))
+        .filter((item) => !item.doc)
+        .map((item) => item.key);
+
+      // Log partial failures but NEVER show error banner for individual document failures
+      if (getDocumentRejected.length > 0) {
+        logger.warn(`Failed to load ${getDocumentRejected.length} of ${objectKeys.length} document(s) due to query rejection`);
+        logger.debug('Rejected promises:', getDocumentRejected);
       }
+      if (getDocumentNull.length > 0) {
+        logger.warn(`${getDocumentNull.length} of ${objectKeys.length} document(s) not found (returned null):`, getDocumentNull);
+        logger.warn('These documents have list entries but no corresponding document records - possible orphaned list entries');
+      }
+
+      // Filter out null/undefined documents to prevent downstream errors
       const documentValues = getDocumentResolutions
         .filter((r) => r.status === 'fulfilled')
-        .map((r) => r.value?.data?.getDocument);
+        .map((r) => r.value?.data?.getDocument)
+        .filter((doc) => doc != null);
 
+      logger.debug(`Successfully loaded ${documentValues.length} of ${objectKeys.length} requested documents`);
       return documentValues;
     },
     [setErrorMessage],
@@ -235,11 +271,26 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         const documentData = await documentDataPromise;
         const objectKeys = documentData.map((item) => item.ObjectKey);
         const documentDetails = await getDocumentDetailsFromIds(objectKeys);
-        // Merge document details with PK and SK
-        return documentDetails.map((detail) => {
-          const matchingData = documentData.find((item) => item.ObjectKey === detail.ObjectKey);
-          return { ...detail, ListPK: matchingData.PK, ListSK: matchingData.SK };
-        });
+
+        // Log orphaned list entries with full PK/SK details for debugging
+        const retrievedKeys = new Set(documentDetails.map((d) => d.ObjectKey));
+        const missingDocs = documentData.filter((item) => !retrievedKeys.has(item.ObjectKey));
+        if (missingDocs.length > 0) {
+          missingDocs.forEach((item) => {
+            logger.warn(`Orphaned list entry detected:`);
+            logger.warn(`  - List entry: PK="${item.PK}", SK="${item.SK}"`);
+            logger.warn(`  - Expected doc entry: PK="doc#${item.ObjectKey}", SK="none"`);
+            logger.warn(`  - ObjectKey: "${item.ObjectKey}"`);
+          });
+        }
+
+        // Merge document details with PK and SK, filtering out nulls to prevent shard-level failures
+        return documentDetails
+          .filter((detail) => detail != null)
+          .map((detail) => {
+            const matchingData = documentData.find((item) => item.ObjectKey === detail.ObjectKey);
+            return { ...detail, ListPK: matchingData.PK, ListSK: matchingData.SK };
+          });
       });
 
       const documentValuesPromises = documentDetailsPromises.map(async (documentValuesPromise) => {
@@ -258,9 +309,14 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
       setDocumentsDeduped(documentValuesReduced);
       setIsDocumentsListLoading(false);
       const getDocumentsRejected = getDocumentsPromiseResolutions.filter((r) => r.status === 'rejected');
-      if (getDocumentsRejected.length) {
+      // Only show error banner if ALL shard queries failed
+      if (getDocumentsRejected.length === documentDataPromises.length) {
         setErrorMessage('failed to get document details - please try again later');
-        logger.error('get document promises rejected', getDocumentsRejected);
+        logger.error('All shard queries rejected', getDocumentsRejected);
+      } else if (getDocumentsRejected.length > 0) {
+        // Partial failure - log but don't show error banner
+        logger.warn(`${getDocumentsRejected.length} of ${documentDataPromises.length} shard queries failed`);
+        logger.debug('Rejected shard queries:', getDocumentsRejected);
       }
     } catch (error) {
       setIsDocumentsListLoading(false);

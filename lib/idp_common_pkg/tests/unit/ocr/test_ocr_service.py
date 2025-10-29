@@ -104,9 +104,9 @@ class TestOcrService:
             assert service.backend == "textract"
             assert service.region == "us-west-2"
             assert service.max_workers == 20
-            assert service.dpi == 150  # Now defaults to 150
+            assert service.dpi is None  # Default is None
             assert service.enhanced_features is False
-            # NEW: Default image sizing is now applied automatically
+            # Default image sizing
             assert service.resize_config == {
                 "target_width": 951,
                 "target_height": 1268,

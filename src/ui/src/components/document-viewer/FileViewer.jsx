@@ -330,9 +330,7 @@ const FileViewer = ({ objectKey }) => {
                 📥 Download {fileTypeName} File
               </a>
             </p>
-            <p style={{ fontSize: '14px', color: '#666' }}>
-              The file will open in your default {fileTypeName} application.
-            </p>
+            <p style={{ fontSize: '14px', color: '#666' }}>The file will open in your default {fileTypeName} application.</p>
           </Box>
         </Box>
       );

@@ -26,61 +26,63 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
         self.document = self._create_test_document()
         self.section_id = "section_1"
 
-        # Base configuration for assessment
+        # Base configuration for assessment (JSON Schema format)
         self.base_config = {
             "classes": [
                 {
-                    "name": "invoice",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "invoice",
+                    "x-aws-idp-document-type": "invoice",
+                    "type": "object",
                     "description": "A billing document",
-                    "attributes": [
-                        {
-                            "name": "invoice_number",
+                    "properties": {
+                        "invoice_number": {
+                            "type": "string",
                             "description": "The unique identifier for the invoice",
-                            "confidence_threshold": "0.85",
+                            "x-aws-idp-confidence-threshold": 0.85,
                         },
-                        {
-                            "name": "total_amount",
+                        "total_amount": {
+                            "type": "string",
                             "description": "The final amount to be paid",
-                            "confidence_threshold": "0.9",
+                            "x-aws-idp-confidence-threshold": 0.9,
                         },
-                        {
-                            "name": "vendor_info",
+                        "vendor_info": {
+                            "type": "object",
                             "description": "Vendor information",
-                            "attributeType": "group",
-                            "groupAttributes": [
-                                {
-                                    "name": "vendor_name",
+                            "properties": {
+                                "vendor_name": {
+                                    "type": "string",
                                     "description": "Name of the vendor",
-                                    "confidence_threshold": "0.8",
+                                    "x-aws-idp-confidence-threshold": 0.8,
                                 },
-                                {
-                                    "name": "vendor_address",
+                                "vendor_address": {
+                                    "type": "string",
                                     "description": "Address of the vendor",
-                                    "confidence_threshold": "0.75",
+                                    "x-aws-idp-confidence-threshold": 0.75,
                                 },
-                            ],
-                        },
-                        {
-                            "name": "line_items",
-                            "description": "List of invoice line items",
-                            "attributeType": "list",
-                            "listItemTemplate": {
-                                "itemDescription": "Individual line item",
-                                "itemAttributes": [
-                                    {
-                                        "name": "item_description",
-                                        "description": "Description of the item",
-                                        "confidence_threshold": "0.7",
-                                    },
-                                    {
-                                        "name": "item_amount",
-                                        "description": "Amount for this item",
-                                        "confidence_threshold": "0.8",
-                                    },
-                                ],
                             },
                         },
-                    ],
+                        "line_items": {
+                            "type": "array",
+                            "description": "List of invoice line items",
+                            "x-aws-idp-list-item-description": "Individual line item",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "item_description": {
+                                        "type": "string",
+                                        "description": "Description of the item",
+                                        "x-aws-idp-confidence-threshold": 0.7,
+                                    },
+                                    "item_amount": {
+                                        "type": "string",
+                                        "description": "Amount for this item",
+                                        "x-aws-idp-confidence-threshold": 0.8,
+                                    },
+                                },
+                            },
+                        },
+                    },
                 }
             ],
             "assessment": {
@@ -457,26 +459,29 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
 
     def test_confidence_threshold_handling(self):
         """Test that confidence thresholds are handled correctly in both services."""
-        # Test with various threshold formats (string, float, int, None)
+        # Test with various threshold formats (float, int, None)
         test_cases = [
-            ("0.85", 0.85),
+            (0.85, 0.85),
             (0.9, 0.9),
             (1, 1.0),
             (None, 0.9),  # Should use default
-            ("", 0.9),  # Should use default
-            ("invalid", 0.9),  # Should use default
         ]
 
         for threshold_input, expected_output in test_cases:
             config = self.base_config.copy()
             if threshold_input is not None:
-                config["classes"][0]["attributes"][0]["confidence_threshold"] = (
-                    threshold_input
-                )
+                config["classes"][0]["properties"]["invoice_number"][
+                    "x-aws-idp-confidence-threshold"
+                ] = threshold_input
             else:
                 # Remove confidence_threshold to test None case
-                if "confidence_threshold" in config["classes"][0]["attributes"][0]:
-                    del config["classes"][0]["attributes"][0]["confidence_threshold"]
+                if (
+                    "x-aws-idp-confidence-threshold"
+                    in config["classes"][0]["properties"]["invoice_number"]
+                ):
+                    del config["classes"][0]["properties"]["invoice_number"][
+                        "x-aws-idp-confidence-threshold"
+                    ]
 
             # Test with both standard and granular services
             for granular_enabled in [False, True]:

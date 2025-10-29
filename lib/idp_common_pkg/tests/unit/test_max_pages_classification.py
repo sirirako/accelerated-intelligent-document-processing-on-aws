@@ -14,7 +14,7 @@ class TestMaxPagesForClassification:
     def mock_config(self):
         return {
             "classification": {
-                "maxPagesForClassification": "ALL",
+                "maxPagesForClassification": 0,  # 0 means ALL pages
                 "classificationMethod": "multimodalPageLevelClassification",
                 "model": "us.amazon.nova-pro-v1:0",
                 "system_prompt": "Test system prompt",
@@ -39,8 +39,8 @@ class TestMaxPagesForClassification:
         return doc
 
     def test_limit_pages_all(self, classification_service, sample_document):
-        """Test that 'ALL' returns original document unchanged"""
-        classification_service.max_pages_for_classification = "ALL"
+        """Test that 0 (ALL) returns original document unchanged"""
+        classification_service.max_pages_for_classification = 0
         result = classification_service._limit_pages_for_classification(sample_document)
 
         assert result.id == sample_document.id
@@ -49,7 +49,7 @@ class TestMaxPagesForClassification:
 
     def test_limit_pages_numeric(self, classification_service, sample_document):
         """Test limiting to specific number of pages"""
-        classification_service.max_pages_for_classification = "3"
+        classification_service.max_pages_for_classification = 3
         result = classification_service._limit_pages_for_classification(sample_document)
 
         assert result.id != sample_document.id  # Should be new document
@@ -58,23 +58,23 @@ class TestMaxPagesForClassification:
 
     def test_limit_pages_exceeds_total(self, classification_service, sample_document):
         """Test limiting to more pages than available"""
-        classification_service.max_pages_for_classification = "10"
+        classification_service.max_pages_for_classification = 10
         result = classification_service._limit_pages_for_classification(sample_document)
 
         assert result.id == sample_document.id  # Should return original
         assert len(result.pages) == 5
 
     def test_limit_pages_invalid_value(self, classification_service, sample_document):
-        """Test invalid maxPagesForClassification value"""
-        classification_service.max_pages_for_classification = "invalid"
+        """Test invalid maxPagesForClassification value (negative)"""
+        classification_service.max_pages_for_classification = -1
         result = classification_service._limit_pages_for_classification(sample_document)
 
-        assert result.id == sample_document.id  # Should return original
+        assert result.id == sample_document.id  # Should return original (ALL pages)
         assert len(result.pages) == 5
 
     def test_limit_pages_zero(self, classification_service, sample_document):
-        """Test zero pages limit"""
-        classification_service.max_pages_for_classification = "0"
+        """Test zero pages limit (means ALL)"""
+        classification_service.max_pages_for_classification = 0
         result = classification_service._limit_pages_for_classification(sample_document)
 
         assert result.id == sample_document.id  # Should return original
@@ -190,7 +190,7 @@ class TestMaxPagesForClassification:
         }
 
         service = ClassificationService(backend="bedrock", config=mock_config)
-        assert service.max_pages_for_classification == "2"
+        assert service.max_pages_for_classification == 2
 
     def test_config_default_value(self):
         """Test default value when maxPagesForClassification not in config"""
@@ -204,4 +204,4 @@ class TestMaxPagesForClassification:
         }
 
         service = ClassificationService(backend="bedrock", config=mock_config)
-        assert service.max_pages_for_classification == "ALL"
+        assert service.max_pages_for_classification == 0  # 0 means ALL pages

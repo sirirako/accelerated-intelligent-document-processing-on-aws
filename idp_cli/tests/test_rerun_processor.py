@@ -11,8 +11,10 @@ from unittest.mock import MagicMock, patch
 class TestRerunProcessor:
     """Test rerun processing functionality"""
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("boto3.client")
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     def test_init_success(self, mock_boto_client, mock_stack_info_class):
         """Test successful initialization"""
         from idp_cli.rerun_processor import RerunProcessor
@@ -31,8 +33,10 @@ class TestRerunProcessor:
         assert processor.stack_name == "test-stack"
         assert processor.resources["DocumentQueue"] is not None
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("boto3.client")
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     def test_prepare_for_classification_rerun(
         self, mock_boto_client, mock_stack_info_class
     ):
@@ -85,6 +89,7 @@ class TestRerunProcessor:
         assert result.status == Status.QUEUED
         assert result.start_time is None
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("boto3.client")
     def test_prepare_for_extraction_rerun(
@@ -141,6 +146,7 @@ class TestRerunProcessor:
         # Verify status reset
         assert result.status == Status.QUEUED
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("boto3.client")
     def test_send_to_queue(self, mock_boto_client, mock_stack_info_class):
@@ -176,6 +182,7 @@ class TestRerunProcessor:
         )
         assert "test-doc" in call_args[1]["MessageBody"]
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("idp_cli.rerun_processor.RerunProcessor._get_document")
     @patch("idp_cli.rerun_processor.RerunProcessor._send_to_queue")
@@ -225,6 +232,7 @@ class TestRerunProcessor:
         # Verify send_to_queue was called
         mock_send_to_queue.assert_called_once()
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("idp_cli.rerun_processor.RerunProcessor._get_document")
     @patch("boto3.client")
@@ -257,6 +265,7 @@ class TestRerunProcessor:
         assert len(results["failed_documents"]) == 1
         assert results["failed_documents"][0]["object_key"] == "missing-doc"
 
+    @patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1"})
     @patch("idp_cli.stack_info.StackInfo")
     @patch("idp_cli.batch_processor.BatchProcessor")
     @patch("boto3.client")
