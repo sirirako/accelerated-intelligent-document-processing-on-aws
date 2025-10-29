@@ -3,7 +3,7 @@
 
 /**
  * Deep merge utility for configuration objects.
- * 
+ *
  * @param {Object} target - Base object
  * @param {Object} source - Object to merge on top
  * @returns {Object} Merged object

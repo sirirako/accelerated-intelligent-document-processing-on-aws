@@ -153,6 +153,8 @@ const BoundingBox = memo(({ box, page, currentPage, imageRef, zoomLevel = 1, pan
   return <div style={style} />;
 });
 
+BoundingBox.displayName = 'BoundingBox';
+
 // Memoized component to render a form field based on its type
 const FormFieldRenderer = memo(
   ({
@@ -669,6 +671,8 @@ const FormFieldRenderer = memo(
     }
   },
 );
+
+FormFieldRenderer.displayName = 'FormFieldRenderer';
 
 const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly, sectionData }) => {
   const { currentCredentials } = useAppContext();

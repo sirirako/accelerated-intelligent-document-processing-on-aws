@@ -34,9 +34,7 @@ const getPanelContentSingle = ({ items, setToolsOpen, getDocumentDetailsFromIds 
 
   return {
     header: 'Document Details',
-    body: (
-      <DocumentPanel item={item} setToolsOpen={setToolsOpen} getDocumentDetailsFromIds={getDocumentDetailsFromIds} />
-    ),
+    body: <DocumentPanel item={item} setToolsOpen={setToolsOpen} getDocumentDetailsFromIds={getDocumentDetailsFromIds} />,
   };
 };
 

@@ -3,9 +3,7 @@ import { Badge } from '@cloudscape-design/components';
 
 export const DOCUMENT_TYPE_BADGE_COLOR = 'blue';
 
-export const DocumentTypeBadge = () => (
-  <Badge color={DOCUMENT_TYPE_BADGE_COLOR}>Document Type</Badge>
-);
+export const DocumentTypeBadge = () => <Badge color={DOCUMENT_TYPE_BADGE_COLOR}>Document Type</Badge>;
 
 export const getTypeColor = (type) => {
   switch (type) {

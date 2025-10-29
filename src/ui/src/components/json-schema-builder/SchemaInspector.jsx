@@ -1,18 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import {
-  Box,
-  SpaceBetween,
-  Header,
-  FormField,
-  Input,
-  Select,
-  Textarea,
-  Checkbox,
-  Button,
-  Toggle,
-  Alert,
-} from '@cloudscape-design/components';
+import { Box, SpaceBetween, Header, FormField, Input, Select, Textarea, Checkbox, Button, Alert } from '@cloudscape-design/components';
 import StringConstraints from './constraints/StringConstraints';
 import NumberConstraints from './constraints/NumberConstraints';
 import ArrayConstraints from './constraints/ArrayConstraints';
@@ -76,10 +64,7 @@ const SchemaInspector = ({
       <Box>
         <Header variant="h3">Class Inspector: {selectedClass.name}</Header>
         <SpaceBetween size="m">
-          <FormField
-            label="Document Type"
-            description="Document types become top-level schemas. Shared classes are reusable definitions."
-          >
+          <FormField label="Document Type" description="Document types become top-level schemas. Shared classes are reusable definitions.">
             <Checkbox
               checked={selectedClass[X_AWS_IDP_DOCUMENT_TYPE] || false}
               onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_DOCUMENT_TYPE]: detail.checked })}
@@ -92,15 +77,15 @@ const SchemaInspector = ({
             <Alert type="info">
               <strong>Document Type</strong>
               <br />
-              This class will be exported as a standalone JSON schema. Each document type schema will only include $defs
-              for classes it actually references, keeping schemas minimal and focused.
+              This class will be exported as a standalone JSON schema. Each document type schema will only include $defs for classes it
+              actually references, keeping schemas minimal and focused.
             </Alert>
           ) : (
             <Alert type="info">
               <strong>Shared Class</strong>
               <br />
-              This class is available to be referenced by document types and other classes. It will only appear in the
-              $defs section of schemas that reference it.
+              This class is available to be referenced by document types and other classes. It will only appear in the $defs section of
+              schemas that reference it.
             </Alert>
           )}
 
@@ -139,8 +124,7 @@ const SchemaInspector = ({
                       }
                     }}
                   >
-                    {usage.className}.{usage.attributeName} (
-                    {usage.type === 'array' ? `${selectedClass.name}[]` : selectedClass.name})
+                    {usage.className}.{usage.attributeName} ({usage.type === 'array' ? `${selectedClass.name}[]` : selectedClass.name})
                   </Button>
                 ))}
               </SpaceBetween>
@@ -340,10 +324,7 @@ const SchemaInspector = ({
 
         <FormField label="Evaluation Method">
           <Select
-            selectedOption={
-              EVALUATION_METHOD_OPTIONS.find((opt) => opt.value === selectedAttribute[X_AWS_IDP_EVALUATION_METHOD]) ||
-              null
-            }
+            selectedOption={EVALUATION_METHOD_OPTIONS.find((opt) => opt.value === selectedAttribute[X_AWS_IDP_EVALUATION_METHOD]) || null}
             onChange={({ detail }) =>
               onUpdate({
                 [X_AWS_IDP_EVALUATION_METHOD]: detail.selectedOption.value,

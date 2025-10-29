@@ -84,9 +84,7 @@ export const buildJSONSchema = (classObj, allClasses = []) => {
     type: 'object',
     ...(classObj.description ? { description: classObj.description } : {}),
     properties: sanitizedProperties,
-    ...(classObj.attributes.required && classObj.attributes.required.length > 0
-      ? { required: classObj.attributes.required }
-      : {}),
+    ...(classObj.attributes.required && classObj.attributes.required.length > 0 ? { required: classObj.attributes.required } : {}),
     $defs: defs,
   };
 };

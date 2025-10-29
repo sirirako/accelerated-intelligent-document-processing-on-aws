@@ -304,16 +304,12 @@ const ConfigurationLayout = () => {
                             // Only check constraints if it's a valid number
                             if (isValidNumber && itemProp.minimum !== undefined && numValue < itemProp.minimum) {
                               errors.push({
-                                message:
-                                  `Field '${itemKey}' in item ${index} of '${key}' must be ` +
-                                  `at least ${itemProp.minimum}`,
+                                message: `Field '${itemKey}' in item ${index} of '${key}' must be at least ${itemProp.minimum}`,
                               });
                             }
                             if (isValidNumber && itemProp.maximum !== undefined && numValue > itemProp.maximum) {
                               errors.push({
-                                message:
-                                  `Field '${itemKey}' in item ${index} of '${key}' must be ` +
-                                  `at most ${itemProp.maximum}`,
+                                message: `Field '${itemKey}' in item ${index} of '${key}' must be at most ${itemProp.maximum}`,
                               });
                             }
                           }
@@ -578,12 +574,7 @@ const ConfigurationLayout = () => {
           for (let i = 0; i < current.length; i += 1) {
             // Use += 1 instead of ++
             // For objects in arrays, recursively compare
-            if (
-              typeof current[i] === 'object' &&
-              current[i] !== null &&
-              typeof defaultObj[i] === 'object' &&
-              defaultObj[i] !== null
-            ) {
+            if (typeof current[i] === 'object' && current[i] !== null && typeof defaultObj[i] === 'object' && defaultObj[i] !== null) {
               const nestedPath = path ? `${path}[${i}]` : `[${i}]`;
               const nestedDiff = compareWithDefault(current[i], defaultObj[i], nestedPath);
 
@@ -676,8 +667,8 @@ const ConfigurationLayout = () => {
         // This ensures we capture both:
         // 1. User's form edits (formValues)
         // 2. Fields not in form like notes, system_prompt, task_prompt (from customConfig)
-        const mergedConfig = deepMerge(customConfig || {}, formValues);
-        configToSave = { ...mergedConfig, saveAsDefault: true };
+        const mergedConfigToSave = deepMerge(customConfig || {}, formValues);
+        configToSave = { ...mergedConfigToSave, saveAsDefault: true };
         console.log('Saving merged config as new Default:', configToSave);
       } else {
         // CRITICAL: Compare formValues against customConfig (what we loaded)
@@ -738,13 +729,13 @@ const ConfigurationLayout = () => {
                 current[parts[parts.length - 1]] = value;
 
                 // Deep merge this into result
-                const deepMerge = (target, source) => {
+                const deepMergeNested = (target, source) => {
                   const output = { ...target };
 
                   Object.keys(source).forEach((key) => {
                     if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
                       if (target[key] && typeof target[key] === 'object') {
-                        output[key] = deepMerge(target[key], source[key]);
+                        output[key] = deepMergeNested(target[key], source[key]);
                       } else {
                         output[key] = { ...source[key] };
                       }
@@ -758,7 +749,7 @@ const ConfigurationLayout = () => {
                 };
 
                 // Merge into result without modifying original objects
-                Object.assign(newResult, deepMerge(newResult, objectToMerge));
+                Object.assign(newResult, deepMergeNested(newResult, objectToMerge));
               }
             } else {
               // For top-level values, create a new object with the property
@@ -772,7 +763,7 @@ const ConfigurationLayout = () => {
         // Convert the difference paths to a proper nested structure
         const builtObject = buildObjectFromPaths(differences);
         console.log('DEBUG: Built object from paths:', builtObject);
-        
+
         // CRITICAL: If there are no differences, don't send update to backend
         // This prevents unnecessary API calls and potential data issues
         if (Object.keys(builtObject).length === 0) {
@@ -781,7 +772,7 @@ const ConfigurationLayout = () => {
           setTimeout(() => setSaveSuccess(false), 3000);
           return;
         }
-        
+
         Object.assign(customConfigToSave, builtObject);
         configToSave = customConfigToSave;
         console.log('Saving customized config:', configToSave);
@@ -1001,9 +992,7 @@ const ConfigurationLayout = () => {
           </Box>
         }
       >
-        <Box variant="span">
-          Are you sure you want to reset all configuration settings to default values? This action cannot be undone.
-        </Box>
+        <Box variant="span">Are you sure you want to reset all configuration settings to default values? This action cannot be undone.</Box>
       </Modal>
 
       <Modal
@@ -1025,13 +1014,12 @@ const ConfigurationLayout = () => {
       >
         <SpaceBetween direction="vertical" size="m">
           <Box variant="span">
-            Are you sure you want to save the current configuration as the new default? This will replace the existing
-            default configuration and cannot be undone.
+            Are you sure you want to save the current configuration as the new default? This will replace the existing default configuration
+            and cannot be undone.
           </Box>
           <Alert type="warning" header="Important: Version upgrade considerations">
-            The default configuration may be overwritten when you update the solution to a new version. We recommend
-            using the Export button to download and save your configuration so you can easily restore it after an
-            upgrade if needed.
+            The default configuration may be overwritten when you update the solution to a new version. We recommend using the Export button
+            to download and save your configuration so you can easily restore it after an upgrade if needed.
           </Alert>
         </SpaceBetween>
       </Modal>
@@ -1065,11 +1053,7 @@ const ConfigurationLayout = () => {
             />
           </FormField>
           <FormField label="File name">
-            <Input
-              value={exportFileName}
-              onChange={({ detail }) => setExportFileName(detail.value)}
-              placeholder="configuration"
-            />
+            <Input value={exportFileName} onChange={({ detail }) => setExportFileName(detail.value)} placeholder="configuration" />
           </FormField>
         </SpaceBetween>
       </Modal>
@@ -1105,13 +1089,7 @@ const ConfigurationLayout = () => {
                 <Button variant="normal" onClick={() => document.getElementById('import-file').click()}>
                   Import
                 </Button>
-                <input
-                  id="import-file"
-                  type="file"
-                  accept=".json,.yaml,.yml"
-                  style={{ display: 'none' }}
-                  onChange={handleImport}
-                />
+                <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)
                 </Button>
@@ -1139,12 +1117,7 @@ const ConfigurationLayout = () => {
           )}
 
           {saveSuccess && (
-            <Alert
-              type="success"
-              dismissible
-              onDismiss={() => setSaveSuccess(false)}
-              header="Configuration saved successfully"
-            >
+            <Alert type="success" dismissible onDismiss={() => setSaveSuccess(false)} header="Configuration saved successfully">
               Your configuration changes have been saved.
             </Alert>
           )}
@@ -1177,9 +1150,7 @@ const ConfigurationLayout = () => {
               <ConfigBuilder
                 schema={{
                   ...schema,
-                  properties: Object.fromEntries(
-                    Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes'),
-                  ),
+                  properties: Object.fromEntries(Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes')),
                 }}
                 formValues={formValues}
                 defaultConfig={defaultConfig}

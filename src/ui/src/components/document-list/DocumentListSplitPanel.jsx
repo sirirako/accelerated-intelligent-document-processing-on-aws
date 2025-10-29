@@ -12,12 +12,7 @@ import '@cloudscape-design/global-styles/index.css';
 const DocumentListSplitPanel = () => {
   const { selectedItems, setToolsOpen, getDocumentDetailsFromIds } = useDocumentsContext();
 
-  const { header: panelHeader, body: panelBody } = getPanelContent(
-    selectedItems,
-    'multiple',
-    setToolsOpen,
-    getDocumentDetailsFromIds,
-  );
+  const { header: panelHeader, body: panelBody } = getPanelContent(selectedItems, 'multiple', setToolsOpen, getDocumentDetailsFromIds);
 
   return (
     <SplitPanel header={panelHeader} i18nStrings={SPLIT_PANEL_I18NSTRINGS}>

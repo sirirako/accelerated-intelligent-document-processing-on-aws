@@ -5,17 +5,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import {
-  Box,
-  Button,
-  Spinner,
-  Header,
-  Grid,
-  Container,
-  SpaceBetween,
-  Input,
-  Link,
-} from '@cloudscape-design/components';
+import { Box, Button, Spinner, Header, Grid, Container, SpaceBetween, Input, Link } from '@cloudscape-design/components';
 import PropTypes from 'prop-types';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
@@ -159,11 +149,7 @@ export const DocumentsQueryLayout = () => {
       footer={
         <form onSubmit={onSubmit}>
           <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { default: 12, xxs: 3 }]}>
-            <Input
-              placeholder={`${placeholder}`}
-              onChange={({ detail }) => setInputQuery(detail.value)}
-              value={inputQuery}
-            />
+            <Input placeholder={`${placeholder}`} onChange={({ detail }) => setInputQuery(detail.value)} value={inputQuery} />
             <Button type="submit">Submit</Button>
           </Grid>
         </form>

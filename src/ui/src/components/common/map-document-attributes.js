@@ -16,10 +16,7 @@ const isHitlCompleted = (status) => {
   if (!status) return false;
   const statusLower = status.toLowerCase();
   return (
-    statusLower === 'completed' ||
-    statusLower.includes('complete') ||
-    statusLower.includes('done') ||
-    statusLower.includes('finished')
+    statusLower === 'completed' || statusLower.includes('complete') || statusLower.includes('done') || statusLower.includes('finished')
   );
 };
 

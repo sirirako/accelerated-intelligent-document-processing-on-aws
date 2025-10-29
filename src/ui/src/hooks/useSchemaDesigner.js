@@ -4,26 +4,17 @@ import { X_AWS_IDP_DOCUMENT_TYPE, X_AWS_IDP_EXAMPLES } from '../constants/schema
 
 const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) => {
   const updatedProperties = {};
-  
+
   Object.entries(properties).forEach(([propName, propSchema]) => {
     // Check if this is an inline object with properties (not a $ref)
-    if (
-      propSchema.type === 'object' && 
-      propSchema.properties && 
-      Object.keys(propSchema.properties).length > 0 &&
-      !propSchema.$ref
-    ) {
+    if (propSchema.type === 'object' && propSchema.properties && Object.keys(propSchema.properties).length > 0 && !propSchema.$ref) {
       // Extract to a shared class
       const className = propName;
       const classId = `class-${timestamp}-extracted-${className}`;
-      
+
       // Recursively extract nested objects from this object's properties
-      const nestedProperties = extractInlineObjectsToClasses(
-        propSchema.properties,
-        extractedClasses,
-        timestamp
-      );
-      
+      const nestedProperties = extractInlineObjectsToClasses(propSchema.properties, extractedClasses, timestamp);
+
       extractedClasses.set(className, {
         id: classId,
         name: className,
@@ -35,10 +26,10 @@ const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) 
           required: propSchema.required || [],
         },
       });
-      
+
       // Replace inline object with $ref
       // Keep type: 'object' for UI purposes, but remove properties and required
-      const { properties, required, ...otherProps } = propSchema;
+      const { properties: _, required: __, ...otherProps } = propSchema;
       updatedProperties[propName] = {
         ...otherProps,
         $ref: `#/$defs/${className}`,
@@ -54,14 +45,10 @@ const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) 
         // Extract array item object to a shared class
         const className = propName.endsWith('s') ? propName.slice(0, -1) : `${propName}Item`;
         const classId = `class-${timestamp}-extracted-${className}`;
-        
+
         // Recursively extract nested objects
-        const nestedProperties = extractInlineObjectsToClasses(
-          propSchema.items.properties,
-          extractedClasses,
-          timestamp
-        );
-        
+        const nestedProperties = extractInlineObjectsToClasses(propSchema.items.properties, extractedClasses, timestamp);
+
         extractedClasses.set(className, {
           id: classId,
           name: className,
@@ -73,7 +60,7 @@ const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) 
             required: propSchema.items.required || [],
           },
         });
-        
+
         // Replace inline object with $ref
         updatedProperties[propName] = {
           ...propSchema,
@@ -88,7 +75,7 @@ const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) 
       updatedProperties[propName] = propSchema;
     }
   });
-  
+
   return updatedProperties;
 };
 
@@ -127,12 +114,8 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
 
     jsonSchema.forEach((schema, schemaIndex) => {
       // Extract inline objects to classes before creating document type
-      const extractedProperties = extractInlineObjectsToClasses(
-        schema.properties || {},
-        extractedClasses,
-        timestamp
-      );
-      
+      const extractedProperties = extractInlineObjectsToClasses(schema.properties || {}, extractedClasses, timestamp);
+
       // Convert root schema to document type class
       const docTypeClass = {
         id: `class-${timestamp}-doc-${schemaIndex}`,
@@ -155,15 +138,11 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
             console.log(`Skipping $def "${defName}" because it's already imported as a document type`);
             return;
           }
-          
+
           if (!processedDefs.has(defName)) {
             // Extract inline objects from $def properties
-            const extractedDefProperties = extractInlineObjectsToClasses(
-              defSchema.properties || {},
-              extractedClasses,
-              timestamp
-            );
-            
+            const extractedDefProperties = extractInlineObjectsToClasses(defSchema.properties || {}, extractedClasses, timestamp);
+
             const defClass = {
               id: `class-${timestamp}-def-${defName}`,
               name: defName,
@@ -183,7 +162,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
 
     // Add extracted inline object classes first (so they're available for references)
     extractedClasses.forEach((cls) => allClasses.push(cls));
-    
+
     // Add all unique $defs classes
     processedDefs.forEach((cls) => allClasses.push(cls));
 
@@ -196,11 +175,7 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
   const timestamp = Date.now();
 
   // Extract inline objects from main schema
-  const extractedProperties = extractInlineObjectsToClasses(
-    jsonSchema.properties || {},
-    extractedClasses,
-    timestamp
-  );
+  const extractedProperties = extractInlineObjectsToClasses(jsonSchema.properties || {}, extractedClasses, timestamp);
 
   const mainClassId = `class-${timestamp}`;
   const mainClass = {
@@ -220,14 +195,10 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     let defIndex = 0;
     Object.entries(jsonSchema.$defs).forEach(([defName, defSchema]) => {
       defIndex += 1;
-      
+
       // Extract inline objects from $def properties
-      const extractedDefProperties = extractInlineObjectsToClasses(
-        defSchema.properties || {},
-        extractedClasses,
-        timestamp
-      );
-      
+      const extractedDefProperties = extractInlineObjectsToClasses(defSchema.properties || {}, extractedClasses, timestamp);
+
       classes.push({
         id: `class-${timestamp}-def-${defIndex}`,
         name: defName,
@@ -503,13 +474,16 @@ export const useSchemaDesigner = (initialSchema = []) => {
           if (attr.$ref) {
             const refName = attr.$ref.replace('#/$defs/', '');
             console.log(`    Found $ref in "${attrName}": ${attr.$ref} -> looking for class: "${refName}"`);
-            
+
             if (!visited.has(refName)) {
               const refClass = classes.find((c) => c.name === refName);
               console.log(`      Class found? ${!!refClass}, isDocType? ${refClass?.[X_AWS_IDP_DOCUMENT_TYPE]}`);
-              
+
               if (!refClass) {
-                console.log(`      ❌ No class found with name "${refName}". Available classes:`, classes.map(c => c.name));
+                console.log(
+                  `      ❌ No class found with name "${refName}". Available classes:`,
+                  classes.map((c) => c.name),
+                );
               } else {
                 console.log(`      ✅ Adding "${refName}" to referenced classes (isDocType: ${refClass[X_AWS_IDP_DOCUMENT_TYPE]})`);
                 visited.add(refName);
@@ -526,13 +500,16 @@ export const useSchemaDesigner = (initialSchema = []) => {
           if (attr.items?.$ref) {
             const refName = attr.items.$ref.replace('#/$defs/', '');
             console.log(`    Found items.$ref in "${attrName}": ${attr.items.$ref} -> looking for class: "${refName}"`);
-            
+
             if (!visited.has(refName)) {
               const refClass = classes.find((c) => c.name === refName);
               console.log(`      Class found? ${!!refClass}, isDocType? ${refClass?.[X_AWS_IDP_DOCUMENT_TYPE]}`);
-              
+
               if (!refClass) {
-                console.log(`      ❌ No class found with name "${refName}". Available classes:`, classes.map(c => c.name));
+                console.log(
+                  `      ❌ No class found with name "${refName}". Available classes:`,
+                  classes.map((c) => c.name),
+                );
               } else {
                 console.log(`      ✅ Adding "${refName}" to referenced classes (isDocType: ${refClass[X_AWS_IDP_DOCUMENT_TYPE]})`);
                 visited.add(refName);
@@ -571,20 +548,29 @@ export const useSchemaDesigner = (initialSchema = []) => {
 
     console.log('=== exportSchema DEBUG ===');
     console.log('Total classes:', classes.length);
-    console.log('All class names and flags:', classes.map(c => ({ 
-      name: c.name, 
-      isDocType: c[X_AWS_IDP_DOCUMENT_TYPE],
-      properties: Object.keys(c.attributes.properties || {})
-    })));
-    console.log('Document type classes:', baseClasses.map(c => c.name));
+    console.log(
+      'All class names and flags:',
+      classes.map((c) => ({
+        name: c.name,
+        isDocType: c[X_AWS_IDP_DOCUMENT_TYPE],
+        properties: Object.keys(c.attributes.properties || {}),
+      })),
+    );
+    console.log(
+      'Document type classes:',
+      baseClasses.map((c) => c.name),
+    );
 
     // Build schema for each document type
     const schemas = baseClasses.map((docTypeClass) => {
       console.log(`\n--- Building schema for: ${docTypeClass.name} ---`);
-      
+
       // Find classes referenced by this document type
       const referencedClasses = findReferencedClasses(docTypeClass);
-      console.log('Referenced classes found:', referencedClasses.map(c => c.name));
+      console.log(
+        'Referenced classes found:',
+        referencedClasses.map((c) => c.name),
+      );
 
       // Build $defs only for referenced classes
       const defs = {};
@@ -607,20 +593,17 @@ export const useSchemaDesigner = (initialSchema = []) => {
       console.log('$defs will be added?', Object.keys(defs).length > 0);
 
       // Build main schema properties
-      const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce(
-        (acc, [attrName, attrValue]) => {
-          // Check if this attribute has a $ref
-          if (attrValue.$ref) {
-            console.log(`Property "${attrName}" has $ref: ${attrValue.$ref}`);
-          }
-          if (attrValue.items?.$ref) {
-            console.log(`Property "${attrName}" array items has $ref: ${attrValue.items.$ref}`);
-          }
-          acc[attrName] = sanitizeAttributeSchema(attrValue);
-          return acc;
-        },
-        {},
-      );
+      const sanitizedProps = Object.entries(docTypeClass.attributes.properties || {}).reduce((acc, [attrName, attrValue]) => {
+        // Check if this attribute has a $ref
+        if (attrValue.$ref) {
+          console.log(`Property "${attrName}" has $ref: ${attrValue.$ref}`);
+        }
+        if (attrValue.items?.$ref) {
+          console.log(`Property "${attrName}" array items has $ref: ${attrValue.items.$ref}`);
+        }
+        acc[attrName] = sanitizeAttributeSchema(attrValue);
+        return acc;
+      }, {});
 
       const result = {
         $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -636,7 +619,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
 
       console.log('Final schema has $defs?', '$defs' in result);
       console.log('Final schema $defs keys:', result.$defs ? Object.keys(result.$defs) : 'NONE');
-      
+
       return result;
     });
 

@@ -19,7 +19,6 @@ import {
   Modal,
   Tabs,
 } from '@cloudscape-design/components';
-import Editor from '@monaco-editor/react';
 import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
 
 // Add custom styles for compact form layout
@@ -571,9 +570,7 @@ const ConfigBuilder = ({
     // Check dependencies FIRST, before any rendering - applies to all field types
     if (property.dependsOn) {
       const dependencyField = property.dependsOn.field;
-      const dependencyValues = Array.isArray(property.dependsOn.values)
-        ? property.dependsOn.values
-        : [property.dependsOn.value];
+      const dependencyValues = Array.isArray(property.dependsOn.values) ? property.dependsOn.values : [property.dependsOn.value];
 
       let dependencyPath;
 
@@ -619,8 +616,7 @@ const ConfigBuilder = ({
         dependencyValueType: typeof dependencyValue,
         dependencyValues,
         dependencyValuesTypes: dependencyValues.map((v) => typeof v),
-        isNestedAttribute:
-          currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
+        isNestedAttribute: currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
         shouldHide: dependencyValue === undefined || !dependencyValues.includes(dependencyValue),
       });
 
@@ -793,9 +789,7 @@ const ConfigBuilder = ({
         <SpaceBetween size="xs">
           {getSortedObjectProperties(property.properties).map(({ propKey, propSchema }) => {
             const nestedPropSchema =
-              propSchema.type === 'list' || propSchema.type === 'array'
-                ? { ...propSchema, nestLevel: nestLevel + 1 }
-                : propSchema;
+              propSchema.type === 'list' || propSchema.type === 'array' ? { ...propSchema, nestLevel: nestLevel + 1 } : propSchema;
             return <Box key={propKey}>{renderField(propKey, nestedPropSchema, fullPath)}</Box>;
           })}
         </SpaceBetween>
@@ -979,22 +973,18 @@ const ConfigBuilder = ({
                           // Special handling for nested attributes looking for attributeType
                           if (
                             dependencyField === 'attributeType' &&
-                            (fieldPath.includes('groupAttributes[') ||
-                              fieldPath.includes('listItemTemplate.itemAttributes['))
+                            (fieldPath.includes('groupAttributes[') || fieldPath.includes('listItemTemplate.itemAttributes['))
                           ) {
                             if (fieldPath.includes('groupAttributes[')) {
                               const attributeMatch = fieldPath.match(/^(.+\.attributes\[\d+\])\.groupAttributes/);
                               dependencyPath = attributeMatch ? `${attributeMatch[1]}.attributeType` : null;
                             } else if (fieldPath.includes('listItemTemplate.itemAttributes[')) {
-                              const attributeMatch = fieldPath.match(
-                                /^(.+\.attributes\[\d+\])\.listItemTemplate\.itemAttributes/,
-                              );
+                              const attributeMatch = fieldPath.match(/^(.+\.attributes\[\d+\])\.listItemTemplate\.itemAttributes/);
                               dependencyPath = attributeMatch ? `${attributeMatch[1]}.attributeType` : null;
                             }
                           } else {
                             const parentPath = fieldPath.substring(0, fieldPath.lastIndexOf('.'));
-                            dependencyPath =
-                              parentPath.length > 0 ? `${parentPath}.${dependencyField}` : dependencyField;
+                            dependencyPath = parentPath.length > 0 ? `${parentPath}.${dependencyField}` : dependencyField;
                           }
 
                           if (!dependencyPath) return false;
@@ -1081,17 +1071,13 @@ const ConfigBuilder = ({
                         // Render the regular fields using HTML table for guaranteed columns
                         const renderedRegularFields = (
                           <Box padding="0" style={{ margin: 0 }}>
-                            <table
-                              style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '4px 0', margin: 0 }}
-                            >
+                            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '4px 0', margin: 0 }}>
                               <tbody style={{ margin: 0, padding: 0 }}>
                                 {/* Render description field first if it exists, spanning full width */}
                                 {descriptionField && (
                                   <tr key="description-row">
                                     <td colSpan={actualColumnCount} style={{ verticalAlign: 'top' }}>
-                                      <Box padding="0">
-                                        {renderField(descriptionField.propKey, descriptionField.propSchema, itemPath)}
-                                      </Box>
+                                      <Box padding="0">{renderField(descriptionField.propKey, descriptionField.propSchema, itemPath)}</Box>
                                     </td>
                                   </tr>
                                 )}
@@ -1164,12 +1150,7 @@ const ConfigBuilder = ({
                           };
 
                           return (
-                            <Box
-                              key={propKey}
-                              padding={{ top: '0', bottom: '8px' }}
-                              width="100%"
-                              margin={{ bottom: '4px' }}
-                            >
+                            <Box key={propKey} padding={{ top: '0', bottom: '8px' }} width="100%" margin={{ bottom: '4px' }}>
                               {renderField(propKey, nestedProps, itemPath)}
                             </Box>
                           );
@@ -1190,9 +1171,7 @@ const ConfigBuilder = ({
                       })()
                     ) : (
                       // Simple list item (non-object)
-                      <Box padding="xs">
-                        {renderInputField(`${key}[${index}]`, property.items, values[index], itemPath)}
-                      </Box>
+                      <Box padding="xs">{renderInputField(`${key}[${index}]`, property.items, values[index], itemPath)}</Box>
                     )}
                   </Box>
                 </Box>
@@ -1347,11 +1326,7 @@ const ConfigBuilder = ({
           options={property.enum.map((opt) => ({ value: opt, label: opt }))}
         />
       );
-    } else if (
-      property.format === 'text-area' ||
-      path.toLowerCase().includes('prompt') ||
-      path.toLowerCase().includes('description')
-    ) {
+    } else if (property.format === 'text-area' || path.toLowerCase().includes('prompt') || path.toLowerCase().includes('description')) {
       input = (
         <Textarea
           value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
@@ -1434,9 +1409,7 @@ const ConfigBuilder = ({
 
   // Check if a property needs a container with section header
   const shouldUseContainer = (key, property) => {
-    return (
-      property.sectionLabel && (property.type === 'object' || property.type === 'list' || property.type === 'array')
-    );
+    return property.sectionLabel && (property.type === 'object' || property.type === 'list' || property.type === 'array');
   };
 
   // Render each top-level property
@@ -1489,11 +1462,7 @@ const ConfigBuilder = ({
             label: 'Document Schema',
             content: (
               <Box style={{ height: 'calc(70vh - 60px)' }}>
-                <SchemaBuilder
-                  initialSchema={extractionSchema}
-                  onChange={onSchemaChange}
-                  onValidate={onSchemaValidate}
-                />
+                <SchemaBuilder initialSchema={extractionSchema} onChange={onSchemaChange} onValidate={onSchemaValidate} />
               </Box>
             ),
           },
@@ -1521,10 +1490,7 @@ const ConfigBuilder = ({
         {activeAddModal && (
           <FormField
             label="Name"
-            description={
-              getPropertyFromPath(activeAddModal)?.items?.properties?.name?.description ||
-              'Enter a unique name for this item'
-            }
+            description={getPropertyFromPath(activeAddModal)?.items?.properties?.name?.description || 'Enter a unique name for this item'}
             errorText={nameError}
           >
             {showNameAsDropdown ? (
@@ -1544,7 +1510,6 @@ const ConfigBuilder = ({
                     label: opt,
                   })) || []
                 }
-                autoFocus
               />
             ) : (
               // Text input for regular string values
@@ -1557,7 +1522,6 @@ const ConfigBuilder = ({
                   }
                 }}
                 placeholder="Enter name"
-                autoFocus
               />
             )}
           </FormField>

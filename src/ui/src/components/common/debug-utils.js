@@ -64,10 +64,7 @@ export const debugDocumentStructure = (document) => {
     }
 
     if (document.mergedConfig && document.mergedConfig.assessment) {
-      console.log(
-        'Default confidence threshold from config:',
-        document.mergedConfig.assessment.default_confidence_threshold,
-      );
+      console.log('Default confidence threshold from config:', document.mergedConfig.assessment.default_confidence_threshold);
     }
 
     console.log('=== End Document Debug ===');

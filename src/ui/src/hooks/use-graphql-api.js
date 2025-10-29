@@ -68,9 +68,7 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     async (objectKeys) => {
       // prettier-ignore
       logger.debug('getDocumentDetailsFromIds', objectKeys);
-      const getDocumentPromises = objectKeys.map((objectKey) =>
-        client.graphql({ query: getDocument, variables: { objectKey } }),
-      );
+      const getDocumentPromises = objectKeys.map((objectKey) => client.graphql({ query: getDocument, variables: { objectKey } }));
       const getDocumentResolutions = await Promise.allSettled(getDocumentPromises);
 
       // Separate rejected promises from null/undefined results
@@ -83,19 +81,12 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
 
       // Log partial failures but NEVER show error banner for individual document failures
       if (getDocumentRejected.length > 0) {
-        logger.warn(
-          `Failed to load ${getDocumentRejected.length} of ${objectKeys.length} document(s) due to query rejection`,
-        );
+        logger.warn(`Failed to load ${getDocumentRejected.length} of ${objectKeys.length} document(s) due to query rejection`);
         logger.debug('Rejected promises:', getDocumentRejected);
       }
       if (getDocumentNull.length > 0) {
-        logger.warn(
-          `${getDocumentNull.length} of ${objectKeys.length} document(s) not found (returned null):`,
-          getDocumentNull,
-        );
-        logger.warn(
-          'These documents have list entries but no corresponding document records - possible orphaned list entries',
-        );
+        logger.warn(`${getDocumentNull.length} of ${objectKeys.length} document(s) not found (returned null):`, getDocumentNull);
+        logger.warn('These documents have list entries but no corresponding document records - possible orphaned list entries');
       }
 
       // Filter out null/undefined documents to prevent downstream errors

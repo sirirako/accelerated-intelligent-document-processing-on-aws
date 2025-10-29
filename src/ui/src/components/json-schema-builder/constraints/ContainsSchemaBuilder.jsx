@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import {
-  FormField,
-  Select,
-  Input,
-  RadioGroup,
-  SpaceBetween,
-  Textarea,
-  ExpandableSection,
-} from '@cloudscape-design/components';
+import { FormField, Select, Input, RadioGroup, SpaceBetween, Textarea, ExpandableSection } from '@cloudscape-design/components';
 
 const CONDITION_OPTIONS = [
   { label: 'Equals (const)', value: 'const', description: 'Exact value match' },
@@ -60,11 +52,7 @@ const detectMode = (containsSchema) => {
   if (containsSchema.$ref) return 'class';
 
   // Check if it's a simple property match
-  if (
-    containsSchema.type === 'object' &&
-    containsSchema.properties &&
-    Object.keys(containsSchema.properties).length === 1
-  ) {
+  if (containsSchema.type === 'object' && containsSchema.properties && Object.keys(containsSchema.properties).length === 1) {
     return 'property';
   }
 
@@ -221,9 +209,7 @@ const ContainsSchemaBuilder = ({ containsSchema, onChange, availableClasses }) =
 
           <FormField
             label="Value"
-            description={
-              condition.value === 'enum' ? 'Comma-separated list of allowed values' : 'Value to match against'
-            }
+            description={condition.value === 'enum' ? 'Comma-separated list of allowed values' : 'Value to match against'}
           >
             <Input
               value={propertyValue}

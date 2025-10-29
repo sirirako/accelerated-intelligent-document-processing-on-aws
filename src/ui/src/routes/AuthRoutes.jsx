@@ -15,14 +15,7 @@ import DocumentsRoutes from './DocumentsRoutes';
 import DocumentsQueryRoutes from './DocumentsQueryRoutes';
 import DocumentsAnalyticsRoutes from './DocumentsAnalyticsRoutes';
 
-import {
-  DOCUMENTS_PATH,
-  DEFAULT_PATH,
-  LOGIN_PATH,
-  LOGOUT_PATH,
-  DOCUMENTS_KB_QUERY_PATH,
-  DOCUMENTS_ANALYTICS_PATH,
-} from './constants';
+import { DOCUMENTS_PATH, DEFAULT_PATH, LOGIN_PATH, LOGOUT_PATH, DOCUMENTS_KB_QUERY_PATH, DOCUMENTS_ANALYTICS_PATH } from './constants';
 
 const logger = new ConsoleLogger('AuthRoutes');
 
@@ -45,9 +38,7 @@ const AuthRoutes = ({ redirectParam }) => {
         <Route path={`${DOCUMENTS_PATH}/*`} element={<DocumentsRoutes />} />
         <Route
           path={LOGIN_PATH}
-          element={
-            <Navigate to={!redirectParam || redirectParam === LOGIN_PATH ? DEFAULT_PATH : `${redirectParam}`} replace />
-          }
+          element={<Navigate to={!redirectParam || redirectParam === LOGIN_PATH ? DEFAULT_PATH : `${redirectParam}`} replace />}
         />
         <Route path={LOGOUT_PATH} element={<Button onClick={signOut}>Sign Out</Button>} />
         <Route path="*" element={<Navigate to={DEFAULT_PATH} replace />} />
