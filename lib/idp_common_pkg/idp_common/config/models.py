@@ -302,12 +302,35 @@ class OCRConfig(BaseModel):
         return int(v)
 
 
+class ErrorAnalyzerParameters(BaseModel):
+    """Error analyzer parameters configuration"""
+
+    max_log_events: int = Field(default=5, gt=0, description="Maximum number of log events to retrieve")
+    time_range_hours_default: int = Field(default=24, gt=0, description="Default time range in hours for log searches")
+
+    @field_validator("max_log_events", "time_range_hours_default", mode="before")
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        """Parse int from string or number"""
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
 class ErrorAnalyzerConfig(BaseModel):
     """Error analyzer agent configuration"""
 
     model_id: str = Field(
         default="us.anthropic.claude-sonnet-4-20250514-v1:0",
         description="Bedrock model ID for error analyzer",
+    )
+    system_prompt: str = Field(
+        default="",
+        description="System prompt for error analyzer"
+    )
+    parameters: ErrorAnalyzerParameters = Field(
+        default_factory=ErrorAnalyzerParameters,
+        description="Error analyzer parameters"
     )
 
 

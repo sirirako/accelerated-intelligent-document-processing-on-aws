@@ -142,8 +142,9 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         object_key = document.input_key
         logger.info(f"Processing message {message_id} for object {object_key}")
 
-        # Add X-Ray annotations and capture trace_id early
-        xray_recorder.put_annotation('document_id', document.id)
+        # X-Ray annotations
+        xray_recorder.put_annotation('document_id', {document.id})
+        xray_recorder.put_annotation('processing_stage', 'queue_processor')
         current_segment = xray_recorder.current_segment()
         if current_segment:
             document.trace_id = current_segment.trace_id
