@@ -294,14 +294,14 @@ export const getFieldConfidenceInfo = (fieldName, explainabilityInfo, path = [],
         // Handle array indices
         const index = parseInt(pathSegment, 10);
         if (!Number.isNaN(index) && index >= 0 && index < currentExplainabilityData.length) {
-          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop - Controlled data source, input validation performed upstream 
+          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop - Controlled data source, input validation performed upstream
           currentExplainabilityData = currentExplainabilityData[index];
         } else {
           return { hasConfidenceInfo: false };
         }
       } else {
         // Handle object properties
-        // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop - Controlled data source, input validation performed upstream 
+        // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop - Controlled data source, input validation performed upstream
         currentExplainabilityData = currentExplainabilityData[pathSegment];
       }
     } else {
