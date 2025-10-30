@@ -31,15 +31,28 @@ developer_tests:
   before_script:
     - python --version
     - apt-get update -y
-    - apt-get install make -y
-    - pip install ruff
+    - apt-get install make curl git -y
+    # Fetch main branch for comparison in typecheck-pr
+    - git fetch origin main:main || echo "Could not fetch main branch"
+    # Install uv
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    # Create virtual environment
+    - uv venv .venv
+    - source .venv/bin/activate
+    # Install Node.js and npm for basedpyright
+    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    - apt-get install -y nodejs
+    - npm install -g basedpyright
+    - uv pip install ruff
     # Install dependencies needed by publish.py for test imports
-    - pip install typer rich boto3
+    - uv pip install typer rich boto3
     # Install test dependencies
-    - cd lib/idp_common_pkg && pip install -e ".[test]" && cd ../..
+    - cd lib/idp_common_pkg && uv pip install -e ".[test]" && cd ../..
 
   script:
     - make lint-cicd
+    - make typecheck-cicd
     - make test-cicd -C lib/idp_common_pkg
   
   artifacts:
