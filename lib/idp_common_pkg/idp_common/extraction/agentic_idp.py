@@ -566,7 +566,7 @@ async def structured_output_async(
             "existing_data": existing_data.model_dump() if existing_data else None,
         },
         conversation_manager=SummarizingConversationManager(
-            summary_ratio=0.8,
+            summary_ratio=0.8, preserve_recent_messages=3
         ),
     )
 
