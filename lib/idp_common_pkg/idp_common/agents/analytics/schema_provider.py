@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, Generator, Optional
 
 from idp_common.config import get_config
+from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     SCHEMA_DESCRIPTION,
     SCHEMA_ITEMS,
@@ -211,7 +212,7 @@ GROUP BY se."section_type"
 
 
 def get_dynamic_document_sections_description(
-    config: Optional[Dict[str, Any]] = None,
+    config: Optional[IDPConfig] = None,
 ) -> str:
     """
     Generate deployment-specific description of document sections tables based on actual configuration.
@@ -224,10 +225,10 @@ def get_dynamic_document_sections_description(
     """
     try:
         if config is None:
-            config = get_config()
+            config = get_config(as_model=True)
 
         # Get document classes from config
-        classes = config.get("classes", [])
+        classes = config.classes
 
         if not classes:
             logger.warning("No classes found in configuration")
@@ -251,7 +252,7 @@ def get_dynamic_document_sections_description(
         # Generate table list
         table_names = []
         for doc_class in classes:
-            class_name = doc_class.get("name", "Unknown")
+            class_name = doc_class.get(X_AWS_IDP_DOCUMENT_TYPE, "Unknown")
             # Apply exact table name transformation logic
             table_name = f"document_sections_{_get_table_suffix(class_name)}"
             table_names.append(table_name)
@@ -500,7 +501,7 @@ def _get_error_aware_fallback(
 """
 
 
-def get_database_overview(config: Optional[Dict[str, Any]] = None) -> str:
+def get_database_overview(config: Optional[IDPConfig] = None) -> str:
     """
     Get a fast, lightweight overview of available tables with brief descriptions.
     This is the first step in the two-step progressive disclosure system.
@@ -513,10 +514,10 @@ def get_database_overview(config: Optional[Dict[str, Any]] = None) -> str:
     """
     try:
         if config is None:
-            config = get_config()
+            config = get_config(as_model=True)
 
         # Get document classes from config
-        classes = config.get("classes", [])
+        classes = config.classes
 
         overview = """# Database Overview - Available Tables
 
@@ -570,9 +571,7 @@ Use `get_table_info(['table1', 'table2'])` to get detailed schemas for specific 
         return """# Database Overview - Error Loading Configuration"""
 
 
-def get_table_info(
-    table_names: list[str], config: Optional[Dict[str, Any]] = None
-) -> str:
+def get_table_info(table_names: list[str], config: Optional[IDPConfig] = None) -> str:
     """
     Get detailed schema information for specific tables.
     This is the second step in the two-step progressive disclosure system.
@@ -620,7 +619,7 @@ def get_table_info(
 
 
 def _get_specific_document_sections_table_info(
-    table_suffix: str, config: Optional[Dict[str, Any]] = None
+    table_suffix: str, config: Optional[IDPConfig] = None
 ) -> str:
     """
     Get detailed information for a specific document sections table.
@@ -634,9 +633,9 @@ def _get_specific_document_sections_table_info(
     """
     try:
         if config is None:
-            config = get_config()
+            config = get_config(as_model=True)
 
-        classes = config.get("classes", [])
+        classes = config.classes
         table_name = f"document_sections_{table_suffix}"
 
         # Find the matching class for this table

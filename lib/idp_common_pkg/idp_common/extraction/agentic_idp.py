@@ -242,7 +242,15 @@ def create_dynamic_extraction_tool_and_patch_tool(model_class: Type[TargetModel]
             "patches_applied": len(patches),
         }
 
-    return extraction_tool, apply_json_patches
+    @tool
+    def make_buffer_data_final_extraction(agent: Agent) -> str:
+        valid_extraction = model_class(**agent.state.get("intermediate_extraction"))
+
+        agent.state.set("current_extraction", valid_extraction.model_dump())
+
+        return f"Successfully made the existing extraction the same as the buffer data {str(valid_extraction.model_dump())[100:]}..."
+
+    return extraction_tool, apply_json_patches, make_buffer_data_final_extraction
 
 
 @tool
@@ -255,6 +263,45 @@ def view_existing_extraction(agent: Agent) -> str:
     return agent.state.get("current_extraction")
 
 
+@tool
+def write_buffer_date(data: dict[str, Any], agent: Agent) -> str:
+    """
+    Use this tool when the extraction is too large to do in a single step, this is a buffer where you can save intermediate data that wouldn't pass validation yet.
+
+    """
+    agent.state.set("intermediate_extraction", data)
+    logger.info("Saving intermediate data", extra={"intermediate_extraction": data})
+    return f"Saved data: {str(data)[:100]}.... "
+
+
+@tool
+def view_buffer_data(agent: Agent) -> str:
+    """View the intermediate buffer data with this tool, this data is not a validated extraction, but intermediate state for you to work with."""
+
+    return agent.state.get("intermediate_extraction")
+
+
+@tool
+def patch_buffer_data(patches: list[dict[str, Any]], agent: Agent) -> str:
+    """Update the intermediate_extraction data inside the buffer, this is not validated yet
+
+    Apply JSON patches to fix or update the extracted data.
+
+    Args:
+        patches: List of JSON patch operations (RFC 6902 format)
+        reasoning: Explanation of what the patches fix
+
+    """
+
+    patched_data = apply_patches_to_data(
+        existing_data=agent.state.get("intermediate_extraction"), patches=patches
+    )
+
+    agent.state.set("intermediate_extraction", patched_data)
+
+    return f"Successfully patched {str(patched_data)[100:]}...."
+
+
 SYSTEM_PROMPT = """
 You are a useful assistant that helps turn unstructured data into structured data using the provided tools.
 
@@ -263,6 +310,7 @@ EXTRACTION APPROACH:
 2. When updating existing data or fixing validation errors, use JSON patch operations via the apply_json_patches tool
 3. JSON patches allow precise, targeted updates without losing correct data
 4. If the document is large and the extraction request can't be done in one go, create a valid extraction object and interate with jsonpatch until you completed the entire extraction!
+5. Use intermediate data buffer if you can't extract a valid data object in a single step.
 
 IMPORTANT:
 YOU MUST perform a batched extraction if there are more than 50 fields to extract.
@@ -392,12 +440,18 @@ async def structured_output_async(
     )
 
     # Create the dynamic extraction tool for this specific model
-    extraction_tool, apply_json_patches = create_dynamic_extraction_tool_and_patch_tool(
+    dynamic_extraction_tools = create_dynamic_extraction_tool_and_patch_tool(
         data_format
     )
 
     # Prepare tools list
-    tools = [extraction_tool, apply_json_patches, view_existing_extraction]
+    tools = [
+        *dynamic_extraction_tools,
+        view_existing_extraction,
+        patch_buffer_data,
+        view_buffer_data,
+        write_buffer_date,
+    ]
 
     # Create agent with system prompt and tools
     schema_json = json.dumps(data_format.model_json_schema(), indent=2)
@@ -503,7 +557,7 @@ async def structured_output_async(
         final_system_prompt = f"{system_prompt}\n\nCustom Instructions for this specific task: {custom_instruction}"
     logger.debug("Running extraction", extra={"system_prompt": final_system_prompt})
     agent = Agent(
-        model=BedrockModel(**model_config),
+        model=BedrockModel(**model_config),  # pyright: ignore[reportArgumentType]
         tools=tools,
         system_prompt=f"{final_system_prompt}\n\nExpected Schema:\n{schema_json}",
         state={
@@ -512,7 +566,7 @@ async def structured_output_async(
             "existing_data": existing_data.model_dump() if existing_data else None,
         },
         conversation_manager=SummarizingConversationManager(
-            summary_ratio=0.5,
+            summary_ratio=0.8, preserve_recent_messages=3
         ),
     )
 
@@ -583,7 +637,7 @@ async def structured_output_async(
 
     for attempt in range(max_retries):
         try:
-            response = await agent.invoke_async(prompt_content)  # pyright: ignore[reportArgumentType]
+            response = await agent.invoke_async(prompt_content)
             logger.debug("Agent response received")
             break  # Success, exit retry loop
         except Exception as e:
@@ -916,7 +970,7 @@ if __name__ == "__main__":
     class DocumentFormat(BaseModel):
         document_name: str
         document_text: str
-        table_rows: list[DocumentRow]
+        table_rows: list[DocumentRow] = Field(gt=500)
 
     with open(file_path, "rb") as f:
         data = f.read()

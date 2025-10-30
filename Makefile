@@ -72,6 +72,33 @@ check-arn-partitions:
 		exit 1; \
 	fi
 
+# Type checking with basedpyright
+typecheck:
+	@echo "Running type checks..."
+	basedpyright
+
+# Type check with detailed statistics
+typecheck-stats:
+	@echo "Running type checks with statistics..."
+	basedpyright --stats
+
+# Type check only files changed in current PR/branch
+# Usage: make typecheck-pr [TARGET_BRANCH=branch_name]
+TARGET_BRANCH ?= main
+typecheck-pr:
+	@echo "Type checking changed files against $(TARGET_BRANCH)..."
+	python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH)
+
+# CI/CD version of type check - checks PR changes only
+typecheck-cicd:
+	@echo "Running type quality checks on PR changes..."
+	@if ! python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH); then \
+		echo -e "$(RED)ERROR: Type checking failed!$(NC)"; \
+		echo -e "$(YELLOW)Please run 'make typecheck-pr' locally to fix these issues.$(NC)"; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)All type checks passed!$(NC)"
+
 # A convenience Makefile target that runs 
 commit: lint test
 	$(info Generating commit message...)

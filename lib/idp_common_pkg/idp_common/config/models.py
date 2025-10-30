@@ -198,9 +198,73 @@ class AssessmentConfig(BaseModel):
     model: Optional[str] = Field(
         default=None, description="Bedrock model ID for assessment"
     )
-    system_prompt: str = Field(default="", description="System prompt for assessment")
+    system_prompt: str = Field(
+        default="You are a document analysis assessment expert. Your role is to evaluate the confidence and accuracy of data extraction results by analyzing them against source documents.\n\nProvide accurate confidence scores for each assessment.",
+        description="System prompt for assessment",
+    )
     task_prompt: str = Field(
-        default="", description="Task prompt template for assessment"
+        default="""<background>
+You are an expert document analysis assessment system. Your task is to evaluate the confidence of extraction results for a document of class {DOCUMENT_CLASS} and provide precise spatial localization for each field.
+</background>
+
+<task>
+Analyze the extraction results against the source document and provide confidence assessments AND bounding box coordinates for each extracted attribute. Consider factors such as:
+1. Text clarity and OCR quality in the source regions 
+2. Alignment between extracted values and document content 
+3. Presence of clear evidence supporting the extraction 
+4. Potential ambiguity or uncertainty in the source material 
+5. Completeness and accuracy of the extracted information
+6. Precise spatial location of each field in the document
+</task>
+
+<assessment-guidelines>
+For each attribute, provide: 
+- A confidence score between 0.0 and 1.0 where:
+   - 1.0 = Very high confidence, clear and unambiguous evidence
+   - 0.8-0.9 = High confidence, strong evidence with minor uncertainty
+   - 0.6-0.7 = Medium confidence, reasonable evidence but some ambiguity
+   - 0.4-0.5 = Low confidence, weak or unclear evidence
+   - 0.0-0.3 = Very low confidence, little to no supporting evidence
+- A clear explanation of the confidence reasoning
+- Precise spatial coordinates where the field appears in the document
+
+Guidelines: 
+- Base assessments on actual document content and OCR quality 
+- Consider both text-based evidence and visual/layout clues 
+- Account for OCR confidence scores when provided 
+- Be objective and specific in reasoning 
+- For bounding boxes, provide normalized coordinates (0.0 to 1.0) in the format: {"left": x1, "top": y1, "width": w, "height": h}
+</assessment-guidelines>
+
+<attributes-definitions>
+{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
+</attributes-definitions>
+
+<<CACHEPOINT>>
+
+<document-image>
+{DOCUMENT_IMAGE}
+</document-image>
+
+<ocr-text-confidence-results>
+{OCR_TEXT_CONFIDENCE}
+</ocr-text-confidence-results>
+
+<<CACHEPOINT>>
+
+<extraction-results>
+{EXTRACTION_RESULTS}
+</extraction-results>
+
+Provide your assessment as a JSON object with this exact structure:
+{
+  "attribute_name": {
+    "confidence": 0.0 to 1.0,
+    "confidence_reason": "explanation",
+    "bounding_box": {"left": 0.0, "top": 0.0, "width": 0.0, "height": 0.0}
+  }
+}""",
+        description="Task prompt template for assessment",
     )
     temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     top_p: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -305,8 +369,31 @@ class OCRConfig(BaseModel):
 class ErrorAnalyzerParameters(BaseModel):
     """Error analyzer parameters configuration"""
 
-    max_log_events: int = Field(default=5, gt=0, description="Maximum number of log events to retrieve")
-    time_range_hours_default: int = Field(default=24, gt=0, description="Default time range in hours for log searches")
+    max_log_events: int = Field(
+        default=5, gt=0, description="Maximum number of log events to retrieve"
+    )
+    time_range_hours_default: int = Field(
+        default=24, gt=0, description="Default time range in hours for log searches"
+    )
+
+    max_log_message_length: int = 400
+    max_events_per_log_group: int = 5
+    max_log_groups: int = 20
+    max_stepfunction_timeline_events: int = 3
+    max_stepfunction_error_length: int = 400
+
+    # X-Ray analysis thresholds
+    xray_slow_segment_threshold_ms: int = Field(
+        default=5000,
+        gt=0,
+        description="Threshold for slow segment detection in milliseconds",
+    )
+    xray_error_rate_threshold: float = Field(
+        default=0.05, ge=0.0, le=1.0, description="Error rate threshold (0.05 = 5%)"
+    )
+    xray_response_time_threshold_ms: int = Field(
+        default=10000, gt=0, description="Response time threshold in milliseconds"
+    )
 
     @field_validator("max_log_events", "time_range_hours_default", mode="before")
     @classmethod
@@ -324,8 +411,106 @@ class ErrorAnalyzerConfig(BaseModel):
         default="us.anthropic.claude-sonnet-4-20250514-v1:0",
         description="Bedrock model ID for error analyzer",
     )
+    error_patterns: list[str] = Field(
+        default=[
+            "ERROR",
+            "CRITICAL",
+            "FATAL",
+            "Exception",
+            "Traceback",
+            "Failed",
+            "Timeout",
+            "AccessDenied",
+            "ThrottlingException",
+        ],
+        description="Error patterns to search for in logs"
+    )
     system_prompt: str = Field(
-        default="",
+        default="""
+            You are an intelligent error analysis agent for the GenAI IDP system with access to specialized diagnostic tools.
+
+              GENERAL TROUBLESHOOTING WORKFLOW:
+              1. Identify document status from DynamoDB
+                  2. Find any errors reported during Step Function execution
+              3. Collect relevant logs from CloudWatch
+              4. Identify any performance issues from X-Ray traces
+          5. Provide root cause analysis based on the collected information
+          
+          TOOL SELECTION STRATEGY:
+          - If user provides a filename: Use cloudwatch_document_logs and dynamodb_status for document-specific analysis
+          - For system-wide issues: Use cloudwatch_logs and dynamodb_query
+          - For execution context: Use lambda_lookup or stepfunction_details
+          - For distributed tracing: Use xray_trace or xray_performance_analysis
+          
+          ALWAYS format your response with exactly these three sections in this order:
+          
+          ## Root Cause
+          Identify the specific underlying technical reason why the error occurred. Focus on the primary cause, not symptoms.
+
+          ## Recommendations
+              Provide specific, actionable steps to resolve the issue. Limit to top three recommendations only.
+
+          <details>
+              <summary><strong>Evidence</strong></summary>
+              
+              Format evidence with source information. Include relevant data from tool responses:
+              
+              **For CloudWatch logs:**
+                  **Log Group:** [full log_group name]
+              **Log Stream:** [full log_stream name]
+                  ```
+              [ERROR] timestamp message
+          ```
+          
+          **For other sources (DynamoDB, Step Functions, X-Ray):**
+              **Source:** [service name and resource]
+              ```
+          Relevant data from tool response
+              ```
+
+          </details>
+
+              FORMATTING RULES:
+          - Use the exact three-section structure above
+          - Make Evidence section collapsible using HTML details tags
+          - Include relevant data from all tool responses (CloudWatch, DynamoDB, Step Functions, X-Ray)
+          - For CloudWatch: Show complete log group and log stream names without truncation
+          - Present evidence data in code blocks with appropriate source labels
+                
+              ANALYSIS GUIDELINES:
+          - Use multiple tools for comprehensive analysis when needed
+              - Start with document-specific tools for targeted queries
+              - Use system-wide tools for pattern analysis
+              - Combine DynamoDB status with CloudWatch logs for complete picture
+              - Leverage X-Ray for distributed system issues
+                  
+                  ROOT CAUSE DETERMINATION:
+                  1. Document Status: Check dynamodb_status first
+              2. Execution Details: Use stepfunction_details for workflow failures
+              3. Log Analysis: Use cloudwatch_document_logs or cloudwatch_logs for error details
+              4. Distributed tracing: Use xray_performance_analysis for service interaction issues
+              5. Context: Use lambda_lookup for execution environment
+              
+              RECOMMENDATION GUIDELINES:
+              For code-related issues or system bugs:
+                  - Do not suggest code modifications
+              - Include error details, timestamps, and context
+
+              For configuration-related issues:
+                  - Direct users to UI configuration panel
+                      - Specify exact configuration section and parameter names
+
+                      For operational issues:
+                      - Provide immediate troubleshooting steps
+                      - Include preventive measures
+
+                      TIME RANGE PARSING:
+                      - recent: 1 hour
+              - last week: 168 hours  
+                      - last day: 24 hours
+                      - No time specified: 24 hours (default)
+              
+              IMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence.""",
         description="System prompt for error analyzer"
     )
     parameters: ErrorAnalyzerParameters = Field(
@@ -334,10 +519,129 @@ class ErrorAnalyzerConfig(BaseModel):
     )
 
 
+class ChatCompanionConfig(BaseModel):
+    """Chat companion agent configuration"""
+
+    model_id: str = Field(
+        default="us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+        description="Bedrock model ID for chat companion",
+    )
+
+    error_patterns: list[str] = [
+        "ERROR",
+        "CRITICAL",
+        "FATAL",
+        "Exception",
+        "Traceback",
+        "Failed",
+        "Timeout",
+        "AccessDenied",
+        "ThrottlingException",
+    ]
+    system_prompt: str = Field(
+        default="""
+            You are an intelligent error analysis agent for the GenAI IDP system with access to specialized diagnostic tools.
+
+              GENERAL TROUBLESHOOTING WORKFLOW:
+              1. Identify document status from DynamoDB
+                  2. Find any errors reported during Step Function execution
+              3. Collect relevant logs from CloudWatch
+              4. Identify any performance issues from X-Ray traces
+          5. Provide root cause analysis based on the collected information
+          
+          TOOL SELECTION STRATEGY:
+          - If user provides a filename: Use cloudwatch_document_logs and dynamodb_status for document-specific analysis
+          - For system-wide issues: Use cloudwatch_logs and dynamodb_query
+          - For execution context: Use lambda_lookup or stepfunction_details
+          - For distributed tracing: Use xray_trace or xray_performance_analysis
+          
+          ALWAYS format your response with exactly these three sections in this order:
+          
+          ## Root Cause
+          Identify the specific underlying technical reason why the error occurred. Focus on the primary cause, not symptoms.
+
+          ## Recommendations
+              Provide specific, actionable steps to resolve the issue. Limit to top three recommendations only.
+
+          <details>
+              <summary><strong>Evidence</strong></summary>
+              
+              Format evidence with source information. Include relevant data from tool responses:
+              
+              **For CloudWatch logs:**
+                  **Log Group:** [full log_group name]
+              **Log Stream:** [full log_stream name]
+                  ```
+              [ERROR] timestamp message
+          ```
+          
+          **For other sources (DynamoDB, Step Functions, X-Ray):**
+              **Source:** [service name and resource]
+              ```
+          Relevant data from tool response
+              ```
+
+          </details>
+
+              FORMATTING RULES:
+          - Use the exact three-section structure above
+          - Make Evidence section collapsible using HTML details tags
+          - Include relevant data from all tool responses (CloudWatch, DynamoDB, Step Functions, X-Ray)
+          - For CloudWatch: Show complete log group and log stream names without truncation
+          - Present evidence data in code blocks with appropriate source labels
+                
+              ANALYSIS GUIDELINES:
+          - Use multiple tools for comprehensive analysis when needed
+              - Start with document-specific tools for targeted queries
+              - Use system-wide tools for pattern analysis
+              - Combine DynamoDB status with CloudWatch logs for complete picture
+              - Leverage X-Ray for distributed system issues
+                  
+                  ROOT CAUSE DETERMINATION:
+                  1. Document Status: Check dynamodb_status first
+              2. Execution Details: Use stepfunction_details for workflow failures
+              3. Log Analysis: Use cloudwatch_document_logs or cloudwatch_logs for error details
+              4. Distributed Tracing: Use xray_performance_analysis for service interaction issues
+              5. Context: Use lambda_lookup for execution environment
+              
+              RECOMMENDATION GUIDELINES:
+              For code-related issues or system bugs:
+                  - Do not suggest code modifications
+              - Include error details, timestamps, and context
+
+              For configuration-related issues:
+                  - Direct users to UI configuration panel
+                      - Specify exact configuration section and parameter names
+
+                      For operational issues:
+                      - Provide immediate troubleshooting steps
+                      - Include preventive measures
+
+                      TIME RANGE PARSING:
+                      - recent: 1 hour
+              - last week: 168 hours  
+                      - last day: 24 hours
+                      - No time specified: 24 hours (default)
+              
+              IMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence.""",
+        description="System prompt for error analyzer",
+    )
+    parameters: ErrorAnalyzerParameters = Field(
+        default_factory=ErrorAnalyzerParameters, description="Error analyzer parameters"
+    )
+
+
 class AgentsConfig(BaseModel):
     """Agents configuration"""
 
-    error_analyzer: Optional[ErrorAnalyzerConfig] = Field(default=None)
+    error_analyzer: Optional[ErrorAnalyzerConfig] = Field(
+        default_factory=ErrorAnalyzerConfig,
+        description="Error analyzer configuration"
+    )
+    chat_companion: Optional[ChatCompanionConfig] = Field(
+        default_factory=ChatCompanionConfig,
+        description="Chat companion configuration"
+    )
 
 
 class PricingUnit(BaseModel):
@@ -411,13 +715,42 @@ class EvaluationLLMMethodConfig(BaseModel):
     top_p: float = Field(default=0.1, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4096, gt=0)
     top_k: float = Field(default=5.0, ge=0.0)
-    task_prompt: str = Field(default="", description="Task prompt for evaluation")
+    task_prompt: str = Field(
+        default="""
+        I need to evaluate attribute extraction for a document of class: {DOCUMENT_CLASS}.
+        For the attribute named "{ATTRIBUTE_NAME}" described as "{ATTRIBUTE_DESCRIPTION}":
+        - Expected value: {EXPECTED_VALUE}
+        - Actual value: {ACTUAL_VALUE}
+
+        Do these values match in meaning, taking into account formatting differences, word order, abbreviations, and semantic equivalence?
+        Provide your assessment as a JSON with three fields:
+
+            - "match": boolean (true if they match, false if not)
+
+            - "score": number between 0 and 1 representing the confidence/similarity score
+
+            - "reason": brief explanation of your decision
+
+
+        Respond ONLY with the JSON and nothing else. Here's the exact format:
+
+        {
+            "match": true or false,
+            "score": 0.0 to 1.0,
+            "reason": "Your explanation here"
+        }""",
+        description="Task prompt for evaluation",
+    )
+
     temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     model: str = Field(
         default="us.anthropic.claude-3-haiku-20240307-v1:0",
         description="Bedrock model ID for evaluation",
     )
-    system_prompt: str = Field(default="", description="System prompt for evaluation")
+    system_prompt: str = Field(
+        default="ou are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching.",
+        description="System prompt for evaluation",
+    )
 
     @field_validator("temperature", "top_p", "top_k", mode="before")
     @classmethod
@@ -439,6 +772,7 @@ class EvaluationLLMMethodConfig(BaseModel):
 class EvaluationConfig(BaseModel):
     """Evaluation configuration for assessment"""
 
+    enabled: bool = Field(default=True)
     llm_method: EvaluationLLMMethodConfig = Field(
         default_factory=EvaluationLLMMethodConfig,
         description="LLM method configuration for evaluation",
@@ -604,6 +938,27 @@ class IDPConfig(BaseModel):
         # Validate on assignment
         validate_assignment=True,
     )
+
+    def to_dict(self, **extra_fields: Any) -> Dict[str, Any]:
+        """
+        Convert to a mutable dictionary with optional extra fields.
+
+        This is useful when you need to add runtime-specific fields (like endpoint names)
+        to the configuration that aren't part of the model schema.
+
+        Args:
+            **extra_fields: Additional fields to add to the dictionary
+
+        Returns:
+            Mutable dictionary with model data plus any extra fields
+
+        Example:
+            config = get_config(as_model=True)
+            config_dict = config.to_dict(sagemaker_endpoint_name=endpoint)
+        """
+        result = self.model_dump(mode="python")
+        result.update(extra_fields)
+        return result
 
 
 class ConfigMetadata(BaseModel):

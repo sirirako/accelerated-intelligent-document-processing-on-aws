@@ -19,6 +19,11 @@ extras_require = {
         "strands-agents>=1.0.0",
         "pandas>=2.0.0",
     ],
+    # Code intelligence module dependencies
+    "code_intel": [
+        "strands-agents-tools>=0.2.2",
+        "bedrock-agentcore>=0.1.1",
+    ],
     # Image handling dependencies
     "image": [
         "Pillow==11.2.1",

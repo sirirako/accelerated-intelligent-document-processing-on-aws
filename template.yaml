@@ -247,7 +247,7 @@ Parameters:
       - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
     Description: Model to use for optional Document Knowledge Base. Model access MUST be enabled in Amazon Bedrock. Note - Nova Premier may not be available in all EU regions.
 
-  DocumentAnalysisAgentModelId:
+  ChatCompanionModelId:
     Type: String
     Default: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
     AllowedValues:
@@ -523,7 +523,7 @@ Metadata:
       - Label:
           default: "Agentic Analysis"
         Parameters:
-          - DocumentAnalysisAgentModelId
+          - ChatCompanionModelId
       - Label:
           default: "Post Processing"
         Parameters:
@@ -589,8 +589,8 @@ Metadata:
         default: "Document Knowledge Base Configuration"
       KnowledgeBaseModelId:
         default: "Knowledge Base Model Id"
-      DocumentAnalysisAgentModelId:
-        default: "Document Analysis Agent Model Id"
+      ChatCompanionModelId:
+        default: "Chat Companion Model Id"
       BedrockGuardrailId:
         default: "Bedrock Guardrail Id"
       BedrockGuardrailVersion:
@@ -3571,12 +3571,12 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
   # Agent resources for text-to-agent feature
   ##########################################################################
-
   # DynamoDB table for agent job tracking
   AgentTable:
     Type: AWS::DynamoDB::Table
@@ -3611,20 +3611,9 @@ Resources:
       SecretString: "[]"
       KmsKeyId: !Ref CustomerManagedEncryptionKey
 
-  # Lambda function for agent request handler
-  AgentRequestHandlerFunction:
+  # Lambda function for agent chat resolver
+  AgentChatResolverFunction:
     Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics request handler as it's invoked synchronously via AppSync and errors are handled by the caller"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary:
         !If [
@@ -3632,41 +3621,44 @@ Resources:
           !Ref PermissionsBoundaryArn,
           !Ref AWS::NoValue,
         ]
-      CodeUri: src/lambda/agent_request_handler/
+      CodeUri: src/lambda/agent_chat_resolver/
       Handler: index.handler
       Runtime: python3.12
-      Timeout: 30
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          AGENT_TABLE: !Ref AgentTable
-          AGENT_PROCESSOR_FUNCTION: !Ref AgentProcessorFunction
+          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
+          AGENT_CHAT_PROCESSOR_FUNCTION: !Ref AgentChatProcessorFunction
           DATA_RETENTION_DAYS: !Ref DataRetentionInDays
       LoggingConfig:
-        LogGroup: !Ref AgentRequestHandlerLogGroup
+        LogGroup: !Ref AgentChatResolverLogGroup
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AgentTable
-        - LambdaInvokePolicy:
-            FunctionName: !Ref AgentProcessorFunction
         - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt AgentChatProcessorFunction.Arn
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatMessagesTable
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AgentChatProcessorFunction
+        - Statement:
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt CustomerManagedEncryptionKey.Arn
 
-  AgentRequestHandlerLogGroup:
+  AgentChatResolverLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # Lambda function for agent processor
-  AgentProcessorFunction:
+  # Lambda function for agent chat processor
+  AgentChatProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3692,11 +3684,11 @@ Resources:
           !Ref PermissionsBoundaryArn,
           !Ref AWS::NoValue,
         ]
-      CodeUri: src/lambda/agent_processor/
+      CodeUri: src/lambda/agent_chat_processor/
       Handler: index.handler
       Runtime: python3.12
-      Timeout: 900
-      MemorySize: 1024
+      Timeout: 600 # Increase timeout to handle longer Bedrock responses
+      MemorySize: 1024 # Increase memory for agents with MCP clients and streaming
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -3704,7 +3696,14 @@ Resources:
           TRACKING_TABLE_NAME: !Ref TrackingTable
           LOOKUP_FUNCTION_NAME: !Ref LookupFunction
           STRANDS_LOG_LEVEL: !Ref LogLevel
-          AGENT_TABLE: !Ref AgentTable
+          BEDROCK_REGION: !Ref AWS::Region
+          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
+          ID_HELPER_CHAT_MEMORY_TABLE: !Ref IdHelperChatMemoryTable
+          MEMORY_METHOD: dynamodb
+          STREAMING_ENABLED: true
+          MAX_CONVERSATION_TURNS: 20
+          MAX_MESSAGE_SIZE_KB: 8.5
+          DATA_RETENTION_DAYS: !Ref DataRetentionInDays
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           ATHENA_DATABASE: !Ref ReportingDatabase
           ATHENA_OUTPUT_LOCATION: !Sub
@@ -3713,7 +3712,7 @@ Resources:
                 - ShouldCreateReportingBucket
                 - !Ref ReportingBucket
                 - !Ref ReportingBucketName
-          DOCUMENT_ANALYSIS_AGENT_MODEL_ID: !Ref DocumentAnalysisAgentModelId
+          CHAT_COMPANION_MODEL_ID: !Ref ChatCompanionModelId
           AWS_STACK_NAME: !Ref AWS::StackName
           GUARDRAIL_ID_AND_VERSION:
             !If [
@@ -3723,10 +3722,20 @@ Resources:
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
       LoggingConfig:
-        LogGroup: !Ref AgentProcessorLogGroup
+        LogGroup: !Ref AgentChatProcessorLogGroup
       Policies:
+        - Statement:
+            Effect: Allow
+            Action: bedrock-agentcore:InvokeAgentRuntime
+            Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action: appsync:GraphQL
+            Resource: !Sub "arn:${AWS::Partition}:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/*"
         - DynamoDBCrudPolicy:
-            TableName: !Ref AgentTable
+            TableName: !Ref ChatMessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IdHelperChatMemoryTable
         - DynamoDBReadPolicy:
             TableName: !Ref ConfigurationTable
         - S3CrudPolicy:
@@ -3843,7 +3852,7 @@ Resources:
                 - xray:GetServiceGraph
               Resource: "*"
 
-  AgentProcessorLogGroup:
+  AgentChatProcessorLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
@@ -3921,25 +3930,75 @@ Resources:
       LambdaConfig:
         LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
 
-  SubmitAgentQueryResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: submitAgentQuery
-      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
-
-  AgentRequestHandlerDataSource:
+  AgentChatDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentRequestHandlerDataSource
-      Description: Lambda function for handling agent query requests
+      Name: AgentChatDataSource
       Type: AWS_LAMBDA
       ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
       LambdaConfig:
-        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
+        LambdaFunctionArn: !GetAtt AgentChatResolverFunction.Arn
+
+  SendAgentChatMessageResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: sendAgentChatMessage
+      DataSourceName: !GetAtt AgentChatDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2017-02-28",
+          "operation": "Invoke",
+          "payload": {
+            "arguments": $util.toJson($context.arguments)
+          }
+        }
+      ResponseMappingTemplate: |
+        #if($ctx.error)
+            $util.error($ctx.error.message, $ctx.error.type)
+        #end
+        #if($ctx.result)
+            $util.toJson($ctx.result)
+        #else
+            $util.error("No response from Lambda")
+        #end
+
+  OnAgentChatMessageUpdateResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Subscription
+      FieldName: onAgentChatMessageUpdate
+      DataSourceName: !GetAtt NoneDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "payload": {}
+        }
+      ResponseMappingTemplate: |
+        #if($context.arguments.sessionId && $context.source.sessionId)
+          #if($context.arguments.sessionId == $context.source.sessionId)
+            $util.toJson($context.source)
+          #else
+            #set($result = $util.appendError("Session ID does not match", "Unauthorized"))
+            $util.toJson(null)
+          #end
+        #else
+          $util.toJson($context.source)
+        #end     
+
+  AgentChatResolverDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentChatResolverDataSource
+      Description: Lambda function for handling agent chat messages
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AgentChatResolverFunction.Arn
 
   GetAgentJobStatusResolver:
     Type: AWS::AppSync::Resolver
@@ -4134,6 +4193,337 @@ Resources:
         TableName: !Ref AgentTable
         AwsRegion: !Ref AWS::Region
 
+
+  ChatMessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAfter
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  IdHelperChatMemoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAfter
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  NoneDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: NoneDataSource
+      Type: NONE
+
+  ChatMessagesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ChatMessagesDataSource
+      Type: AMAZON_DYNAMODB
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      DynamoDBConfig:
+        TableName: !Ref ChatMessagesTable
+        AwsRegion: !Ref AWS::Region
+
+  ##########################################################################
+  # Backward Compatible for Error Anlayzer Agent 
+  ##########################################################################
+
+  AgentRequestHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-AgentRequestHandler"
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+  
+  AgentProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-AgentProcessor"
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  # Lambda function for agent request handler
+  AgentRequestHandlerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics request handler as it's invoked synchronously via AppSync and errors are handled by the caller"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/agent_request_handler/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 30
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          AGENT_TABLE: !Ref AgentTable
+          AGENT_PROCESSOR_FUNCTION: !Ref AgentProcessorFunction
+          DATA_RETENTION_DAYS: !Ref DataRetentionInDays
+      LoggingConfig:
+        LogGroup: !Ref AgentRequestHandlerLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AgentTable
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AgentProcessorFunction
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  # Lambda function for agent processor
+  AgentProcessorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for Cfn Custom Resource function"
+          - id: W76
+            reason: "Suppressing W76: SPCM for IAM policy document is higher than 25"
+          - id: W11
+            reason: "Role requires * resource access for CloudWatch Metrics and Logs"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/agent_processor/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          TRACKING_TABLE_NAME: !Ref TrackingTable
+          LOOKUP_FUNCTION_NAME: !Ref LookupFunction
+          STRANDS_LOG_LEVEL: !Ref LogLevel
+          AGENT_TABLE: !Ref AgentTable
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          ATHENA_DATABASE: !Ref ReportingDatabase
+          ATHENA_OUTPUT_LOCATION: !Sub
+            - "s3://${Bucket}/athena-results/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
+          CHAT_COMPANION_MODEL_ID: !Ref ChatCompanionModelId
+          AWS_STACK_NAME: !Ref AWS::StackName
+          GUARDRAIL_ID_AND_VERSION:
+            !If [
+              HasGuardrailConfig,
+              !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}",
+              "",
+            ]
+          CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
+      LoggingConfig:
+        LogGroup: !Ref AgentProcessorLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AgentTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateReportingBucket
+              - !Ref ReportingBucket
+              - !Ref ReportingBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+              Resource:
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+            - Effect: Allow
+              Action:
+                - glue:GetTable
+                - glue:GetTables
+                - glue:GetDatabase
+                - glue:GetDatabases
+                - glue:GetPartitions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - !If
+              - HasGuardrailConfig
+              - Effect: Allow
+                Action:
+                  - "bedrock:ApplyGuardrail"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            - Effect: Allow
+              Action:
+                - bedrock-agentcore:StartCodeInterpreterSession
+                - bedrock-agentcore:StopCodeInterpreterSession
+                - bedrock-agentcore:InvokeCodeInterpreter
+                - bedrock-agentcore:GetCodeInterpreterSession
+                - bedrock-agentcore:ListCodeInterpreterSessions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock-agentcore:*:aws:code-interpreter/*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref ExternalMCPAgentsSecret
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogGroups
+                - logs:DescribeLogStreams
+                - logs:FilterLogEvents
+                - logs:GetLogEvents
+              Resource:
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogGroups
+              Resource:
+                - "*"
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeTable
+                - dynamodb:Scan
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt TrackingTable.Arn
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStackResources
+                - cloudformation:DescribeStacks
+              Resource:
+                - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource:
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - xray:GetTraceSummaries
+                - xray:BatchGetTraces
+                - xray:GetServiceGraph
+              Resource: "*"
+  
+  AgentRequestHandlerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AgentRequestHandlerDataSource
+      Description: Lambda function for handling agent query requests
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
+
+  SubmitAgentQueryResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: submitAgentQuery
+      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
+
   ##########################################################################
   # Cognoito user authentication for AppSync API and WebUI
   ##########################################################################
@@ -4214,7 +4604,7 @@ Resources:
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-      GenerateSecret: false
+      GenerateSecret: false # pragma: allowlist secret - CloudFormation parameter, not actual secret
       IdTokenValidity: 1
       PreventUserExistenceErrors: ENABLED
       ReadAttributes:
@@ -4486,7 +4876,7 @@ Resources:
     Properties:
       ClientName:
         Fn::Sub: ${AWS::StackName}-A2I-Client
-      GenerateSecret: true
+      GenerateSecret: true # pragma: allowlist secret - CloudFormation parameter, not actual secret
       UserPoolId:
         Ref: UserPool
 
@@ -5122,6 +5512,7 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DiscoveryTrackingTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatMessagesTable}"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -5144,10 +5535,11 @@ Resources:
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
                   - !GetAtt ProcessChangesResolverFunction.Arn
-                  - !GetAtt AgentRequestHandlerFunction.Arn
+                  - !GetAtt AgentChatResolverFunction.Arn
                   - !GetAtt ListAvailableAgentsFunction.Arn
                   - !GetAtt ChatWithDocumentResolverFunction.Arn
                   - !GetAtt DiscoveryUploadResolverFunction.Arn
+                  - !GetAtt AgentRequestHandlerFunction.Arn  # <-- Backward Compatibility for error analyzer agent
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
@@ -6780,9 +7172,9 @@ Resources:
                 - npm install -g npm@11.1.0
                 - echo Installing Web UI dependencies
                 - rm -rf node_modules
+                - rm -f package-lock.json
                 - npm cache clean --force
-                - npm install --package-lock-only
-                - npm ci
+                - npm install
                 - echo Checking for and fixing security vulnerabilities
                 - npm audit fix || echo "Some vulnerabilities could not be automatically fixed"
             build:

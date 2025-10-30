@@ -17,6 +17,7 @@ import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from idp_common.config.models import IDPConfig
 from idp_common.models import Document
 from idp_common.s3 import get_json_content
 
@@ -35,8 +36,8 @@ class SaveReportingData:
     def __init__(
         self,
         reporting_bucket: str,
-        database_name: str = None,
-        config: Dict[str, Any] = None,
+        database_name: Optional[str] = None,
+        config: Optional[IDPConfig] = None,
     ):
         """
         Initialize the SaveReportingData class.
@@ -48,7 +49,7 @@ class SaveReportingData:
         """
         self.reporting_bucket = reporting_bucket
         self.database_name = database_name
-        self.config = config or {}
+        self.config = config or IDPConfig()
         self.s3_client = boto3.client("s3")
         self.glue_client = boto3.client("glue") if database_name else None
 
@@ -790,30 +791,27 @@ class SaveReportingData:
 
         # Load pricing from configuration
         try:
-            if self.config and "pricing" in self.config:
-                pricing_config = self.config["pricing"]
+            if self.config.pricing:
                 logger.info(
-                    f"Found {len(pricing_config)} pricing entries in configuration"
+                    f"Found {len(self.config.pricing)} pricing entries in configuration"
                 )
 
                 config_loaded_count = 0
                 # Convert configuration pricing to lookup dictionary (same format as UI)
-                for service in pricing_config:
-                    if "name" in service and "units" in service:
-                        service_name = service["name"]
-                        for unit_info in service["units"]:
-                            if "name" in unit_info and "price" in unit_info:
-                                unit_name = unit_info["name"]
-                                try:
-                                    price = float(unit_info["price"])
-                                    if service_name not in pricing_map:
-                                        pricing_map[service_name] = {}
-                                    pricing_map[service_name][unit_name] = price
-                                    config_loaded_count += 1
-                                except (ValueError, TypeError) as e:
-                                    logger.warning(
-                                        f"Invalid price value for {service_name}/{unit_name}: {unit_info['price']}, error: {e}. Skipping entry."
-                                    )
+                for service in self.config.pricing:
+                    service_name = service.name
+                    for unit_info in service.units:
+                        unit_name = unit_info.name
+                        try:
+                            price = unit_info.price
+                            if service_name not in pricing_map:
+                                pricing_map[service_name] = {}
+                            pricing_map[service_name][unit_name] = price
+                            config_loaded_count += 1
+                        except (ValueError, TypeError) as e:
+                            logger.warning(
+                                f"Invalid price value for {service_name}/{unit_name}: {unit_name}, error: {e}. Skipping entry."
+                            )
 
                 if config_loaded_count > 0:
                     logger.info(

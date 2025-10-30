@@ -13,10 +13,11 @@ from typing import Any, Dict, List
 import boto3
 from strands import tool
 
+from idp_common.config import get_config
+
 from ..config import (
     create_error_response,
     create_response,
-    get_config_with_fallback,
     safe_int_conversion,
 )
 
@@ -403,8 +404,10 @@ def _analyze_trace_segments(segments: List[Dict[str, Any]]) -> Dict[str, Any]:
     error_segments = []
     slow_segments = []
 
-    config = get_config_with_fallback()
-    slow_threshold = config.get("xray_slow_segment_threshold_ms", 5000)
+    config = get_config(as_model=True)
+    slow_threshold = (
+        config.agents.error_analyzer.parameters.xray_slow_segment_threshold_ms
+    )
 
     for segment in segments:
         segment_doc = _parse_segment_document(segment.get("Document", {}))
@@ -537,9 +540,13 @@ def _analyze_service_performance(
         if not services:
             return {"services_found": 0, "message": "No service map data available"}
 
-        config = get_config_with_fallback()
-        error_rate_threshold = config.get("xray_error_rate_threshold", 0.05)
-        response_time_threshold = config.get("xray_response_time_threshold_ms", 10000)
+        config = get_config(as_model=True)
+        error_rate_threshold = (
+            config.agents.error_analyzer.parameters.xray_error_rate_threshold
+        )
+        response_time_threshold = (
+            config.agents.error_analyzer.parameters.xray_response_time_threshold_ms
+        )
 
         service_analysis = []
         high_error_services = []

@@ -105,23 +105,23 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
         subscription.unsubscribe();
       }
 
-      // Check if Error-Analyzer-Agent-v1 agent exists
+      // Check if Error-Analyzer-Agent agent exists
       const agents = await checkAvailableAgents();
-      const errorAnalyzer = agents.find((agent) => agent.agent_id === 'Error-Analyzer-Agent-v1');
+      const errorAnalyzer = agents.find((agent) => agent.agent_id === 'Error-Analyzer-Agent');
 
       if (!errorAnalyzer) {
-        throw new Error(`Error-Analyzer-Agent-v1 agent is not available. Available agents: ${agents.map((a) => a.agent_id).join(', ')}`);
+        throw new Error(`Error-Analyzer-Agent agent is not available. Available agents: ${agents.map((a) => a.agent_id).join(', ')}`);
       }
 
       logger.debug('Submitting troubleshoot query for document:', documentItem.objectKey);
       logger.debug('Query:', query);
-      logger.debug('Agent IDs:', ['Error-Analyzer-Agent-v1']);
+      logger.debug('Agent IDs:', ['Error-Analyzer-Agent']);
 
       const response = await client.graphql({
         query: submitAgentQuery,
         variables: {
           query,
-          agentIds: ['Error-Analyzer-Agent-v1'],
+          agentIds: ['Error-Analyzer-Agent'],
         },
       });
 
@@ -277,25 +277,6 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
 
         {(agentMessages || jobStatus === 'PROCESSING') && (
           <AgentMessagesDisplay agentMessages={agentMessages} isProcessing={jobStatus === 'PROCESSING'} />
-        )}
-
-        {/* Debug section - remove in production */}
-        {import.meta.env.DEV && jobId && (
-          <Alert type="info">
-            <strong>Debug Info:</strong>
-            <br />
-            Job ID: {jobId}
-            <br />
-            Status: {jobStatus}
-            <br />
-            Has Result: {jobResult ? 'Yes' : 'No'}
-            <br />
-            Has Messages: {agentMessages ? 'Yes' : 'No'}
-            <br />
-            Available Agents: {availableAgents.map((a) => a.agent_id).join(', ') || 'Loading...'}
-            <br />
-            Error: {error || 'None'}
-          </Alert>
         )}
       </SpaceBetween>
     </Modal>

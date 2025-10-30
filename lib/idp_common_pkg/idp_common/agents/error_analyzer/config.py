@@ -6,97 +6,87 @@ Configuration management for error analyzer agents.
 """
 
 import logging
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict
 
 from ..common.config import configure_logging, get_environment_config
 
 logger = logging.getLogger(__name__)
 
 
-def get_error_analyzer_config(pattern_config: Dict[str, Any] = None) -> Dict[str, Any]:
+def get_error_analyzer_config() -> Dict[str, Any]:
     """
-    Builds complete error analyzer configuration from environment and patterns.
-    Get error analyzer configuration with defaults and overrides.
+    Get error analyzer-specific configuration from environment variables.
 
     Returns:
-        Dict containing complete error analyzer configuration
+        Dict containing error analyzer configuration values
+
+    Raises:
+        ValueError: If required environment variables are missing
     """
-    from ... import get_config
+    # Get base configuration
+    config = get_environment_config()
 
-    # Start with base environment and context limits
-    config = get_environment_config(["CLOUDWATCH_LOG_GROUP_PREFIX", "AWS_STACK_NAME"])
-    config.update(get_context_limits())
+    # Add error analyzer-specific defaults
+    config.setdefault("max_log_events", 5)
+    config.setdefault("time_range_hours_default", 24)
 
-    # Load and apply agent configuration
-    full_config = get_config()
-    agent_config = full_config.get("agents", {}).get("error_analyzer", {})
-
-    if not agent_config:
-        raise ValueError("error_analyzer configuration not found")
-
-    # Apply agent settings with defaults
-    config.update(
-        {
-            "model_id": agent_config.get(
-                "model_id", "anthropic.claude-3-sonnet-20240229-v1:0"
-            ),
-            "system_prompt": agent_config.get("system_prompt"),
-            "error_patterns": get_default_error_patterns(),
-            "aws_capabilities": get_aws_service_capabilities(),
-        }
-    )
-
-    # Apply parameters with type conversion
-    params = agent_config.get("parameters", {})
-    config["max_log_events"] = safe_int_conversion(params.get("max_log_events"), 5)
-    config["time_range_hours_default"] = safe_int_conversion(
-        params.get("time_range_hours_default"), 24
-    )
-
-    # Apply UI overrides for context limits - UI config takes precedence
-    if pattern_config and "max_log_events" in pattern_config:
-        config["max_log_events"] = safe_int_conversion(
-            pattern_config["max_log_events"], config["max_log_events"]
-        )
-
-    # Validate required fields
-    if not config.get("system_prompt"):
-        raise ValueError("system_prompt is required")
-
+    # Configure logging based on the configuration
     configure_logging(
         log_level=config.get("log_level"),
         strands_log_level=config.get("strands_log_level"),
     )
 
+    logger.info("Error analyzer configuration loaded successfully")
     return config
 
 
-def get_default_error_patterns() -> List[str]:
-    """Returns standard error patterns for CloudWatch log filtering."""
-    return [
-        "ERROR",
-        "CRITICAL",
-        "FATAL",
-        "Exception",
-        "Traceback",
-        "Failed",
-        "Timeout",
-        "AccessDenied",
-        "ThrottlingException",
-    ]
+def get_error_analyzer_model_id(config_manager=None) -> str:
+    """
+    Get the error analyzer model ID from configuration.
 
+    Priority order:
+    1. Environment variable CHAT_COMPANION_MODEL_ID (shared with chat companion)
+    2. Configuration table agents.error_analyzer.model_id
+    3. Default fallback
 
-def get_context_limits() -> Dict[str, int]:
-    """Returns default resource and context size constraints."""
-    return {
-        "max_log_events": 5,
-        "max_log_message_length": 400,
-        "max_events_per_log_group": 5,
-        "max_log_groups": 20,
-        "max_stepfunction_timeline_events": 3,
-        "max_stepfunction_error_length": 400,
-        "time_range_hours_default": 24,
-    }
+    Args:
+        config_manager: Optional ConfigurationManager instance
+
+    Returns:
+        Model ID string
+    """
+    # First check environment variable (shared with chat companion)
+    model_id = os.environ.get("CHAT_COMPANION_MODEL_ID")
+    if model_id:
+        logger.info(f"Using error analyzer model ID from environment: {model_id}")
+        return model_id
+
+    # Try to get from configuration table
+    if config_manager:
+        try:
+            from ...config import get_merged_configuration
+
+            merged_config = get_merged_configuration(config_manager)
+
+            # Navigate to agents.error_analyzer.model_id
+            agents_config = merged_config.get("agents", {})
+            error_analyzer_config = agents_config.get("error_analyzer", {})
+            config_model_id = error_analyzer_config.get("model_id")
+
+            if config_model_id:
+                logger.info(
+                    f"Using error analyzer model ID from configuration: {config_model_id}"
+                )
+                return config_model_id
+
+        except Exception as e:
+            logger.warning(f"Failed to load model ID from configuration: {e}")
+
+    # Fallback to default (same as chat companion default)
+    default_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+    logger.info(f"Using default error analyzer model ID: {default_model_id}")
+    return default_model_id
 
 
 def get_aws_service_capabilities() -> Dict[str, Any]:
@@ -161,12 +151,3 @@ def truncate_message(message: str, max_length: int = 200) -> str:
     if len(message) <= max_length:
         return message
     return message[:max_length] + "... [truncated]"
-
-
-def get_config_with_fallback() -> Dict[str, Any]:
-    """Gets error analyzer config with graceful fallback to defaults."""
-    try:
-        return get_error_analyzer_config()
-    except Exception as e:
-        logger.warning(f"Failed to load config, using defaults: {e}")
-        return get_context_limits()
