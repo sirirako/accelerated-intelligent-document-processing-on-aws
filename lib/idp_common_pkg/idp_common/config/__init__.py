@@ -160,28 +160,47 @@ class ConfigurationReader:
 
 @overload
 def get_config(
-    table_name: Optional[str] = None, *, as_model: Literal[True]
-) -> IDPConfig: ...
+    *, table_name: Optional[str] = None, as_model: Literal[True]
+) -> IDPConfig:
+    """
+    Get configuration as Pydantic model.
+
+    Use config.to_dict() to convert to mutable dict with extra fields:
+        config = get_config(as_model=True)
+        config_dict = config.to_dict(sagemaker_endpoint_name=endpoint)
+    """
+    ...
 
 
 @overload
 def get_config(
-    table_name: Optional[str] = None, *, as_model: Literal[False]
-) -> Dict[str, Any]: ...
+    *, table_name: Optional[str] = None, as_model: Literal[False] = False
+) -> Dict[str, Any]:
+    """Get configuration as mutable dictionary."""
+    ...
 
 
 def get_config(
-    table_name: Optional[str] = None, *, as_model: bool = False
+    *, table_name: Optional[str] = None, as_model: bool = False
 ) -> Union[IDPConfig, Dict[str, Any]]:
     """
-    Get the merged configuration using the environment variable for table name
+    Get the merged configuration using the environment variable for table name.
 
     Args:
         table_name: Optional override for configuration table name
         as_model: If True, return IDPConfig Pydantic model. If False (default), return dict.
 
     Returns:
-        Merged configuration as IDPConfig or dictionary
+        Merged configuration as IDPConfig (with .to_dict() helper) or mutable dictionary.
+
+    Examples:
+        # Get as dict for direct manipulation
+        config = get_config(as_model=False)
+        config["extra_field"] = "value"
+
+        # Get as model, convert to dict with extras
+        config = get_config(as_model=True)
+        config_dict = config.to_dict(sagemaker_endpoint_name=endpoint)
     """
     reader = ConfigurationReader(table_name)
     return reader.get_merged_configuration(as_model=as_model)

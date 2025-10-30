@@ -166,10 +166,9 @@ def handler(event, context):
         actual_document = extract_document_from_event(event)
         
         # Load configuration and check if evaluation is enabled
-        config = get_config()
-        evaluation_enabled = config.get('evaluation', {}).get('enabled', True)
+        config = get_config(as_model=True)
         
-        if not evaluation_enabled:
+        if not config.evaluation.enabled:
             logger.info("Evaluation is disabled in configuration, skipping evaluation")
             # Return document unchanged
             return {'document': actual_document.serialize_document(working_bucket, 'evaluation')}

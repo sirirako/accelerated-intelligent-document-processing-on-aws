@@ -102,9 +102,9 @@ def handler(event, context):
     logger.info(f"Starting assessment processing for event: {json.dumps(event, default=str)}")
 
     # Load configuration
-    config = get_config()
+    config = get_config(as_model=True)
     # Use default=str to handle Decimal and other non-serializable types
-    logger.info(f"Config: {json.dumps(config, default=str)}")
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # Extract input from event - handle both compressed and uncompressed
     document_data = event.get('document', {})
@@ -137,10 +137,8 @@ def handler(event, context):
         raise ValueError(f"Section {section_id} not found in document")
 
     # Check if granular assessment is enabled (moved earlier for Lambda metering context)
-    granular_config = config.get('assessment', {}).get('granular', {})
-    granular_enabled = granular_config.get('enabled', False)
-    assessment_context = "GranularAssessment" if granular_enabled else "Assessment"
-    logger.info(f"Assessment mode: {'Granular' if granular_enabled else 'Regular'} (context: {assessment_context})")
+    assessment_context = "GranularAssessment" if config.assessment.granular.enabled else "Assessment"
+    logger.info(f"Assessment mode: {'Granular' if config.assessment.granular.enabled else 'Regular'} (context: {assessment_context})")
 
     # Intelligent Assessment Skip: Check if extraction results already contain explainability_info
     if section.extraction_result_uri and section.extraction_result_uri.strip():
@@ -220,10 +218,8 @@ def handler(event, context):
     cache_table = os.environ.get('TRACKING_TABLE')
     
     # Check if granular assessment is enabled
-    granular_config = config.get('assessment', {}).get('granular', {})
-    granular_enabled = granular_config.get('enabled', False)
     
-    if granular_enabled:
+    if config.assessment.granular.enabled:
         # Use enhanced granular assessment service with caching and retry support
         from idp_common.assessment.granular_service import GranularAssessmentService
         assessment_service = GranularAssessmentService(config=config, cache_table=cache_table)
@@ -288,12 +284,10 @@ def handler(event, context):
             updated_document.errors.append(str(e))
 
     # Assessment validation
-    assessment_config = config.get('assessment', {})
-    assessment_enabled = normalize_boolean_value(assessment_config.get('enabled', False))
-    validation_enabled = assessment_enabled and normalize_boolean_value(assessment_config.get('validation_enabled', True))
-    logger.info(f"Assessment Enabled:{assessment_enabled}")
+    validation_enabled = config.assessment.granular.enabled and config.assessment.validation_enabled
+    logger.info(f"Assessment Enabled:{config.assessment.granular.enabled}")
     logger.info(f"Validation Enabled:{validation_enabled}")
-    if not assessment_enabled:
+    if not config.assessment.granular.enabled:
         logger.info("Assessment is disabled.")
     elif not validation_enabled:
         logger.info("Assessment validation is disabled.")
@@ -304,7 +298,7 @@ def handler(event, context):
                 # Load extraction data with assessment results
                 extraction_data = s3.get_json_content(section.extraction_result_uri)
                 validator = AssessmentValidator(extraction_data,
-                                                assessment_config=assessment_config,
+                                                assessment_config=config.assessment,
                                                 enable_missing_check=True,
                                                 enable_count_check=True)
                 validation_results = validator.validate_all()

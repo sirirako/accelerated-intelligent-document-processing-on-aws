@@ -14,6 +14,7 @@ from typing import Any, Dict
 from unittest.mock import patch
 
 from idp_common import assessment
+from idp_common.config.models import IDPConfig
 from idp_common.models import Document, Page, Section, Status
 
 
@@ -252,10 +253,12 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
     @patch("idp_common.s3.get_text_content")
     @patch("idp_common.s3.write_content")
     @patch("idp_common.image.prepare_image")
+    @patch("idp_common.image.prepare_bedrock_image_attachment")
     @patch("idp_common.bedrock.invoke_model")
     def test_standard_assessment_service(
         self,
         mock_invoke_model,
+        mock_prepare_bedrock_image,
         mock_prepare_image,
         mock_write_content,
         mock_get_text_content,
@@ -266,6 +269,14 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
         mock_get_json_content.return_value = self._create_test_extraction_results()
         mock_get_text_content.return_value = "Sample document text content"
         mock_prepare_image.return_value = self._create_mock_image_data()
+        mock_prepare_bedrock_image.return_value = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": "mock_data",
+            },
+        }
 
         # Mock Bedrock response for standard assessment
         mock_response = {
@@ -289,8 +300,9 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
             "list_batch_size": 1,
         }
 
-        # Initialize assessment service
-        assessment_service = assessment.AssessmentService(config=config)
+        # Initialize assessment service with IDPConfig model
+        idp_config = IDPConfig.model_validate(config)
+        assessment_service = assessment.AssessmentService(config=idp_config)
 
         # Process document section
         result_document = assessment_service.process_document_section(
@@ -319,10 +331,12 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
     @patch("idp_common.s3.get_text_content")
     @patch("idp_common.s3.write_content")
     @patch("idp_common.image.prepare_image")
+    @patch("idp_common.image.prepare_bedrock_image_attachment")
     @patch("idp_common.bedrock.invoke_model")
     def test_granular_assessment_service(
         self,
         mock_invoke_model,
+        mock_prepare_bedrock_image,
         mock_prepare_image,
         mock_write_content,
         mock_get_text_content,
@@ -333,6 +347,14 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
         mock_get_json_content.return_value = self._create_test_extraction_results()
         mock_get_text_content.return_value = "Sample document text content"
         mock_prepare_image.return_value = self._create_mock_image_data()
+        mock_prepare_bedrock_image.return_value = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": "mock_data",
+            },
+        }
 
         # Mock Bedrock responses for granular assessment (multiple calls)
         def mock_bedrock_side_effect(*args, **kwargs):
@@ -373,8 +395,9 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
             "list_batch_size": 1,  # Will process each list item separately
         }
 
-        # Initialize assessment service
-        assessment_service = assessment.AssessmentService(config=config)
+        # Initialize assessment service with IDPConfig model
+        idp_config = IDPConfig.model_validate(config)
+        assessment_service = assessment.AssessmentService(config=idp_config)
 
         # Process document section
         result_document = assessment_service.process_document_section(
@@ -428,7 +451,8 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
         config_standard = self.base_config.copy()
         config_standard["assessment"]["granular"] = {"enabled": False}
 
-        service_standard = assessment.AssessmentService(config=config_standard)
+        idp_config_standard = IDPConfig.model_validate(config_standard)
+        service_standard = assessment.AssessmentService(config=idp_config_standard)
         # The main service is AssessmentService, but it should use the standard service internally
         self.assertEqual(type(service_standard).__name__, "AssessmentService")
         # Check that granular is disabled in config
@@ -439,7 +463,8 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
         config_granular = self.base_config.copy()
         config_granular["assessment"]["granular"] = {"enabled": True}
 
-        service_granular = assessment.AssessmentService(config=config_granular)
+        idp_config_granular = IDPConfig.model_validate(config_granular)
+        service_granular = assessment.AssessmentService(config=idp_config_granular)
         self.assertEqual(type(service_granular).__name__, "AssessmentService")
         # Check that granular is enabled in config
         granular_config = config_granular.get("assessment", {}).get("granular", {})
@@ -451,7 +476,8 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
         if "granular" in config_default["assessment"]:
             del config_default["assessment"]["granular"]
 
-        service_default = assessment.AssessmentService(config=config_default)
+        idp_config_default = IDPConfig.model_validate(config_default)
+        service_default = assessment.AssessmentService(config=idp_config_default)
         self.assertEqual(type(service_default).__name__, "AssessmentService")
         # Check that granular is not configured (defaults to disabled)
         granular_config = config_default.get("assessment", {}).get("granular", {})
@@ -487,7 +513,8 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
             for granular_enabled in [False, True]:
                 config["assessment"]["granular"] = {"enabled": granular_enabled}
 
-                service = assessment.AssessmentService(config=config)
+                idp_config = IDPConfig.model_validate(config)
+                service = assessment.AssessmentService(config=idp_config)
 
                 # The service should initialize without errors
                 self.assertIsNotNone(service)
@@ -542,6 +569,17 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
                         "idp_common.image.prepare_image",
                         return_value=self._create_mock_image_data(),
                     ),
+                    patch(
+                        "idp_common.image.prepare_bedrock_image_attachment",
+                        return_value={
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": "mock_data",
+                            },
+                        },
+                    ),
                     patch("idp_common.bedrock.invoke_model") as mock_invoke,
                 ):
                     # Configure mock response
@@ -577,11 +615,12 @@ class TestAssessmentBackwardCompatibility(unittest.TestCase):
                     document.status = Status.ASSESSING
 
                     # Initialize assessment service
-                    assessment_service = assessment.AssessmentService(config=config)
+                    idp_config = IDPConfig.model_validate(config)
+                    assessment_service = assessment.AssessmentService(config=idp_config)
 
                     # Process the document section
                     updated_document = assessment_service.process_document_section(
-                        document, section_id
+                        document, str(section_id)
                     )
 
                     # Verify processing succeeded
