@@ -174,7 +174,6 @@ def xray_trace(document_id: str, tracking_table_name: str = None) -> Dict[str, A
             start_time = end_time - timedelta(hours=24)  # Search last 24 hours
 
             response = xray_client.get_trace_summaries(
-                TimeRangeType="TimeRangeByStartTime",
                 StartTime=start_time,
                 EndTime=end_time,
                 FilterExpression=f'annotation.document_id = "{document_id}"',
@@ -320,13 +319,7 @@ def extract_lambda_request_ids(xray_trace_id: str) -> Dict[str, str]:
             for segment in segments:
                 try:
                     segment_doc = json.loads(segment["Document"])
-                    logger.info(f"Segment document: {segment_doc}")
-
                     parsed_executions = _parse_segment_for_lambda(segment_doc)
-                    logger.info(
-                        f"Parsed Lambda executions from segment: {parsed_executions}"
-                    )
-
                     lambda_executions.extend(parsed_executions)
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse segment document: {e}")
@@ -465,10 +458,6 @@ def _parse_segment_for_lambda(segment: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     lambda_executions = []
 
-    logger.info(
-        f"Parsing segment for Lambda: origin={segment.get('origin')}, name={segment.get('name')}"
-    )
-
     if segment.get("origin") == "AWS::Lambda":
         aws_info = segment.get("aws", {})
         function_name = segment.get("name", "Unknown")
@@ -477,10 +466,6 @@ def _parse_segment_for_lambda(segment: Dict[str, Any]) -> List[Dict[str, Any]]:
             function_name = segment["resource_arn"].split(":")[-1]
 
         request_id = aws_info.get("request_id")
-        logger.info(
-            f"Found Lambda segment: function={function_name}, request_id={request_id}, aws_info={aws_info}"
-        )
-
         lambda_executions.append(
             {
                 "function_name": function_name,
@@ -490,8 +475,6 @@ def _parse_segment_for_lambda(segment: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     # Recursively check subsegments
     subsegments = segment.get("subsegments", [])
-    if subsegments:
-        logger.info(f"Processing {len(subsegments)} subsegments")
 
     for subsegment in subsegments:
         lambda_executions.extend(_parse_segment_for_lambda(subsegment))
@@ -507,7 +490,6 @@ def _analyze_stack_traces(
     """
     try:
         response = xray_client.get_trace_summaries(
-            TimeRangeType="TimeRangeByStartTime",
             StartTime=start_time,
             EndTime=end_time,
             FilterExpression=f'annotation.stack_name = "{stack_name}"',

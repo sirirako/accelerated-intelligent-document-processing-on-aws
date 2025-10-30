@@ -64,10 +64,12 @@ def dynamodb_status(object_key: str) -> Dict[str, Any]:
                 "tracking_available": True,
                 "document_found": True,
                 "object_key": object_key,
-                "status": document.get("Status"),
+                "status": document.get("ObjectStatus")
+                or document.get("WorkflowStatus"),
                 "initial_event_time": document.get("InitialEventTime"),
                 "completion_time": document.get("CompletionTime"),
-                "execution_arn": document.get("ExecutionArn"),
+                "execution_arn": document.get("WorkflowExecutionArn")
+                or document.get("ExecutionArn"),
             }
         )
         logger.info(f"DynamoDB status final response for {object_key}: {response}")
