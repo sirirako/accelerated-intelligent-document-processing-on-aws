@@ -5,13 +5,11 @@
 Unit tests for Error Analyzer configuration.
 """
 
-from unittest.mock import patch
-
 import pytest
-from idp_common.agents.error_analyzer.config import (
-    get_aws_service_capabilities,
-    get_default_error_patterns,
-    get_error_analyzer_config,
+from idp_common.agents.error_analyzer.config import get_aws_service_capabilities
+from idp_common.config.models import (
+    ErrorAnalyzerConfig,
+    ErrorAnalyzerParameters,
 )
 
 
@@ -19,16 +17,16 @@ from idp_common.agents.error_analyzer.config import (
 class TestErrorAnalyzerConfig:
     """Test error analyzer configuration functions."""
 
-    def test_get_default_error_patterns(self):
-        """Test default error patterns are returned."""
-        patterns = get_default_error_patterns()
+    def test_default_error_patterns(self):
+        """Test default error patterns in ErrorAnalyzerConfig."""
+        config = ErrorAnalyzerConfig()
 
-        assert isinstance(patterns, list)
-        assert len(patterns) > 0
-        assert "ERROR" in patterns
-        assert "Exception" in patterns
-        assert "Timeout" in patterns
-        assert "ThrottlingException" in patterns
+        assert isinstance(config.error_patterns, list)
+        assert len(config.error_patterns) > 0
+        assert "ERROR" in config.error_patterns
+        assert "Exception" in config.error_patterns
+        assert "Timeout" in config.error_patterns
+        assert "ThrottlingException" in config.error_patterns
 
     def test_get_aws_service_capabilities(self):
         """Test AWS service capabilities are returned."""
@@ -53,69 +51,27 @@ class TestErrorAnalyzerConfig:
         assert "scan_table" in db_caps["capabilities"]
         assert "implementation" in db_caps
 
-    @patch.dict(
-        "os.environ",
-        {
-            "CLOUDWATCH_LOG_GROUP_PREFIX": "/aws/lambda/test",
-            "AWS_STACK_NAME": "test-stack",
-            "CONFIGURATION_TABLE_NAME": "test-config-table",
-        },
-    )
-    @patch("idp_common.get_config")
-    def test_get_error_analyzer_config(self, mock_get_config):
-        """Test error analyzer configuration loading."""
-        mock_get_config.return_value = {
-            "agents": {
-                "error_analyzer": {
-                    "system_prompt": "Test system prompt for error analysis"
-                }
-            }
-        }
-        pattern_config = {
-            "agents": {
-                "error_analyzer": {
-                    "system_prompt": "Test system prompt for error analysis"
-                }
-            }
-        }
-        config = get_error_analyzer_config(pattern_config)
+    def test_error_analyzer_parameters_defaults(self):
+        """Test ErrorAnalyzerParameters default values."""
+        params = ErrorAnalyzerParameters()
 
-        assert config["cloudwatch_log_group_prefix"] == "/aws/lambda/test"
-        assert config["aws_stack_name"] == "test-stack"
-        assert config["max_log_events"] == 5
-        assert config["system_prompt"] == "Test system prompt for error analysis"
-        assert isinstance(config["error_patterns"], list)
-        assert "aws_capabilities" in config
-        assert isinstance(config["aws_capabilities"], dict)
+        assert params.max_log_events == 5
+        assert params.time_range_hours_default == 24
+        assert params.max_log_message_length == 400
+        assert params.max_events_per_log_group == 5
+        assert params.max_log_groups == 20
+        assert params.max_stepfunction_timeline_events == 3
+        assert params.max_stepfunction_error_length == 400
+        assert params.xray_slow_segment_threshold_ms == 5000
+        assert params.xray_error_rate_threshold == 0.05
+        assert params.xray_response_time_threshold_ms == 10000
 
-    @patch.dict(
-        "os.environ",
-        {
-            "CLOUDWATCH_LOG_GROUP_PREFIX": "/aws/lambda/test",
-            "AWS_STACK_NAME": "test-stack",
-            "LOG_LEVEL": "DEBUG",
-            "CONFIGURATION_TABLE_NAME": "test-config-table",
-        },
-    )
-    @patch("idp_common.get_config")
-    def test_get_error_analyzer_config_with_log_level(self, mock_get_config):
-        """Test configuration with custom log level."""
-        mock_get_config.return_value = {
-            "agents": {
-                "error_analyzer": {
-                    "system_prompt": "Test system prompt with debug logging"
-                }
-            }
-        }
-        pattern_config = {
-            "agents": {
-                "error_analyzer": {
-                    "system_prompt": "Test system prompt with debug logging"
-                }
-            }
-        }
-        config = get_error_analyzer_config(pattern_config)
+    def test_error_analyzer_config_defaults(self):
+        """Test ErrorAnalyzerConfig default values."""
+        config = ErrorAnalyzerConfig()
 
-        assert "error_patterns" in config
-        assert len(config["error_patterns"]) > 0
-        assert config["system_prompt"] == "Test system prompt with debug logging"
+        assert config.model_id == "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        assert isinstance(config.system_prompt, str)
+        assert len(config.system_prompt) > 0
+        assert isinstance(config.parameters, ErrorAnalyzerParameters)
+        assert config.parameters.max_log_events == 5

@@ -6,97 +6,9 @@ Configuration management for error analyzer agents.
 """
 
 import logging
-from typing import Any, Dict, List
-
-from ..common.config import configure_logging, get_environment_config
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
-
-
-def get_error_analyzer_config(pattern_config: Dict[str, Any] = None) -> Dict[str, Any]:
-    """
-    Builds complete error analyzer configuration from environment and patterns.
-    Get error analyzer configuration with defaults and overrides.
-
-    Returns:
-        Dict containing complete error analyzer configuration
-    """
-    from ... import get_config
-
-    # Start with base environment and context limits
-    config = get_environment_config(["CLOUDWATCH_LOG_GROUP_PREFIX", "AWS_STACK_NAME"])
-    config.update(get_context_limits())
-
-    # Load and apply agent configuration
-    full_config = get_config()
-    agent_config = full_config.get("agents", {}).get("error_analyzer", {})
-
-    if not agent_config:
-        raise ValueError("error_analyzer configuration not found")
-
-    # Apply agent settings with defaults
-    config.update(
-        {
-            "model_id": agent_config.get(
-                "model_id", "anthropic.claude-3-sonnet-20240229-v1:0"
-            ),
-            "system_prompt": agent_config.get("system_prompt"),
-            "error_patterns": get_default_error_patterns(),
-            "aws_capabilities": get_aws_service_capabilities(),
-        }
-    )
-
-    # Apply parameters with type conversion
-    params = agent_config.get("parameters", {})
-    config["max_log_events"] = safe_int_conversion(params.get("max_log_events"), 5)
-    config["time_range_hours_default"] = safe_int_conversion(
-        params.get("time_range_hours_default"), 24
-    )
-
-    # Apply UI overrides for context limits - UI config takes precedence
-    if pattern_config and "max_log_events" in pattern_config:
-        config["max_log_events"] = safe_int_conversion(
-            pattern_config["max_log_events"], config["max_log_events"]
-        )
-
-    # Validate required fields
-    if not config.get("system_prompt"):
-        raise ValueError("system_prompt is required")
-
-    configure_logging(
-        log_level=config.get("log_level"),
-        strands_log_level=config.get("strands_log_level"),
-    )
-
-    return config
-
-
-def get_default_error_patterns() -> List[str]:
-    """Returns standard error patterns for CloudWatch log filtering."""
-    return [
-        "ERROR",
-        "CRITICAL",
-        "FATAL",
-        "Exception",
-        "Traceback",
-        "Failed",
-        "Timeout",
-        "AccessDenied",
-        "ThrottlingException",
-    ]
-
-
-def get_context_limits() -> Dict[str, int]:
-    """Returns default resource and context size constraints."""
-    return {
-        "max_log_events": 5,
-        "max_log_message_length": 400,
-        "max_events_per_log_group": 5,
-        "max_log_groups": 20,
-        "max_stepfunction_timeline_events": 3,
-        "max_stepfunction_error_length": 400,
-        "time_range_hours_default": 24,
-    }
 
 
 def get_aws_service_capabilities() -> Dict[str, Any]:
@@ -161,12 +73,3 @@ def truncate_message(message: str, max_length: int = 200) -> str:
     if len(message) <= max_length:
         return message
     return message[:max_length] + "... [truncated]"
-
-
-def get_config_with_fallback() -> Dict[str, Any]:
-    """Gets error analyzer config with graceful fallback to defaults."""
-    try:
-        return get_error_analyzer_config()
-    except Exception as e:
-        logger.warning(f"Failed to load config, using defaults: {e}")
-        return get_context_limits()

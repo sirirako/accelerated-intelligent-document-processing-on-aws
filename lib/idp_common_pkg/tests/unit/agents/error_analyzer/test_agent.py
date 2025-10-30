@@ -8,6 +8,7 @@ Unit tests for main Error Analyzer Agent.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from idp_common.config.models import IDPConfig
 
 
 @pytest.mark.unit
@@ -16,31 +17,23 @@ class TestErrorAnalyzerAgent:
 
     @patch("strands.Agent")
     @patch("boto3.Session")
-    @patch("idp_common.agents.error_analyzer.agent.get_error_analyzer_config")
+    @patch("idp_common.agents.error_analyzer.agent.get_config")
     def test_create_error_analyzer_agent(
-        self, mock_config, mock_session, mock_agent_class
+        self, mock_get_config, mock_session, mock_agent_class
     ):
         """Test main error analyzer agent creation."""
         from idp_common.agents.error_analyzer.agent import create_error_analyzer_agent
 
-        mock_config.return_value = {
-            "AWS_STACK_NAME": "test-stack",
-            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-            "system_prompt": "Test system prompt",
-        }
+        # Mock get_config to return an IDPConfig object
+        mock_config = IDPConfig()
+        mock_get_config.return_value = mock_config
+
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
         mock_agent.tools = [MagicMock() for _ in range(9)]  # 9 specific tools now
         mock_agent_class.return_value = mock_agent
 
-        config = {
-            "AWS_STACK_NAME": "test-stack",
-            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-        }
-
-        agent = create_error_analyzer_agent(
-            config=config, session=mock_session.return_value
-        )
+        agent = create_error_analyzer_agent(session=mock_session.return_value)
 
         assert agent is not None
         assert hasattr(agent, "tools")
@@ -48,18 +41,17 @@ class TestErrorAnalyzerAgent:
 
     @patch("strands.Agent")
     @patch("boto3.Session")
-    @patch("idp_common.agents.error_analyzer.agent.get_error_analyzer_config")
+    @patch("idp_common.agents.error_analyzer.agent.get_config")
     def test_create_error_analyzer_agent_with_defaults(
-        self, mock_config, mock_session, mock_agent_class
+        self, mock_get_config, mock_session, mock_agent_class
     ):
         """Test agent creation with default config and session."""
         from idp_common.agents.error_analyzer.agent import create_error_analyzer_agent
 
-        mock_config.return_value = {
-            "AWS_STACK_NAME": "test-stack",
-            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-            "system_prompt": "Test system prompt",
-        }
+        # Mock get_config to return an IDPConfig object
+        mock_config = IDPConfig()
+        mock_get_config.return_value = mock_config
+
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
         mock_agent.tools = [MagicMock() for _ in range(9)]  # 9 specific tools
@@ -73,18 +65,17 @@ class TestErrorAnalyzerAgent:
 
     @patch("strands.Agent")
     @patch("boto3.Session")
-    @patch("idp_common.agents.error_analyzer.agent.get_error_analyzer_config")
+    @patch("idp_common.agents.error_analyzer.agent.get_config")
     def test_agent_system_prompt_format(
-        self, mock_config, mock_session, mock_agent_class
+        self, mock_get_config, mock_session, mock_agent_class
     ):
         """Test that agent is created with correct system prompt format."""
         from idp_common.agents.error_analyzer.agent import create_error_analyzer_agent
 
-        mock_config.return_value = {
-            "AWS_STACK_NAME": "test-stack",
-            "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
-            "system_prompt": "You are an intelligent error analysis agent for the GenAI IDP system.\n\n## Root Cause\n## Recommendations\n\nDO NOT include:",
-        }
+        # Mock get_config to return an IDPConfig object
+        mock_config = IDPConfig()
+        mock_get_config.return_value = mock_config
+
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
         mock_agent_class.return_value = mock_agent
@@ -103,7 +94,7 @@ class TestErrorAnalyzerAgent:
         system_prompt = call_args.kwargs["system_prompt"]
         assert "Root Cause" in system_prompt
         assert "Recommendations" in system_prompt
-        assert "DO NOT include" in system_prompt
+        assert "Do not include" in system_prompt
 
     def test_specific_tools_import(self):
         """Test that specific tools can be imported correctly."""

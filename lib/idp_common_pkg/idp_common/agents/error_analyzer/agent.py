@@ -6,13 +6,14 @@ Error Analyzer Agent - Enhanced with modular tools.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Optional
 
 import boto3
 import strands
 
+from idp_common.config import get_config
+
 from ..common.strands_bedrock_model import create_strands_bedrock_model
-from .config import get_error_analyzer_config
 from .tools import (
     cloudwatch_document_logs,
     cloudwatch_logs,
@@ -29,9 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_error_analyzer_agent(
-    config: Dict[str, Any] = None,
-    session: boto3.Session = None,
-    pattern_config: Dict[str, Any] = None,
+    session: Optional[boto3.Session] = None,
     **kwargs,
 ) -> strands.Agent:
     """
@@ -44,7 +43,7 @@ def create_error_analyzer_agent(
         pattern_config: Pattern configuration containing agents section
         **kwargs: Additional arguments
     """
-    config = get_error_analyzer_config(pattern_config)
+    config = get_config(as_model=True)
 
     # Create session if not provided
     if session is None:
@@ -63,9 +62,11 @@ def create_error_analyzer_agent(
         xray_performance_analysis,
     ]
     bedrock_model = create_strands_bedrock_model(
-        model_id=config["model_id"], boto_session=session
+        model_id=config.agents.error_analyzer.model_id, boto_session=session
     )
 
     return strands.Agent(
-        tools=tools, system_prompt=config["system_prompt"], model=bedrock_model
+        tools=tools,
+        system_prompt=config.agents.error_analyzer.system_prompt,
+        model=bedrock_model,
     )
