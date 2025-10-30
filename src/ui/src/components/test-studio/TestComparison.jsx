@@ -2,11 +2,94 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Table, Box, Button, Tabs } from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Table, Box, Button } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
 
 const client = generateClient();
+
+// Add print styles
+const printStyles = `
+  @media print {
+    * {
+      -webkit-print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    
+    /* Hide sidebar and navigation elements */
+    .awsui-app-layout-navigation,
+    .awsui-side-navigation,
+    .awsui-app-layout-tools,
+    .awsui-breadcrumb-group,
+    nav,
+    aside,
+    [data-testid="app-layout-navigation"],
+    [data-testid="side-navigation"] {
+      display: none !important;
+    }
+    
+    /* Make main content take full width */
+    .awsui-app-layout-main,
+    .awsui-app-layout-content,
+    main {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    
+    body {
+      font-size: 12px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    
+    .awsui-table-container,
+    .awsui-table-wrapper,
+    .awsui-table-content-wrapper {
+      overflow: visible !important;
+      max-height: none !important;
+      height: auto !important;
+    }
+    
+    .awsui-table {
+      width: 100% !important;
+      table-layout: fixed !important;
+      border-collapse: collapse !important;
+    }
+    
+    .awsui-table-cell,
+    .awsui-table-header-cell {
+      white-space: normal !important;
+      word-wrap: break-word !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      padding: 4px !important;
+      border: 1px solid #ccc !important;
+    }
+    
+    .awsui-container {
+      margin-bottom: 20px !important;
+    }
+    
+    .awsui-table tbody tr {
+      page-break-inside: avoid !important;
+    }
+    
+    @page {
+      size: A4 landscape;
+      margin: 0.5in;
+    }
+  }
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement('style');
+  styleSheet.type = 'text/css';
+  styleSheet.innerText = printStyles;
+  document.head.appendChild(styleSheet);
+}
 
 // Helper functions for rendering change values with colored arrows
 const renderChangeValue = (value) => {
@@ -36,7 +119,7 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
           console.log('Making GraphQL request...');
           const result = await client.graphql({
             query: COMPARE_TEST_RUNS,
-            variables: { testRunIds: preSelectedTestRunIds }
+            variables: { testRunIds: preSelectedTestRunIds },
           });
 
           const compareData = result.data.compareTestRuns;
@@ -101,9 +184,82 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
     ? Object.values(comparisonData.metrics).some((testRun) => testRun.status !== 'COMPLETE')
     : false;
 
+  const handlePrint = () => {
+    // Force all tables to be fully visible before printing
+    const tables = document.querySelectorAll('.awsui-table-container');
+    const originalStyles = [];
+
+    tables.forEach((table, index) => {
+      originalStyles[index] = {
+        overflow: table.style.overflow,
+        maxHeight: table.style.maxHeight,
+        height: table.style.height,
+      };
+
+      // eslint-disable-next-line no-param-reassign
+      table.style.overflow = 'visible';
+      // eslint-disable-next-line no-param-reassign
+      table.style.maxHeight = 'none';
+      // eslint-disable-next-line no-param-reassign
+      table.style.height = 'auto';
+    });
+
+    // Add temporary print-specific styles
+    const printStyleElement = document.createElement('style');
+    printStyleElement.innerHTML = `
+      @media print {
+        .awsui-table-container * {
+          overflow: visible !important;
+          max-height: none !important;
+          height: auto !important;
+        }
+        .awsui-table {
+          table-layout: auto !important;
+          width: 100% !important;
+        }
+        .awsui-table-cell {
+          font-size: 10px !important;
+          padding: 2px !important;
+          word-break: break-word !important;
+        }
+      }
+    `;
+    document.head.appendChild(printStyleElement);
+
+    setTimeout(() => {
+      window.print();
+
+      // Restore original styles after printing
+      setTimeout(() => {
+        tables.forEach((table, index) => {
+          if (originalStyles[index]) {
+            // eslint-disable-next-line no-param-reassign
+            table.style.overflow = originalStyles[index].overflow;
+            // eslint-disable-next-line no-param-reassign
+            table.style.maxHeight = originalStyles[index].maxHeight;
+            // eslint-disable-next-line no-param-reassign
+            table.style.height = originalStyles[index].height;
+          }
+        });
+        document.head.removeChild(printStyleElement);
+      }, 1000);
+    }, 100);
+  };
+
   return (
     <Container
-      header={<Header variant="h2">Compare Test Runs ({Object.keys(completeTestRuns).length})</Header>}
+      header={
+        <Header
+          variant="h2"
+          actions={
+            <Button onClick={handlePrint} iconName="print">
+              Print
+            </Button>
+          }
+        >
+          Compare Test Runs ({Object.keys(completeTestRuns).length})
+        </Header>
+      }
     >
       <SpaceBetween direction="vertical" size="l">
         {/* Performance Metrics */}
@@ -200,205 +356,203 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
         </Box>
 
         {/* Breakdown Tables */}
-        <Tabs
-          tabs={[
-            {
-              id: 'config',
-              label: 'Configuration Comparison',
-              content: (
-                <Box>
-                  {preSelectedTestRunIds.length === 2 ? (
-                    comparisonData.configs && comparisonData.configs.length > 0 ? (
-                      (() => {
-                        const differentConfigs = comparisonData.configs || [];
+        <SpaceBetween direction="vertical" size="l">
+          {/* Configuration Comparison */}
+          <Container header={<Header variant="h3">Configuration Comparison</Header>}>
+            {(() => {
+              if (preSelectedTestRunIds.length !== 2) {
+                return (
+                  <Box>
+                    Configuration comparison requires exactly 2 test runs. Currently comparing{' '}
+                    {preSelectedTestRunIds.length} test runs.
+                  </Box>
+                );
+              }
 
-                        return differentConfigs.length > 0 ? (
-                          <Table
-                            items={differentConfigs}
-                            columnDefinitions={[
-                              { id: 'setting', header: 'Setting', cell: (item) => item.setting },
-                              {
-                                id: 'values',
-                                header: 'Values',
-                                cell: (item) => {
-                                  const values = typeof item.values === 'string' ? JSON.parse(item.values) : item.values;
-                                  return Object.entries(values)
-                                    .map(([testRunId, value]) => `${createTestRunHeader(testRunId)}: ${value}`)
-                                    .join(', ');
-                                },
-                              },
-                            ]}
-                            variant="embedded"
-                          />
-                        ) : (
-                          <Box>No configuration differences found - all test runs use identical configurations</Box>
-                        );
-                      })()
-                    ) : (
-                      <Box>No configuration differences found - all test runs use identical configurations</Box>
-                    )
-                  ) : (
-                    <Box>
-                      Configuration comparison is only available when comparing exactly 2 test runs. Currently comparing{' '}
-                      {preSelectedTestRunIds.length} test runs.
-                    </Box>
-                  )}
-                </Box>
-              ),
-            },
-            {
-              id: 'accuracy',
-              label: 'Accuracy Comparison',
-              content: (
-                <Box>
-                  {(() => {
-                    const hasAccuracyData = Object.values(completeTestRuns).some(
-                      (testRun) => testRun.accuracyBreakdown,
-                    );
+              if (!comparisonData.configs || comparisonData.configs.length === 0) {
+                return <Box>No configuration differences found - all test runs use identical configurations</Box>;
+              }
 
-                    if (!hasAccuracyData) {
-                      return <Box>No accuracy breakdown data available</Box>;
+              const differentConfigs = comparisonData.configs || [];
+              if (differentConfigs.length === 0) {
+                return <Box>No configuration differences found - all test runs use identical configurations</Box>;
+              }
+
+              return (
+                <Table
+                  items={differentConfigs.map((config) => {
+                    const values = typeof config.values === 'string' ? JSON.parse(config.values) : config.values;
+                    return {
+                      setting: config.setting,
+                      ...values, // Spread the values object to create columns for each test run
+                    };
+                  })}
+                  columnDefinitions={[
+                    { id: 'setting', header: 'Config', cell: (item) => item.setting },
+                    ...Object.keys(completeTestRuns).map((testRunId) => ({
+                      id: testRunId,
+                      header: createTestRunHeader(testRunId),
+                      cell: (item) => item[testRunId] || 'N/A',
+                    })),
+                  ]}
+                  variant="embedded"
+                />
+              );
+            })()}
+          </Container>
+
+          {/* Accuracy Comparison */}
+          <Container header={<Header variant="h3">Accuracy Comparison</Header>}>
+            {(() => {
+              const hasAccuracyData = Object.values(completeTestRuns).some((testRun) => testRun.accuracyBreakdown);
+
+              if (!hasAccuracyData) {
+                return <Box>No accuracy breakdown data available</Box>;
+              }
+
+              const allAccuracyMetrics = new Set();
+              Object.values(completeTestRuns).forEach((testRun) => {
+                if (testRun.accuracyBreakdown) {
+                  Object.keys(testRun.accuracyBreakdown).forEach((metric) => {
+                    allAccuracyMetrics.add(metric);
+                  });
+                }
+              });
+
+              return (
+                <Table
+                  items={Array.from(allAccuracyMetrics).map((metricKey) => ({
+                    metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                    ...Object.fromEntries(
+                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                        const accuracyBreakdown = testRun.accuracyBreakdown || {};
+                        const value = accuracyBreakdown[metricKey];
+                        const displayValue =
+                          value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%';
+                        return [testRunId, displayValue];
+                      }),
+                    ),
+                  }))}
+                  columnDefinitions={[
+                    { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
+                    ...Object.keys(completeTestRuns).map((testRunId) => ({
+                      id: testRunId,
+                      header: createTestRunHeader(testRunId),
+                      cell: (item) => item[testRunId],
+                    })),
+                  ]}
+                  variant="embedded"
+                />
+              );
+            })()}
+          </Container>
+
+          {/* Cost Comparison */}
+          <Container header={<Header variant="h3">Cost Comparison</Header>}>
+            {(() => {
+              const allCostMetrics = new Set();
+              Object.values(completeTestRuns).forEach((testRun) => {
+                if (testRun.costBreakdown) {
+                  Object.entries(testRun.costBreakdown).forEach(([category, data]) => {
+                    if (data && typeof data === 'object') {
+                      Object.keys(data).forEach((api) => {
+                        allCostMetrics.add(`${category}_${api}`);
+                      });
                     }
+                  });
+                }
+              });
 
-                    const allAccuracyMetrics = new Set();
-                    Object.values(completeTestRuns).forEach((testRun) => {
-                      if (testRun.accuracyBreakdown) {
-                        Object.keys(testRun.accuracyBreakdown).forEach((metric) => {
-                          allAccuracyMetrics.add(metric);
-                        });
-                      }
+              return allCostMetrics.size > 0 ? (
+                <Table
+                  items={Array.from(allCostMetrics).map((metricKey) => {
+                    const [category, api] = metricKey.split('_');
+                    return {
+                      metric: `${category} ${api}`,
+                      ...Object.fromEntries(
+                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                          const costBreakdown = testRun.costBreakdown || {};
+                          const cost = costBreakdown?.[category]?.[api] || 0;
+                          return [testRunId, `$${cost.toFixed(4)}`];
+                        }),
+                      ),
+                    };
+                  })}
+                  columnDefinitions={[
+                    {
+                      id: 'metric',
+                      header: 'Cost Metric',
+                      cell: (item) => item.metric,
+                      width: 300,
+                      wrapLines: true,
+                    },
+                    ...Object.keys(completeTestRuns).map((testRunId) => ({
+                      id: testRunId,
+                      header: createTestRunHeader(testRunId),
+                      cell: (item) => item[testRunId],
+                      width: 150,
+                    })),
+                  ]}
+                  variant="embedded"
+                />
+              ) : (
+                <Box>No cost breakdown data available</Box>
+              );
+            })()}
+          </Container>
+
+          {/* Usage Comparison */}
+          <Container header={<Header variant="h3">Usage Comparison</Header>}>
+            {(() => {
+              const allUsageMetrics = new Set();
+              Object.values(completeTestRuns).forEach((testRun) => {
+                if (testRun.usageBreakdown) {
+                  Object.entries(testRun.usageBreakdown).forEach(([service, metrics]) => {
+                    Object.keys(metrics).forEach((metric) => {
+                      allUsageMetrics.add(`${service}_${metric}`);
                     });
+                  });
+                }
+              });
 
-                    return (
-                      <Table
-                        items={Array.from(allAccuracyMetrics).map((metricKey) => ({
-                          metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                          ...Object.fromEntries(
-                            Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                              const accuracyBreakdown = testRun.accuracyBreakdown || {};
-                              const value = accuracyBreakdown[metricKey];
-                              const displayValue = value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%';
-                              return [testRunId, displayValue];
-                            }),
-                          ),
-                        }))}
-                        columnDefinitions={[
-                          { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
-                          ...Object.keys(completeTestRuns).map((testRunId) => ({
-                            id: testRunId,
-                            header: createTestRunHeader(testRunId),
-                            cell: (item) => item[testRunId],
-                          })),
-                        ]}
-                        variant="embedded"
-                      />
-                    );
-                  })()}
-                </Box>
-              ),
-            },
-            {
-              id: 'cost',
-              label: 'Cost Comparison',
-              content: (
-                <Box>
-                  {(() => {
-                    const allCostMetrics = new Set();
-                    Object.values(completeTestRuns).forEach((testRun) => {
-                      if (testRun.costBreakdown) {
-                        Object.entries(testRun.costBreakdown).forEach(([category, data]) => {
-                          if (data && typeof data === 'object') {
-                            Object.keys(data).forEach((api) => {
-                              allCostMetrics.add(`${category}_${api}`);
-                            });
-                          }
-                        });
-                      }
-                    });
-
-                    return allCostMetrics.size > 0 ? (
-                      <Table
-                        items={Array.from(allCostMetrics).map((metricKey) => {
-                          const [category, api] = metricKey.split('_');
-                          return {
-                            metric: `${category} ${api}`,
-                            ...Object.fromEntries(
-                              Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                                const costBreakdown = testRun.costBreakdown || {};
-                                const cost = costBreakdown?.[category]?.[api] || 0;
-                                return [testRunId, `$${cost.toFixed(4)}`];
-                              }),
-                            ),
-                          };
-                        })}
-                        columnDefinitions={[
-                          { id: 'metric', header: 'Cost Metric', cell: (item) => item.metric },
-                          ...Object.keys(completeTestRuns).map((testRunId) => ({
-                            id: testRunId,
-                            header: createTestRunHeader(testRunId),
-                            cell: (item) => item[testRunId],
-                          })),
-                        ]}
-                        variant="embedded"
-                      />
-                    ) : (
-                      <Box>No cost breakdown data available</Box>
-                    );
-                  })()}
-                </Box>
-              ),
-            },
-            {
-              id: 'usage',
-              label: 'Usage Comparison',
-              content: (
-                <Box>
-                  {(() => {
-                    const allUsageMetrics = new Set();
-                    Object.values(completeTestRuns).forEach((testRun) => {
-                      if (testRun.usageBreakdown) {
-                        Object.entries(testRun.usageBreakdown).forEach(([service, metrics]) => {
-                          Object.keys(metrics).forEach((metric) => {
-                            allUsageMetrics.add(`${service}_${metric}`);
-                          });
-                        });
-                      }
-                    });
-
-                    return allUsageMetrics.size > 0 ? (
-                      <Table
-                        items={Array.from(allUsageMetrics).map((metricKey) => {
-                          const [service, metric] = metricKey.split('_');
-                          return {
-                            metric: `${service} ${metric}`,
-                            ...Object.fromEntries(
-                              Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                                const usageBreakdown = testRun.usageBreakdown || {};
-                                const value = usageBreakdown?.[service]?.[metric] || 0;
-                                return [testRunId, value.toLocaleString()];
-                              }),
-                            ),
-                          };
-                        })}
-                        columnDefinitions={[
-                          { id: 'metric', header: 'Usage Metric', cell: (item) => item.metric },
-                          ...Object.keys(completeTestRuns).map((testRunId) => ({
-                            id: testRunId,
-                            header: createTestRunHeader(testRunId),
-                            cell: (item) => item[testRunId],
-                          })),
-                        ]}
-                        variant="embedded"
-                      />
-                    ) : (
-                      <Box>No usage breakdown data available</Box>
-                    );
-                  })()}
-                </Box>
-              ),
-            },
-          ]}
-        />
+              return allUsageMetrics.size > 0 ? (
+                <Table
+                  items={Array.from(allUsageMetrics).map((metricKey) => {
+                    const [service, metric] = metricKey.split('_');
+                    return {
+                      metric: `${service} ${metric}`,
+                      ...Object.fromEntries(
+                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                          const usageBreakdown = testRun.usageBreakdown || {};
+                          const value = usageBreakdown?.[service]?.[metric] || 0;
+                          return [testRunId, value.toLocaleString()];
+                        }),
+                      ),
+                    };
+                  })}
+                  columnDefinitions={[
+                    {
+                      id: 'metric',
+                      header: 'Usage Metric',
+                      cell: (item) => item.metric,
+                      width: 300,
+                      wrapLines: true,
+                    },
+                    ...Object.keys(completeTestRuns).map((testRunId) => ({
+                      id: testRunId,
+                      header: createTestRunHeader(testRunId),
+                      cell: (item) => item[testRunId],
+                      width: 150,
+                    })),
+                  ]}
+                  variant="embedded"
+                />
+              ) : (
+                <Box>No usage breakdown data available</Box>
+              );
+            })()}
+          </Container>
+        </SpaceBetween>
       </SpaceBetween>
     </Container>
   );
