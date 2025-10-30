@@ -557,7 +557,7 @@ async def structured_output_async(
         final_system_prompt = f"{system_prompt}\n\nCustom Instructions for this specific task: {custom_instruction}"
     logger.debug("Running extraction", extra={"system_prompt": final_system_prompt})
     agent = Agent(
-        model=BedrockModel(**model_config),
+        model=BedrockModel(**model_config),  # pyright: ignore[reportArgumentType]
         tools=tools,
         system_prompt=f"{final_system_prompt}\n\nExpected Schema:\n{schema_json}",
         state={
@@ -566,7 +566,7 @@ async def structured_output_async(
             "existing_data": existing_data.model_dump() if existing_data else None,
         },
         conversation_manager=SummarizingConversationManager(
-            summary_ratio=0.5,
+            summary_ratio=0.8,
         ),
     )
 
@@ -637,7 +637,7 @@ async def structured_output_async(
 
     for attempt in range(max_retries):
         try:
-            response = await agent.invoke_async(prompt_content)  # pyright: ignore[reportArgumentType]
+            response = await agent.invoke_async(prompt_content)
             logger.debug("Agent response received")
             break  # Success, exit retry loop
         except Exception as e:
