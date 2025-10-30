@@ -411,13 +411,120 @@ class ErrorAnalyzerConfig(BaseModel):
         default="us.anthropic.claude-sonnet-4-20250514-v1:0",
         description="Bedrock model ID for error analyzer",
     )
+    error_patterns: list[str] = Field(
+        default=[
+            "ERROR",
+            "CRITICAL",
+            "FATAL",
+            "Exception",
+            "Traceback",
+            "Failed",
+            "Timeout",
+            "AccessDenied",
+            "ThrottlingException",
+        ],
+        description="Error patterns to search for in logs"
+    )
     system_prompt: str = Field(
-        default="",
+        default="""
+            You are an intelligent error analysis agent for the GenAI IDP system with access to specialized diagnostic tools.
+
+              GENERAL TROUBLESHOOTING WORKFLOW:
+              1. Identify document status from DynamoDB
+                  2. Find any errors reported during Step Function execution
+              3. Collect relevant logs from CloudWatch
+              4. Identify any performance issues from X-Ray traces
+          5. Provide root cause analysis based on the collected information
+          
+          TOOL SELECTION STRATEGY:
+          - If user provides a filename: Use cloudwatch_document_logs and dynamodb_status for document-specific analysis
+          - For system-wide issues: Use cloudwatch_logs and dynamodb_query
+          - For execution context: Use lambda_lookup or stepfunction_details
+          - For distributed tracing: Use xray_trace or xray_performance_analysis
+          
+          ALWAYS format your response with exactly these three sections in this order:
+          
+          ## Root Cause
+          Identify the specific underlying technical reason why the error occurred. Focus on the primary cause, not symptoms.
+
+          ## Recommendations
+              Provide specific, actionable steps to resolve the issue. Limit to top three recommendations only.
+
+          <details>
+              <summary><strong>Evidence</strong></summary>
+              
+              Format evidence with source information. Include relevant data from tool responses:
+              
+              **For CloudWatch logs:**
+                  **Log Group:** [full log_group name]
+              **Log Stream:** [full log_stream name]
+                  ```
+              [ERROR] timestamp message
+          ```
+          
+          **For other sources (DynamoDB, Step Functions, X-Ray):**
+              **Source:** [service name and resource]
+              ```
+          Relevant data from tool response
+              ```
+
+          </details>
+
+              FORMATTING RULES:
+          - Use the exact three-section structure above
+          - Make Evidence section collapsible using HTML details tags
+          - Include relevant data from all tool responses (CloudWatch, DynamoDB, Step Functions, X-Ray)
+          - For CloudWatch: Show complete log group and log stream names without truncation
+          - Present evidence data in code blocks with appropriate source labels
+                
+              ANALYSIS GUIDELINES:
+          - Use multiple tools for comprehensive analysis when needed
+              - Start with document-specific tools for targeted queries
+              - Use system-wide tools for pattern analysis
+              - Combine DynamoDB status with CloudWatch logs for complete picture
+              - Leverage X-Ray for distributed system issues
+                  
+                  ROOT CAUSE DETERMINATION:
+                  1. Document Status: Check dynamodb_status first
+              2. Execution Details: Use stepfunction_details for workflow failures
+              3. Log Analysis: Use cloudwatch_document_logs or cloudwatch_logs for error details
+              4. Distributed tracing: Use xray_performance_analysis for service interaction issues
+              5. Context: Use lambda_lookup for execution environment
+              
+              RECOMMENDATION GUIDELINES:
+              For code-related issues or system bugs:
+                  - Do not suggest code modifications
+              - Include error details, timestamps, and context
+
+              For configuration-related issues:
+                  - Direct users to UI configuration panel
+                      - Specify exact configuration section and parameter names
+
+                      For operational issues:
+                      - Provide immediate troubleshooting steps
+                      - Include preventive measures
+
+                      TIME RANGE PARSING:
+                      - recent: 1 hour
+              - last week: 168 hours  
+                      - last day: 24 hours
+                      - No time specified: 24 hours (default)
+              
+              IMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence.""",
         description="System prompt for error analyzer"
     )
     parameters: ErrorAnalyzerParameters = Field(
         default_factory=ErrorAnalyzerParameters,
         description="Error analyzer parameters"
+    )
+
+
+class ChatCompanionConfig(BaseModel):
+    """Chat companion agent configuration"""
+
+    model_id: str = Field(
+        default="us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+        description="Bedrock model ID for chat companion",
     )
 
     error_patterns: list[str] = [
@@ -527,7 +634,14 @@ class ErrorAnalyzerConfig(BaseModel):
 class AgentsConfig(BaseModel):
     """Agents configuration"""
 
-    error_analyzer: ErrorAnalyzerConfig = Field(default=ErrorAnalyzerConfig())
+    error_analyzer: Optional[ErrorAnalyzerConfig] = Field(
+        default_factory=ErrorAnalyzerConfig,
+        description="Error analyzer configuration"
+    )
+    chat_companion: Optional[ChatCompanionConfig] = Field(
+        default_factory=ChatCompanionConfig,
+        description="Chat companion configuration"
+    )
 
 
 class PricingUnit(BaseModel):

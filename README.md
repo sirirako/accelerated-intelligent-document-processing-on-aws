@@ -47,6 +47,7 @@ White-glove customization, deployment, and integration support for production us
 - **AI-Powered Evaluation**: Framework to assess accuracy against baseline data
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
+- **IDP Accelerator Help Chat Bot**: Ask questions about the IDP code base or features
 
 ## Architecture Overview
 
@@ -170,6 +171,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Evaluation Framework](./docs/evaluation.md) - Accuracy assessment system with analytics database and reporting
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
 - [Monitoring](./docs/monitoring.md) - Monitoring and logging capabilities
+- [IDP Accelerator Help Chat Bot](./docs/code-intelligence.md) - Chat bot for asking question about the IDP code base and features
 - [Reporting Database](./docs/reporting-database.md) - Analytics database for evaluation metrics and metering data
 - [Troubleshooting](./docs/troubleshooting.md) - Troubleshooting and performance guides
 
