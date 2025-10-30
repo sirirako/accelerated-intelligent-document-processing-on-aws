@@ -4214,7 +4214,7 @@ Resources:
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-      GenerateSecret: false
+      GenerateSecret: false # pragma: allowlist secret - CloudFormation parameter, not actual secret
       IdTokenValidity: 1
       PreventUserExistenceErrors: ENABLED
       ReadAttributes:
@@ -4486,7 +4486,7 @@ Resources:
     Properties:
       ClientName:
         Fn::Sub: ${AWS::StackName}-A2I-Client
-      GenerateSecret: true
+      GenerateSecret: true # pragma: allowlist secret - CloudFormation parameter, not actual secret
       UserPoolId:
         Ref: UserPool
 
