@@ -55,11 +55,13 @@ def dynamodb_status(object_key: str) -> Dict[str, Any]:
         - suggestion (str): Alternative tools to use if tracking unavailable
     """
     result = dynamodb_record(object_key)
+    logger.info(f"DynamoDB status response for {object_key}: {result}")
 
     if result.get("document_found"):
         document = result.get("document", {})
-        return create_response(
+        response = create_response(
             {
+                "tracking_available": True,
                 "document_found": True,
                 "object_key": object_key,
                 "status": document.get("Status"),
@@ -68,41 +70,9 @@ def dynamodb_status(object_key: str) -> Dict[str, Any]:
                 "execution_arn": document.get("ExecutionArn"),
             }
         )
+        logger.info(f"DynamoDB status final response for {object_key}: {response}")
+        return response
     return result
-
-
-def _get_tracking_table():
-    """
-    Internal utility to get tracking table resource with validation.
-
-    Returns:
-        Tuple of (table_resource, table_name) or (None, None) if not configured
-    """
-    table_name = os.environ.get("TRACKING_TABLE_NAME", "")
-    if not table_name:
-        return None, None
-
-    dynamodb = boto3.resource("dynamodb")
-    return dynamodb.Table(table_name), table_name
-
-
-def _handle_dynamodb_error(
-    operation: str, identifier: str, error: Exception, **kwargs
-) -> Dict[str, Any]:
-    """
-    Standardized error handling for DynamoDB operations.
-
-    Args:
-        operation: Operation being performed (e.g., "lookup", "query")
-        identifier: Document key or operation identifier
-        error: Exception that occurred
-        **kwargs: Additional error response fields
-
-    Returns:
-        Standardized error response
-    """
-    logger.error(f"DynamoDB {operation} failed for '{identifier}': {error}")
-    return create_error_response(str(error), **kwargs)
 
 
 @tool
@@ -143,8 +113,8 @@ def dynamodb_query(
         - suggestion (str): Alternative tools to use if tracking unavailable
     """
     try:
-        table, table_name = _get_tracking_table()
-        if not table:
+        tracking_table, table_name = _get_tracking_table()
+        if not tracking_table:
             return create_response(
                 {
                     "tracking_available": False,
@@ -172,13 +142,16 @@ def dynamodb_query(
             hour_str = current_time.strftime("%Y-%m-%dT%H")
 
             # Query the list partition for this hour
-            pk = f"list#{current_time.strftime('%Y-%m-%d')}#s#{current_time.hour // 4:02d}"
-            sk_prefix = f"ts#{hour_str}"
+            partition_key = f"list#{current_time.strftime('%Y-%m-%d')}#s#{current_time.hour // 4:02d}"
+            sort_key_prefix = f"ts#{hour_str}"
 
             try:
-                response = table.query(
+                response = tracking_table.query(
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-                    ExpressionAttributeValues={":pk": pk, ":sk_prefix": sk_prefix},
+                    ExpressionAttributeValues={
+                        ":pk": partition_key,
+                        ":sk_prefix": sort_key_prefix,
+                    },
                     Limit=min(limit - len(all_items), 50),
                 )
 
@@ -186,13 +159,13 @@ def dynamodb_query(
                 all_items.extend(items)
 
             except Exception as query_error:
-                logger.debug(f"Query failed for {pk}: {query_error}")
+                logger.debug(f"Query failed for {partition_key}: {query_error}")
 
             current_time += timedelta(hours=1)
 
         items = [decimal_to_float(item) for item in all_items[:limit]]
 
-        return create_response(
+        response = create_response(
             {
                 "tracking_available": True,
                 "table_name": table_name,
@@ -202,6 +175,8 @@ def dynamodb_query(
                 "hours_back": hours_back,
             }
         )
+        logger.info(f"DynamoDB query response for date={date}: {response}")
+        return response
 
     except Exception as e:
         return _handle_dynamodb_error(
@@ -245,8 +220,8 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
         - suggestion (str): Alternative tools to use if tracking unavailable
     """
     try:
-        table, table_name = _get_tracking_table()
-        if not table:
+        tracking_table, table_name = _get_tracking_table()
+        if not tracking_table:
             return create_response(
                 {
                     "tracking_available": False,
@@ -258,20 +233,25 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
             )
 
         # Direct key lookup
-        response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
+        dynamodb_response = tracking_table.get_item(
+            Key={"PK": f"doc#{object_key}", "SK": "none"}
+        )
+        logger.info(f"DynamoDB get_item response for {object_key}: {dynamodb_response}")
 
-        if "Item" in response:
-            item = decimal_to_float(response["Item"])
-            return create_response(
+        if "Item" in dynamodb_response:
+            document_item = decimal_to_float(dynamodb_response["Item"])
+            response = create_response(
                 {
                     "tracking_available": True,
                     "document_found": True,
-                    "document": item,
+                    "document": document_item,
                     "object_key": object_key,
                 }
             )
+            logger.info(f"DynamoDB record final response for {object_key}: {response}")
+            return response
         else:
-            return create_response(
+            response = create_response(
                 {
                     "tracking_available": True,
                     "document_found": False,
@@ -279,8 +259,46 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
                     "reason": f"Document not found for key: {object_key}",
                 }
             )
+            logger.info(
+                f"DynamoDB record not found response for {object_key}: {response}"
+            )
+            return response
 
     except Exception as e:
         return _handle_dynamodb_error(
             "lookup", object_key, e, document_found=False, object_key=object_key
         )
+
+
+def _get_tracking_table():
+    """
+    Internal utility to get tracking table resource with validation.
+
+    Returns:
+        Tuple of (table_resource, table_name) or (None, None) if not configured
+    """
+    table_name = os.environ.get("TRACKING_TABLE_NAME", "")
+    if not table_name:
+        return None, None
+
+    dynamodb = boto3.resource("dynamodb")
+    return dynamodb.Table(table_name), table_name
+
+
+def _handle_dynamodb_error(
+    operation: str, identifier: str, error: Exception, **kwargs
+) -> Dict[str, Any]:
+    """
+    Standardized error handling for DynamoDB operations.
+
+    Args:
+        operation: Operation being performed (e.g., "lookup", "query")
+        identifier: Document key or operation identifier
+        error: Exception that occurred
+        **kwargs: Additional error response fields
+
+    Returns:
+        Standardized error response
+    """
+    logger.error(f"DynamoDB {operation} failed for '{identifier}': {error}")
+    return create_error_response(str(error), **kwargs)
