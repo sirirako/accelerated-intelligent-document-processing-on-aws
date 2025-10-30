@@ -70,9 +70,7 @@ const TestStudioLayout = () => {
             </Header>
           }
         >
-          <SpaceBetween size="l">
-            {renderContent()}
-          </SpaceBetween>
+          <SpaceBetween size="l">{renderContent()}</SpaceBetween>
         </ContentLayout>
       }
     />

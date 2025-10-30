@@ -57,9 +57,9 @@ const TestSets = () => {
 
     setLoading(true);
     try {
-      const result = await client.graphql({ 
-        query: LIST_INPUT_BUCKET_FILES, 
-        variables: { filePattern: filePattern.trim() } 
+      const result = await client.graphql({
+        query: LIST_INPUT_BUCKET_FILES,
+        variables: { filePattern: filePattern.trim() },
       });
 
       const files = result.data.listInputBucketFiles || [];
@@ -87,7 +87,7 @@ const TestSets = () => {
           name: newTestSetName.trim(),
           filePattern: filePattern.trim(),
           fileCount,
-        }
+        },
       });
 
       console.log('GraphQL result:', result);
@@ -121,9 +121,9 @@ const TestSets = () => {
 
     setLoading(true);
     try {
-      await client.graphql({ 
-        query: DELETE_TEST_SETS, 
-        variables: { testSetIds } 
+      await client.graphql({
+        query: DELETE_TEST_SETS,
+        variables: { testSetIds },
       });
       setTestSets(testSets.filter((testSet) => !testSetIds.includes(testSet.id)));
       setSelectedItems([]);
@@ -249,7 +249,7 @@ const TestSets = () => {
                   setFilePattern(detail.value);
                   setFileCount(0);
                 }}
-                placeholder="lending_package*.pdf"
+                placeholder="prefix/*"
               />
               <Button disabled={!filePattern.trim()} loading={loading} onClick={handleCheckFiles}>
                 Check Files

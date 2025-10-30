@@ -2,7 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Box } from '@cloudscape-design/components';
+import {
+  Container,
+  Header,
+  SpaceBetween,
+  Button,
+  FormField,
+  Select,
+  Alert,
+  Box,
+  Textarea,
+} from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
@@ -14,6 +24,7 @@ const logger = new ConsoleLogger('TestRunner');
 const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
   const [testSets, setTestSets] = useState([]);
   const [selectedTestSet, setSelectedTestSet] = useState(null);
+  const [context, setContext] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -43,12 +54,15 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
 
     setLoading(true);
     try {
-      const input = { testSetId: selectedTestSet.value };
+      const input = {
+        testSetId: selectedTestSet.value,
+        ...(context && { context }),
+      };
       console.log('TestRunner: Starting test run with input:', input);
-      
-      const result = await client.graphql({ 
-        query: START_TEST_RUN, 
-        variables: { input } 
+
+      const result = await client.graphql({
+        query: START_TEST_RUN,
+        variables: { input },
       });
 
       console.log('TestRunner: GraphQL result:', result);
@@ -66,9 +80,9 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
         message: err.message,
         errors: err.errors,
         networkError: err.networkError,
-        graphQLErrors: err.graphQLErrors
+        graphQLErrors: err.graphQLErrors,
       });
-      
+
       let errorMessage = 'Failed to start test run';
       if (err.errors && err.errors.length > 0) {
         errorMessage = err.errors.map((e) => e.message).join('; ');
@@ -119,6 +133,15 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
                 options={testSetOptions}
                 placeholder="Choose a test set..."
                 empty="No test sets available"
+              />
+            </FormField>
+
+            <FormField label="Context" description="Optional context information for this test run">
+              <Textarea
+                value={context}
+                onChange={({ detail }) => setContext(detail.value)}
+                placeholder="Enter context information..."
+                rows={3}
               />
             </FormField>
 

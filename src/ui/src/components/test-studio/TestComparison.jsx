@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Table, Box, Button } from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Table, Box, Button, Tabs } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
 
@@ -17,39 +17,6 @@ const renderChangeValue = (value) => {
     <>
       {Math.abs(numValue).toFixed(2)}%
       <span style={{ color: isPositive ? 'green' : 'red' }}>{isPositive ? ' ↑' : ' ↓'}</span>
-    </>
-  );
-};
-
-// Helper function for cost change with colored arrows
-const costChangeCell = (item) => {
-  const changeValue = item.change || item.costChange;
-  if (!changeValue || changeValue === 'N/A') return 'N/A';
-  const match = changeValue.match(/^([-+]?\d+\.?\d*)%/);
-  if (!match) return changeValue;
-
-  const value = parseFloat(match[1]);
-  const isPositive = value > 0;
-  return (
-    <>
-      {Math.abs(value).toFixed(2)}%
-      <span style={{ color: isPositive ? 'red' : 'green' }}>{isPositive ? ' ↑' : ' ↓'}</span>
-    </>
-  );
-};
-
-// Helper function for usage change with colored arrows
-const usageChangeCell = (item) => {
-  if (item.totalTokensChange === 'N/A') return 'N/A';
-  const match = item.totalTokensChange.match(/^([-+]?\d+\.?\d*)%/);
-  if (!match) return item.totalTokensChange;
-
-  const value = parseFloat(match[1]);
-  const isPositive = value > 0;
-  return (
-    <>
-      {Math.abs(value).toFixed(2)}%
-      <span style={{ color: isPositive ? 'red' : 'green' }}>{isPositive ? ' ↑' : ' ↓'}</span>
     </>
   );
 };
@@ -135,46 +102,10 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
     : false;
 
   return (
-    <Container header={<Header variant="h2">Compare Test Runs</Header>}>
+    <Container
+      header={<Header variant="h2">Compare Test Runs ({Object.keys(completeTestRuns).length})</Header>}
+    >
       <SpaceBetween direction="vertical" size="l">
-        {/* Configuration Differences */}
-        <Box>
-          <Header variant="h3">Configuration Differences</Header>
-          {preSelectedTestRunIds.length === 2 ? (
-            comparisonData.configs && comparisonData.configs.length > 0 ? (
-              (() => {
-                const differentConfigs = comparisonData.configs || [];
-
-                return differentConfigs.length > 0 ? (
-                  <Table
-                    items={differentConfigs}
-                    columnDefinitions={[
-                      { id: 'setting', header: 'Setting', cell: (item) => item.setting },
-                      ...preSelectedTestRunIds.map((runId) => ({
-                        id: runId,
-                        header: createTestRunHeader(runId),
-                        cell: (item) => {
-                          const values = typeof item.values === 'string' ? JSON.parse(item.values) : item.values;
-                          return values[runId] ?? 'N/A';
-                        },
-                      })),
-                    ]}
-                  />
-                ) : (
-                  <Box>All configurations are identical across test runs</Box>
-                );
-              })()
-            ) : (
-              <Box>No configuration data found</Box>
-            )
-          ) : (
-            <Box variant="awsui-key-label" color="text-status-success" padding="s">
-              Configuration differences are only available when comparing exactly 2 test runs. Currently comparing{' '}
-              {preSelectedTestRunIds.length} test runs.
-            </Box>
-          )}
-        </Box>
-
         {/* Performance Metrics */}
         <Box>
           <Header variant="h3">Performance Metrics</Header>
@@ -187,51 +118,62 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
             <Table
               items={[
                 {
-                  metric: 'Accuracy',
+                  metric: 'Test Set',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, metrics]) => {
-                      const test = typeof metrics.test === 'string' ? JSON.parse(metrics.test) : metrics.test;
-                      return [
-                        testRunId,
-                        test?.accuracy?.accuracy !== null && test?.accuracy?.accuracy !== undefined
-                          ? `${(test.accuracy.accuracy * 100).toFixed(2)}%`
-                          : 'N/A',
-                      ];
-                    }),
-                  ),
-                },
-                {
-                  metric: 'Accuracy Change',
-                  ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, metrics]) => [
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
                       testRunId,
-                      metrics.accuracySimilarity !== null && metrics.accuracySimilarity !== undefined
-                        ? metrics.accuracySimilarity.toFixed(2)
-                        : 'N/A',
+                      testRun.testSetName || 'N/A',
                     ]),
                   ),
                 },
                 {
-                  metric: 'Confidence',
+                  metric: 'Context',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, metrics]) => {
-                      const test = typeof metrics.test === 'string' ? JSON.parse(metrics.test) : metrics.test;
-                      return [
-                        testRunId,
-                        test?.confidence?.average_confidence !== null &&
-                        test?.confidence?.average_confidence !== undefined
-                          ? `${(test.confidence.average_confidence * 100).toFixed(2)}%`
-                          : 'N/A',
-                      ];
-                    }),
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
+                      testRunId,
+                      testRun.context || 'N/A',
+                    ]),
                   ),
                 },
                 {
                   metric: 'Files Processed',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, metrics]) => [
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
                       testRunId,
-                      metrics.filesCount || 'N/A',
+                      testRun.filesCount || 'N/A',
+                    ]),
+                  ),
+                },
+                {
+                  metric: 'Total Cost',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
+                      testRunId,
+                      testRun.totalCost !== null && testRun.totalCost !== undefined
+                        ? `$${testRun.totalCost.toFixed(4)}`
+                        : 'N/A',
+                    ]),
+                  ),
+                },
+                {
+                  metric: 'Overall Accuracy',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
+                      testRunId,
+                      testRun.overallAccuracy !== null && testRun.overallAccuracy !== undefined
+                        ? `${(testRun.overallAccuracy * 100).toFixed(1)}%`
+                        : 'N/A',
+                    ]),
+                  ),
+                },
+                {
+                  metric: 'Overall Confidence',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
+                      testRunId,
+                      testRun.averageConfidence !== null && testRun.averageConfidence !== undefined
+                        ? `${(testRun.averageConfidence * 100).toFixed(1)}%`
+                        : 'N/A',
                     ]),
                   ),
                 },
@@ -257,245 +199,206 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
           )}
         </Box>
 
-        {/* Accuracy Breakdown */}
-        <Box>
-          <Header variant="h3">Accuracy Breakdown</Header>
-          {Object.keys(completeTestRuns).length > 0 ? (
-            <Table
-              items={[
-                {
-                  metric: 'Test Set',
-                  ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
-                      testRunId,
-                      testRun.testSetName || 'N/A',
-                    ]),
-                  ),
-                },
-                {
-                  metric: 'Test Precision',
-                  ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                      const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                      return [
-                        testRunId,
-                        test?.accuracy?.precision ? `${(test.accuracy.precision * 100).toFixed(2)}%` : 'N/A',
-                      ];
-                    }),
-                  ),
-                },
-                {
-                  metric: 'Test Recall',
-                  ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                      const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                      return [
-                        testRunId,
-                        test?.accuracy?.recall ? `${(test.accuracy.recall * 100).toFixed(2)}%` : 'N/A',
-                      ];
-                    }),
-                  ),
-                },
-                {
-                  metric: 'Test F1 Score',
-                  ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                      const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                      return [
-                        testRunId,
-                        test?.accuracy?.f1_score ? `${(test.accuracy.f1_score * 100).toFixed(2)}%` : 'N/A',
-                      ];
-                    }),
-                  ),
-                },
-              ]}
-              columnDefinitions={[
-                { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-                ...Object.keys(completeTestRuns).map((testRunId) => ({
-                  id: testRunId,
-                  header: createTestRunHeader(testRunId),
-                  cell: (item) => item[testRunId],
-                })),
-              ]}
-              variant="embedded"
-            />
-          ) : (
-            <Box>No completed test runs available</Box>
-          )}
-        </Box>
+        {/* Breakdown Tables */}
+        <Tabs
+          tabs={[
+            {
+              id: 'config',
+              label: 'Configuration Comparison',
+              content: (
+                <Box>
+                  {preSelectedTestRunIds.length === 2 ? (
+                    comparisonData.configs && comparisonData.configs.length > 0 ? (
+                      (() => {
+                        const differentConfigs = comparisonData.configs || [];
 
-        {/* Cost Breakdown */}
-        <Box>
-          <Header variant="h3">Cost Breakdown</Header>
-          {Object.keys(completeTestRuns).length > 0 ? (
-            <>
-              <Table
-                items={[
-                  {
-                    metric: 'Test Set',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
-                        testRunId,
-                        testRun.testSetName || 'N/A',
-                      ]),
-                    ),
-                  },
-                  {
-                    metric: 'Test Cost',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                        return [testRunId, test?.cost?.total_cost ? `$${test.cost.total_cost.toFixed(4)}` : 'N/A'];
-                      }),
-                    ),
-                  },
-                  {
-                    metric: 'Baseline Cost',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const baseline =
-                          typeof testRun.baseline === 'string' ? JSON.parse(testRun.baseline) : testRun.baseline;
-                        return [
-                          testRunId,
-                          baseline?.cost?.total_cost ? `$${baseline.cost.total_cost.toFixed(4)}` : 'N/A',
-                        ];
-                      }),
-                    ),
-                  },
-                  {
-                    metric: 'Cost Change',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                        const baseline =
-                          typeof testRun.baseline === 'string' ? JSON.parse(testRun.baseline) : testRun.baseline;
-                        return [
-                          testRunId,
-                          test?.cost?.total_cost && baseline?.cost?.total_cost
-                            ? `${(
-                                ((test.cost.total_cost - baseline.cost.total_cost) / baseline.cost.total_cost) *
-                                100
-                              ).toFixed(2)}%${
-                                (test.cost.total_cost - baseline.cost.total_cost) / baseline.cost.total_cost > 0
-                                  ? ' ↑'
-                                  : ' ↓'
-                              }`
-                            : 'N/A',
-                        ];
-                      }),
-                    ),
-                  },
-                ]}
-                columnDefinitions={[
-                  { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-                  ...Object.keys(completeTestRuns).map((testRunId) => ({
-                    id: testRunId,
-                    header: createTestRunHeader(testRunId),
-                    cell: (item) => {
-                      const value = item[testRunId];
-                      if (item.metric === 'Cost Change') {
-                        return costChangeCell({ costChange: value });
-                      }
-                      return value;
-                    },
-                  })),
-                ]}
-                variant="embedded"
-              />
-            </>
-          ) : (
-            <Box>No cost data available</Box>
-          )}
-        </Box>
+                        return differentConfigs.length > 0 ? (
+                          <Table
+                            items={differentConfigs}
+                            columnDefinitions={[
+                              { id: 'setting', header: 'Setting', cell: (item) => item.setting },
+                              {
+                                id: 'values',
+                                header: 'Values',
+                                cell: (item) => {
+                                  const values = typeof item.values === 'string' ? JSON.parse(item.values) : item.values;
+                                  return Object.entries(values)
+                                    .map(([testRunId, value]) => `${createTestRunHeader(testRunId)}: ${value}`)
+                                    .join(', ');
+                                },
+                              },
+                            ]}
+                            variant="embedded"
+                          />
+                        ) : (
+                          <Box>No configuration differences found - all test runs use identical configurations</Box>
+                        );
+                      })()
+                    ) : (
+                      <Box>No configuration differences found - all test runs use identical configurations</Box>
+                    )
+                  ) : (
+                    <Box>
+                      Configuration comparison is only available when comparing exactly 2 test runs. Currently comparing{' '}
+                      {preSelectedTestRunIds.length} test runs.
+                    </Box>
+                  )}
+                </Box>
+              ),
+            },
+            {
+              id: 'accuracy',
+              label: 'Accuracy Comparison',
+              content: (
+                <Box>
+                  {(() => {
+                    const hasAccuracyData = Object.values(completeTestRuns).some(
+                      (testRun) => testRun.accuracyBreakdown,
+                    );
 
-        {/* Usage Breakdown */}
-        <Box>
-          <Header variant="h3">Usage Breakdown</Header>
-          {Object.keys(completeTestRuns).length > 0 ? (
-            <Table
-              items={(() => {
-                const calculateChange = (testVal, baselineVal) => {
-                  if (!baselineVal || baselineVal === 0) return 'N/A';
-                  const change = (((testVal - baselineVal) / baselineVal) * 100).toFixed(2);
-                  const isIncrease = parseFloat(change) > 0;
-                  let arrow = '';
-                  if (parseFloat(change) !== 0) {
-                    arrow = isIncrease ? ' ↑' : ' ↓';
-                  }
-                  return `${Math.abs(change)}%${arrow}`;
-                };
+                    if (!hasAccuracyData) {
+                      return <Box>No accuracy breakdown data available</Box>;
+                    }
 
-                const aggregateTokens = (usage) => {
-                  const tokens = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-                  if (usage) {
-                    Object.keys(usage).forEach((key) => {
-                      if (key.includes('bedrock') && usage[key]) {
-                        tokens.inputTokens += usage[key].inputTokens || 0;
-                        tokens.outputTokens += usage[key].outputTokens || 0;
-                        tokens.totalTokens += usage[key].totalTokens || 0;
+                    const allAccuracyMetrics = new Set();
+                    Object.values(completeTestRuns).forEach((testRun) => {
+                      if (testRun.accuracyBreakdown) {
+                        Object.keys(testRun.accuracyBreakdown).forEach((metric) => {
+                          allAccuracyMetrics.add(metric);
+                        });
                       }
                     });
-                  }
-                  return tokens;
-                };
 
-                return [
-                  {
-                    metric: 'Test Input Tokens',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                        const testTokens = aggregateTokens(test?.usage);
-                        return [testRunId, testTokens.inputTokens.toLocaleString()];
-                      }),
-                    ),
-                  },
-                  {
-                    metric: 'Baseline Input Tokens',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const baseline =
-                          typeof testRun.baseline === 'string' ? JSON.parse(testRun.baseline) : testRun.baseline;
-                        const baselineTokens = aggregateTokens(baseline?.usage);
-                        return [testRunId, baselineTokens.inputTokens.toLocaleString()];
-                      }),
-                    ),
-                  },
-                  {
-                    metric: 'Total Token Change',
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const test = typeof testRun.test === 'string' ? JSON.parse(testRun.test) : testRun.test;
-                        const baseline =
-                          typeof testRun.baseline === 'string' ? JSON.parse(testRun.baseline) : testRun.baseline;
-                        const testTokens = aggregateTokens(test?.usage);
-                        const baselineTokens = aggregateTokens(baseline?.usage);
-                        return [testRunId, calculateChange(testTokens.totalTokens, baselineTokens.totalTokens)];
-                      }),
-                    ),
-                  },
-                ];
-              })()}
-              columnDefinitions={[
-                { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-                ...Object.keys(completeTestRuns).map((testRunId) => ({
-                  id: testRunId,
-                  header: createTestRunHeader(testRunId),
-                  cell: (item) => {
-                    const value = item[testRunId];
-                    if (item.metric.includes('Change')) {
-                      return usageChangeCell({ totalTokensChange: value });
-                    }
-                    return value;
-                  },
-                })),
-              ]}
-              variant="embedded"
-            />
-          ) : (
-            <Box>No completed test runs available</Box>
-          )}
-        </Box>
+                    return (
+                      <Table
+                        items={Array.from(allAccuracyMetrics).map((metricKey) => ({
+                          metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                          ...Object.fromEntries(
+                            Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                              const accuracyBreakdown = testRun.accuracyBreakdown || {};
+                              const value = accuracyBreakdown[metricKey];
+                              const displayValue = value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%';
+                              return [testRunId, displayValue];
+                            }),
+                          ),
+                        }))}
+                        columnDefinitions={[
+                          { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
+                          ...Object.keys(completeTestRuns).map((testRunId) => ({
+                            id: testRunId,
+                            header: createTestRunHeader(testRunId),
+                            cell: (item) => item[testRunId],
+                          })),
+                        ]}
+                        variant="embedded"
+                      />
+                    );
+                  })()}
+                </Box>
+              ),
+            },
+            {
+              id: 'cost',
+              label: 'Cost Comparison',
+              content: (
+                <Box>
+                  {(() => {
+                    const allCostMetrics = new Set();
+                    Object.values(completeTestRuns).forEach((testRun) => {
+                      if (testRun.costBreakdown) {
+                        Object.entries(testRun.costBreakdown).forEach(([category, data]) => {
+                          if (data && typeof data === 'object') {
+                            Object.keys(data).forEach((api) => {
+                              allCostMetrics.add(`${category}_${api}`);
+                            });
+                          }
+                        });
+                      }
+                    });
+
+                    return allCostMetrics.size > 0 ? (
+                      <Table
+                        items={Array.from(allCostMetrics).map((metricKey) => {
+                          const [category, api] = metricKey.split('_');
+                          return {
+                            metric: `${category} ${api}`,
+                            ...Object.fromEntries(
+                              Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                                const costBreakdown = testRun.costBreakdown || {};
+                                const cost = costBreakdown?.[category]?.[api] || 0;
+                                return [testRunId, `$${cost.toFixed(4)}`];
+                              }),
+                            ),
+                          };
+                        })}
+                        columnDefinitions={[
+                          { id: 'metric', header: 'Cost Metric', cell: (item) => item.metric },
+                          ...Object.keys(completeTestRuns).map((testRunId) => ({
+                            id: testRunId,
+                            header: createTestRunHeader(testRunId),
+                            cell: (item) => item[testRunId],
+                          })),
+                        ]}
+                        variant="embedded"
+                      />
+                    ) : (
+                      <Box>No cost breakdown data available</Box>
+                    );
+                  })()}
+                </Box>
+              ),
+            },
+            {
+              id: 'usage',
+              label: 'Usage Comparison',
+              content: (
+                <Box>
+                  {(() => {
+                    const allUsageMetrics = new Set();
+                    Object.values(completeTestRuns).forEach((testRun) => {
+                      if (testRun.usageBreakdown) {
+                        Object.entries(testRun.usageBreakdown).forEach(([service, metrics]) => {
+                          Object.keys(metrics).forEach((metric) => {
+                            allUsageMetrics.add(`${service}_${metric}`);
+                          });
+                        });
+                      }
+                    });
+
+                    return allUsageMetrics.size > 0 ? (
+                      <Table
+                        items={Array.from(allUsageMetrics).map((metricKey) => {
+                          const [service, metric] = metricKey.split('_');
+                          return {
+                            metric: `${service} ${metric}`,
+                            ...Object.fromEntries(
+                              Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                                const usageBreakdown = testRun.usageBreakdown || {};
+                                const value = usageBreakdown?.[service]?.[metric] || 0;
+                                return [testRunId, value.toLocaleString()];
+                              }),
+                            ),
+                          };
+                        })}
+                        columnDefinitions={[
+                          { id: 'metric', header: 'Usage Metric', cell: (item) => item.metric },
+                          ...Object.keys(completeTestRuns).map((testRunId) => ({
+                            id: testRunId,
+                            header: createTestRunHeader(testRunId),
+                            cell: (item) => item[testRunId],
+                          })),
+                        ]}
+                        variant="embedded"
+                      />
+                    ) : (
+                      <Box>No usage breakdown data available</Box>
+                    );
+                  })()}
+                </Box>
+              ),
+            },
+          ]}
+        />
       </SpaceBetween>
     </Container>
   );

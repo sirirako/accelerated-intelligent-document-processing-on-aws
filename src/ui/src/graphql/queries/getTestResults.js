@@ -10,12 +10,15 @@ const GET_TEST_RUN = `
       filesCount
       completedFiles
       failedFiles
-      accuracySimilarity
-      confidenceSimilarity
-      baseline
-      test
+      overallAccuracy
+      averageConfidence
+      accuracyBreakdown
+      totalCost
+      costBreakdown
+      usageBreakdown
       createdAt
       completedAt
+      context
     }
   }
 `;

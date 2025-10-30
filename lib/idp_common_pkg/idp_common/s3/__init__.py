@@ -243,14 +243,13 @@ def _list_local_images(directory_path: str, image_extensions: set) -> List[str]:
         logger.error(f"Error listing images from local directory {directory_path}: {e}")
         raise
 
-def find_matching_files(bucket: str, pattern: str, root_only: bool = False) -> List[str]:
+def find_matching_files(bucket: str, pattern: str) -> List[str]:
     """
     Find files in S3 bucket that match a given pattern.
     
     Args:
         bucket: S3 bucket name
-        pattern: File pattern with wildcards (* and ?)
-        root_only: If True, only search in the root of the bucket
+        pattern: File pattern with wildcards (* and ?) - must match from beginning (^pattern)
         
     Returns:
         List of matching file keys
@@ -261,7 +260,7 @@ def find_matching_files(bucket: str, pattern: str, root_only: bool = False) -> L
         s3 = get_s3_client()
         paginator = s3.get_paginator('list_objects_v2')
         
-        # Convert glob pattern to regex
+        # Convert glob pattern to regex - pattern must match from beginning
         regex_pattern = pattern.replace('*', '.*').replace('?', '.')
         regex = re.compile(f'^{regex_pattern}$', re.IGNORECASE)
         
@@ -272,11 +271,7 @@ def find_matching_files(bucket: str, pattern: str, root_only: bool = False) -> L
                 for obj in page['Contents']:
                     key = obj['Key']
                     
-                    # If root_only is True, skip files in subdirectories
-                    if root_only and '/' in key:
-                        continue
-                    
-                    # Check if the key matches the pattern
+                    # Check if the key matches the pattern (must match from beginning)
                     if regex.match(key):
                         matching_files.append(key)
         

@@ -15,7 +15,8 @@ const DeleteTestModal = ({ visible, onDismiss, onConfirm, selectedItems, itemTyp
           <strong>{item.testRunId}</strong> ({item.testSetName})
         </>
       );
-    } else if (itemType === 'test set') {
+    }
+    if (itemType === 'test set') {
       return (
         <>
           <strong>{item.name}</strong> ({item.filePattern})
@@ -36,11 +37,7 @@ const DeleteTestModal = ({ visible, onDismiss, onConfirm, selectedItems, itemTyp
             <Button variant="link" onClick={onDismiss}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              loading={loading}
-              onClick={onConfirm}
-            >
+            <Button variant="primary" loading={loading} onClick={onConfirm}>
               Delete
             </Button>
           </SpaceBetween>
@@ -48,12 +45,13 @@ const DeleteTestModal = ({ visible, onDismiss, onConfirm, selectedItems, itemTyp
       }
     >
       <Box>
-        <div>Are you sure you want to delete the following {itemType}{isMultiple ? 's' : ''}?</div>
+        <div>
+          Are you sure you want to delete the following {itemType}
+          {isMultiple ? 's' : ''}?
+        </div>
         <ul style={{ marginTop: '10px' }}>
           {selectedItems.map((item) => (
-            <li key={item.testRunId || item.id || item.name}>
-              {getItemDisplay(item)}
-            </li>
+            <li key={item.testRunId || item.id || item.name}>{getItemDisplay(item)}</li>
           ))}
         </ul>
       </Box>

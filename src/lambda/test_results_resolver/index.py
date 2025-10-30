@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT-0
 
 import json
-import os
-import time
 import logging
-from datetime import datetime, timedelta, timezone
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+import os
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from decimal import Decimal
+
+import boto3
+
 
 # Custom JSON encoder to handle Decimal objects from DynamoDB
 class DecimalEncoder(json.JSONEncoder):
@@ -15,8 +17,6 @@ class DecimalEncoder(json.JSONEncoder):
         if isinstance(obj, Decimal):
             return float(obj)
         return super(DecimalEncoder, self).default(obj)
-
-import boto3
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -75,7 +75,7 @@ def compare_test_runs(test_run_ids):
         logger.warning(f"Insufficient results for comparison: {len(results)}")
         return {'metrics': [], 'configs': []}
     
-    metrics_comparison = _build_metrics_comparison(results)
+    metrics_comparison = {result['testRunId']: result for result in results}
     configs_comparison = _build_config_comparison(configs)
     
     logger.info(f"Configs data: {configs}")
@@ -117,19 +117,44 @@ def get_test_results(test_run_id):
         status_result = get_test_run_status(test_run_id)
         if status_result:
             current_status = status_result['status']
+            # Refresh metadata after status update
+            response = table.get_item(
+                Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'}
+            )
+            if 'Item' in response:
+                metadata = response['Item']
+            
     
     # Raise error if status is still not complete
     if current_status not in ['COMPLETE', 'PARTIAL_COMPLETE']:
         raise ValueError(f"Test run {test_run_id} is not complete. Current status: {current_status}")
     
     # Check if cached results exist
-    if metadata.get('testRunResult') is not None:
-        logger.info(f"Retrieved cached testRunResult for test run: {test_run_id}")
-        return metadata.get('testRunResult')
+    cached_metrics = metadata.get('testRunResult')
+    if cached_metrics is not None:
+        logger.info(f"Retrieved cached metrics for test run: {test_run_id}")
+        # Use cached metrics but get dynamic fields from current metadata
+        return {
+            'testRunId': test_run_id,
+            'testSetName': metadata.get('TestSetName'),
+            'status': current_status,
+            'filesCount': metadata.get('FilesCount', 0),
+            'completedFiles': metadata.get('CompletedFiles', 0),
+            'failedFiles': metadata.get('FailedFiles', 0),
+            'overallAccuracy': cached_metrics.get('overallAccuracy'),
+            'averageConfidence': cached_metrics.get('averageConfidence'),
+            'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
+            'totalCost': cached_metrics.get('totalCost', 0),
+            'costBreakdown': cached_metrics.get('costBreakdown', {}),
+            'usageBreakdown': cached_metrics.get('usageBreakdown', {}),
+            'createdAt': _format_datetime(metadata.get('CreatedAt')),
+            'completedAt': _format_datetime(metadata.get('CompletedAt')),
+            'context': metadata.get('Context')
+        }
     
-    # Calculate metrics if not cached
-    evaluation_metrics = _query_evaluation_metrics(test_run_id)
-    # Build result with native types (keep Decimals for DynamoDB compatibility)
+    # Calculate aggregated metrics
+    aggregated_metrics = _aggregate_test_run_metrics(test_run_id)
+    
     result = {
         'testRunId': test_run_id,
         'testSetName': metadata.get('TestSetName'),
@@ -137,19 +162,21 @@ def get_test_results(test_run_id):
         'filesCount': metadata.get('FilesCount', 0),
         'completedFiles': metadata.get('CompletedFiles', 0),
         'failedFiles': metadata.get('FailedFiles', 0),
-        'accuracySimilarity': evaluation_metrics.get('accuracy_similarity'),
-        'confidenceSimilarity': evaluation_metrics.get('confidence_similarity'),
-        'baseline': evaluation_metrics.get('baseline', {}),
-        'test': evaluation_metrics.get('test', {}),
+        'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
+        'averageConfidence': aggregated_metrics.get('average_confidence'),
+        'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+        'totalCost': aggregated_metrics.get('total_cost', 0),
+        'costBreakdown': aggregated_metrics.get('cost_breakdown', {}),
+        'usageBreakdown': aggregated_metrics.get('usage_breakdown', {}),
         'createdAt': _format_datetime(metadata.get('CreatedAt')),
-        'completedAt': _format_datetime(metadata.get('CompletedAt'))
+        'completedAt': _format_datetime(metadata.get('CompletedAt')),
+        'context': metadata.get('Context')
     }
 
-    # Cache results (DynamoDB handles Decimals natively)
+    # Cache only the static metrics (not status/counts)
     try:
-        logger.info(f"Caching test results for test run: {test_run_id}")
+        logger.info(f"Caching metrics for test run: {test_run_id}")
         
-        # Convert floats to Decimals for DynamoDB storage
         def float_to_decimal(obj):
             if isinstance(obj, float):
                 return Decimal(str(obj))
@@ -159,16 +186,25 @@ def get_test_results(test_run_id):
                 return [float_to_decimal(v) for v in obj]
             return obj
         
+        # Cache only static metrics
+        metrics_to_cache = {
+            'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
+            'averageConfidence': aggregated_metrics.get('average_confidence'),
+            'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+            'totalCost': aggregated_metrics.get('total_cost', 0),
+            'costBreakdown': aggregated_metrics.get('cost_breakdown', {}),
+            'usageBreakdown': aggregated_metrics.get('usage_breakdown', {})
+        }
+        
         table.update_item(
             Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'},
             UpdateExpression='SET testRunResult = :testRunResult',
-            ExpressionAttributeValues={':testRunResult': float_to_decimal(result)}
+            ExpressionAttributeValues={':testRunResult': float_to_decimal(metrics_to_cache)}
         )
-        logger.info(f"Successfully cached test results for test run: {test_run_id}")
+        logger.info(f"Successfully cached metrics for test run: {test_run_id}")
     except Exception as e:
         logger.warning(f"Failed to cache results for {test_run_id}: {e}")
     
-    logger.info(f"Returning test results for test run: {test_run_id}")
     return result
 
 def get_test_runs(time_period_hours=2):
@@ -220,7 +256,8 @@ def get_test_runs(time_period_hours=2):
         'completedFiles': item.get('CompletedFiles', 0),
         'failedFiles': item.get('FailedFiles', 0),
         'createdAt': _format_datetime(item.get('CreatedAt')),
-        'completedAt': _format_datetime(item.get('CompletedAt'))
+        'completedAt': _format_datetime(item.get('CompletedAt')),
+        'context': item.get('Context')
     } for item in items]
     
     # Sort by createdAt descending (most recent first)
@@ -268,23 +305,35 @@ def get_test_run_status(test_run_id):
                 Key={'PK': f'doc#{test_run_id}/{file_key}', 'SK': 'none'}
             )
             if 'Item' in doc_response:
-                doc_status = doc_response['Item'].get('ObjectStatus', 'PROCESSING')
-                eval_status = doc_response['Item'].get('EvaluationStatus', 'PENDING')
+                doc_status = doc_response['Item'].get('ObjectStatus', 'QUEUED')
+                eval_status = doc_response['Item'].get('EvaluationStatus')
                 logger.info(f"File {file_key}: ObjectStatus={doc_status}, EvaluationStatus={eval_status}")
                 
                 if doc_status == 'COMPLETED':
                     # Check if evaluation is also complete
-                    if eval_status in ['COMPLETED', 'BASELINE_AVAILABLE', 'NO_BASELINE']:
+                    if eval_status == 'COMPLETED':
                         completed_files += 1
                         logger.info(f"File {file_key}: counted as completed")
-                    elif eval_status in ['RUNNING', 'PENDING']:
+                    elif eval_status == 'RUNNING':
                         evaluating_files += 1
                         logger.info(f"File {file_key}: counted as evaluating")
-                    else:
-                        # Evaluation failed but document completed
+                    elif eval_status is None:
+                        # Document completed but evaluation not started yet
+                        evaluating_files += 1
+                        logger.info(f"File {file_key}: counted as evaluating (eval not started)")
+                    elif eval_status == 'FAILED':
+                        # Evaluation failed - count as failed
+                        failed_files += 1
+                        logger.info(f"File {file_key}: counted as failed (eval failed)")
+                    elif eval_status == 'NO_BASELINE':
+                        # No baseline data available - count as completed
                         completed_files += 1
-                        logger.info(f"File {file_key}: counted as completed (eval failed)")
-                elif doc_status in ['FAILED', 'ERROR']:
+                        logger.info(f"File {file_key}: counted as completed (no baseline data)")
+                    else:
+                        # Unknown evaluation status - count as evaluating
+                        evaluating_files += 1
+                        logger.info(f"File {file_key}: counted as evaluating (unknown eval status: {eval_status})")
+                elif doc_status == 'FAILED':
                     failed_files += 1
                     logger.info(f"File {file_key}: counted as failed")
                 else:
@@ -353,425 +402,148 @@ def _parse_s3_uri(uri):
             return parts[0], parts[1]
     return None, None
 
-def _calculate_accuracy_from_data(test_data, baseline_data):
-    """Calculate accuracy as percentage change from baseline with breakdown"""
-    try:
-        if not test_data or not baseline_data:
-            return None, {}
-            
-        test_metrics = test_data.get('overall_metrics', {})
-        baseline_metrics = baseline_data.get('overall_metrics', {})
-        
-        if not test_metrics or not baseline_metrics:
-            return None, {}
-            
-        # Calculate percentage differences for each metric
-        total_percentage_diff = 0
-        metric_count = 0
-        accuracy_breakdown = {}
-        
-        for key in baseline_metrics:
-            if key in test_metrics and baseline_metrics[key] > 0:
-                baseline_value = baseline_metrics[key]
-                test_value = test_metrics[key]
-                # Calculate (test - baseline) / baseline * 100
-                percentage_diff = ((test_value - baseline_value) / baseline_value) * 100
-                total_percentage_diff += percentage_diff
-                metric_count += 1
-                
-                # Store breakdown data
-                accuracy_breakdown[f"{key}_accuracy_similarity"] = percentage_diff
-                accuracy_breakdown[f"test_{key}"] = test_value
-                accuracy_breakdown[f"baseline_{key}"] = baseline_value
-        
-        # Return average percentage difference and breakdown
-        overall_accuracy = total_percentage_diff / metric_count if metric_count > 0 else None
-        return overall_accuracy, accuracy_breakdown
-        
-    except Exception as e:
-        logger.warning(f"Error calculating accuracy from data: {e}")
-        return None
-
-def _calculate_confidence_from_data(test_data, baseline_data):
-    """Calculate confidence from downloaded report data"""
-    try:
-        if not test_data or not baseline_data:
-            return None, {}
-            
-        # Extract confidence scores from all sections (same logic as original)
-        test_confidences = []
-        baseline_confidences = []
-        
-        for section in test_data.get('section_results', []):
-            for attr in section.get('attributes', []):
-                if attr.get('confidence') is not None:
-                    test_confidences.append(float(attr['confidence']))
-        
-        for section in baseline_data.get('section_results', []):
-            for attr in section.get('attributes', []):
-                if attr.get('confidence') is not None:
-                    baseline_confidences.append(float(attr['confidence']))
-        
-        if not test_confidences or not baseline_confidences:
-            return None, {}
-        
-        # Calculate average confidence for each
-        test_avg_confidence = sum(test_confidences) / len(test_confidences)
-        baseline_avg_confidence = sum(baseline_confidences) / len(baseline_confidences)
-        
-        # Calculate similarity (percentage difference) - test vs baseline
-        if baseline_avg_confidence > 0:
-            percentage_diff = ((test_avg_confidence - baseline_avg_confidence) / baseline_avg_confidence) * 100
-            similarity = percentage_diff  # Positive if test has higher confidence (good)
-        else:
-            similarity = 0.0
-        
-        # Create breakdown data
-        confidence_breakdown = {
-            'baseline_confidence': baseline_avg_confidence,
-            'test_confidence': test_avg_confidence,
-            'confidence_similarity': similarity
-        }
-        
-        logger.info(f"Confidence comparison: test_avg={test_avg_confidence:.3f}, baseline_avg={baseline_avg_confidence:.3f}, similarity={similarity:.1f}%")
-        return similarity, confidence_breakdown
-        
-    except Exception as e:
-        logger.warning(f"Error calculating confidence from data: {e}")
-        return None, {}
-
-def _query_evaluation_metrics(test_run_id):
-    """Query evaluation reports for accuracy, cost, and usage metrics with baseline comparison"""
-    start_time = time.time()
-    logger.info(f"Starting accuracy metrics query for test run: {test_run_id}")
-    
+def _aggregate_test_run_metrics(test_run_id):
+    """Aggregate metrics from evaluation reports for all documents in test run"""
     table = dynamodb.Table(os.environ['TRACKING_TABLE'])
     
-    try:
-        # Scan for documents for this test run with pagination
-        scan_start = time.time()
-        items = []
-        scan_kwargs = {
-            'FilterExpression': 'begins_with(PK, :pk) AND SK = :sk',
-            'ExpressionAttributeValues': {
-                ':pk': f'doc#{test_run_id}/',
-                ':sk': 'none'
-            }
+    # Get all documents for this test run
+    items = []
+    scan_kwargs = {
+        'FilterExpression': 'begins_with(PK, :pk) AND SK = :sk',
+        'ExpressionAttributeValues': {
+            ':pk': f'doc#{test_run_id}/',
+            ':sk': 'none'
         }
-        
-        while True:
-            response = table.scan(**scan_kwargs)
-            items.extend(response.get('Items', []))
-            
-            if 'LastEvaluatedKey' not in response:
-                break
-            scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
-        
-        scan_time = time.time() - scan_start
-        logger.info(f"DynamoDB scan completed in {scan_time:.2f}s")
-        if not items:
-            raise ValueError(f"No documents found for test run {test_run_id}")
-        
-        logger.info(f"Found {len(items)} documents to process")
-        
-        # Process documents in parallel
-        
-        def process_document(item):
-            doc_start = time.time()
-            local_s3 = boto3.client('s3')
-            local_table = dynamodb.Table(os.environ['TRACKING_TABLE'])
-            
-            doc_key = item['PK'].replace('doc#', '')
-            filename = doc_key.split('/', 1)[1]
-            logger.info(f"Starting processing document: {filename}")
-            
-            # Get baseline document record
-            baseline_start = time.time()
-            baseline_response = local_table.get_item(Key={'PK': f'doc#{filename}', 'SK': 'none'})
-            baseline_time = time.time() - baseline_start
-            logger.info(f"Baseline lookup for {filename}: {baseline_time:.2f}s")
-            
-            if 'Item' not in baseline_response:
-                logger.warning(f"No baseline found for {filename}")
-                return None
-                
-            baseline_doc = baseline_response['Item']
-            test_evaluation_uri = item.get('EvaluationReportUri')
-            baseline_evaluation_uri = baseline_doc.get('EvaluationReportUri')
-            
-            if not (test_evaluation_uri and baseline_evaluation_uri):
-                logger.warning(f"Missing evaluation URIs for {filename}")
-                return {'accuracy': None, 'confidence': None, 'cost_comparison': None, 'usage_comparison': {}}
-            
-            # Download all S3 files concurrently
-            download_start = time.time()
-            logger.info(f"Starting concurrent S3 downloads for {filename}")
-            
-            def download_file(uri, file_type):
-                try:
-                    json_uri = uri.replace('report.md', 'results.json')
-                    bucket, key = _parse_s3_uri(json_uri)
-                    if bucket and key:
-                        obj = local_s3.get_object(Bucket=bucket, Key=key)
-                        data = json.loads(obj['Body'].read())
-                        logger.info(f"Downloaded {file_type} for {filename}")
-                        return data
-                except Exception as e:
-                    logger.warning(f"Failed to download {file_type} for {filename}: {e}")
-                return None
-            
-            # Download both evaluation reports concurrently
-            with ThreadPoolExecutor(max_workers=2) as download_executor:
-                test_future = download_executor.submit(download_file, test_evaluation_uri, "test report")
-                baseline_future = download_executor.submit(download_file, baseline_evaluation_uri, "baseline report")
-                
-                test_data = test_future.result(timeout=30)
-                baseline_data = baseline_future.result(timeout=30)
-            
-            download_time = time.time() - download_start
-            logger.info(f"S3 downloads for {filename} completed in {download_time:.2f}s")
-            
-            # Process data concurrently
-            concurrent_start = time.time()
-            logger.info(f"Starting concurrent processing for {filename}")
-            
-            def get_accuracy():
-                op_start = time.time()
-                result, breakdown = _calculate_accuracy_from_data(test_data, baseline_data)
-                op_time = time.time() - op_start
-                logger.info(f"Accuracy calculation for {filename}: {op_time:.2f}s")
-                return result, breakdown
-            
-            def get_confidence():
-                op_start = time.time()
-                result, breakdown = _calculate_confidence_from_data(test_data, baseline_data)
-                op_time = time.time() - op_start
-                logger.info(f"Confidence calculation for {filename}: {op_time:.2f}s")
-                return result, breakdown
-            
-            def get_cost_comparison():
-                op_start = time.time()
-                # Get completion dates from already-loaded tracking records
-                test_completion_date = None
-                baseline_completion_date = None
-                
-                # Extract completion date from test document (item)
-                if 'CompletionTime' in item:
-                    completion_time = item['CompletionTime']
-                    completion_date = datetime.fromisoformat(completion_time)
-                    test_completion_date = completion_date.strftime('%Y-%m-%d')
-                
-                # Extract completion date from baseline document (baseline_doc)
-                if 'CompletionTime' in baseline_doc:
-                    completion_time = baseline_doc['CompletionTime']
-                    completion_date = datetime.fromisoformat(completion_time)
-                    baseline_completion_date = completion_date.strftime('%Y-%m-%d')
-                
-                result = _compare_document_costs(doc_key, filename, test_completion_date, baseline_completion_date)
-                op_time = time.time() - op_start
-                logger.info(f"Cost comparison for {filename}: {op_time:.2f}s")
-                return result
-            
-            def get_usage_comparison():
-                op_start = time.time()
-                test_metering = item.get('Metering', {})
-                baseline_metering = baseline_doc.get('Metering', {})
-                result = _compare_metering_usage(test_metering, baseline_metering) if test_metering and baseline_metering else {}
-                op_time = time.time() - op_start
-                logger.info(f"Usage comparison for {filename}: {op_time:.2f}s")
-                return result
-            
-            # Execute processing concurrently
-            with ThreadPoolExecutor(max_workers=4) as process_executor:
-                logger.info(f"Submitting 4 concurrent processing tasks for {filename}")
-                accuracy_future = process_executor.submit(get_accuracy)
-                confidence_future = process_executor.submit(get_confidence)
-                cost_future = process_executor.submit(get_cost_comparison)
-                usage_future = process_executor.submit(get_usage_comparison)
-                
-                # Collect results
-                accuracy = confidence = cost_comparison = None
-                usage_comparison = {}
-                
-                try:
-                    accuracy, accuracy_breakdown = accuracy_future.result(timeout=30)
-                except Exception as e:
-                    logger.warning(f"Accuracy calculation failed for {filename}: {e}")
-                    accuracy, accuracy_breakdown = None, {}
-                
-                try:
-                    confidence, confidence_breakdown = confidence_future.result(timeout=30)
-                except Exception as e:
-                    logger.warning(f"Confidence calculation failed for {filename}: {e}")
-                    confidence, confidence_breakdown = None, {}
-                
-                try:
-                    cost_comparison = cost_future.result(timeout=30)
-                except Exception as e:
-                    logger.warning(f"Cost comparison failed for {filename}: {e}")
-                
-                try:
-                    usage_comparison = usage_future.result(timeout=30)
-                except Exception as e:
-                    logger.warning(f"Usage comparison failed for {filename}: {e}")
-                    usage_comparison = {}
-            
-            concurrent_time = time.time() - concurrent_start
-            doc_time = time.time() - doc_start
-            logger.info(f"Concurrent processing for {filename} completed in {concurrent_time:.2f}s")
-            logger.info(f"Document {filename} total processing time: {doc_time:.2f}s")
-            
-            return {
-                'accuracy': accuracy,
-                'confidence': confidence,
-                'cost_comparison': cost_comparison,
-                'usage_comparison': usage_comparison,
-                'accuracy_breakdown': accuracy_breakdown,
-                'confidence_breakdown': confidence_breakdown
-            }
-        
-        # Execute in parallel with max 5 threads
-        results = []
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_item = {executor.submit(process_document, item): item for item in items}
-            for future in as_completed(future_to_item):
-                result = future.result()
-                if result:
-                    results.append(result)
-        
-        # Aggregate results
-        total_accuracy = 0
-        total_confidence = 0
-        doc_count = 0
-        confidence_count = 0
-        final_cost_metrics = {}
-        final_usage_metrics = {}
-        final_accuracy_metrics = {}
-        
-        for result in results:
-            if result['accuracy'] is not None:
-                total_accuracy += result['accuracy']
-                doc_count += 1
-            
-            if result['confidence'] is not None:
-                total_confidence += result['confidence']
-                confidence_count += 1
-            
-            if result['cost_comparison']:
-                final_cost_metrics.update(result['cost_comparison'])
-            
-            if result['usage_comparison']:
-                final_usage_metrics.update(result['usage_comparison'])
-                
-            if result['accuracy_breakdown']:
-                final_accuracy_metrics.update(result['accuracy_breakdown'])
-                
-            if result['confidence_breakdown']:
-                final_accuracy_metrics.update(result['confidence_breakdown'])
-                # Store the confidence similarity for use in the response
-                final_accuracy_metrics['confidence_similarity'] = result['confidence_breakdown'].get('confidence_similarity', 0)
-        
-        # Aggregate metrics by context - now using actual baseline/test data
-        # Extract cost and usage data from the actual comparison results
-        baseline_cost = {'total_cost': 0}
-        test_cost = {'total_cost': 0}
-        baseline_usage = {}
-        test_usage = {}
-        
-        # Aggregate from individual document results
-        for result in results:
-            # Extract cost data from cost_comparison
-            if result.get('cost_comparison'):
-                cost_data = result['cost_comparison']
-                if isinstance(cost_data, dict):
-                    # Get baseline and test cost structures
-                    baseline_data = cost_data.get('baseline', {})
-                    test_data = cost_data.get('test', {})
-                    
-                    # Add total costs
-                    baseline_cost['total_cost'] += baseline_data.get('total_cost', 0)
-                    test_cost['total_cost'] += test_data.get('total_cost', 0)
-                    
-                    # Aggregate context-level costs
-                    for context, services in baseline_data.items():
-                        if context != 'total_cost' and isinstance(services, dict):
-                            if context not in baseline_cost:
-                                baseline_cost[context] = {}
-                            for service, cost in services.items():
-                                baseline_cost[context][service] = baseline_cost[context].get(service, 0) + cost
-                    
-                    for context, services in test_data.items():
-                        if context != 'total_cost' and isinstance(services, dict):
-                            if context not in test_cost:
-                                test_cost[context] = {}
-                            for service, cost in services.items():
-                                test_cost[context][service] = test_cost[context].get(service, 0) + cost
-            
-            # Extract usage data from usage_comparison  
-            if result.get('usage_comparison'):
-                usage_data = result['usage_comparison']
-                if isinstance(usage_data, dict):
-                    # Get baseline and test usage structures
-                    baseline_usage_data = usage_data.get('baseline', {})
-                    test_usage_data = usage_data.get('test', {})
-                    
-                    # Aggregate usage metrics - maintain original format
-                    for service, metrics in baseline_usage_data.items():
-                        if isinstance(metrics, dict):
-                            baseline_usage[service] = baseline_usage.get(service, {})
-                            for metric, value in metrics.items():
-                                baseline_usage[service][metric] = baseline_usage[service].get(metric, 0) + value
-                    
-                    for service, metrics in test_usage_data.items():
-                        if isinstance(metrics, dict):
-                            test_usage[service] = test_usage.get(service, {})
-                            for metric, value in metrics.items():
-                                test_usage[service][metric] = test_usage[service].get(metric, 0) + value
-        
-        if doc_count > 0:
-            total_time = time.time() - start_time
-            logger.info(f"Accuracy metrics query completed in {total_time:.2f}s for {doc_count} documents")
-            return {
-                'accuracy_similarity': total_accuracy / doc_count,
-                'confidence_similarity': total_confidence / confidence_count if confidence_count > 0 else None,
-                'baseline': json.dumps({
-                    'cost': baseline_cost,
-                    'usage': baseline_usage,
-                    'accuracy': {
-                        'precision': final_accuracy_metrics.get('baseline_precision', 0),
-                        'recall': final_accuracy_metrics.get('baseline_recall', 0),
-                        'f1_score': final_accuracy_metrics.get('baseline_f1_score', 0),
-                        'accuracy': final_accuracy_metrics.get('baseline_accuracy', 0)
-                    },
-                    'confidence': {
-                        'average_confidence': final_accuracy_metrics.get('baseline_confidence', 0.85),
-                        'baseline_confidence': final_accuracy_metrics.get('baseline_confidence', 0.85),
-                        'test_confidence': final_accuracy_metrics.get('test_confidence', total_confidence / confidence_count if confidence_count > 0 else None),
-                        'confidence_similarity': final_accuracy_metrics.get('confidence_similarity', 0)
-                    }
-                }, cls=DecimalEncoder),
-                'test': json.dumps({
-                    'cost': test_cost,
-                    'usage': test_usage,
-                    'accuracy': {
-                        'precision': final_accuracy_metrics.get('test_precision', 0),
-                        'recall': final_accuracy_metrics.get('test_recall', 0),
-                        'f1_score': final_accuracy_metrics.get('test_f1_score', 0),
-                        'accuracy': final_accuracy_metrics.get('test_accuracy', 0)
-                    },
-                    'confidence': {
-                        'average_confidence': final_accuracy_metrics.get('test_confidence', total_confidence / confidence_count if confidence_count > 0 else None),
-                        'baseline_confidence': final_accuracy_metrics.get('baseline_confidence', 0.85),
-                        'test_confidence': final_accuracy_metrics.get('test_confidence', total_confidence / confidence_count if confidence_count > 0 else None),
-                        'confidence_similarity': final_accuracy_metrics.get('confidence_similarity', 0)
-                    }
-                }, cls=DecimalEncoder)
-            }
+    }
     
-    except Exception as e:
-        total_time = time.time() - start_time
-        logger.error(f"Error querying accuracy metrics for {test_run_id} after {total_time:.2f}s: {e}")
-        raise
+    while True:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get('Items', []))
+        if 'LastEvaluatedKey' not in response:
+            break
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+    
+    if not items:
+        return {}
+    
+    # Aggregate metrics from evaluation reports
+    total_accuracy = 0
+    total_confidence = 0
+    total_cost = 0
+    accuracy_count = 0
+    confidence_count = 0
+    cost_breakdown = {}
+    usage_breakdown = {}
+    
+    # Accuracy metrics aggregation
+    total_precision = 0
+    total_recall = 0
+    total_f1_score = 0
+    total_false_alarm_rate = 0
+    total_false_discovery_rate = 0
+    precision_count = 0
+    recall_count = 0
+    f1_count = 0
+    far_count = 0
+    fdr_count = 0
+    
+    s3 = boto3.client('s3')
+    
+    for item in items:
+        evaluation_uri = item.get('EvaluationReportUri')
+        if not evaluation_uri:
+            continue
+            
+        try:
+            # Get evaluation report data
+            json_uri = evaluation_uri.replace('report.md', 'results.json')
+            bucket, key = _parse_s3_uri(json_uri)
+            if bucket and key:
+                obj = s3.get_object(Bucket=bucket, Key=key)
+                data = json.loads(obj['Body'].read())
+                
+                # Extract accuracy from overall_metrics
+                overall_metrics = data.get('overall_metrics', {})
+                if overall_metrics.get('accuracy'):
+                    total_accuracy += overall_metrics['accuracy']
+                    accuracy_count += 1
+                
+                # Extract additional accuracy metrics
+                if overall_metrics.get('precision'):
+                    total_precision += overall_metrics['precision']
+                    precision_count += 1
+                if overall_metrics.get('recall'):
+                    total_recall += overall_metrics['recall']
+                    recall_count += 1
+                if overall_metrics.get('f1_score'):
+                    total_f1_score += overall_metrics['f1_score']
+                    f1_count += 1
+                if overall_metrics.get('false_alarm_rate'):
+                    total_false_alarm_rate += overall_metrics['false_alarm_rate']
+                    far_count += 1
+                if overall_metrics.get('false_discovery_rate'):
+                    total_false_discovery_rate += overall_metrics['false_discovery_rate']
+                    fdr_count += 1
+                
+                # Extract confidence from section results
+                confidences = []
+                for section in data.get('section_results', []):
+                    for attr in section.get('attributes', []):
+                        if attr.get('confidence') is not None:
+                            confidences.append(float(attr['confidence']))
+                
+                if confidences:
+                    avg_confidence = sum(confidences) / len(confidences)
+                    total_confidence += avg_confidence
+                    confidence_count += 1
+                
+        except Exception as e:
+            logger.warning(f"Failed to process evaluation report for {item['PK']}: {e}")
+            continue
+        
+        # Get cost and usage from document metering
+        metering = item.get('Metering', {})
+        if metering:
+            # Aggregate usage metrics
+            for service, metrics in metering.items():
+                if service not in usage_breakdown:
+                    usage_breakdown[service] = {}
+                for metric, value in metrics.items():
+                    usage_breakdown[service][metric] = usage_breakdown[service].get(metric, 0) + value
+        
+        # Get cost from completion date if available
+        if item.get('CompletionTime'):
+            completion_date = datetime.fromisoformat(item['CompletionTime']).strftime('%Y-%m-%d')
+            doc_key = item['PK'].replace('doc#', '')
+            doc_costs = _get_document_costs_from_reporting_db(doc_key, completion_date)
+            
+            for service, cost in doc_costs.items():
+                total_cost += cost
+                # Group by service context with nested structure
+                context = service.split('_')[0] if '_' in service else service
+                service_api = service.split('_')[1] if '_' in service and len(service.split('_')) > 1 else 'total'
+                
+                if context not in cost_breakdown:
+                    cost_breakdown[context] = {}
+                if service_api not in cost_breakdown[context]:
+                    cost_breakdown[context][service_api] = 0
+                cost_breakdown[context][service_api] += cost
+    
+    return {
+        'overall_accuracy': total_accuracy / accuracy_count if accuracy_count > 0 else None,
+        'average_confidence': total_confidence / confidence_count if confidence_count > 0 else None,
+        'accuracy_breakdown': {
+            'precision': total_precision / precision_count if precision_count > 0 else None,
+            'recall': total_recall / recall_count if recall_count > 0 else None,
+            'f1_score': total_f1_score / f1_count if f1_count > 0 else None,
+            'false_alarm_rate': total_false_alarm_rate / far_count if far_count > 0 else None,
+            'false_discovery_rate': total_false_discovery_rate / fdr_count if fdr_count > 0 else None
+        },
+        'total_cost': total_cost,
+        'cost_breakdown': cost_breakdown,
+        'usage_breakdown': usage_breakdown
+    }
+
 
 
 def _get_document_costs_from_reporting_db(document_id, completion_date):

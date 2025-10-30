@@ -37,17 +37,36 @@ const TIME_PERIOD_OPTIONS = [
 ].map((option) => ({ ...option, text: option.text })); // Ensure text is the display text
 
 const TestRunIdCell = ({ item, onSelect }) => (
-  <span 
-    title={item.testRunId} 
-    style={{ 
-      whiteSpace: 'nowrap',
+  <span
+    style={{
       cursor: 'pointer',
       color: '#0073bb',
-      textDecoration: 'underline'
+      textDecoration: 'underline',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      display: 'block',
+      maxWidth: '100%',
     }}
+    title={item.testRunId}
     onClick={() => onSelect(item.testRunId)}
   >
-    {item.testRunId.substring(0, 8)}...
+    {item.testRunId}
+  </span>
+);
+
+const TextCell = ({ text }) => (
+  <span
+    style={{
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      display: 'block',
+      maxWidth: '100%',
+    }}
+    title={text}
+  >
+    {text}
   </span>
 );
 
@@ -56,6 +75,10 @@ TestRunIdCell.propTypes = {
     testRunId: PropTypes.string.isRequired,
   }).isRequired,
   onSelect: PropTypes.func.isRequired,
+};
+
+TextCell.propTypes = {
+  text: PropTypes.string.isRequired,
 };
 
 const TestResultsList = () => {
@@ -96,9 +119,9 @@ const TestResultsList = () => {
     try {
       setLoading(true);
       console.log('Fetching test runs with timePeriodHours:', timePeriodHours);
-      const result = await client.graphql({ 
-        query: GET_TEST_RUNS, 
-        variables: { timePeriodHours } 
+      const result = await client.graphql({
+        query: GET_TEST_RUNS,
+        variables: { timePeriodHours },
       });
       console.log('Raw GraphQL result:', result);
       console.log('getTestRuns data:', result.data.getTestRuns);
@@ -162,9 +185,9 @@ const TestResultsList = () => {
       const testRunIds = selectedItems.map((item) => item.testRunId);
       console.log('Attempting to delete test runs:', testRunIds);
 
-      const result = await client.graphql({ 
-        query: DELETE_TESTS, 
-        variables: { testRunIds } 
+      const result = await client.graphql({
+        query: DELETE_TESTS,
+        variables: { testRunIds },
       });
       console.log('Delete result:', result);
 
@@ -262,13 +285,21 @@ const TestResultsList = () => {
             header: 'Test Run ID',
             cell: getTestRunIdCell,
             sortingField: 'testRunId',
-            width: 150,
+            width: 300,
           },
           {
             id: 'testSetName',
             header: 'Test Set Name',
-            cell: (item) => item.testSetName,
+            cell: (item) => <TextCell text={item.testSetName} />,
             sortingField: 'testSetName',
+            width: 150,
+          },
+          {
+            id: 'context',
+            header: 'Context',
+            cell: (item) => <TextCell text={item.context || 'N/A'} />,
+            sortingField: 'context',
+            width: 300,
           },
           {
             id: 'status',

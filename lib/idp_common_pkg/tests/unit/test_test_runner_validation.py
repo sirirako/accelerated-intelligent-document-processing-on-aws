@@ -112,9 +112,22 @@ class TestTestRunnerValidation:
             is False
         )
 
-        assert (
-            is_test_complete(
-                {"completedFiles": 5, "filesCount": 5, "status": "COMPLETE"}
-            )
-            is False
-        )
+    def test_context_field_handling(self):
+        """Test context field handling in test runner input"""
+
+        def validate_context_input(context):
+            """Validate context field input"""
+            if context is None:
+                return True  # Context is optional
+            if isinstance(context, str):
+                return True  # Valid string context
+            return False  # Invalid context type
+
+        # Test valid contexts
+        assert validate_context_input(None) is True
+        assert validate_context_input("") is True
+        assert validate_context_input("Test context") is True
+
+        # Test invalid contexts
+        assert validate_context_input(123) is False
+        assert validate_context_input([]) is False

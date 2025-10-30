@@ -96,7 +96,7 @@ def list_input_bucket_files(args):
     file_pattern = args['filePattern']
     input_bucket = os.environ['INPUT_BUCKET']
     
-    files = find_matching_files(input_bucket, file_pattern, root_only=True)
+    files = find_matching_files(input_bucket, file_pattern)
     logger.info(f"Found {len(files)} matching files")
     
     return files

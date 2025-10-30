@@ -251,12 +251,15 @@ type TestRun @aws_cognito_user_pools @aws_iam {
   filesCount: Int!
   completedFiles: Int
   failedFiles: Int
-  accuracySimilarity: Float
-  confidenceSimilarity: Float
-  baseline: AWSJSON
-  test: AWSJSON
+  overallAccuracy: Float
+  averageConfidence: Float
+  accuracyBreakdown: AWSJSON
+  totalCost: Float
+  costBreakdown: AWSJSON
+  usageBreakdown: AWSJSON
   createdAt: AWSDateTime
   completedAt: AWSDateTime
+  context: String
 }
 
 type TestRunComparison @aws_cognito_user_pools @aws_iam {
@@ -279,6 +282,7 @@ type TestSet @aws_cognito_user_pools @aws_iam {
 
 input TestRunInput {
   testSetId: String!
+  context: String
 }
 
 type Mutation  {

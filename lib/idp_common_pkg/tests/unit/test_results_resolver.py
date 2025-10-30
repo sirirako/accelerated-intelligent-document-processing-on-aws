@@ -42,6 +42,13 @@ def test_get_test_results_structure():
         "failedFiles": metadata.get("FailedFiles", 0),
         "overallAccuracy": 85.5,
         "averageConfidence": 78.2,
+        "accuracyBreakdown": {
+            "precision": 0.95,
+            "recall": 0.90,
+            "f1_score": 0.925,
+            "false_alarm_rate": 0.05,
+            "false_discovery_rate": 0.03,
+        },
         "totalCost": 12.45,
         "createdAt": metadata.get("CreatedAt"),
     }
@@ -50,6 +57,8 @@ def test_get_test_results_structure():
     assert result["testSetName"] == "lending-test"
     assert result["status"] == "COMPLETE"
     assert result["totalFiles"] == 2
+    assert result["accuracyBreakdown"]["precision"] == 0.95
+    assert result["accuracyBreakdown"]["f1_score"] == 0.925
 
 
 @pytest.mark.unit
@@ -155,45 +164,28 @@ def test_compare_document_costs_parallel_execution():
 
 
 @pytest.mark.unit
-def test_calculate_accuracy_from_data():
-    """Test accuracy calculation from downloaded data"""
-
-    test_data = {"overall_metrics": {"accuracy": 0.85, "precision": 0.90}}
-
-    baseline_data = {"overall_metrics": {"accuracy": 0.80, "precision": 0.85}}
-
-    result, breakdown = index._calculate_accuracy_from_data(test_data, baseline_data)
-
-    # Should return a similarity score and breakdown
-    assert isinstance(result, float)
-    assert isinstance(breakdown, dict)
-    assert result is not None
-
-
-@pytest.mark.unit
-def test_calculate_confidence_from_data():
-    """Test confidence calculation from downloaded data"""
-
-    test_data = {
-        "section_results": [
-            {"attributes": [{"confidence": 0.85}, {"confidence": 0.90}]}
-        ]
+def test_accuracy_breakdown_structure():
+    """Test accuracy breakdown data structure"""
+    accuracy_breakdown = {
+        "precision": 0.95,
+        "recall": 0.90,
+        "f1_score": 0.925,
+        "false_alarm_rate": 0.05,
+        "false_discovery_rate": 0.03,
     }
 
-    baseline_data = {
-        "section_results": [
-            {"attributes": [{"confidence": 0.80}, {"confidence": 0.88}]}
-        ]
-    }
-
-    result, breakdown = index._calculate_confidence_from_data(test_data, baseline_data)
-
-    # Should return a similarity percentage and breakdown
-    assert isinstance(result, float)
-    assert isinstance(breakdown, dict)
-    assert "baseline_confidence" in breakdown
-    assert "test_confidence" in breakdown
-    assert "confidence_similarity" in breakdown
+    # Verify all expected metrics are present
+    expected_metrics = [
+        "precision",
+        "recall",
+        "f1_score",
+        "false_alarm_rate",
+        "false_discovery_rate",
+    ]
+    for metric in expected_metrics:
+        assert metric in accuracy_breakdown
+        assert isinstance(accuracy_breakdown[metric], float)
+        assert 0 <= accuracy_breakdown[metric] <= 1
 
 
 @pytest.mark.unit

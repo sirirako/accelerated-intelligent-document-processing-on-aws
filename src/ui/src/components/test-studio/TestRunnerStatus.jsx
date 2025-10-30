@@ -5,9 +5,9 @@ import PropTypes from 'prop-types';
 import { Badge, ProgressBar, Box } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import { graphqlOperation } from '@aws-amplify/api-graphql';
+import GET_TEST_RUN_STATUS from '../../graphql/queries/getTestRunStatus';
 
 const client = generateClient();
-import GET_TEST_RUN_STATUS from '../../graphql/queries/getTestRunStatus';
 
 const TestRunnerStatus = ({ testRunId, onComplete }) => {
   const [testRunStatus, setTestRunStatus] = useState(null);
