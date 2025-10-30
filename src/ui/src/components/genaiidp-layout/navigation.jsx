@@ -8,21 +8,21 @@ import useSettingsContext from '../../contexts/settings';
 import {
   DOCUMENTS_PATH,
   DOCUMENTS_KB_QUERY_PATH,
-  DOCUMENTS_ANALYTICS_PATH,
   DEFAULT_PATH,
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
   DISCOVERY_PATH,
+  AGENT_CHAT_PATH,
 } from '../../routes/constants';
 
 export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
 export const documentsNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
-  { type: 'link', text: 'Agent Analysis', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
   { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
+  { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
   {
     type: 'section',
     text: 'Resources',
@@ -66,14 +66,14 @@ const Navigation = ({ header = documentsNavHeader, items = documentsNavItems, on
     activeHref = `#${CONFIGURATION_PATH}`;
   } else if (path.includes(DOCUMENTS_KB_QUERY_PATH)) {
     activeHref = `#${DOCUMENTS_KB_QUERY_PATH}`;
-  } else if (path.includes(DOCUMENTS_ANALYTICS_PATH)) {
-    activeHref = `#${DOCUMENTS_ANALYTICS_PATH}`;
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
   } else if (path.includes(DISCOVERY_PATH)) {
     activeHref = `#${DISCOVERY_PATH}`;
   } else if (path.includes(DOCUMENTS_PATH)) {
     activeHref = `#${DOCUMENTS_PATH}`;
+  } else if (path === AGENT_CHAT_PATH) {
+    activeHref = `#${AGENT_CHAT_PATH}`;
   }
 
   // Create a copy of the items array to add the deployment info

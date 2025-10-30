@@ -5,6 +5,9 @@
 Unit tests for main Error Analyzer Agent.
 """
 
+# ruff: noqa: E402, I001
+# The above line disables E402 (module level import not at top of file) and I001 (import block sorting) for this file
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +18,7 @@ from idp_common.config.models import IDPConfig
 class TestErrorAnalyzerAgent:
     """Test main error analyzer agent."""
 
-    @patch("strands.Agent")
+    @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
     @patch("idp_common.agents.error_analyzer.agent.get_config")
     def test_create_error_analyzer_agent(
@@ -39,7 +42,7 @@ class TestErrorAnalyzerAgent:
         assert hasattr(agent, "tools")
         assert len(agent.tools) == 9  # All specific tools
 
-    @patch("strands.Agent")
+    @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
     @patch("idp_common.agents.error_analyzer.agent.get_config")
     def test_create_error_analyzer_agent_with_defaults(
@@ -63,7 +66,7 @@ class TestErrorAnalyzerAgent:
         assert hasattr(agent, "tools")
         assert len(agent.tools) == 9
 
-    @patch("strands.Agent")
+    @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
     @patch("idp_common.agents.error_analyzer.agent.get_config")
     def test_agent_system_prompt_format(
