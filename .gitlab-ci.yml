@@ -26,8 +26,8 @@ stages:
 developer_tests:
   stage: developer_tests
   rules:
-    - when: always  # Run on all branches
-  
+    - when: always # Run on all branches
+
   before_script:
     - python --version
     - apt-get update -y
@@ -35,8 +35,7 @@ developer_tests:
     # Fetch main branch for comparison in typecheck-pr
     - git fetch origin main:main || echo "Could not fetch main branch"
     # Install uv
-    - curl -LsSf https://astral.sh/uv/install.sh | sh
-    - export PATH="$HOME/.cargo/bin:$PATH"
+    - pip install uv
     # Create virtual environment
     - uv venv .venv
     - source .venv/bin/activate
@@ -54,7 +53,7 @@ developer_tests:
     - make lint-cicd
     - make typecheck-cicd
     - make test-cicd -C lib/idp_common_pkg
-  
+
   artifacts:
     paths:
       - lib/idp_common_pkg/test-reports/coverage.xml
@@ -93,8 +92,8 @@ integration_tests:
   #   AWS_CREDS_TARGET_ROLE: ${AWS_CREDS_TARGET_ROLE}
   #   AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
   #   IDP_ACCOUNT_ID: ${IDP_ACCOUNT_ID}
-  
- # Add rules to only run on develop branch
+
+  # Add rules to only run on develop branch
   rules:
     - if: $CI_COMMIT_BRANCH == "develop"
       when: on_success
@@ -121,11 +120,12 @@ integration_tests:
   script:
     - aws --version
     - aws sts get-caller-identity --no-cli-pager
-    
+
     # Set environment variables for Python script
     - export IDP_ACCOUNT_ID=${IDP_ACCOUNT_ID:-020432867916}
     - export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     - export IDP_PIPELINE_NAME=idp-sdlc-deploy-pipeline
-    
+
     # Run integration test deployment
     - python3 scripts/integration_test_deployment.py
+
