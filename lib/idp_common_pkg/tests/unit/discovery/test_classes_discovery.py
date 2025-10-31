@@ -105,9 +105,8 @@ class TestClassesDiscovery:
     @pytest.fixture
     def mock_configuration_item(self):
         """Fixture providing a mock configuration item."""
-        return {
-            "Configuration": "Custom",
-            "classes": [
+        return IDPConfig(
+            classes=[
                 {
                     "name": "W-4",
                     "description": "Employee's Withholding Certificate form",
@@ -119,8 +118,8 @@ class TestClassesDiscovery:
                         }
                     ],
                 }
-            ],
-        }
+            ]
+        )
 
     @pytest.fixture
     def service(self, mock_config):
@@ -693,10 +692,10 @@ class TestClassesDiscovery:
             # Get the call args - might be save_configuration or update_configuration
             if service.config_manager.save_configuration.called:
                 call_args = service.config_manager.save_configuration.call_args[0]
-                updated_classes = call_args[1]["classes"]
+                updated_classes = call_args[1].classes
             else:
                 call_args = service.config_manager.update_configuration.call_args[0]
-                updated_classes = call_args[1]["classes"]
+                updated_classes = call_args[1].classes
 
             # Should have 2 classes (Other-Form + updated W-4)
             assert len(updated_classes) == 2
@@ -748,10 +747,10 @@ class TestClassesDiscovery:
             # Get the call args - might be save_configuration or update_configuration
             if service.config_manager.save_configuration.called:
                 call_args = service.config_manager.save_configuration.call_args[0]
-                updated_classes = call_args[1]["classes"]
+                updated_classes = call_args[1].classes
             else:
                 call_args = service.config_manager.update_configuration.call_args[0]
-                updated_classes = call_args[1]["classes"]
+                updated_classes = call_args[1].classes
 
             # Should have 1 class
             assert len(updated_classes) == 1

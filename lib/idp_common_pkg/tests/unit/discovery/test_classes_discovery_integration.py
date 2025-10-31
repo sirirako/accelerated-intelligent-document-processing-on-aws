@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 # Import application modules
 from idp_common.discovery.classes_discovery import ClassesDiscovery
+from idp_common.config.models import IDPConfig
 
 
 @pytest.mark.unit
@@ -348,27 +349,28 @@ class TestClassesDiscoveryIntegration:
         service_with_mocks._mock_bedrock_client.return_value = mock_w4_bedrock_response
 
         # Mock existing configuration with different forms in JSON Schema format
-        existing_item = MagicMock()
-        existing_item.classes = [
-            {
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "$id": "i9",
-                "type": "object",
-                "title": "I-9",
-                "description": "Employment Eligibility Verification",
-                "x-aws-idp-document-type": "I-9",
-                "properties": {},
-            },
-            {
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "$id": "w4",
-                "type": "object",
-                "title": "W-4",
-                "description": "Old W-4 description",
-                "x-aws-idp-document-type": "W-4",
-                "properties": {},
-            },
-        ]
+        existing_item = IDPConfig(
+            classes=[
+                {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$id": "i9",
+                    "type": "object",
+                    "title": "I-9",
+                    "description": "Employment Eligibility Verification",
+                    "x-aws-idp-document-type": "I-9",
+                    "properties": {},
+                },
+                {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$id": "w4",
+                    "type": "object",
+                    "title": "W-4",
+                    "description": "Old W-4 description",
+                    "x-aws-idp-document-type": "W-4",
+                    "properties": {},
+                },
+            ]
+        )
         # Create mocks for config_manager methods
         service_with_mocks.config_manager.get_configuration = MagicMock(
             return_value=existing_item
@@ -387,7 +389,7 @@ class TestClassesDiscoveryIntegration:
         save_config_args = (
             service_with_mocks.config_manager.save_configuration.call_args[0]
         )
-        updated_classes = save_config_args[1]["classes"]
+        updated_classes = save_config_args[1].classes
 
         # Should have 2 classes: I-9 (unchanged) + W-4 (updated)
         assert len(updated_classes) == 2

@@ -32,7 +32,7 @@ class AssessmentService:
     chooses between the original and granular implementations based on configuration.
     """
 
-    def __init__(self, region: str = None, config: IDPConfig = None):
+    def __init__(self, region: str | None = None, config: IDPConfig | None = None):
         """
         Initialize the assessment service with automatic implementation selection.
 
@@ -40,6 +40,11 @@ class AssessmentService:
             region: AWS region for Bedrock
             config: Configuration dictionary
         """
+        if config is None:
+            config = IDPConfig()
+        elif isinstance(config, dict):
+            config = IDPConfig(**config)
+
         self._service = create_assessment_service(region=region, config=config)
 
     def process_document_section(self, document, section_id: str):
@@ -49,15 +54,6 @@ class AssessmentService:
     def assess_document(self, document):
         """Assess extraction confidence for all sections in a document."""
         return self._service.assess_document(document)
-
-    # Expose internal methods for compatibility
-    def _get_class_attributes(self, class_label: str):
-        """Get attributes for a specific document class from configuration."""
-        return self._service._get_class_attributes(class_label)
-
-    def _format_attribute_descriptions(self, attributes):
-        """Format attribute descriptions for the prompt."""
-        return self._service._format_attribute_descriptions(attributes)
 
 
 def create_assessment_service(
