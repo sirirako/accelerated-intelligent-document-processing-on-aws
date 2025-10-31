@@ -42,6 +42,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
     exportSchema,
     getSelectedClass,
     getSelectedAttribute,
+    clearAllClasses,
   } = useSchemaDesigner(initialSchema || []);
 
   const { validateSchema } = useSchemaValidation();
@@ -59,6 +60,7 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
   const [editingClass, setEditingClass] = useState(null);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [classToDelete, setClassToDelete] = useState(null);
+  const [showWipeAllModal, setShowWipeAllModal] = useState(false);
   const [aggregatedValidationErrors, setAggregatedValidationErrors] = useState([]);
   const lastExportedSchemaRef = useRef(null);
   const lastValidationResultRef = useRef(null);
@@ -186,6 +188,15 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
     }
   };
 
+  const handleWipeAll = () => {
+    setShowWipeAllModal(true);
+  };
+
+  const handleConfirmWipeAll = () => {
+    clearAllClasses();
+    setShowWipeAllModal(false);
+  };
+
   const docTypeCount = classes.filter((c) => c[X_AWS_IDP_DOCUMENT_TYPE]).length;
   const sharedCount = classes.filter((c) => !c[X_AWS_IDP_DOCUMENT_TYPE]).length;
 
@@ -288,6 +299,9 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                         disabled={classes.length === 0}
                       >
                         Export
+                      </Button>
+                      <Button onClick={handleWipeAll} iconName="remove" disabled={classes.length === 0}>
+                        Wipe All
                       </Button>
                     </SpaceBetween>
                   </Box>
@@ -773,6 +787,34 @@ const SchemaBuilder = ({ initialSchema, onChange, onValidate }) => {
                 This class has {Object.keys(classToDelete.attributes.properties).length} attribute(s) that will also be deleted.
               </Alert>
             )}
+          </SpaceBetween>
+        </Modal>
+
+        <Modal
+          visible={showWipeAllModal}
+          onDismiss={() => setShowWipeAllModal(false)}
+          header="Wipe All Document Classes"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button variant="link" onClick={() => setShowWipeAllModal(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleConfirmWipeAll}>
+                  Wipe All
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="m">
+            <Alert type="error">
+              Are you sure you want to delete <strong>all {classes.length} document class(es)</strong>? This action cannot be undone.
+            </Alert>
+            <Box variant="p">
+              All document classes and their attributes will be permanently removed. You will need to recreate them or use the discovery
+              feature to regenerate your schema.
+            </Box>
           </SpaceBetween>
         </Modal>
       </SpaceBetween>

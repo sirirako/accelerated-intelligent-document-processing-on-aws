@@ -776,14 +776,14 @@ const ConfigurationLayout = () => {
         const builtObject = buildObjectFromPaths(differences);
         console.log('DEBUG: Built object from paths:', builtObject);
 
-        // CRITICAL: Always include the current document schema (classes) if it exists
-        // This prevents the schema from being lost when saving other configuration changes
-        if (formValues.classes && Array.isArray(formValues.classes) && formValues.classes.length > 0) {
+        // CRITICAL: Always include the current document schema (classes) if it exists OR is explicitly empty
+        // This ensures empty arrays are saved (to wipe all classes) and prevents schema loss
+        if (formValues.classes && Array.isArray(formValues.classes)) {
           builtObject.classes = formValues.classes;
           console.log('DEBUG: Including document schema (classes) in save:', formValues.classes);
         }
 
-        // CRITICAL: If there are no differences AND no schema, don't send update to backend
+        // CRITICAL: If there are no differences AND no schema changes, don't send update to backend
         // This prevents unnecessary API calls and potential data issues
         if (Object.keys(builtObject).length === 0) {
           console.log('No changes detected, skipping save');
@@ -1245,7 +1245,11 @@ const ConfigurationLayout = () => {
                   setExtractionSchema(schemaData);
                   if (isDirty) {
                     const updatedConfig = { ...formValues };
-                    if (schemaData && schemaData.length > 0) {
+                    // CRITICAL: Always set classes, even if empty array (to support wipe all functionality)
+                    // Handle null (no classes) by setting empty array
+                    if (schemaData === null) {
+                      updatedConfig.classes = [];
+                    } else if (Array.isArray(schemaData)) {
                       // Store as 'classes' field with JSON Schema content
                       updatedConfig.classes = schemaData;
                     }
