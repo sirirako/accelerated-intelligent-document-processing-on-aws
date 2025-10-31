@@ -1,13 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
-import { AppLayout, ContentLayout, Header, SpaceBetween, Alert, Box } from '@cloudscape-design/components';
+import { AppLayout, ContentLayout, Header, SpaceBetween } from '@cloudscape-design/components';
 import { useLocation } from 'react-router-dom';
 
 import Navigation from '../genaiidp-layout/navigation';
 import TestSets from './TestSets';
 import TestRunner from './TestRunner';
 import TestResultsList from './TestResultsList';
+import TestComparison from './TestComparison';
 import { appLayoutLabels } from '../common/labels';
 import useAppContext from '../../contexts/app';
 
@@ -16,12 +17,14 @@ const TestStudioLayout = () => {
     useAppContext();
   const location = useLocation();
   const [activeTabId, setActiveTabId] = useState('sets');
+  const [timePeriodHours, setTimePeriodHours] = useState(2);
+  const [selectedTestItems, setSelectedTestItems] = useState([]);
 
   // Handle URL tab parameter
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const tab = urlParams.get('tab');
-    if (tab && ['sets', 'runner', 'results'].includes(tab)) {
+    if (tab && ['sets', 'runner', 'results', 'comparison'].includes(tab)) {
       setActiveTabId(tab);
     }
   }, [location.search]);
@@ -50,7 +53,20 @@ const TestStudioLayout = () => {
           />
         );
       case 'results':
-        return <TestResultsList />;
+        return (
+          <TestResultsList
+            timePeriodHours={timePeriodHours}
+            setTimePeriodHours={setTimePeriodHours}
+            selectedItems={selectedTestItems}
+            setSelectedItems={setSelectedTestItems}
+          />
+        );
+      case 'comparison': {
+        const urlParams = new URLSearchParams(location.search);
+        const testIds = urlParams.get('testIds');
+        const testRunIds = testIds ? testIds.split(',') : [];
+        return <TestComparison preSelectedTestRunIds={testRunIds} />;
+      }
       default:
         return <TestSets />;
     }

@@ -5,91 +5,9 @@ import PropTypes from 'prop-types';
 import { Container, Header, SpaceBetween, Table, Box, Button } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
+import handlePrint from './PrintUtils';
 
 const client = generateClient();
-
-// Add print styles
-const printStyles = `
-  @media print {
-    * {
-      -webkit-print-color-adjust: exact !important;
-      color-adjust: exact !important;
-    }
-    
-    /* Hide sidebar and navigation elements */
-    .awsui-app-layout-navigation,
-    .awsui-side-navigation,
-    .awsui-app-layout-tools,
-    .awsui-breadcrumb-group,
-    nav,
-    aside,
-    [data-testid="app-layout-navigation"],
-    [data-testid="side-navigation"] {
-      display: none !important;
-    }
-    
-    /* Make main content take full width */
-    .awsui-app-layout-main,
-    .awsui-app-layout-content,
-    main {
-      margin: 0 !important;
-      padding: 0 !important;
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-    
-    body {
-      font-size: 12px !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    
-    .awsui-table-container,
-    .awsui-table-wrapper,
-    .awsui-table-content-wrapper {
-      overflow: visible !important;
-      max-height: none !important;
-      height: auto !important;
-    }
-    
-    .awsui-table {
-      width: 100% !important;
-      table-layout: fixed !important;
-      border-collapse: collapse !important;
-    }
-    
-    .awsui-table-cell,
-    .awsui-table-header-cell {
-      white-space: normal !important;
-      word-wrap: break-word !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-      padding: 4px !important;
-      border: 1px solid #ccc !important;
-    }
-    
-    .awsui-container {
-      margin-bottom: 20px !important;
-    }
-    
-    .awsui-table tbody tr {
-      page-break-inside: avoid !important;
-    }
-    
-    @page {
-      size: A4 landscape;
-      margin: 0.5in;
-    }
-  }
-`;
-
-// Inject styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.type = 'text/css';
-  styleSheet.innerText = printStyles;
-  document.head.appendChild(styleSheet);
-}
 
 // Helper functions for rendering change values with colored arrows
 const renderChangeValue = (value) => {
@@ -104,7 +22,7 @@ const renderChangeValue = (value) => {
   );
 };
 
-const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
+const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   const [comparisonData, setComparisonData] = useState(null);
   const [comparing, setComparing] = useState(false);
 
@@ -149,14 +67,16 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
 
   // Helper function to create clickable test run ID headers
   const createTestRunHeader = (testRunId) => {
-    if (onTestRunSelect) {
-      return (
-        <Button variant="link" onClick={() => onTestRunSelect(testRunId)}>
-          {testRunId}
-        </Button>
-      );
-    }
-    return testRunId;
+    return (
+      <Button
+        variant="link"
+        onClick={() => {
+          window.location.hash = `#/test-studio?tab=results&testRunId=${testRunId}`;
+        }}
+      >
+        {testRunId}
+      </Button>
+    );
   };
 
   if (comparing) {
@@ -184,77 +104,20 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
     ? Object.values(comparisonData.metrics).some((testRun) => testRun.status !== 'COMPLETE')
     : false;
 
-  const handlePrint = () => {
-    // Force all tables to be fully visible before printing
-    const tables = document.querySelectorAll('.awsui-table-container');
-    const originalStyles = [];
-
-    tables.forEach((table, index) => {
-      originalStyles[index] = {
-        overflow: table.style.overflow,
-        maxHeight: table.style.maxHeight,
-        height: table.style.height,
-      };
-
-      // eslint-disable-next-line no-param-reassign
-      table.style.overflow = 'visible';
-      // eslint-disable-next-line no-param-reassign
-      table.style.maxHeight = 'none';
-      // eslint-disable-next-line no-param-reassign
-      table.style.height = 'auto';
-    });
-
-    // Add temporary print-specific styles
-    const printStyleElement = document.createElement('style');
-    printStyleElement.innerHTML = `
-      @media print {
-        .awsui-table-container * {
-          overflow: visible !important;
-          max-height: none !important;
-          height: auto !important;
-        }
-        .awsui-table {
-          table-layout: auto !important;
-          width: 100% !important;
-        }
-        .awsui-table-cell {
-          font-size: 10px !important;
-          padding: 2px !important;
-          word-break: break-word !important;
-        }
-      }
-    `;
-    document.head.appendChild(printStyleElement);
-
-    setTimeout(() => {
-      window.print();
-
-      // Restore original styles after printing
-      setTimeout(() => {
-        tables.forEach((table, index) => {
-          if (originalStyles[index]) {
-            // eslint-disable-next-line no-param-reassign
-            table.style.overflow = originalStyles[index].overflow;
-            // eslint-disable-next-line no-param-reassign
-            table.style.maxHeight = originalStyles[index].maxHeight;
-            // eslint-disable-next-line no-param-reassign
-            table.style.height = originalStyles[index].height;
-          }
-        });
-        document.head.removeChild(printStyleElement);
-      }, 1000);
-    }, 100);
-  };
-
   return (
     <Container
       header={
         <Header
           variant="h2"
           actions={
-            <Button onClick={handlePrint} iconName="print">
-              Print
-            </Button>
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button onClick={() => window.history.back()} iconName="arrow-left">
+                Back to Test Runs
+              </Button>
+              <Button onClick={handlePrint} iconName="print">
+                Print
+              </Button>
+            </SpaceBetween>
           }
         >
           Compare Test Runs ({Object.keys(completeTestRuns).length})
@@ -560,7 +423,6 @@ const TestComparison = ({ preSelectedTestRunIds = [], onTestRunSelect }) => {
 
 TestComparison.propTypes = {
   preSelectedTestRunIds: PropTypes.arrayOf(PropTypes.string),
-  onTestRunSelect: PropTypes.func,
 };
 
 TestComparison.defaultProps = {

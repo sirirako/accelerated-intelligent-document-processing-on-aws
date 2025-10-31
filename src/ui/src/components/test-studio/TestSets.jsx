@@ -223,7 +223,7 @@ const TestSets = () => {
               <Button variant="link" onClick={() => setShowAddModal(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" loading={loading} onClick={handleAddTestSet}>
+              <Button variant="primary" loading={loading} onClick={handleAddTestSet} disabled={fileCount === 0}>
                 Add Test Set
               </Button>
             </SpaceBetween>

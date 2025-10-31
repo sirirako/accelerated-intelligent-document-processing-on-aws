@@ -7,7 +7,6 @@ import {
   Button,
   SpaceBetween,
   ButtonDropdown,
-  Modal,
   Pagination,
   Box,
   TextFilter,
@@ -18,7 +17,6 @@ import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
 import DELETE_TESTS from '../../graphql/queries/deleteTests';
 import TestResults from './TestResults';
-import TestComparison from './TestComparison';
 import DeleteTestModal from './DeleteTestModal';
 import { paginationLabels } from '../common/labels';
 import { TableHeader } from '../common/table';
@@ -37,7 +35,8 @@ const TIME_PERIOD_OPTIONS = [
 ].map((option) => ({ ...option, text: option.text })); // Ensure text is the display text
 
 const TestRunIdCell = ({ item, onSelect }) => (
-  <span
+  <button
+    type="button"
     style={{
       cursor: 'pointer',
       color: '#0073bb',
@@ -47,12 +46,17 @@ const TestRunIdCell = ({ item, onSelect }) => (
       whiteSpace: 'nowrap',
       display: 'block',
       maxWidth: '100%',
+      background: 'none',
+      border: 'none',
+      padding: 0,
+      font: 'inherit',
+      textAlign: 'left',
     }}
     title={item.testRunId}
     onClick={() => onSelect(item.testRunId)}
   >
     {item.testRunId}
-  </span>
+  </button>
 );
 
 const TextCell = ({ text }) => (
@@ -81,20 +85,17 @@ TextCell.propTypes = {
   text: PropTypes.string.isRequired,
 };
 
-const TestResultsList = () => {
+const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, setSelectedItems }) => {
   const [selectedTestRunId, setSelectedTestRunId] = useState(null);
   const [testRuns, setTestRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [timePeriodHours, setTimePeriodHours] = useState(2);
-  const [isComparisonModalVisible, setIsComparisonModalVisible] = useState(false);
-  const [selectedTestRunIds, setSelectedTestRunIds] = useState([]);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [pageSize, setPageSize] = useState(10);
 
+  // Remove the URL effect since we're using props now
   // Use collection hook for pagination, filtering, and sorting
   const { items, collectionProps, paginationProps, filterProps } = useCollection(testRuns, {
     filtering: {
@@ -103,10 +104,6 @@ const TestResultsList = () => {
     },
     pagination: { pageSize },
     sorting: { defaultState: { sortingColumn: { sortingField: 'createdAt' }, isDescending: true } },
-    selection: {
-      keepSelection: false,
-      trackBy: 'testRunId',
-    },
   });
 
   const handleTestRunSelect = (testRunId) => {
@@ -114,6 +111,8 @@ const TestResultsList = () => {
   };
 
   const getTestRunIdCell = (item) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
+  const getTestSetNameCell = (item) => <TextCell text={item.testSetName} />;
+  const getContextCell = (item) => <TextCell text={item.context || 'N/A'} />;
 
   const fetchTestRuns = async () => {
     try {
@@ -174,8 +173,8 @@ const TestResultsList = () => {
   const handleCompare = () => {
     if (selectedItems.length > 1) {
       const testRunIds = selectedItems.map((item) => item.testRunId);
-      setSelectedTestRunIds(testRunIds);
-      setIsComparisonModalVisible(true);
+      const testIdsParam = testRunIds.join(',');
+      window.location.hash = `#/test-studio?tab=comparison&testIds=${testIdsParam}&timePeriod=${timePeriodHours}`;
     }
   };
 
@@ -213,10 +212,7 @@ const TestResultsList = () => {
   if (selectedTestRunId) {
     return (
       <div>
-        <Button variant="link" onClick={() => setSelectedTestRunId(null)} iconName="arrow-left">
-          Back to Test Runs
-        </Button>
-        <TestResults testRunId={selectedTestRunId} />
+        <TestResults testRunId={selectedTestRunId} setSelectedTestRunId={setSelectedTestRunId} />
       </div>
     );
   }
@@ -268,6 +264,9 @@ const TestResultsList = () => {
                 Test Comparison
               </Button>
             )}
+            <Button onClick={() => window.print()} iconName="print">
+              Print
+            </Button>
           </SpaceBetween>
         }
       />
@@ -275,6 +274,7 @@ const TestResultsList = () => {
         items={items}
         selectedItems={selectedItems}
         onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
+        trackBy="testRunId"
         sortingColumn={collectionProps.sortingColumn}
         sortingDescending={collectionProps.sortingDescending}
         onSortingChange={collectionProps.onSortingChange}
@@ -290,14 +290,14 @@ const TestResultsList = () => {
           {
             id: 'testSetName',
             header: 'Test Set Name',
-            cell: (item) => <TextCell text={item.testSetName} />,
+            cell: getTestSetNameCell,
             sortingField: 'testSetName',
             width: 150,
           },
           {
             id: 'context',
             header: 'Context',
-            cell: (item) => <TextCell text={item.context || 'N/A'} />,
+            cell: getContextCell,
             sortingField: 'context',
             width: 300,
           },
@@ -361,19 +361,6 @@ const TestResultsList = () => {
         }
       />
 
-      <Modal
-        visible={isComparisonModalVisible}
-        onDismiss={() => {
-          setIsComparisonModalVisible(false);
-          setSelectedTestRunIds([]);
-          setSelectedItems([]);
-        }}
-        size="large"
-        header="Test Comparison"
-      >
-        <TestComparison preSelectedTestRunIds={selectedTestRunIds} onTestRunSelect={setSelectedTestRunId} />
-      </Modal>
-
       <DeleteTestModal
         visible={isDeleteModalVisible}
         onDismiss={() => setIsDeleteModalVisible(false)}
@@ -386,10 +373,18 @@ const TestResultsList = () => {
   );
 };
 
-TestResultsList.propTypes = {};
-
-TestResultsList.defaultProps = {
-  onSelectTestRun: null,
+TestResultsList.propTypes = {
+  timePeriodHours: PropTypes.number.isRequired,
+  setTimePeriodHours: PropTypes.func.isRequired,
+  selectedItems: PropTypes.arrayOf(
+    PropTypes.shape({
+      testRunId: PropTypes.string,
+      testSetName: PropTypes.string,
+    }),
+  ).isRequired,
+  setSelectedItems: PropTypes.func.isRequired,
 };
+
+TestResultsList.defaultProps = {};
 
 export default TestResultsList;

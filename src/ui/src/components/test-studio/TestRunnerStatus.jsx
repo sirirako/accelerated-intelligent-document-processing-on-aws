@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Badge, ProgressBar, Box } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
-import { graphqlOperation } from '@aws-amplify/api-graphql';
 import GET_TEST_RUN_STATUS from '../../graphql/queries/getTestRunStatus';
 
 const client = generateClient();
@@ -17,7 +16,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
 
     const fetchStatus = async () => {
       try {
-        const result = await client.graphql(graphqlOperation(GET_TEST_RUN_STATUS, { testRunId }));
+        const result = await client.graphql({ query: GET_TEST_RUN_STATUS, variables: { testRunId } });
         const status = result?.data?.getTestRunStatus;
 
         if (!status) {

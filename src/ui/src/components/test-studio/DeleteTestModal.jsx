@@ -63,7 +63,11 @@ DeleteTestModal.propTypes = {
   visible: PropTypes.bool.isRequired,
   onDismiss: PropTypes.func.isRequired,
   onConfirm: PropTypes.func.isRequired,
-  selectedItems: PropTypes.array.isRequired,
+  selectedItems: PropTypes.arrayOf(
+    PropTypes.shape({
+      testRunId: PropTypes.string,
+    }),
+  ).isRequired,
   itemType: PropTypes.oneOf(['test run', 'test set']).isRequired,
   loading: PropTypes.bool,
 };
