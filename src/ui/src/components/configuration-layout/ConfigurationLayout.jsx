@@ -54,8 +54,20 @@ const ConfigurationLayout = () => {
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
   const [extractionSchema, setExtractionSchema] = useState(null);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [pendingImportConfig, setPendingImportConfig] = useState(null);
 
   const editorRef = useRef(null);
+
+  // Helper function to detect legacy format
+  const isLegacyFormat = (config) => {
+    if (!config || !config.classes || !Array.isArray(config.classes)) return false;
+    if (config.classes.length === 0) return false;
+
+    // Check if first class has legacy attributes format (array instead of object with properties)
+    const firstClass = config.classes[0];
+    return firstClass.attributes && Array.isArray(firstClass.attributes);
+  };
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -897,24 +909,25 @@ const ConfigurationLayout = () => {
     reader.onload = (e) => {
       try {
         setImportError(null);
-        let importedConfig;
         const content = e.target.result;
 
-        if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
-          importedConfig = yaml.load(content);
-        } else {
-          importedConfig = JSON.parse(content);
-        }
+        const importedConfig = file.name.endsWith('.yaml') || file.name.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
 
         if (importedConfig && typeof importedConfig === 'object') {
-          // If the imported config has classes, use them (should be JSON Schema format)
-          if (importedConfig.classes) {
-            setExtractionSchema(importedConfig.classes);
+          // Check if config is in legacy format
+          if (isLegacyFormat(importedConfig)) {
+            // Show migration modal and store config for later
+            setPendingImportConfig(importedConfig);
+            setShowMigrationModal(true);
+          } else {
+            // Modern format - load directly into form
+            if (importedConfig.classes) {
+              setExtractionSchema(importedConfig.classes);
+            }
+            handleFormChange(importedConfig);
+            setSaveSuccess(false);
+            setSaveError(null);
           }
-
-          handleFormChange(importedConfig);
-          setSaveSuccess(false);
-          setSaveError(null);
         } else {
           setImportError('Invalid configuration file format');
         }
@@ -924,8 +937,36 @@ const ConfigurationLayout = () => {
     };
     reader.readAsText(file);
     // Clear the input value to allow re-importing the same file
-    const input = event.target;
-    input.value = '';
+    event.target.value = '';
+  };
+
+  const handleMigrationConfirm = async () => {
+    if (!pendingImportConfig) return;
+
+    setIsSaving(true);
+    try {
+      // Send to backend for migration, then reload to get migrated version
+      const success = await updateConfiguration(pendingImportConfig);
+
+      if (success) {
+        await fetchConfiguration();
+        setShowMigrationModal(false);
+        setPendingImportConfig(null);
+      } else {
+        setImportError('Failed to import configuration');
+        setShowMigrationModal(false);
+      }
+    } catch (err) {
+      setImportError(`Import failed: ${err.message}`);
+      setShowMigrationModal(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMigrationCancel = () => {
+    setShowMigrationModal(false);
+    setPendingImportConfig(null);
   };
 
   if (loading) {
@@ -1055,6 +1096,41 @@ const ConfigurationLayout = () => {
           <FormField label="File name">
             <Input value={exportFileName} onChange={({ detail }) => setExportFileName(detail.value)} placeholder="configuration" />
           </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      <Modal
+        visible={showMigrationModal}
+        onDismiss={handleMigrationCancel}
+        header="Configuration Migration Required"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={handleMigrationCancel}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleMigrationConfirm} loading={isSaving}>
+                Save and Migrate
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="m">
+          <Box variant="span">
+            The configuration file you are importing uses a legacy format that needs to be migrated to the current JSON Schema format.
+          </Box>
+          <Alert type="info" header="What will happen">
+            <ul>
+              <li>The configuration will be automatically converted to the new format</li>
+              <li>All your settings and document classes will be preserved</li>
+              <li>The migrated configuration will be saved to the database</li>
+              <li>You can review the changes after migration</li>
+            </ul>
+          </Alert>
+          <Box variant="span">
+            Click &quot;Save and Migrate&quot; to proceed with the migration, or &quot;Cancel&quot; to abort the import.
+          </Box>
         </SpaceBetween>
       </Modal>
 
