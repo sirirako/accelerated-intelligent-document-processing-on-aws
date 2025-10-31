@@ -646,9 +646,15 @@ export const useSchemaDesigner = (initialSchema = []) => {
 
   const getSelectedAttribute = useCallback(() => {
     const cls = getSelectedClass();
-    if (!cls || !selectedAttributeId) return null;
-    return cls.attributes.properties[selectedAttributeId] || null;
+    return cls?.attributes?.properties?.[selectedAttributeId];
   }, [getSelectedClass, selectedAttributeId]);
+
+  const clearAllClasses = useCallback(() => {
+    setClasses([]);
+    setSelectedClassId(null);
+    setSelectedAttributeId(null);
+    setIsDirty(true);
+  }, []);
 
   return {
     classes,
@@ -670,5 +676,6 @@ export const useSchemaDesigner = (initialSchema = []) => {
     resetDirty,
     getSelectedClass,
     getSelectedAttribute,
+    clearAllClasses,
   };
 };
