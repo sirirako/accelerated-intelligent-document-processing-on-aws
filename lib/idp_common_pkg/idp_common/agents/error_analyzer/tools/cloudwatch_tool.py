@@ -150,32 +150,58 @@ def cloudwatch_document_logs(
                 "Unknown",
             )
 
-            for log_group in groups_to_search:
-                search_result = _search_cloudwatch_logs(
-                    log_group_name=log_group["name"],
-                    filter_pattern=filter_pattern,
-                    max_events=max_log_events,
-                    start_time=document_start_time,
-                    end_time=document_end_time,
-                    request_id=request_id,
-                )
+            # Extract function type from Lambda function name (e.g., "ClassificationFunction")
+            function_type = _extract_function_type(function_name)
 
-                if search_result.get("events_found", 0) > 0:
-                    search_method_used = "lambda_request_id"
+            # Find matching log group for this function type
+            matching_log_groups = (
+                [
+                    lg
+                    for lg in groups_to_search
+                    if function_type and function_type in lg["name"]
+                ]
+                if function_type
+                else []
+            )
+
+            # Only search the specific matching log group for this function's request ID
+            log_groups_to_search = matching_log_groups
+
+            if log_groups_to_search:
+                for log_group in log_groups_to_search:
                     logger.info(
-                        f"Found {search_result['events_found']} error events in {log_group['name']} for Lambda function {function_name} using request ID {request_id}"
+                        f"Searching log group {log_group['name']} for Lambda function {function_name} ({function_type}) with request ID {request_id}"
                     )
-                    all_results.append(
-                        {
-                            "log_group": log_group["name"],
-                            "lambda_function_name": function_name,
-                            "request_id": request_id,
-                            "search_method": "lambda_request_id",
-                            "events_found": search_result["events_found"],
-                            "events": search_result["events"],
-                        }
+                    # Use ERROR pattern and filter by request ID in post-processing
+                    search_result = _search_cloudwatch_logs(
+                        log_group_name=log_group["name"],
+                        filter_pattern="ERROR",  # Search for errors, filter by request ID later
+                        max_events=max_log_events * 3,  # Get more events to filter
+                        start_time=document_start_time,
+                        end_time=document_end_time,
+                        request_id=request_id,
                     )
-                    total_events += search_result["events_found"]
+
+                    if search_result.get("events_found", 0) > 0:
+                        search_method_used = "lambda_request_id"
+                        logger.info(
+                            f"Found {search_result['events_found']} error events in {log_group['name']} for Lambda function {function_name} using request ID {request_id}"
+                        )
+                        all_results.append(
+                            {
+                                "log_group": log_group["name"],
+                                "lambda_function_name": function_name,
+                                "request_id": request_id,
+                                "search_method": "lambda_request_id",
+                                "events_found": search_result["events_found"],
+                                "events": search_result["events"],
+                            }
+                        )
+                        total_events += search_result["events_found"]
+            else:
+                logger.info(
+                    f"No matching log group found for Lambda function {function_name} ({function_type})"
+                )
 
             # Stop if we found errors from the first (likely failed) function
             if total_events > 0:
@@ -352,9 +378,6 @@ def extract_error_keywords(log_events: List[LogEvent]) -> Dict[str, int]:
         "timeout",
         "fatal",
         "critical",
-        "panic",
-        "abort",
-        "crash",
         "denied",
         "refused",
     ]
@@ -418,13 +441,25 @@ def _search_cloudwatch_logs(
         if final_filter_pattern:
             params["filterPattern"] = final_filter_pattern
 
+        logger.info(
+            f"CloudWatch search params for {log_group_name}: filter='{final_filter_pattern}', request_id={request_id}"
+        )
+
         response = client.filter_log_events(**params)
+        logger.info(
+            f"CloudWatch API returned {len(response.get('events', []))} raw events for {log_group_name}"
+        )
 
         events = []
         for event in response.get("events", []):
             message = event["message"]
             if _should_exclude_log_event(message, filter_pattern):
                 continue
+
+            # When using request ID search, only include events with matching request ID
+            if request_id and request_id not in message:
+                continue
+
             events.append(
                 {
                     "timestamp": datetime.fromtimestamp(
@@ -450,28 +485,13 @@ def _search_cloudwatch_logs(
 
 def _build_filter_pattern(base_pattern: str, request_id: str = None) -> str:
     """
-    Build CloudWatch filter pattern combining request ID and error keywords.
-
-    Args:
-        base_pattern: Base filter pattern (e.g., "ERROR")
-        request_id: Lambda request ID for precise filtering
-
-    Returns:
-        Optimized filter pattern string
+    Build CloudWatch filter pattern. Use ERROR pattern and filter by request ID in post-processing.
     """
-    if request_id and base_pattern:
-        # Use CloudWatch filter syntax: both request_id AND error pattern must be present
-        sanitized_pattern = base_pattern.replace(":", "")
-        combined_pattern = f"{request_id} {sanitized_pattern}"
-        logger.debug(f"Building combined filter pattern: {combined_pattern}")
-        return combined_pattern
-    elif request_id:
-        logger.debug(f"Building filter pattern with request ID: {request_id}")
-        return request_id
+    if request_id:
+        # Use ERROR pattern, will filter by request ID in post-processing
+        return base_pattern if base_pattern else "ERROR"
     elif base_pattern:
-        sanitized_pattern = base_pattern.replace(":", "")
-        logger.debug(f"Building filter pattern with base pattern: {sanitized_pattern}")
-        return sanitized_pattern
+        return base_pattern
     else:
         return ""
 
@@ -583,6 +603,47 @@ def _get_log_group_prefix(stack_name: str) -> Dict[str, Any]:
 
     except Exception as e:
         return create_error_response(str(e), stack_name=stack_name)
+
+
+def _extract_function_type(lambda_function_name: str) -> str:
+    """
+    Extract function type from Lambda function name using pattern matching.
+
+    Examples:
+    - DEV-P2-EA8-PATTERN2STACK-1H-ClassificationFunction-dSp68ELdR85C -> ClassificationFunction
+    - DEV-P2-EA8-PATTERN2STACK-1HHT2VDXH7MW0-OCRFunction-EQ6aqmcsC4XO -> OCRFunction
+    - DEV-P2-EA8-QueueProcessor-JweFNlBa4vkV -> QueueProcessor
+    """
+    if not lambda_function_name:
+        return ""
+
+    # Split by hyphens and look for parts ending with "Function" or "Processor"
+    parts = lambda_function_name.split("-")
+
+    for part in parts:
+        # Look for parts ending with common Lambda function suffixes
+        if part.endswith(("Function", "Processor")) and len(part) > 8:
+            return part
+
+    return ""
+
+
+def _is_error_event(message: str) -> bool:
+    """
+    Check if a log message is an error event.
+    """
+    message_upper = message.upper()
+    error_indicators = [
+        "[ERROR]",
+        "ERROR:",
+        "EXCEPTION",
+        "FAILED",
+        "FAILURE",
+        "TIMEOUT",
+        "FATAL",
+        "CRITICAL",
+    ]
+    return any(indicator in message_upper for indicator in error_indicators)
 
 
 def _should_exclude_log_event(message: str, filter_pattern: str = "") -> bool:

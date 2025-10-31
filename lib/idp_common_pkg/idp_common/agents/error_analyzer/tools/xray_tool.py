@@ -303,7 +303,6 @@ def extract_lambda_request_ids(xray_trace_id: str) -> Dict[str, str]:
 
     try:
         response = xray_client.batch_get_traces(TraceIds=[xray_trace_id])
-        logger.info(f"X-Ray batch_get_traces response for {xray_trace_id}: {response}")
 
         traces = response.get("Traces", [])
         if not traces:
