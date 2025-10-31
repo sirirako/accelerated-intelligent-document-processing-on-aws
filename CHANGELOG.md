@@ -5,6 +5,21 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Added
+
+- **Agent Companion Chat Experience**
+  - Added comprehensive interactive AI assistant interface providing real-time conversational support for the IDP Accelerator
+  - **Session-Based Architecture**: Transformed from job-based (single request/response) to session-based (multi-turn conversations) with unified agentic chat experience
+  - **Persistent Chat Memory**: DynamoDB-backed conversation history with automatic loading of last 20 turns, turn-based message grouping, and intelligent context management with sliding window optimization
+  - **Real-Time Streaming**: AppSync GraphQL subscriptions enable incremental response streaming with proper async task cleanup and thinking tag removal for clean display
+  - **Code Intelligence Agent**: New specialized agent for code-related assistance with DeepWiki MCP server integration, security guardrails to prevent sensitive data exposure, and user-controlled opt-in toggle (default: enabled)
+  - **Sub-Agent Streaming**: Real-time lifecycle events (start, stream, end, error) with async generator tools, structured data detection for tables/charts, and tool usage tracking
+  - **Rich Chat Interface**: Modern UI with CloudScape Design System featuring real-time message streaming, multi-agent support (Analytics, Code Intelligence, Error Analyzer, General), Markdown rendering with syntax highlighting, structured data visualization (charts via Chart.js, sortable tables), expandable tool usage sections, sample prompts, and auto-scroll behavior
+  - **Enhanced User Experience**: Welcome animation, sample query suggestions, clear chat functionality, responsive mobile-friendly design, accessibility support with ARIA labels, loading states and visual feedback, error alerts with dismissible notifications
+  - **Privacy & Security**: Explicit user consent for Code Intelligence third-party services, session isolation with unique session IDs, error boundary protection, input validation
+
 ### Fixed
 
 - **UI Robustness for Orphaned List Entries** - [#102](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/102)
@@ -13,14 +28,6 @@ SPDX-License-Identifier: MIT-0
   - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
   - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
   - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
-
-## [0.3.21]
-
-### Added
-
-- **Claude Sonnet 4.5 Haiku Model Support**
-  - Added support for Claude Haiku 4.5
-  - Available for configuration across all document processing steps
 
 - **JSON Schema Format for Class Definitions** - [docs/json-schema-migration.md](./docs/json-schema-migration.md)
   - Document class definitions now use industry-standard JSON Schema Draft 2020-12 format for improved flexibility and tooling integration
@@ -31,6 +38,33 @@ SPDX-License-Identifier: MIT-0
   - **Automatic Migration**: Existing legacy configurations automatically migrate to JSON Schema format on first load - completely transparent to users
   - **Backward Compatible**: Legacy format remains supported through automatic migration - no manual configuration updates required
   - **Comprehensive Documentation**: New migration guide with format comparison, field mapping table, and best practices
+
+
+
+## [0.3.21]
+
+### Added
+
+- **Claude Sonnet 4.5 Haiku Model Support**
+  - Added support for Claude Haiku 4.5
+  - Available for configuration across all document processing steps
+
+- **X-Ray Integration for Error Analyzer Agent**
+  - Integrated AWS X-Ray tracing tools to enhance diagnostic capabilities of the error analyzer agent
+  - X-Ray context enables better distinction between infrastructure issues and application logic failures
+  - Added trace ID persistence in DynamoDB alongside document status for complete traceability
+  - Enhanced CloudWatch error log filtering for more targeted error analysis
+  - Simplified CloudWatch results structure for improved readability and analysis
+  - Updated error analyzer recommendations to leverage X-Ray insights for more accurate root cause identification
+
+- **EU Region Support with Automatic Model Mapping**
+  - Added support for deploying the solution in EU regions (eu-central-1, eu-west-1, etc.)
+  - Automatic model endpoint mapping between US and EU regions for seamless deployment
+  - Comprehensive model mapping table covering Amazon Nova and Anthropic Claude models
+  - Intelligent fallback mappings when direct EU equivalents are unavailable
+  - Quick Launch button for eu-central-1 region in README and deployment documentation
+  - IDP CLI now supports eu-central-1 deployment with automatic template URL selection
+  - Complete technical documentation in `docs/eu-region-model-support.md` with best practices and troubleshooting
 
 ### Changed
 
@@ -44,9 +78,9 @@ SPDX-License-Identifier: MIT-0
 
 
 - **Migrated UI Build System from Create React App to Vite**
-  - Upgraded to Vite 7 for faster build times and improved developer experience
+  - Upgraded to Vite 7 for faster build times
   - Updated to React 18, AWS Amplify v6, react-router-dom v6, and Cloudscape Design System
-  - Reduced dependencies and node_modules size for faster installs
+  - Reduced dependencies and node_modules size
   - Implemented strategic code splitting for improved performance
   - Environment variables now use `VITE_` prefix instead of `REACT_APP_` for local development
 
