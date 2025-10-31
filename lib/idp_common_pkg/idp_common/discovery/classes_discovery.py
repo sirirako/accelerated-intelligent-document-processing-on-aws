@@ -94,9 +94,10 @@ class ClassesDiscovery:
             # No need to transform - it's already in the right format
             current_class = model_response
 
-            custom_item = self.config_manager.get_configuration("Custom")
+            custom_item_raw = self.config_manager.get_configuration("Custom")
+            custom_item = cast(Optional[IDPConfig], custom_item_raw)
             classes = []
-            if custom_item and hasattr(custom_item, "classes") and custom_item.classes:
+            if custom_item and custom_item.classes:
                 classes = list(custom_item.classes)
                 # Check for existing class by $id or x-aws-idp-document-type
                 class_id = current_class.get("$id") or current_class.get(
@@ -115,8 +116,15 @@ class ClassesDiscovery:
                 classes.append(current_class)
 
             # Update configuration with new classes
-            config_data = {"classes": classes}
-            self.config_manager.save_configuration("Custom", config_data)
+            # Load existing custom config to preserve all other fields
+            if not custom_item:
+                # If no custom config exists, get default as base
+                default_raw = self.config_manager.get_configuration("Default")
+                custom_item = cast(Optional[IDPConfig], default_raw) or IDPConfig()
+
+            # Update only the classes field, preserving all other config
+            custom_item.classes = classes
+            self.config_manager.save_configuration("Custom", custom_item)
 
             return {"status": "SUCCESS"}
 
@@ -167,9 +175,10 @@ class ClassesDiscovery:
             # No need to transform - it's already in the right format
             current_class = model_response
 
-            custom_item = self.config_manager.get_configuration("Custom")
+            custom_item_raw = self.config_manager.get_configuration("Custom")
+            custom_item = cast(Optional[IDPConfig], custom_item_raw)
             classes = []
-            if custom_item and hasattr(custom_item, "classes") and custom_item.classes:
+            if custom_item and custom_item.classes:
                 classes = list(custom_item.classes)
                 # Check for existing class by $id or x-aws-idp-document-type
                 class_id = current_class.get("$id") or current_class.get(
@@ -188,8 +197,15 @@ class ClassesDiscovery:
                 classes.append(current_class)
 
             # Update configuration with new classes
-            config_data = {"classes": classes}
-            self.config_manager.save_configuration("Custom", config_data)
+            # Load existing custom config to preserve all other fields
+            if not custom_item:
+                # If no custom config exists, get default as base
+                default_raw = self.config_manager.get_configuration("Default")
+                custom_item = cast(Optional[IDPConfig], default_raw) or IDPConfig()
+
+            # Update only the classes field, preserving all other config
+            custom_item.classes = classes
+            self.config_manager.save_configuration("Custom", custom_item)
 
             return {"status": "SUCCESS"}
 
