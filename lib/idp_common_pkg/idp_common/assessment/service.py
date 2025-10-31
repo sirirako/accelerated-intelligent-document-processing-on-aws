@@ -82,7 +82,9 @@ class AssessmentService:
     """Service for assessing extraction result confidence using LLMs."""
 
     def __init__(
-        self, region: str = None, config: Union[Dict[str, Any], IDPConfig] = None
+        self,
+        region: str | None = None,
+        config: Union[Dict[str, Any], IDPConfig, None] = None,
     ):
         """
         Initialize the assessment service.
@@ -94,10 +96,12 @@ class AssessmentService:
         # Convert dict to IDPConfig if needed
         if config is not None and isinstance(config, dict):
             config_model: IDPConfig = IDPConfig(**config)
-        elif config is None:
+
+        if not isinstance(config, IDPConfig) and config is not None:
+            config_model = IDPConfig(**config)
+
+        if config is None:
             config_model = IDPConfig()
-        else:
-            config_model = config
 
         self.config = config_model
         self.region = region or os.environ.get("AWS_REGION")

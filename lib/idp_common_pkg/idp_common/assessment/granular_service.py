@@ -17,7 +17,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from idp_common import bedrock, image, metrics, s3, utils
 from idp_common.config.models import IDPConfig
@@ -107,9 +107,9 @@ class GranularAssessmentService:
 
     def __init__(
         self,
-        region: str = None,
-        config: Union[Dict[str, Any], IDPConfig] = None,
-        cache_table: str = None,
+        region: str | None = None,
+        config: Dict[str, Any] | IDPConfig | None = None,
+        cache_table: str | None = None,
     ):
         """
         Initialize the granular assessment service.
