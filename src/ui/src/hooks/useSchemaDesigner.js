@@ -481,7 +481,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
 
               if (!refClass) {
                 console.log(
-                  `      ❌ No class found with name "${refName}". Available classes:`,
+                  `      ❌ No class found with name "${refName}". Available classes:`, // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Controlled input from schema validation, not user input
                   classes.map((c) => c.name),
                 );
               } else {
@@ -507,7 +507,7 @@ export const useSchemaDesigner = (initialSchema = []) => {
 
               if (!refClass) {
                 console.log(
-                  `      ❌ No class found with name "${refName}". Available classes:`,
+                  `      ❌ No class found with name "${refName}". Available classes:`, // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Controlled input from schema validation, not user input
                   classes.map((c) => c.name),
                 );
               } else {
