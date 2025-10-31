@@ -13,8 +13,7 @@ import { appLayoutLabels } from '../common/labels';
 import useAppContext from '../../contexts/app';
 
 const TestStudioLayout = () => {
-  const { navigationOpen, setNavigationOpen, currentTestRunId, setCurrentTestRunId, testStarted, setTestStarted } =
-    useAppContext();
+  const { navigationOpen, setNavigationOpen, activeTestRuns, addTestRun, removeTestRun } = useAppContext();
   const location = useLocation();
   const [activeTabId, setActiveTabId] = useState('sets');
   const [timePeriodHours, setTimePeriodHours] = useState(2);
@@ -29,14 +28,12 @@ const TestStudioLayout = () => {
     }
   }, [location.search]);
 
-  const handleTestStart = (testRunId) => {
-    setCurrentTestRunId(testRunId);
-    setTestStarted(true);
+  const handleTestStart = (testRunId, testSetName) => {
+    addTestRun(testRunId, testSetName);
   };
 
-  const handleTestComplete = () => {
-    setTestStarted(false);
-    setCurrentTestRunId(null);
+  const handleTestComplete = (testRunId) => {
+    removeTestRun(testRunId);
   };
 
   const renderContent = () => {
@@ -48,8 +45,7 @@ const TestStudioLayout = () => {
           <TestRunner
             onTestStart={handleTestStart}
             onTestComplete={handleTestComplete}
-            currentTestRunId={currentTestRunId}
-            testStarted={testStarted}
+            activeTestRuns={activeTestRuns}
           />
         );
       case 'results':

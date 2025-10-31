@@ -261,7 +261,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
             />
             {selectedItems.length > 1 && (
               <Button iconName="compare" variant="normal" onClick={handleCompare}>
-                Test Comparison
+                Test Comparison ({selectedItems.length})
               </Button>
             )}
             <Button onClick={() => window.print()} iconName="print">

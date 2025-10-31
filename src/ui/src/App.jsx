@@ -23,8 +23,15 @@ const AppContent = () => {
   const { currentSession, currentCredentials } = useCurrentSessionCreds({ authState });
   const [errorMessage, setErrorMessage] = useState();
   const [navigationOpen, setNavigationOpen] = useState(true);
-  const [currentTestRunId, setCurrentTestRunId] = useState(null);
-  const [testStarted, setTestStarted] = useState(false);
+  const [activeTestRuns, setActiveTestRuns] = useState([]);
+
+  const addTestRun = (testRunId, testSetName) => {
+    setActiveTestRuns((prev) => [...prev, { testRunId, testSetName, startTime: new Date() }]);
+  };
+
+  const removeTestRun = (testRunId) => {
+    setActiveTestRuns((prev) => prev.filter((run) => run.testRunId !== testRunId));
+  };
 
   // eslint-disable-next-line react/jsx-no-constructed-context-values
   const appContextValue = {
@@ -37,10 +44,9 @@ const AppContent = () => {
     user,
     navigationOpen,
     setNavigationOpen,
-    currentTestRunId,
-    setCurrentTestRunId,
-    testStarted,
-    setTestStarted,
+    activeTestRuns,
+    addTestRun,
+    removeTestRun,
   };
   logger.debug('appContextValue', appContextValue);
 

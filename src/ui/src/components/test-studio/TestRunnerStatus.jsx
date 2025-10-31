@@ -40,7 +40,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
     return () => clearInterval(interval);
   }, [testRunId, onComplete]);
 
-  if (!testRunStatus) return null;
+  if (!testRunStatus) return <span>Loading...</span>;
 
   const getStatusColor = (status) => {
     const colors = {
@@ -84,11 +84,6 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
       <ProgressBar
         value={testRunStatus.progress}
         label={getProgressLabel()}
-        description={
-          testRunStatus.status === 'EVALUATING'
-            ? 'Documents processed, waiting for evaluation to complete...'
-            : undefined
-        }
       />
     </Box>
   );

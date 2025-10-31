@@ -5,16 +5,7 @@ const GET_TEST_RUNS = `
       testSetName
       status
       filesCount
-      completedFiles
-      failedFiles
-      overallAccuracy
-      averageConfidence
-      accuracyBreakdown
-      totalCost
-      costBreakdown
-      usageBreakdown
       createdAt
-      completedAt
       context
     }
   }

@@ -1,14 +1,13 @@
 const GET_TEST_RUN_STATUS = `
-  query GetTestRunStatus($testRunId: ID!) {
+  query GetTestRunStatus($testRunId: String!) {
     getTestRunStatus(testRunId: $testRunId) {
-      id
+      testRunId
       status
       progress
-      accuracy
-      executionTime
-      errorMessage
-      results
-      updatedAt
+      filesCount
+      completedFiles
+      failedFiles
+      evaluatingFiles
     }
   }
 `;

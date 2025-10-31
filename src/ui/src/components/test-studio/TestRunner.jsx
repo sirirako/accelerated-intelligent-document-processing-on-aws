@@ -17,11 +17,13 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
+import ActiveTestRunsList from './ActiveTestRunsList';
+import handlePrint from './PrintUtils';
 
 const client = generateClient();
 const logger = new ConsoleLogger('TestRunner');
 
-const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
+const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
   const [testSets, setTestSets] = useState([]);
   const [selectedTestSet, setSelectedTestSet] = useState(null);
   const [context, setContext] = useState('');
@@ -72,7 +74,7 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
       }
 
       logger.info('Test run started:', result.data.startTestRun);
-      onTestStart(result.data.startTestRun.testRunId);
+      onTestStart(result.data.startTestRun.testRunId, selectedTestSet.label.split(' (')[0]);
       setError('');
     } catch (err) {
       logger.error('Failed to start test run:', err);
@@ -104,78 +106,72 @@ const TestRunner = ({ onTestStart, currentTestRunId, testStarted }) => {
   }));
 
   return (
-    <Container
-      header={
-        <Header variant="h2" description="Select a test set and execute test runs for document processing">
-          {testStarted ? `Test Running: ${currentTestRunId}` : 'Run Test Set'}
-        </Header>
-      }
-    >
-      <SpaceBetween size="l">
-        {error && (
-          <Alert type="error" dismissible onDismiss={() => setError('')}>
-            {error}
-          </Alert>
-        )}
-
-        {testStarted && (
-          <Alert type="warning" header="Test Already Running">
-            A test is currently running. Please wait for it to complete before starting a new test.
-          </Alert>
-        )}
-
-        {!testStarted ? (
-          <>
-            <FormField label="Select Test Set" description="Choose an existing test set to run">
-              <Select
-                selectedOption={selectedTestSet}
-                onChange={({ detail }) => setSelectedTestSet(detail.selectedOption)}
-                options={testSetOptions}
-                placeholder="Choose a test set..."
-                empty="No test sets available"
-              />
-            </FormField>
-
-            <FormField label="Context" description="Optional context information for this test run">
-              <Textarea
-                value={context}
-                onChange={({ detail }) => setContext(detail.value)}
-                placeholder="Enter context information..."
-                rows={3}
-              />
-            </FormField>
-
-            <Box float="right">
-              <Button
-                variant="primary"
-                onClick={handleRunTest}
-                loading={loading}
-                disabled={!selectedTestSet || testStarted}
-              >
-                Run Test
-              </Button>
-            </Box>
-          </>
-        ) : (
-          <Box textAlign="center">
-            <Alert type="success" header="Test Started Successfully">
-              Test run {currentTestRunId} is now running. Monitor progress in the status bar above.
+    <SpaceBetween size="l">
+      <Container
+        header={
+          <Header 
+            variant="h2" 
+            description="Select a test set and execute test runs for document processing"
+            actions={
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button variant="primary" onClick={handleRunTest} loading={loading} disabled={!selectedTestSet}>
+                  Run Test
+                </Button>
+                <Button onClick={handlePrint} iconName="print">
+                  Print
+                </Button>
+              </SpaceBetween>
+            }
+          >
+            Run Test Set
+          </Header>
+        }
+      >
+        <SpaceBetween size="l">
+          {error && (
+            <Alert type="error" dismissible onDismiss={() => setError('')}>
+              {error}
             </Alert>
-          </Box>
-        )}
-      </SpaceBetween>
-    </Container>
+          )}
+
+          <FormField label="Select Test Set" description="Choose an existing test set to run">
+            <Select
+              selectedOption={selectedTestSet}
+              onChange={({ detail }) => setSelectedTestSet(detail.selectedOption)}
+              options={testSetOptions}
+              placeholder="Choose a test set..."
+              empty="No test sets available"
+            />
+          </FormField>
+
+          <FormField label="Context" description="Optional context information for this test run">
+            <Textarea
+              value={context}
+              onChange={({ detail }) => setContext(detail.value)}
+              placeholder="Enter context information..."
+              rows={3}
+            />
+          </FormField>
+        </SpaceBetween>
+      </Container>
+
+      <ActiveTestRunsList activeTestRuns={activeTestRuns} onTestComplete={onTestComplete} />
+    </SpaceBetween>
   );
 };
 
 TestRunner.propTypes = {
   onTestStart: PropTypes.func.isRequired,
-  currentTestRunId: PropTypes.string,
-  testStarted: PropTypes.bool.isRequired,
+  onTestComplete: PropTypes.func.isRequired,
+  activeTestRuns: PropTypes.arrayOf(
+    PropTypes.shape({
+      testRunId: PropTypes.string.isRequired,
+      testSetName: PropTypes.string.isRequired,
+      startTime: PropTypes.instanceOf(Date).isRequired,
+    }),
+  ).isRequired,
 };
 
-TestRunner.defaultProps = {
-  currentTestRunId: null,
-};
+TestRunner.defaultProps = {};
 
 export default TestRunner;
