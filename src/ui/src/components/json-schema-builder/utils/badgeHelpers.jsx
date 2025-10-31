@@ -25,10 +25,11 @@ export const getTypeColor = (type) => {
 export const getTypeBadgeText = (attribute) => {
   if (!attribute) return null;
 
-  // Object with reference: show as "object[ClassName]"
-  if (attribute.type === 'object' && attribute.$ref) {
+  // Object with reference: show as "ClassName" (without object prefix)
+  // Note: When an attribute has a $ref, it typically doesn't have a type field
+  if (attribute.$ref) {
     const className = attribute.$ref.replace('#/$defs/', '');
-    return { text: `object[${className}]`, color: getTypeColor('object'), className };
+    return { text: `${className}`, color: getTypeColor('object'), className };
   }
 
   // Array with reference: show as "array[ClassName]"

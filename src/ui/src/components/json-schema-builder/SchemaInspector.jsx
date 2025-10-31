@@ -186,13 +186,25 @@ const SchemaInspector = ({
 
         <FormField label="Type" description="JSON Schema type for this attribute">
           <Select
-            selectedOption={TYPE_OPTIONS.find((opt) => opt.value === selectedAttribute.type) || null}
-            onChange={({ detail }) => onUpdate({ type: detail.selectedOption.value })}
+            selectedOption={
+              TYPE_OPTIONS.find((opt) => opt.value === selectedAttribute.type) ||
+              // If no type but has $ref, assume it's an object reference
+              (selectedAttribute.$ref ? TYPE_OPTIONS.find((opt) => opt.value === 'object') : null) ||
+              null
+            }
+            onChange={({ detail }) => {
+              // When changing type, remove $ref if it exists (it's incompatible with inline type)
+              const updates = { type: detail.selectedOption.value };
+              if (selectedAttribute.$ref) {
+                updates.$ref = undefined;
+              }
+              onUpdate(updates);
+            }}
             options={TYPE_OPTIONS}
           />
         </FormField>
 
-        {selectedAttribute.type === 'object' && availableClasses && availableClasses.length > 0 && (
+        {(selectedAttribute.type === 'object' || selectedAttribute.$ref) && availableClasses && availableClasses.length > 0 && (
           <>
             <FormField
               label="Reference Existing Class (Optional)"
@@ -211,14 +223,23 @@ const SchemaInspector = ({
                   onChange={({ detail }) => {
                     if (detail.selectedOption.value) {
                       const updates = { ...selectedAttribute, $ref: detail.selectedOption.value };
+                      // Remove inline object properties as they conflict with $ref
                       delete updates.properties;
                       delete updates.required;
                       delete updates.minProperties;
                       delete updates.maxProperties;
                       delete updates.additionalProperties;
+                      // Note: Keep type as 'object' for UI purposes, but it won't be exported in the final schema
+                      if (!updates.type) {
+                        updates.type = 'object';
+                      }
                       onUpdate(updates);
                     } else {
                       const updates = { ...selectedAttribute, $ref: undefined };
+                      // Restore type to object when removing $ref
+                      if (!updates.type) {
+                        updates.type = 'object';
+                      }
                       onUpdate(updates);
                     }
                   }}
