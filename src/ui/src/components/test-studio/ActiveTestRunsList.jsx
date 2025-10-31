@@ -5,10 +5,21 @@ import PropTypes from 'prop-types';
 import { Container, Header, Table, Box } from '@cloudscape-design/components';
 import TestRunnerStatus from './TestRunnerStatus';
 
+const StatusCell = ({ testRunId, onComplete }) => <TestRunnerStatus testRunId={testRunId} onComplete={onComplete} />;
+
+StatusCell.propTypes = {
+  testRunId: PropTypes.string.isRequired,
+  onComplete: PropTypes.func.isRequired,
+};
+
 const ActiveTestRunsList = ({ activeTestRuns, onTestComplete }) => {
   if (activeTestRuns.length === 0) {
     return null;
   }
+
+  const renderStatusCell = (item) => (
+    <StatusCell testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />
+  );
 
   const columnDefinitions = [
     {
@@ -32,12 +43,7 @@ const ActiveTestRunsList = ({ activeTestRuns, onTestComplete }) => {
     {
       id: 'status',
       header: 'Status',
-      cell: (item) => (
-        <TestRunnerStatus
-          testRunId={item.testRunId}
-          onComplete={() => onTestComplete(item.testRunId)}
-        />
-      ),
+      cell: renderStatusCell,
       minWidth: 200,
     },
   ];
@@ -71,7 +77,7 @@ ActiveTestRunsList.propTypes = {
       testRunId: PropTypes.string.isRequired,
       testSetName: PropTypes.string.isRequired,
       startTime: PropTypes.instanceOf(Date).isRequired,
-    })
+    }),
   ).isRequired,
   onTestComplete: PropTypes.func.isRequired,
 };

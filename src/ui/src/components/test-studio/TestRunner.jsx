@@ -10,7 +10,6 @@ import {
   FormField,
   Select,
   Alert,
-  Box,
   Textarea,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
@@ -109,8 +108,8 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
     <SpaceBetween size="l">
       <Container
         header={
-          <Header 
-            variant="h2" 
+          <Header
+            variant="h2"
             description="Select a test set and execute test runs for document processing"
             actions={
               <SpaceBetween direction="horizontal" size="xs">

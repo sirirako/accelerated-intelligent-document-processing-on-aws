@@ -81,10 +81,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
   return (
     <Box>
       <Badge color={getStatusColor(testRunStatus.status)}>{getStatusLabel(testRunStatus.status)}</Badge>
-      <ProgressBar
-        value={testRunStatus.progress}
-        label={getProgressLabel()}
-      />
+      <ProgressBar value={testRunStatus.progress} label={getProgressLabel()} />
     </Box>
   );
 };
