@@ -55,7 +55,6 @@ def dynamodb_status(object_key: str) -> Dict[str, Any]:
         - suggestion (str): Alternative tools to use if tracking unavailable
     """
     result = dynamodb_record(object_key)
-    logger.info(f"DynamoDB status response for {object_key}: {result}")
 
     if result.get("document_found"):
         document = result.get("document", {})
@@ -72,7 +71,7 @@ def dynamodb_status(object_key: str) -> Dict[str, Any]:
                 or document.get("ExecutionArn"),
             }
         )
-        logger.info(f"DynamoDB status final response for {object_key}: {response}")
+        logger.info(f"DynamoDB status response for {object_key}: {response}")
         return response
     return result
 
@@ -238,7 +237,6 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
         dynamodb_response = tracking_table.get_item(
             Key={"PK": f"doc#{object_key}", "SK": "none"}
         )
-        logger.info(f"DynamoDB get_item response for {object_key}: {dynamodb_response}")
 
         if "Item" in dynamodb_response:
             document_item = decimal_to_float(dynamodb_response["Item"])
@@ -250,7 +248,7 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
                     "object_key": object_key,
                 }
             )
-            logger.info(f"DynamoDB record final response for {object_key}: {response}")
+            logger.info(f"DynamoDB record response for {object_key}: {response}")
             return response
         else:
             response = create_response(

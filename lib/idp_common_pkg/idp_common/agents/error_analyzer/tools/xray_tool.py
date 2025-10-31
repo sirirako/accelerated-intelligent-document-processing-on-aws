@@ -210,7 +210,7 @@ def xray_trace(document_id: str, tracking_table_name: str = None) -> Dict[str, A
                 f"Attempting to get trace details for trace_id: {xray_trace_id}"
             )
             segments_response = xray_client.batch_get_traces(TraceIds=[xray_trace_id])
-            logger.info(f"X-Ray batch_get_traces response: {segments_response}")
+            logger.debug(f"X-Ray batch_get_traces response: {segments_response}")
 
             if not segments_response.get("Traces"):
                 return create_error_response(
@@ -326,7 +326,7 @@ def extract_lambda_request_ids(xray_trace_id: str) -> Dict[str, str]:
                     logger.warning(f"Failed to parse segment document: {e}")
                     continue
 
-        logger.info(f"Total Lambda executions found: {lambda_executions}")
+        logger.debug(f"Total Lambda executions found: {lambda_executions}")
 
         # Convert to function_name -> request_id mapping
         lambda_function_to_request_id_map = {}
@@ -337,7 +337,7 @@ def extract_lambda_request_ids(xray_trace_id: str) -> Dict[str, str]:
                 )
 
         logger.info(
-            f"Final Lambda function to request ID mapping: {lambda_function_to_request_id_map}"
+            f"Lambda function to request ID mapping: {lambda_function_to_request_id_map}"
         )
         return lambda_function_to_request_id_map
 

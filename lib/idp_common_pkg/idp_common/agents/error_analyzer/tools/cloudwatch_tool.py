@@ -138,6 +138,7 @@ def cloudwatch_document_logs(
         all_results = []
         total_events = 0
         groups_to_search = log_groups["log_groups"][:max_log_groups]
+        search_method_used = "none"
 
         for request_id in request_ids_to_search:
             function_name = next(
@@ -160,14 +161,16 @@ def cloudwatch_document_logs(
                 )
 
                 if search_result.get("events_found", 0) > 0:
+                    search_method_used = "lambda_request_id"
                     logger.info(
-                        f"Found {search_result['events_found']} error events in {log_group['name']} for Lambda function {function_name}"
+                        f"Found {search_result['events_found']} error events in {log_group['name']} for Lambda function {function_name} using request ID {request_id}"
                     )
                     all_results.append(
                         {
                             "log_group": log_group["name"],
                             "lambda_function_name": function_name,
                             "request_id": request_id,
+                            "search_method": "lambda_request_id",
                             "events_found": search_result["events_found"],
                             "events": search_result["events"],
                         }
@@ -202,13 +205,14 @@ def cloudwatch_document_logs(
                     ]
 
                     if error_events:
+                        search_method_used = "document_specific_fallback"
                         logger.info(
-                            f"Found {len(error_events)} document-specific error events in {log_group['name']}"
+                            f"Found {len(error_events)} document-specific error events in {log_group['name']} using fallback search"
                         )
                         all_results.append(
                             {
                                 "log_group": log_group["name"],
-                                "search_type": "document_specific",
+                                "search_method": "document_specific_fallback",
                                 "events_found": len(error_events),
                                 "events": error_events,
                             }
@@ -216,16 +220,21 @@ def cloudwatch_document_logs(
                         total_events += len(error_events)
                         break
 
-        return {
+        response = {
             "analysis_type": "document_specific",
             "document_id": document_id,
             "document_status": document_status,
             "xray_trace_id": xray_trace_id,
             "stack_name_used": actual_stack_name,
+            "search_method_used": search_method_used,
             "lambda_functions_found": list(lambda_function_to_request_id_map.keys()),
             "total_events_found": total_events,
             "results": all_results,
         }
+        logger.info(
+            f"CloudWatch document logs response - search method: {search_method_used}, events found: {total_events}"
+        )
+        return response
 
     except Exception as e:
         logger.error(f"Document log search failed for {document_id}: {e}")
