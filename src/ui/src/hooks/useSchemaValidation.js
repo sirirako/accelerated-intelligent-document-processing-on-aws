@@ -29,7 +29,7 @@ export const useSchemaValidation = () => {
 
   const ajv = useMemo(() => {
     const instance = new Ajv({
-      allErrors: true,
+      allErrors: true, // nosemgrep: javascript.ajv.security.audit.ajv-allerrors-true.ajv-allerrors-true - allErrors required for comprehensive validation feedback for user created schemas in UI
       strict: false,
       validateFormats: true,
       discriminator: true,

@@ -16,7 +16,7 @@ import boto3
 def run_command(cmd, check=True):
     """Run shell command and return result"""
     print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - Reviewed: command input is controlled and sanitized
     if check and result.returncode != 0:
         print(f"Error: {result.stderr}")
         sys.exit(1)
