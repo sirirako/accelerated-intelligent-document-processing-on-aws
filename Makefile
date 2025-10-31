@@ -89,17 +89,7 @@ typecheck-pr:
 	@echo "Type checking changed files against $(TARGET_BRANCH)..."
 	python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH)
 
-# CI/CD version of type check - checks PR changes only
-typecheck-cicd:
-	@echo "Running type quality checks on PR changes..."
-	@if ! python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH); then \
-		echo -e "$(RED)ERROR: Type checking failed!$(NC)"; \
-		echo -e "$(YELLOW)Please run 'make typecheck-pr' locally to fix these issues.$(NC)"; \
-		exit 1; \
-	fi
-	@echo -e "$(GREEN)All type checks passed!$(NC)"
 
-# A convenience Makefile target that runs 
 commit: lint test
 	$(info Generating commit message...)
 	export COMMIT_MESSAGE="$(shell q chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \

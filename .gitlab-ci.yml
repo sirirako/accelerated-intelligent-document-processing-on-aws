@@ -26,14 +26,17 @@ stages:
 developer_tests:
   stage: developer_tests
   rules:
-    - when: always # Run on all branches
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always # Only run on merge requests (PRs), not on merged branches
 
   before_script:
     - python --version
     - apt-get update -y
     - apt-get install make curl git -y
-    # Fetch main branch for comparison in typecheck-pr
-    - git fetch origin main:main || echo "Could not fetch main branch"
+    # Fetch target branch for comparison in typecheck-pr
+    - export TARGET_BRANCH="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+    - echo "MR target branch (CI_MERGE_REQUEST_TARGET_BRANCH_NAME):$TARGET_BRANCH"
+    - git fetch origin $TARGET_BRANCH:$TARGET_BRANCH || echo "Could not fetch $TARGET_BRANCH branch"
     # Install uv
     - pip install uv
     # Create virtual environment
@@ -51,7 +54,12 @@ developer_tests:
 
   script:
     - make lint-cicd
-    - make typecheck-cicd
+    - echo "=== Type Checking Configuration ==="
+    - echo "MR target branch:$TARGET_BRANCH"
+    - echo "Comparing:$TARGET_BRANCH...HEAD"
+    - echo "===================================="
+    - echo ""
+    - make typecheck-pr TARGET_BRANCH=$TARGET_BRANCH
     - make test-cicd -C lib/idp_common_pkg
 
   artifacts:
@@ -128,4 +136,3 @@ integration_tests:
 
     # Run integration test deployment
     - python3 scripts/integration_test_deployment.py
-
