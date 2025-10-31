@@ -32,6 +32,61 @@ The Agent Companion Chat is an interactive AI assistant that provides a conversa
 - Quick diagnosis of individual document errors
 - One-time error analysis without conversation history
 
+## Security and Privacy
+
+### Code Intelligence and Third-Party Services
+
+**⚠️ IMPORTANT: Read Before Using Code Intelligence**
+
+The Agent Companion Chat includes an optional Code Intelligence Agent that can provide enhanced code assistance and technical documentation. However, this agent uses third-party MCP (Model Context Protocol) servers, which means your queries may be sent to external services.
+
+**What This Means**:
+- When Code Intelligence is **enabled**, queries routed to this agent may be sent to external services (DeepWiki MCP server)
+- These external services are **not controlled by AWS** or your organization
+- Data sent to these services is subject to their privacy policies and terms of service
+
+**Security Best Practices**:
+
+✅ **Safe to Discuss**:
+- General IDP features and capabilities
+- Public documentation and configuration examples
+- Generic code patterns and best practices
+- Non-sensitive technical questions
+- Publicly available information
+
+❌ **DO NOT Share**:
+- Customer names, email addresses, or personal information
+- AWS account IDs, API keys, credentials, or secrets
+- Proprietary business logic or confidential data
+- Internal system details or security configurations
+- Actual document content or extracted data
+- Customer-specific information or use cases
+- Private network configurations or IP addresses
+
+**Built-in Protections**:
+- System prompts are configured to prevent the agent from sending sensitive data
+- The agent is instructed to refuse requests involving credentials or personal information
+- User-controlled toggle allows you to disable the feature entirely
+
+**Recommendations**:
+1. **Review your questions** before sending to ensure they contain no sensitive information
+2. **Use other agents** (Analytics, Error Analyzer, General) for queries involving your actual system data
+3. **Enable only when needed** for generic code help, then disable it again
+
+### Data Storage and Retention
+
+**Conversation History**:
+- All conversations are stored in DynamoDB within your AWS account
+- Conversation history is retained for the duration of your session
+- Data remains within your AWS environment and is subject to your AWS security policies
+- No conversation data is sent to external services except when Code Intelligence is enabled and invoked
+
+**Session Isolation**:
+- Each conversation has a unique session ID
+- Sessions are isolated from each other
+- Clearing chat creates a new session
+- Previous session data is not accessible from new sessions
+
 ## Architecture Overview
 
 ### System Design
@@ -433,17 +488,35 @@ Agent: "To prevent this validation error, update your configuration..."
 "What are the available configuration parameters?"
 ```
 
-**Privacy and Security**:
-- **User-Controlled**: Toggle on/off in the chat interface
+**⚠️ Privacy and Security - IMPORTANT**:
+
+The Code Intelligence Agent uses a third-party MCP (Model Context Protocol) server (DeepWiki) to provide enhanced technical documentation and code assistance. This means some of your queries may be sent to external services.
+
+**Security Considerations**:
 - **External Service**: Uses DeepWiki MCP server for documentation lookup
-- **Data Protection**: System prompts prevent sending sensitive data externally
-- **Explicit Consent**: Visual indicator shows when enabled
+- **Data Transmission**: When enabled, your queries may be sent to third-party services
+- **Built-in Protections**: System prompts are configured to prevent sending sensitive data externally
+- **User Control**: You must explicitly enable this feature via the toggle
+
+**⚠️ DO NOT share sensitive information when Code Intelligence is enabled:**
+- Customer names, email addresses, or personal information
+- AWS account IDs, API keys, or credentials
+- Proprietary business logic or confidential data
+- Internal system details or security configurations
+- Actual document content or extracted data
+
+**Safe to Share**:
+- General questions about IDP features and capabilities
+- Public documentation and configuration examples
+- Generic code patterns and best practices
+- Non-sensitive technical questions
 
 **Enabling/Disabling**:
 1. Look for the "Code Intelligence" toggle in the chat interface
 2. Click to enable or disable
 3. When disabled, the orchestrator won't route queries to this agent
 4. Your preference is saved for the session
+5. **Recommendation**: Keep disabled unless you specifically need code assistance and are certain your queries contain no sensitive information
 
 ### General Agent
 
