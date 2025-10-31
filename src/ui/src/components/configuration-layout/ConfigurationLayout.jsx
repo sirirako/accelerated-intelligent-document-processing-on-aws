@@ -776,7 +776,14 @@ const ConfigurationLayout = () => {
         const builtObject = buildObjectFromPaths(differences);
         console.log('DEBUG: Built object from paths:', builtObject);
 
-        // CRITICAL: If there are no differences, don't send update to backend
+        // CRITICAL: Always include the current document schema (classes) if it exists
+        // This prevents the schema from being lost when saving other configuration changes
+        if (formValues.classes && Array.isArray(formValues.classes) && formValues.classes.length > 0) {
+          builtObject.classes = formValues.classes;
+          console.log('DEBUG: Including document schema (classes) in save:', formValues.classes);
+        }
+
+        // CRITICAL: If there are no differences AND no schema, don't send update to backend
         // This prevents unnecessary API calls and potential data issues
         if (Object.keys(builtObject).length === 0) {
           console.log('No changes detected, skipping save');
