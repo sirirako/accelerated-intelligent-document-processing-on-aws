@@ -24,7 +24,7 @@ dependencies = [
   "boto3==1.39.7",      # Core dependency for AWS services
   "jsonschema>=4.25.1",
   "pydantic>=2.12.0",
-  "deepdiff>=6.0.0",    # Required by BDA blueprint service for blueprint comparison
+  "deepdiff>=6.0.0",
 ]
 readme = "README.md"
 classifiers = [
