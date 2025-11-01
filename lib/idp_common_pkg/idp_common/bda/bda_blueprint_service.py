@@ -67,7 +67,10 @@ class BdaBlueprintService:
                             blueprint_arn=blueprint_arn, stage="LIVE"
                         )
                         _blueprint = response.get("blueprint")
-                        _blueprint["blueprintVersion"] = blueprint["blueprintVersion"]
+                        # Add blueprintVersion with default if missing
+                        _blueprint["blueprintVersion"] = blueprint.get(
+                            "blueprintVersion", "1"
+                        )
                         all_blueprints.append(_blueprint)
                     logger.info(
                         f"{len(all_blueprints)} blueprints retrieved for {project_arn}"
@@ -88,20 +91,24 @@ class BdaBlueprintService:
 
     def _transform_json_schema_to_bedrock_blueprint(self, json_schema: dict) -> dict:
         """
-        Transform a standard JSON Schema to Bedrock Document Analysis blueprint format.
+        Transform JSON Schema (draft 2020-12) to BDA blueprint format (draft-07).
 
-        Bedrock expects:
-        - "class" and "description" at top level (not $id)
-        - "instruction" and "inferenceType" for each field property
-        - Sections in definitions with references in properties
+        BDA requirements based on working schemas:
+        - Uses "definitions" (not "$defs") - JSON Schema draft-07
+        - References use "#/definitions/" (not "#/$defs/")
+        - Only LEAF properties get "inferenceType" and "instruction"
+        - Object/array types do NOT get these fields
 
         Args:
-            json_schema: Standard JSON Schema from migration
+            json_schema: JSON Schema from configuration
 
         Returns:
-            Blueprint schema in Bedrock format
+            Blueprint schema in BDA-compatible draft-07 format
         """
-        # Start with the basic structure Bedrock expects
+        # Extract $defs and convert to definitions
+        defs = json_schema.get(DEFS_FIELD, {})
+
+        # Start with BDA-expected structure
         blueprint = {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "class": json_schema.get(
@@ -111,16 +118,85 @@ class BdaBlueprintService:
                 SCHEMA_DESCRIPTION, "Document schema for data extraction"
             ),
             "type": TYPE_OBJECT,
-            "definitions": deepcopy(json_schema.get(DEFS_FIELD, {})),
-            "properties": {},
         }
 
-        # Transform each property to add Bedrock-specific fields
+        # Convert definitions and add BDA fields to leaf properties only
+        if defs:
+            blueprint["definitions"] = {}
+            for def_name, def_value in defs.items():
+                blueprint["definitions"][def_name] = self._add_bda_fields_to_schema(
+                    def_value
+                )
+
+        # Transform properties and update $ref paths
+        blueprint["properties"] = {}
         for prop_name, prop_value in json_schema.get(SCHEMA_PROPERTIES, {}).items():
-            transformed_prop = self._add_bedrock_fields_to_property(prop_value)
-            blueprint["properties"][prop_name] = transformed_prop
+            transformed = self._add_bda_fields_to_schema(prop_value)
+            # Update $ref paths from #/$defs/ to #/definitions/
+            if REF_FIELD in transformed:
+                transformed[REF_FIELD] = transformed[REF_FIELD].replace(
+                    "/$defs/", "/definitions/"
+                )
+            blueprint["properties"][prop_name] = transformed
 
         return blueprint
+
+    def _add_bda_fields_to_schema(self, schema: dict) -> dict:
+        """
+        Add BDA fields (inferenceType, instruction) ONLY to leaf properties.
+
+        Critical BDA requirements (based on working schemas):
+        - Pure $ref properties: ONLY the $ref field
+        - Object/array types: ONLY type and properties (NO description, inferenceType, instruction)
+        - Leaf types: type, inferenceType, instruction (NO description)
+
+        Args:
+            schema: Property or definition schema
+
+        Returns:
+            Schema with BDA fields, description removed
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        # If this has a $ref, return ONLY the $ref (strip all other fields)
+        if REF_FIELD in schema:
+            # Pure $ref should have nothing else - this is critical for BDA
+            return {REF_FIELD: schema[REF_FIELD].replace("/$defs/", "/definitions/")}
+
+        # Make deep copy to avoid mutation
+        result = deepcopy(schema)
+
+        # Remove description field - BDA doesn't use it (only instruction)
+        result.pop(SCHEMA_DESCRIPTION, None)
+
+        prop_type = result.get(SCHEMA_TYPE, "string")
+
+        # Add BDA fields ONLY for leaf/primitive types
+        if prop_type not in [TYPE_OBJECT, TYPE_ARRAY]:
+            # This is a leaf property - add BDA fields
+            if "inferenceType" not in result:
+                result["inferenceType"] = "inferred"
+
+            if "instruction" not in result:
+                # Use description if available before we removed it
+                if SCHEMA_DESCRIPTION in schema:
+                    result["instruction"] = schema[SCHEMA_DESCRIPTION]
+                else:
+                    result["instruction"] = "Extract this field from the document"
+
+        # Recursively process nested structures
+        if prop_type == TYPE_OBJECT and SCHEMA_PROPERTIES in result:
+            result[SCHEMA_PROPERTIES] = {
+                name: self._add_bda_fields_to_schema(value)
+                for name, value in result[SCHEMA_PROPERTIES].items()
+            }
+
+        # Handle array items (but don't add BDA fields to the array itself)
+        if prop_type == TYPE_ARRAY and SCHEMA_ITEMS in result:
+            result[SCHEMA_ITEMS] = self._add_bda_fields_to_schema(result[SCHEMA_ITEMS])
+
+        return result
 
     def _add_bedrock_fields_to_property(self, prop: dict) -> dict:
         """
