@@ -162,7 +162,7 @@ class TestTestResultsResolver:
         json_string = json.dumps(converted)
 
         assert json_string == '{"bedrock": 1.5, "textract": 0.25}'
-        assert isinstance(converted["bedrock"], float)
+        assert isinstance(converted["bedrock"], float)  # type: ignore[index]
 
     def test_caching_with_native_dynamodb_types(self):
         """Test caching preserves native DynamoDB types"""
@@ -197,16 +197,19 @@ class TestTestResultsResolver:
         cached_result = mock_cache_result(result_with_floats)
 
         # Verify floats are converted to Decimals for DynamoDB storage
-        assert isinstance(cached_result["overallAccuracy"], Decimal)
-        assert isinstance(cached_result["averageConfidence"], Decimal)
-        assert isinstance(cached_result["totalCost"], Decimal)
-        assert isinstance(cached_result["costBreakdown"], str)  # JSON string unchanged
-        assert cached_result["testRunId"] == "test123"
+        assert isinstance(cached_result["overallAccuracy"], Decimal)  # type: ignore[index]
+        assert isinstance(cached_result["averageConfidence"], Decimal)  # type: ignore[index]
+        assert isinstance(cached_result["totalCost"], Decimal)  # type: ignore[index]
+        assert isinstance(
+            cached_result["costBreakdown"],  # type: ignore[index]
+            str,
+        )  # JSON string unchanged
+        assert cached_result["testRunId"] == "test123"  # type: ignore[index]
 
         # Verify values are preserved during conversion
-        assert float(cached_result["overallAccuracy"]) == 0.85
-        assert float(cached_result["averageConfidence"]) == 0.90
-        assert float(cached_result["totalCost"]) == 1.50
+        assert float(cached_result["overallAccuracy"]) == 0.85  # type: ignore[index]
+        assert float(cached_result["averageConfidence"]) == 0.90  # type: ignore[index]
+        assert float(cached_result["totalCost"]) == 1.50  # type: ignore[index]
 
     def test_float_to_decimal_conversion_bug_detection(self):
         """Test that detects the float/Decimal conversion bug"""

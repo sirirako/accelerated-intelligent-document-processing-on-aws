@@ -99,7 +99,7 @@ def _format_datetime(dt_str):
 
 def get_test_results(test_run_id):
     """Get detailed test results for a specific test run"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]  # type: ignore[attr-defined]
     
     # Get test run metadata
     response = table.get_item(
@@ -209,7 +209,7 @@ def get_test_results(test_run_id):
 
 def get_test_runs(time_period_hours=2):
     """Get list of test runs within specified time period"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]  # type: ignore[attr-defined]
     
     # Validate and sanitize time_period_hours
     if time_period_hours is None or not isinstance(time_period_hours, (int, float)):
@@ -274,7 +274,7 @@ def get_test_runs(time_period_hours=2):
 
 def get_test_run_status(test_run_id):
     """Get lightweight status for specific test run - checks both document and evaluation status"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
     
     try:
         logger.info(f"Getting test run status for: {test_run_id}")
@@ -404,7 +404,7 @@ def _parse_s3_uri(uri):
 
 def _aggregate_test_run_metrics(test_run_id):
     """Aggregate metrics from evaluation reports for all documents in test run"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
     
     # Get all documents for this test run
     items = []
@@ -585,7 +585,7 @@ def _get_document_costs_from_reporting_db(document_id, completion_date):
                 
                 # Filter by document_id if column exists
                 if 'document_id' in table_data.column_names:
-                    mask = pc.equal(table_data['document_id'], document_id)
+                    mask = pc.equal(table_data['document_id'], document_id)  # type: ignore[attr-defined]
                     table_data = table_data.filter(mask)
                 
                 if table_data.num_rows == 0:
@@ -721,7 +721,7 @@ def _compare_metering_usage(test_metering, baseline_metering):
 
 def _get_test_run_config(test_run_id):
     """Get test run configuration from metadata record"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
     response = table.get_item(
         Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'}
     )

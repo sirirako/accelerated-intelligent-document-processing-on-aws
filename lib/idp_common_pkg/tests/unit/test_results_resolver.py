@@ -16,6 +16,8 @@ spec = importlib.util.spec_from_file_location(
         "../../../../src/lambda/test_results_resolver/index.py",
     ),
 )
+if spec is None or spec.loader is None:
+    raise ImportError("Could not load test_results_resolver module")
 index = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(index)
 
@@ -300,7 +302,7 @@ def test_handler_field_routing():
         "arguments": {"testRunId": "test-123"},
     }
     result1 = handler(event1, {})
-    assert result1["testRunId"] == "test-123"
+    assert result1["testRunId"] == "test-123"  # type: ignore[index]
 
     # Test getTestRuns
     event2 = {"info": {"fieldName": "getTestRuns"}, "arguments": {}}

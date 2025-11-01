@@ -22,6 +22,8 @@ with patch.dict(
                 "../../../../src/lambda/test_set_resolver/index.py",
             ),
         )
+        if spec is None or spec.loader is None:
+            raise ImportError("Could not load test_set_resolver module")
         test_set_index = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(test_set_index)
 

@@ -20,7 +20,7 @@ lambda_path = os.path.join(
 )
 sys.path.insert(0, lambda_path)
 
-import index  # noqa: E402
+import index  # type: ignore[import-untyped]  # noqa: E402
 
 
 @pytest.mark.unit

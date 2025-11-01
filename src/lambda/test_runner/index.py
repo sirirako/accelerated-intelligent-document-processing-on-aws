@@ -70,7 +70,7 @@ def handler(event, context):
 
 def _get_test_set(tracking_table, test_set_id):
     """Get test set by ID"""
-    table = dynamodb.Table(tracking_table)
+    table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
     
     try:
         response = table.get_item(
@@ -86,7 +86,7 @@ def _get_test_set(tracking_table, test_set_id):
 
 def _capture_config(config_table):
     """Capture current configuration"""
-    table = dynamodb.Table(config_table)
+    table = dynamodb.Table(config_table)  # type: ignore[attr-defined]
     
     config = {}
     for config_type in ['Schema', 'Default', 'Custom']:
@@ -105,7 +105,7 @@ def _copy_baseline_files(baseline_bucket, test_run_id, files):
     
     for file_key in files:
         # Check if baseline document record exists in tracking table
-        table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+        table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
         baseline_response = table.get_item(Key={'PK': f'doc#{file_key}', 'SK': 'none'})
         
         if 'Item' not in baseline_response:
@@ -179,7 +179,7 @@ def _copy_and_process_documents(input_bucket, test_run_id, files):
 
 def _store_test_run_metadata(tracking_table, test_run_id, test_set_name, config, files, context=None):
     """Store test run metadata in tracking table"""
-    table = dynamodb.Table(tracking_table)
+    table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
     
     try:
         item = {

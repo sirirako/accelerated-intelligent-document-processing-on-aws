@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class DynamoDBError(Exception):
     """Custom exception for DynamoDB errors"""
 
-    def __init__(self, message: str, error_code: str = None):
+    def __init__(self, message: str, error_code: str | None = None):
         super().__init__(message)
         self.error_code = error_code
 
@@ -54,7 +54,7 @@ class DynamoDBClient:
 
         try:
             self.dynamodb = boto3.resource("dynamodb", region_name=self.region)
-            self.table = self.dynamodb.Table(self.table_name)
+            self.table = self.dynamodb.Table(self.table_name)  # type: ignore[attr-defined]
         except Exception as e:
             logger.error(f"Failed to initialize DynamoDB client: {str(e)}")
             raise DynamoDBError(f"Failed to initialize DynamoDB client: {str(e)}")
@@ -379,7 +379,7 @@ class DynamoDBClient:
             DynamoDBError: If the DynamoDB operation fails
         """
         try:
-            query_params = {
+            query_params: Dict[str, Any] = {
                 "KeyConditionExpression": key_condition_expression,
             }
 

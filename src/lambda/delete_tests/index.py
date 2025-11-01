@@ -29,7 +29,7 @@ def lambda_handler(event, context):
         delete_document_function_name = os.environ.get('DELETE_DOCUMENT_FUNCTION_NAME')
         baseline_bucket = os.environ.get('BASELINE_BUCKET')
         
-        tracking_table = dynamodb.Table(tracking_table_name)
+        tracking_table = dynamodb.Table(tracking_table_name)  # type: ignore[attr-defined]
         all_document_keys = []
         deleted_count = 0
         
