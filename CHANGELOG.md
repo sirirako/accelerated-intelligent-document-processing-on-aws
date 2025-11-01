@@ -7,6 +7,20 @@ SPDX-License-Identifier: MIT-0
 
 ## [0.4.0]
 
+> **⚠️ IMPORTANT NOTICE - SIGNITICANT CONFIGURATION CHANGES**
+>
+> This release introduces **significant changes to the accelerator configuration** for defining document classes and attributes. The configuration format has been migrated to JSON Schema standards, which provides enhanced flexibility and validation capabilities.
+>
+> While automatic migration is provided for backward compatibility, **customers MUST fully test this update in a non-production environment** before upgrading production systems. We strongly recommend:
+>
+> 1. Deploy the update to a test/development environment first
+> 2. Verify all document processing workflows function as expected
+> 3. Test with representative samples of your production documents
+> 4. Review the migration guide at [docs/json-schema-migration.md](./docs/json-schema-migration.md)
+> 5. Only proceed with production upgrade after thorough validation
+>
+> **Do not upgrade production systems without completing validation testing.**
+
 ### Added
 
 - **Agent Companion Chat Experience**
