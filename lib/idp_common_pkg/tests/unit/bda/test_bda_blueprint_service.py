@@ -478,8 +478,12 @@ class TestBdaBlueprintService:
         )
         assert blueprint["properties"]["invoiceNumber"]["inferenceType"] == "inferred"
 
-    def test_transform_preserves_ref_nodes(self, service):
-        """Ensure that $ref-only nodes are not augmented with Bedrock fields."""
+    def test_transform_converts_defs_to_definitions(self, service):
+        """Ensure that $defs is converted to definitions for BDA draft-07 compatibility.
+
+        BDA uses JSON Schema draft-07 which uses "definitions", not "$defs".
+        References should be preserved but updated to #/definitions/ path.
+        """
         schema = build_json_schema(
             doc_id="Document",
             description="Document schema",
@@ -491,11 +495,16 @@ class TestBdaBlueprintService:
             defs={
                 "Address": {
                     "type": "object",
+                    "description": "Address information",
                     "properties": {
                         "street": {
                             "type": "string",
                             "description": "Street line",
-                        }
+                        },
+                        "city": {
+                            "type": "string",
+                            "description": "City name",
+                        },
                     },
                 }
             },
@@ -503,5 +512,30 @@ class TestBdaBlueprintService:
 
         blueprint = service._transform_json_schema_to_bedrock_blueprint(schema)
 
-        # address property should remain a pure $ref
-        assert blueprint["properties"]["address"] == {"$ref": "#/$defs/Address"}
+        # Verify $defs was converted to definitions
+        assert "definitions" in blueprint
+        assert "$defs" not in blueprint
+        assert "Address" in blueprint["definitions"]
+
+        # Verify $ref path was updated
+        address_prop = blueprint["properties"]["address"]
+        assert address_prop["$ref"] == "#/definitions/Address"
+
+        # Verify definition has proper structure (object should NOT have inferenceType/instruction)
+        address_def = blueprint["definitions"]["Address"]
+        assert address_def["type"] == "object"
+        assert "inferenceType" not in address_def  # Objects should not have this
+        assert "instruction" not in address_def  # Objects should not have this
+        assert "properties" in address_def
+
+        # Verify leaf properties DO have BDA fields
+        street_prop = address_def["properties"]["street"]
+        assert street_prop["type"] == "string"
+        assert "inferenceType" in street_prop
+        assert "instruction" in street_prop
+        assert street_prop["instruction"] == "Street line"
+
+        city_prop = address_def["properties"]["city"]
+        assert city_prop["type"] == "string"
+        assert "inferenceType" in city_prop
+        assert "instruction" in city_prop
