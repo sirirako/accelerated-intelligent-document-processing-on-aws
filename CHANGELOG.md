@@ -15,19 +15,8 @@ SPDX-License-Identifier: MIT-0
   - **Persistent Chat Memory**: DynamoDB-backed conversation history with automatic loading of last 20 turns, turn-based message grouping, and intelligent context management with sliding window optimization
   - **Real-Time Streaming**: AppSync GraphQL subscriptions enable incremental response streaming with proper async task cleanup and thinking tag removal for clean display
   - **Code Intelligence Agent**: New specialized agent for code-related assistance with DeepWiki MCP server integration, security guardrails to prevent sensitive data exposure, and user-controlled opt-in toggle (default: enabled)
-  - **Sub-Agent Streaming**: Real-time lifecycle events (start, stream, end, error) with async generator tools, structured data detection for tables/charts, and tool usage tracking
   - **Rich Chat Interface**: Modern UI with CloudScape Design System featuring real-time message streaming, multi-agent support (Analytics, Code Intelligence, Error Analyzer, General), Markdown rendering with syntax highlighting, structured data visualization (charts via Chart.js, sortable tables), expandable tool usage sections, sample prompts, and auto-scroll behavior
-  - **Enhanced User Experience**: Welcome animation, sample query suggestions, clear chat functionality, responsive mobile-friendly design, accessibility support with ARIA labels, loading states and visual feedback, error alerts with dismissible notifications
   - **Privacy & Security**: Explicit user consent for Code Intelligence third-party services, session isolation with unique session IDs, error boundary protection, input validation
-
-### Fixed
-
-- **UI Robustness for Orphaned List Entries** - [#102](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/102)
-  - Fixed UI error banner "failed to get document details - please try again later" appearing when orphaned list entries exist (list# items without corresponding doc# items in DynamoDB tracking table)
-  - **Root Cause**: When a document had a list entry but no corresponding document record, the error would trigger UI banner and prevent display of all documents in the same time shard
-  - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
-  - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
-  - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
 
 - **JSON Schema Format for Class Definitions** - [docs/json-schema-migration.md](./docs/json-schema-migration.md)
   - Document class definitions now use industry-standard JSON Schema Draft 2020-12 format for improved flexibility and tooling integration
@@ -39,7 +28,22 @@ SPDX-License-Identifier: MIT-0
   - **Backward Compatible**: Legacy format remains supported through automatic migration - no manual configuration updates required
   - **Comprehensive Documentation**: New migration guide with format comparison, field mapping table, and best practices
 
+- **IDP CLI Single Document Status Support with Programmatic Output**
+  - Enhanced `status` command to support checking individual document status via new `--document-id` option as alternative to `--batch-id`
+  - Added programmatic output capabilities with exit codes (0=success, 1=failure, 2=processing) for scripting and automation
+  - JSON format output (`--format json`) provides structured data for parsing in CI/CD pipelines and scripts
+  - Live monitoring support with `--wait` flag works for both batch and single document status checks
+  - Mutual exclusion validation ensures only one of `--batch-id` or `--document-id` is specified
 
+
+### Fixed
+
+- **UI Robustness for Orphaned List Entries** - [#102](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/102)
+  - Fixed UI error banner "failed to get document details - please try again later" appearing when orphaned list entries exist (list# items without corresponding doc# items in DynamoDB tracking table)
+  - **Root Cause**: When a document had a list entry but no corresponding document record, the error would trigger UI banner and prevent display of all documents in the same time shard
+  - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
+  - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
+  - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
 
 ## [0.3.21]
 

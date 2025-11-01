@@ -356,27 +356,113 @@ https://github.com/user-attachments/assets/28deadbb-378b-42b7-a5e2-f929af9b0e41
 
 ### `status`
 
-Check batch processing status.
+Check status of a batch or single document.
 
 **Usage:**
 ```bash
 idp-cli status [OPTIONS]
 ```
 
+**Document Source (choose ONE):**
+- `--batch-id`: Batch identifier (check all documents in batch)
+- `--document-id`: Single document ID (check individual document)
+
 **Options:**
 - `--stack-name` (required): CloudFormation stack name
-- `--batch-id` (required): Batch identifier
 - `--wait`: Wait for all documents to complete
 - `--refresh-interval`: Seconds between status checks (default: 5)
+- `--format`: Output format - `table` (default) or `json`
 - `--region`: AWS region (optional)
 
-**Example:**
+**Examples:**
 
 ```bash
+# Check batch status
 idp-cli status \
     --stack-name my-stack \
-    --batch-id cli-batch-20251015-143000 \
+    --batch-id cli-batch-20251015-143000
+
+# Check single document status
+idp-cli status \
+    --stack-name my-stack \
+    --document-id batch-123/invoice.pdf
+
+# Monitor single document until completion
+idp-cli status \
+    --stack-name my-stack \
+    --document-id batch-123/invoice.pdf \
     --wait
+
+# Get JSON output for scripting
+idp-cli status \
+    --stack-name my-stack \
+    --document-id batch-123/invoice.pdf \
+    --format json
+```
+
+**Programmatic Use:**
+
+The command returns exit codes for scripting:
+- `0` - Document(s) completed successfully
+- `1` - Document(s) failed
+- `2` - Document(s) still processing
+
+**JSON Output Format:**
+
+```bash
+# Single document
+$ idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --format json
+{
+  "document_id": "batch-123/invoice.pdf",
+  "status": "COMPLETED",
+  "duration": 125.4,
+  "start_time": "2025-01-01T10:30:45Z",
+  "end_time": "2025-01-01T10:32:50Z",
+  "num_sections": 2,
+  "exit_code": 0
+}
+
+# Table output includes final status summary
+$ idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf
+[status table]
+
+FINAL STATUS: COMPLETED | Duration: 125.4s | Exit Code: 0
+```
+
+**Scripting Examples:**
+
+```bash
+#!/bin/bash
+# Wait for document completion and check result
+idp-cli status --stack-name prod --document-id batch-001/invoice.pdf --wait
+exit_code=$?
+
+if [ $exit_code -eq 0 ]; then
+  echo "Document processed successfully"
+  # Proceed with downstream processing
+else
+  echo "Document processing failed"
+  exit 1
+fi
+```
+
+```bash
+#!/bin/bash
+# Poll document status in script
+while true; do
+  status=$(idp-cli status --stack-name prod --document-id batch-001/invoice.pdf --format json)
+  state=$(echo "$status" | jq -r '.status')
+  
+  if [ "$state" = "COMPLETED" ]; then
+    echo "Processing complete!"
+    break
+  elif [ "$state" = "FAILED" ]; then
+    echo "Processing failed!"
+    exit 1
+  fi
+  
+  sleep 5
+done
 ```
 
 ---
