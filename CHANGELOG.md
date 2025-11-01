@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT-0
 
 ## [0.4.0]
 
-> **⚠️ IMPORTANT NOTICE - SIGNITICANT CONFIGURATION CHANGES**
+> **⚠️ IMPORTANT NOTICE - SIGNIFICANT CONFIGURATION CHANGES**
 >
 > This release introduces **significant changes to the accelerator configuration** for defining document classes and attributes. The configuration format has been migrated to JSON Schema standards, which provides enhanced flexibility and validation capabilities.
 >
