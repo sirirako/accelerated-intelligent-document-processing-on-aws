@@ -27,8 +27,7 @@ const DeleteDocumentModal = ({ visible, onDismiss, onConfirm, selectedItems }) =
       }
     >
       <p>
-        Are you sure you want to delete {isMultiple ? `these ${documentCount} documents` : 'this document'}? This action
-        cannot be undone.
+        Are you sure you want to delete {isMultiple ? `these ${documentCount} documents` : 'this document'}? This action cannot be undone.
       </p>
       {isMultiple && (
         <ul>

@@ -5,12 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 The GenAIIDP solution provides multiple configuration approaches to customize document processing behavior to suit your specific needs.
 
+> **📝 Note:** Starting with version 0.3.21, document class definitions use **JSON Schema** format instead of the legacy custom format. See [json-schema-migration.md](json-schema-migration.md) for migration details and format comparison. Legacy configurations are automatically migrated on first use.
+
 ## Pattern Configuration via Web UI
 
 The web interface allows real-time configuration updates without stack redeployment:
 
-- **Document Classes**: Define and modify document categories and their descriptions
-- **Extraction Attributes**: Configure fields to extract for each document class
+- **Document Classes**: Define and modify document categories and their descriptions (using JSON Schema format)
+- **Extraction Attributes**: Configure fields to extract for each document class (defined as JSON Schema properties)
 - **Few Shot Examples**: Upload and configure example documents to improve accuracy (supported in Pattern 2)
 - **Model Selection**: Choose between available Bedrock models for classification and extraction
 - **Prompt Engineering**: Customize system and task prompts for optimal results
@@ -155,7 +157,6 @@ Key parameters that can be configured during CloudFormation deployment:
 
 ### Optional Features
 - `EvaluationBaselineBucketName`: Optional existing bucket for ground truth data
-- `EvaluationAutoEnabled`: Enable automatic accuracy evaluation (default: true)
 - `DocumentKnowledgeBase`: Enable document knowledge base functionality
 - `KnowledgeBaseModelId`: Bedrock model for knowledge base queries
 - `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing (see [post-processing-lambda-hook.md](post-processing-lambda-hook.md) for detailed implementation guidance)

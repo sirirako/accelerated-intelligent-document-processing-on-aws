@@ -23,6 +23,11 @@ const isStepDisabled = (stepName, config) => {
     return config.assessment?.enabled === false;
   }
 
+  // Check if this is an evaluation step
+  if (stepNameLower.includes('evaluation') || stepNameLower.includes('evaluate')) {
+    return config.evaluation?.enabled === false;
+  }
+
   return false;
 };
 
@@ -137,9 +142,7 @@ const FlowDiagram = ({ steps = [], onStepClick, selectedStep = null, getStepIcon
                     {mapIterationsForThisStep.slice(0, 6).map((iteration, iterIndex) => (
                       <div
                         key={`iteration-${iteration.name}-${iteration.startDate || iterIndex}`}
-                        className={`iteration-step ${getStepStatus(iteration)} ${
-                          selectedStep?.name === iteration.name ? 'selected' : ''
-                        }`}
+                        className={`iteration-step ${getStepStatus(iteration)} ${selectedStep?.name === iteration.name ? 'selected' : ''}`}
                         onClick={() => onStepClick(iteration)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
@@ -149,14 +152,10 @@ const FlowDiagram = ({ steps = [], onStepClick, selectedStep = null, getStepIcon
                         role="button"
                         tabIndex={0}
                       >
-                        <div className="iteration-icon">
-                          {getStepIcon(iteration.name, iteration.type, iteration.status)}
-                        </div>
+                        <div className="iteration-icon">{getStepIcon(iteration.name, iteration.type, iteration.status)}</div>
                         <div className="iteration-label">
                           <div className="iteration-name">{iteration.name}</div>
-                          <div className={`iteration-status status-text-${iteration.status.toLowerCase()}`}>
-                            {iteration.status}
-                          </div>
+                          <div className={`iteration-status status-text-${iteration.status.toLowerCase()}`}>{iteration.status}</div>
                         </div>
                       </div>
                     ))}
@@ -235,6 +234,17 @@ FlowDiagram.propTypes = {
     name: PropTypes.string,
   }),
   getStepIcon: PropTypes.func.isRequired,
+  mergedConfig: PropTypes.shape({
+    summarization: PropTypes.shape({
+      enabled: PropTypes.bool,
+    }),
+    assessment: PropTypes.shape({
+      enabled: PropTypes.bool,
+    }),
+    evaluation: PropTypes.shape({
+      enabled: PropTypes.bool,
+    }),
+  }),
 };
 
 export default FlowDiagram;

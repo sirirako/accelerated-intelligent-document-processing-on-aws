@@ -65,10 +65,30 @@ type DocumentListItem implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
     HITLReviewURL: String
 }
 
+type ValidationError @aws_cognito_user_pools @aws_iam {
+  field: String
+  message: String
+  type: String
+}
+
+type ConfigurationError @aws_cognito_user_pools @aws_iam {
+  type: String
+  message: String
+  validationErrors: [ValidationError]
+}
+
 type ConfigurationResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
   Schema: AWSJSON
   Default: AWSJSON
   Custom: AWSJSON
+  error: ConfigurationError
+}
+
+type UpdateConfigurationResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  message: String
+  error: ConfigurationError
 }
 
 type DiscoveryJobList @aws_cognito_user_pools @aws_iam {
@@ -130,6 +150,7 @@ input UpdateDocumentInput {
   SummaryReportUri: String
   HITLStatus: String
   HITLReviewURL: String
+  TraceId: String
 }
 
 input SectionInput {
@@ -285,11 +306,23 @@ input TestRunInput {
   context: String
 }
 
-type Mutation  {
+type AgentChatMessage @aws_cognito_user_pools @aws_iam {
+  role: String!
+  content: String!
+  timestamp: String!
+  isProcessing: Boolean
+  sessionId: String
+}
+
+type MessageContent {
+  text: String
+}
+
+type Mutation {
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
   deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
-  updateConfiguration(customConfig: AWSJSON!): Boolean @aws_cognito_user_pools
+  updateConfiguration(customConfig: AWSJSON!): UpdateConfigurationResponse @aws_cognito_user_pools
   uploadDocument(fileName: String!, contentType: String, prefix: String, bucket: String): PresignedUrlResponse! @aws_cognito_user_pools
   uploadDiscoveryDocument(fileName: String!, contentType: String, prefix: String, bucket: String, groundTruthFileName: String): DisPresignedUrlResponse! @aws_cognito_user_pools
   copyToBaseline(objectKey: String!): CopyToBaselineResponse! @aws_cognito_user_pools
@@ -302,6 +335,8 @@ type Mutation  {
   deleteTests(testRunIds: [String!]!): Boolean! @aws_cognito_user_pools
   addTestSet(name: String!, filePattern: String!, fileCount: Int!): TestSet @aws_cognito_user_pools
   deleteTestSets(testSetIds: [String!]!): Boolean! @aws_cognito_user_pools
+  sendAgentChatMessage(prompt: String!, sessionId: String, method: String, enableCodeIntelligence: Boolean): AgentChatMessage @aws_cognito_user_pools @aws_iam
+  updateAgentChatMessage(sessionId: ID!, content: String!): AgentChatMessage @aws_cognito_user_pools @aws_iam
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -325,6 +360,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   compareTestRuns(testRunIds: [String!]!): TestRunComparison @aws_cognito_user_pools
   getTestSets: [TestSet] @aws_cognito_user_pools
   listInputBucketFiles(filePattern: String!): [String] @aws_cognito_user_pools
+  getAgentChatMessages(sessionId: ID!): [AgentChatMessage] @aws_cognito_user_pools @aws_iam
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
@@ -336,6 +372,8 @@ type Subscription @aws_cognito_user_pools @aws_iam {
     @aws_subscribe(mutations: ["updateAgentJobStatus"])
   onDiscoveryJobStatusChange(jobId: ID!): DiscoveryJob
     @aws_subscribe(mutations: ["updateDiscoveryJobStatus"])
+  onAgentChatMessageUpdate(sessionId: String!): AgentChatMessage
+    @aws_subscribe(mutations: ["sendAgentChatMessage"])
 }
 
 schema {

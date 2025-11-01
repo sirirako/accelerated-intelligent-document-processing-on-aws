@@ -44,9 +44,7 @@ const useNotifications = () => {
     };
 
     const dismissedInitialNotificationIds = getDissmissedNotificationIdsFromStorage();
-    const initialNotificationsNotDismissed = initialNotifications.filter(
-      (n) => !dismissedInitialNotificationIds.includes(n.id),
-    );
+    const initialNotificationsNotDismissed = initialNotifications.filter((n) => !dismissedInitialNotificationIds.includes(n.id));
 
     const notificationIds = notifications.map((n) => n.id);
     // prettier-ignore

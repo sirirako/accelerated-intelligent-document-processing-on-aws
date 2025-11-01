@@ -14,6 +14,7 @@ import {
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
   DISCOVERY_PATH,
+  AGENT_CHAT_PATH,
 } from '../../routes/constants';
 
 export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
@@ -33,6 +34,7 @@ export const documentsNavItems = [
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
   { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
+  { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
   {
     type: 'section',
     text: 'Resources',
@@ -65,11 +67,7 @@ const defaultOnFollowHandler = (ev) => {
 };
 
 /* eslint-disable react/prop-types */
-const Navigation = ({
-  header = documentsNavHeader,
-  items = documentsNavItems,
-  onFollowHandler = defaultOnFollowHandler,
-}) => {
+const Navigation = ({ header = documentsNavHeader, items = documentsNavItems, onFollowHandler = defaultOnFollowHandler }) => {
   const location = useLocation();
   const path = location.pathname;
   let activeHref = `#${DEFAULT_PATH}`;
@@ -97,6 +95,8 @@ const Navigation = ({
     activeHref = `#${DISCOVERY_PATH}`;
   } else if (path.includes(DOCUMENTS_PATH)) {
     activeHref = `#${DOCUMENTS_PATH}`;
+  } else if (path === AGENT_CHAT_PATH) {
+    activeHref = `#${AGENT_CHAT_PATH}`;
   }
 
   // Create a copy of the items array to add the deployment info
@@ -147,12 +147,7 @@ const Navigation = ({
   }
 
   return (
-    <SideNavigation
-      items={navigationItems}
-      header={header || documentsNavHeader}
-      activeHref={activeHref}
-      onFollow={onFollowHandler}
-    />
+    <SideNavigation items={navigationItems} header={header || documentsNavHeader} activeHref={activeHref} onFollow={onFollowHandler} />
   );
 };
 

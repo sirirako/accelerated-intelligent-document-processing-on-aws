@@ -66,6 +66,11 @@ const isStepDisabled = (stepName, config) => {
     return config.assessment?.enabled === false;
   }
 
+  // Check if this is an evaluation step
+  if (stepNameLower.includes('evaluation') || stepNameLower.includes('evaluate')) {
+    return config.evaluation?.enabled === false;
+  }
+
   return false;
 };
 
@@ -123,9 +128,8 @@ const StepDetails = ({ step, formatDuration, getStepIcon, mergedConfig }) => {
         {/* Configuration Disabled Notice */}
         {stepDisabled && (
           <Alert type="info" header="Step Disabled in Configuration">
-            This step was disabled in the configuration (<strong>enabled: false</strong>) and performed no processing.
-            While the step function executed this step, the Lambda function detected the disabled state and skipped all
-            processing logic.
+            This step was disabled in the configuration (<strong>enabled: false</strong>) and performed no processing. While the step
+            function executed this step, the Lambda function detected the disabled state and skipped all processing logic.
           </Alert>
         )}
 
@@ -161,12 +165,7 @@ const StepDetails = ({ step, formatDuration, getStepIcon, mergedConfig }) => {
             expanded={errorExpanded}
             onChange={({ detail }) => setErrorExpanded(detail.expanded)}
             headerActions={
-              <Button
-                variant="inline-icon"
-                iconName="copy"
-                onClick={() => copyToClipboard(step.error)}
-                ariaLabel="Copy error message"
-              />
+              <Button variant="inline-icon" iconName="copy" onClick={() => copyToClipboard(step.error)} ariaLabel="Copy error message" />
             }
           >
             <Alert type="error" header="Error Details">
@@ -211,9 +210,7 @@ const StepDetails = ({ step, formatDuration, getStepIcon, mergedConfig }) => {
                       <SpaceBetween direction="horizontal" size="m">
                         <Box>
                           <Box variant="awsui-key-label">Status</Box>
-                          <Box className={`step-status step-status-${iteration.status.toLowerCase()}`}>
-                            {iteration.status}
-                          </Box>
+                          <Box className={`step-status step-status-${iteration.status.toLowerCase()}`}>{iteration.status}</Box>
                         </Box>
                         <Box>
                           <Box variant="awsui-key-label">Duration</Box>
@@ -299,6 +296,9 @@ StepDetails.propTypes = {
       enabled: PropTypes.bool,
     }),
     assessment: PropTypes.shape({
+      enabled: PropTypes.bool,
+    }),
+    evaluation: PropTypes.shape({
       enabled: PropTypes.bool,
     }),
   }),

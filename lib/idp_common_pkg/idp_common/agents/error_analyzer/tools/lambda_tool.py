@@ -204,7 +204,7 @@ def _extract_request_id_from_string(text: str) -> Optional[str]:
 
 
 @tool
-def lambda_document_context(document_id: str, stack_name: str = "") -> Dict[str, Any]:
+def lambda_lookup(document_id: str, stack_name: str = "") -> Dict[str, Any]:
     """
     Retrieve comprehensive document processing context via Lambda lookup function.
     Invokes the lookup Lambda function to gather execution context, timing information,

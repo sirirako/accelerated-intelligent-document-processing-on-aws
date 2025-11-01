@@ -19,72 +19,84 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def dynamodb_document_status(object_key: str) -> Dict[str, Any]:
+def dynamodb_status(object_key: str) -> Dict[str, Any]:
     """
-    Retrieve document processing status from DynamoDB tracking table.
-    Performs a direct lookup to get the current status and metadata for a specific document.
+    Get the current processing status of a specific document.
+
+    Retrieves document status, timestamps, and execution information from the
+    DynamoDB tracking table to understand document processing state.
+    If tracking table is unavailable, suggests using alternative tools.
+
+    Use this tool to:
+    - Check if a document is COMPLETED, FAILED, or IN_PROGRESS
+    - Get document processing timestamps
+    - Find the Step Function execution ARN
+    - Verify document exists in the system
+
+    Tool chaining: If tracking_available=False, use cloudwatch_document_logs or xray_trace instead.
+
+    Example usage:
+    - "What's the status of report.pdf?"
+    - "Is lending_package.pdf completed?"
+    - "Check the processing status of document xyz.pdf"
 
     Args:
-        object_key: The S3 object key for the document
+        object_key: Document filename/S3 object key (e.g., "report.pdf", "lending_package.pdf")
 
     Returns:
-        Dict containing document status information or error details
+        Dict with keys:
+        - tracking_available (bool): Whether tracking table is configured
+        - document_found (bool): Whether document exists in tracking table
+        - object_key (str): The document identifier
+        - status (str): Processing status (COMPLETED, FAILED, IN_PROGRESS) if found
+        - initial_event_time (str): When processing started if found
+        - completion_time (str): When processing finished if found
+        - execution_arn (str): Step Function execution ARN if found
+        - suggestion (str): Alternative tools to use if tracking unavailable
     """
-    try:
-        result = dynamodb_document_record(object_key)
+    result = dynamodb_record(object_key)
 
-        if result.get("document_found"):
-            document = result.get("document", {})
-            return create_response(
-                {
-                    "document_found": True,
-                    "object_key": object_key,
-                    "status": document.get("Status"),
-                    "initial_event_time": document.get("InitialEventTime"),
-                    "completion_time": document.get("CompletionTime"),
-                    "execution_arn": document.get("ExecutionArn"),
-                }
-            )
-        else:
-            return result
-
-    except Exception as e:
-        logger.error(f"Status lookup failed for '{object_key}': {e}")
-        return create_error_response(
-            str(e), document_found=False, object_key=object_key
-        )
-
-
-@tool
-def dynamodb_table_name() -> Dict[str, Any]:
-    """
-    Retrieve the DynamoDB tracking table name from environment configuration.
-    Checks for the TRACKING_TABLE_NAME environment variable and validates its availability.
-
-    Returns:
-        Dict containing table name or error if not configured
-    """
-    table_name = os.environ.get("TRACKING_TABLE_NAME")
-    if table_name:
-        return create_response(
+    if result.get("document_found"):
+        document = result.get("document", {})
+        response = create_response(
             {
-                "tracking_table_found": True,
-                "table_name": table_name,
+                "tracking_available": True,
+                "document_found": True,
+                "object_key": object_key,
+                "status": document.get("ObjectStatus")
+                or document.get("WorkflowStatus"),
+                "initial_event_time": document.get("InitialEventTime"),
+                "completion_time": document.get("CompletionTime"),
+                "execution_arn": document.get("WorkflowExecutionArn")
+                or document.get("ExecutionArn"),
             }
         )
-    return create_error_response(
-        "TRACKING_TABLE_NAME environment variable not set", tracking_table_found=False
-    )
+        logger.info(f"DynamoDB status response for {object_key}: {response}")
+        return response
+    return result
 
 
 @tool
-def dynamodb_tracking_query(
+def dynamodb_query(
     date: str = "", hours_back: int = 24, limit: int = 100
 ) -> Dict[str, Any]:
     """
     Query DynamoDB tracking table using efficient time-based partition scanning.
     Searches through time-partitioned data to find documents processed within the specified timeframe.
     Uses optimized querying to minimize DynamoDB read costs.
+    If tracking table is unavailable, suggests using alternative tools.
+
+    Use this tool to:
+    - Find documents processed in a specific time window
+    - Analyze processing patterns and volumes
+    - Identify recent document processing activity
+
+    Tool chaining: If tracking_available=False, use cloudwatch_logs or xray_performance_analysis for system-wide analysis.
+
+    Example usage:
+    - "Show me documents processed today"
+    - "What documents were processed in the last 2 hours?"
+    - "Find all documents processed on 2024-01-15"
 
     Args:
         date: Date in YYYY-MM-DD format (defaults to today)
@@ -92,19 +104,27 @@ def dynamodb_tracking_query(
         limit: Maximum number of items to return
 
     Returns:
-        Dict containing found items and query metadata
+        Dict with keys:
+        - tracking_available (bool): Whether tracking table is configured
+        - items_found (int): Number of documents found
+        - items (list): Document records if found
+        - table_name (str): Table name if available
+        - query_date (str): Date queried
+        - hours_back (int): Hours looked back
+        - suggestion (str): Alternative tools to use if tracking unavailable
     """
     try:
-        table_name = os.environ.get("TRACKING_TABLE_NAME")
-        if not table_name:
-            return create_error_response(
-                "TRACKING_TABLE_NAME environment variable not set",
-                items_found=0,
-                items=[],
+        tracking_table, table_name = _get_tracking_table()
+        if not tracking_table:
+            return create_response(
+                {
+                    "tracking_available": False,
+                    "reason": "Tracking table not configured",
+                    "items_found": 0,
+                    "items": [],
+                    "suggestion": "Try using CloudWatch logs or X-Ray traces for analysis",
+                }
             )
-
-        dynamodb = boto3.resource("dynamodb")
-        table = dynamodb.Table(table_name)
 
         # Use current date if not provided
         if not date:
@@ -123,13 +143,16 @@ def dynamodb_tracking_query(
             hour_str = current_time.strftime("%Y-%m-%dT%H")
 
             # Query the list partition for this hour
-            pk = f"list#{current_time.strftime('%Y-%m-%d')}#s#{current_time.hour // 4:02d}"
-            sk_prefix = f"ts#{hour_str}"
+            partition_key = f"list#{current_time.strftime('%Y-%m-%d')}#s#{current_time.hour // 4:02d}"
+            sort_key_prefix = f"ts#{hour_str}"
 
             try:
-                response = table.query(
+                response = tracking_table.query(
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-                    ExpressionAttributeValues={":pk": pk, ":sk_prefix": sk_prefix},
+                    ExpressionAttributeValues={
+                        ":pk": partition_key,
+                        ":sk_prefix": sort_key_prefix,
+                    },
                     Limit=min(limit - len(all_items), 50),
                 )
 
@@ -137,14 +160,15 @@ def dynamodb_tracking_query(
                 all_items.extend(items)
 
             except Exception as query_error:
-                logger.debug(f"Query failed for {pk}: {query_error}")
+                logger.debug(f"Query failed for {partition_key}: {query_error}")
 
             current_time += timedelta(hours=1)
 
         items = [decimal_to_float(item) for item in all_items[:limit]]
 
-        return create_response(
+        response = create_response(
             {
+                "tracking_available": True,
                 "table_name": table_name,
                 "items_found": len(items),
                 "items": items,
@@ -152,58 +176,129 @@ def dynamodb_tracking_query(
                 "hours_back": hours_back,
             }
         )
+        logger.info(f"DynamoDB query response for date={date}: {response}")
+        return response
 
     except Exception as e:
-        logger.error(f"TrackingTable query failed: {e}")
-        return create_error_response(str(e), items_found=0, items=[])
+        return _handle_dynamodb_error(
+            "query", f"date={date}", e, items_found=0, items=[]
+        )
 
 
 @tool
-def dynamodb_document_record(object_key: str) -> Dict[str, Any]:
+def dynamodb_record(object_key: str) -> Dict[str, Any]:
     """
-    Retrieve a specific document record from DynamoDB tracking table by its object key.
-    Performs a direct item lookup using the document's S3 object key as the primary identifier.
-    Handles DynamoDB Decimal conversion for JSON compatibility.
+    Retrieve complete document record with all metadata from tracking table.
+
+    Gets the full document record including processing details, timestamps,
+    configuration, and execution information for comprehensive analysis.
+    If tracking table is unavailable, suggests using alternative tools.
+
+    Use this tool to:
+    - Get complete document processing details
+    - Access all document metadata and configuration
+    - Retrieve processing timestamps and execution info
+    - Get detailed document attributes
+
+    Tool chaining: If tracking_available=False, use cloudwatch_document_logs,
+    xray_trace, or lambda_lookup for document analysis.
+
+    Example usage:
+    - "Get full details for document report.pdf"
+    - "Show me all information about lending_package.pdf"
+    - "Retrieve complete record for document xyz.pdf"
 
     Args:
-        object_key: The S3 object key for the document
+        object_key: Document filename/S3 object key (e.g., "report.pdf", "lending_package.pdf")
 
     Returns:
-        Dict containing document data or error information
+        Dict with keys:
+        - tracking_available (bool): Whether tracking table is configured
+        - document_found (bool): Whether document exists
+        - document (dict): Complete document record with all fields if found
+        - object_key (str): The document identifier
+        - reason (str): Explanation if document not found or tracking unavailable
+        - suggestion (str): Alternative tools to use if tracking unavailable
     """
     try:
-        table_name = os.environ.get("TRACKING_TABLE_NAME")
-        if not table_name:
-            return create_error_response(
-                "TRACKING_TABLE_NAME environment variable not set",
-                document_found=False,
-                object_key=object_key,
-            )
-
-        dynamodb = boto3.resource("dynamodb")
-        table = dynamodb.Table(table_name)
-
-        # Direct key lookup
-        response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
-
-        if "Item" in response:
-            item = decimal_to_float(response["Item"])
+        tracking_table, table_name = _get_tracking_table()
+        if not tracking_table:
             return create_response(
                 {
+                    "tracking_available": False,
+                    "reason": "Tracking table not configured",
+                    "document_found": False,
+                    "object_key": object_key,
+                    "suggestion": "Try using CloudWatch logs or X-Ray traces for document analysis",
+                }
+            )
+
+        # Direct key lookup
+        dynamodb_response = tracking_table.get_item(
+            Key={"PK": f"doc#{object_key}", "SK": "none"}
+        )
+
+        if "Item" in dynamodb_response:
+            document_item = decimal_to_float(dynamodb_response["Item"])
+            response = create_response(
+                {
+                    "tracking_available": True,
                     "document_found": True,
-                    "document": item,
+                    "document": document_item,
                     "object_key": object_key,
                 }
             )
+            logger.info(f"DynamoDB record response for {object_key}: {response}")
+            return response
         else:
-            return create_error_response(
-                f"Document not found for key: {object_key}",
-                document_found=False,
-                object_key=object_key,
+            response = create_response(
+                {
+                    "tracking_available": True,
+                    "document_found": False,
+                    "object_key": object_key,
+                    "reason": f"Document not found for key: {object_key}",
+                }
             )
+            logger.info(
+                f"DynamoDB record not found response for {object_key}: {response}"
+            )
+            return response
 
     except Exception as e:
-        logger.error(f"Document lookup failed for key '{object_key}': {e}")
-        return create_error_response(
-            str(e), document_found=False, object_key=object_key
+        return _handle_dynamodb_error(
+            "lookup", object_key, e, document_found=False, object_key=object_key
         )
+
+
+def _get_tracking_table():
+    """
+    Internal utility to get tracking table resource with validation.
+
+    Returns:
+        Tuple of (table_resource, table_name) or (None, None) if not configured
+    """
+    table_name = os.environ.get("TRACKING_TABLE_NAME", "")
+    if not table_name:
+        return None, None
+
+    dynamodb = boto3.resource("dynamodb")
+    return dynamodb.Table(table_name), table_name
+
+
+def _handle_dynamodb_error(
+    operation: str, identifier: str, error: Exception, **kwargs
+) -> Dict[str, Any]:
+    """
+    Standardized error handling for DynamoDB operations.
+
+    Args:
+        operation: Operation being performed (e.g., "lookup", "query")
+        identifier: Document key or operation identifier
+        error: Exception that occurred
+        **kwargs: Additional error response fields
+
+    Returns:
+        Standardized error response
+    """
+    logger.error(f"DynamoDB {operation} failed for '{identifier}': {error}")
+    return create_error_response(str(error), **kwargs)

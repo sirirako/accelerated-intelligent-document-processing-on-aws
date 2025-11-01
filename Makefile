@@ -72,7 +72,24 @@ check-arn-partitions:
 		exit 1; \
 	fi
 
-# A convenience Makefile target that runs 
+# Type checking with basedpyright
+typecheck:
+	@echo "Running type checks..."
+	basedpyright
+
+# Type check with detailed statistics
+typecheck-stats:
+	@echo "Running type checks with statistics..."
+	basedpyright --stats
+
+# Type check only files changed in current PR/branch
+# Usage: make typecheck-pr [TARGET_BRANCH=branch_name]
+TARGET_BRANCH ?= main
+typecheck-pr:
+	@echo "Type checking changed files against $(TARGET_BRANCH)..."
+	python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH)
+
+
 commit: lint test
 	$(info Generating commit message...)
 	export COMMIT_MESSAGE="$(shell q chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \

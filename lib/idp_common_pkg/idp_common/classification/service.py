@@ -37,8 +37,14 @@ from idp_common.classification.models import (
     DocumentType,
     PageClassification,
 )
+from idp_common.config.models import IDPConfig
+from idp_common.config.schema_constants import (
+    X_AWS_IDP_CLASSIFICATION,
+    X_AWS_IDP_DOCUMENT_TYPE,
+)
 from idp_common.models import Document, Section, Status
 from idp_common.utils import extract_json_from_text, extract_structured_data_from_text
+from idp_common.utils.few_shot_example_builder import build_few_shot_examples_content
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +65,7 @@ class ClassificationService:
         self,
         region: str = None,
         max_workers: int = 20,
-        config: Dict[str, Any] = None,
+        config: Union[Dict[str, Any], IDPConfig] = None,
         backend: str = "bedrock",
         cache_table: str = None,
     ):
@@ -69,14 +75,20 @@ class ClassificationService:
         Args:
             region: AWS region for backend services
             max_workers: Maximum number of concurrent workers
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
             backend: Classification backend to use ('bedrock' or 'sagemaker')
             cache_table: Optional DynamoDB table name for caching classification results
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
+
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
         self.max_workers = max_workers
         self.document_types = self._load_document_types()
         self.valid_doc_types: Set[str] = {dt.type_name for dt in self.document_types}
@@ -107,10 +119,8 @@ class ClassificationService:
 
         # Initialize backend-specific clients
         if self.backend == "bedrock":
-            # Get model_id from config for logging
-            model_id = self.config.get("model_id") or self.config.get(
-                "classification", {}
-            ).get("model")
+            # Get model_id from typed config (type-safe access)
+            model_id = self.config.classification.model
             if not model_id:
                 raise ValueError("No model ID specified in configuration for Bedrock")
             self.bedrock_model = model_id
@@ -118,28 +128,22 @@ class ClassificationService:
                 f"Initialized classification service with Bedrock backend using model {model_id}"
             )
         else:  # sagemaker
-            endpoint_name = self.config.get(
-                "sagemaker_endpoint_name"
-            ) or os.environ.get("SAGEMAKER_ENDPOINT_NAME")
+            # Note: SageMaker endpoint name not in config models - use env var
+            endpoint_name = os.environ.get("SAGEMAKER_ENDPOINT_NAME")
             if not endpoint_name:
-                raise ValueError(
-                    "No SageMaker endpoint name specified in configuration or environment"
-                )
+                raise ValueError("No SageMaker endpoint name specified in environment")
             self.sm_client = boto3.client("sagemaker-runtime", region_name=self.region)
             self.sagemaker_endpoint = endpoint_name
             logger.info(
                 f"Initialized classification service with SageMaker backend using endpoint {endpoint_name}"
             )
 
-        # Get classification method from config
-        classification_config = self.config.get("classification", {})
-        self.classification_method = classification_config.get(
-            "classificationMethod", self.MULTIMODAL_PAGE_LEVEL
-        )
+        # Get classification method from typed config
+        self.classification_method = self.config.classification.classificationMethod
 
         # Get max pages for classification (1 to ALL)
-        self.max_pages_for_classification = classification_config.get(
-            "maxPagesForClassification", "ALL"
+        self.max_pages_for_classification = (
+            self.config.classification.maxPagesForClassification
         )
 
         # Log classification method
@@ -160,16 +164,17 @@ class ClassificationService:
         """Load document types from configuration with regex patterns."""
         doc_types = []
 
-        # Get document types from config
-        classes = self.config.get("classes", [])
-        for class_obj in classes:
+        # Get document types from typed config (type-safe access)
+        classes = self.config.classes
+        for schema in classes:
+            classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
             doc_types.append(
                 DocumentType(
-                    type_name=class_obj.get("name", ""),
-                    description=class_obj.get("description", ""),
-                    document_name_regex=class_obj.get("document_name_regex", None),
-                    document_page_content_regex=class_obj.get(
-                        "document_page_content_regex", None
+                    type_name=schema.get(X_AWS_IDP_DOCUMENT_TYPE, ""),
+                    description=schema.get("description", ""),
+                    document_name_regex=classification_meta.get("documentNamePattern"),
+                    document_page_content_regex=classification_meta.get(
+                        "pageContentPattern"
                     ),
                 )
             )
@@ -219,17 +224,12 @@ class ClassificationService:
         Returns:
             Document with limited pages for classification
         """
-        if self.max_pages_for_classification == "ALL":
+        # 0 or negative means ALL pages
+        if self.max_pages_for_classification <= 0:
             return document
 
+        max_pages = self.max_pages_for_classification
         try:
-            max_pages = int(self.max_pages_for_classification)
-            if max_pages <= 0:
-                logger.warning(
-                    f"Invalid maxPagesForClassification value: {max_pages}, using ALL pages"
-                )
-                return document
-
             if len(document.pages) <= max_pages:
                 return document
 
@@ -614,25 +614,23 @@ class ClassificationService:
         Raises:
             ValueError: If required configuration values are missing
         """
-        classification_config = self.config.get("classification", {})
+        # Type-safe access to classification config (no .get() needed!)
         config = {
             "model_id": self.bedrock_model,
-            "temperature": float(classification_config.get("temperature", 0)),
-            "top_k": float(classification_config.get("top_k", 5)),
-            "top_p": float(classification_config.get("top_p", 0.1)),
-            "max_tokens": int(classification_config.get("max_tokens", 4096))
-            if classification_config.get("max_tokens")
-            else None,
+            "temperature": self.config.classification.temperature,
+            "top_k": self.config.classification.top_k,
+            "top_p": self.config.classification.top_p,
+            "max_tokens": self.config.classification.max_tokens,
         }
 
         # Validate system prompt
-        system_prompt = classification_config.get("system_prompt")
+        system_prompt = self.config.classification.system_prompt
         if not system_prompt:
             raise ValueError("No system_prompt found in classification configuration")
         config["system_prompt"] = system_prompt
 
         # Validate task prompt
-        task_prompt = classification_config.get("task_prompt")
+        task_prompt = self.config.classification.task_prompt
         if not task_prompt:
             raise ValueError("No task_prompt found in classification configuration")
         config["task_prompt"] = task_prompt
@@ -863,7 +861,7 @@ class ClassificationService:
         content.extend(before_examples_content)
 
         # Add few-shot examples from config
-        examples_content = self._build_few_shot_examples_content()
+        examples_content = build_few_shot_examples_content(self.config)
         content.extend(examples_content)
 
         # Add the part after examples
@@ -872,138 +870,6 @@ class ClassificationService:
         # No longer appending image content when no placeholder is found
 
         return content
-
-    def _build_few_shot_examples_content(self) -> List[Dict[str, Any]]:
-        """
-        Build content items for few-shot examples from the configuration.
-
-        Returns:
-            List of content items containing text and image content for examples
-        """
-        content = []
-        classes = self.config.get("classes", [])
-
-        for class_obj in classes:
-            examples = class_obj.get("examples", [])
-            for example in examples:
-                class_prompt = example.get("classPrompt")
-
-                # Only process this example if it has a non-empty class_prompt
-                if not class_prompt or not class_prompt.strip():
-                    logger.info(
-                        f"Skipping example with empty classPrompt: {example.get('name')}"
-                    )
-                    continue
-
-                content.append({"text": class_prompt})
-
-                image_path = example.get("imagePath")
-                if image_path:
-                    try:
-                        # Load image content from the path
-
-                        from idp_common import image, s3
-
-                        # Get list of image files from the path (supports directories/prefixes)
-                        image_files = self._get_image_files_from_path(image_path)
-
-                        # Process each image file
-                        for image_file_path in image_files:
-                            try:
-                                # Load image content
-                                if image_file_path.startswith("s3://"):
-                                    # Direct S3 URI
-                                    image_content = s3.get_binary_content(
-                                        image_file_path
-                                    )
-                                else:
-                                    # Local file
-                                    with open(image_file_path, "rb") as f:
-                                        image_content = f.read()
-
-                                # Prepare image content for Bedrock
-                                image_attachment = (
-                                    image.prepare_bedrock_image_attachment(
-                                        image_content
-                                    )
-                                )
-                                content.append(image_attachment)
-
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to load image {image_file_path}: {e}"
-                                )
-                                continue
-
-                    except Exception as e:
-                        raise ValueError(
-                            f"Failed to load example images from {image_path}: {e}"
-                        )
-
-        return content
-
-    def _get_image_files_from_path(self, image_path: str) -> List[str]:
-        """
-        Get list of image files from a path that could be a single file, directory, or S3 prefix.
-
-        Args:
-            image_path: Path to image file, directory, or S3 prefix
-
-        Returns:
-            List of image file paths/URIs sorted by filename
-        """
-        import os
-
-        from idp_common import s3
-
-        # Handle S3 URIs
-        if image_path.startswith("s3://"):
-            # Check if it's a direct file or a prefix
-            if image_path.endswith(
-                (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp")
-            ):
-                # Direct S3 file
-                return [image_path]
-            else:
-                # S3 prefix - list all images
-                return s3.list_images_from_path(image_path)
-        else:
-            # Handle local paths
-            config_bucket = os.environ.get("CONFIGURATION_BUCKET")
-            root_dir = os.environ.get("ROOT_DIR")
-
-            if config_bucket:
-                # Use environment bucket with imagePath as key
-                s3_uri = f"s3://{config_bucket}/{image_path}"
-
-                # Check if it's a direct file or a prefix
-                if image_path.endswith(
-                    (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp")
-                ):
-                    # Direct S3 file
-                    return [s3_uri]
-                else:
-                    # S3 prefix - list all images
-                    return s3.list_images_from_path(s3_uri)
-            elif root_dir:
-                # Use relative path from ROOT_DIR
-                full_path = os.path.join(root_dir, image_path)
-                full_path = os.path.normpath(full_path)
-
-                if os.path.isfile(full_path):
-                    # Single local file
-                    return [full_path]
-                elif os.path.isdir(full_path):
-                    # Local directory - list all images
-                    return s3.list_images_from_path(full_path)
-                else:
-                    # Path doesn't exist
-                    logger.warning(f"Image path does not exist: {full_path}")
-                    return []
-            else:
-                raise ValueError(
-                    "No CONFIGURATION_BUCKET or ROOT_DIR set. Cannot read example images from local filesystem."
-                )
 
     def classify_page_bedrock(
         self,
@@ -1039,9 +905,9 @@ class ClassificationService:
         # Load image content from URI with configurable dimensions
         if image_uri:
             try:
-                image_config = self.config.get("classification", {}).get("image", {})
-                target_width = image_config.get("target_width")
-                target_height = image_config.get("target_height")
+                # Type-safe access to image config
+                target_width = self.config.classification.image.target_width
+                target_height = self.config.classification.image.target_height
 
                 # Just pass the values directly - prepare_image handles empty strings/None
                 image_content = image.prepare_image(
@@ -1686,7 +1552,8 @@ class ClassificationService:
             return document
 
         # Check for limited page classification
-        if self.max_pages_for_classification != "ALL":
+        # 0 or negative means ALL pages
+        if self.max_pages_for_classification > 0:
             logger.info(
                 f"Using limited page classification: {self.max_pages_for_classification} pages"
             )

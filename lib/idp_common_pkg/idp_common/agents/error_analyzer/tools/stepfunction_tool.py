@@ -11,10 +11,11 @@ from typing import Any, Dict, List, Optional
 import boto3
 from strands import tool
 
+from idp_common.config import get_config
+
 from ..config import (
     create_error_response,
     create_response,
-    get_config_with_fallback,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,8 +99,11 @@ def _analyze_execution_timeline(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {"error": "No execution events available"}
 
     # Cache config values once
-    config = get_config_with_fallback()
-    max_timeline_events = config.get("max_stepfunction_timeline_events", 3)
+    config = get_config(as_model=True)
+
+    max_timeline_events = (
+        config.agents.error_analyzer.parameters.max_stepfunction_timeline_events
+    )
 
     timeline = []
     failure_point = None
@@ -151,7 +155,7 @@ def _analyze_execution_timeline(events: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 @tool
-def stepfunction_execution_details(execution_arn: str) -> Dict[str, Any]:
+def stepfunction_details(execution_arn: str) -> Dict[str, Any]:
     """
     Analyze Step Function execution to identify workflow failures and state transitions.
     Retrieves execution history and performs comprehensive analysis to identify failure points,

@@ -4,17 +4,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
-import {
-  Container,
-  Header,
-  SpaceBetween,
-  Box,
-  Alert,
-  Spinner,
-  Button,
-  Modal,
-  Badge,
-} from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Box, Alert, Spinner, Button, Modal, Badge } from '@cloudscape-design/components';
 import {
   FaPlay,
   FaCheck,
@@ -54,6 +44,11 @@ const isStepDisabled = (stepName, config) => {
   // Check if this is an assessment step
   if (stepNameLower.includes('assessment') || stepNameLower.includes('assess')) {
     return config.assessment?.enabled === false;
+  }
+
+  // Check if this is an evaluation step
+  if (stepNameLower.includes('evaluation') || stepNameLower.includes('evaluate')) {
+    return config.evaluation?.enabled === false;
   }
 
   return false;
@@ -224,10 +219,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
   // Disable auto-refresh when execution completes
   useEffect(() => {
     const execution = data?.getStepFunctionExecution;
-    if (
-      execution &&
-      (execution.status === 'SUCCEEDED' || execution.status === 'FAILED' || execution.status === 'ABORTED')
-    ) {
+    if (execution && (execution.status === 'SUCCEEDED' || execution.status === 'FAILED' || execution.status === 'ABORTED')) {
       // If execution is complete, disable auto-refresh
       if (autoRefreshEnabled) {
         logger.info('Execution complete, disabling auto-refresh');
@@ -270,6 +262,9 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
       return <FaEye size={iconProps.size} className={iconProps.className} />;
     }
     if (stepName.toLowerCase().includes('summarization')) {
+      return <FaChartBar size={iconProps.size} className={iconProps.className} />;
+    }
+    if (stepName.toLowerCase().includes('evaluation')) {
       return <FaChartBar size={iconProps.size} className={iconProps.className} />;
     }
     if (stepName.toLowerCase().includes('workflow')) {
@@ -377,9 +372,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
             <SpaceBetween direction="horizontal" size="l">
               <Box>
                 <Box variant="awsui-key-label">Status</Box>
-                <Box className={`execution-status execution-status-${execution.status.toLowerCase()}`}>
-                  {execution.status}
-                </Box>
+                <Box className={`execution-status execution-status-${execution.status.toLowerCase()}`}>{execution.status}</Box>
               </Box>
               <Box>
                 <Box variant="awsui-key-label">Duration</Box>
@@ -425,12 +418,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
         {/* Step Details */}
         {selectedStep && (
           <Container header={<Header variant="h3">Step Details</Header>}>
-            <StepDetails
-              step={selectedStep}
-              formatDuration={formatDuration}
-              getStepIcon={getStepIcon}
-              mergedConfig={mergedConfig}
-            />
+            <StepDetails step={selectedStep} formatDuration={formatDuration} getStepIcon={getStepIcon} mergedConfig={mergedConfig} />
           </Container>
         )}
 
@@ -442,9 +430,9 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
               return (
                 <div
                   key={`timeline-${step.name}-${step.type}-${step.status}-${step.startDate || index}`}
-                  className={`timeline-step ${step.status.toLowerCase()} ${
-                    selectedStep?.name === step.name ? 'selected' : ''
-                  } ${step.isMapIteration ? 'map-iteration-step' : ''} ${stepDisabled ? 'step-disabled' : ''}`}
+                  className={`timeline-step ${step.status.toLowerCase()} ${selectedStep?.name === step.name ? 'selected' : ''} ${
+                    step.isMapIteration ? 'map-iteration-step' : ''
+                  } ${stepDisabled ? 'step-disabled' : ''}`}
                   onClick={() => setSelectedStep(step)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -461,9 +449,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
                       {step.name}
                       {stepDisabled && <Badge color="grey">NOT ENABLED</Badge>}
                       {step.isMapIteration && <Badge color="green">Map Iteration</Badge>}
-                      {step.type === 'Map' && step.mapIterations && (
-                        <Badge color="blue">{step.mapIterations} iterations</Badge>
-                      )}
+                      {step.type === 'Map' && step.mapIterations && <Badge color="blue">{step.mapIterations} iterations</Badge>}
                     </div>
                     <div className="timeline-step-meta">
                       <span className={`timeline-step-status status-${step.status.toLowerCase()}`}>{step.status}</span>
@@ -472,8 +458,7 @@ const StepFunctionFlowViewer = ({ executionArn, visible, onDismiss, mergedConfig
                     {step.error && (
                       <div className="timeline-step-error">
                         <FaExclamationTriangle size={14} style={{ marginRight: '4px', color: '#d13212' }} />
-                        <strong>Error:</strong>{' '}
-                        {step.error.length > 100 ? `${step.error.substring(0, 100)}...` : step.error}
+                        <strong>Error:</strong> {step.error.length > 100 ? `${step.error.substring(0, 100)}...` : step.error}
                       </div>
                     )}
                   </div>
@@ -496,6 +481,9 @@ StepFunctionFlowViewer.propTypes = {
       enabled: PropTypes.bool,
     }),
     assessment: PropTypes.shape({
+      enabled: PropTypes.bool,
+    }),
+    evaluation: PropTypes.shape({
       enabled: PropTypes.bool,
     }),
   }),

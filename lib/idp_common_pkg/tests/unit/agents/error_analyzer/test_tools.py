@@ -5,8 +5,6 @@
 Unit tests for Error Analyzer tools.
 """
 
-import importlib.util
-
 import pytest
 
 
@@ -14,65 +12,72 @@ import pytest
 class TestErrorAnalyzerTools:
     """Test error analyzer individual tools."""
 
-    def test_analyze_errors_document_specific(self):
-        """Test analyze_errors function can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.error_analysis_tool"
+    def test_cloudwatch_tools_import(self):
+        """Test CloudWatch tools can be imported."""
+        from idp_common.agents.error_analyzer.tools import (
+            cloudwatch_document_logs,
+            cloudwatch_logs,
         )
-        assert spec is not None, "Failed to find error_analysis_tool module"
 
-    def test_analyze_errors_general_system(self):
-        """Test analyze_errors function can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.error_analysis_tool"
-        )
-        assert spec is not None, "Failed to find error_analysis_tool module"
+        assert cloudwatch_document_logs is not None
+        assert callable(cloudwatch_document_logs)
+        assert cloudwatch_logs is not None
+        assert callable(cloudwatch_logs)
 
-    def test_analyze_errors_no_stack_name(self):
-        """Test analyze_errors function can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.error_analysis_tool"
+    def test_dynamodb_tools_import(self):
+        """Test DynamoDB tools can be imported."""
+        from idp_common.agents.error_analyzer.tools import (
+            dynamodb_query,
+            dynamodb_record,
+            dynamodb_status,
         )
-        assert spec is not None, "Failed to find error_analysis_tool module"
 
-    def test_document_analysis_tool(self):
-        """Test document analysis tool can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.document_analysis_tool"
-        )
-        assert spec is not None, "Failed to find document_analysis_tool module"
+        assert dynamodb_record is not None
+        assert callable(dynamodb_record)
+        assert dynamodb_status is not None
+        assert callable(dynamodb_status)
+        assert dynamodb_query is not None
+        assert callable(dynamodb_query)
 
-    def test_dynamodb_tools_find_tracking_table(self):
-        """Test find_tracking_table function can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.dynamodb_tool"
+    def test_execution_context_tools_import(self):
+        """Test execution context tools can be imported."""
+        from idp_common.agents.error_analyzer.tools import (
+            lambda_lookup,
+            stepfunction_details,
         )
-        assert spec is not None, "Failed to find dynamodb_tool module"
 
-    def test_dynamodb_tools_scan_table(self):
-        """Test scan_dynamodb_table function can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.dynamodb_tool"
-        )
-        assert spec is not None, "Failed to find dynamodb_tool module"
+        assert lambda_lookup is not None
+        assert callable(lambda_lookup)
+        assert stepfunction_details is not None
+        assert callable(stepfunction_details)
 
-    def test_cloudwatch_tools_search_stack_logs(self):
-        """Test search_stack_logs function can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.cloudwatch_tool"
+    def test_xray_tools_import(self):
+        """Test X-Ray tools can be imported."""
+        from idp_common.agents.error_analyzer.tools import (
+            xray_performance_analysis,
+            xray_trace,
         )
-        assert spec is not None, "Failed to find cloudwatch_tool module"
 
-    def test_general_analysis_tool(self):
-        """Test general system analysis tool can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.general_analysis_tool"
-        )
-        assert spec is not None, "Failed to find general_analysis_tool module"
+        assert xray_trace is not None
+        assert callable(xray_trace)
+        assert xray_performance_analysis is not None
+        assert callable(xray_performance_analysis)
 
-    def test_stepfunction_tools(self):
-        """Test Step Function analysis tool can be imported."""
-        spec = importlib.util.find_spec(
-            "idp_common.agents.error_analyzer.tools.stepfunction_tool"
-        )
-        assert spec is not None, "Failed to find stepfunction_tool module"
+    def test_all_tools_available(self):
+        """Test that all 11 tools are available in the tools module."""
+        from idp_common.agents.error_analyzer.tools import __all__
+
+        expected_tools = {
+            "cloudwatch_document_logs",
+            "cloudwatch_logs",
+            "dynamodb_record",
+            "dynamodb_status",
+            "dynamodb_query",
+            "lambda_lookup",
+            "stepfunction_details",
+            "xray_trace",
+            "xray_performance_analysis",
+        }
+
+        assert len(__all__) == 9
+        assert set(__all__) == expected_tools

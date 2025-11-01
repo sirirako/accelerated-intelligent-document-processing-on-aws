@@ -30,6 +30,7 @@ Resources:
     # checkov:skip=CKV_AWS_108: "CloudFormation service role requires S3/KMS permissions to create and configure encrypted data buckets for the IDP solution. All buckets use customer-managed KMS encryption."
     # checkov:skip=CKV_AWS_111: "CloudFormation service role requires write permissions across AWS services to deploy complete IDP infrastructure. Trust policy limits to CloudFormation service. Use in conjunction with CloudTrail auditing."
     # checkov:skip=CKV_AWS_107: "CloudFormation service role may need to create/configure secrets for service integrations. Actual secret values are provided via parameters, not embedded in templates."
+    # cdk-nag:skip=AwsSolutions-IAM5: CloudFormation service role requires broad permissions for IDP stack deployment. Constrained by trust policy to cloudformation.amazonaws.com service principal.
     Properties:
       RoleName: !Sub '${AWS::StackName}-CFServiceRole'
       AssumeRolePolicyDocument:

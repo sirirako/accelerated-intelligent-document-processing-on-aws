@@ -17,7 +17,9 @@ import {
   Header,
   Container,
   Modal,
+  Tabs,
 } from '@cloudscape-design/components';
+import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
 
 // Add custom styles for compact form layout
 const customStyles = `
@@ -326,13 +328,16 @@ ResizableColumns.propTypes = {
   columnSpacing: PropTypes.string,
 };
 
-const FormView = ({
+const ConfigBuilder = ({
   schema = { properties: {} },
   formValues = {},
   defaultConfig = null,
   isCustomized = null,
   onResetToDefault = null,
   onChange,
+  extractionSchema = null,
+  onSchemaChange = null,
+  onSchemaValidate = null,
 }) => {
   // Track expanded state for all list items across the form - default to collapsed
   const [expandedItems, setExpandedItems] = useState({});
@@ -344,53 +349,8 @@ const FormView = ({
   // For handling dropdown selection in modal
   const [showNameAsDropdown, setShowNameAsDropdown] = useState(false);
 
-  // Handle default value initialization at component level to avoid hooks violations
-  useEffect(() => {
-    const initializeDefaults = (obj, currentPath = '', schemaProps = schema.properties) => {
-      if (!schemaProps) return;
-
-      Object.entries(schemaProps).forEach(([key, property]) => {
-        const fullPath = currentPath ? `${currentPath}.${key}` : key;
-        const currentValue = getValueAtPath(formValues, fullPath);
-
-        // Handle attributeType field default
-        if (key === 'attributeType' && (currentValue === undefined || currentValue === null || currentValue === '')) {
-          updateValue(fullPath, 'simple');
-        }
-
-        // Handle boolean fields with default values - ONLY when value is truly undefined/null, NOT false
-        if (
-          property.type === 'boolean' &&
-          property.default !== undefined &&
-          (currentValue === undefined || currentValue === null)
-        ) {
-          updateValue(fullPath, property.default);
-        }
-
-        // Recursively handle nested objects
-        if (property.type === 'object' && property.properties) {
-          const nestedObj = getValueAtPath(formValues, fullPath);
-          if (nestedObj && typeof nestedObj === 'object') {
-            initializeDefaults(nestedObj, fullPath, property.properties);
-          }
-        }
-
-        // Handle arrays/lists with object items
-        if ((property.type === 'array' || property.type === 'list') && property.items && property.items.properties) {
-          const arrayValue = getValueAtPath(formValues, fullPath);
-          if (Array.isArray(arrayValue)) {
-            arrayValue.forEach((item, index) => {
-              if (item && typeof item === 'object') {
-                initializeDefaults(item, `${fullPath}[${index}]`, property.items.properties);
-              }
-            });
-          }
-        }
-      });
-    };
-
-    initializeDefaults();
-  }, [formValues, schema.properties]);
+  // State for tab selection
+  const [activeTabId, setActiveTabId] = useState('configuration');
 
   // Component-level function to add a new item with a name
   const addNewItem = (path, name) => {
@@ -610,9 +570,7 @@ const FormView = ({
     // Check dependencies FIRST, before any rendering - applies to all field types
     if (property.dependsOn) {
       const dependencyField = property.dependsOn.field;
-      const dependencyValues = Array.isArray(property.dependsOn.values)
-        ? property.dependsOn.values
-        : [property.dependsOn.value];
+      const dependencyValues = Array.isArray(property.dependsOn.values) ? property.dependsOn.values : [property.dependsOn.value];
 
       let dependencyPath;
 
@@ -658,8 +616,7 @@ const FormView = ({
         dependencyValueType: typeof dependencyValue,
         dependencyValues,
         dependencyValuesTypes: dependencyValues.map((v) => typeof v),
-        isNestedAttribute:
-          currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
+        isNestedAttribute: currentPath.includes('groupAttributes[') || currentPath.includes('listItemTemplate.itemAttributes['),
         shouldHide: dependencyValue === undefined || !dependencyValues.includes(dependencyValue),
       });
 
@@ -798,7 +755,6 @@ const FormView = ({
                   toggleExpand();
                 }}
                 ariaLabel={isExpanded ? 'Collapse section' : 'Expand section'}
-                className="awsui-button-icon"
               />
               <Box fontWeight="bold" fontSize="body-m" marginLeft="xxs" display="inline-block">
                 {sectionTitle}
@@ -833,9 +789,7 @@ const FormView = ({
         <SpaceBetween size="xs">
           {getSortedObjectProperties(property.properties).map(({ propKey, propSchema }) => {
             const nestedPropSchema =
-              propSchema.type === 'list' || propSchema.type === 'array'
-                ? { ...propSchema, nestLevel: nestLevel + 1 }
-                : propSchema;
+              propSchema.type === 'list' || propSchema.type === 'array' ? { ...propSchema, nestLevel: nestLevel + 1 } : propSchema;
             return <Box key={propKey}>{renderField(propKey, nestedPropSchema, fullPath)}</Box>;
           })}
         </SpaceBetween>
@@ -908,7 +862,6 @@ const FormView = ({
                 toggleListExpand();
               }}
               ariaLabel={isListExpanded ? 'Collapse list' : 'Expand list'}
-              className="awsui-button-icon"
             />
             <Box fontWeight="bold" fontSize="body-m" marginLeft="xxs" display="inline-block">
               {`${listLabel} (${values.length})`}
@@ -971,7 +924,6 @@ const FormView = ({
                           updateValue(path, newValues);
                         }}
                         ariaLabel="Remove item"
-                        className="awsui-button-icon"
                       />
 
                       <Box
@@ -1021,22 +973,18 @@ const FormView = ({
                           // Special handling for nested attributes looking for attributeType
                           if (
                             dependencyField === 'attributeType' &&
-                            (fieldPath.includes('groupAttributes[') ||
-                              fieldPath.includes('listItemTemplate.itemAttributes['))
+                            (fieldPath.includes('groupAttributes[') || fieldPath.includes('listItemTemplate.itemAttributes['))
                           ) {
                             if (fieldPath.includes('groupAttributes[')) {
                               const attributeMatch = fieldPath.match(/^(.+\.attributes\[\d+\])\.groupAttributes/);
                               dependencyPath = attributeMatch ? `${attributeMatch[1]}.attributeType` : null;
                             } else if (fieldPath.includes('listItemTemplate.itemAttributes[')) {
-                              const attributeMatch = fieldPath.match(
-                                /^(.+\.attributes\[\d+\])\.listItemTemplate\.itemAttributes/,
-                              );
+                              const attributeMatch = fieldPath.match(/^(.+\.attributes\[\d+\])\.listItemTemplate\.itemAttributes/);
                               dependencyPath = attributeMatch ? `${attributeMatch[1]}.attributeType` : null;
                             }
                           } else {
                             const parentPath = fieldPath.substring(0, fieldPath.lastIndexOf('.'));
-                            dependencyPath =
-                              parentPath.length > 0 ? `${parentPath}.${dependencyField}` : dependencyField;
+                            dependencyPath = parentPath.length > 0 ? `${parentPath}.${dependencyField}` : dependencyField;
                           }
 
                           if (!dependencyPath) return false;
@@ -1123,17 +1071,13 @@ const FormView = ({
                         // Render the regular fields using HTML table for guaranteed columns
                         const renderedRegularFields = (
                           <Box padding="0" style={{ margin: 0 }}>
-                            <table
-                              style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '4px 0', margin: 0 }}
-                            >
+                            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '4px 0', margin: 0 }}>
                               <tbody style={{ margin: 0, padding: 0 }}>
                                 {/* Render description field first if it exists, spanning full width */}
                                 {descriptionField && (
                                   <tr key="description-row">
                                     <td colSpan={actualColumnCount} style={{ verticalAlign: 'top' }}>
-                                      <Box padding="0">
-                                        {renderField(descriptionField.propKey, descriptionField.propSchema, itemPath)}
-                                      </Box>
+                                      <Box padding="0">{renderField(descriptionField.propKey, descriptionField.propSchema, itemPath)}</Box>
                                     </td>
                                   </tr>
                                 )}
@@ -1206,12 +1150,7 @@ const FormView = ({
                           };
 
                           return (
-                            <Box
-                              key={propKey}
-                              padding={{ top: '0', bottom: '8px' }}
-                              width="100%"
-                              margin={{ bottom: '4px' }}
-                            >
+                            <Box key={propKey} padding={{ top: '0', bottom: '8px' }} width="100%" margin={{ bottom: '4px' }}>
                               {renderField(propKey, nestedProps, itemPath)}
                             </Box>
                           );
@@ -1232,9 +1171,7 @@ const FormView = ({
                       })()
                     ) : (
                       // Simple list item (non-object)
-                      <Box padding="xs">
-                        {renderInputField(`${key}[${index}]`, property.items, values[index], itemPath)}
-                      </Box>
+                      <Box padding="xs">{renderInputField(`${key}[${index}]`, property.items, values[index], itemPath)}</Box>
                     )}
                   </Box>
                 </Box>
@@ -1389,11 +1326,7 @@ const FormView = ({
           options={property.enum.map((opt) => ({ value: opt, label: opt }))}
         />
       );
-    } else if (
-      property.format === 'text-area' ||
-      path.toLowerCase().includes('prompt') ||
-      path.toLowerCase().includes('description')
-    ) {
+    } else if (property.format === 'text-area' || path.toLowerCase().includes('prompt') || path.toLowerCase().includes('description')) {
       input = (
         <Textarea
           value={displayValue !== undefined && displayValue !== null ? String(displayValue) : ''}
@@ -1476,9 +1409,7 @@ const FormView = ({
 
   // Check if a property needs a container with section header
   const shouldUseContainer = (key, property) => {
-    return (
-      property.sectionLabel && (property.type === 'object' || property.type === 'list' || property.type === 'array')
-    );
+    return property.sectionLabel && (property.type === 'object' || property.type === 'list' || property.type === 'array');
   };
 
   // Render each top-level property
@@ -1511,9 +1442,32 @@ const FormView = ({
   };
 
   return (
-    <Box style={{ height: '70vh', overflow: 'auto' }} padding="s">
+    <Box style={{ height: '70vh' }} padding="s">
       <style>{customStyles}</style>
-      <SpaceBetween size="l">{getSortedProperties().map(renderTopLevelProperty)}</SpaceBetween>
+      <Tabs
+        activeTabId={activeTabId}
+        onChange={({ detail }) => setActiveTabId(detail.activeTabId)}
+        tabs={[
+          {
+            id: 'configuration',
+            label: 'Configuration',
+            content: (
+              <Box style={{ height: 'calc(70vh - 60px)', overflow: 'auto' }} padding="s">
+                <SpaceBetween size="l">{getSortedProperties().map(renderTopLevelProperty)}</SpaceBetween>
+              </Box>
+            ),
+          },
+          {
+            id: 'extraction-schema',
+            label: 'Document Schema',
+            content: (
+              <Box style={{ height: 'calc(70vh - 60px)' }}>
+                <SchemaBuilder initialSchema={extractionSchema} onChange={onSchemaChange} onValidate={onSchemaValidate} />
+              </Box>
+            ),
+          },
+        ]}
+      />
 
       {/* Global modal for adding new items */}
       <Modal
@@ -1536,10 +1490,7 @@ const FormView = ({
         {activeAddModal && (
           <FormField
             label="Name"
-            description={
-              getPropertyFromPath(activeAddModal)?.items?.properties?.name?.description ||
-              'Enter a unique name for this item'
-            }
+            description={getPropertyFromPath(activeAddModal)?.items?.properties?.name?.description || 'Enter a unique name for this item'}
             errorText={nameError}
           >
             {showNameAsDropdown ? (
@@ -1559,7 +1510,6 @@ const FormView = ({
                     label: opt,
                   })) || []
                 }
-                autoFocus
               />
             ) : (
               // Text input for regular string values
@@ -1572,7 +1522,6 @@ const FormView = ({
                   }
                 }}
                 placeholder="Enter name"
-                autoFocus
               />
             )}
           </FormField>
@@ -1582,7 +1531,7 @@ const FormView = ({
   );
 };
 
-FormView.propTypes = {
+ConfigBuilder.propTypes = {
   schema: PropTypes.shape({
     properties: PropTypes.objectOf(
       PropTypes.shape({
@@ -1591,11 +1540,16 @@ FormView.propTypes = {
       }),
     ),
   }),
-  formValues: PropTypes.shape({}),
+  formValues: PropTypes.shape({
+    classes: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  }),
   defaultConfig: PropTypes.shape({}),
   isCustomized: PropTypes.func,
   onResetToDefault: PropTypes.func,
   onChange: PropTypes.func.isRequired,
+  extractionSchema: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  onSchemaChange: PropTypes.func,
+  onSchemaValidate: PropTypes.func,
 };
 
-export default FormView;
+export default ConfigBuilder;
