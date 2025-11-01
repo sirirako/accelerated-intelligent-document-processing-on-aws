@@ -16,8 +16,7 @@ const renderChangeValue = (value) => {
   const isPositive = numValue > 0;
   return (
     <>
-      {Math.abs(numValue).toFixed(2)}%
-      <span style={{ color: isPositive ? 'green' : 'red' }}>{isPositive ? ' ↑' : ' ↓'}</span>
+      {Math.abs(numValue).toFixed(2)}%<span style={{ color: isPositive ? 'green' : 'red' }}>{isPositive ? ' ↑' : ' ↓'}</span>
     </>
   );
 };
@@ -52,9 +51,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           console.error('Error comparing test runs:', error);
 
           const errorMessage =
-            error.errors?.length > 0
-              ? error.errors.map((e) => e.message).join('; ')
-              : error.message || 'Error comparing test runs';
+            error.errors?.length > 0 ? error.errors.map((e) => e.message).join('; ') : error.message || 'Error comparing test runs';
           setComparisonData({ error: errorMessage });
         } finally {
           setComparing(false);
@@ -139,28 +136,19 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 {
                   metric: 'Test Set',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
-                      testRunId,
-                      testRun.testSetName || 'N/A',
-                    ]),
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.testSetName || 'N/A']),
                   ),
                 },
                 {
                   metric: 'Context',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
-                      testRunId,
-                      testRun.context || 'N/A',
-                    ]),
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.context || 'N/A']),
                   ),
                 },
                 {
                   metric: 'Files Processed',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
-                      testRunId,
-                      testRun.filesCount || 'N/A',
-                    ]),
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.filesCount || 'N/A']),
                   ),
                 },
                 {
@@ -168,9 +156,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
                       testRunId,
-                      testRun.totalCost !== null && testRun.totalCost !== undefined
-                        ? `$${testRun.totalCost.toFixed(4)}`
-                        : 'N/A',
+                      testRun.totalCost !== null && testRun.totalCost !== undefined ? `$${testRun.totalCost.toFixed(4)}` : 'N/A',
                     ]),
                   ),
                 },
@@ -226,8 +212,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
               if (preSelectedTestRunIds.length !== 2) {
                 return (
                   <Box>
-                    Configuration comparison requires exactly 2 test runs. Currently comparing{' '}
-                    {preSelectedTestRunIds.length} test runs.
+                    Configuration comparison requires exactly 2 test runs. Currently comparing {preSelectedTestRunIds.length} test runs.
                   </Box>
                 );
               }
@@ -290,8 +275,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                       Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
                         const accuracyBreakdown = testRun.accuracyBreakdown || {};
                         const value = accuracyBreakdown[metricKey];
-                        const displayValue =
-                          value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%';
+                        const displayValue = value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%';
                         return [testRunId, displayValue];
                       }),
                     ),

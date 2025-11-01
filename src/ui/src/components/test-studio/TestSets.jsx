@@ -1,19 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
-import {
-  Container,
-  Header,
-  SpaceBetween,
-  Button,
-  Table,
-  Box,
-  Modal,
-  FormField,
-  Input,
-  Alert,
-  Badge,
-} from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Button, Table, Box, Modal, FormField, Input, Alert, Badge } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import ADD_TEST_SET from '../../graphql/queries/addTestSet';
 import DELETE_TEST_SETS from '../../graphql/queries/deleteTestSets';

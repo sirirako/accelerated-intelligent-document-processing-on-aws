@@ -41,13 +41,7 @@ const TestStudioLayout = () => {
       case 'sets':
         return <TestSets />;
       case 'runner':
-        return (
-          <TestRunner
-            onTestStart={handleTestStart}
-            onTestComplete={handleTestComplete}
-            activeTestRuns={activeTestRuns}
-          />
-        );
+        return <TestRunner onTestStart={handleTestStart} onTestComplete={handleTestComplete} activeTestRuns={activeTestRuns} />;
       case 'results':
         return (
           <TestResultsList

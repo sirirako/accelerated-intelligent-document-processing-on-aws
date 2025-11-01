@@ -2,16 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import {
-  Table,
-  Button,
-  SpaceBetween,
-  ButtonDropdown,
-  Pagination,
-  Box,
-  TextFilter,
-  Flashbar,
-} from '@cloudscape-design/components';
+import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilter, Flashbar } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
@@ -129,8 +120,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
       setError(null);
     } catch (err) {
       console.error('Error fetching test runs:', err);
-      const errorMessage =
-        err.errors?.length > 0 ? err.errors.map((e) => e.message).join('; ') : 'Failed to load test runs';
+      const errorMessage = err.errors?.length > 0 ? err.errors.map((e) => e.message).join('; ') : 'Failed to load test runs';
       setError(errorMessage);
     } finally {
       setLoading(false);

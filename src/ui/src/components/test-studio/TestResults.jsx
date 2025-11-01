@@ -169,18 +169,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
   try {
     if (results.costBreakdown) {
-      costBreakdown =
-        typeof results.costBreakdown === 'string' ? JSON.parse(results.costBreakdown) : results.costBreakdown;
+      costBreakdown = typeof results.costBreakdown === 'string' ? JSON.parse(results.costBreakdown) : results.costBreakdown;
     }
     if (results.usageBreakdown) {
-      usageBreakdown =
-        typeof results.usageBreakdown === 'string' ? JSON.parse(results.usageBreakdown) : results.usageBreakdown;
+      usageBreakdown = typeof results.usageBreakdown === 'string' ? JSON.parse(results.usageBreakdown) : results.usageBreakdown;
     }
     if (results.accuracyBreakdown) {
-      accuracyBreakdown =
-        typeof results.accuracyBreakdown === 'string'
-          ? JSON.parse(results.accuracyBreakdown)
-          : results.accuracyBreakdown;
+      accuracyBreakdown = typeof results.accuracyBreakdown === 'string' ? JSON.parse(results.accuracyBreakdown) : results.accuracyBreakdown;
     }
   } catch (e) {
     console.error('Error parsing breakdown data:', e);
@@ -250,9 +245,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           <Box>
             <Box variant="awsui-key-label">Total Cost</Box>
             <Box fontSize="heading-l">
-              {results.totalCost !== null && results.totalCost !== undefined
-                ? `$${results.totalCost.toFixed(4)}`
-                : 'N/A'}
+              {results.totalCost !== null && results.totalCost !== undefined ? `$${results.totalCost.toFixed(4)}` : 'N/A'}
             </Box>
           </Box>
           <Box>
@@ -275,11 +268,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
         {/* Breakdown Tables */}
         {(costBreakdown || usageBreakdown || accuracyBreakdown) && (
-          <ComprehensiveBreakdown
-            costBreakdown={costBreakdown}
-            usageBreakdown={usageBreakdown}
-            accuracyBreakdown={accuracyBreakdown}
-          />
+          <ComprehensiveBreakdown costBreakdown={costBreakdown} usageBreakdown={usageBreakdown} accuracyBreakdown={accuracyBreakdown} />
         )}
       </SpaceBetween>
     </Container>

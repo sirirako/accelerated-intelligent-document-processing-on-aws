@@ -2,16 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import {
-  Container,
-  Header,
-  SpaceBetween,
-  Button,
-  FormField,
-  Select,
-  Alert,
-  Textarea,
-} from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Textarea } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
@@ -97,9 +88,7 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
   };
 
   const testSetOptions = testSets.map((testSet) => ({
-    label: `${testSet.name} (${testSet.filePattern}) - ${testSet.fileCount} ${
-      testSet.fileCount === 1 ? 'file' : 'files'
-    }`,
+    label: `${testSet.name} (${testSet.filePattern}) - ${testSet.fileCount} ${testSet.fileCount === 1 ? 'file' : 'files'}`,
     value: testSet.id,
     description: `Pattern: ${testSet.filePattern}`,
   }));

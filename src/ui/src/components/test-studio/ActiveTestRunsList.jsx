@@ -17,9 +17,7 @@ const ActiveTestRunsList = ({ activeTestRuns, onTestComplete }) => {
     return null;
   }
 
-  const renderStatusCell = (item) => (
-    <StatusCell testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />
-  );
+  const renderStatusCell = (item) => <StatusCell testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />;
 
   const columnDefinitions = [
     {
