@@ -15,7 +15,6 @@ SPDX-License-Identifier: MIT-0
   - **Persistent Chat Memory**: DynamoDB-backed conversation history with automatic loading of last 20 turns, turn-based message grouping, and intelligent context management with sliding window optimization
   - **Real-Time Streaming**: AppSync GraphQL subscriptions enable incremental response streaming with proper async task cleanup and thinking tag removal for clean display
   - **Code Intelligence Agent**: New specialized agent for code-related assistance with DeepWiki MCP server integration, security guardrails to prevent sensitive data exposure, and user-controlled opt-in toggle (default: enabled)
-  - **Sub-Agent Streaming**: Real-time lifecycle events (start, stream, end, error) with async generator tools, structured data detection for tables/charts, and tool usage tracking
   - **Rich Chat Interface**: Modern UI with CloudScape Design System featuring real-time message streaming, multi-agent support (Analytics, Code Intelligence, Error Analyzer, General), Markdown rendering with syntax highlighting, structured data visualization (charts via Chart.js, sortable tables), expandable tool usage sections, sample prompts, and auto-scroll behavior
   - **Privacy & Security**: Explicit user consent for Code Intelligence third-party services, session isolation with unique session IDs, error boundary protection, input validation
 
@@ -28,6 +27,20 @@ SPDX-License-Identifier: MIT-0
   - **Automatic Migration**: Existing legacy configurations automatically migrate to JSON Schema format on first load - completely transparent to users
   - **Backward Compatible**: Legacy format remains supported through automatic migration - no manual configuration updates required
   - **Comprehensive Documentation**: New migration guide with format comparison, field mapping table, and best practices
+
+- **IDP CLI Single Document Status Support with Programmatic Output**
+  - Enhanced `status` command to support checking individual document status via new `--document-id` option as alternative to `--batch-id`
+  - Added programmatic output capabilities with exit codes (0=success, 1=failure, 2=processing) for scripting and automation
+  - JSON format output (`--format json`) provides structured data for parsing in CI/CD pipelines and scripts
+  - Live monitoring support with `--wait` flag works for both batch and single document status checks
+  - Mutual exclusion validation ensures only one of `--batch-id` or `--document-id` is specified
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
 
 - **Error Analyzer CloudWatch Tool Enhancements**
   - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis

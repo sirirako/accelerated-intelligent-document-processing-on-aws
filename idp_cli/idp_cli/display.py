@@ -7,6 +7,7 @@ Display Module
 Rich UI components for displaying batch processing progress and status.
 """
 
+import json
 from typing import Dict
 
 from rich.console import Console
@@ -348,3 +349,144 @@ def create_live_display(
         layout.add_row(Panel(footer, border_style="dim"))
 
     return layout
+
+
+def format_status_json(status_data: Dict, stats: Dict) -> str:
+    """
+    Format status data as JSON for programmatic use
+
+    Args:
+        status_data: Status data from progress monitor
+        stats: Statistics dictionary
+
+    Returns:
+        JSON string
+    """
+    # For single document, return simplified format
+    if stats["total"] == 1:
+        doc = None
+        if status_data["completed"]:
+            doc = status_data["completed"][0]
+        elif status_data["running"]:
+            doc = status_data["running"][0]
+        elif status_data["failed"]:
+            doc = status_data["failed"][0]
+        elif status_data["queued"]:
+            doc = status_data["queued"][0]
+
+        if doc:
+            result = {
+                "document_id": doc.get("document_id"),
+                "status": doc.get("status"),
+                "duration": doc.get("duration", 0),
+                "start_time": doc.get("start_time", ""),
+                "end_time": doc.get("end_time", ""),
+            }
+
+            # Add status-specific fields
+            if doc.get("status") == "COMPLETED":
+                result["num_sections"] = doc.get("num_sections", 0)
+            elif doc.get("status") == "FAILED":
+                result["error"] = doc.get("error", "Unknown error")
+                result["failed_step"] = doc.get("failed_step", "Unknown")
+            elif doc.get("status") in [
+                "RUNNING",
+                "CLASSIFYING",
+                "EXTRACTING",
+                "ASSESSING",
+                "SUMMARIZING",
+                "EVALUATING",
+            ]:
+                result["current_step"] = doc.get("current_step", doc.get("status"))
+
+            # Determine exit code
+            if doc.get("status") == "COMPLETED":
+                result["exit_code"] = 0
+            elif doc.get("status") == "FAILED":
+                result["exit_code"] = 1
+            else:
+                result["exit_code"] = 2
+
+            return json.dumps(result, indent=2)
+
+    # For batch, return full summary
+    result = {
+        "total": stats["total"],
+        "completed": stats["completed"],
+        "failed": stats["failed"],
+        "running": stats["running"],
+        "queued": stats["queued"],
+        "completion_percentage": stats["completion_percentage"],
+        "success_rate": stats["success_rate"],
+        "avg_duration_seconds": stats["avg_duration_seconds"],
+        "all_complete": stats["all_complete"],
+    }
+
+    # Determine exit code for batch
+    if stats["all_complete"]:
+        if stats["failed"] > 0:
+            result["exit_code"] = 1  # Some failures
+        else:
+            result["exit_code"] = 0  # All succeeded
+    else:
+        result["exit_code"] = 2  # Still processing
+
+    return json.dumps(result, indent=2)
+
+
+def show_final_status_summary(status_data: Dict, stats: Dict) -> int:
+    """
+    Show final status summary for programmatic use and return exit code
+
+    Args:
+        status_data: Status data from progress monitor
+        stats: Statistics dictionary
+
+    Returns:
+        Exit code (0=success, 1=failure, 2=still processing)
+    """
+    # For single document
+    if stats["total"] == 1:
+        doc = None
+        if status_data["completed"]:
+            doc = status_data["completed"][0]
+            status = "COMPLETED"
+            exit_code = 0
+        elif status_data["failed"]:
+            doc = status_data["failed"][0]
+            status = "FAILED"
+            exit_code = 1
+        else:
+            # Running or queued
+            if status_data["running"]:
+                doc = status_data["running"][0]
+            elif status_data["queued"]:
+                doc = status_data["queued"][0]
+            status = doc.get("status", "UNKNOWN") if doc else "UNKNOWN"
+            exit_code = 2
+
+        duration = doc.get("duration", 0) if doc else 0
+        console.print()
+        console.print(
+            f"FINAL STATUS: {status} | Duration: {duration:.1f}s | Exit Code: {exit_code}"
+        )
+        return exit_code
+
+    # For batch
+    if stats["all_complete"]:
+        if stats["failed"] > 0:
+            status = f"COMPLETED WITH FAILURES ({stats['failed']} failed)"
+            exit_code = 1
+        else:
+            status = "ALL COMPLETED"
+            exit_code = 0
+    else:
+        finished = stats["completed"] + stats["failed"]
+        status = f"IN PROGRESS ({finished}/{stats['total']} finished)"
+        exit_code = 2
+
+    console.print()
+    console.print(
+        f"FINAL STATUS: {status} | Total: {stats['total']} | Success Rate: {stats['success_rate']:.1f}% | Exit Code: {exit_code}"
+    )
+    return exit_code
