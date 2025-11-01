@@ -34,6 +34,21 @@ SPDX-License-Identifier: MIT-0
   - JSON format output (`--format json`) provides structured data for parsing in CI/CD pipelines and scripts
   - Live monitoring support with `--wait` flag works for both batch and single document status checks
   - Mutual exclusion validation ensures only one of `--batch-id` or `--document-id` is specified
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
+
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
 
 
 ### Fixed
@@ -44,6 +59,7 @@ SPDX-License-Identifier: MIT-0
   - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
   - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
   - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
+
 
 ## [0.3.21]
 
