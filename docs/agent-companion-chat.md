@@ -6,6 +6,10 @@
 
 The Agent Companion Chat is an interactive AI assistant that provides a conversational experience for the GenAI IDP Accelerator. Unlike the document-specific troubleshooting tool, the companion chat offers persistent, multi-turn conversations with specialized agents that can help with analytics, code assistance, error diagnosis, and general questions about the system.
 
+
+Uploading AgentChat.mp4…
+
+
 ### Key Features
 
 - **Multi-Turn Conversations**: Have natural back-and-forth conversations with context awareness
