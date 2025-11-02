@@ -19,6 +19,11 @@ extras_require = {
         "strands-agents>=1.0.0",
         "pandas>=2.0.0",
     ],
+    # Code intelligence module dependencies
+    "code_intel": [
+        "strands-agents-tools>=0.2.2",
+        "bedrock-agentcore>=0.1.1",
+    ],
     # Image handling dependencies
     "image": [
         "Pillow==11.2.1",
@@ -61,7 +66,7 @@ extras_require = {
     # Document service factory dependencies (includes both appsync and dynamodb support)
     "docs_service": [
         "requests==2.32.4",
-        "aws-xray-sdk>=2.12.0",
+        "aws-xray-sdk>=2.14.0",
     ],
     # Testing dependencies
     "test": [

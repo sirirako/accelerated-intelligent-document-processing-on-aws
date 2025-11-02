@@ -8,6 +8,7 @@ import { DOCUMENTS_PATH } from '../../routes/constants';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
 
 export const KEY_COLUMN_ID = 'objectKey';
+export const UNIQUE_TRACK_ID = 'uniqueId';
 
 export const COLUMN_DEFINITIONS_MAIN = [
   {
@@ -170,13 +171,7 @@ const TIME_PERIOD_DROPDOWN_ITEMS = Object.keys(TIME_PERIOD_DROPDOWN_CONFIG).map(
 // local storage key to persist the last periods to load
 export const PERIODS_TO_LOAD_STORAGE_KEY = 'periodsToLoad';
 
-export const DocumentsCommonHeader = ({
-  resourceName = 'Documents',
-  selectedItems = [],
-  onDelete,
-  onReprocess,
-  ...props
-}) => {
+export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItems = [], onDelete, onReprocess, ...props }) => {
   const onPeriodToLoadChange = ({ detail }) => {
     const { id } = detail;
     const shardCount = TIME_PERIOD_DROPDOWN_CONFIG[id].count;
@@ -197,18 +192,8 @@ export const DocumentsCommonHeader = ({
           <ButtonDropdown loading={props.loading} onItemClick={onPeriodToLoadChange} items={TIME_PERIOD_DROPDOWN_ITEMS}>
             {`Load: ${periodText}`}
           </ButtonDropdown>
-          <Button
-            iconName="refresh"
-            variant="normal"
-            loading={props.loading}
-            onClick={() => props.setIsLoading(true)}
-          />
-          <Button
-            iconName="download"
-            variant="normal"
-            loading={props.loading}
-            onClick={() => props.downloadToExcel()}
-          />
+          <Button iconName="refresh" variant="normal" loading={props.loading} onClick={() => props.setIsLoading(true)} />
+          <Button iconName="download" variant="normal" loading={props.loading} onClick={() => props.downloadToExcel()} />
           {onReprocess && (
             <Button iconName="arrow-right" variant="normal" disabled={!hasSelectedItems} onClick={onReprocess}>
               Reprocess

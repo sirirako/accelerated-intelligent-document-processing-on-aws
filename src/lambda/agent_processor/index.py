@@ -130,6 +130,9 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             )
             logger.info("Orchestrator agent created successfully")
         
+        # Note: DynamoDB message tracker is automatically added by IDPAgent
+        # if job_id and user_id are provided in kwargs
+        
         # Process the query using context manager for MCP agents
         logger.info(f"Processing query: {query}")
 
@@ -148,6 +151,7 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             
             with agent:
                 response = agent(query)
+                
         finally:
             # Restore stdout
             sys.stdout = old_stdout
@@ -170,7 +174,7 @@ def process_agent_query(query: str, agent_ids: list, job_id: str = None, user_id
             # Return a text response with the raw output
             return {
                 "responseType": "text",
-                "content": f"Error parsing response: {response}"
+                "content": f"Error parsing response: {response}",
             }
             
     except Exception as e:

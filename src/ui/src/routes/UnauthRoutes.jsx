@@ -11,9 +11,7 @@ import { LOGIN_PATH, LOGOUT_PATH, REDIRECT_URL_PARAM } from './constants';
 // this is set at build time depending on the AllowedSignUpEmailDomain CloudFormation parameter
 const VITE_SHOULD_HIDE_SIGN_UP = import.meta.env.VITE_SHOULD_HIDE_SIGN_UP ?? 'true';
 
-const AuthHeader = () => (
-  <h1 style={{ textAlign: 'center', margin: '2rem 0' }}>Welcome to GenAI Intelligent Document Processing!</h1>
-);
+const AuthHeader = () => <h1 style={{ textAlign: 'center', margin: '2rem 0' }}>Welcome to GenAI Intelligent Document Processing!</h1>;
 
 const UnauthRoutes = ({ location }) => (
   <Routes>

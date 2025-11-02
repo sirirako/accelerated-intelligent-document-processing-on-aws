@@ -31,8 +31,7 @@ const DocumentDetails = () => {
     logger.debug('Error decoding objectKey, using as is', e);
   }
 
-  const { documents, getDocumentDetailsFromIds, setToolsOpen, deleteDocuments, reprocessDocuments } =
-    useDocumentsContext();
+  const { documents, getDocumentDetailsFromIds, setToolsOpen, deleteDocuments, reprocessDocuments } = useDocumentsContext();
   const { settings } = useSettingsContext();
 
   const [document, setDocument] = useState(null);

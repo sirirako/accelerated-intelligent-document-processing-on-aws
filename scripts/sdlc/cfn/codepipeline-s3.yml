@@ -159,19 +159,42 @@ Resources:
               commands:
                 - n 22 && node --version || { echo "Node setup failed"; exit 1; }
                 - npm install -g aws-cdk || { echo "CDK installation failed"; exit 1; }
-                - curl -sSL https://install.python-poetry.org | python3 - || { echo "Poetry installation failed"; exit 1; }
-                - export PATH="/root/.local/bin:$PATH"
-                - cd ./scripts/sdlc/idp-cli  # This command won't cause exit on failure
-                - poetry install || { echo "Poetry dependencies installation failed"; exit 1; }
+                # Check which deployment method to use
+                - |
+                  if [ -d "./scripts/sdlc/idp-cli" ]; then
+                    echo "Using legacy poetry-based deployment"
+                    curl -sSL https://install.python-poetry.org | python3 - || { echo "Poetry installation failed"; exit 1; }
+                    export PATH="/root/.local/bin:$PATH"
+                    cd ./scripts/sdlc/idp-cli
+                    poetry install || { echo "Poetry dependencies installation failed"; exit 1; }
+                    cd ../../..
+                  else
+                    echo "Using new idp-cli deployment"
+                    cd idp_cli && pip install -e . && cd .. || { echo "IDP CLI installation failed"; exit 1; }
+                  fi
             build:
               commands:
-                - export IDP_CFN_PREFIX=$(make cfn-prefix) || { echo "CFN prefix generation failed"; exit 1; }
-                - make install -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX
-                - make smoketest -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX
+                - |
+                  if [ -d "./scripts/sdlc/idp-cli" ]; then
+                    echo "Running legacy poetry-based build"
+                    cd ./scripts/sdlc/idp-cli
+                    export IDP_CFN_PREFIX=$(make cfn-prefix) || { echo "CFN prefix generation failed"; exit 1; }
+                    make install -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX
+                    make smoketest -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX
+                  else
+                    echo "Running codebuild deployment script"
+                    python3 scripts/codebuild_deployment.py
+                  fi
               finally:
-                - echo "Running cleanup regardless of build result..."
-                - make uninstall -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX || echo "Cleanup failed but continuing"
-                - make -n cli-smoketest >/dev/null 2>&1 && make cli-smoketest -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX || echo "CLI smoketest target not found, skipping"
+                - |
+                  if [ -d "./scripts/sdlc/idp-cli" ]; then
+                    echo "Running legacy cleanup"
+                    cd ./scripts/sdlc/idp-cli
+                    make uninstall -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX || echo "Cleanup failed but continuing"
+                    make -n cli-smoketest >/dev/null 2>&1 && make cli-smoketest -e IDP_CFN_PREFIX=$IDP_CFN_PREFIX || echo "CLI smoketest target not found, skipping"
+                  else
+                    echo "Cleanup handled by codebuild deployment script"
+                  fi
 
   DeploymentPipeline:
     Type: 'AWS::CodePipeline::Pipeline'

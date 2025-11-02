@@ -41,33 +41,17 @@ const ViewerControls = ({
         {isSummaryVisible ? 'Close Document Summary' : 'View Document Summary'}
       </Button>
     )}
-    <Button
-      onClick={onSetAsBaseline}
-      disabled={copyStatus === 'in-progress' || evaluationStatus === 'BASELINE_COPYING'}
-    >
+    <Button onClick={onSetAsBaseline} disabled={copyStatus === 'in-progress' || evaluationStatus === 'BASELINE_COPYING'}>
       Use as Evaluation Baseline
     </Button>
-    {copyStatus === 'show-message' && (
-      <StatusIndicator type="info">Copy started - see Evaluation status above</StatusIndicator>
-    )}
-    {evaluationStatus === 'BASELINE_COPYING' && (
-      <StatusIndicator type="in-progress">Baseline copying in progress</StatusIndicator>
-    )}
-    {evaluationStatus === 'BASELINE_AVAILABLE' && !copyStatus && (
-      <StatusIndicator type="success">Baseline available</StatusIndicator>
-    )}
+    {copyStatus === 'show-message' && <StatusIndicator type="info">Copy started - see Evaluation status above</StatusIndicator>}
+    {evaluationStatus === 'BASELINE_COPYING' && <StatusIndicator type="in-progress">Baseline copying in progress</StatusIndicator>}
+    {evaluationStatus === 'BASELINE_AVAILABLE' && !copyStatus && <StatusIndicator type="success">Baseline available</StatusIndicator>}
     {evaluationStatus === 'BASELINE_ERROR' && <StatusIndicator type="error">Baseline copy failed</StatusIndicator>}
   </SpaceBetween>
 );
 
-const ViewerContent = ({
-  isSourceVisible,
-  isReportVisible,
-  isSummaryVisible,
-  objectKey,
-  evaluationReportUri,
-  summaryReportUri,
-}) => {
+const ViewerContent = ({ isSourceVisible, isReportVisible, isSummaryVisible, objectKey, evaluationReportUri, summaryReportUri }) => {
   if (!isSourceVisible && !isReportVisible && !isSummaryVisible) {
     return null;
   }

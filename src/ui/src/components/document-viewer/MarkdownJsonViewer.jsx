@@ -67,11 +67,7 @@ const TextEditorView = ({ fileContent, onChange, isReadOnly, fileType }) => {
         <Editor
           height="100%"
           defaultLanguage={fileType === 'json' ? 'json' : fileType}
-          value={
-            fileType === 'json' && typeof fileContent === 'string'
-              ? JSON.stringify(JSON.parse(fileContent), null, 2)
-              : fileContent
-          }
+          value={fileType === 'json' && typeof fileContent === 'string' ? JSON.stringify(JSON.parse(fileContent), null, 2) : fileContent}
           onChange={onChange}
           onMount={handleEditorDidMount}
           options={{
@@ -405,11 +401,7 @@ const MarkdownJsonViewer = ({ fileUri, textConfidenceUri, fileType = 'text', but
                 Edit mode
               </Toggle>
               {isEditing && (
-                <Button
-                  variant="primary"
-                  onClick={handleSave}
-                  disabled={!editedContent || editedContent === fileContent}
-                >
+                <Button variant="primary" onClick={handleSave} disabled={!editedContent || editedContent === fileContent}>
                   Save Changes
                 </Button>
               )}

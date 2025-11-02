@@ -27,7 +27,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
   const [subscription, setSubscription] = useState(null);
   const [availableAgents, setAvailableAgents] = useState([]);
 
-  const query = `Find the root cause of this failure for document: ${documentItem?.objectKey}`;
+  const query = `Troubleshoot ${documentItem?.objectKey} for failures or performance issues.`;
 
   const subscribeToJobCompletion = (id) => {
     try {
@@ -105,27 +105,23 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
         subscription.unsubscribe();
       }
 
-      // Check if Error-Analyzer-Agent-v1 agent exists
+      // Check if Error-Analyzer-Agent agent exists
       const agents = await checkAvailableAgents();
-      const errorAnalyzer = agents.find((agent) => agent.agent_id === 'Error-Analyzer-Agent-v1');
+      const errorAnalyzer = agents.find((agent) => agent.agent_id === 'Error-Analyzer-Agent');
 
       if (!errorAnalyzer) {
-        throw new Error(
-          `Error-Analyzer-Agent-v1 agent is not available. Available agents: ${agents
-            .map((a) => a.agent_id)
-            .join(', ')}`,
-        );
+        throw new Error(`Error-Analyzer-Agent agent is not available. Available agents: ${agents.map((a) => a.agent_id).join(', ')}`);
       }
 
       logger.debug('Submitting troubleshoot query for document:', documentItem.objectKey);
       logger.debug('Query:', query);
-      logger.debug('Agent IDs:', ['Error-Analyzer-Agent-v1']);
+      logger.debug('Agent IDs:', ['Error-Analyzer-Agent']);
 
       const response = await client.graphql({
         query: submitAgentQuery,
         variables: {
           query,
-          agentIds: ['Error-Analyzer-Agent-v1'],
+          agentIds: ['Error-Analyzer-Agent'],
         },
       });
 
@@ -252,7 +248,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
       onDismiss={onDismiss}
       visible={visible}
       size="large"
-      header={<Header variant="h1">Troubleshoot Document Failure</Header>}
+      header={<Header variant="h1">Troubleshoot Document</Header>}
       footer={
         <Box float="right">
           <Button variant="primary" onClick={onDismiss}>
@@ -263,7 +259,7 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
     >
       <SpaceBetween size="l">
         <Alert type="info">
-          Analyzing failure for document: <strong>{documentItem?.objectKey}</strong>
+          Analyzing document: <strong>{documentItem?.objectKey}</strong>
         </Alert>
 
         {isSubmitting && (
@@ -275,33 +271,12 @@ const TroubleshootModal = ({ visible, onDismiss, documentItem = null, existingJo
 
         {error && <Alert type="error">{error}</Alert>}
 
-        {jobStatus && jobStatus !== 'FAILED' && (
-          <Alert type={jobStatus === 'COMPLETED' ? 'success' : 'info'}>Status: {jobStatus}</Alert>
-        )}
+        {jobStatus && jobStatus !== 'FAILED' && <Alert type={jobStatus === 'COMPLETED' ? 'success' : 'info'}>Status: {jobStatus}</Alert>}
 
         {jobResult && <AgentResultDisplay result={jobResult} query={query} />}
 
         {(agentMessages || jobStatus === 'PROCESSING') && (
           <AgentMessagesDisplay agentMessages={agentMessages} isProcessing={jobStatus === 'PROCESSING'} />
-        )}
-
-        {/* Debug section - remove in production */}
-        {import.meta.env.DEV && jobId && (
-          <Alert type="info">
-            <strong>Debug Info:</strong>
-            <br />
-            Job ID: {jobId}
-            <br />
-            Status: {jobStatus}
-            <br />
-            Has Result: {jobResult ? 'Yes' : 'No'}
-            <br />
-            Has Messages: {agentMessages ? 'Yes' : 'No'}
-            <br />
-            Available Agents: {availableAgents.map((a) => a.agent_id).join(', ') || 'Loading...'}
-            <br />
-            Error: {error || 'None'}
-          </Alert>
         )}
       </SpaceBetween>
     </Modal>

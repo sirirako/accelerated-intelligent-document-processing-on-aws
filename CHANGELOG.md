@@ -5,6 +5,76 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.0]
+
+> **⚠️ IMPORTANT NOTICE - SIGNIFICANT CONFIGURATION CHANGES**
+>
+> This release introduces **significant changes to the accelerator configuration** for defining document classes and attributes. The configuration format has been migrated to JSON Schema standards, which provides enhanced flexibility and validation capabilities.
+>
+> While automatic migration is provided for backward compatibility, **customers MUST fully test this update in a non-production environment** before upgrading production systems. We strongly recommend:
+>
+> 1. Deploy the update to a test/development environment first
+> 2. Verify all document processing workflows function as expected
+> 3. Test with representative samples of your production documents
+> 4. Review the migration guide at [docs/json-schema-migration.md](./docs/json-schema-migration.md)
+> 5. Only proceed with production upgrade after thorough validation
+>
+> **Do not upgrade production systems without completing validation testing.**
+
+### Added
+
+- **Agent Companion Chat Experience**
+  - Added comprehensive interactive AI assistant interface providing real-time conversational support for the IDP Accelerator
+  - **Session-Based Architecture**: Transformed from job-based (single request/response) to session-based (multi-turn conversations) with unified agentic chat experience
+  - **Persistent Chat Memory**: DynamoDB-backed conversation history with automatic loading of last 20 turns, turn-based message grouping, and intelligent context management with sliding window optimization
+  - **Real-Time Streaming**: AppSync GraphQL subscriptions enable incremental response streaming with proper async task cleanup and thinking tag removal for clean display
+  - **Code Intelligence Agent**: New specialized agent for code-related assistance with DeepWiki MCP server integration, security guardrails to prevent sensitive data exposure, and user-controlled opt-in toggle (default: enabled)
+  - **Rich Chat Interface**: Modern UI with CloudScape Design System featuring real-time message streaming, multi-agent support (Analytics, Code Intelligence, Error Analyzer, General), Markdown rendering with syntax highlighting, structured data visualization (charts via Chart.js, sortable tables), expandable tool usage sections, sample prompts, and auto-scroll behavior
+  - **Privacy & Security**: Explicit user consent for Code Intelligence third-party services, session isolation with unique session IDs, error boundary protection, input validation
+
+- **JSON Schema Format for Class Definitions** - [docs/json-schema-migration.md](./docs/json-schema-migration.md)
+  - Document class definitions now use industry-standard JSON Schema Draft 2020-12 format for improved flexibility and tooling integration
+  - **Standards-Based Validation**: Leverage standard JSON Schema validators and tooling ecosystem for better configuration validation
+  - **Enhanced Extensibility**: Custom IDP properties use standard JSON Schema extension pattern (`x-aws-idp-*` prefix) for clean separation of concerns
+  - **Modern Data Contract**: Define document structures using widely-adopted JSON Schema format with robust type system (`string`, `number`, `boolean`, `object`, `array`)
+  - **Nested Structure Support**: Natural representation of complex documents with nested objects and arrays using JSON Schema's native `properties` and `items` keywords
+  - **Automatic Migration**: Existing legacy configurations automatically migrate to JSON Schema format on first load - completely transparent to users
+  - **Backward Compatible**: Legacy format remains supported through automatic migration - no manual configuration updates required
+  - **Comprehensive Documentation**: New migration guide with format comparison, field mapping table, and best practices
+
+- **IDP CLI Single Document Status Support with Programmatic Output**
+  - Enhanced `status` command to support checking individual document status via new `--document-id` option as alternative to `--batch-id`
+  - Added programmatic output capabilities with exit codes (0=success, 1=failure, 2=processing) for scripting and automation
+  - JSON format output (`--format json`) provides structured data for parsing in CI/CD pipelines and scripts
+  - Live monitoring support with `--wait` flag works for both batch and single document status checks
+  - Mutual exclusion validation ensures only one of `--batch-id` or `--document-id` is specified
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
+
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
+
+
+### Fixed
+
+- **UI Robustness for Orphaned List Entries** - [#102](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/102)
+  - Fixed UI error banner "failed to get document details - please try again later" appearing when orphaned list entries exist (list# items without corresponding doc# items in DynamoDB tracking table)
+  - **Root Cause**: When a document had a list entry but no corresponding document record, the error would trigger UI banner and prevent display of all documents in the same time shard
+  - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
+  - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
+  - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
+
+
 ## [0.3.21]
 
 ### Added
@@ -53,6 +123,11 @@ SPDX-License-Identifier: MIT-0
 - **IDP CLI Code Cleanup and Portability Improvements** - [#91](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/91), [#92](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/92)
   - Removed dead code from previous refactors in batch_processor.py (51 lines)
   - Replaced hardcoded absolute paths with dynamic path resolution in rerun_processor.py for cross-platform compatibility
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.21.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.21.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.3.21.yaml`
 
 ## [0.3.20]
 
@@ -105,6 +180,9 @@ SPDX-License-Identifier: MIT-0
 ### Known Issues
 - **GovCloud Deployments fail, due to lack of ARM support for CodeBuild. Fix targeted for next release.**
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.20.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.20.yaml`
 
 ## [0.3.19]
 
@@ -132,6 +210,10 @@ SPDX-License-Identifier: MIT-0
   - **Solution**: Refactored `reprocess_document_resolver` to directly create fresh Document objects and queue to SQS, completely bypassing S3 event notifications
   - **Benefits**: Eliminates unnecessary S3 copy operations (cost savings)
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.19.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.19.yaml`
+
 ## [0.3.18]
 
 ### Added
@@ -146,6 +228,10 @@ SPDX-License-Identifier: MIT-0
 ### Fixed
 
 - Defect in v0.3.17 causing workflow tracker failure to (1) update status of failed workflows, and (2) update reporting database for all workflows #72
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.18.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.18.yaml`
 
 ## [0.3.17]
 
@@ -174,6 +260,10 @@ SPDX-License-Identifier: MIT-0
 - Fix missing data in Glue tables when using a document class that contains a dash (-).
 - Added optional Bedrock Guardrails support to (a) Agent Analytics and (b) Chat with Document
 - Fixed regressions on Permission Boundary support for all roles, and added autimated tests to prevent recurrance - fixes #70
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.17.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.17.yaml`
 
 ## [0.3.16]
 
@@ -204,6 +294,10 @@ SPDX-License-Identifier: MIT-0
 - Fixed UI zipfile creation to exclude .aws-sam directories and .env files from deployment package
 - Added security recommendation to set LogLevel parameter to WARN or ERROR (not INFO) for production deployments to prevent logging of sensitive information including PII data, document contents, and S3 presigned URLs
 - Hardened several aspects of the new Discovery feature
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.16.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.16.yaml`
 
 ## [0.3.15]
 
@@ -260,6 +354,10 @@ SPDX-License-Identifier: MIT-0
   - Fixed bug in list of models supporting cache points - previously claude 4 sonnet and opus had been excluded.
   - Validations added at the assessment step for checking valid json response. The validation fails after extraction/assessment is complete if json parsing issues are encountered.
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.15.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.15.yaml`
+
 ## [0.3.14]
 
 ### Added
@@ -283,6 +381,10 @@ SPDX-License-Identifier: MIT-0
 - Fix various UX and error reporting issues with the new Python publish script
 - Simplify UDOP model path construction and avoid invalid default for regions other than us-east-1 and us-west-2
 - Permission regression from previous release affecting "Chat with Document"
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.14.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.14.yaml`
 
 ## [0.3.13]
 
@@ -332,6 +434,10 @@ SPDX-License-Identifier: MIT-0
 ### Fixed
 
 - **Improved Visual Edit bounding box position when using image zoom or pan**
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.13.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.13.yaml`
 
 ## [0.3.12]
 
@@ -410,6 +516,10 @@ SPDX-License-Identifier: MIT-0
   - **Root Cause**: Processing large PDFs with high-resolution images (7469×9623 pixels) caused memory spikes when 20 concurrent workers each held ~101MB images simultaneously, exceeding the 4GB Lambda memory limit
   - **Optimal Solution**: Refactored image extraction to render directly at target dimensions using PyMuPDF matrix transformations, completely eliminating oversized image creation
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.12.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.12.yaml`
+
 ## [0.3.11]
 
 ### Added
@@ -418,6 +528,10 @@ SPDX-License-Identifier: MIT-0
 - **Anthropic Claude Opus 4.1** model available in configuration for all document processing steps
 - **Browser tab icon** now features a blue background with a white "IDP"
 - **Experimental new classification method** - multimodalPageBoundaryClassification - for detecting section boundaries during page level classification.
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.11.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.11.yaml`
 
 ## [0.3.10]
 
@@ -439,6 +553,10 @@ SPDX-License-Identifier: MIT-0
   - Consistent lowercase naming convention for tables ensures compatibility with case-sensitive S3 paths
   - Tables are configured with partition projection for efficient date-based queries without manual partition management
   - Automatic schema evolution - tables update when new fields are detected in extraction results
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.10.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.10.yaml`
 
 ## [0.3.9]
 

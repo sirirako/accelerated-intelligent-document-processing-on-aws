@@ -37,9 +37,7 @@ const AgentMessagesDisplay = ({ agentMessages = null, isProcessing = false }) =>
 
     // Handle array content format
     if (Array.isArray(originalMessage.content)) {
-      const sqlItem = originalMessage.content.find(
-        (item) => item && item.toolUse && item.toolUse.name === 'run_athena_query_with_config',
-      );
+      const sqlItem = originalMessage.content.find((item) => item && item.toolUse && item.toolUse.name === 'run_athena_query_with_config');
       return sqlItem?.toolUse?.input?.query || null;
     }
 
@@ -52,9 +50,7 @@ const AgentMessagesDisplay = ({ agentMessages = null, isProcessing = false }) =>
 
     // Handle array content format
     if (Array.isArray(originalMessage.content)) {
-      const codeItem = originalMessage.content.find(
-        (item) => item && item.toolUse && item.toolUse.name === 'execute_python',
-      );
+      const codeItem = originalMessage.content.find((item) => item && item.toolUse && item.toolUse.name === 'execute_python');
       return codeItem?.toolUse?.input?.code || null;
     }
 
@@ -67,9 +63,7 @@ const AgentMessagesDisplay = ({ agentMessages = null, isProcessing = false }) =>
 
     // Handle array content format
     if (Array.isArray(originalMessage.content)) {
-      const dbInfoItem = originalMessage.content.find(
-        (item) => item && item.toolUse && item.toolUse.name === 'get_database_info',
-      );
+      const dbInfoItem = originalMessage.content.find((item) => item && item.toolUse && item.toolUse.name === 'get_database_info');
       // For get_database_info, there typically isn't input data, but we can check for tool result
       return dbInfoItem ? 'Database schema information was retrieved by the agent' : null;
     }
@@ -772,10 +766,7 @@ JOIN metering m ON ds."document_id" = m."document_id"
     // For tool messages, if we have a tool_name, show it more prominently
     if (message.role === 'tool' && message.tool_name) {
       // If the content is just a generic success message, show the tool name instead
-      if (
-        textContent === "Tool completed with status 'success'." ||
-        textContent.includes('Tool completed with status')
-      ) {
+      if (textContent === "Tool completed with status 'success'." || textContent.includes('Tool completed with status')) {
         textContent = `Tool request initiated for tool: ${message.tool_name}`;
       }
     }
@@ -790,8 +781,7 @@ JOIN metering m ON ds."document_id" = m."document_id"
 
     // Check if this is a get_database_info tool
     const isDatabaseInfoTool = message.role === 'tool' && message.tool_name === 'get_database_info';
-    const hasDatabaseInfo =
-      isDatabaseInfoTool && message.originalMessage && extractDatabaseInfo(message.originalMessage);
+    const hasDatabaseInfo = isDatabaseInfoTool && message.originalMessage && extractDatabaseInfo(message.originalMessage);
 
     // Create a unique key for this message
     const messageKey = `${message.role}-${message.sequence_number}-${index}-${message.timestamp}`;

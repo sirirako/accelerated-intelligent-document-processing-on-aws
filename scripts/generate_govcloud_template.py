@@ -192,7 +192,7 @@ class GovCloudTemplateGenerator:
             'WAFAllowedIPv4Ranges',
             'DocumentKnowledgeBase',
             'KnowledgeBaseModelId',
-            'DocumentAnalysisAgentModelId',
+            'ChatCompanionModelId',
             'EnableHITL',
             'ExistingPrivateWorkforceArn'
         }

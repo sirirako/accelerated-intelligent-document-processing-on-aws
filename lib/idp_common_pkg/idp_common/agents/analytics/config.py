@@ -6,6 +6,7 @@ Configuration management for analytics agents.
 """
 
 import logging
+import os
 from typing import Any, Dict
 
 from ..common.config import configure_logging, get_environment_config
@@ -46,6 +47,54 @@ def get_analytics_config() -> Dict[str, Any]:
 
     logger.info("Analytics configuration loaded successfully")
     return config
+
+
+def get_analytics_model_id(config_manager=None) -> str:
+    """
+    Get the analytics agent model ID from configuration.
+
+    Priority order:
+    1. Environment variable CHAT_COMPANION_MODEL_ID
+    2. Configuration table agents.analytics.model_id
+    3. Default fallback
+
+    Args:
+        config_manager: Optional ConfigurationManager instance
+
+    Returns:
+        Model ID string
+    """
+    # First check environment variable
+    model_id = os.environ.get("CHAT_COMPANION_MODEL_ID")
+    if model_id:
+        logger.info(f"Using analytics model ID from environment: {model_id}")
+        return model_id
+
+    # Try to get from configuration table
+    if config_manager:
+        try:
+            from ...config import get_merged_configuration
+
+            merged_config = get_merged_configuration(config_manager)
+
+            # Navigate to agents.analytics.model_id
+            agents_config = merged_config.get("agents", {})
+            analytics_config = agents_config.get("analytics", {})
+            config_model_id = analytics_config.get("model_id")
+
+            if config_model_id:
+                logger.info(
+                    f"Using analytics model ID from configuration: {config_model_id}"
+                )
+                return config_model_id
+
+        except Exception as e:
+            logger.warning(f"Failed to load model ID from configuration: {e}")
+
+    # Fallback to default
+    default_model_id = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+    logger.info(f"Using default analytics model ID: {default_model_id}")
+    return default_model_id
 
 
 def load_python_plot_generation_examples() -> str:

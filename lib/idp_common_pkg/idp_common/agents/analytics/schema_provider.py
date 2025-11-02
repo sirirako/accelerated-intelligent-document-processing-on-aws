@@ -6,9 +6,19 @@ Schema provider for analytics agents - generates comprehensive database descript
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 
 from idp_common.config import get_config
+from idp_common.config.models import IDPConfig
+from idp_common.config.schema_constants import (
+    SCHEMA_DESCRIPTION,
+    SCHEMA_ITEMS,
+    SCHEMA_PROPERTIES,
+    SCHEMA_TYPE,
+    TYPE_ARRAY,
+    TYPE_OBJECT,
+    X_AWS_IDP_DOCUMENT_TYPE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +212,7 @@ GROUP BY se."section_type"
 
 
 def get_dynamic_document_sections_description(
-    config: Optional[Dict[str, Any]] = None,
+    config: Optional[IDPConfig] = None,
 ) -> str:
     """
     Generate deployment-specific description of document sections tables based on actual configuration.
@@ -215,10 +225,10 @@ def get_dynamic_document_sections_description(
     """
     try:
         if config is None:
-            config = get_config()
+            config = get_config(as_model=True)
 
         # Get document classes from config
-        classes = config.get("classes", [])
+        classes = config.classes
 
         if not classes:
             logger.warning("No classes found in configuration")
@@ -242,7 +252,7 @@ def get_dynamic_document_sections_description(
         # Generate table list
         table_names = []
         for doc_class in classes:
-            class_name = doc_class.get("name", "Unknown")
+            class_name = doc_class.get(X_AWS_IDP_DOCUMENT_TYPE, "Unknown")
             # Apply exact table name transformation logic
             table_name = f"document_sections_{_get_table_suffix(class_name)}"
             table_names.append(table_name)
@@ -255,11 +265,11 @@ def get_dynamic_document_sections_description(
         description += "Each table has the following structure:\n\n"
 
         # Generate detailed schema for each table
-        for doc_class in classes:
-            class_name = doc_class.get("name", "Unknown")
-            class_desc = doc_class.get("description", "No description available")
+        for schema in classes:
+            class_name = schema.get(X_AWS_IDP_DOCUMENT_TYPE, "Unknown")
+            class_desc = schema.get("description", "No description available")
             table_name = f"document_sections_{_get_table_suffix(class_name)}"
-            attributes = doc_class.get("attributes", [])
+            properties = schema.get(SCHEMA_PROPERTIES, {})
 
             description += f'**`{table_name}`** (Class: "{class_name}"):\n'
             description += f"- **Description**: {class_desc}\n"
@@ -289,20 +299,20 @@ def get_dynamic_document_sections_description(
             )
 
             # Configuration-specific columns - reset column count for each table
-            if attributes:
+            if properties:
                 description += "- **Configuration-Specific Columns**:\n"
                 column_count = 0  # Reset for each table
-                for attr_index, attr in enumerate(attributes):
-                    attr_desc_text, columns_added = _generate_attribute_columns(
-                        attr, "  "
-                    )
-                    description += attr_desc_text
+                prop_list = list(properties.keys())
+                for prop_index, (prop_desc_text, columns_added) in enumerate(
+                    _walk_properties_for_columns(properties)
+                ):
+                    description += prop_desc_text
                     column_count += columns_added
                     # Limit columns within this individual table only
                     if column_count > 20:  # Reasonable per-table limit
-                        remaining_attrs = len(attributes) - attr_index - 1
-                        if remaining_attrs > 0:
-                            description += f"  - ... and {remaining_attrs} more attributes from configuration\n"
+                        remaining_props = len(prop_list) - prop_index - 1
+                        if remaining_props > 0:
+                            description += f"  - ... and {remaining_props} more properties from configuration\n"
                         break
             else:
                 description += "- **Configuration-Specific Columns**: None configured\n"
@@ -416,55 +426,52 @@ def _get_table_suffix(class_name: str) -> str:
     return class_name.lower().replace("-", "_").replace(" ", "_")
 
 
-def _generate_attribute_columns(attr: Dict[str, Any], indent: str) -> tuple[str, int]:
+def _walk_properties_for_columns(
+    properties: Dict[str, Any],
+    parent_path: str = "inference_result",
+    indent: str = "  ",
+) -> Generator[tuple[str, int], None, None]:
     """
-    Generate column descriptions for an attribute.
+    Walk JSON Schema properties and yield (column_description, count) tuples.
 
     Args:
-        attr: Attribute configuration dictionary
-        indent: Indentation string for formatting
+        properties: JSON Schema properties dict
+        parent_path: Parent column path
+        indent: Indentation for formatting
 
-    Returns:
-        Tuple of (description_text, columns_added_count)
+    Yields:
+        Tuples of (description_text, columns_added_count)
     """
-    attr_name = attr.get("name", "unknown")
-    attr_desc = attr.get("description", "")
-    attr_type = attr.get("attributeType", "simple")
+    for prop_name, prop_schema in properties.items():
+        prop_type = prop_schema.get(SCHEMA_TYPE)
+        prop_desc = prop_schema.get(SCHEMA_DESCRIPTION, "")
+        column_path = f"{parent_path}.{prop_name.lower()}"
 
-    desc_parts = []
-    columns_added = 0
+        if prop_type == TYPE_OBJECT:
+            # Group - yield header and recurse
+            nested_props = prop_schema.get(SCHEMA_PROPERTIES, {})
+            yield (
+                f"{indent}- **{prop_name} Group** ({len(nested_props)} columns):\n",
+                0,
+            )
+            yield from _walk_properties_for_columns(
+                nested_props, column_path, indent + "  "
+            )
 
-    if attr_type == "simple":
-        column_name = f"inference_result.{attr_name.lower()}"
-        desc_parts.append(f'{indent}- `"{column_name}"` (string): {attr_desc}')
-        columns_added = 1
+        elif prop_type == TYPE_ARRAY:
+            # List - single array column
+            items_schema = prop_schema.get(SCHEMA_ITEMS, {})
+            item_props = items_schema.get(SCHEMA_PROPERTIES, {})
+            item_names = list(item_props.keys())
+            desc = f'{indent}- `"{column_path}"` (string): {prop_desc}\n'
+            if item_names:
+                desc += f"{indent}  - JSON array containing items with: {', '.join(item_names)}\n"
+            yield (desc, 1)
 
-    elif attr_type == "group":
-        group_attrs = attr.get("groupAttributes", [])
-        group_name_lower = attr_name.lower()
-        desc_parts.append(
-            f"{indent}- **{attr_name} Group** ({len(group_attrs)} columns):"
-        )
-
-        for group_attr in group_attrs:
-            sub_name = group_attr.get("name", "unknown")
-            sub_desc = group_attr.get("description", "")
-            column_name = f"inference_result.{group_name_lower}.{sub_name.lower()}"
-            desc_parts.append(f'{indent}  - `"{column_name}"` (string): {sub_desc}')
-            columns_added += 1
-
-    elif attr_type == "list":
-        column_name = f"inference_result.{attr_name.lower()}"
-        list_template = attr.get("listItemTemplate", {})
-        item_attrs = list_template.get("itemAttributes", [])
-        item_names = [ia.get("name", "") for ia in item_attrs]
-        desc_parts.append(f'{indent}- `"{column_name}"` (string): {attr_desc}')
-        desc_parts.append(
-            f"{indent}  - JSON array containing items with: {', '.join(item_names)}"
-        )
-        columns_added = 1
-
-    return "\n".join(desc_parts) + "\n", columns_added
+        else:
+            # Simple - single column
+            desc = f'{indent}- `"{column_path}"` (string): {prop_desc}\n'
+            yield (desc, 1)
 
 
 def _get_error_aware_fallback(
@@ -494,7 +501,7 @@ def _get_error_aware_fallback(
 """
 
 
-def get_database_overview(config: Optional[Dict[str, Any]] = None) -> str:
+def get_database_overview(config: Optional[IDPConfig] = None) -> str:
     """
     Get a fast, lightweight overview of available tables with brief descriptions.
     This is the first step in the two-step progressive disclosure system.
@@ -507,10 +514,10 @@ def get_database_overview(config: Optional[Dict[str, Any]] = None) -> str:
     """
     try:
         if config is None:
-            config = get_config()
+            config = get_config(as_model=True)
 
         # Get document classes from config
-        classes = config.get("classes", [])
+        classes = config.classes
 
         overview = """# Database Overview - Available Tables
 
@@ -531,9 +538,9 @@ Table name: `attribute_evaluations` - Detailed attribute-level comparisons
 
         if classes:
             overview += "**Configuration-based tables in your deployment:**\n"
-            for doc_class in classes:
-                class_name = doc_class.get("name", "Unknown")
-                class_desc = doc_class.get("description", "")
+            for schema in classes:
+                class_name = schema.get(X_AWS_IDP_DOCUMENT_TYPE, "Unknown")
+                class_desc = schema.get("description", "")
                 table_name = f"document_sections_{_get_table_suffix(class_name)}"
                 overview += f"Table name: `{table_name}` - {class_desc}\n"
         overview += """
@@ -564,9 +571,7 @@ Use `get_table_info(['table1', 'table2'])` to get detailed schemas for specific 
         return """# Database Overview - Error Loading Configuration"""
 
 
-def get_table_info(
-    table_names: list[str], config: Optional[Dict[str, Any]] = None
-) -> str:
+def get_table_info(table_names: list[str], config: Optional[IDPConfig] = None) -> str:
     """
     Get detailed schema information for specific tables.
     This is the second step in the two-step progressive disclosure system.
@@ -614,7 +619,7 @@ def get_table_info(
 
 
 def _get_specific_document_sections_table_info(
-    table_suffix: str, config: Optional[Dict[str, Any]] = None
+    table_suffix: str, config: Optional[IDPConfig] = None
 ) -> str:
     """
     Get detailed information for a specific document sections table.
@@ -628,27 +633,27 @@ def _get_specific_document_sections_table_info(
     """
     try:
         if config is None:
-            config = get_config()
+            config = get_config(as_model=True)
 
-        classes = config.get("classes", [])
+        classes = config.classes
         table_name = f"document_sections_{table_suffix}"
 
         # Find the matching class for this table
-        matching_class = None
-        for doc_class in classes:
-            class_name = doc_class.get("name", "")
+        matching_schema = None
+        for schema in classes:
+            class_name = schema.get(X_AWS_IDP_DOCUMENT_TYPE, "")
             if _get_table_suffix(class_name) == table_suffix:
-                matching_class = doc_class
+                matching_schema = schema
                 break
 
-        if not matching_class:
+        if not matching_schema:
             msg = f"**Error**: Could not find configuration for table `{table_name}`."
             logger.error(msg)
             return msg
 
-        class_name = matching_class.get("name", "Unknown")
-        class_desc = matching_class.get("description", "No description available")
-        attributes = matching_class.get("attributes", [])
+        class_name = matching_schema.get(X_AWS_IDP_DOCUMENT_TYPE, "Unknown")
+        class_desc = matching_schema.get("description", "No description available")
+        properties = matching_schema.get(SCHEMA_PROPERTIES, {})
 
         info = f"""## Document Sections Table: {table_name}
 
@@ -669,10 +674,9 @@ def _get_specific_document_sections_table_info(
 #### Columns specific to this table:
 """
 
-        if attributes:
-            for attr in attributes:
-                attr_desc_text, _ = _generate_attribute_columns(attr, "")
-                info += attr_desc_text
+        if properties:
+            for prop_desc_text, _ in _walk_properties_for_columns(properties):
+                info += prop_desc_text
         else:
             info += "No configuration-specific columns defined.\n"
 

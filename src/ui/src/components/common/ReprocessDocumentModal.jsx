@@ -40,9 +40,7 @@ const ReprocessDocumentModal = ({ visible, onDismiss, onConfirm, selectedItems =
       }
     >
       <p>{message}</p>
-      <p>
-        This will trigger workflow reprocessing for the following {selectedItems.length > 1 ? 'documents' : 'document'}:
-      </p>
+      <p>This will trigger workflow reprocessing for the following {selectedItems.length > 1 ? 'documents' : 'document'}:</p>
       <ul>
         {selectedItems.map((item) => (
           <li key={item.objectKey}>{item.objectKey}</li>

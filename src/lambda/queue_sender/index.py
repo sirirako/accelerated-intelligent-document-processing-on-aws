@@ -33,9 +33,6 @@ def handler(event, context):
     detail = event['detail']
     object_key = detail['object']['key']
     logger.info(f"Processing file: {object_key}")
-    
-    # Add X-Ray annotations for trace identification
-    xray_recorder.put_annotation('document_key', object_key)
 
     # Get output bucket from environment for the document
     output_bucket = os.environ.get('OUTPUT_BUCKET', '')

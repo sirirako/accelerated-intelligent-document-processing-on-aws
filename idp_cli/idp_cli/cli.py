@@ -804,7 +804,8 @@ def run_inference(
 
 @cli.command()
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
-@click.option("--batch-id", required=True, help="Batch identifier")
+@click.option("--batch-id", help="Batch identifier")
+@click.option("--document-id", help="Single document ID (alternative to --batch-id)")
 @click.option("--wait", is_flag=True, help="Wait for all documents to complete")
 @click.option(
     "--refresh-interval",
@@ -812,41 +813,87 @@ def run_inference(
     type=int,
     help="Seconds between status checks (default: 5)",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"]),
+    default="table",
+    help="Output format: table (default) or json",
+)
 @click.option("--region", help="AWS region (optional)")
 def status(
     stack_name: str,
-    batch_id: str,
+    batch_id: Optional[str],
+    document_id: Optional[str],
     wait: bool,
     refresh_interval: int,
+    output_format: str,
     region: Optional[str],
 ):
     """
-    Check status of a batch processing job
+    Check status of a batch or single document
+
+    Specify ONE of:
+      --batch-id: Check status of all documents in a batch
+      --document-id: Check status of a single document
 
     Examples:
 
-      # Check current status once
+      # Check batch status
       idp-cli status --stack-name my-stack --batch-id cli-batch-20250110-153045-abc12345
 
-      # Monitor until completion
-      idp-cli status --stack-name my-stack --batch-id cli-batch-20250110-153045-abc12345 --wait
+      # Check single document status
+      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf
+
+      # Monitor single document until completion
+      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --wait
+
+      # Get JSON output for scripting
+      idp-cli status --stack-name my-stack --document-id batch-123/invoice.pdf --format json
     """
     try:
-        # Get batch info
-        processor = BatchProcessor(stack_name=stack_name, region=region)
-        batch_info = processor.get_batch_info(batch_id)
-
-        if not batch_info:
-            console.print(f"[red]✗ Batch not found: {batch_id}[/red]")
+        # Validate mutually exclusive options
+        if not batch_id and not document_id:
+            console.print(
+                "[red]✗ Error: Must specify either --batch-id or --document-id[/red]"
+            )
             sys.exit(1)
 
-        document_ids = batch_info["document_ids"]
+        if batch_id and document_id:
+            console.print(
+                "[red]✗ Error: Cannot specify both --batch-id and --document-id[/red]"
+            )
+            sys.exit(1)
+
+        # Initialize processor to get resources
+        processor = BatchProcessor(stack_name=stack_name, region=region)
+
+        # Get document IDs to monitor
+        if batch_id:
+            # Get batch info
+            batch_info = processor.get_batch_info(batch_id)
+            if not batch_info:
+                console.print(f"[red]✗ Batch not found: {batch_id}[/red]")
+                sys.exit(1)
+            document_ids = batch_info["document_ids"]
+            identifier = batch_id
+        else:
+            # Single document
+            document_ids = [document_id]
+            identifier = document_id
 
         if wait:
+            # JSON format not compatible with live monitoring
+            if output_format == "json":
+                console.print(
+                    "[yellow]Warning: --format json ignored with --wait (using table display for live monitoring)[/yellow]"
+                )
+                console.print()
+
             # Monitor until completion
             _monitor_progress(
                 stack_name=stack_name,
-                batch_id=batch_id,
+                batch_id=identifier,
                 document_ids=document_ids,
                 refresh_interval=refresh_interval,
                 region=region,
@@ -860,13 +907,32 @@ def status(
             status_data = monitor.get_batch_status(document_ids)
             stats = monitor.calculate_statistics(status_data)
 
-            console.print()
-            console.print(f"[bold blue]Batch: {batch_id}[/bold blue]")
-            display.display_status_table(status_data)
+            if output_format == "json":
+                # JSON output for programmatic use
+                json_output = display.format_status_json(status_data, stats)
+                console.print(json_output)
 
-            # Show statistics
-            console.print(display.create_statistics_panel(stats))
-            console.print()
+                # Determine exit code from JSON
+                import json as json_module
+
+                result = json_module.loads(json_output)
+                sys.exit(result.get("exit_code", 2))
+            else:
+                # Table output for human viewing
+                console.print()
+                if batch_id:
+                    console.print(f"[bold blue]Batch: {batch_id}[/bold blue]")
+                else:
+                    console.print(f"[bold blue]Document: {document_id}[/bold blue]")
+
+                display.display_status_table(status_data)
+
+                # Show statistics
+                console.print(display.create_statistics_panel(stats))
+
+                # Show final status summary and exit with appropriate code
+                exit_code = display.show_final_status_summary(status_data, stats)
+                sys.exit(exit_code)
 
     except Exception as e:
         logger.error(f"Error checking status: {e}", exc_info=True)

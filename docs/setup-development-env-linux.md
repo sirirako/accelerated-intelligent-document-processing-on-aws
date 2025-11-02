@@ -2,7 +2,7 @@
 
 # Introduction
 
-This guide establishes a cloud-based development environment using Amazon Linux 2023 on AWS EC2, specifically designed for the GenAI IDP accelerator.
+This guide establishes a cloud-based development environment using Amazon Linux 2023 or Ubuntu 24.04 on AWS EC2, specifically designed for the GenAI IDP accelerator.
 
 Purpose: Provides a standardized, scalable development infrastructure that combines the familiar VSCode interface on your local machine with powerful cloud compute resources. This approach eliminates local environment configuration issues while ensuring consistent development experiences across team members.
 
@@ -27,10 +27,9 @@ A hybrid development setup where your code runs on a pre-configured Amazon Linux
 ## 1.2 Configure Instance Settings
 
 Name: genai-idp-dev-environment(example)  
-AMI Selection:  
-Amazon Linux 2023
-
-- Architecture: 64-bit (x86)
+AMI Selection (choose one):  
+**Option 1: Amazon Linux 2023**
+**Option 2: Ubuntu 24.04**
 
 Instance Type:
 
@@ -81,7 +80,15 @@ ssh -i /path/to/genai-idp-dev-key.pem ec2-user@YOUR_INSTANCE_IP
 
 ### To install git run this command on EC2 Instance
 
+**For Amazon Linux 2023:**
+```bash
 sudo dnf install git -y
+```
+
+**For Ubuntu 24.04:**
+```bash
+sudo apt update && sudo apt install git -y
+```
 
 ### Clone Repository
 
@@ -94,11 +101,30 @@ cd accelerated-intelligent-document-processing-on-aws/
 ### Run the setup script for development tools which is scripts directory
 
 cd scripts  
-sh ./dev_setup.sh
+
+**For Amazon Linux 2023:**
+```bash
+chmod +x ./dev_setup_al2023.sh
+./dev_setup_al2023.sh
+```
+
+**For Ubuntu 24.04:**
+```bash
+chmod +x ./dev_setup_ubuntu.sh
+./dev_setup_ubuntu.sh
+```
 
 ### To upgrade the python version run this command on EC2 instance
 
+**For Amazon Linux 2023:**
+```bash
 source /home/ec2-user/miniconda/bin/activate base
+```
+
+**For Ubuntu 24.04:**
+```bash
+source /home/ubuntu/miniconda/bin/activate base
+```
 
 # Step 4: Install Visual Studio Code on Local Machine
 
@@ -122,6 +148,7 @@ Install Remote - SSH extension (by Microsoft)
 To open "SSH Config" go to "Remote Explorer" option on left bar  
 You can open and edit "SSH config" file by settings option on "SSH" Tab
 
+**For Amazon Linux 2023:**
 ```
 Host genai-idp-dev
     HostName YOUR_INSTANCE_PUBLIC_IP
@@ -130,12 +157,23 @@ Host genai-idp-dev
     Port 22
 ```
 
+**For Ubuntu 24.04:**
+```
+Host genai-idp-dev-ubuntu
+    HostName YOUR_INSTANCE_PUBLIC_IP
+    User ubuntu
+    IdentityFile /path/to/genai-idp-dev-key.pem
+    Port 22
+```
+
 # 4.3 Connect via VSCode
 
 1. Press Ctrl+Shift+P
 2. Type "Remote-SSH: Connect to Host"
-3. Select "genai-idp-dev"
-4. Open folder: /home/ec2-user/accelerated-intelligent-document-processing-on-aws
+3. Select "genai-idp-dev" (Amazon Linux) or "genai-idp-dev-ubuntu" (Ubuntu)
+4. Open folder: 
+   - Amazon Linux: `/home/ec2-user/accelerated-intelligent-document-processing-on-aws`
+   - Ubuntu: `/home/ubuntu/accelerated-intelligent-document-processing-on-aws`
 
 # Step 5: AWS Configure
 

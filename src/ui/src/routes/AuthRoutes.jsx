@@ -14,6 +14,7 @@ import useAppContext from '../contexts/app';
 import DocumentsRoutes from './DocumentsRoutes';
 import DocumentsQueryRoutes from './DocumentsQueryRoutes';
 import DocumentsAnalyticsRoutes from './DocumentsAnalyticsRoutes';
+import AgentChatRoutes from './AgentChatRoutes';
 
 import {
   DOCUMENTS_PATH,
@@ -22,6 +23,7 @@ import {
   LOGOUT_PATH,
   DOCUMENTS_KB_QUERY_PATH,
   DOCUMENTS_ANALYTICS_PATH,
+  AGENT_CHAT_PATH,
 } from './constants';
 
 const logger = new ConsoleLogger('AuthRoutes');
@@ -40,14 +42,13 @@ const AuthRoutes = ({ redirectParam }) => {
   return (
     <SettingsContext.Provider value={settingsContextValue}>
       <Routes>
+        <Route path={`${AGENT_CHAT_PATH}/*`} element={<AgentChatRoutes />} />
         <Route path={`${DOCUMENTS_KB_QUERY_PATH}/*`} element={<DocumentsQueryRoutes />} />
         <Route path={`${DOCUMENTS_ANALYTICS_PATH}/*`} element={<DocumentsAnalyticsRoutes />} />
         <Route path={`${DOCUMENTS_PATH}/*`} element={<DocumentsRoutes />} />
         <Route
           path={LOGIN_PATH}
-          element={
-            <Navigate to={!redirectParam || redirectParam === LOGIN_PATH ? DEFAULT_PATH : `${redirectParam}`} replace />
-          }
+          element={<Navigate to={!redirectParam || redirectParam === LOGIN_PATH ? DEFAULT_PATH : `${redirectParam}`} replace />}
         />
         <Route path={LOGOUT_PATH} element={<Button onClick={signOut}>Sign Out</Button>} />
         <Route path="*" element={<Navigate to={DEFAULT_PATH} replace />} />

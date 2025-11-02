@@ -603,8 +603,8 @@ const AgentQueryInput = ({ onSubmit, isSubmitting = false, selectedResult = null
               What are MCP Agents?
             </Box>
             <Box>
-              Model Context Protocol (MCP) agents allow you to connect external tools and services to extend the
-              capabilities of your document analysis workflow.
+              Model Context Protocol (MCP) agents allow you to connect external tools and services to extend the capabilities of your
+              document analysis workflow.
             </Box>
           </Box>
 
@@ -613,9 +613,8 @@ const AgentQueryInput = ({ onSubmit, isSubmitting = false, selectedResult = null
               Adding Custom Agents
             </Box>
             <Box>
-              You can add your own MCP agents by configuring external MCP servers in AWS Secrets Manager. This allows
-              you to integrate custom tools, APIs, and services specific to your organization&apos;s needs without any
-              code changes or redeployments.
+              You can add your own MCP agents by configuring external MCP servers in AWS Secrets Manager. This allows you to integrate
+              custom tools, APIs, and services specific to your organization&apos;s needs without any code changes or redeployments.
             </Box>
           </Box>
 
@@ -625,10 +624,7 @@ const AgentQueryInput = ({ onSubmit, isSubmitting = false, selectedResult = null
             </Box>
             <Box>
               For detailed setup instructions and examples, see the{' '}
-              <Link
-                external
-                href="https://github.com/aws-samples/genaiic-idp-accelerator/blob/main/docs/custom-MCP-agent.md"
-              >
+              <Link external href="https://github.com/aws-samples/genaiic-idp-accelerator/blob/main/docs/custom-MCP-agent.md">
                 Custom MCP Agent Documentation
               </Link>
             </Box>

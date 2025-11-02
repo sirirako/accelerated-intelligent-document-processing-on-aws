@@ -24,3 +24,11 @@ notebooks/examples/data
 .dsr/
 *tmp-dev-assets*
 scratch/
+
+# Node.js / npm
+node_modules/
+package-lock.json
+
+# Type checking
+pyrightconfig.temp.json
+.pyright/

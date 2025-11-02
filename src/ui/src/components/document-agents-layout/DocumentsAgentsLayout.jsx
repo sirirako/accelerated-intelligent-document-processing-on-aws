@@ -32,11 +32,9 @@ const DocumentsAgentsLayout = () => {
           variables: { jobId: id },
         })
         .subscribe({
-          next: async ({ value }) => {
-            // Log the entire subscription response
-            logger.debug('Subscription response value:', JSON.stringify(value, null, 2));
-
-            const jobCompleted = value?.data?.onAgentJobComplete;
+          next: async (subscriptionData) => {
+            const data = subscriptionData?.data;
+            const jobCompleted = data?.onAgentJobComplete;
             logger.debug('Job completion notification:', jobCompleted);
 
             if (jobCompleted) {
@@ -73,7 +71,7 @@ const DocumentsAgentsLayout = () => {
                 });
               }
             } else {
-              logger.error('Received invalid completion notification. Full response:', JSON.stringify(value, null, 2));
+              logger.error('Received invalid completion notification. Full response:', JSON.stringify(subscriptionData, null, 2));
               updateAnalyticsState({
                 error: 'Received invalid completion notification. Check console logs for details.',
               });

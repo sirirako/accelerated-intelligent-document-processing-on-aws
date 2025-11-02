@@ -205,6 +205,10 @@ class DocumentAppSyncService:
                 elif latest_hitl.hitl_triggered:
                     input_data["HITLStatus"] = "IN_PROGRESS"
 
+        # Add trace_id if available
+        if document.trace_id:
+            input_data["TraceId"] = document.trace_id
+
         return input_data
 
     def _appsync_to_document(self, appsync_data: Dict[str, Any]) -> Document:

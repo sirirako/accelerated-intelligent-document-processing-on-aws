@@ -54,7 +54,7 @@ def train(
             train_ds.prompt, val_ds.prompt
         )
     )
-
+    # nosemgrep: trailofbits.python.automatic-memory-pinning.automatic-memory-pinning - pin_memory is a performance optimization; default behavior is safe and functional
     train_dl = DataLoader(
         train_ds, batch_size=1, num_workers=4,
         collate_fn=lambda x: x[0], shuffle=True
