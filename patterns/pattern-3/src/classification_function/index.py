@@ -115,18 +115,15 @@ def handler(event, context):
     total_pages = len(document.pages)
     metrics.put_metric("ClassificationRequestsTotal", total_pages)
 
-    # Load configuration and update with SageMaker endpoint name
+    # Load configuration - SageMaker endpoint is read from environment variable
     config = get_config(as_model=True)
-    config_with_endpoint = config.to_dict(
-        sagemaker_endpoint_name=os.environ["SAGEMAKER_ENDPOINT_NAME"]
-    )
 
     # Initialize classification service with SageMaker backend and DynamoDB caching
     cache_table = os.environ.get("TRACKING_TABLE")
     service = classification.ClassificationService(
         region=region,
         max_workers=MAX_WORKERS,
-        config=config_with_endpoint,
+        config=config,
         backend="sagemaker",
         cache_table=cache_table,
     )
