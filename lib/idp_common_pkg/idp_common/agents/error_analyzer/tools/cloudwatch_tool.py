@@ -15,7 +15,7 @@ import boto3
 from strands import tool
 
 from ..config import create_error_response, safe_int_conversion
-from .dynamodb_tool import dynamodb_record
+from .dynamodb_tool import fetch_document_record
 from .models import LogEvent
 from .xray_tool import extract_lambda_request_ids
 
@@ -238,7 +238,7 @@ def _get_document_context(document_id: str) -> Dict[str, Any]:
     """
     Get document context from DynamoDB and extract X-Ray information.
     """
-    dynamodb_response = dynamodb_record(document_id)
+    dynamodb_response = fetch_document_record(document_id)
     if not dynamodb_response.get("document_found"):
         return {
             "analysis_type": "document_not_found",

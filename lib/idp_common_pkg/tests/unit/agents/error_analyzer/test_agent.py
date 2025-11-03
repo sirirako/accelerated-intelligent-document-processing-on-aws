@@ -33,14 +33,14 @@ class TestErrorAnalyzerAgent:
 
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.tools = [MagicMock() for _ in range(8)]  # 8 specific tools now
+        mock_agent.tools = [MagicMock() for _ in range(7)]  # 7 specific tools now
         mock_agent_class.return_value = mock_agent
 
         agent = create_error_analyzer_agent(session=mock_session.return_value)
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 8  # All specific tools
+        assert len(agent.tools) == 7  # All specific tools
 
     @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
@@ -57,14 +57,14 @@ class TestErrorAnalyzerAgent:
 
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.tools = [MagicMock() for _ in range(8)]  # 8 specific tools
+        mock_agent.tools = [MagicMock() for _ in range(7)]  # 7 specific tools
         mock_agent_class.return_value = mock_agent
 
         agent = create_error_analyzer_agent()
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 8
+        assert len(agent.tools) == 7
 
     @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
@@ -103,13 +103,13 @@ class TestErrorAnalyzerAgent:
         """Test that specific tools can be imported correctly."""
         from idp_common.agents.error_analyzer.tools import (
             search_cloudwatch_logs,
-            dynamodb_status,
+            fetch_document_record,
             xray_trace,
         )
 
         assert search_cloudwatch_logs is not None
         assert callable(search_cloudwatch_logs)
-        assert dynamodb_status is not None
-        assert callable(dynamodb_status)
+        assert fetch_document_record is not None
+        assert callable(fetch_document_record)
         assert xray_trace is not None
         assert callable(xray_trace)

@@ -15,9 +15,8 @@ Provides comprehensive error analysis capabilities including:
 
 from .cloudwatch_tool import search_cloudwatch_logs
 from .dynamodb_tool import (
-    dynamodb_query,
-    dynamodb_record,
-    dynamodb_status,
+    fetch_document_record,
+    fetch_recent_records,
 )
 from .lambda_tool import lambda_lookup
 from .stepfunction_tool import stepfunction_details
@@ -29,9 +28,8 @@ from .xray_tool import (
 __all__ = [
     "search_cloudwatch_logs",
     "lambda_lookup",
-    "dynamodb_record",
-    "dynamodb_status",
-    "dynamodb_query",
+    "fetch_document_record",
+    "fetch_recent_records",
     "stepfunction_details",
     "xray_trace",
     "xray_performance_analysis",
