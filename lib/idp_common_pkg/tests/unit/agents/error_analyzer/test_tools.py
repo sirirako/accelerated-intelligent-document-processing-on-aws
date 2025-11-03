@@ -37,11 +37,11 @@ class TestErrorAnalyzerTools:
         """Test execution context tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
             analyze_workflow_execution,
-            lambda_lookup,
+            retrieve_document_context,
         )
 
-        assert lambda_lookup is not None
-        assert callable(lambda_lookup)
+        assert retrieve_document_context is not None
+        assert callable(retrieve_document_context)
         assert analyze_workflow_execution is not None
         assert callable(analyze_workflow_execution)
 
@@ -65,7 +65,7 @@ class TestErrorAnalyzerTools:
             "search_cloudwatch_logs",
             "fetch_document_record",
             "fetch_recent_records",
-            "lambda_lookup",
+            "retrieve_document_context",
             "analyze_workflow_execution",
             "analyze_document_trace",
             "analyze_system_performance",

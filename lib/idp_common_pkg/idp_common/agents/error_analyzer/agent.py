@@ -20,7 +20,7 @@ from .tools import (
     analyze_workflow_execution,
     fetch_document_record,
     fetch_recent_records,
-    lambda_lookup,
+    retrieve_document_context,
     search_cloudwatch_logs,
 )
 
@@ -52,7 +52,7 @@ def create_error_analyzer_agent(
         search_cloudwatch_logs,
         fetch_document_record,
         fetch_recent_records,
-        lambda_lookup,
+        retrieve_document_context,
         analyze_workflow_execution,
         analyze_document_trace,
         analyze_system_performance,

@@ -18,7 +18,7 @@ from .dynamodb_tool import (
     fetch_document_record,
     fetch_recent_records,
 )
-from .lambda_tool import lambda_lookup
+from .lambda_tool import retrieve_document_context
 from .stepfunction_tool import analyze_workflow_execution
 from .xray_tool import (
     analyze_document_trace,
@@ -27,7 +27,7 @@ from .xray_tool import (
 
 __all__ = [
     "search_cloudwatch_logs",
-    "lambda_lookup",
+    "retrieve_document_context",
     "fetch_document_record",
     "fetch_recent_records",
     "analyze_workflow_execution",
