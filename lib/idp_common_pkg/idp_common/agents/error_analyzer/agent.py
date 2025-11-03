@@ -15,13 +15,13 @@ from idp_common.config import get_config
 
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .tools import (
+    analyze_document_trace,
+    analyze_system_performance,
     analyze_workflow_execution,
     fetch_document_record,
     fetch_recent_records,
     lambda_lookup,
     search_cloudwatch_logs,
-    xray_performance_analysis,
-    xray_trace,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,8 +54,8 @@ def create_error_analyzer_agent(
         fetch_recent_records,
         lambda_lookup,
         analyze_workflow_execution,
-        xray_trace,
-        xray_performance_analysis,
+        analyze_document_trace,
+        analyze_system_performance,
     ]
     bedrock_model = create_strands_bedrock_model(
         model_id=config.agents.error_analyzer.model_id, boto_session=session

@@ -48,14 +48,14 @@ class TestErrorAnalyzerTools:
     def test_xray_tools_import(self):
         """Test X-Ray tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
-            xray_performance_analysis,
-            xray_trace,
+            analyze_document_trace,
+            analyze_system_performance,
         )
 
-        assert xray_trace is not None
-        assert callable(xray_trace)
-        assert xray_performance_analysis is not None
-        assert callable(xray_performance_analysis)
+        assert analyze_document_trace is not None
+        assert callable(analyze_document_trace)
+        assert analyze_system_performance is not None
+        assert callable(analyze_system_performance)
 
     def test_all_tools_available(self):
         """Test that all 7 tools are available in the tools module."""
@@ -67,8 +67,8 @@ class TestErrorAnalyzerTools:
             "fetch_recent_records",
             "lambda_lookup",
             "analyze_workflow_execution",
-            "xray_trace",
-            "xray_performance_analysis",
+            "analyze_document_trace",
+            "analyze_system_performance",
         }
 
         assert len(__all__) == 7

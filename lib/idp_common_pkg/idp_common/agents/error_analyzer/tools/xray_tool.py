@@ -7,8 +7,9 @@ X-Ray tools for tracing analysis and performance monitoring.
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import boto3
 from strands import tool
@@ -17,7 +18,6 @@ from idp_common.config import get_config
 
 from ..config import (
     create_error_response,
-    create_response,
     safe_int_conversion,
 )
 
@@ -25,11 +25,78 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def xray_performance_analysis(
+def analyze_document_trace(document_id: str) -> Dict[str, Any]:
+    """
+    Analyze document trace to identify performance issues and errors in processing workflow.
+
+    Retrieves and analyzes X-Ray trace data for a document, providing detailed performance
+    metrics, error analysis, and service timeline information.
+
+    Use this tool to:
+    - Analyze document processing performance
+    - Identify errors and bottlenecks in document workflow
+    - Get detailed service timeline and execution flow
+    - Troubleshoot specific document processing issues
+
+    Example usage:
+    - "Analyze document trace for report.pdf"
+    - "Check trace performance for lending_package.pdf"
+    - "Show me the service timeline for document ABC123"
+    - "Find bottlenecks in document processing trace"
+
+    Args:
+        document_id: The document ID to analyze (e.g., "report.pdf", "lending_package.pdf")
+
+    Returns:
+        Dict with keys:
+        - document_id (str): The analyzed document identifier
+        - trace_id (str): X-Ray trace ID if found
+        - trace_found (bool): Whether trace data was located
+        - detailed_analysis (dict): Performance and error analysis if trace found
+        - service_timeline (list): Chronological service execution timeline if trace found
+        - recommendations (list): Actionable troubleshooting recommendations
+    """
+    try:
+        if not document_id:
+            return create_error_response("No document ID provided")
+
+        xray_client = boto3.client("xray")
+
+        # Find trace ID for the document
+        xray_trace_id = _find_trace_id_for_document(document_id, xray_client)
+        if not xray_trace_id:
+            return _create_trace_not_found_response(document_id)
+
+        # Get and analyze trace data
+        segments = _get_trace_segments(xray_client, xray_trace_id)
+        if not segments:
+            return create_error_response(
+                f"Could not retrieve trace details for {xray_trace_id}"
+            )
+
+        # Analyze segments and build response
+        detailed_analysis = _analyze_trace_segments(segments)
+        service_timeline = _build_service_timeline(segments)
+
+        return _build_trace_analysis_response(
+            document_id=document_id,
+            trace_id=xray_trace_id,
+            trace_found=True,
+            detailed_analysis=detailed_analysis,
+            service_timeline=service_timeline,
+        )
+
+    except Exception as e:
+        logger.error(f"Error analyzing document trace for {document_id}: {e}")
+        return create_error_response(str(e))
+
+
+@tool
+def analyze_system_performance(
     stack_name: str = None, hours_back: int = None
 ) -> Dict[str, Any]:
     """
-    Analyze X-Ray performance issues focusing on stack-specific traces first, then general infrastructure.
+    Analyze system performance issues focusing on stack-specific traces first, then general infrastructure.
 
     Intelligently identifies performance bottlenecks by prioritizing stack-specific analysis
     when stack information is available, otherwise performs general infrastructure analysis.
@@ -39,6 +106,12 @@ def xray_performance_analysis(
     - Find stack-specific errors and bottlenecks
     - Analyze service dependencies and error patterns
     - Troubleshoot system-wide performance degradation
+
+    Example usage:
+    - "Analyze system performance for the last 2 hours"
+    - "Check performance issues for stack MyStack"
+    - "Find system bottlenecks and slow services"
+    - "Analyze infrastructure performance problems"
 
     Args:
         stack_name: CloudFormation stack name to focus analysis (optional)
@@ -71,221 +144,223 @@ def xray_performance_analysis(
                     xray_client, start_time, end_time
                 )
 
-                response = create_response(
-                    {
-                        "analysis_type": "stack_focused",
-                        "stack_name": stack_name,
-                        "traces_found": stack_analysis["traces_found"],
-                        "services_found": service_analysis.get("services_found", 0),
-                        "performance_issues": {
-                            "stack_traces": stack_analysis,
-                            "service_map": service_analysis,
-                        },
-                        "recommendations": _generate_recommendations(
-                            stack_analysis, service_analysis
-                        ),
-                    }
+                return _build_performance_analysis_response(
+                    analysis_type="stack_focused",
+                    stack_name=stack_name,
+                    traces_found=stack_analysis["traces_found"],
+                    services_found=service_analysis.get("services_found", 0),
+                    performance_issues={
+                        "stack_traces": stack_analysis,
+                        "service_map": service_analysis,
+                    },
+                    recommendations=_generate_recommendations(
+                        stack_analysis, service_analysis
+                    ),
                 )
-                logger.info(
-                    f"X-Ray performance analysis response for stack {stack_name}: {response}"
-                )
-                return response
 
         # Fallback to general infrastructure analysis
         service_analysis = _analyze_service_performance(
             xray_client, start_time, end_time
         )
 
-        response = create_response(
-            {
-                "analysis_type": "infrastructure_wide",
-                "stack_name": stack_name or "not_provided",
-                "traces_found": 0,
-                "services_found": service_analysis.get("services_found", 0),
-                "performance_issues": {"service_map": service_analysis},
-                "recommendations": _generate_recommendations(None, service_analysis),
-            }
+        return _build_performance_analysis_response(
+            analysis_type="infrastructure_wide",
+            stack_name=stack_name or "not_provided",
+            traces_found=0,
+            services_found=service_analysis.get("services_found", 0),
+            performance_issues={"service_map": service_analysis},
+            recommendations=_generate_recommendations(None, service_analysis),
         )
-        logger.info(f"X-Ray infrastructure analysis response: {response}")
-        return response
 
     except Exception as e:
-        logger.error(f"Error in X-Ray performance analysis: {e}")
+        logger.error(f"Error in system performance analysis: {e}")
         return create_error_response(str(e))
 
 
-@tool
-def xray_trace(document_id: str, tracking_table_name: str = None) -> Dict[str, Any]:
+def _build_performance_analysis_response(
+    analysis_type: str,
+    stack_name: str,
+    traces_found: int,
+    services_found: int,
+    performance_issues: Dict[str, Any],
+    recommendations: List[str],
+) -> Dict[str, Any]:
     """
-    Analyze X-Ray traces for a specific document to identify performance issues and errors.
-
-    Retrieves and analyzes X-Ray trace data for a document, providing detailed performance
-    metrics, error analysis, and service timeline information.
-
-    Use this tool to:
-    - Analyze document processing performance
-    - Identify errors and bottlenecks in document workflow
-    - Get detailed service timeline and execution flow
-    - Troubleshoot specific document processing issues
-
-    Args:
-        document_id: The document ID to analyze (e.g., "report.pdf", "lending_package.pdf")
-        tracking_table_name: DynamoDB table name containing document records (optional)
-
-    Returns:
-        Dict with keys:
-        - document_id (str): The analyzed document identifier
-        - trace_id (str): X-Ray trace ID if found
-        - trace_found (bool): Whether trace data was located
-        - detailed_analysis (dict): Performance and error analysis if trace found
-        - service_timeline (list): Chronological service execution timeline if trace found
-        - recommendations (list): Actionable troubleshooting recommendations
+    Build unified performance analysis response with logging.
     """
+    response: Dict[str, Any] = {
+        "analysis_type": analysis_type,
+        "stack_name": stack_name,
+        "traces_found": traces_found,
+        "services_found": services_found,
+        "performance_issues": performance_issues,
+        "recommendations": recommendations,
+    }
+
+    logger.info(f"System performance analysis response: {response}")
+    return response
+
+
+def _find_trace_id_for_document(document_id: str, xray_client) -> Optional[str]:
+    """
+    Find X-Ray trace ID for a document using DynamoDB lookup or X-Ray annotation query.
+    """
+    # Try DynamoDB first
+    trace_id = _get_trace_id_from_dynamodb(document_id)
+    if trace_id:
+        return trace_id
+
+    # Fallback to X-Ray annotation query
+    return _get_trace_id_from_xray_annotations(document_id, xray_client)
+
+
+def _get_trace_id_from_dynamodb(document_id: str) -> Optional[str]:
+    """
+    Get trace ID from DynamoDB tracking table.
+    """
+    tracking_table_name = os.environ.get("TRACKING_TABLE_NAME")
+    if not tracking_table_name:
+        return None
+
     try:
-        if not document_id:
-            return create_error_response("No document ID provided")
+        dynamodb = boto3.resource("dynamodb")
+        tracking_table = dynamodb.Table(tracking_table_name)
 
-        xray_client = boto3.client("xray")
-        xray_trace_id = None
-
-        # Try to get trace_id from DynamoDB first
-        if tracking_table_name:
-            try:
-                dynamodb = boto3.resource("dynamodb")
-                tracking_table = dynamodb.Table(tracking_table_name)
-
-                response = tracking_table.get_item(
-                    Key={"PK": f"doc#{document_id}", "SK": "none"}
-                )
-
-                if "Item" in response:
-                    xray_trace_id = response["Item"].get("TraceId")
-                    logger.info(f"TraceId: {xray_trace_id} for document {document_id}")
-
-            except Exception as e:
-                logger.warning(f"Could not retrieve trace_id from DynamoDB: {e}")
-
-        # Fallback to X-Ray annotation query if no trace_id found
-        if not xray_trace_id:
-            logger.info(
-                f"Searching X-Ray traces by annotation for document {document_id}"
-            )
-
-            end_time = datetime.utcnow()
-            start_time = end_time - timedelta(hours=24)  # Search last 24 hours
-
-            response = xray_client.get_trace_summaries(
-                StartTime=start_time,
-                EndTime=end_time,
-                FilterExpression=f'annotation.document_id = "{document_id}"',
-            )
-
-            traces = response.get("TraceSummaries", [])
-            if not traces:
-                response = create_response(
-                    {
-                        "document_id": document_id,
-                        "trace_found": False,
-                        "traces_found": 0,
-                        "message": "No X-Ray traces found for this document",
-                        "recommendations": [
-                            "Verify document was processed recently (within 24 hours)",
-                            "Check if X-Ray tracing is enabled for all Lambda functions",
-                            "Ensure document ID is correct",
-                        ],
-                    }
-                )
-                logger.info(
-                    f"X-Ray trace not found response for {document_id}: {response}"
-                )
-                return response
-
-            # Use the most recent trace
-            xray_trace_id = traces[0].get("Id")
-            logger.info(f"Found trace_id {xray_trace_id} via annotation query")
-
-        # Get detailed trace analysis
-        if xray_trace_id:
-            logger.info(
-                f"Attempting to get trace details for trace_id: {xray_trace_id}"
-            )
-            segments_response = xray_client.batch_get_traces(TraceIds=[xray_trace_id])
-            logger.debug(f"X-Ray batch_get_traces response: {segments_response}")
-
-            if not segments_response.get("Traces"):
-                return create_error_response(
-                    f"Could not retrieve trace details for {xray_trace_id}"
-                )
-
-            trace_data = segments_response["Traces"][0]
-            segments = trace_data.get("Segments", [])
-
-            # Analyze segments for performance and errors
-            detailed_analysis = _analyze_trace_segments(segments)
-
-            # Extract service timeline
-            service_timeline = []
-            for segment in segments:
-                segment_doc = _parse_segment_document(segment.get("Document", {}))
-                if not segment_doc:
-                    continue
-
-                service_timeline.append(
-                    {
-                        "service_name": segment_doc.get("name"),
-                        "start_time": segment_doc.get("start_time"),
-                        "end_time": segment_doc.get("end_time"),
-                        "duration_ms": (
-                            segment_doc.get("end_time", 0)
-                            - segment_doc.get("start_time", 0)
-                        )
-                        * 1000,
-                        "has_error": bool(
-                            segment_doc.get("error") or segment_doc.get("fault")
-                        ),
-                        "annotations": segment_doc.get("annotations", {}),
-                    }
-                )
-
-            response = create_response(
-                {
-                    "document_id": document_id,
-                    "trace_id": xray_trace_id,
-                    "trace_found": True,
-                    "detailed_analysis": detailed_analysis,
-                    "service_timeline": sorted(
-                        service_timeline, key=lambda x: x.get("start_time", 0)
-                    ),
-                    "recommendations": [
-                        "Review error segments for specific failure causes",
-                        "Check slow segments for performance optimization",
-                        "Analyze service timeline for bottlenecks",
-                    ],
-                }
-            )
-            logger.info(f"X-Ray trace analysis response for {document_id}: {response}")
-            return response
-
-        response = create_response(
-            {
-                "document_id": document_id,
-                "trace_found": False,
-                "message": "Could not find or analyze trace for document",
-                "recommendations": [
-                    "Verify document was processed recently",
-                    "Check X-Ray tracing configuration",
-                    "Ensure document ID is correct",
-                ],
-            }
+        response = tracking_table.get_item(
+            Key={"PK": f"doc#{document_id}", "SK": "none"}
         )
-        logger.info(
-            f"X-Ray trace not found final response for {document_id}: {response}"
-        )
-        return response
+
+        if "Item" in response:
+            trace_id = response["Item"].get("TraceId")
+            logger.info(f"TraceId: {trace_id} for document {document_id}")
+            return trace_id
 
     except Exception as e:
-        logger.error(f"Error analyzing X-Ray traces for document {document_id}: {e}")
-        return create_error_response(str(e))
+        logger.warning(f"Could not retrieve trace_id from DynamoDB: {e}")
+
+    return None
+
+
+def _get_trace_id_from_xray_annotations(document_id: str, xray_client) -> Optional[str]:
+    """
+    Get trace ID using X-Ray annotation query.
+    """
+    logger.info(f"Searching X-Ray traces by annotation for document {document_id}")
+
+    end_time = datetime.utcnow()
+    start_time = end_time - timedelta(hours=24)
+
+    response = xray_client.get_trace_summaries(
+        StartTime=start_time,
+        EndTime=end_time,
+        FilterExpression=f'annotation.document_id = "{document_id}"',
+    )
+
+    traces = response.get("TraceSummaries", [])
+    if traces:
+        trace_id = traces[0].get("Id")
+        logger.info(f"Found trace_id {trace_id} via annotation query")
+        return trace_id
+
+    return None
+
+
+def _get_trace_segments(xray_client, trace_id: str) -> List[Dict[str, Any]]:
+    """
+    Get trace segments from X-Ray.
+    """
+    logger.info(f"Attempting to get trace details for trace_id: {trace_id}")
+
+    segments_response = xray_client.batch_get_traces(TraceIds=[trace_id])
+    logger.debug(f"X-Ray batch_get_traces response: {segments_response}")
+
+    if not segments_response.get("Traces"):
+        return []
+
+    trace_data = segments_response["Traces"][0]
+    return trace_data.get("Segments", [])
+
+
+def _build_service_timeline(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build chronological service timeline from trace segments.
+    """
+    service_timeline = []
+
+    for segment in segments:
+        segment_doc = _parse_segment_document(segment.get("Document", {}))
+        if not segment_doc:
+            continue
+
+        service_timeline.append(
+            {
+                "service_name": segment_doc.get("name"),
+                "start_time": segment_doc.get("start_time"),
+                "end_time": segment_doc.get("end_time"),
+                "duration_ms": (
+                    segment_doc.get("end_time", 0) - segment_doc.get("start_time", 0)
+                )
+                * 1000,
+                "has_error": bool(segment_doc.get("error") or segment_doc.get("fault")),
+                "annotations": segment_doc.get("annotations", {}),
+            }
+        )
+
+    return sorted(service_timeline, key=lambda x: x.get("start_time", 0))
+
+
+def _create_trace_not_found_response(document_id: str) -> Dict[str, Any]:
+    """
+    Create response when no trace is found for the document.
+    """
+    return _build_trace_analysis_response(
+        document_id=document_id,
+        trace_found=False,
+        message="No X-Ray traces found for this document",
+        recommendations=[
+            "Verify document was processed recently (within 24 hours)",
+            "Check if X-Ray tracing is enabled for all Lambda functions",
+            "Ensure document ID is correct",
+        ],
+    )
+
+
+def _build_trace_analysis_response(
+    document_id: str,
+    trace_found: bool,
+    trace_id: Optional[str] = None,
+    detailed_analysis: Optional[Dict[str, Any]] = None,
+    service_timeline: Optional[List[Dict[str, Any]]] = None,
+    message: Optional[str] = None,
+    recommendations: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Build unified trace analysis response with logging.
+    """
+    response: Dict[str, Any] = {
+        "document_id": document_id,
+        "trace_found": trace_found,
+    }
+
+    if trace_id:
+        response["trace_id"] = trace_id
+    if detailed_analysis:
+        response["detailed_analysis"] = detailed_analysis
+    if service_timeline:
+        response["service_timeline"] = service_timeline
+    if message:
+        response["message"] = message
+    if not trace_found:
+        response["traces_found"] = 0
+
+    response["recommendations"] = recommendations or [
+        "Review error segments for specific failure causes",
+        "Check slow segments for performance optimization",
+        "Analyze service timeline for bottlenecks",
+    ]
+
+    logger.info(f"X-Ray trace analysis response for {document_id}: {response}")
+    return response
 
 
 def extract_lambda_request_ids(xray_trace_id: str) -> Dict[str, str]:
@@ -588,7 +663,7 @@ def _analyze_service_performance(
 
 
 def _generate_recommendations(
-    stack_analysis: Dict[str, Any], service_analysis: Dict[str, Any]
+    stack_analysis: Optional[Dict[str, Any]], service_analysis: Optional[Dict[str, Any]]
 ) -> List[str]:
     """
     Generate actionable recommendations based on analysis results.

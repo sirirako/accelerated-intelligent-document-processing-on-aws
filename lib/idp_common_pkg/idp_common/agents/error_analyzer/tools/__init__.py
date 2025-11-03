@@ -21,8 +21,8 @@ from .dynamodb_tool import (
 from .lambda_tool import lambda_lookup
 from .stepfunction_tool import analyze_workflow_execution
 from .xray_tool import (
-    xray_performance_analysis,
-    xray_trace,
+    analyze_document_trace,
+    analyze_system_performance,
 )
 
 __all__ = [
@@ -31,6 +31,6 @@ __all__ = [
     "fetch_document_record",
     "fetch_recent_records",
     "analyze_workflow_execution",
-    "xray_trace",
-    "xray_performance_analysis",
+    "analyze_document_trace",
+    "analyze_system_performance",
 ]
