@@ -121,19 +121,24 @@ Basic single-value extractions evaluated as individual fields:
 
 ```yaml
 classes:
-  - name: invoice
-    attributes:
-      - name: invoice_number
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: invoice
+    x-aws-idp-document-type: invoice
+    type: object
+    properties:
+      invoice_number:
+        type: string
         description: The unique identifier for the invoice
-        attributeType: simple  # or omit for default
-        evaluation_method: EXACT  # Use exact string matching
-      - name: amount_due
+        x-aws-idp-evaluation-method: EXACT  # Use exact string matching
+      amount_due:
+        type: string
         description: The total amount to be paid
-        evaluation_method: NUMERIC_EXACT  # Use numeric comparison
-      - name: vendor_name
+        x-aws-idp-evaluation-method: NUMERIC_EXACT  # Use numeric comparison
+      vendor_name:
+        type: string
         description: Name of the vendor
-        evaluation_method: FUZZY  # Use fuzzy matching
-        evaluation_threshold: 0.8  # Minimum similarity threshold
+        x-aws-idp-evaluation-method: FUZZY  # Use fuzzy matching
+        x-aws-idp-confidence-threshold: 0.8  # Minimum similarity threshold
 ```
 
 ### Group Attributes
@@ -142,30 +147,38 @@ Nested object structures where each sub-attribute is evaluated individually:
 
 ```yaml
 classes:
-  - name: "Bank Statement"
-    attributes:
-      - name: "Account Holder Address"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: BankStatement
+    x-aws-idp-document-type: "Bank Statement"
+    type: object
+    properties:
+      Account Holder Address:
+        type: object
         description: "Complete address information for the account holder"
-        attributeType: group
-        groupAttributes:
-          - name: "Street Number"
+        properties:
+          Street Number:
+            type: string
             description: "House or building number"
-            evaluation_method: FUZZY
-            evaluation_threshold: 0.9
-          - name: "Street Name"
+            x-aws-idp-evaluation-method: FUZZY
+            x-aws-idp-confidence-threshold: 0.9
+          Street Name:
+            type: string
             description: "Name of the street"
-            evaluation_method: FUZZY
-            evaluation_threshold: 0.8
-          - name: "City"
+            x-aws-idp-evaluation-method: FUZZY
+            x-aws-idp-confidence-threshold: 0.8
+          City:
+            type: string
             description: "City name"
-            evaluation_method: FUZZY
-            evaluation_threshold: 0.9
-          - name: "State"
+            x-aws-idp-evaluation-method: FUZZY
+            x-aws-idp-confidence-threshold: 0.9
+          State:
+            type: string
             description: "State abbreviation (e.g., CA, NY)"
-            evaluation_method: EXACT
-          - name: "ZIP Code"
+            x-aws-idp-evaluation-method: EXACT
+          ZIP Code:
+            type: string
             description: "5 or 9 digit postal code"
-            evaluation_method: EXACT
+            x-aws-idp-evaluation-method: EXACT
 ```
 
 ### List Attributes
@@ -174,19 +187,25 @@ Arrays of items where each item's attributes are evaluated individually across a
 
 ```yaml
 classes:
-  - name: "Bank Statement"
-    attributes:
-      - name: "Transactions"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: BankStatement
+    x-aws-idp-document-type: "Bank Statement"
+    type: object
+    properties:
+      Transactions:
+        type: array
         description: "List of all transactions in the statement period"
-        attributeType: list
-        listItemTemplate:
-          itemDescription: "Individual transaction record"
-          itemAttributes:
-            - name: "Date"
+        x-aws-idp-list-item-description: "Individual transaction record"
+        items:
+          type: object
+          properties:
+            Date:
+              type: string
               description: "Transaction date (MM/DD/YYYY)"
-              evaluation_method: FUZZY
-              evaluation_threshold: 0.9
-            - name: "Description"
+              x-aws-idp-evaluation-method: FUZZY
+              x-aws-idp-confidence-threshold: 0.9
+            Description:
+              type: string
               description: "Transaction description or merchant name"
               evaluation_method: SEMANTIC
               evaluation_threshold: 0.7
