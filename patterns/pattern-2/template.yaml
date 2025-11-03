@@ -2418,7 +2418,8 @@ Resources:
         Level: ALL
         IncludeExecutionData: true
         Destinations:
-          - CloudWatchLogsLogGroup: !GetAtt StateMachineLogGroup.Arn
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
       Tracing:
         Enabled: !Ref EnableXRayTracing
       Policies:
