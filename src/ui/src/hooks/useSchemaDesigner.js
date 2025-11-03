@@ -127,6 +127,8 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
           properties: extractedProperties,
           required: schema.required || [],
         },
+        // Preserve examples if they exist in the schema
+        ...(schema[X_AWS_IDP_EXAMPLES] ? { [X_AWS_IDP_EXAMPLES]: schema[X_AWS_IDP_EXAMPLES] } : {}),
       };
       allClasses.push(docTypeClass);
 
@@ -188,6 +190,8 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
       properties: extractedProperties,
       required: jsonSchema.required || [],
     },
+    // Preserve examples if they exist in the schema
+    ...(jsonSchema[X_AWS_IDP_EXAMPLES] ? { [X_AWS_IDP_EXAMPLES]: jsonSchema[X_AWS_IDP_EXAMPLES] } : {}),
   };
   classes.push(mainClass);
 

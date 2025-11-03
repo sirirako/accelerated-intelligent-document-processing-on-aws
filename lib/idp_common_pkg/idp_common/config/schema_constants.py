@@ -25,6 +25,10 @@ X_AWS_IDP_DOCUMENT_TYPE = "x-aws-idp-document-type"
 # Classification metadata for document type
 X_AWS_IDP_CLASSIFICATION = "x-aws-idp-classification"
 
+# Regex patterns for classification optimization
+X_AWS_IDP_DOCUMENT_NAME_REGEX = "x-aws-idp-document-name-regex"
+X_AWS_IDP_PAGE_CONTENT_REGEX = "x-aws-idp-document-page-content-regex"
+
 # ============================================================================
 # Legacy Attribute Type Values (for migration only)
 # ============================================================================
@@ -52,8 +56,7 @@ X_AWS_IDP_ORIGINAL_NAME = "x-aws-idp-original-name"
 X_AWS_IDP_EVALUATION_METHOD = "x-aws-idp-evaluation-method"
 
 
-
-X_AWS_IDP_EXAMPLES= "x-aws-idp-examples"
+X_AWS_IDP_EXAMPLES = "x-aws-idp-examples"
 
 # Valid evaluation methods
 EVALUATION_METHOD_EXACT = "EXACT"
@@ -113,6 +116,10 @@ LEGACY_EXAMPLES = "examples"
 LEGACY_CLASS_PROMPT = "classPrompt"
 LEGACY_ATTRIBUTES_PROMPT = "attributesPrompt"
 LEGACY_IMAGE_PATH = "imagePath"
+
+# Legacy regex fields (same name in both legacy and new format)
+LEGACY_DOCUMENT_NAME_REGEX = "document_name_regex"
+LEGACY_DOCUMENT_PAGE_CONTENT_REGEX = "document_page_content_regex"
 
 # ============================================================================
 # JSON Schema Standard Property Names

@@ -602,13 +602,16 @@ When you want all pages of a document to be classified as the same class, you ca
 
 ```yaml
 classes:
-  - name: Payslip
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Payslip
+    x-aws-idp-document-type: Payslip
+    type: object
     description: "Employee wage statement showing earnings and deductions"
-    document_name_regex: "(?i).*(payslip|paystub|salary|wage).*"
-    attributes:
-      - name: EmployeeName
+    x-aws-idp-document-name-regex: "(?i).*(payslip|paystub|salary|wage).*"
+    properties:
+      EmployeeName:
+        type: string
         description: "Name of the employee"
-        attributeType: simple
 ```
 
 **Benefits:**
@@ -632,24 +635,33 @@ classification:
   classificationMethod: multimodalPageLevelClassification
 
 classes:
-  - name: Invoice
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Invoice
+    x-aws-idp-document-type: Invoice
+    type: object
     description: "Business invoice document"
-    document_page_content_regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
-    attributes:
-      - name: InvoiceNumber
+    x-aws-idp-document-page-content-regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
+    properties:
+      InvoiceNumber:
+        type: string
         description: "Invoice number"
-        attributeType: simple
-  - name: Payslip
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Payslip
+    x-aws-idp-document-type: Payslip
+    type: object
     description: "Employee wage statement"
-    document_page_content_regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
-    attributes:
-      - name: EmployeeName
+    x-aws-idp-document-page-content-regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
+    properties:
+      EmployeeName:
+        type: string
         description: "Employee name"
-        attributeType: simple
-  - name: Other
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: Other
+    x-aws-idp-document-type: Other
+    type: object
     description: "Documents that don't match specific patterns"
     # No regex - will always use LLM
-    attributes: []
+    properties: {}
 ```
 
 **Benefits:**
