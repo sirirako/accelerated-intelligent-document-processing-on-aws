@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def analyze_workflow_execution(execution_arn: str) -> Dict[str, Any]:
+def analyze_workflow_execution(document_id: str = "") -> Dict[str, Any]:
     """
     Analyze Step Function workflow execution to identify failures and state transitions.
 
@@ -27,25 +27,21 @@ def analyze_workflow_execution(execution_arn: str) -> Dict[str, Any]:
     document processing failures and understanding workflow behavior.
 
     Use this tool when:
-    - Document processing failed and you have a Step Function execution ARN
+    - Document processing failed and you need workflow analysis
     - Need to understand where in the workflow a failure occurred
     - Investigating workflow performance or timeout issues
     - Analyzing state transitions and execution timeline
     - User reports document processing stuck or failed
 
-    Tool chaining: Get execution ARN from fetch_document_record, then use this tool
-    for detailed workflow analysis. Follow up with search_cloudwatch_logs for
-    specific Lambda function errors identified in the failure analysis.
-
     Example usage:
-    - "Analyze the workflow execution for this document"
-    - "What went wrong in the Step Function execution?"
-    - "Show me the workflow timeline and failure point"
-    - "Why did the document processing workflow fail?"
-    - "Trace the execution flow and identify issues"
+    - "Analyze the workflow execution for document report.pdf"
+    - "What went wrong in the Step Function execution for lending_package.pdf?"
+    - "Show me the workflow timeline and failure point for document ABC123"
+    - "Why did the document processing workflow fail for my_document.pdf?"
+    - "Trace the execution flow and identify issues for this document"
 
     Args:
-        execution_arn: Step Function execution ARN (get from document record's WorkflowExecutionArn or ExecutionArn field)
+        document_id: Document filename/S3 object key (e.g., "report.pdf", "lending_package.pdf")
 
     Returns:
         Dict with keys:
@@ -56,12 +52,24 @@ def analyze_workflow_execution(execution_arn: str) -> Dict[str, Any]:
         - recommendations (list): Actionable next steps for investigation
     """
     try:
+        if not document_id:
+            return _build_response(
+                execution_status=None,
+                analysis_summary="No document ID provided",
+                recommendations=[
+                    "Use search_cloudwatch_logs or fetch_recent_records for general troubleshooting"
+                ],
+            )
+
+        # Get execution ARN from document record
+        execution_arn = _get_execution_arn_from_document(document_id)
         if not execution_arn:
             return _build_response(
-                execution_status="ERROR",
-                analysis_summary="No execution ARN provided",
+                execution_status=None,
+                analysis_summary=f"No execution ARN found for document {document_id}",
                 recommendations=[
-                    "Use search_cloudwatch_logs for detailed error information"
+                    "Use search_cloudwatch_logs for detailed error information",
+                    "Verify document exists using fetch_document_record",
                 ],
             )
 
@@ -93,9 +101,11 @@ def analyze_workflow_execution(execution_arn: str) -> Dict[str, Any]:
         )
 
     except Exception as e:
-        logger.error(f"Error analyzing Step Function execution {execution_arn}: {e}")
+        logger.error(
+            f"Error analyzing workflow execution for document {document_id}: {e}"
+        )
         return _build_response(
-            execution_status="ERROR",
+            execution_status=None,
             analysis_summary=f"Failed to analyze workflow execution: {str(e)}",
             recommendations=[
                 "Use search_cloudwatch_logs for detailed error information"
@@ -170,7 +180,7 @@ def _generate_recommendations(timeline_analysis: Dict[str, Any]) -> List[str]:
 
 
 def _build_response(
-    execution_status: str,
+    execution_status: Optional[str],
     duration_seconds: Optional[float] = None,
     timeline_analysis: Optional[Dict[str, Any]] = None,
     analysis_summary: str = "",
@@ -251,6 +261,37 @@ def _extract_failure_details(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         }
 
     return details
+
+
+def _get_execution_arn_from_document(document_id: str) -> Optional[str]:
+    """
+    Get execution ARN from document record using fetch_document_record.
+    """
+    from .dynamodb_tool import fetch_document_record
+
+    try:
+        doc_response = fetch_document_record(document_id)
+
+        if not doc_response.get("document_found"):
+            logger.warning(f"Document {document_id} not found in tracking table")
+            return None
+
+        document = doc_response.get("document", {})
+        execution_arn = document.get("WorkflowExecutionArn") or document.get(
+            "ExecutionArn"
+        )
+
+        if not execution_arn:
+            logger.warning(
+                f"No execution ARN found in document record for {document_id}"
+            )
+            return None
+
+        return execution_arn
+
+    except Exception as e:
+        logger.error(f"Error retrieving execution ARN for document {document_id}: {e}")
+        return None
 
 
 def _analyze_execution_timeline(events: List[Dict[str, Any]]) -> Dict[str, Any]:
