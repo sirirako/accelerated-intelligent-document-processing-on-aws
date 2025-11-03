@@ -7,7 +7,6 @@ CloudWatch tools for error analysis.
 
 import logging
 import os
-from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -16,7 +15,6 @@ from strands import tool
 
 from ..config import create_error_response, safe_int_conversion
 from .dynamodb_tool import fetch_document_record
-from .models import LogEvent
 from .xray_tool import extract_lambda_request_ids
 
 logger = logging.getLogger(__name__)
@@ -521,44 +519,6 @@ def _build_response(
     # Log complete response for troubleshooting
     logger.info(f"CloudWatch document logs complete response: {response}")
     return response
-
-
-# =============================================================================
-# PUBLIC UTILITY FUNCTIONS
-# =============================================================================
-
-
-def extract_error_keywords(log_events: List[LogEvent]) -> Dict[str, int]:
-    """
-    Extract and count error keywords from log events.
-
-    Args:
-        log_events: List of LogEvent objects
-
-    Returns:
-        Dict mapping error keywords to their occurrence counts
-    """
-    error_keywords = [
-        "error",
-        "exception",
-        "failed",
-        "failure",
-        "timeout",
-        "fatal",
-        "critical",
-        "denied",
-        "refused",
-    ]
-
-    keyword_counts = Counter()
-
-    for event in log_events:
-        message_lower = event.message.lower()
-        for keyword in error_keywords:
-            if keyword in message_lower:
-                keyword_counts[keyword] += 1
-
-    return dict(keyword_counts.most_common(10))
 
 
 # =============================================================================
