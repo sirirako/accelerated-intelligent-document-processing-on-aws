@@ -40,7 +40,9 @@ from idp_common.classification.models import (
 from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     X_AWS_IDP_CLASSIFICATION,
+    X_AWS_IDP_DOCUMENT_NAME_REGEX,
     X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_PAGE_CONTENT_REGEX,
 )
 from idp_common.models import Document, Section, Status
 from idp_common.utils import extract_json_from_text, extract_structured_data_from_text
@@ -168,14 +170,21 @@ class ClassificationService:
         classes = self.config.classes
         for schema in classes:
             classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
+
+            # Support both new top-level format and legacy nested format for regex patterns
+            document_name_regex = schema.get(
+                X_AWS_IDP_DOCUMENT_NAME_REGEX
+            ) or classification_meta.get("documentNamePattern")
+            document_page_content_regex = schema.get(
+                X_AWS_IDP_PAGE_CONTENT_REGEX
+            ) or classification_meta.get("pageContentPattern")
+
             doc_types.append(
                 DocumentType(
                     type_name=schema.get(X_AWS_IDP_DOCUMENT_TYPE, ""),
                     description=schema.get("description", ""),
-                    document_name_regex=classification_meta.get("documentNamePattern"),
-                    document_page_content_regex=classification_meta.get(
-                        "pageContentPattern"
-                    ),
+                    document_name_regex=document_name_regex,
+                    document_page_content_regex=document_page_content_regex,
                 )
             )
 

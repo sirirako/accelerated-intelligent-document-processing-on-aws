@@ -607,7 +607,7 @@ classes:
     x-aws-idp-document-type: Payslip
     type: object
     description: "Employee wage statement showing earnings and deductions"
-    document_name_regex: "(?i).*(payslip|paystub|salary|wage).*"
+    x-aws-idp-document-name-regex: "(?i).*(payslip|paystub|salary|wage).*"
     properties:
       EmployeeName:
         type: string
@@ -640,7 +640,7 @@ classes:
     x-aws-idp-document-type: Invoice
     type: object
     description: "Business invoice document"
-    document_page_content_regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
+    x-aws-idp-document-page-content-regex: "(?i)(invoice\\s+number|bill\\s+to|amount\\s+due)"
     properties:
       InvoiceNumber:
         type: string
@@ -650,7 +650,7 @@ classes:
     x-aws-idp-document-type: Payslip
     type: object
     description: "Employee wage statement"
-    document_page_content_regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
+    x-aws-idp-document-page-content-regex: "(?i)(gross\\s+pay|net\\s+pay|employee\\s+id)"
     properties:
       EmployeeName:
         type: string
