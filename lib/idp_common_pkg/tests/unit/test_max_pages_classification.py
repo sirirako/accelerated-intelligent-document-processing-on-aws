@@ -1,11 +1,10 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-from unittest.mock import Mock, patch
 
 import pytest
 from idp_common.classification.service import ClassificationService
-from idp_common.models import Document, Page
+from idp_common.models import Document, Page, Section
 
 
 @pytest.mark.unit
@@ -99,18 +98,13 @@ class TestMaxPagesForClassification:
         classified_doc.pages["1"].classification = "invoice"
         classified_doc.pages["2"].classification = "invoice"
 
-        # Mock sections
-        mock_section = Mock()
-        mock_section.classification = "invoice"
-        mock_section.page_ids = ["1", "2"]
-        classified_doc.sections = [mock_section]
+        # Create real Section objects
+        section = Section(section_id="1", classification="invoice", page_ids=["1", "2"])
+        classified_doc.sections = [section]
 
-        with patch.object(classification_service, "_create_section") as mock_create:
-            mock_create.return_value = mock_section
-
-            result = classification_service._apply_limited_classification_to_all_pages(
-                original_doc, classified_doc
-            )
+        result = classification_service._apply_limited_classification_to_all_pages(
+            original_doc, classified_doc
+        )
 
         # All pages should be classified as "invoice"
         assert result.pages["1"].classification == "invoice"
@@ -138,23 +132,16 @@ class TestMaxPagesForClassification:
         classified_doc.pages["1"].classification = "payslip"
         classified_doc.pages["2"].classification = "drivers_license"
 
-        # Mock sections - payslip processed first
-        mock_section1 = Mock()
-        mock_section1.classification = "payslip"
-        mock_section1.page_ids = ["1"]
+        # Create real Section objects - payslip processed first
+        section1 = Section(section_id="1", classification="payslip", page_ids=["1"])
+        section2 = Section(
+            section_id="2", classification="drivers_license", page_ids=["2"]
+        )
+        classified_doc.sections = [section1, section2]
 
-        mock_section2 = Mock()
-        mock_section2.classification = "drivers_license"
-        mock_section2.page_ids = ["2"]
-
-        classified_doc.sections = [mock_section1, mock_section2]
-
-        with patch.object(classification_service, "_create_section") as mock_create:
-            mock_create.return_value = mock_section1
-
-            result = classification_service._apply_limited_classification_to_all_pages(
-                original_doc, classified_doc
-            )
+        result = classification_service._apply_limited_classification_to_all_pages(
+            original_doc, classified_doc
+        )
 
         # Should pick "payslip" due to insertion order tie-breaker
         assert result.pages["1"].classification == "payslip"
