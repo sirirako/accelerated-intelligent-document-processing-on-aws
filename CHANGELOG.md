@@ -5,6 +5,21 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.1]
+
+### Changed
+
+- **Configuration Library Updates with JSON Schema Support**
+  - Updated configuration library with JSON schema format for lending package, bank statement, and RVL-CDIP package samples
+  - Enhanced configuration files to align with JSON Schema Draft 2020-12 format introduced in v0.4.0
+  - Updated notebooks and documentation to reflect JSON schema configuration structure
+
+### Fixed
+
+- **UI Few Shot Examples Display** - Fixed issue where few shot examples were not displaying correctly from configuration in the Web UI
+- **Re-enabled Regex Functionality** - Restored document name and page content regex functionality for Pattern-2 classification that was temporarily missing
+
+
 ## [0.4.0]
 
 > **⚠️ IMPORTANT NOTICE - SIGNIFICANT CONFIGURATION CHANGES**

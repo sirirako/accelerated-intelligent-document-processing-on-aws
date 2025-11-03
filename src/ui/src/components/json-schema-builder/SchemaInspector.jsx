@@ -106,7 +106,7 @@ const SchemaInspector = ({
                 examples={selectedClass[X_AWS_IDP_EXAMPLES] || []}
                 onChange={(examples) => onUpdateClass({ [X_AWS_IDP_EXAMPLES]: examples })}
               />
-              
+
               <FormField
                 label="Document Name Regex (Optional)"
                 description="Pattern to match document ID/name. When matched, instantly classifies all pages as this type (single-class configs only). Use case-insensitive patterns like (?i).*(invoice|bill).*"
