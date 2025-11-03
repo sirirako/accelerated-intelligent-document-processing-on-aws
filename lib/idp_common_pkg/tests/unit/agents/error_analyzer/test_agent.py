@@ -102,14 +102,14 @@ class TestErrorAnalyzerAgent:
     def test_specific_tools_import(self):
         """Test that specific tools can be imported correctly."""
         from idp_common.agents.error_analyzer.tools import (
-            search_cloudwatch_logs,
+            analyze_workflow_execution,
             fetch_document_record,
-            xray_trace,
+            search_cloudwatch_logs,
         )
 
         assert search_cloudwatch_logs is not None
         assert callable(search_cloudwatch_logs)
         assert fetch_document_record is not None
         assert callable(fetch_document_record)
-        assert xray_trace is not None
-        assert callable(xray_trace)
+        assert analyze_workflow_execution is not None
+        assert callable(analyze_workflow_execution)

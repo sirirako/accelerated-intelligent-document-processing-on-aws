@@ -36,14 +36,14 @@ class TestErrorAnalyzerTools:
     def test_execution_context_tools_import(self):
         """Test execution context tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
+            analyze_workflow_execution,
             lambda_lookup,
-            stepfunction_details,
         )
 
         assert lambda_lookup is not None
         assert callable(lambda_lookup)
-        assert stepfunction_details is not None
-        assert callable(stepfunction_details)
+        assert analyze_workflow_execution is not None
+        assert callable(analyze_workflow_execution)
 
     def test_xray_tools_import(self):
         """Test X-Ray tools can be imported."""
@@ -66,7 +66,7 @@ class TestErrorAnalyzerTools:
             "fetch_document_record",
             "fetch_recent_records",
             "lambda_lookup",
-            "stepfunction_details",
+            "analyze_workflow_execution",
             "xray_trace",
             "xray_performance_analysis",
         }

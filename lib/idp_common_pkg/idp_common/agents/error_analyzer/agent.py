@@ -15,11 +15,11 @@ from idp_common.config import get_config
 
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .tools import (
+    analyze_workflow_execution,
     fetch_document_record,
     fetch_recent_records,
     lambda_lookup,
     search_cloudwatch_logs,
-    stepfunction_details,
     xray_performance_analysis,
     xray_trace,
 )
@@ -53,7 +53,7 @@ def create_error_analyzer_agent(
         fetch_document_record,
         fetch_recent_records,
         lambda_lookup,
-        stepfunction_details,
+        analyze_workflow_execution,
         xray_trace,
         xray_performance_analysis,
     ]
