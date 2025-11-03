@@ -15,12 +15,11 @@ from idp_common.config import get_config
 
 from ..common.strands_bedrock_model import create_strands_bedrock_model
 from .tools import (
-    cloudwatch_document_logs,
-    cloudwatch_logs,
     dynamodb_query,
     dynamodb_record,
     dynamodb_status,
     lambda_lookup,
+    search_cloudwatch_logs,
     stepfunction_details,
     xray_performance_analysis,
     xray_trace,
@@ -51,8 +50,7 @@ def create_error_analyzer_agent(
 
     # Create agent with specific tools - let LLM choose directly
     tools = [
-        cloudwatch_document_logs,
-        cloudwatch_logs,
+        search_cloudwatch_logs,
         dynamodb_record,
         dynamodb_status,
         dynamodb_query,

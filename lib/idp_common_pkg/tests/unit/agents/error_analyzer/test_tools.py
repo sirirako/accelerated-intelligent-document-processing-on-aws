@@ -15,14 +15,11 @@ class TestErrorAnalyzerTools:
     def test_cloudwatch_tools_import(self):
         """Test CloudWatch tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
-            cloudwatch_document_logs,
-            cloudwatch_logs,
+            search_cloudwatch_logs,
         )
 
-        assert cloudwatch_document_logs is not None
-        assert callable(cloudwatch_document_logs)
-        assert cloudwatch_logs is not None
-        assert callable(cloudwatch_logs)
+        assert search_cloudwatch_logs is not None
+        assert callable(search_cloudwatch_logs)
 
     def test_dynamodb_tools_import(self):
         """Test DynamoDB tools can be imported."""
@@ -64,12 +61,11 @@ class TestErrorAnalyzerTools:
         assert callable(xray_performance_analysis)
 
     def test_all_tools_available(self):
-        """Test that all 11 tools are available in the tools module."""
+        """Test that all 8 tools are available in the tools module."""
         from idp_common.agents.error_analyzer.tools import __all__
 
         expected_tools = {
-            "cloudwatch_document_logs",
-            "cloudwatch_logs",
+            "search_cloudwatch_logs",
             "dynamodb_record",
             "dynamodb_status",
             "dynamodb_query",
@@ -79,5 +75,5 @@ class TestErrorAnalyzerTools:
             "xray_performance_analysis",
         }
 
-        assert len(__all__) == 9
+        assert len(__all__) == 8
         assert set(__all__) == expected_tools

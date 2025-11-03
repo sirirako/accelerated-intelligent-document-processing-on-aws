@@ -13,7 +13,7 @@ Provides comprehensive error analysis capabilities including:
 - Lambda function context extraction
 """
 
-from .cloudwatch_tool import cloudwatch_document_logs, cloudwatch_logs
+from .cloudwatch_tool import search_cloudwatch_logs
 from .dynamodb_tool import (
     dynamodb_query,
     dynamodb_record,
@@ -27,8 +27,7 @@ from .xray_tool import (
 )
 
 __all__ = [
-    "cloudwatch_document_logs",
-    "cloudwatch_logs",
+    "search_cloudwatch_logs",
     "lambda_lookup",
     "dynamodb_record",
     "dynamodb_status",

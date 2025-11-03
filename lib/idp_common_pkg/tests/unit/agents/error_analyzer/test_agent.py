@@ -33,14 +33,14 @@ class TestErrorAnalyzerAgent:
 
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.tools = [MagicMock() for _ in range(9)]  # 9 specific tools now
+        mock_agent.tools = [MagicMock() for _ in range(8)]  # 8 specific tools now
         mock_agent_class.return_value = mock_agent
 
         agent = create_error_analyzer_agent(session=mock_session.return_value)
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 9  # All specific tools
+        assert len(agent.tools) == 8  # All specific tools
 
     @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
@@ -57,14 +57,14 @@ class TestErrorAnalyzerAgent:
 
         mock_session.return_value = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.tools = [MagicMock() for _ in range(9)]  # 9 specific tools
+        mock_agent.tools = [MagicMock() for _ in range(8)]  # 8 specific tools
         mock_agent_class.return_value = mock_agent
 
         agent = create_error_analyzer_agent()
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 9
+        assert len(agent.tools) == 8
 
     @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
@@ -102,13 +102,13 @@ class TestErrorAnalyzerAgent:
     def test_specific_tools_import(self):
         """Test that specific tools can be imported correctly."""
         from idp_common.agents.error_analyzer.tools import (
-            cloudwatch_document_logs,
+            search_cloudwatch_logs,
             dynamodb_status,
             xray_trace,
         )
 
-        assert cloudwatch_document_logs is not None
-        assert callable(cloudwatch_document_logs)
+        assert search_cloudwatch_logs is not None
+        assert callable(search_cloudwatch_logs)
         assert dynamodb_status is not None
         assert callable(dynamodb_status)
         assert xray_trace is not None
