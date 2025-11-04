@@ -136,3 +136,43 @@ integration_tests:
 
     # Run integration test deployment
     - python3 scripts/integration_test_deployment.py
+
+  after_script:
+    # Capture CodeBuild logs using the tracked execution ID
+    - |
+      echo "=== IDP Pipeline Results ===" > pipeline_summary.txt
+      echo "Branch: $CI_COMMIT_REF_NAME" >> pipeline_summary.txt
+      echo "Commit: $CI_COMMIT_SHA" >> pipeline_summary.txt
+      echo "Status: $CI_JOB_STATUS" >> pipeline_summary.txt
+      echo "" >> pipeline_summary.txt
+      
+      # Get CodeBuild logs using the exact execution ID from Python script
+      if [ -f "pipeline_execution_id.txt" ]; then
+        EXECUTION_ID=$(cat pipeline_execution_id.txt)
+        echo "Pipeline Execution: $EXECUTION_ID" >> pipeline_summary.txt
+        echo "" >> pipeline_summary.txt
+        
+        # Get CodeBuild ID from the pipeline execution
+        BUILD_ID=$(aws codepipeline list-action-executions --pipeline-name ${IDP_PIPELINE_NAME:-idp-sdlc-deploy-pipeline} --filter pipelineExecutionId=$EXECUTION_ID --query 'actionExecutionDetails[?actionName==`BuildAction`].output.executionResult.externalExecutionId' --output text 2>/dev/null || echo "")
+        
+        if [ "$BUILD_ID" != "" ] && [ "$BUILD_ID" != "None" ]; then
+          echo "CodeBuild ID: $BUILD_ID" >> pipeline_summary.txt
+          # Extract just the build ID part (after the colon)
+          LOG_STREAM_NAME="${BUILD_ID#*:}"
+          echo "Log Stream: $LOG_STREAM_NAME" >> pipeline_summary.txt
+          echo "" >> pipeline_summary.txt
+          echo "=== CODEBUILD LOGS ===" >> pipeline_summary.txt
+          aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --limit 100 --query 'events[].message' --output text 2>/dev/null >> pipeline_summary.txt || echo "Could not retrieve CodeBuild logs" >> pipeline_summary.txt
+        else
+          echo "Could not find CodeBuild execution" >> pipeline_summary.txt
+        fi
+      else
+        echo "No pipeline execution ID found" >> pipeline_summary.txt
+      fi
+
+  artifacts:
+    when: always
+    paths:
+      - pipeline_summary.txt
+      - pipeline_execution_id.txt
+    expire_in: 1 week
