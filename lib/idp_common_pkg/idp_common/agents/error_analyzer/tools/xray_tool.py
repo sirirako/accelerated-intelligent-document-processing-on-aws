@@ -18,7 +18,6 @@ from idp_common.config import get_config
 
 from ..config import (
     create_error_response,
-    safe_int_conversion,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,7 +92,7 @@ def analyze_document_trace(document_id: str) -> Dict[str, Any]:
 
 @tool
 def analyze_system_performance(
-    stack_name: str = None, hours_back: int = None
+    stack_name: str = "", hours_back: int = 1
 ) -> Dict[str, Any]:
     """
     Analyze system performance issues focusing on stack-specific traces first, then general infrastructure.
@@ -127,7 +126,7 @@ def analyze_system_performance(
         - recommendations (list): Actionable recommendations
     """
     try:
-        hours_back = safe_int_conversion(hours_back, 1)
+        # hours_back already has proper default
         xray_client = boto3.client("xray")
 
         end_time = datetime.utcnow()
@@ -165,7 +164,7 @@ def analyze_system_performance(
 
         return _build_performance_analysis_response(
             analysis_type="infrastructure_wide",
-            stack_name=stack_name or "not_provided",
+            stack_name=stack_name if stack_name else "not_provided",
             traces_found=0,
             services_found=service_analysis.get("services_found", 0),
             performance_issues={"service_map": service_analysis},

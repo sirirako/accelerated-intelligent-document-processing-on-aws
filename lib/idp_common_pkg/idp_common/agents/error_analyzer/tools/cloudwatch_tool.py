@@ -8,12 +8,12 @@ CloudWatch tools for error analysis.
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import boto3
 from strands import tool
 
-from ..config import create_error_response, safe_int_conversion
+from ..config import create_error_response
 from .dynamodb_tool import fetch_document_record
 from .xray_tool import extract_lambda_request_ids
 
@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 
 @tool
 def search_cloudwatch_logs(
-    document_id: str = None,
+    document_id: str = "",
     filter_pattern: str = "ERROR",
-    hours_back: int = None,
-    max_log_events: int = None,
+    hours_back: int = 24,
+    max_log_events: int = 10,
     max_log_groups: int = 20,
 ) -> Dict[str, Any]:
     """
@@ -57,9 +57,7 @@ def search_cloudwatch_logs(
         Dict containing error events, search metadata, and processing context
     """
     try:
-        max_log_events = safe_int_conversion(max_log_events, 10)
-        max_log_groups = safe_int_conversion(max_log_groups, 20)
-        hours_back = safe_int_conversion(hours_back, 24)
+        # Parameters already have proper defaults, no conversion needed
 
         if document_id:
             # Document-specific search mode
@@ -82,14 +80,14 @@ def search_cloudwatch_logs(
 # =============================================================================
 
 
-def _get_stack_name(document_record: Dict[str, Any] = None) -> str:
+def _get_stack_name(document_record: Optional[Dict[str, Any]] = None) -> str:
     """
     Get stack name with priority: document ARN > environment variable.
     """
     # First priority: Extract from document execution ARN
     if document_record:
         try:
-            extracted_name = _extract_stack_name(document_record, None)
+            extracted_name = _extract_stack_name(document_record)
             if extracted_name:
                 return extracted_name
         except Exception as e:
@@ -115,7 +113,7 @@ def _search_document_logs(
         return context
 
     # Get stack name from document context
-    actual_stack_name = _get_stack_name(context["document_record"])
+    actual_stack_name = _get_stack_name(context.get("document_record"))
 
     # Get log groups for the stack
     log_groups = _get_log_groups_from_stack_prefix(actual_stack_name)
@@ -180,7 +178,7 @@ def _search_stack_logs(
             "events_found": 0,
         }
 
-    log_prefix = prefix_info.get("log_group_prefix")
+    log_prefix = prefix_info.get("log_group_prefix", "")
 
     # Get log groups with the prefix
     log_groups = _get_cloudwatch_log_groups(prefix=log_prefix)
@@ -266,9 +264,7 @@ def _get_document_context(document_id: str) -> Dict[str, Any]:
     }
 
 
-def _extract_stack_name(
-    document_record: Dict[str, Any], fallback_stack_name: str
-) -> str:
+def _extract_stack_name(document_record: Dict[str, Any]) -> str:
     """
     Extract actual stack name from Step Functions execution ARN.
     """
@@ -283,7 +279,7 @@ def _extract_stack_name(
             if state_machine_name:
                 return state_machine_name
 
-    return fallback_stack_name
+    return ""
 
 
 def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, Any]:
@@ -383,8 +379,8 @@ def _search_by_request_ids(
                     log_group_name=log_group["name"],
                     filter_pattern="ERROR",
                     max_events=max_log_events * 3,
-                    start_time=time_window["start_time"],
-                    end_time=time_window["end_time"],
+                    start_time=time_window.get("start_time"),
+                    end_time=time_window.get("end_time"),
                     request_id=request_id,
                 )
 
@@ -440,8 +436,8 @@ def _search_by_document_fallback(
             log_group_name=log_group["name"],
             filter_pattern=doc_identifier,
             max_events=max_log_events,
-            start_time=time_window["start_time"],
-            end_time=time_window["end_time"],
+            start_time=time_window.get("start_time"),
+            end_time=time_window.get("end_time"),
         )
 
         if search_result.get("events_found", 0) > 0:
@@ -533,7 +529,7 @@ def _search_cloudwatch_logs(
     max_events: int = 10,
     start_time: datetime = None,
     end_time: datetime = None,
-    request_id: str = None,
+    request_id: str = "",
 ) -> Dict[str, Any]:
     """
     Search CloudWatch logs within a specific log group for matching patterns.
@@ -542,7 +538,7 @@ def _search_cloudwatch_logs(
         client = boto3.client("logs")
 
         # Use provided time window or default to hours_back from now
-        if start_time and end_time:
+        if start_time is not None and end_time is not None:
             search_start = start_time
             search_end = end_time
         else:
@@ -623,7 +619,7 @@ def _search_cloudwatch_logs(
         return create_error_response(str(e), events_found=0, events=[])
 
 
-def _build_filter_pattern(base_pattern: str, request_id: str = None) -> str:
+def _build_filter_pattern(base_pattern: str, request_id: str = "") -> str:
     """
     Build CloudWatch filter pattern. Use ERROR pattern and filter by request ID in post-processing.
     """

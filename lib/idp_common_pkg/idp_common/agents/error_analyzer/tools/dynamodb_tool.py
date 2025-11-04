@@ -194,7 +194,8 @@ def _get_tracking_table():
         return None, None
 
     dynamodb = boto3.resource("dynamodb")
-    return dynamodb.Table(table_name), table_name
+    table = dynamodb.Table(table_name)
+    return table, table_name
 
 
 def _create_empty_response(date: str, hours_back: int) -> Dict[str, Any]:
