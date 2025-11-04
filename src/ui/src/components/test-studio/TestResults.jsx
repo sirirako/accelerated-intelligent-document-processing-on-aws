@@ -16,7 +16,7 @@ import {
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
-import handlePrint from './PrintUtils';
+import TestStudioHeader from './TestStudioHeader';
 
 const client = generateClient();
 
@@ -126,30 +126,16 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   if (loading) return <ProgressBar status="in-progress" label="Loading test results..." />;
   if (error) return <Box>Error loading test results: {error}</Box>;
   if (!results) {
+    const handleBackClick = () => {
+      if (setSelectedTestRunId) {
+        setSelectedTestRunId(null);
+      } else {
+        window.location.replace('#/test-studio?tab=results');
+      }
+    };
+
     return (
-      <Container
-        header={
-          <Header
-            variant="h2"
-            actions={
-              <Button
-                onClick={() => {
-                  if (setSelectedTestRunId) {
-                    setSelectedTestRunId(null);
-                  } else {
-                    window.location.replace('#/test-studio?tab=results');
-                  }
-                }}
-                iconName="arrow-left"
-              >
-                Back to Test Results
-              </Button>
-            }
-          >
-            Test Results: {testRunId}
-          </Header>
-        }
-      >
+      <Container header={<TestStudioHeader title={`Test Results: ${testRunId}`} onBackClick={handleBackClick} />}>
         <Box>No test results found</Box>
       </Container>
     );
@@ -181,41 +167,54 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     console.error('Error parsing breakdown data:', e);
   }
 
-  console.log('Parsed cost breakdown:', costBreakdown);
-  console.log('Parsed usage breakdown:', usageBreakdown);
+  const downloadConfig = () => {
+    if (!results?.config) {
+      console.error('No config data available');
+      return;
+    }
+
+    const configData = JSON.stringify(results.config, null, 2);
+    const blob = new Blob([configData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `test-run-${results.testRunId}-config.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const configButton = (
+    <Button onClick={downloadConfig} iconName="download">
+      Config
+    </Button>
+  );
+
+  const contextDescription = results.context ? (
+    <Box variant="p" color="text-body-secondary" margin={{ top: 'xs' }}>
+      Context: {results.context}
+    </Box>
+  ) : null;
+
+  const handleBackClick = () => {
+    if (setSelectedTestRunId) {
+      setSelectedTestRunId(null);
+    } else {
+      window.location.replace('#/test-studio?tab=results');
+    }
+  };
 
   return (
     <Container
       header={
-        <Header
-          variant="h2"
-          actions={
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button
-                onClick={() => {
-                  if (setSelectedTestRunId) {
-                    setSelectedTestRunId(null);
-                  } else {
-                    window.location.replace('#/test-studio?tab=results');
-                  }
-                }}
-                iconName="arrow-left"
-              >
-                Back to Test Results
-              </Button>
-              <Button onClick={handlePrint} iconName="print">
-                Print
-              </Button>
-            </SpaceBetween>
-          }
-        >
-          Test Results: {results.testRunId} ({results.testSetName})
-          {results.context && (
-            <Box variant="p" color="text-body-secondary" margin={{ top: 'xs' }}>
-              Context: {results.context}
-            </Box>
-          )}
-        </Header>
+        <TestStudioHeader
+          title={`Test Results: ${results.testRunId} (${results.testSetName})`}
+          description={contextDescription}
+          showPrintButton={true}
+          additionalActions={[configButton]}
+          onBackClick={handleBackClick}
+        />
       }
     >
       <SpaceBetween direction="vertical" size="l">

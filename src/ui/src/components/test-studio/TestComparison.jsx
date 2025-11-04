@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Table, Box, Button } from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Table, Box, Button, ButtonDropdown } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
-import handlePrint from './PrintUtils';
+import TestStudioHeader from './TestStudioHeader';
 
 const client = generateClient();
 
@@ -76,16 +76,199 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     );
   };
 
+  const downloadToExcel = () => {
+    if (!comparisonData || !comparisonData.metrics) return;
+
+    const completeTestRuns = Object.fromEntries(
+      Object.entries(comparisonData.metrics).filter(([, testRun]) => testRun.status === 'COMPLETE'),
+    );
+
+    // Create headers
+    const headers = ['Metric', ...Object.keys(completeTestRuns)];
+
+    // Create rows for performance metrics
+    const performanceRows = [
+      ['Test Set', ...Object.values(completeTestRuns).map((run) => run.testSetName || 'N/A')],
+      ['Context', ...Object.values(completeTestRuns).map((run) => run.context || 'N/A')],
+      ['Files Processed', ...Object.values(completeTestRuns).map((run) => run.filesCount || 'N/A')],
+      [
+        'Total Cost',
+        ...Object.values(completeTestRuns).map((run) =>
+          run.totalCost !== null && run.totalCost !== undefined ? `$${run.totalCost.toFixed(4)}` : 'N/A',
+        ),
+      ],
+      [
+        'Overall Accuracy',
+        ...Object.values(completeTestRuns).map((run) =>
+          run.overallAccuracy !== null && run.overallAccuracy !== undefined ? `${(run.overallAccuracy * 100).toFixed(1)}%` : 'N/A',
+        ),
+      ],
+      [
+        'Overall Confidence',
+        ...Object.values(completeTestRuns).map((run) =>
+          run.averageConfidence !== null && run.averageConfidence !== undefined ? `${(run.averageConfidence * 100).toFixed(1)}%` : 'N/A',
+        ),
+      ],
+    ];
+
+    // Add cost breakdown rows
+    const costRows = [];
+    const allCostMetrics = new Set();
+    Object.values(completeTestRuns).forEach((testRun) => {
+      if (testRun.costBreakdown) {
+        Object.entries(testRun.costBreakdown).forEach(([category, data]) => {
+          if (data && typeof data === 'object') {
+            Object.keys(data).forEach((api) => {
+              allCostMetrics.add(`${category}_${api}`);
+            });
+          }
+        });
+      }
+    });
+
+    allCostMetrics.forEach((metricKey) => {
+      const [category, api] = metricKey.split('_');
+      const row = [
+        `Cost: ${category} ${api}`,
+        ...Object.keys(completeTestRuns).map((testRunId) => {
+          const testRun = completeTestRuns[testRunId];
+          const cost = testRun.costBreakdown?.[category]?.[api] || 0;
+          return `$${cost.toFixed(4)}`;
+        }),
+      ];
+      costRows.push(row);
+    });
+
+    // Add usage breakdown rows
+    const usageRows = [];
+    const allUsageMetrics = new Set();
+    Object.values(completeTestRuns).forEach((testRun) => {
+      if (testRun.usageBreakdown) {
+        Object.entries(testRun.usageBreakdown).forEach(([service, metrics]) => {
+          Object.keys(metrics).forEach((metric) => {
+            allUsageMetrics.add(`${service}_${metric}`);
+          });
+        });
+      }
+    });
+
+    allUsageMetrics.forEach((metricKey) => {
+      const [service, metric] = metricKey.split('_');
+      const row = [
+        `Usage: ${service} ${metric}`,
+        ...Object.keys(completeTestRuns).map((testRunId) => {
+          const testRun = completeTestRuns[testRunId];
+          const value = testRun.usageBreakdown?.[service]?.[metric] || 0;
+          return value.toLocaleString();
+        }),
+      ];
+      usageRows.push(row);
+    });
+
+    // Add config comparison rows
+    const configRows = [];
+    if (comparisonData.configs && comparisonData.configs.length > 0) {
+      comparisonData.configs.forEach((config) => {
+        const values = typeof config.values === 'string' ? JSON.parse(config.values) : config.values;
+        const row = [config.setting, ...Object.keys(completeTestRuns).map((testRunId) => values[testRunId] || 'N/A')];
+        configRows.push(row);
+      });
+    }
+
+    // Combine all data
+    const csvData = [
+      headers,
+      ['=== PERFORMANCE METRICS ==='],
+      ...performanceRows,
+      [''],
+      ['=== COST BREAKDOWN ==='],
+      ...costRows,
+      [''],
+      ['=== USAGE BREAKDOWN ==='],
+      ...usageRows,
+      [''],
+      ['=== CONFIGURATION DIFFERENCES ==='],
+      ...configRows,
+    ];
+
+    const csvContent = csvData.map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `test-comparison-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadToJson = () => {
+    if (!comparisonData) return;
+
+    const completeTestRuns = Object.fromEntries(
+      Object.entries(comparisonData.metrics).filter(([, testRun]) => testRun.status === 'COMPLETE'),
+    );
+
+    // Create JSON structure matching the UI sections
+    const filteredData = {
+      testRuns: Object.keys(completeTestRuns),
+      performanceMetrics: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
+          testRunId,
+          {
+            testSetName: testRun.testSetName,
+            context: testRun.context,
+            filesCount: testRun.filesCount,
+            totalCost: testRun.totalCost,
+            overallAccuracy: testRun.overallAccuracy,
+            averageConfidence: testRun.averageConfidence,
+          },
+        ]),
+      ),
+      costBreakdown: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.costBreakdown || {}]),
+      ),
+      usageBreakdown: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.usageBreakdown || {}]),
+      ),
+      accuracyBreakdown: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.accuracyBreakdown || {}]),
+      ),
+      configurationDifferences: comparisonData.configs || [],
+    };
+
+    const jsonData = JSON.stringify(filteredData, null, 2);
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `test-comparison-${new Date().toISOString().split('T')[0]}.json`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (comparing) {
     return <Box>Loading comparison...</Box>;
   }
 
   if (!comparisonData) {
-    return <Box>No comparison data available</Box>;
+    return (
+      <Container header={<TestStudioHeader title="Compare Test Runs" />}>
+        <Box>No comparison data available</Box>
+      </Container>
+    );
   }
 
   if (comparisonData.error) {
-    return <Box>Error: {comparisonData.error}</Box>;
+    return (
+      <Container header={<TestStudioHeader title="Compare Test Runs" />}>
+        <Box>Error: {comparisonData.error}</Box>
+      </Container>
+    );
   }
 
   // Debug logging
@@ -101,24 +284,32 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     ? Object.values(comparisonData.metrics).some((testRun) => testRun.status !== 'COMPLETE')
     : false;
 
+  const downloadButton = (
+    <ButtonDropdown
+      iconName="download"
+      variant="normal"
+      items={[
+        { id: 'csv', text: 'CSV' },
+        { id: 'json', text: 'JSON' },
+      ]}
+      onItemClick={({ detail }) => {
+        if (detail.id === 'csv') {
+          downloadToExcel();
+        } else if (detail.id === 'json') {
+          downloadToJson();
+        }
+      }}
+    ></ButtonDropdown>
+  );
+
   return (
     <Container
       header={
-        <Header
-          variant="h2"
-          actions={
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button onClick={() => window.history.back()} iconName="arrow-left">
-                Back to Test Runs
-              </Button>
-              <Button onClick={handlePrint} iconName="print">
-                Print
-              </Button>
-            </SpaceBetween>
-          }
-        >
-          Compare Test Runs ({Object.keys(completeTestRuns).length})
-        </Header>
+        <TestStudioHeader
+          title={`Compare Test Runs (${Object.keys(completeTestRuns).length})`}
+          showPrintButton={true}
+          additionalActions={[downloadButton]}
+        />
       }
     >
       <SpaceBetween direction="vertical" size="l">
@@ -209,26 +400,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           {/* Configuration Comparison */}
           <Container header={<Header variant="h3">Configuration Comparison</Header>}>
             {(() => {
-              if (preSelectedTestRunIds.length !== 2) {
-                return (
-                  <Box>
-                    Configuration comparison requires exactly 2 test runs. Currently comparing {preSelectedTestRunIds.length} test runs.
-                  </Box>
-                );
-              }
-
               if (!comparisonData.configs || comparisonData.configs.length === 0) {
-                return <Box>No configuration differences found - all test runs use identical configurations</Box>;
-              }
-
-              const differentConfigs = comparisonData.configs || [];
-              if (differentConfigs.length === 0) {
                 return <Box>No configuration differences found - all test runs use identical configurations</Box>;
               }
 
               return (
                 <Table
-                  items={differentConfigs.map((config) => {
+                  items={comparisonData.configs.map((config) => {
                     const values = typeof config.values === 'string' ? JSON.parse(config.values) : config.values;
                     return {
                       setting: config.setting,

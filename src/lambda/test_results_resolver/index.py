@@ -149,7 +149,8 @@ def get_test_results(test_run_id):
             'usageBreakdown': cached_metrics.get('usageBreakdown', {}),
             'createdAt': _format_datetime(metadata.get('CreatedAt')),
             'completedAt': _format_datetime(metadata.get('CompletedAt')),
-            'context': metadata.get('Context')
+            'context': metadata.get('Context'),
+            'config': _get_test_run_config(test_run_id)
         }
     
     # Calculate aggregated metrics
@@ -170,7 +171,8 @@ def get_test_results(test_run_id):
         'usageBreakdown': aggregated_metrics.get('usage_breakdown', {}),
         'createdAt': _format_datetime(metadata.get('CreatedAt')),
         'completedAt': _format_datetime(metadata.get('CompletedAt')),
-        'context': metadata.get('Context')
+        'context': metadata.get('Context'),
+        'config': _get_test_run_config(test_run_id)
     }
 
     # Cache only the static metrics (not status/counts)
@@ -753,17 +755,8 @@ def _build_metrics_comparison(results):
 
 def _build_config_comparison(configs):
     """Build configuration differences - compare Custom configs, fallback to Default"""
-    if not configs or len(configs) != 2:
+    if not configs or len(configs) < 2:
         return None
-    
-    config1 = configs[0]['config']
-    config2 = configs[1]['config']
-    test_run_id1 = configs[0]['testRunId']
-    test_run_id2 = configs[1]['testRunId']
-    
-    custom1 = config1.get('Custom', {})
-    custom2 = config2.get('Custom', {})
-    default_config = config1.get('Default', {})
     
     def get_nested_value(dictionary, path):
         """Get nested value from dictionary using dot notation path"""
@@ -787,31 +780,61 @@ def _build_config_comparison(configs):
                 paths.append(current_path)
         return paths
     
-    # Get all possible configuration paths
+    # Get all possible configuration paths from all configs
     all_paths = set()
-    all_paths.update(get_all_paths(custom1))
-    all_paths.update(get_all_paths(custom2))
-    all_paths.update(get_all_paths(default_config))
+    default_config = {}
+    
+    for config_item in configs:
+        config = config_item['config']
+        custom = config.get('Custom', {})
+        default = config.get('Default', {})
+        
+        all_paths.update(get_all_paths(custom))
+        all_paths.update(get_all_paths(default))
+        
+        # Use first config's default as reference
+        if not default_config:
+            default_config = default
     
     differences = []
     for path in all_paths:
-        # Get effective values (Custom overrides Default)
-        value1 = get_nested_value(custom1, path)
-        if value1 is None:
-            value1 = get_nested_value(default_config, path)
-            
-        value2 = get_nested_value(custom2, path)
-        if value2 is None:
-            value2 = get_nested_value(default_config, path)
+        values = {}
+        has_differences = False
+        first_value = None
         
-        # Only include if values are different
-        if value1 != value2 and value1 is not None and value2 is not None:
+        # Get effective values for each test run
+        for config_item in configs:
+            test_run_id = config_item['testRunId']
+            config = config_item['config']
+            custom = config.get('Custom', {})
+            default = config.get('Default', {})
+            
+            # Get effective value (Custom overrides Default)
+            value = get_nested_value(custom, path)
+            if value is None:
+                value = get_nested_value(default, path)
+            
+            if value is not None:
+                # Normalize the value for comparison
+                if isinstance(value, str):
+                    # Strip whitespace and normalize string values
+                    str_value = value.strip()
+                else:
+                    str_value = str(value).strip()
+                
+                values[test_run_id] = str_value
+                
+                # Check for differences using normalized values
+                if first_value is None:
+                    first_value = str_value
+                elif first_value != str_value:
+                    has_differences = True
+        
+        # Only include if there are differences and at least 2 values
+        if has_differences and len(values) >= 2:
             differences.append({
                 'setting': path,
-                'values': {
-                    test_run_id1: str(value1),
-                    test_run_id2: str(value2)
-                }
+                'values': values
             })
     
     return differences
