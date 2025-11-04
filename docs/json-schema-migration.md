@@ -12,6 +12,10 @@ Starting with version 0.3.21, the GenAI IDP solution uses **JSON Schema** format
 - ✅ **Improved documentation** through self-describing schemas
 - ✅ **Backward compatibility** - automatic migration of legacy configurations
 
+
+https://github.com/user-attachments/assets/ee817858-8285-4087-9b25-2c7c5bea65df
+
+
 ## Format Comparison
 
 ### Legacy Format (Pre-0.3.21)

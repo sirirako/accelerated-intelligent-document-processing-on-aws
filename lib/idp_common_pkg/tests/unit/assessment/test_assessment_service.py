@@ -23,6 +23,7 @@ sys.modules["PIL.Image"] = MagicMock()
 
 # Finally import application modules
 from idp_common.assessment.service import AssessmentService
+from idp_common.config.models import IDPConfig
 from idp_common.models import Document, Section, Status, Page
 
 
@@ -482,3 +483,45 @@ class TestAssessmentService:
         # Should return without error but log warning
         assert len(result.errors) == 0
         mock_get_json_content.assert_called_once()
+
+    def test_init_with_none_config(self):
+        """Test initialization with None config creates default IDPConfig."""
+        service = AssessmentService(region="us-east-1", config=None)
+
+        assert service.region == "us-east-1"
+        assert isinstance(service.config, IDPConfig)
+        # Verify default config has assessment settings
+        assert hasattr(service.config, "assessment")
+
+    def test_init_with_dict_config(self, mock_config):
+        """Test initialization with dict config converts to IDPConfig."""
+        service = AssessmentService(region="us-east-1", config=mock_config)
+
+        assert service.region == "us-east-1"
+        assert isinstance(service.config, IDPConfig)
+        # Verify config was properly converted
+        assert service.config.assessment.model == mock_config["assessment"]["model"]
+
+    def test_init_with_idpconfig_instance(self, mock_config):
+        """Test initialization with IDPConfig instance (the previously failing case)."""
+        # Create an IDPConfig instance first
+        config_instance = IDPConfig(**mock_config)
+
+        # Initialize service with IDPConfig instance
+        service = AssessmentService(region="us-east-1", config=config_instance)
+
+        assert service.region == "us-east-1"
+        assert isinstance(service.config, IDPConfig)
+        # Should use the same instance
+        assert service.config is config_instance
+        # Verify config properties are accessible
+        assert service.config.assessment.model == mock_config["assessment"]["model"]
+
+    def test_init_with_invalid_config_type(self):
+        """Test initialization with invalid config type raises ValueError."""
+        # Try to initialize with an invalid config type (e.g., a string)
+        with pytest.raises(ValueError) as exc_info:
+            AssessmentService(region="us-east-1", config="invalid_config")
+
+        # Verify error message mentions the invalid type
+        assert "Invalid config type" in str(exc_info.value)

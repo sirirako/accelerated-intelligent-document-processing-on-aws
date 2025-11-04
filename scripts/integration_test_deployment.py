@@ -173,6 +173,11 @@ def monitor_pipeline(pipeline_name, version_id, max_wait=7200):
     
     if not execution_id:
         return False
+    
+    # Write execution ID to file for GitLab CI to use
+    with open("pipeline_execution_id.txt", "w") as f:
+        f.write(execution_id)
+    print(f"Pipeline execution ID written to file: {execution_id}")
         
     # Then monitor that specific execution
     return monitor_pipeline_execution(pipeline_name, execution_id, max_wait)

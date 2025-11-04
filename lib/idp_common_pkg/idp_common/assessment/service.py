@@ -93,15 +93,22 @@ class AssessmentService:
             region: AWS region for Bedrock
             config: Configuration dictionary or IDPConfig model
         """
-        # Convert dict to IDPConfig if needed
-        if config is not None and isinstance(config, dict):
-            config_model: IDPConfig = IDPConfig(**config)
-
-        if not isinstance(config, IDPConfig) and config is not None:
-            config_model = IDPConfig(**config)
-
+        # Convert config to IDPConfig if needed
         if config is None:
             config_model = IDPConfig()
+        elif isinstance(config, IDPConfig):
+            config_model = config
+        elif isinstance(config, dict):
+            config_model = IDPConfig(**config)
+        else:
+            # Fallback: attempt conversion for other types
+            try:
+                config_model = IDPConfig(**config)
+            except Exception as e:
+                logger.error(f"Failed to convert config to IDPConfig: {e}")
+                raise ValueError(
+                    f"Invalid config type: {type(config)}. Expected None, dict, or IDPConfig instance."
+                )
 
         self.config = config_model
         self.region = region or os.environ.get("AWS_REGION")

@@ -15,7 +15,7 @@ test:
 	cd idp_cli && python -m pytest -v
 
 # Run both linting and formatting in one command
-lint: ruff-lint format check-arn-partitions
+lint: ruff-lint format check-arn-partitions ui-lint
 
 # Run linting checks and fix issues automatically
 ruff-lint:
@@ -38,7 +38,19 @@ lint-cicd:
 		echo -e "$(RED)ERROR: Code formatting check failed!$(NC)"; \
 		echo -e "$(YELLOW)Please run 'make format' locally to fix these issues.$(NC)"; \
 		exit 1; \
+	fi; \
+	echo "All checks passed!"
+	@echo "Frontend checks"
+	@if ! make ui-lint; then \
+		echo -e "$(RED)ERROR: UI lint failed$(NC)"; \
+		exit 1; \
 	fi
+
+	@if ! make ui-build; then \
+		echo -e "$(RED)ERROR: UI build failed$(NC)"; \
+		exit 1; \
+	fi
+	
 	@echo -e "$(GREEN)All code quality checks passed!$(NC)"
 
 # Check CloudFormation templates for hardcoded AWS partition ARNs and service principals
@@ -89,6 +101,14 @@ typecheck-pr:
 	@echo "Type checking changed files against $(TARGET_BRANCH)..."
 	python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH)
 
+
+ui-lint:
+	@echo "Checking UI lint"
+	cd src/ui && npm ci --prefer-offline --no-audit && npm run lint
+
+ui-build:
+	@echo "Checking UI build"
+	cd src/ui && npm ci --prefer-offline --no-audit && npm run build
 
 commit: lint test
 	$(info Generating commit message...)

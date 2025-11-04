@@ -60,8 +60,8 @@ def get_env_var(name, default=None):
 
 
 def generate_stack_prefix():
-    """Generate unique stack prefix with timestamp"""
-    timestamp = datetime.now().strftime("%m%d-%H%M")  # Shorter format: MMDD-HHMM
+    """Generate unique stack prefix with timestamp including seconds"""
+    timestamp = datetime.now().strftime("%m%d-%H%M%S")  # Format: MMDD-HHMMSS
     return f"idp-{timestamp}"
 
 
@@ -222,7 +222,39 @@ def cleanup_stack(stack_name, pattern_name):
     """Clean up a deployed stack"""
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
     try:
-        run_command(f"idp-cli delete --stack-name {stack_name} --force", check=False)
+        # Check stack status first
+        result = run_command(f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text", check=False)
+        stack_status = result.stdout.strip() if result.returncode == 0 else "NOT_FOUND"
+        
+        print(f"[{pattern_name}] Stack status: {stack_status}")
+        
+        # Delete the stack and wait for completion
+        print(f"[{pattern_name}] Attempting stack deletion...")
+        run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --wait", check=False)
+        
+        # Always clean up orphaned resources after deletion attempt
+        print(f"[{pattern_name}] Cleaning up orphaned resources...")
+        
+        # Set AWS retry configuration to handle throttling
+        os.environ['AWS_MAX_ATTEMPTS'] = '10'
+        os.environ['AWS_RETRY_MODE'] = 'adaptive'
+        
+        # ECR repositories
+        stack_name_lower = stack_name.lower()
+        run_command(f"aws ecr describe-repositories --query 'repositories[?contains(repositoryName, `{stack_name_lower}`)].repositoryName' --output text | xargs -r -n1 aws ecr delete-repository --repository-name --force", check=False)
+        
+        # S3 buckets (empty and delete orphaned buckets)
+        run_command(f"aws s3api list-buckets --query 'Buckets[?contains(Name, `{stack_name}`)].Name' --output text | xargs -r -n1 -I {{}} sh -c 'aws s3 rm s3://{{}} --recursive && aws s3api delete-bucket --bucket {{}}'", check=False)
+        
+        # CloudWatch log groups (single comprehensive search)
+        run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output text | xargs -r -n1 aws logs delete-log-group --log-group-name", check=False)
+        
+        # AppSync logs (requires separate handling due to random API IDs)
+        run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output text | xargs -r -I {{}} aws logs delete-log-group --log-group-name '/aws/appsync/apis/{{}}'", check=False)
+        
+        # Clean up CloudWatch Logs Resource Policy (ignore errors if policy doesn't exist)
+        run_command(f"aws logs describe-resource-policies --query 'resourcePolicies[0].policyName' --output text | xargs -r aws logs delete-resource-policy --policy-name || true", check=False)
+        
         print(f"[{pattern_name}] ✅ Cleanup completed")
     except Exception as e:
         print(f"[{pattern_name}] ⚠️ Cleanup failed: {e}")
@@ -232,7 +264,7 @@ def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
-    admin_email = get_env_var("IDP_ADMIN_EMAIL", "strahanr@amazon.com")
+    admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
     stack_prefix = generate_stack_prefix()
 
     print(f"Stack Prefix: {stack_prefix}")

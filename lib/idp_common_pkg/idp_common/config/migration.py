@@ -24,6 +24,8 @@ from .schema_constants import (
     X_AWS_IDP_CLASS_PROMPT,
     X_AWS_IDP_ATTRIBUTES_PROMPT,
     X_AWS_IDP_IMAGE_PATH,
+    X_AWS_IDP_DOCUMENT_NAME_REGEX,
+    X_AWS_IDP_PAGE_CONTENT_REGEX,
     VALID_EVALUATION_METHODS,
     MAX_PROMPT_OVERRIDE_LENGTH,
     # Attribute types (for legacy migration only)
@@ -46,6 +48,8 @@ from .schema_constants import (
     LEGACY_CLASS_PROMPT,
     LEGACY_ATTRIBUTES_PROMPT,
     LEGACY_IMAGE_PATH,
+    LEGACY_DOCUMENT_NAME_REGEX,
+    LEGACY_DOCUMENT_PAGE_CONTENT_REGEX,
 )
 
 
@@ -152,6 +156,17 @@ def migrate_legacy_to_schema(
         # Migrate examples if present
         if LEGACY_EXAMPLES in class_config:
             migrated_class[X_AWS_IDP_EXAMPLES] = class_config[LEGACY_EXAMPLES]
+
+        # Migrate regex patterns if present
+        if LEGACY_DOCUMENT_NAME_REGEX in class_config:
+            migrated_class[X_AWS_IDP_DOCUMENT_NAME_REGEX] = class_config[
+                LEGACY_DOCUMENT_NAME_REGEX
+            ]
+
+        if LEGACY_DOCUMENT_PAGE_CONTENT_REGEX in class_config:
+            migrated_class[X_AWS_IDP_PAGE_CONTENT_REGEX] = class_config[
+                LEGACY_DOCUMENT_PAGE_CONTENT_REGEX
+            ]
 
         legacy_attributes = class_config.get(LEGACY_ATTRIBUTES, [])
 
@@ -455,6 +470,17 @@ def _convert_classes_to_json_schema(
             X_AWS_IDP_EXAMPLES in doc_type_class and doc_type_class[X_AWS_IDP_EXAMPLES]
         ):
             schema[X_AWS_IDP_EXAMPLES] = doc_type_class[X_AWS_IDP_EXAMPLES]
+
+        # Add regex patterns if present
+        if X_AWS_IDP_DOCUMENT_NAME_REGEX in doc_type_class:
+            schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] = doc_type_class[
+                X_AWS_IDP_DOCUMENT_NAME_REGEX
+            ]
+
+        if X_AWS_IDP_PAGE_CONTENT_REGEX in doc_type_class:
+            schema[X_AWS_IDP_PAGE_CONTENT_REGEX] = doc_type_class[
+                X_AWS_IDP_PAGE_CONTENT_REGEX
+            ]
 
         if defs:
             schema[DEFS_FIELD] = defs

@@ -40,7 +40,9 @@ from idp_common.classification.models import (
 from idp_common.config.models import IDPConfig
 from idp_common.config.schema_constants import (
     X_AWS_IDP_CLASSIFICATION,
+    X_AWS_IDP_DOCUMENT_NAME_REGEX,
     X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_PAGE_CONTENT_REGEX,
 )
 from idp_common.models import Document, Section, Status
 from idp_common.utils import extract_json_from_text, extract_structured_data_from_text
@@ -63,11 +65,11 @@ class ClassificationService:
 
     def __init__(
         self,
-        region: str = None,
+        region: str | None = None,
         max_workers: int = 20,
-        config: Union[Dict[str, Any], IDPConfig] = None,
+        config: dict[str, Any] | IDPConfig | None = None,
         backend: str = "bedrock",
-        cache_table: str = None,
+        cache_table: str | None = None,
     ):
         """
         Initialize the classification service.
@@ -105,7 +107,7 @@ class ClassificationService:
         self.cache_table = None
         if self.cache_table_name:
             dynamodb = boto3.resource("dynamodb", region_name=self.region)
-            self.cache_table = dynamodb.Table(self.cache_table_name)
+            self.cache_table = dynamodb.Table(self.cache_table_name)  # pyright: ignore[reportAttributeAccessIssue]
             logger.info(
                 f"Classification caching enabled using table: {self.cache_table_name}"
             )
@@ -168,14 +170,21 @@ class ClassificationService:
         classes = self.config.classes
         for schema in classes:
             classification_meta = schema.get(X_AWS_IDP_CLASSIFICATION, {})
+
+            # Support both new top-level format and legacy nested format for regex patterns
+            document_name_regex = schema.get(
+                X_AWS_IDP_DOCUMENT_NAME_REGEX
+            ) or classification_meta.get("documentNamePattern")
+            document_page_content_regex = schema.get(
+                X_AWS_IDP_PAGE_CONTENT_REGEX
+            ) or classification_meta.get("pageContentPattern")
+
             doc_types.append(
                 DocumentType(
                     type_name=schema.get(X_AWS_IDP_DOCUMENT_TYPE, ""),
                     description=schema.get("description", ""),
-                    document_name_regex=classification_meta.get("documentNamePattern"),
-                    document_page_content_regex=classification_meta.get(
-                        "pageContentPattern"
-                    ),
+                    document_name_regex=document_name_regex,
+                    document_page_content_regex=document_page_content_regex,
                 )
             )
 
@@ -242,8 +251,9 @@ class ClassificationService:
 
             # Create limited document
             limited_pages = {pid: document.pages[pid] for pid in limited_page_ids}
+            document_id = document.id if document.id else ""
             limited_document = Document(
-                id=document.id + f"_limited_{max_pages}",
+                id=document_id + f"_limited_{max_pages}",
                 pages=limited_pages,
                 status=document.status,
                 workflow_execution_arn=document.workflow_execution_arn,
@@ -301,8 +311,17 @@ class ClassificationService:
             doc_type=primary_classification,
             pages=list(original_document.pages.keys()),
         )
-        original_document.sections = [section]
-
+        if isinstance(section, Section):
+            original_document.sections = [section]
+        else:
+            # Handle DocumentSection - convert to Section
+            original_document.sections = [
+                Section(
+                    section_id=section.section_id,
+                    classification=section.classification.doc_type,
+                    page_ids=[page.page_id for page in section.pages],
+                )
+            ]
         # Transfer metering data from classified document to original document
         if classified_document.metering:
             original_document.metering = utils.merge_metering_data(
@@ -357,18 +376,11 @@ class ClassificationService:
                         page_id
                     ].confidence = cached_result.classification.confidence
 
-                    # Copy metadata (including boundary information) to the page
-                    if hasattr(document.pages[page_id], "metadata"):
-                        document.pages[
-                            page_id
-                        ].metadata = cached_result.classification.metadata
-                    else:
-                        # If the page doesn't have a metadata attribute, add it
-                        setattr(
-                            document.pages[page_id],
-                            "metadata",
-                            cached_result.classification.metadata,
-                        )
+                    setattr(
+                        document.pages[page_id],
+                        "metadata",
+                        cached_result.classification.metadata,
+                    )
 
                     # Merge cached metering data
                     page_metering = cached_result.classification.metadata.get(
@@ -419,17 +431,11 @@ class ClassificationService:
                             ].confidence = page_result.classification.confidence
 
                             # Copy metadata (including boundary information) to the page
-                            if hasattr(document.pages[page_id], "metadata"):
-                                document.pages[
-                                    page_id
-                                ].metadata = page_result.classification.metadata
-                            else:
-                                # If the page doesn't have a metadata attribute, add it
-                                setattr(
-                                    document.pages[page_id],
-                                    "metadata",
-                                    page_result.classification.metadata,
-                                )
+                            setattr(
+                                document.pages[page_id],
+                                "metadata",
+                                page_result.classification.metadata,
+                            )
 
                             # Merge metering data
                             page_metering = page_result.classification.metadata.get(
@@ -528,7 +534,17 @@ class ClassificationService:
                             doc_type=current_type,
                             pages=[p.page_id for p in current_pages],
                         )
-                        document.sections.append(section)
+
+                        if isinstance(section, Section):
+                            document.sections.append(section)
+                        else:
+                            document.sections.append(
+                                Section(
+                                    section_id=section.section_id,
+                                    classification=section.classification.doc_type,
+                                    page_ids=[page.page_id for page in section.pages],
+                                )
+                            )
 
                         # Start a new group
                         current_group += 1
@@ -541,7 +557,17 @@ class ClassificationService:
                     doc_type=current_type,
                     pages=[p.page_id for p in current_pages],
                 )
-                document.sections.append(section)
+
+                if isinstance(section, Section):
+                    document.sections.append(section)
+                else:
+                    document.sections.append(
+                        Section(
+                            section_id=section.section_id,
+                            classification=section.classification.doc_type,
+                            page_ids=[page.page_id for page in section.pages],
+                        )
+                    )
 
             # Update document status and metering
             document = self._update_document_status(document)
@@ -640,8 +666,8 @@ class ClassificationService:
     def _prepare_prompt_from_template(
         self,
         prompt_template: str,
-        substitutions: Dict[str, str],
-        required_placeholders: List[str] = None,
+        substitutions: dict[str, str],
+        required_placeholders: list[str] | None = None,
     ) -> str:
         """
         Prepare prompt from template by replacing placeholders with values.
@@ -1328,7 +1354,11 @@ class ClassificationService:
         Returns:
             Cache key string
         """
-        workflow_id = document.workflow_execution_arn.split(":")[-1]
+        workflow_id = (
+            document.workflow_execution_arn.split(":")[-1]
+            if document.workflow_execution_arn
+            else "unknown"
+        )
         return f"classcache#{document.id}#{workflow_id}"
 
     def _get_cached_page_classifications(
@@ -1517,7 +1547,17 @@ class ClassificationService:
                 pages=page_ids,
                 confidence=1.0,
             )
-            document.sections = [section]
+
+            if isinstance(section, Section):
+                document.sections = [section]
+            else:
+                document.sections = [
+                    Section(
+                        section_id=section.section_id,
+                        classification=section.classification.doc_type,
+                        page_ids=[page.page_id for page in section.pages],
+                    )
+                ]
 
             # Update document status
             document = self._update_document_status(document)
@@ -1540,11 +1580,23 @@ class ClassificationService:
             page_ids = list(document.pages.keys())
             section = self._create_section(
                 section_id="1",
-                doc_type=self.single_class_name,
+                doc_type=self.single_class_name
+                if self.single_class_name
+                else "undefined",
                 pages=page_ids,
                 confidence=1.0,
             )
-            document.sections = [section]
+
+            if isinstance(section, Section):
+                document.sections = [section]
+            else:
+                document.sections = [
+                    Section(
+                        section_id=section.section_id,
+                        classification=section.classification.doc_type,
+                        page_ids=[page.page_id for page in section.pages],
+                    )
+                ]
 
             # Update document status
             document = self._update_document_status(document)
@@ -1654,7 +1706,7 @@ class ClassificationService:
             return sorted(results, key=lambda x: x.page_id)
 
     def _create_section(
-        self, section_id: str, doc_type: str, pages: List, confidence: float = 1.0
+        self, section_id: str, doc_type: str, pages: List[Any], confidence: float = 1.0
     ) -> Union[DocumentSection, Section]:
         """
         Create a document section based on the input type.
@@ -1869,7 +1921,9 @@ class ClassificationService:
             page_ids = list(document.pages.keys())
             section = Section(
                 section_id="1",
-                classification=self.single_class_name,
+                classification=self.single_class_name
+                if self.single_class_name
+                else "undefined",
                 confidence=1.0,
                 page_ids=page_ids,
             )
