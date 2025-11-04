@@ -13,27 +13,24 @@ Provides comprehensive error analysis capabilities including:
 - Lambda function context extraction
 """
 
-from .cloudwatch_tool import cloudwatch_document_logs, cloudwatch_logs
+from .cloudwatch_tool import search_cloudwatch_logs
 from .dynamodb_tool import (
-    dynamodb_query,
-    dynamodb_record,
-    dynamodb_status,
+    fetch_document_record,
+    fetch_recent_records,
 )
-from .lambda_tool import lambda_lookup
-from .stepfunction_tool import stepfunction_details
+from .lambda_tool import retrieve_document_context
+from .stepfunction_tool import analyze_workflow_execution
 from .xray_tool import (
-    xray_performance_analysis,
-    xray_trace,
+    analyze_document_trace,
+    analyze_system_performance,
 )
 
 __all__ = [
-    "cloudwatch_document_logs",
-    "cloudwatch_logs",
-    "lambda_lookup",
-    "dynamodb_record",
-    "dynamodb_status",
-    "dynamodb_query",
-    "stepfunction_details",
-    "xray_trace",
-    "xray_performance_analysis",
+    "search_cloudwatch_logs",
+    "retrieve_document_context",
+    "fetch_document_record",
+    "fetch_recent_records",
+    "analyze_workflow_execution",
+    "analyze_document_trace",
+    "analyze_system_performance",
 ]

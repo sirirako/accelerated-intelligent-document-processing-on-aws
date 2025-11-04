@@ -14,9 +14,127 @@ from typing import Any, Dict, List, Optional
 import boto3
 from strands import tool
 
-from ..config import create_error_response, create_response
+from ..config import create_error_response
 
 logger = logging.getLogger(__name__)
+
+
+@tool
+def retrieve_document_context(document_id: str) -> Dict[str, Any]:
+    """
+    Retrieve comprehensive document processing context via Lambda lookup function.
+
+    Invokes the lookup Lambda function to gather execution context, timing information,
+    and Step Function details for a specific document. Provides essential data for
+    targeted error analysis and log searching.
+
+    Use this tool to:
+    - Get complete document processing timeline and status
+    - Extract Lambda request IDs for CloudWatch log correlation
+    - Identify failed functions and execution context
+    - Obtain precise processing time windows for analysis
+
+    Alternative: If you only need basic document metadata (status, timestamps, execution ARN)
+    without detailed execution events and Lambda request IDs, consider using fetch_document_record
+    which provides faster access to DynamoDB tracking data.
+
+    Example usage:
+    - "Get processing context for report.pdf"
+    - "Retrieve execution details for lending_package.pdf"
+    - "Show me the processing timeline for document ABC123"
+    - "Get Lambda request IDs for failed document processing"
+
+    Args:
+        document_id: Document ObjectKey to analyze (e.g., "report.pdf", "lending_package.pdf")
+
+    Returns:
+        Dict containing document context, execution details, and timing information
+    """
+    try:
+        lambda_client = boto3.client("lambda")
+        function_name = get_lookup_function_name()
+
+        logger.info(
+            f"Invoking lookup function: {function_name} for document: {document_id}"
+        )
+
+        # Invoke lookup function
+        response = lambda_client.invoke(
+            FunctionName=function_name,
+            InvocationType="RequestResponse",
+            Payload=json.dumps({"object_key": document_id}),
+        )
+
+        # Parse response
+        payload = json.loads(response["Payload"].read().decode("utf-8"))
+
+        if payload.get("status") == "NOT_FOUND":
+            return create_error_response(
+                "Document not found in tracking database",
+                document_found=False,
+                document_id=document_id,
+            )
+
+        if payload.get("status") == "ERROR":
+            return create_error_response(
+                payload.get("message", "Unknown error from lookup function"),
+                document_found=False,
+                document_id=document_id,
+            )
+
+        # Extract execution context
+        processing_detail = payload.get("processingDetail", {})
+        execution_arn = processing_detail.get("executionArn")
+        execution_events = processing_detail.get("events", [])
+
+        # Extract Lambda request IDs and function mapping from execution events
+        request_context = extract_lambda_request_ids(execution_events)
+        request_ids = request_context.get("all_request_ids", [])
+        function_request_map = request_context.get("function_request_map", {})
+        failed_functions = request_context.get("failed_functions", [])
+        primary_failed_function = request_context.get("primary_failed_function")
+
+        # Get timestamps for precise time windows
+        timestamps = payload.get("timing", {}).get("timestamps", {})
+
+        # Calculate processing time window
+        start_time = None
+        end_time = None
+
+        if timestamps.get("WorkflowStartTime"):
+            start_time = datetime.fromisoformat(
+                timestamps["WorkflowStartTime"].replace("Z", "+00:00")
+            )
+
+        if timestamps.get("CompletionTime"):
+            end_time = datetime.fromisoformat(
+                timestamps["CompletionTime"].replace("Z", "+00:00")
+            )
+
+        response = {
+            "document_found": True,
+            "document_id": document_id,
+            "document_status": payload.get("status"),
+            "execution_arn": execution_arn,
+            "lambda_request_ids": request_ids,
+            "function_request_map": function_request_map,
+            "failed_functions": failed_functions,
+            "primary_failed_function": primary_failed_function,
+            "timestamps": timestamps,
+            "processing_start_time": start_time,
+            "processing_end_time": end_time,
+            "execution_events_count": len(execution_events),
+            "lookup_function_response": payload,
+        }
+
+        logger.info(f"Document context response for {document_id}: {response}")
+        return response
+
+    except Exception as e:
+        logger.error(f"Error getting document context for {document_id}: {e}")
+        return create_error_response(
+            str(e), document_found=False, document_id=document_id
+        )
 
 
 def get_lookup_function_name() -> str:
@@ -201,104 +319,3 @@ def _extract_request_id_from_string(text: str) -> Optional[str]:
         return matches[0]
 
     return None
-
-
-@tool
-def lambda_lookup(document_id: str, stack_name: str = "") -> Dict[str, Any]:
-    """
-    Retrieve comprehensive document processing context via Lambda lookup function.
-    Invokes the lookup Lambda function to gather execution context, timing information,
-    and Step Function details for a specific document. Provides essential data for
-    targeted error analysis and log searching.
-
-    Args:
-        document_id: Document ObjectKey to analyze
-        stack_name: CloudFormation stack name (optional, for backward compatibility)
-
-    Returns:
-        Dict containing document context, execution details, and timing information
-    """
-    try:
-        lambda_client = boto3.client("lambda")
-        function_name = get_lookup_function_name()
-
-        logger.info(
-            f"Invoking lookup function: {function_name} for document: {document_id}"
-        )
-
-        # Invoke lookup function
-        response = lambda_client.invoke(
-            FunctionName=function_name,
-            InvocationType="RequestResponse",
-            Payload=json.dumps({"object_key": document_id}),
-        )
-
-        # Parse response
-        payload = json.loads(response["Payload"].read().decode("utf-8"))
-
-        if payload.get("status") == "NOT_FOUND":
-            return create_error_response(
-                "Document not found in tracking database",
-                document_found=False,
-                document_id=document_id,
-            )
-
-        if payload.get("status") == "ERROR":
-            return create_error_response(
-                payload.get("message", "Unknown error from lookup function"),
-                document_found=False,
-                document_id=document_id,
-            )
-
-        # Extract execution context
-        processing_detail = payload.get("processingDetail", {})
-        execution_arn = processing_detail.get("executionArn")
-        execution_events = processing_detail.get("events", [])
-
-        # Extract Lambda request IDs and function mapping from execution events
-        request_context = extract_lambda_request_ids(execution_events)
-        request_ids = request_context.get("all_request_ids", [])
-        function_request_map = request_context.get("function_request_map", {})
-        failed_functions = request_context.get("failed_functions", [])
-        primary_failed_function = request_context.get("primary_failed_function")
-
-        # Get timestamps for precise time windows
-        timestamps = payload.get("timing", {}).get("timestamps", {})
-
-        # Calculate processing time window
-        start_time = None
-        end_time = None
-
-        if timestamps.get("WorkflowStartTime"):
-            start_time = datetime.fromisoformat(
-                timestamps["WorkflowStartTime"].replace("Z", "+00:00")
-            )
-
-        if timestamps.get("CompletionTime"):
-            end_time = datetime.fromisoformat(
-                timestamps["CompletionTime"].replace("Z", "+00:00")
-            )
-
-        return create_response(
-            {
-                "document_found": True,
-                "document_id": document_id,
-                "document_status": payload.get("status"),
-                "execution_arn": execution_arn,
-                "lambda_request_ids": request_ids,
-                "function_request_map": function_request_map,
-                "failed_functions": failed_functions,
-                "primary_failed_function": primary_failed_function,
-                "timestamps": timestamps,
-                "processing_start_time": start_time,
-                "processing_end_time": end_time,
-                "execution_events_count": len(execution_events),
-                "lookup_function_response": payload,
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting document context for {document_id}: {e}")
-        return create_error_response(
-            str(e), document_found=False, document_id=document_id
-        )
