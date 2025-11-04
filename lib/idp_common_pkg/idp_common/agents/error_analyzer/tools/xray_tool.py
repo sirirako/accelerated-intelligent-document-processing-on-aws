@@ -8,7 +8,7 @@ X-Ray tools for tracing analysis and performance monitoring.
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import boto3
@@ -129,7 +129,7 @@ def analyze_system_performance(
         # hours_back already has proper default
         xray_client = boto3.client("xray")
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=hours_back)
 
         # Try stack-specific analysis first if stack_name provided
@@ -246,7 +246,7 @@ def _get_trace_id_from_xray_annotations(document_id: str, xray_client) -> Option
     """
     logger.info(f"Searching X-Ray traces by annotation for document {document_id}")
 
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=24)
 
     response = xray_client.get_trace_summaries(

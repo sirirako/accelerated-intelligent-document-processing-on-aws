@@ -40,7 +40,7 @@ class TestErrorAnalyzerAgent:
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 7  # All specific tools
+        assert len(agent.tools) == 7  # All specific tools  # type: ignore[attr-defined]
 
     @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")
@@ -64,7 +64,7 @@ class TestErrorAnalyzerAgent:
 
         assert agent is not None
         assert hasattr(agent, "tools")
-        assert len(agent.tools) == 7
+        assert len(agent.tools) == 7  # type: ignore[attr-defined]
 
     @patch("idp_common.agents.error_analyzer.agent.strands.Agent")
     @patch("boto3.Session")

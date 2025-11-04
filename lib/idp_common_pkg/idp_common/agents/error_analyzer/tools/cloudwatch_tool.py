@@ -527,8 +527,8 @@ def _search_cloudwatch_logs(
     filter_pattern: str = "",
     hours_back: int = 24,
     max_events: int = 10,
-    start_time: datetime = None,
-    end_time: datetime = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
     request_id: str = "",
 ) -> Dict[str, Any]:
     """

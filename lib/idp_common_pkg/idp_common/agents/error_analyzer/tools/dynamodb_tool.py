@@ -194,7 +194,7 @@ def _get_tracking_table():
         return None, None
 
     dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
+    table = dynamodb.Table(table_name)  # type: ignore[attr-defined]
     return table, table_name
 
 
