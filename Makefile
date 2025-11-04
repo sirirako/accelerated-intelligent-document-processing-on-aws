@@ -15,7 +15,7 @@ test:
 	cd idp_cli && python -m pytest -v
 
 # Run both linting and formatting in one command
-lint: ruff-lint format check-arn-partitions ui-lint ui-build
+lint: ruff-lint format check-arn-partitions ui-lint
 
 # Run linting checks and fix issues automatically
 ruff-lint:
