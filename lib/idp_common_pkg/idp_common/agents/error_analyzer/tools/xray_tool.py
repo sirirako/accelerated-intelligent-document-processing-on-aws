@@ -223,7 +223,7 @@ def _get_trace_id_from_dynamodb(document_id: str) -> Optional[str]:
 
     try:
         dynamodb = boto3.resource("dynamodb")
-        tracking_table = dynamodb.Table(tracking_table_name)
+        tracking_table = dynamodb.Table(tracking_table_name)  # type: ignore[attr-defined]
 
         response = tracking_table.get_item(
             Key={"PK": f"doc#{document_id}", "SK": "none"}
