@@ -277,7 +277,7 @@ def main():
     deployed_stacks = []
     all_success = True
 
-    # Step 2: Deploy and test patterns concurrently
+    # Step 2: Deploy, test, and cleanup patterns concurrently
     print("🚀 Starting concurrent deployment of all patterns...")
     with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
         # Submit all deployment tasks
@@ -292,32 +292,34 @@ def main():
             for pattern_config in DEPLOY_PATTERNS
         }
 
-        # Collect results as they complete
-        for future in as_completed(future_to_pattern):
-            pattern_config = future_to_pattern[future]
-            try:
-                result = future.result()
-                deployed_stacks.append(result)
-                if not result["success"]:
+        # Collect results as they complete and cleanup successful deployments immediately
+        cleanup_futures = []
+        with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as cleanup_executor:
+            for future in as_completed(future_to_pattern):
+                pattern_config = future_to_pattern[future]
+                try:
+                    result = future.result()
+                    deployed_stacks.append(result)
+                    if not result["success"]:
+                        all_success = False
+                        print(f"[{pattern_config['name']}] ❌ Failed")
+                    else:
+                        print(f"[{pattern_config['name']}] ✅ Success")
+                    
+                    # Start cleanup immediately for this stack
+                    cleanup_future = cleanup_executor.submit(
+                        cleanup_stack, result["stack_name"], result["pattern_name"]
+                    )
+                    cleanup_futures.append(cleanup_future)
+                    
+                except Exception as e:
+                    print(f"[{pattern_config['name']}] ❌ Exception: {e}")
                     all_success = False
-                    print(f"[{pattern_config['name']}] ❌ Failed")
-                else:
-                    print(f"[{pattern_config['name']}] ✅ Success")
-            except Exception as e:
-                print(f"[{pattern_config['name']}] ❌ Exception: {e}")
-                all_success = False
 
-    # Step 3: Cleanup all stacks concurrently
-    print("🧹 Starting concurrent cleanup of all stacks...")
-    with ThreadPoolExecutor(max_workers=len(deployed_stacks)) as executor:
-        cleanup_futures = [
-            executor.submit(cleanup_stack, result["stack_name"], result["pattern_name"])
-            for result in deployed_stacks
-        ]
-
-        # Wait for all cleanups to complete
-        for future in as_completed(cleanup_futures):
-            future.result()  # Wait for completion
+            # Wait for all cleanups to complete
+            print("🧹 Waiting for all cleanups to complete...")
+            for future in as_completed(cleanup_futures):
+                future.result()  # Wait for completion
 
     if all_success:
         print("🎉 All pattern deployments completed successfully!")

@@ -79,10 +79,20 @@ def upload_to_s3(bucket_name):
     s3_client = boto3.client("s3")
 
     try:
+        # Get GitLab user email to pass to CodeBuild
+        gitlab_user_email = os.environ.get("GITLAB_USER_EMAIL", "")
+        
+        # Add metadata to pass email to CodeBuild
+        metadata = {}
+        if gitlab_user_email:
+            metadata["gitlab-user-email"] = gitlab_user_email
+            print(f"Adding GitLab user email to metadata: {gitlab_user_email}")
+
         response = s3_client.put_object(
             Bucket=bucket_name,
             Key="deploy/code.zip",
             Body=open("./dist/code.zip", "rb"),
+            Metadata=metadata,
         )
         version_id = response.get("VersionId", "unknown")
         print(f"✅ Uploaded with version ID: {version_id}")

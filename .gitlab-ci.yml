@@ -95,6 +95,8 @@ deployment_validation:
 integration_tests:
   stage: integration_tests
   timeout: 2h
+  variables:
+    IDP_ADMIN_EMAIL: ${GITLAB_USER_EMAIL}
   # variables:
   #   # In order to run tests in another account, add a AWS_CREDS_TARGET_ROLE variable to the Gitlab pipeline variables.
   #   AWS_CREDS_TARGET_ROLE: ${AWS_CREDS_TARGET_ROLE}
@@ -156,15 +158,15 @@ integration_tests:
         BUILD_ID=$(aws codepipeline list-action-executions --pipeline-name ${IDP_PIPELINE_NAME:-idp-sdlc-deploy-pipeline} --filter pipelineExecutionId=$EXECUTION_ID --query 'actionExecutionDetails[?actionName==`BuildAction`].output.executionResult.externalExecutionId' --output text 2>/dev/null || echo "")
         
         if [ "$BUILD_ID" != "" ] && [ "$BUILD_ID" != "None" ]; then
-          echo "CodeBuild ID: $BUILD_ID" >> pipeline_summary.txt
+          echo "CodeBuild ID: $BUILD_ID"
           # Extract just the build ID part (after the colon)
           LOG_STREAM_NAME="${BUILD_ID#*:}"
-          echo "Log Stream: $LOG_STREAM_NAME" >> pipeline_summary.txt
-          echo "" >> pipeline_summary.txt
-          echo "=== CODEBUILD LOGS ===" >> pipeline_summary.txt
-          aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --limit 100 --query 'events[].message' --output text 2>/dev/null >> pipeline_summary.txt || echo "Could not retrieve CodeBuild logs" >> pipeline_summary.txt
+          echo "Log Stream: $LOG_STREAM_NAME"
+          echo ""
+          echo "=== CODEBUILD LOGS ==="
+          aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --start-from-head --query 'events[].message' --output text 2>/dev/null || echo "Could not retrieve CodeBuild logs"
         else
-          echo "Could not find CodeBuild execution" >> pipeline_summary.txt
+          echo "Could not find CodeBuild execution"
         fi
       else
         echo "No pipeline execution ID found" >> pipeline_summary.txt
