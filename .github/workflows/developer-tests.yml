@@ -15,6 +15,12 @@ jobs:
     name: Lint, Type Check, and Test
     runs-on: ubuntu-latest
     timeout-minutes: 120 # 2 hours
+    
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
 
     # Use Python 3.13 to match GitLab configuration
     container:

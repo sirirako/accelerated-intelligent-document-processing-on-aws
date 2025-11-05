@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pattern-2 ECR Enhanced Scanning Support** - Added required IAM permissions (inspector2:ListCoverage, inspector2:ListFindings) to Pattern2DockerBuildRole to support AWS accounts with Amazon Inspector Enhanced Scanning enabled. Also added KMS permissions (kms:Decrypt, kms:CreateGrant) for customer-managed encryption keys. This resolves AccessDenied errors and CodeBuild timeouts when deploying Pattern-2 in accounts with enhanced scanning enabled.
+
 ## [0.4.1]
 
 ### Changed

@@ -156,6 +156,8 @@ Resources:
         rules_to_suppress:
           - id: W11
             reason: "Wildcard permissions required for CloudWatch Logs creation"
+          - id: W12
+            reason: "Amazon Inspector ListCoverage and ListFindings require wildcard resource per AWS documentation"
     Properties:
       Path: /
       AssumeRolePolicyDocument:
@@ -201,6 +203,20 @@ Resources:
                 Action:
                   - ecr:DescribeImageScanFindings
                   - ecr:StartImageScan
+              # Required for Amazon Inspector Enhanced Scanning
+              # https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning-enhanced-iam.html
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - inspector2:ListCoverage
+                  - inspector2:ListFindings
+              # Required when ECR repository uses customer-managed KMS key encryption
+              - Resource:
+                  - !Ref CustomerManagedEncryptionKeyArn
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:CreateGrant
 
   Pattern2ECRRepository:
     Type: AWS::ECR::Repository
