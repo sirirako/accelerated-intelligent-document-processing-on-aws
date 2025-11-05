@@ -20,7 +20,7 @@ jobs:
       contents: read
       issues: read
       checks: write
-      pull-requests: write
+      # pull-requests: write - Not needed: PR comments are disabled (see line 115)
 
     # Use Python 3.13 to match GitLab configuration
     container:
