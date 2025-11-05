@@ -20,6 +20,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import useAgentChat from '../../hooks/use-agent-chat';
 import useAppContext from '../../contexts/app';
+import { useAgentChatContext } from '../../contexts/agentChat';
 import PlotDisplay from '../document-agents-layout/PlotDisplay';
 import TableDisplay from '../document-agents-layout/TableDisplay';
 import AgentChatHistoryDropdown from './AgentChatHistoryDropdown';
@@ -33,12 +34,14 @@ const AgentChatLayout = ({
   showHeader = true,
   customStyles = {},
 }) => {
-  const [inputValue, setInputValue] = useState('');
-  const [expandedSections, setExpandedSections] = useState(new Set());
   const [welcomeAnimated, setWelcomeAnimated] = useState(false);
-  const [lastMessageCount, setLastMessageCount] = useState(0);
-  const [enableCodeIntelligence, setEnableCodeIntelligence] = useState(true);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   const chatMessagesRef = useRef(null);
+
+  // Get persistent state from context
+  const { agentChatState, updateAgentChatState } = useAgentChatContext();
+  const { inputValue, expandedSections, lastMessageCount, enableCodeIntelligence } = agentChatState;
+
   const { messages, isLoading, waitingForResponse, error, sendMessage, clearError, clearChat, loadChatSession } = useAgentChat(agentConfig);
   const { user } = useAppContext();
 
@@ -59,7 +62,7 @@ const AgentChatLayout = ({
   useEffect(() => {
     const handleSampleQueryInsert = (event) => {
       const { query } = event.detail;
-      setInputValue(query);
+      updateAgentChatState({ inputValue: query });
     };
 
     window.addEventListener('insertSampleQuery', handleSampleQueryInsert);
@@ -67,7 +70,7 @@ const AgentChatLayout = ({
     return () => {
       window.removeEventListener('insertSampleQuery', handleSampleQueryInsert);
     };
-  }, []);
+  }, [updateAgentChatState]);
 
   // Track new messages and scroll to new assistant messages (but not while streaming)
   useEffect(() => {
@@ -88,15 +91,15 @@ const AgentChatLayout = ({
         }, 100);
       }
 
-      setLastMessageCount(messages.length);
+      updateAgentChatState({ lastMessageCount: messages.length });
     }
-  }, [messages, lastMessageCount]);
+  }, [messages, lastMessageCount, updateAgentChatState]);
 
   const handlePromptSubmit = async () => {
     const prompt = inputValue;
     if (!prompt.trim()) return;
 
-    setInputValue('');
+    updateAgentChatState({ inputValue: '' });
     try {
       await sendMessage(prompt, { enableCodeIntelligence });
       // Scroll to the latest user message after sending
@@ -115,7 +118,7 @@ const AgentChatLayout = ({
   };
 
   const handleInputChange = (event) => {
-    setInputValue(event.detail.value);
+    updateAgentChatState({ inputValue: event.detail.value });
   };
 
   const handleKeyDown = (event) => {
@@ -127,26 +130,22 @@ const AgentChatLayout = ({
 
   // Handle expandable section state changes
   const handleExpandedChange = (messageId, expanded) => {
-    setExpandedSections((prev) => {
-      const newSet = new Set(prev);
-      if (expanded) {
-        newSet.add(messageId);
-      } else {
-        newSet.delete(messageId);
-      }
-      return newSet;
-    });
+    const newSet = new Set(expandedSections);
+    if (expanded) {
+      newSet.add(messageId);
+    } else {
+      newSet.delete(messageId);
+    }
+    updateAgentChatState({ expandedSections: newSet });
   };
 
   // Handle session selection from dropdown
   const handleSessionSelect = async (session, sessionMessages) => {
     try {
+      setIsLoadingSession(true);
       console.log('Loading chat session:', session.sessionId);
-      await loadChatSession(session.sessionId, sessionMessages);
 
-      // Reset UI state for loaded session
-      setExpandedSections(new Set());
-      setLastMessageCount(sessionMessages.length);
+      await loadChatSession(session.sessionId, sessionMessages);
 
       // Scroll to bottom after loading
       setTimeout(() => {
@@ -156,6 +155,8 @@ const AgentChatLayout = ({
       }, 100);
     } catch (err) {
       console.error('Failed to load chat session:', err);
+    } finally {
+      setIsLoadingSession(false);
     }
   };
 
@@ -281,7 +282,41 @@ const AgentChatLayout = ({
           </Alert>
         )}
 
-        <div ref={chatMessagesRef} className="chat-messages">
+        <div
+          ref={chatMessagesRef}
+          className="chat-messages"
+          style={{
+            position: 'relative',
+            opacity: isLoadingSession ? 0.5 : 1,
+            pointerEvents: isLoadingSession ? 'none' : 'auto',
+            transition: 'opacity 0.3s ease',
+          }}
+        >
+          {isLoadingSession && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '12px',
+                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+              }}
+            >
+              <Spinner size="large" />
+              <Box fontSize="body-m" color="text-body-secondary">
+                Loading chat history...
+              </Box>
+            </div>
+          )}
+
           {messages.length === 0 ? (
             <div className={`welcome-text ${welcomeAnimated ? 'animate-in' : ''}`}>
               <h2>
@@ -311,7 +346,7 @@ const AgentChatLayout = ({
                   onItemClick={async ({ detail }) => {
                     const selectedPrompt = supportPrompts.find((prompt) => prompt.id === detail.id);
                     if (selectedPrompt) {
-                      setInputValue(selectedPrompt.prompt);
+                      updateAgentChatState({ inputValue: selectedPrompt.prompt });
                     }
                   }}
                 />{' '}
@@ -325,7 +360,7 @@ const AgentChatLayout = ({
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
-                disabled={isLoading}
+                disabled={isLoading || isLoadingSession}
                 actionButtonIconName="send"
                 onAction={handlePromptSubmit}
                 minRows={3}
@@ -336,7 +371,7 @@ const AgentChatLayout = ({
                 </Box>
                 <Checkbox
                   checked={enableCodeIntelligence}
-                  onChange={({ detail }) => setEnableCodeIntelligence(detail.checked)}
+                  onChange={({ detail }) => updateAgentChatState({ enableCodeIntelligence: detail.checked })}
                   disabled={waitingForResponse}
                 >
                   <Box fontSize="body-s">Enable Code Intelligence Agent</Box>
@@ -349,7 +384,7 @@ const AgentChatLayout = ({
               <AgentChatHistoryDropdown
                 onSessionSelect={handleSessionSelect}
                 onSessionDeleted={handleSessionDeleted}
-                disabled={waitingForResponse}
+                disabled={waitingForResponse || isLoadingSession}
               />
             </Box>
             {messages.length > 0 && (
@@ -358,14 +393,12 @@ const AgentChatLayout = ({
                 iconName="refresh"
                 onClick={() => {
                   clearChat();
-                  setExpandedSections(new Set());
                   setWelcomeAnimated(false);
-                  setLastMessageCount(0);
                   setTimeout(() => {
                     setWelcomeAnimated(true);
                   }, 100);
                 }}
-                disabled={waitingForResponse}
+                disabled={waitingForResponse || isLoadingSession}
               >
                 Clear chat
               </Button>

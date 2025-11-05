@@ -8,6 +8,7 @@ import '@aws-amplify/ui-react/styles.css';
 
 import { AppContext } from './contexts/app';
 import { AnalyticsProvider } from './contexts/analytics';
+import { AgentChatProvider } from './contexts/agentChat';
 import useAwsConfig from './hooks/use-aws-config';
 import useCurrentSessionCreds from './hooks/use-current-session-creds';
 
@@ -37,14 +38,16 @@ const AppContent = () => {
     setNavigationOpen,
   };
   logger.debug('appContextValue', appContextValue);
-
+  // TODO: Remove the AnalyticsProvider once we migrate full to Agent Chat
   return (
     <div className="App">
       <AppContext.Provider value={appContextValue}>
         <AnalyticsProvider>
-          <HashRouter>
-            <Routes />
-          </HashRouter>
+          <AgentChatProvider>
+            <HashRouter>
+              <Routes />
+            </HashRouter>
+          </AgentChatProvider>
         </AnalyticsProvider>
       </AppContext.Provider>
     </div>
