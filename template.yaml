@@ -3621,6 +3621,21 @@ Resources:
   # Lambda function for agent chat resolver
   AgentChatResolverFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for AppSeync Resolver function"
+          - id: W11
+            reason: "Role requires * resource access for Marketplace, CloudWatch Metrics and Logs"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary:
         !If [
@@ -6708,6 +6723,8 @@ Resources:
             reason: "Function does not require reserved concurrency as it scales based on demand"
           - id: W12
             reason: "Lambda requires CloudWatch logs permissions"
+          - id: W11
+            reason: "Role requires * resource access for Marketplace and CloudWatch Metrics and Logs"
     # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"

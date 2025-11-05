@@ -675,6 +675,11 @@ Resources:
   #
   KnowledgeBaseServiceRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for Marketplace"
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
