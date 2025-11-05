@@ -97,7 +97,7 @@ def publish_templates():
         sys.exit(1)
 
 
-def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url):
+def deploy_test_and_cleanup_pattern(stack_prefix, pattern_config, admin_email, template_url):
     """Deploy and test a specific IDP pattern"""
     pattern_name = pattern_config["name"]
     pattern_id = pattern_config["id"]
@@ -195,7 +195,8 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
             print(
                 f"[{pattern_name}] ✅ Found expected verification string: '{verify_string}'"
             )
-            return {
+            
+            success_result = {
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": True,
@@ -203,7 +204,7 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
 
         except Exception as e:
             print(f"[{pattern_name}] ❌ Failed to validate result content: {e}")
-            return {
+            success_result = {
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": False,
@@ -211,11 +212,17 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
 
     except Exception as e:
         print(f"[{pattern_name}] ❌ Testing failed: {e}")
-        return {
+        success_result = {
             "stack_name": stack_name,
             "pattern_name": pattern_name,
             "success": False,
         }
+
+    # Always cleanup the stack regardless of success/failure
+    finally:
+        cleanup_stack(stack_name, pattern_name)
+    
+    return success_result
 
 
 def cleanup_stack(stack_name, pattern_name):
@@ -264,7 +271,7 @@ def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
-    admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
+    admin_email = get_env_var("IDP_ADMIN_EMAIL", "strahanr@amazon.com")
     stack_prefix = generate_stack_prefix()
 
     print(f"Stack Prefix: {stack_prefix}")
@@ -274,7 +281,6 @@ def main():
     # Step 1: Publish templates to S3
     template_url = publish_templates()
 
-    deployed_stacks = []
     all_success = True
 
     # Step 2: Deploy, test, and cleanup patterns concurrently
@@ -283,7 +289,7 @@ def main():
         # Submit all deployment tasks
         future_to_pattern = {
             executor.submit(
-                deploy_and_test_pattern,
+                deploy_test_and_cleanup_pattern,
                 stack_prefix,
                 pattern_config,
                 admin_email,
@@ -292,35 +298,22 @@ def main():
             for pattern_config in DEPLOY_PATTERNS
         }
 
-        # Collect results as they complete and cleanup successful deployments immediately
-        cleanup_futures = []
-        with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as cleanup_executor:
-            for future in as_completed(future_to_pattern):
-                pattern_config = future_to_pattern[future]
-                try:
-                    result = future.result()
-                    deployed_stacks.append(result)
-                    if not result["success"]:
-                        all_success = False
-                        print(f"[{pattern_config['name']}] ❌ Failed")
-                    else:
-                        print(f"[{pattern_config['name']}] ✅ Success")
-                    
-                    # Start cleanup immediately for this stack
-                    cleanup_future = cleanup_executor.submit(
-                        cleanup_stack, result["stack_name"], result["pattern_name"]
-                    )
-                    cleanup_futures.append(cleanup_future)
-                    
-                except Exception as e:
-                    print(f"[{pattern_config['name']}] ❌ Exception: {e}")
+        # Collect results as they complete (cleanup happens within each pattern)
+        for future in as_completed(future_to_pattern):
+            pattern_config = future_to_pattern[future]
+            try:
+                result = future.result()
+                if not result["success"]:
                     all_success = False
+                    print(f"[{pattern_config['name']}] ❌ Failed")
+                else:
+                    print(f"[{pattern_config['name']}] ✅ Success")
+                    
+            except Exception as e:
+                print(f"[{pattern_config['name']}] ❌ Exception: {e}")
+                all_success = False
 
-            # Wait for all cleanups to complete
-            print("🧹 Waiting for all cleanups to complete...")
-            for future in as_completed(cleanup_futures):
-                future.result()  # Wait for completion
-
+    # Check final status after all cleanups are done
     if all_success:
         print("🎉 All pattern deployments completed successfully!")
         sys.exit(0)
