@@ -114,7 +114,7 @@ def _verify_ecr_images_available(ecr_uri: str, image_version: str) -> bool:
                     LOGGER.info("image %s scan still in progress", image_tag)
                     return False
                 
-                LOGGER.debug("image %s verified (scan status: %s)", image_tag, scan_status)
+                LOGGER.info("image %s verified (scan status: %s)", image_tag, scan_status)
                     
             except ClientError as error:
                 if error.response["Error"]["Code"] == "ImageNotFoundException":
@@ -242,7 +242,7 @@ def _delete_all_ecr_images(repository_name: str) -> None:
         if not image_ids:
             continue
         images_to_delete.extend(image_ids)
-        LOGGER.debug(
+        LOGGER.info(
             "queued %s images for deletion from repository %s",
             len(image_ids),
             repository_name,
@@ -254,7 +254,7 @@ def _delete_all_ecr_images(repository_name: str) -> None:
 
     for chunk_start in range(0, len(images_to_delete), 100):
         chunk = images_to_delete[chunk_start : chunk_start + 100]
-        LOGGER.debug(
+        LOGGER.info(
             "deleting %s images from repository %s",
             len(chunk),
             repository_name,

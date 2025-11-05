@@ -209,6 +209,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - ecr:DescribeImageScanFindings
+                  - ecr:DescribeImages
                   - ecr:StartImageScan
               # Required for Amazon Inspector Enhanced Scanning
               # https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning-enhanced-iam.html
