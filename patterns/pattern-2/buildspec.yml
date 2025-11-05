@@ -56,7 +56,7 @@ phases:
       - echo "All Pattern-2 Docker images successfully built and pushed to ECR"
       - echo "ECR Repository - $ECR_URI"
       - echo "Image Version - $IMAGE_VERSION"
-      - echo "Note: ECR vulnerability scans initiated (ScanOnPush enabled)"
+      - 'echo "Note: ECR vulnerability scans initiated (ScanOnPush enabled)"'
       - echo "Scans will complete asynchronously. Check ECR console for results."
       - echo "For accounts with Amazon Inspector Enhanced Scanning, scans may take 10-30 minutes per image."
       - |
