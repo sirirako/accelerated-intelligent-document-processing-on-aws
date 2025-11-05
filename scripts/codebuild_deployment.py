@@ -271,7 +271,7 @@ def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
-    admin_email = get_env_var("IDP_ADMIN_EMAIL", "strahanr@amazon.com")
+    admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
     stack_prefix = generate_stack_prefix()
 
     print(f"Stack Prefix: {stack_prefix}")
