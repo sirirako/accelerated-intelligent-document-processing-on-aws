@@ -328,6 +328,17 @@ Parameters:
     AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
+  EnablePattern2ECRImageScanning:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      Enable automatic vulnerability scanning for Pattern-2 Lambda container images in ECR. 
+      Disabling may improve deployment reliability but reduces security posture. 
+      Recommended: true for production, false only if experiencing deployment issues.
+
   # Logging configuration
   LogLevel:
     Type: String
@@ -960,6 +971,7 @@ Resources:
         ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
         Pattern2SourceZipfile: "<PATTERN2_SOURCE_ZIPFILE_TOKEN>"
         EvaluationFunctionArn: !GetAtt EvaluationFunction.Arn
+        EnableECRImageScanning: !Ref EnablePattern2ECRImageScanning
 
   PATTERN3STACK:
     DependsOn:
