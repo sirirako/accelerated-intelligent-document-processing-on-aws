@@ -7,6 +7,18 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **IDP CLI Deploy Command Parameter Preservation Bug**
+  - Fixed critical bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+  - **Root Cause**: The `build_parameters()` function was using default values for all parameters (e.g., `max_concurrent=100`, `log_level="INFO"`, `enable_hitl="false"`), causing these defaults to be sent to CloudFormation even when users didn't explicitly provide them
+  - **Solution**: Refactored `build_parameters()` to only include explicitly provided parameters, allowing CloudFormation to automatically preserve existing values for parameters not specified in the update command
+  - **Benefits**: Users can now safely update individual stack parameters without accidentally resetting other parameters to defaults, significantly reducing the risk of unintended stack configuration changes
+  - **Implementation Details**:
+    - Changed all `build_parameters()` function parameters to `Optional` with `None` defaults
+    - Added conditional parameter inclusion - only adds parameter to dictionary if value is not `None`
+    - Updated CLI to convert Click's default values to `None` when detecting they haven't been explicitly changed by the user
+    - Removed unnecessary existing parameter retrieval code that attempted to fill in pattern/admin_email from existing stack
+  - **Testing**: Added comprehensive test suite with 15 test cases covering new stack creation, empty updates, selective updates, and parameter preservation scenarios
+
 ## [0.4.1]
 
 ### Changed

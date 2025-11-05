@@ -694,11 +694,11 @@ def upload_local_config(
 
 
 def build_parameters(
-    pattern: str,
-    admin_email: str,
-    max_concurrent: int = 100,
-    log_level: str = "INFO",
-    enable_hitl: str = "false",
+    pattern: Optional[str] = None,
+    admin_email: Optional[str] = None,
+    max_concurrent: Optional[int] = None,
+    log_level: Optional[str] = None,
+    enable_hitl: Optional[str] = None,
     pattern_config: Optional[str] = None,
     custom_config: Optional[str] = None,
     additional_params: Optional[Dict[str, str]] = None,
@@ -708,42 +708,54 @@ def build_parameters(
     """
     Build CloudFormation parameters dictionary
 
+    Only includes parameters that are explicitly provided. For stack updates,
+    CloudFormation will automatically use previous values for parameters not included.
+
     If custom_config is a local file path, it will be uploaded to S3:
     - For existing stacks: Uses the stack's ConfigurationBucket
     - For new stacks: Creates a temporary bucket
 
     Args:
-        pattern: IDP pattern (pattern-1, pattern-2, pattern-3)
-        admin_email: Admin user email
-        max_concurrent: Maximum concurrent workflows
-        log_level: Logging level
-        enable_hitl: Enable HITL (true/false)
-        pattern_config: Pattern configuration preset
-        custom_config: Custom configuration (local file path or S3 URI)
-        additional_params: Additional parameters as dict
+        pattern: IDP pattern (pattern-1, pattern-2, pattern-3) - optional for updates
+        admin_email: Admin user email - optional for updates
+        max_concurrent: Maximum concurrent workflows - optional
+        log_level: Logging level - optional
+        enable_hitl: Enable HITL (true/false) - optional
+        pattern_config: Pattern configuration preset - optional
+        custom_config: Custom configuration (local file path or S3 URI) - optional
+        additional_params: Additional parameters as dict - optional
         region: AWS region (auto-detected if not provided)
         stack_name: Stack name (helps determine upload bucket for updates)
 
     Returns:
-        Dictionary of parameter key-value pairs
+        Dictionary of parameter key-value pairs (only includes explicitly provided values)
     """
-    # Map pattern names to CloudFormation values
-    pattern_map = {
-        "pattern-1": "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)",
-        "pattern-2": "Pattern2 - Packet processing with Textract and Bedrock",
-        "pattern-3": "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-    }
+    parameters = {}
 
-    parameters = {
-        "AdminEmail": admin_email,
-        "IDPPattern": pattern_map.get(pattern, pattern),
-        "MaxConcurrentWorkflows": str(max_concurrent),
-        "LogLevel": log_level,
-        "EnableHITL": enable_hitl,
-    }
+    # Only add parameters if explicitly provided
+    if admin_email is not None:
+        parameters["AdminEmail"] = admin_email
 
-    # Add pattern-specific configuration
-    if pattern_config:
+    if pattern is not None:
+        # Map pattern names to CloudFormation values
+        pattern_map = {
+            "pattern-1": "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)",
+            "pattern-2": "Pattern2 - Packet processing with Textract and Bedrock",
+            "pattern-3": "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
+        }
+        parameters["IDPPattern"] = pattern_map.get(pattern, pattern)
+
+    if max_concurrent is not None:
+        parameters["MaxConcurrentWorkflows"] = str(max_concurrent)
+
+    if log_level is not None:
+        parameters["LogLevel"] = log_level
+
+    if enable_hitl is not None:
+        parameters["EnableHITL"] = enable_hitl
+
+    # Add pattern-specific configuration (only if provided)
+    if pattern_config is not None:
         if pattern == "pattern-1":
             parameters["Pattern1Configuration"] = pattern_config
         elif pattern == "pattern-2":

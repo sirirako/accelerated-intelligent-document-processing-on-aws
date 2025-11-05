@@ -162,36 +162,14 @@ def deploy(
         stack_exists = deployer._stack_exists(stack_name)
 
         if stack_exists:
-            # Stack exists - updating
+            # Stack exists - updating (all parameters are optional)
             console.print(
                 f"[bold blue]Updating existing IDP stack: {stack_name}[/bold blue]"
             )
-
-            # Get existing stack parameters
-            try:
-                response = deployer.cfn.describe_stacks(StackName=stack_name)
-                existing_stack = response["Stacks"][0]
-                existing_params = {
-                    p["ParameterKey"]: p["ParameterValue"]
-                    for p in existing_stack.get("Parameters", [])
-                }
-
-                # Use existing values if not provided
-                if not pattern and "IDPPattern" in existing_params:
-                    # Extract pattern from existing value
-                    pattern_value = existing_params["IDPPattern"]
-                    if "Pattern1" in pattern_value:
-                        pattern = "pattern-1"
-                    elif "Pattern2" in pattern_value:
-                        pattern = "pattern-2"
-                    elif "Pattern3" in pattern_value:
-                        pattern = "pattern-3"
-
-                if not admin_email and "AdminEmail" in existing_params:
-                    admin_email = existing_params["AdminEmail"]
-
-            except Exception as e:
-                logger.warning(f"Could not retrieve existing stack parameters: {e}")
+            if pattern:
+                console.print(f"Pattern: {pattern}")
+            if admin_email:
+                console.print(f"Admin Email: {admin_email}")
         else:
             # New stack - require pattern and admin_email
             console.print(
@@ -210,8 +188,9 @@ def deploy(
                 )
                 sys.exit(1)
 
-        console.print(f"Pattern: {pattern}")
-        console.print(f"Admin Email: {admin_email}")
+            console.print(f"Pattern: {pattern}")
+            console.print(f"Admin Email: {admin_email}")
+
         console.print()
 
         # Parse additional parameters
@@ -222,13 +201,14 @@ def deploy(
                     key, value = param.split("=", 1)
                     additional_params[key.strip()] = value.strip()
 
-        # Build parameters
+        # Build parameters - only pass explicitly provided values
+        # Convert Click defaults to None when not explicitly provided by user
         cfn_parameters = build_parameters(
             pattern=pattern,
             admin_email=admin_email,
-            max_concurrent=max_concurrent,
-            log_level=log_level,
-            enable_hitl=enable_hitl,
+            max_concurrent=max_concurrent if max_concurrent != 100 else None,
+            log_level=log_level if log_level != "INFO" else None,
+            enable_hitl=enable_hitl if enable_hitl != "false" else None,
             pattern_config=pattern_config,
             custom_config=custom_config,
             additional_params=additional_params,
