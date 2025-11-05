@@ -11,10 +11,11 @@ SPDX-License-Identifier: MIT-0
   - Fixed intermittent "Lambda does not have permission to access the ECR image" (403) errors during Pattern-2 deployment
   - **Root Cause**: Race condition where Lambda functions were created before ECR images were fully available and scannable
   - **Solution**: Enhanced CodeBuild custom resource to verify ECR image availability before completing, including:
-    - Verification that all 9 required Lambda images exist in ECR repository
+    - Verification that all required Lambda images exist in ECR repository
     - Check that image scanning is complete (repository has `ScanOnPush: true`)
-    - Polling mechanism that waits for images to be fully ready before allowing Lambda creation
-  - **Impact**: Eliminates deployment failures and ensures reliable stack creation on first attempt
+  - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (default: true) to allow users to disable ECR vulnerability scanning if experiencing deployment issues
+    - Recommended: Keep enabled (true) for production to maintain security posture
+    - Optional: Disable (false) only as temporary workaround for deployment reliability
 
 ## [0.4.1]
 
