@@ -3630,6 +3630,7 @@ Resources:
           CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
           AGENT_CHAT_PROCESSOR_FUNCTION: !Ref AgentChatProcessorFunction
           DATA_RETENTION_DAYS: !Ref DataRetentionInDays
+          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
       LoggingConfig:
         LogGroup: !Ref AgentChatResolverLogGroup
       Policies:
@@ -3639,6 +3640,8 @@ Resources:
             Resource: !GetAtt AgentChatProcessorFunction.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ChatMessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatSessionsTable
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentChatProcessorFunction
         - Statement:
@@ -3858,6 +3861,259 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+##########################################################################
+# DynamoDB Table for Agent Chat Session Metadata
+##########################################################################
+
+  ChatSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: sessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: sessionId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAfter
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+##########################################################################
+# Lambda Functions for Agent Chat Session Management
+##########################################################################
+
+  # Lambda function for listing agent chat sessions
+  ListAgentChatSessionsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/list_agent_chat_sessions_resolver/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
+      LoggingConfig:
+        LogGroup: !Ref ListAgentChatSessionsFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatSessionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  ListAgentChatSessionsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Lambda function for getting agent chat messages
+  GetAgentChatMessagesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/get_agent_chat_messages_resolver/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
+      LoggingConfig:
+        LogGroup: !Ref GetAgentChatMessagesFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatMessagesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  GetAgentChatMessagesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Lambda function for deleting agent chat sessions
+  DeleteAgentChatSessionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/delete_agent_chat_session_resolver/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
+          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
+      LoggingConfig:
+        LogGroup: !Ref DeleteAgentChatSessionFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatMessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatSessionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  DeleteAgentChatSessionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # AppSync Data Sources for Agent Chat Session Management
+  ##########################################################################
+
+  ListAgentChatSessionsDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ListAgentChatSessionsDataSource
+      Description: Lambda function for listing agent chat sessions
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt ListAgentChatSessionsFunction.Arn
+
+  GetAgentChatMessagesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: GetAgentChatMessagesDataSource
+      Description: Lambda function for getting agent chat messages
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GetAgentChatMessagesFunction.Arn
+
+  DeleteAgentChatSessionDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: DeleteAgentChatSessionDataSource
+      Description: Lambda function for deleting agent chat sessions
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt DeleteAgentChatSessionFunction.Arn
+
+  ##########################################################################
+  # AppSync Resolvers for Agent Chat Session Management
+  ##########################################################################
+
+  ListChatSessionsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listChatSessions
+      DataSourceName: !GetAtt ListAgentChatSessionsDataSource.Name
+
+  GetChatMessagesResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getChatMessages
+      DataSourceName: !GetAtt GetAgentChatMessagesDataSource.Name
+
+  DeleteChatSessionResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteChatSession
+      DataSourceName: !GetAtt DeleteAgentChatSessionDataSource.Name
+
   # Lambda function for listing available agents
   ListAvailableAgentsFunction:
     Type: AWS::Serverless::Function
@@ -3952,7 +4208,18 @@ Resources:
           "version": "2017-02-28",
           "operation": "Invoke",
           "payload": {
-            "arguments": $util.toJson($context.arguments)
+            "arguments": $util.toJson($context.arguments),
+            "identity": {
+              "username": $util.toJson($context.identity.username),
+              "sub": $util.toJson($context.identity.sub),
+              "sourceIp": $util.toJson($context.identity.sourceIp),
+              "userArn": $util.toJson($context.identity.userArn),
+              "accountId": $util.toJson($context.identity.accountId),  
+              "cognitoIdentityPoolId": $util.toJson($context.identity.cognitoIdentityPoolId),
+              "cognitoIdentityId": $util.toJson($context.identity.cognitoIdentityId),
+              "userPoolUserId": $util.toJson($context.identity.claims.sub),
+              "claims": $util.toJson($context.identity.claims)
+            }
           }
         }
       ResponseMappingTemplate: |
@@ -5513,6 +5780,7 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DiscoveryTrackingTable}"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatMessagesTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatSessionsTable}"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -5540,6 +5808,9 @@ Resources:
                   - !GetAtt ChatWithDocumentResolverFunction.Arn
                   - !GetAtt DiscoveryUploadResolverFunction.Arn
                   - !GetAtt AgentRequestHandlerFunction.Arn  # <-- Backward Compatibility for error analyzer agent
+                  - !GetAtt ListAgentChatSessionsFunction.Arn
+                  - !GetAtt GetAgentChatMessagesFunction.Arn  
+                  - !GetAtt DeleteAgentChatSessionFunction.Arn  
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:

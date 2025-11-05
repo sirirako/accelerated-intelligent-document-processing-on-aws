@@ -22,6 +22,7 @@ import useAgentChat from '../../hooks/use-agent-chat';
 import useAppContext from '../../contexts/app';
 import PlotDisplay from '../document-agents-layout/PlotDisplay';
 import TableDisplay from '../document-agents-layout/TableDisplay';
+import AgentChatHistoryDropdown from './AgentChatHistoryDropdown';
 import './AgentChatLayout.css';
 
 const AgentChatLayout = ({
@@ -38,7 +39,7 @@ const AgentChatLayout = ({
   const [lastMessageCount, setLastMessageCount] = useState(0);
   const [enableCodeIntelligence, setEnableCodeIntelligence] = useState(true);
   const chatMessagesRef = useRef(null);
-  const { messages, isLoading, waitingForResponse, error, sendMessage, clearError, clearChat } = useAgentChat(agentConfig);
+  const { messages, isLoading, waitingForResponse, error, sendMessage, clearError, clearChat, loadChatSession } = useAgentChat(agentConfig);
   const { user } = useAppContext();
 
   const userInitial = useMemo(() => {
@@ -135,6 +136,35 @@ const AgentChatLayout = ({
       }
       return newSet;
     });
+  };
+
+  // Handle session selection from dropdown
+  const handleSessionSelect = async (session, sessionMessages) => {
+    try {
+      console.log('Loading chat session:', session.sessionId);
+      await loadChatSession(session.sessionId, sessionMessages);
+
+      // Reset UI state for loaded session
+      setExpandedSections(new Set());
+      setLastMessageCount(sessionMessages.length);
+
+      // Scroll to bottom after loading
+      setTimeout(() => {
+        if (chatMessagesRef.current) {
+          chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+        }
+      }, 100);
+    } catch (err) {
+      console.error('Failed to load chat session:', err);
+    }
+  };
+
+  // Handle session deletion
+  const handleSessionDeleted = (sessionId) => {
+    console.log('Session deleted:', sessionId);
+    // If the deleted session was the current one, clear the chat
+    // Note: We can't easily check if it's the current session since sessionId might be different
+    // The dropdown component handles the UI state, so we don't need to do anything here
   };
 
   // Hardcoded sample prompts from different agents
@@ -314,24 +344,33 @@ const AgentChatLayout = ({
               </SpaceBetween>
             </SpaceBetween>
           </Box>
-          {messages.length > 0 && (
-            <Button
-              variant="normal"
-              iconName="refresh"
-              onClick={() => {
-                clearChat();
-                setExpandedSections(new Set());
-                setWelcomeAnimated(false);
-                setLastMessageCount(0);
-                setTimeout(() => {
-                  setWelcomeAnimated(true);
-                }, 100);
-              }}
-              disabled={waitingForResponse}
-            >
-              Clear chat
-            </Button>
-          )}
+          <SpaceBetween direction="horizontal" size="s" alignItems="center">
+            <Box flex="1">
+              <AgentChatHistoryDropdown
+                onSessionSelect={handleSessionSelect}
+                onSessionDeleted={handleSessionDeleted}
+                disabled={waitingForResponse}
+              />
+            </Box>
+            {messages.length > 0 && (
+              <Button
+                variant="normal"
+                iconName="refresh"
+                onClick={() => {
+                  clearChat();
+                  setExpandedSections(new Set());
+                  setWelcomeAnimated(false);
+                  setLastMessageCount(0);
+                  setTimeout(() => {
+                    setWelcomeAnimated(true);
+                  }, 100);
+                }}
+                disabled={waitingForResponse}
+              >
+                Clear chat
+              </Button>
+            )}
+          </SpaceBetween>
         </SpaceBetween>
       </div>
     </div>

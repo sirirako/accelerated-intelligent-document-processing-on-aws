@@ -26,6 +26,7 @@ lambda_client = boto3.client("lambda")
 
 # Get environment variables
 CHAT_MESSAGES_TABLE = os.environ.get("CHAT_MESSAGES_TABLE")
+CHAT_SESSIONS_TABLE = os.environ.get("CHAT_SESSIONS_TABLE")
 AGENT_CHAT_PROCESSOR_FUNCTION = os.environ.get("AGENT_CHAT_PROCESSOR_FUNCTION")
 DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "30"))
 
@@ -120,6 +121,14 @@ def handler(event, context):
             
             table.put_item(Item=message)
             logger.info(f"Stored message in DynamoDB for session {session_id}: {method}")
+            
+            # Manage session metadata for user messages
+            if not is_assistant_response:  # This is a user message
+                # Get user identity for session metadata
+                identity = event.get("identity", {})
+                user_id = identity.get("username") or identity.get("sub") or "anonymous"
+                
+                manage_session_metadata(user_id, session_id, prompt, timestamp, expires_after)
         else:
             logger.info(f"Skipped storing streaming message in DynamoDB: {method}")
         
@@ -159,24 +168,101 @@ def handler(event, context):
             "isProcessing": False,
             "sessionId": str(session_id) if session_id else ""
         }
-    except Exception as e:
-        # Check if this is a validation error that should propagate as GraphQL error
-        error_str = str(e)
-        if any(msg in error_str for msg in [
-            "prompt parameter is required",
-            "sessionId parameter is required",
-            "Prompt exceeds maximum length"
-        ]):
-            # Re-raise validation errors so they become GraphQL errors
-            raise e
+
+
+def manage_session_metadata(user_id, session_id, prompt, timestamp, expires_after):
+    """
+    Create or update session metadata in the ChatSessionsTable.
+    
+    Args:
+        user_id: The user ID for the session
+        session_id: The session ID
+        prompt: The user's message content
+        timestamp: The message timestamp
+        expires_after: TTL for the session
+    """
+    try:
+        if not CHAT_SESSIONS_TABLE:
+            logger.warn("CHAT_SESSIONS_TABLE not configured, skipping session metadata management")
+            return
+            
+        sessions_table = dynamodb.Table(CHAT_SESSIONS_TABLE)
         
-        # Handle other unexpected errors
-        error_msg = f"Error processing request: {error_str}"
-        logger.error(error_msg)
-        return {
-            "role": "assistant",
-            "content": f"Error: {error_msg}",
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-            "isProcessing": False,
-            "sessionId": str(session_id) if session_id else ""
+        # Check if session already exists
+        try:
+            response = sessions_table.get_item(
+                Key={
+                    "userId": user_id,
+                    "sessionId": session_id
+                }
+            )
+            
+            if response.get("Item"):
+                # Session exists, update it
+                update_session_metadata(sessions_table, user_id, session_id, prompt, timestamp)
+            else:
+                # New session, create it
+                create_session_metadata(sessions_table, user_id, session_id, prompt, timestamp, expires_after)
+                
+        except ClientError as e:
+            logger.error(f"Error managing session metadata: {str(e)}")
+            # Don't fail the main operation if session metadata fails
+            
+    except Exception as e:
+        logger.error(f"Unexpected error managing session metadata: {str(e)}")
+        # Don't fail the main operation if session metadata fails
+
+
+def create_session_metadata(sessions_table, user_id, session_id, prompt, timestamp, expires_after):
+    """Create a new session metadata record."""
+    try:
+        # Generate session title from the first message
+        title = prompt.strip()
+        if len(title) > 50:
+            title = title[:47] + "..."
+        
+        # Create last message preview
+        last_message = prompt[:100] + "..." if len(prompt) > 100 else prompt
+        
+        session_record = {
+            "userId": user_id,
+            "sessionId": session_id,
+            "title": title,
+            "createdAt": timestamp,
+            "updatedAt": timestamp,
+            "messageCount": 1,  # First user message
+            "lastMessage": last_message,
+            "ExpiresAfter": expires_after
         }
+        
+        sessions_table.put_item(Item=session_record)
+        logger.info(f"Created session metadata for {session_id}")
+        
+    except ClientError as e:
+        logger.error(f"Error creating session metadata: {str(e)}")
+
+
+def update_session_metadata(sessions_table, user_id, session_id, prompt, timestamp):
+    """Update existing session metadata record."""
+    try:
+        # Create last message preview
+        last_message = prompt[:100] + "..." if len(prompt) > 100 else prompt
+        
+        # Update the session record
+        sessions_table.update_item(
+            Key={
+                "userId": user_id,
+                "sessionId": session_id
+            },
+            UpdateExpression="SET updatedAt = :timestamp, messageCount = messageCount + :inc, lastMessage = :last_message",
+            ExpressionAttributeValues={
+                ":timestamp": timestamp,
+                ":inc": 1,
+                ":last_message": last_message
+            }
+        )
+        
+        logger.info(f"Updated session metadata for {session_id}")
+        
+    except ClientError as e:
+        logger.error(f"Error updating session metadata: {str(e)}")
