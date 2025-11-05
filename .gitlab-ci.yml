@@ -151,6 +151,7 @@ integration_tests:
         
         if [ "$BUILD_ID" != "" ] && [ "$BUILD_ID" != "None" ]; then
           echo "CodeBuild ID: $BUILD_ID"
+          # Extract just the build ID part (after the colon)
           LOG_STREAM_NAME="${BUILD_ID#*:}"
           echo "Log Stream: $LOG_STREAM_NAME"
           echo ""
@@ -162,3 +163,9 @@ integration_tests:
       else
         echo "No pipeline execution ID found"
       fi
+
+  artifacts:
+    when: always
+    paths:
+      - pipeline_execution_id.txt
+    expire_in: 1 week
