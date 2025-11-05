@@ -118,8 +118,6 @@ const useAgentChat = (config = {}) => {
 
   // Handle streaming messages with proper phase management
   const handleStreamingMessage = (newMessage) => {
-  
-
     setMessages((prevMessages) => {
       const isFinalMessage = !newMessage.isProcessing;
 
