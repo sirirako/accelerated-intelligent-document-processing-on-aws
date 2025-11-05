@@ -15,7 +15,7 @@ test:
 	cd idp_cli && python -m pytest -v
 
 # Run both linting and formatting in one command
-lint: ruff-lint format check-arn-partitions ui-lint
+lint: ruff-lint format check-arn-partitions validate-buildspec ui-lint
 
 # Run linting checks and fix issues automatically
 ruff-lint:
@@ -52,6 +52,13 @@ lint-cicd:
 	fi
 	
 	@echo -e "$(GREEN)All code quality checks passed!$(NC)"
+
+# Validate AWS CodeBuild buildspec files
+validate-buildspec:
+	@echo "Validating buildspec files..."
+	@python3 scripts/validate_buildspec.py patterns/*/buildspec.yml || \
+		(echo -e "$(RED)ERROR: Buildspec validation failed!$(NC)" && exit 1)
+	@echo -e "$(GREEN)✅ All buildspec files are valid!$(NC)"
 
 # Check CloudFormation templates for hardcoded AWS partition ARNs and service principals
 check-arn-partitions:
