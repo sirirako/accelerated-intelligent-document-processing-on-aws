@@ -13,8 +13,8 @@ SPDX-License-Identifier: MIT-0
   - **Solution**: Enhanced CodeBuild custom resource to verify ECR image availability before completing, including:
     - Verification that all required Lambda images exist in ECR repository
     - Check that image scanning is complete (repository has `ScanOnPush: true`)
-  - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (default: true) to allow users to disable ECR vulnerability scanning if experiencing deployment issues
-    - Recommended: Keep enabled (true) for production to maintain security posture
+  - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (current default: false) to allow users to enable/disable ECR vulnerability scanning if experiencing deployment issues
+    - Recommended: Set enabled (true) for production to maintain security posture
     - Optional: Disable (false) only as temporary workaround for deployment reliability
 
 ## [0.4.1]

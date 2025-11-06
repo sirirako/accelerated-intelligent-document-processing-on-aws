@@ -327,6 +327,7 @@ Resources:
                 Action:
                   - ecr:ListImages
                   - ecr:BatchDeleteImage
+                  - ecr:DescribeImages
                 Resource:
                   - !GetAtt Pattern2ECRRepository.Arn
           # Used by custom resource helper poller
