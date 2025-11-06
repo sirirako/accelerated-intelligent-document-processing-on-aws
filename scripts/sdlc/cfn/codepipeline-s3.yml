@@ -258,3 +258,19 @@ Resources:
               - 'logs:CreateLogStream'
               - 'logs:PutLogEvents'
             Resource: '*'
+
+  CodeBuildBedrockPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: CreateCodeBuildRole
+    Properties:
+      PolicyName: CodeBuildBedrockAccess
+      Roles: 
+        - !Ref CodeBuildRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'bedrock:InvokeModel'
+            Resource: 
+              - !Sub 'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
