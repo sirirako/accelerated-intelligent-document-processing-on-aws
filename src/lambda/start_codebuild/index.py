@@ -117,18 +117,30 @@ def _verify_ecr_images_available(ecr_uri: str, image_version: str) -> bool:
                 LOGGER.info("image %s verified (scan status: %s)", image_tag, scan_status)
                     
             except ClientError as error:
-                if error.response["Error"]["Code"] == "ImageNotFoundException":
+                error_code = error.response["Error"]["Code"]
+                
+                # Retriable condition - image just doesn't exist yet, keep polling
+                if error_code == "ImageNotFoundException":
                     LOGGER.warning("image %s not found: %s", image_tag, error)
-                    return False
-                LOGGER.error("error checking image %s: %s", image_tag, error)
-                raise
+                    return False  # Continue polling
+                
+                # Fatal errors - permissions, validation, repository not found, etc.
+                # Fail immediately instead of polling forever
+                LOGGER.error(
+                    "fatal error checking image %s (error code: %s): %s",
+                    image_tag,
+                    error_code,
+                    error
+                )
+                raise  # Fail custom resource immediately
         
         LOGGER.info("all %d required images are available in ECR", len(required_images))
         return True
         
     except Exception as exception:  # pylint: disable=broad-except
-        LOGGER.error("error verifying ECR images: %s", exception)
-        return False
+        # Any non-ClientError exception is unexpected and fatal
+        LOGGER.error("unexpected fatal error verifying ECR images: %s", exception)
+        raise  # Fail custom resource immediately instead of polling forever
 
 
 @HELPER.poll_create
