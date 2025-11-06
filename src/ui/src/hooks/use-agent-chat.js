@@ -495,16 +495,32 @@ const useAgentChat = (config = {}) => {
       }
 
       // Convert messages to the format expected by the UI
-      const formattedMessages = messagesToLoad.map((msg, index) => ({
-        role: msg.role,
-        content: msg.content,
-        messageType: 'text',
-        toolUseData: null,
-        isProcessing: false, // Historical messages are never processing
-        sessionId: msg.sessionId,
-        timestamp: msg.timestamp,
-        id: `${msg.timestamp}-${index}`,
-      }));
+      const formattedMessages = messagesToLoad.map((msg, index) => {
+        const baseMessage = {
+          role: msg.role,
+          content: msg.content,
+          messageType: 'text',
+          toolUseData: null,
+          isProcessing: false, // Historical messages are never processing
+          sessionId: msg.sessionId,
+          timestamp: msg.timestamp,
+          id: `${msg.timestamp}-${index}`,
+        };
+
+        // For assistant messages, parse content to extract structured data (charts, tables, etc.)
+        if (msg.role === 'assistant' && msg.content) {
+          const parsedData = parseResponseData(msg.content);
+
+          if (parsedData) {
+            // If we found structured data, add it to the message
+            baseMessage.parsedData = parsedData;
+            // Update content to show only the text portion (without the JSON)
+            baseMessage.content = parsedData.textContent || msg.content;
+          }
+        }
+
+        return baseMessage;
+      });
 
       // Update context with loaded session
       updateAgentChatState({
