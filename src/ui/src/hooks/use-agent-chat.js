@@ -6,6 +6,8 @@ import { ConsoleLogger } from 'aws-amplify/utils';
 import { v4 as uuidv4 } from 'uuid';
 
 import { SEND_AGENT_MESSAGE, ON_AGENT_MESSAGE_UPDATE } from '../graphql/queries/agentChatQueries';
+import { GET_AGENT_CHAT_MESSAGES } from '../graphql/queries/agentChatSessionQueries';
+import { useAgentChatContext } from '../contexts/agentChat';
 
 const logger = new ConsoleLogger('useAgentChat');
 const client = generateClient();
@@ -21,11 +23,12 @@ const useAgentChat = (config = {}) => {
 
   const agentConfig = { ...defaultConfig, ...config };
 
-  const [messages, setMessages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [waitingForResponse, setWaitingForResponse] = useState(false);
-  const [error, setError] = useState(null);
-  const [sessionId, setSessionId] = useState(uuidv4());
+  // Use context for persistent state
+  const { agentChatState, updateAgentChatState, resetAgentChatState, updateMessages } = useAgentChatContext();
+
+  // Extract state from context
+  const { messages, isLoading, waitingForResponse, error, sessionId } = agentChatState;
+
   const sentMessagesRef = useRef(new Set());
 
   // Parse JSON from message content and extract responseType
@@ -117,18 +120,11 @@ const useAgentChat = (config = {}) => {
 
   // Handle streaming messages with proper phase management
   const handleStreamingMessage = (newMessage) => {
-    // Log all incoming messages to debug
-    console.log('📨 Received message:', {
-      content: newMessage.content?.substring(0, 100),
-      isProcessing: newMessage.isProcessing,
-      role: newMessage.role,
-    });
-
-    setMessages((prevMessages) => {
+    updateMessages((prevMessages) => {
       const isFinalMessage = !newMessage.isProcessing;
 
       if (isFinalMessage) {
-        setWaitingForResponse(false);
+        updateAgentChatState({ waitingForResponse: false });
 
         // Parse the final message content for responseType
         const parsedData = parseResponseData(newMessage.content);
@@ -366,7 +362,7 @@ const useAgentChat = (config = {}) => {
       return;
     }
 
-    setMessages((prevMessages) => [
+    updateMessages((prevMessages) => [
       ...prevMessages,
       {
         ...newMessage,
@@ -397,7 +393,7 @@ const useAgentChat = (config = {}) => {
         },
         error: (err) => {
           logger.error('Subscription error:', err);
-          setError('Connection to chat service lost. Please refresh the page.');
+          updateAgentChatState({ error: 'Connection to chat service lost. Please refresh the page.' });
         },
       });
 
@@ -412,12 +408,17 @@ const useAgentChat = (config = {}) => {
   const sendMessage = async (prompt, options = {}) => {
     if (!prompt.trim()) return undefined;
 
-    setIsLoading(true);
-    setWaitingForResponse(true);
-    setError(null);
+    updateAgentChatState({
+      isLoading: true,
+      waitingForResponse: true,
+      error: null,
+    });
 
     const messageKey = `${sessionId}:${prompt}`;
     sentMessagesRef.current.add(messageKey);
+
+    // Log the sessionId being used for debugging
+    console.log(`🔍 Sending message with sessionId: ${sessionId}`);
 
     const userMessage = {
       role: 'user',
@@ -430,7 +431,7 @@ const useAgentChat = (config = {}) => {
       id: `user-${Date.now()}`,
     };
 
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    updateMessages((prevMessages) => [...prevMessages, userMessage]);
 
     try {
       const response = await client.graphql({
@@ -445,33 +446,88 @@ const useAgentChat = (config = {}) => {
 
       return response;
     } catch (err) {
-      setError('Failed to send message. Please try again.');
+      updateAgentChatState({
+        error: 'Failed to send message. Please try again.',
+        waitingForResponse: false,
+      });
       logger.error('Chat error:', err);
-      setWaitingForResponse(false);
       throw err;
     } finally {
-      setIsLoading(false);
+      updateAgentChatState({ isLoading: false });
     }
   };
 
   // Cancel waiting for response
   const cancelResponse = () => {
-    setWaitingForResponse(false);
+    updateAgentChatState({ waitingForResponse: false });
     logger.info('Response cancelled by user');
   };
 
   // Clear error
   const clearError = () => {
-    setError(null);
+    updateAgentChatState({ error: null });
   };
 
+  // Clear chat
   const clearChat = () => {
-    setMessages([]);
-    setSessionId(uuidv4());
-    setWaitingForResponse(false);
-    setIsLoading(false);
-    setError(null);
+    resetAgentChatState();
     sentMessagesRef.current = new Set();
+  };
+
+  // Load a previous chat session
+  const loadChatSession = async (targetSessionId, existingMessages = null) => {
+    try {
+      updateAgentChatState({
+        isLoading: true,
+        error: null,
+      });
+
+      // If messages are already provided (from dropdown), use them
+      let messagesToLoad = existingMessages;
+
+      // Otherwise, fetch messages from the server
+      if (!messagesToLoad) {
+        const response = await client.graphql({
+          query: GET_AGENT_CHAT_MESSAGES,
+          variables: { sessionId: targetSessionId },
+        });
+        messagesToLoad = response?.data?.getChatMessages || [];
+      }
+
+      // Convert messages to the format expected by the UI
+      const formattedMessages = messagesToLoad.map((msg, index) => ({
+        role: msg.role,
+        content: msg.content,
+        messageType: 'text',
+        toolUseData: null,
+        isProcessing: false, // Historical messages are never processing
+        sessionId: msg.sessionId,
+        timestamp: msg.timestamp,
+        id: `${msg.timestamp}-${index}`,
+      }));
+
+      // Update context with loaded session
+      updateAgentChatState({
+        messages: formattedMessages,
+        sessionId: targetSessionId,
+        waitingForResponse: false,
+        lastMessageCount: formattedMessages.length,
+      });
+
+      sentMessagesRef.current = new Set();
+
+      // Log for debugging
+      console.log(`🔄 Loaded chat session: ${targetSessionId} with ${formattedMessages.length} messages`);
+      console.log(`🔍 SessionId after loading: ${targetSessionId}`);
+
+      logger.info(`Loaded chat session ${targetSessionId} with ${formattedMessages.length} messages`);
+    } catch (err) {
+      updateAgentChatState({ error: 'Failed to load chat session. Please try again.' });
+      logger.error('Error loading chat session:', err);
+      throw err;
+    } finally {
+      updateAgentChatState({ isLoading: false });
+    }
   };
 
   return {
@@ -484,6 +540,7 @@ const useAgentChat = (config = {}) => {
     cancelResponse,
     clearError,
     clearChat,
+    loadChatSession,
     agentConfig, // Expose config for debugging
   };
 };
