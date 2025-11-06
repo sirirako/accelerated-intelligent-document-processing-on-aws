@@ -110,6 +110,12 @@ Parameters:
     AllowedValues: ['true', 'false']
     Description: Enable X-Ray tracing
 
+  EnableECRImageScanning:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable automatic vulnerability scanning for Lambda container images in ECR
+
   PermissionsBoundaryArn:
     Type: String
     Default: ""
@@ -147,6 +153,7 @@ Conditions:
     !Not [!Equals [!Ref CustomExtractionModelARN, ""]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
+  IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
 
 Resources:
   Pattern2DockerBuildRole:
@@ -202,6 +209,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - ecr:DescribeImageScanFindings
+                  - ecr:DescribeImages
                   - ecr:StartImageScan
               # Required for Amazon Inspector Enhanced Scanning
               # https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning-enhanced-iam.html
@@ -223,7 +231,7 @@ Resources:
     # checkov:skip=CKV_AWS_51: "Mutable tags allowed for workflow flexibility and version updates."
     Properties:
       ImageScanningConfiguration:
-        ScanOnPush: true
+        ScanOnPush: !If [IsECRImageScanningEnabled, true, false]
       EncryptionConfiguration:
         EncryptionType: KMS
         KmsKey: !Ref CustomerManagedEncryptionKeyArn
@@ -319,6 +327,7 @@ Resources:
                 Action:
                   - ecr:ListImages
                   - ecr:BatchDeleteImage
+                  - ecr:DescribeImages
                 Resource:
                   - !GetAtt Pattern2ECRRepository.Arn
           # Used by custom resource helper poller
@@ -1567,6 +1576,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             # AppSync permissions for updating document status (only if AppSync API is available)
             - !If
               - HasAppSyncApi
@@ -1682,6 +1697,12 @@ Resources:
                   - HasCustomClassificationModelARN
                   - !Ref CustomClassificationModelARN
                   - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -1798,6 +1819,12 @@ Resources:
                   - !Ref CustomExtractionModelARN
                   - !Ref AWS::NoValue
             - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
+            - Effect: Allow
               Action: lambda:InvokeFunction
               Resource:
                 - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:GENAIIDP-*"
@@ -1907,6 +1934,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -2394,6 +2427,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow

@@ -675,6 +675,11 @@ Resources:
   #
   KnowledgeBaseServiceRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for Marketplace"
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -701,6 +706,12 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                 Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${pEmbedModel}"
+              - Effect: Allow
+                Action:
+                  - aws-marketplace:Subscribe
+                  - aws-marketplace:Unsubscribe
+                  - aws-marketplace:ViewSubscriptions
+                Resource: "*"
         - !If
           - UseOpenSearchServerless
           - PolicyName: oss-api-access
