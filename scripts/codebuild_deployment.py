@@ -60,8 +60,8 @@ def get_env_var(name, default=None):
 
 
 def generate_stack_prefix():
-    """Generate unique stack prefix with timestamp"""
-    timestamp = datetime.now().strftime("%m%d-%H%M")  # Shorter format: MMDD-HHMM
+    """Generate unique stack prefix with timestamp including seconds"""
+    timestamp = datetime.now().strftime("%m%d-%H%M%S")  # Format: MMDD-HHMMSS
     return f"idp-{timestamp}"
 
 
@@ -97,7 +97,7 @@ def publish_templates():
         sys.exit(1)
 
 
-def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url):
+def deploy_test_and_cleanup_pattern(stack_prefix, pattern_config, admin_email, template_url):
     """Deploy and test a specific IDP pattern"""
     pattern_name = pattern_config["name"]
     pattern_id = pattern_config["id"]
@@ -195,7 +195,8 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
             print(
                 f"[{pattern_name}] ✅ Found expected verification string: '{verify_string}'"
             )
-            return {
+            
+            success_result = {
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": True,
@@ -203,7 +204,7 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
 
         except Exception as e:
             print(f"[{pattern_name}] ❌ Failed to validate result content: {e}")
-            return {
+            success_result = {
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": False,
@@ -211,18 +212,56 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
 
     except Exception as e:
         print(f"[{pattern_name}] ❌ Testing failed: {e}")
-        return {
+        success_result = {
             "stack_name": stack_name,
             "pattern_name": pattern_name,
             "success": False,
         }
+
+    # Always cleanup the stack regardless of success/failure
+    finally:
+        cleanup_stack(stack_name, pattern_name)
+    
+    return success_result
 
 
 def cleanup_stack(stack_name, pattern_name):
     """Clean up a deployed stack"""
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
     try:
-        run_command(f"idp-cli delete --stack-name {stack_name} --force", check=False)
+        # Check stack status first
+        result = run_command(f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text", check=False)
+        stack_status = result.stdout.strip() if result.returncode == 0 else "NOT_FOUND"
+        
+        print(f"[{pattern_name}] Stack status: {stack_status}")
+        
+        # Delete the stack and wait for completion
+        print(f"[{pattern_name}] Attempting stack deletion...")
+        run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --wait", check=False)
+        
+        # Always clean up orphaned resources after deletion attempt
+        print(f"[{pattern_name}] Cleaning up orphaned resources...")
+        
+        # Set AWS retry configuration to handle throttling
+        os.environ['AWS_MAX_ATTEMPTS'] = '10'
+        os.environ['AWS_RETRY_MODE'] = 'adaptive'
+        
+        # ECR repositories
+        stack_name_lower = stack_name.lower()
+        run_command(f"aws ecr describe-repositories --query 'repositories[?contains(repositoryName, `{stack_name_lower}`)].repositoryName' --output text | xargs -r -n1 aws ecr delete-repository --repository-name --force", check=False)
+        
+        # S3 buckets (empty and delete orphaned buckets)
+        run_command(f"aws s3api list-buckets --query 'Buckets[?contains(Name, `{stack_name}`)].Name' --output text | xargs -r -n1 -I {{}} sh -c 'aws s3 rm s3://{{}} --recursive && aws s3api delete-bucket --bucket {{}}'", check=False)
+        
+        # CloudWatch log groups (single comprehensive search)
+        run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output text | xargs -r -n1 aws logs delete-log-group --log-group-name", check=False)
+        
+        # AppSync logs (requires separate handling due to random API IDs)
+        run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output text | xargs -r -I {{}} aws logs delete-log-group --log-group-name '/aws/appsync/apis/{{}}'", check=False)
+        
+        # Clean up CloudWatch Logs Resource Policy (ignore errors if policy doesn't exist)
+        run_command(f"aws logs describe-resource-policies --query 'resourcePolicies[0].policyName' --output text | xargs -r aws logs delete-resource-policy --policy-name || true", check=False)
+        
         print(f"[{pattern_name}] ✅ Cleanup completed")
     except Exception as e:
         print(f"[{pattern_name}] ⚠️ Cleanup failed: {e}")
@@ -232,7 +271,7 @@ def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
-    admin_email = get_env_var("IDP_ADMIN_EMAIL", "strahanr@amazon.com")
+    admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
     stack_prefix = generate_stack_prefix()
 
     print(f"Stack Prefix: {stack_prefix}")
@@ -242,16 +281,15 @@ def main():
     # Step 1: Publish templates to S3
     template_url = publish_templates()
 
-    deployed_stacks = []
     all_success = True
 
-    # Step 2: Deploy and test patterns concurrently
+    # Step 2: Deploy, test, and cleanup patterns concurrently
     print("🚀 Starting concurrent deployment of all patterns...")
     with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
         # Submit all deployment tasks
         future_to_pattern = {
             executor.submit(
-                deploy_and_test_pattern,
+                deploy_test_and_cleanup_pattern,
                 stack_prefix,
                 pattern_config,
                 admin_email,
@@ -260,33 +298,22 @@ def main():
             for pattern_config in DEPLOY_PATTERNS
         }
 
-        # Collect results as they complete
+        # Collect results as they complete (cleanup happens within each pattern)
         for future in as_completed(future_to_pattern):
             pattern_config = future_to_pattern[future]
             try:
                 result = future.result()
-                deployed_stacks.append(result)
                 if not result["success"]:
                     all_success = False
                     print(f"[{pattern_config['name']}] ❌ Failed")
                 else:
                     print(f"[{pattern_config['name']}] ✅ Success")
+                    
             except Exception as e:
                 print(f"[{pattern_config['name']}] ❌ Exception: {e}")
                 all_success = False
 
-    # Step 3: Cleanup all stacks concurrently
-    print("🧹 Starting concurrent cleanup of all stacks...")
-    with ThreadPoolExecutor(max_workers=len(deployed_stacks)) as executor:
-        cleanup_futures = [
-            executor.submit(cleanup_stack, result["stack_name"], result["pattern_name"])
-            for result in deployed_stacks
-        ]
-
-        # Wait for all cleanups to complete
-        for future in as_completed(cleanup_futures):
-            future.result()  # Wait for completion
-
+    # Check final status after all cleanups are done
     if all_success:
         print("🎉 All pattern deployments completed successfully!")
         sys.exit(0)

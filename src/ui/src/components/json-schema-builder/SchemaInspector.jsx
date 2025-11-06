@@ -15,6 +15,8 @@ import {
   X_AWS_IDP_EVALUATION_METHOD,
   X_AWS_IDP_CONFIDENCE_THRESHOLD,
   X_AWS_IDP_EXAMPLES,
+  X_AWS_IDP_DOCUMENT_NAME_REGEX,
+  X_AWS_IDP_PAGE_CONTENT_REGEX,
 } from '../../constants/schemaConstants';
 
 const SchemaInspector = ({
@@ -99,10 +101,34 @@ const SchemaInspector = ({
           </FormField>
 
           {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] && (
-            <ExamplesEditor
-              examples={selectedClass[X_AWS_IDP_EXAMPLES] || []}
-              onChange={(examples) => onUpdateClass({ [X_AWS_IDP_EXAMPLES]: examples })}
-            />
+            <>
+              <ExamplesEditor
+                examples={selectedClass[X_AWS_IDP_EXAMPLES] || []}
+                onChange={(examples) => onUpdateClass({ [X_AWS_IDP_EXAMPLES]: examples })}
+              />
+
+              <FormField
+                label="Document Name Regex (Optional)"
+                description="Pattern to match document ID/name. When matched, instantly classifies all pages as this type (single-class configs only). Use case-insensitive patterns like (?i).*(invoice|bill).*"
+              >
+                <Input
+                  value={selectedClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] || ''}
+                  onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_DOCUMENT_NAME_REGEX]: detail.value || undefined })}
+                  placeholder="e.g., (?i).*(invoice|bill).*"
+                />
+              </FormField>
+
+              <FormField
+                label="Page Content Regex (Optional)"
+                description="Pattern to match page text content. When matched during page-level classification, classifies the page as this type. Use case-insensitive patterns like (?i)(invoice\\s+number|amount\\s+due)"
+              >
+                <Input
+                  value={selectedClass[X_AWS_IDP_PAGE_CONTENT_REGEX] || ''}
+                  onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_PAGE_CONTENT_REGEX]: detail.value || undefined })}
+                  placeholder="e.g., (?i)(invoice\\s+number|bill\\s+to)"
+                />
+              </FormField>
+            </>
           )}
 
           {usedIn.length > 0 && (

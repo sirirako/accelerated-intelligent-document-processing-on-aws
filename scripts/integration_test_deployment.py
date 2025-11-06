@@ -79,10 +79,20 @@ def upload_to_s3(bucket_name):
     s3_client = boto3.client("s3")
 
     try:
+        # Get GitLab user email to pass to CodeBuild
+        gitlab_user_email = os.environ.get("GITLAB_USER_EMAIL", "")
+        
+        # Add metadata to pass email to CodeBuild
+        metadata = {}
+        if gitlab_user_email:
+            metadata["gitlab-user-email"] = gitlab_user_email
+            print(f"Adding GitLab user email to metadata: {gitlab_user_email}")
+
         response = s3_client.put_object(
             Bucket=bucket_name,
             Key="deploy/code.zip",
             Body=open("./dist/code.zip", "rb"),
+            Metadata=metadata,
         )
         version_id = response.get("VersionId", "unknown")
         print(f"✅ Uploaded with version ID: {version_id}")
@@ -173,6 +183,11 @@ def monitor_pipeline(pipeline_name, version_id, max_wait=7200):
     
     if not execution_id:
         return False
+    
+    # Write execution ID to file for GitLab CI to use
+    with open("pipeline_execution_id.txt", "w") as f:
+        f.write(execution_id)
+    print(f"Pipeline execution ID written to file: {execution_id}")
         
     # Then monitor that specific execution
     return monitor_pipeline_execution(pipeline_name, execution_id, max_wait)

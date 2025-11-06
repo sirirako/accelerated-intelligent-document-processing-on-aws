@@ -67,6 +67,10 @@ export const X_AWS_IDP_DOCUMENT_TYPE = 'x-aws-idp-document-type';
 /** Classification metadata for document type */
 export const X_AWS_IDP_CLASSIFICATION = 'x-aws-idp-classification';
 
+/** Regex patterns for classification optimization */
+export const X_AWS_IDP_DOCUMENT_NAME_REGEX = 'x-aws-idp-document-name-regex';
+export const X_AWS_IDP_PAGE_CONTENT_REGEX = 'x-aws-idp-document-page-content-regex';
+
 // ============================================================================
 // AWS IDP List-Specific Extensions
 // ============================================================================

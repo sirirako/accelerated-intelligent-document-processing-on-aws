@@ -15,69 +15,61 @@ class TestErrorAnalyzerTools:
     def test_cloudwatch_tools_import(self):
         """Test CloudWatch tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
-            cloudwatch_document_logs,
-            cloudwatch_logs,
+            search_cloudwatch_logs,
         )
 
-        assert cloudwatch_document_logs is not None
-        assert callable(cloudwatch_document_logs)
-        assert cloudwatch_logs is not None
-        assert callable(cloudwatch_logs)
+        assert search_cloudwatch_logs is not None
+        assert callable(search_cloudwatch_logs)
 
     def test_dynamodb_tools_import(self):
         """Test DynamoDB tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
-            dynamodb_query,
-            dynamodb_record,
-            dynamodb_status,
+            fetch_document_record,
+            fetch_recent_records,
         )
 
-        assert dynamodb_record is not None
-        assert callable(dynamodb_record)
-        assert dynamodb_status is not None
-        assert callable(dynamodb_status)
-        assert dynamodb_query is not None
-        assert callable(dynamodb_query)
+        assert fetch_document_record is not None
+        assert callable(fetch_document_record)
+        assert fetch_recent_records is not None
+        assert callable(fetch_recent_records)
 
     def test_execution_context_tools_import(self):
         """Test execution context tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
-            lambda_lookup,
-            stepfunction_details,
+            analyze_workflow_execution,
+            retrieve_document_context,
         )
 
-        assert lambda_lookup is not None
-        assert callable(lambda_lookup)
-        assert stepfunction_details is not None
-        assert callable(stepfunction_details)
+        assert retrieve_document_context is not None
+        assert callable(retrieve_document_context)
+        assert analyze_workflow_execution is not None
+        assert callable(analyze_workflow_execution)
 
     def test_xray_tools_import(self):
         """Test X-Ray tools can be imported."""
         from idp_common.agents.error_analyzer.tools import (
-            xray_performance_analysis,
-            xray_trace,
+            analyze_document_trace,
+            analyze_system_performance,
         )
 
-        assert xray_trace is not None
-        assert callable(xray_trace)
-        assert xray_performance_analysis is not None
-        assert callable(xray_performance_analysis)
+        assert analyze_document_trace is not None
+        assert callable(analyze_document_trace)
+        assert analyze_system_performance is not None
+        assert callable(analyze_system_performance)
 
     def test_all_tools_available(self):
-        """Test that all 11 tools are available in the tools module."""
+        """Test that all 7 tools are available in the tools module."""
         from idp_common.agents.error_analyzer.tools import __all__
 
         expected_tools = {
-            "cloudwatch_document_logs",
-            "cloudwatch_logs",
-            "dynamodb_record",
-            "dynamodb_status",
-            "dynamodb_query",
-            "lambda_lookup",
-            "stepfunction_details",
-            "xray_trace",
-            "xray_performance_analysis",
+            "search_cloudwatch_logs",
+            "fetch_document_record",
+            "fetch_recent_records",
+            "retrieve_document_context",
+            "analyze_workflow_execution",
+            "analyze_document_trace",
+            "analyze_system_performance",
         }
 
-        assert len(__all__) == 9
+        assert len(__all__) == 7
         assert set(__all__) == expected_tools

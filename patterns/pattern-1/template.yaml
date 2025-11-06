@@ -1033,6 +1033,12 @@ Resources:
             Resource: 
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+          - Effect: Allow
+            Action:
+              - aws-marketplace:Subscribe
+              - aws-marketplace:Unsubscribe
+              - aws-marketplace:ViewSubscriptions
+            Resource: "*"
           - !If
             - HasGuardrailConfig
             - Effect: Allow
