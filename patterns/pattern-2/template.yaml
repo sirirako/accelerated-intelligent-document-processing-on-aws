@@ -110,6 +110,12 @@ Parameters:
     AllowedValues: ['true', 'false']
     Description: Enable X-Ray tracing
 
+  EnableECRImageScanning:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable automatic vulnerability scanning for Lambda container images in ECR
+
   PermissionsBoundaryArn:
     Type: String
     Default: ""
@@ -147,6 +153,7 @@ Conditions:
     !Not [!Equals [!Ref CustomExtractionModelARN, ""]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
+  IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
 
 Resources:
   Pattern2DockerBuildRole:
@@ -202,6 +209,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - ecr:DescribeImageScanFindings
+                  - ecr:DescribeImages
                   - ecr:StartImageScan
               # Required for Amazon Inspector Enhanced Scanning
               # https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning-enhanced-iam.html
@@ -223,7 +231,7 @@ Resources:
     # checkov:skip=CKV_AWS_51: "Mutable tags allowed for workflow flexibility and version updates."
     Properties:
       ImageScanningConfiguration:
-        ScanOnPush: true
+        ScanOnPush: !If [IsECRImageScanningEnabled, true, false]
       EncryptionConfiguration:
         EncryptionType: KMS
         KmsKey: !Ref CustomerManagedEncryptionKeyArn

@@ -5,6 +5,18 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pattern-2 Intermittent HITLStatusUpdateFunction ECR Access Failure**
+  - Fixed intermittent "Lambda does not have permission to access the ECR image" (403) errors during Pattern-2 deployment
+  - **Root Cause**: Race condition where Lambda functions were created before ECR images were fully available and scannable
+  - **Solution**: Enhanced CodeBuild custom resource to verify ECR image availability before completing, including:
+    - Verification that all required Lambda images exist in ECR repository
+    - Check that image scanning is complete (repository has `ScanOnPush: true`)
+  - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (default: true) to allow users to disable ECR vulnerability scanning if experiencing deployment issues
+    - Recommended: Keep enabled (true) for production to maintain security posture
+    - Optional: Disable (false) only as temporary workaround for deployment reliability
+
 ## [0.4.1]
 
 ### Changed
