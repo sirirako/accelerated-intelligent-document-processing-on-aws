@@ -32,6 +32,8 @@ SPDX-License-Identifier: MIT-0
   - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (current default: false) to allow users to enable/disable ECR vulnerability scanning if experiencing deployment issues
     - Recommended: Set enabled (true) for production to maintain security posture
     - Optional: Disable (false) only as temporary workaround for deployment reliability
+  - **Resolved failing Docker build issue related to Python pymupdf package version update**
+    - Pinned pymupdf version to prevent attempted (failing) deployment of newly published version (which is missing ARM64 wheels)
 
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.1.yaml`
