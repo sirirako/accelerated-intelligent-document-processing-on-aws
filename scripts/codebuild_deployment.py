@@ -329,12 +329,14 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
 
         Requirements:
         - Use EXACT table format above
-        - For failures: provide detailed root cause analysis for ALL failed patterns
+        - For failures: provide detailed root cause analysis for ALL failed components (publish, deployments, etc.)
+        - Analyze publish/build logs to determine root cause of template publishing errors
         - Include specific error messages, resource names, and exact failure points from logs
-        - Include sufficient technical details to understand WHY each pattern failed
+        - Include sufficient technical details to understand WHY each component failed
         - Maximum 2-3 bullet points for recommendations
         - Keep each line under 75 characters
         - Extract actual error messages and resource identifiers from logs
+        - For publish failures: check S3 permissions, npm/pip errors, CDK issues, template syntax
         """)
         
         # Call Bedrock API
@@ -342,7 +344,7 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2000,
+                "max_tokens": 4000,
                 "messages": [
                     {
                         "role": "user",
@@ -520,50 +522,65 @@ def main():
     print(f"Patterns to deploy: {[p['name'] for p in DEPLOY_PATTERNS]}")
 
     # Step 1: Publish templates to S3
-    template_url = publish_templates()
+    try:
+        template_url = publish_templates()
+        publish_success = True
+    except Exception as e:
+        print(f"❌ Publish failed: {e}")
+        template_url = "N/A - Publish failed"
+        publish_success = False
 
-    all_success = True
+    all_success = publish_success
     deployment_results = []
 
-    # Step 2: Deploy, test, and cleanup patterns concurrently
-    print("🚀 Starting concurrent deployment of all patterns...")
-    with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
-        # Submit all deployment tasks
-        future_to_pattern = {
-            executor.submit(
-                deploy_test_and_cleanup_pattern,
-                stack_prefix,
-                pattern_config,
-                admin_email,
-                template_url,
-            ): pattern_config
-            for pattern_config in DEPLOY_PATTERNS
-        }
+    # Step 2: Deploy, test, and cleanup patterns concurrently (only if publish succeeded)
+    if publish_success:
+        print("🚀 Starting concurrent deployment of all patterns...")
+        with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
+            # Submit all deployment tasks
+            future_to_pattern = {
+                executor.submit(
+                    deploy_test_and_cleanup_pattern,
+                    stack_prefix,
+                    pattern_config,
+                    admin_email,
+                    template_url,
+                ): pattern_config
+                for pattern_config in DEPLOY_PATTERNS
+            }
 
-        # Collect results as they complete (cleanup happens within each pattern)
-        for future in as_completed(future_to_pattern):
-            pattern_config = future_to_pattern[future]
-            try:
-                result = future.result()
-                deployment_results.append(result)
-                if not result["success"]:
+            # Collect results as they complete (cleanup happens within each pattern)
+            for future in as_completed(future_to_pattern):
+                pattern_config = future_to_pattern[future]
+                try:
+                    result = future.result()
+                    deployment_results.append(result)
+                    if not result["success"]:
+                        all_success = False
+                        print(f"[{pattern_config['name']}] ❌ Failed")
+                    else:
+                        print(f"[{pattern_config['name']}] ✅ Success")
+                        
+                except Exception as e:
+                    print(f"[{pattern_config['name']}] ❌ Exception: {e}")
+                    # Add failed result for exception cases
+                    deployment_results.append({
+                        "stack_name": f"{stack_prefix}-{pattern_config['suffix']}",
+                        "pattern_name": pattern_config['name'],
+                        "success": False,
+                        "error": str(e)
+                    })
                     all_success = False
-                    print(f"[{pattern_config['name']}] ❌ Failed")
-                else:
-                    print(f"[{pattern_config['name']}] ✅ Success")
-                    
-            except Exception as e:
-                print(f"[{pattern_config['name']}] ❌ Exception: {e}")
-                # Add failed result for exception cases
-                deployment_results.append({
-                    "stack_name": f"{stack_prefix}-{pattern_config['suffix']}",
-                    "pattern_name": pattern_config['name'],
-                    "success": False,
-                    "error": str(e)
-                })
-                all_success = False
+    else:
+        # Add publish failure to results for AI analysis
+        deployment_results.append({
+            "stack_name": "N/A",
+            "pattern_name": "Template Publishing",
+            "success": False,
+            "error": "Failed to publish templates to S3"
+        })
 
-    # Step 3: Generate deployment summary using Bedrock
+    # Step 3: Generate deployment summary using Bedrock (ALWAYS run for analysis)
     print("\n🤖 Generating deployment summary with Bedrock...")
     try:
         generate_deployment_summary(deployment_results, stack_prefix, template_url)
