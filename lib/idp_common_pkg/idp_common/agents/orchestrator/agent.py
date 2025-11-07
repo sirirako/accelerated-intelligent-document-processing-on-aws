@@ -274,6 +274,8 @@ Example:
 - For table/plot responses: Return ONLY the JSON with zero additional text
 - Synthesize information from multiple agents when needed
 - Keep responses clear and user-friendly
+- If a subagent or several subagents result in error after 2 times of retry, reply gracefully by mentioning the error that has occurred and STOP retrying the agents. 
+
 """
 
     # Get model ID using configuration helper (checks env vars, config table, then defaults)

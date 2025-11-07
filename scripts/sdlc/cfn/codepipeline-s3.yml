@@ -161,6 +161,7 @@ Resources:
                 - npm install -g aws-cdk || { echo "CDK installation failed"; exit 1; }
                 - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket idp-sdlc-sourcecode-${AWS_ACCOUNT_ID:-020432867916}-${AWS_DEFAULT_REGION:-us-east-1} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
                 - cd idp_cli && pip install -e . && cd .. || { echo "IDP CLI installation failed"; exit 1; }
+                - pip install rich || echo "Rich installation failed, using fallback formatting"
             build:
               commands:
                 - python3 scripts/codebuild_deployment.py
@@ -173,6 +174,7 @@ Resources:
       Name: !Ref PipelineName
       RoleArn: !GetAtt CodePipelineRole.Arn
       ExecutionMode: PARALLEL
+      PipelineType: V2
       ArtifactStore:
         Type: S3
         Location: !Ref ArtifactBucket
@@ -191,7 +193,7 @@ Resources:
               Configuration:
                 S3Bucket: !Ref BucketName
                 S3ObjectKey: !Ref FileKey
-                PollForSourceChanges: true
+                PollForSourceChanges: false
               OutputArtifacts:
                 - Name: SourceOutput
               RunOrder: 1
@@ -258,3 +260,65 @@ Resources:
               - 'logs:CreateLogStream'
               - 'logs:PutLogEvents'
             Resource: '*'
+
+  CodeBuildBedrockPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: CreateCodeBuildRole
+    Properties:
+      PolicyName: CodeBuildBedrockAccess
+      Roles: 
+        - !Ref CodeBuildRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'bedrock:InvokeModel'
+            Resource: 
+              - !Sub 'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
+
+  # CloudWatch Events Rule to trigger pipeline on S3 changes
+  PipelineTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: idp-pipeline-trigger
+      Description: Trigger CodePipeline on S3 object changes
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref BucketName
+          object:
+            key:
+              - !Ref FileKey
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${PipelineName}'
+          Id: PipelineTrigger
+          RoleArn: !GetAtt PipelineTriggerRole.Arn
+
+  # IAM Role for CloudWatch Events to trigger CodePipeline
+  PipelineTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: idp-pipeline-trigger-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TriggerPipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codepipeline:StartPipelineExecution
+                Resource: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${PipelineName}'

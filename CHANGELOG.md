@@ -7,6 +7,28 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+
+
+
+## [0.4.2]
+
+### Changed
+
+- **Agent Companion Chat - Chat History Feature**
+  - Added chat history feature from Agent Analysis back into Agent Companion Chat
+  - Users can now load and view previous chat sessions with full conversation context
+  - Chat history dropdown displays recent sessions with timestamps and message counts
+
+### Fixed
+
+- **Agent Companion Chat - Session Persistence and input control**
+  - Agent Companion Chat in-session memory now persists even when user changes pages
+  - Prompt input is disabled during active streaming responses to prevent concurrent requests
+  - Fixed issue where charts in loaded chat history were not displaying
+
+- **GovCloud Template Generation - Missing Chat Resources**
+  - Fixed CloudFormation deployment error `Fn::GetAtt references undefined resource GraphQLApi` when deploying GovCloud templates
+
 ## [0.4.1]
 
 ### Changed

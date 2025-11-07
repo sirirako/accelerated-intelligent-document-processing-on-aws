@@ -155,8 +155,27 @@ integration_tests:
           LOG_STREAM_NAME="${BUILD_ID#*:}"
           echo "Log Stream: $LOG_STREAM_NAME"
           echo ""
-          echo "=== CODEBUILD LOGS ==="
-          aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --start-from-head --query 'events[].message' --output text 2>/dev/null || echo "Could not retrieve CodeBuild logs"
+          echo "=== DEPLOYMENT SUMMARY ==="
+          # Wait for CloudWatch Logs to flush all events
+          echo "Waiting 30 seconds for logs to flush..."
+          sleep 30
+          FULL_LOGS=$(aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --start-from-head --query 'events[].message' --output text 2>/dev/null || echo "Could not retrieve CodeBuild logs")
+          
+          # Save full logs to artifact
+          echo "$FULL_LOGS" > codebuild_logs.txt
+          echo "📁 Full deployment logs saved to: codebuild_logs.txt"
+          
+          # Extract and show deployment summary (AI or manual)
+          echo ""
+          SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100)
+          
+          if [ -n "$SUMMARY" ]; then
+            echo "🤖 Deployment Analysis:"
+            echo "$SUMMARY"
+          else
+            echo "⚠️ No deployment summary found - check codebuild_logs.txt for details"
+          fi
+          fi
         else
           echo "Could not find CodeBuild execution"
         fi
@@ -168,4 +187,5 @@ integration_tests:
     when: always
     paths:
       - pipeline_execution_id.txt
+      - codebuild_logs.txt
     expire_in: 1 week
