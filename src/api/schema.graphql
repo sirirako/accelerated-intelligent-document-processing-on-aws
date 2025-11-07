@@ -370,8 +370,6 @@ type Mutation {
     errorMessage: String
   ): DiscoveryJob @aws_iam
   deleteAgentJob(jobId: ID!): Boolean @aws_cognito_user_pools
-  sendAgentChatMessage(prompt: String!, sessionId: String, method: String, enableCodeIntelligence: Boolean): AgentChatMessage @aws_cognito_user_pools @aws_iam
-  updateAgentChatMessage(sessionId: ID!, content: String!): AgentChatMessage @aws_cognito_user_pools @aws_iam
   sendAgentChatMessage(
     prompt: String!
     sessionId: String
@@ -414,7 +412,6 @@ type Query @aws_cognito_user_pools @aws_iam {
   submitAgentQuery(query: String!, agentIds: [String!]!): AgentJob
     @aws_cognito_user_pools
   getAgentJobStatus(jobId: ID!): AgentJob @aws_cognito_user_pools
-  getAgentChatMessages(sessionId: ID!): [AgentChatMessage] @aws_cognito_user_pools @aws_iam
   listAgentJobs(limit: Int, nextToken: String): AgentJobConnection
     @aws_cognito_user_pools
   getAgentChatMessages(sessionId: ID!): [AgentChatMessage]
