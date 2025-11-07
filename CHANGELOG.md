@@ -5,6 +5,11 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+
+
+
 ## [0.4.2]
 
 ### Changed
@@ -20,6 +25,9 @@ SPDX-License-Identifier: MIT-0
   - Agent Companion Chat in-session memory now persists even when user changes pages
   - Prompt input is disabled during active streaming responses to prevent concurrent requests
   - Fixed issue where charts in loaded chat history were not displaying
+
+- **GovCloud Template Generation - Missing Chat Resources**
+  - Fixed CloudFormation deployment error `Fn::GetAtt references undefined resource GraphQLApi` when deploying GovCloud templates
 
 ## [0.4.1]
 
