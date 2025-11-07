@@ -156,6 +156,9 @@ integration_tests:
           echo "Log Stream: $LOG_STREAM_NAME"
           echo ""
           echo "=== CODEBUILD LOGS ==="
+          # Wait for CloudWatch Logs to flush all events
+          echo "Waiting 30 seconds for logs to flush..."
+          sleep 30
           aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --start-from-head --query 'events[].message' --output text 2>/dev/null || echo "Could not retrieve CodeBuild logs"
         else
           echo "Could not find CodeBuild execution"

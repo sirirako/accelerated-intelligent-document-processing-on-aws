@@ -245,7 +245,7 @@ def get_codebuild_logs():
         
         # Extract log group and stream from build ID
         log_group = f"/aws/codebuild/{build_id.split(':')[0]}"
-        log_stream = build_id.split('/')[-1]
+        log_stream = build_id.split(':')[-1]
         
         # Get logs from CloudWatch
         logs_client = boto3.client('logs')
@@ -281,6 +281,10 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
     try:
         # Get CodeBuild logs
         deployment_logs = get_codebuild_logs()
+        
+        # Check if log retrieval failed
+        if deployment_logs.startswith("Failed to retrieve CodeBuild logs"):
+            raise Exception("CodeBuild logs unavailable")
         
         # Initialize Bedrock client
         bedrock = boto3.client('bedrock-runtime')
@@ -372,6 +376,31 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         return manual_summary
 
 
+def delete_versioned_bucket(bucket_name):
+    """Delete all versions and delete markers from a versioned S3 bucket, then delete the bucket."""
+    import boto3
+    try:
+        s3 = boto3.client('s3')
+        paginator = s3.get_paginator('list_object_versions')
+        
+        for page in paginator.paginate(Bucket=bucket_name):
+            # Delete object versions
+            if 'Versions' in page:
+                for version in page['Versions']:
+                    s3.delete_object(Bucket=bucket_name, Key=version['Key'], VersionId=version['VersionId'])
+            
+            # Delete delete markers
+            if 'DeleteMarkers' in page:
+                for marker in page['DeleteMarkers']:
+                    s3.delete_object(Bucket=bucket_name, Key=marker['Key'], VersionId=marker['VersionId'])
+        
+        # Delete the bucket
+        s3.delete_bucket(Bucket=bucket_name)
+        return True
+    except Exception:
+        return False
+
+
 def cleanup_stack(stack_name, pattern_name):
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
     try:
@@ -394,13 +423,12 @@ def cleanup_stack(stack_name, pattern_name):
         
         # ECR repositories
         print(f"[{pattern_name}] Cleaning up ECR repositories...")
-        stack_name_lower = stack_name.lower()
-        result = run_command(f"aws ecr describe-repositories --query 'repositories[?contains(repositoryName, `{stack_name_lower}`)].repositoryName' --output text", check=False)
+        result = run_command(f"aws ecr describe-repositories --query 'repositories[?contains(repositoryName, `{stack_name}`)].repositoryName' --output text", check=False)
         if result.stdout.strip():
             repo_names = [name for name in result.stdout.strip().split('\t') if name]
             for repo_name in repo_names:
                 print(f"[{pattern_name}] Deleting ECR repository: {repo_name}")
-                run_command(f"aws ecr delete-repository --repository-name {repo_name} --force", check=False)
+                run_command(f"aws ecr delete-repository --repository-name '{repo_name}' --force", check=False)
 
         # S3 buckets (empty and delete orphaned buckets)
         print(f"[{pattern_name}] Cleaning up S3 buckets...")
@@ -409,8 +437,9 @@ def cleanup_stack(stack_name, pattern_name):
             bucket_names = [name for name in result.stdout.strip().split('\t') if name]
             for bucket_name in bucket_names:
                 print(f"[{pattern_name}] Deleting bucket: {bucket_name}")
-                run_command(f"aws s3 rm s3://{bucket_name} --recursive", check=False)
-                run_command(f"aws s3api delete-bucket --bucket {bucket_name}", check=False)
+                # Try versioned bucket deletion first, fallback to regular deletion
+                if not delete_versioned_bucket(bucket_name):
+                    run_command(f"aws s3 rb s3://{bucket_name} --force", check=False)
 
         # CloudWatch log groups
         print(f"[{pattern_name}] Cleaning up CloudWatch log groups...")
@@ -419,7 +448,7 @@ def cleanup_stack(stack_name, pattern_name):
             log_group_names = [name for name in result.stdout.strip().split('\t') if name]
             for log_group_name in log_group_names:
                 print(f"[{pattern_name}] Deleting log group: {log_group_name}")
-                run_command(f"aws logs delete-log-group --log-group-name {log_group_name}", check=False)
+                run_command(f"aws logs delete-log-group --log-group-name '{log_group_name}'", check=False)
 
         # AppSync logs
         print(f"[{pattern_name}] Cleaning up AppSync logs...")
@@ -437,7 +466,7 @@ def cleanup_stack(stack_name, pattern_name):
             policy_names = [name for name in result.stdout.strip().split('\t') if name]
             for policy_name in policy_names:
                 print(f"[{pattern_name}] Deleting resource policy: {policy_name}")
-                run_command(f"aws logs delete-resource-policy --policy-name {policy_name}", check=False)
+                run_command(f"aws logs delete-resource-policy --policy-name '{policy_name}'", check=False)
         
         print(f"[{pattern_name}] ✅ Cleanup completed")
     except Exception as e:
