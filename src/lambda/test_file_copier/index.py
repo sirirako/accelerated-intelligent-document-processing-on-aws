@@ -32,7 +32,7 @@ def handler(event, context):
             
             logger.info(f"Processing test run {test_run_id} with pattern '{file_pattern}'")
             
-            # Update status to PROCESSING
+            # Update status to RUNNING
             _update_test_run_status(tracking_table, test_run_id, 'RUNNING')
             
             # Find matching files

@@ -16,13 +16,31 @@ The system supports real-time monitoring, prevents concurrent test execution, an
 ### Backend Components
 
 #### TestRunner Lambda
-- **Purpose**: Executes test runs with configurable parameters
+- **Purpose**: Initiates test runs and queues file processing jobs
 - **Location**: `src/lambda/test_runner/index.py`
 - **Functionality**:
-  - Processes documents from test sets
-  - Applies configurable test parameters
-  - Manages test execution lifecycle
-  - Provides status updates and progress tracking
+  - Validates test sets and finds matching files
+  - Stores initial test run metadata with QUEUED status
+  - Sends SQS message to trigger asynchronous file processing
+  - Returns immediately to prevent AppSync timeout issues
+  - Optimized for fast response (< 30 seconds)
+
+#### TestFileCopier Lambda
+- **Purpose**: Handles asynchronous file copying and processing initiation
+- **Location**: `src/lambda/test_file_copier/index.py`
+- **Functionality**:
+  - Processes SQS messages from TestRunner
+  - Updates test run status to PROCESSING
+  - Copies baseline files for evaluation comparison
+  - Copies input files to trigger document processing pipeline
+  - Handles errors and updates status to FAILED if needed
+  - Uses high concurrency for fast file operations
+
+#### SQS Integration
+- **TestFileCopyQueue**: Main queue for file copying jobs
+- **TestFileCopyQueueDLQ**: Dead letter queue for failed operations
+- **Message Format**: Contains test run ID, file pattern, bucket names, and tracking table
+- **Benefits**: Reliable async processing, automatic retries, prevents AppSync timeouts
 
 #### TestResultsResolver Lambda
 - **Purpose**: Handles GraphQL queries for test results and comparisons
@@ -182,8 +200,10 @@ components/
 
 #### Test Execution States
 - **Ready**: Button enabled, no test running
-- **Running**: Button disabled, warning message displayed
-- **Completed**: Button re-enabled, status cleared
+- **QUEUED**: Test run created, file copying jobs queued in SQS
+- **RUNNING**: Files being copied and documents being processed
+- **COMPLETED**: Test finished successfully, button re-enabled
+- **FAILED**: Test encountered errors during processing
 
 #### Concurrent Test Prevention
 - **Single Test Limit**: Only one test can run at a time
@@ -302,7 +322,23 @@ TestStudioLayout (Container)
 
 ### Data Flow
 ```
-User Action → TestRunner → GraphQL Mutation → Lambda → Status Update → TestRunnerStatus → UI Refresh
+User Action → TestRunner → SQS Message → TestFileCopier → File Operations → Status Updates → UI Refresh
+```
+
+### Status Flow
+```
+QUEUED (TestRunner) → RUNNING (TestFileCopier) → COMPLETED/FAILED (Document Processing)
+```
+
+### SQS Message Format
+```json
+{
+  "testRunId": "test-set-1-20231107-162647",
+  "filePattern": "lending*",
+  "inputBucket": "input-bucket-name",
+  "baselineBucket": "baseline-bucket-name", 
+  "trackingTable": "tracking-table-name"
+}
 ```
 
 ### Import Structure
