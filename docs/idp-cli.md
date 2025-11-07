@@ -177,14 +177,33 @@ idp-cli delete [OPTIONS]
 - `--stack-name` (required): CloudFormation stack name
 - `--force`: Skip confirmation prompt
 - `--empty-buckets`: Empty S3 buckets before deletion (required if buckets contain data)
+- `--force-delete-all`: Force delete ALL remaining resources after CloudFormation deletion (S3 buckets, CloudWatch logs, DynamoDB tables)
 - `--wait / --no-wait`: Wait for deletion to complete (default: wait)
 - `--region`: AWS region (optional)
 
 **S3 Bucket Behavior:**
-- **LoggingBucket**: `DeletionPolicy: Retain` - Always kept
+- **LoggingBucket**: `DeletionPolicy: Retain` - Always kept (unless using `--force-delete-all`)
 - **All other buckets**: `DeletionPolicy: RetainExceptOnCreate` - Deleted if empty
 - CloudFormation can ONLY delete S3 buckets if they're empty
 - Use `--empty-buckets` to automatically empty buckets before deletion
+- Use `--force-delete-all` to delete ALL remaining resources after CloudFormation completes
+
+**Force Delete All Behavior:**
+
+The `--force-delete-all` flag performs a comprehensive cleanup AFTER CloudFormation deletion completes:
+
+1. **CloudFormation Deletion Phase**: Standard stack deletion
+2. **Analysis Phase**: Identifies resources with DELETE_SKIPPED or retained status
+3. **Cleanup Phase**: Deletes remaining resources in order:
+   - DynamoDB tables (disables PITR, then deletes)
+   - CloudWatch Log Groups (matching stack name pattern)
+   - S3 buckets (regular buckets first, LoggingBucket last)
+
+**Resources Deleted by --force-delete-all:**
+- All DynamoDB tables from stack
+- All CloudWatch Log Groups (including nested stack logs)
+- All S3 buckets including LoggingBucket
+- Handles nested stack resources automatically
 
 **Examples:**
 
@@ -198,11 +217,14 @@ idp-cli delete --stack-name test-stack --force
 # Delete with automatic bucket emptying
 idp-cli delete --stack-name test-stack --empty-buckets --force
 
+# Force delete ALL remaining resources (comprehensive cleanup)
+idp-cli delete --stack-name test-stack --force-delete-all --force
+
 # Delete without waiting
 idp-cli delete --stack-name test-stack --force --no-wait
 ```
 
-**What you'll see:**
+**What you'll see (standard deletion):**
 ```
 ⚠️  WARNING: Stack Deletion
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -220,15 +242,70 @@ This action cannot be undone.
 Are you sure you want to delete this stack? [y/N]: _
 ```
 
+**What you'll see (force-delete-all):**
+```
+⚠️  WARNING: FORCE DELETE ALL RESOURCES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Stack: test-stack
+Region: us-east-1
+
+S3 Buckets:
+  • InputBucket: 20 objects (45.3 MB)
+  • OutputBucket: 20 objects (123.7 MB)
+  • LoggingBucket: 5000 objects (2.3 GB)
+
+⚠️  FORCE DELETE ALL will remove:
+  • All S3 buckets (including LoggingBucket)
+  • All CloudWatch Log Groups
+  • All DynamoDB Tables
+  • Any other retained resources
+
+This happens AFTER CloudFormation deletion completes
+
+This action cannot be undone.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Are you ABSOLUTELY sure you want to force delete ALL resources? [y/N]: y
+
+Deleting CloudFormation stack...
+✓ Stack deleted successfully!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Starting force cleanup of retained resources...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Analyzing retained resources...
+Found 4 retained resources:
+  • DynamoDB Tables: 0
+  • CloudWatch Logs: 0
+  • S3 Buckets: 3
+
+⠋ Deleting S3 buckets... 3/3
+
+✓ Cleanup phase complete!
+
+Resources deleted:
+  • S3 Buckets: 3
+    - test-stack-inputbucket-abc123
+    - test-stack-outputbucket-def456
+    - test-stack-loggingbucket-ghi789
+
+Stack 'test-stack' and all resources completely removed.
+```
+
 **Use Cases:**
 - Cleanup test/development environments to avoid charges
 - CI/CD pipelines that provision and teardown stacks
 - Automated testing with temporary stack creation
+- Complete removal of failed stacks with retained resources
+- Cleanup of stacks with LoggingBucket and CloudWatch logs
 
-**Note:** LoggingBucket is retained by design. To delete it manually:
-```bash
-aws s3 rb s3://<logging-bucket-name> --force
-```
+**Important Notes:**
+- `--force-delete-all` automatically includes `--empty-buckets` behavior
+- Cleanup phase runs even if CloudFormation deletion fails
+- Includes resources from nested stacks automatically
+- Safe to run - only deletes resources that weren't deleted by CloudFormation
+- Progress bars show real-time deletion status
 
 ---
 
