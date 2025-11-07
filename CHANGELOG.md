@@ -5,12 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
-### Fixed
-
-
-
-
 ## [0.4.2]
+
+### Added
+
+- **IDP CLI Force Delete All Resources Option**
+  - Added `--force-delete-all` flag to `idp-cli delete` command for comprehensive stack cleanup
+  - **Post-CloudFormation Cleanup**: Analyzes resources after CloudFormation deletion completes to identify retained resources (DELETE_SKIPPED status)
+  - **Use Cases**: Complete test environment cleanup, CI/CD pipelines requiring full teardown, cost optimization by removing all retained resources
 
 ### Changed
 

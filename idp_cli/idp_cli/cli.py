@@ -40,7 +40,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="1.0.0")
+@click.version_option(version="0.4.2")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -302,6 +302,11 @@ def deploy(
     help="Empty S3 buckets before deletion (required if buckets contain data)",
 )
 @click.option(
+    "--force-delete-all",
+    is_flag=True,
+    help="Force delete ALL remaining resources after CloudFormation deletion (S3 buckets, CloudWatch logs, DynamoDB tables). This cannot be undone.",
+)
+@click.option(
     "--wait/--no-wait",
     default=True,
     help="Wait for deletion to complete (default: wait)",
@@ -311,6 +316,7 @@ def delete(
     stack_name: str,
     force: bool,
     empty_buckets: bool,
+    force_delete_all: bool,
     wait: bool,
     region: Optional[str],
 ):
@@ -321,6 +327,7 @@ def delete(
 
     S3 buckets configured with RetainExceptOnCreate will be deleted if empty.
     Use --empty-buckets to automatically empty buckets before deletion.
+    Use --force-delete-all to delete ALL remaining resources after CloudFormation deletion.
 
     Examples:
 
@@ -332,6 +339,9 @@ def delete(
 
       # Delete with automatic bucket emptying
       idp-cli delete --stack-name test-stack --empty-buckets --force
+
+      # Force delete ALL remaining resources (S3, logs, DynamoDB)
+      idp-cli delete --stack-name test-stack --force-delete-all --force
 
       # Delete without waiting for completion
       idp-cli delete --stack-name test-stack --force --no-wait
@@ -350,7 +360,10 @@ def delete(
 
         # Show warning with bucket details
         console.print()
-        console.print("[bold red]⚠️  WARNING: Stack Deletion[/bold red]")
+        if force_delete_all:
+            console.print("[bold red]⚠️  WARNING: FORCE DELETE ALL RESOURCES[/bold red]")
+        else:
+            console.print("[bold red]⚠️  WARNING: Stack Deletion[/bold red]")
         console.print("━" * 60)
         console.print(f"Stack: [cyan]{stack_name}[/cyan]")
         console.print(f"Region: {region or 'default'}")
@@ -372,12 +385,25 @@ def delete(
                 else:
                     console.print(f"  • {logical_id}: [green]empty[/green]")
 
-            if has_data and not empty_buckets:
+            if has_data and not empty_buckets and not force_delete_all:
                 console.print()
                 console.print("[bold red]⚠️  Buckets contain data![/bold red]")
                 console.print("Deletion will FAIL unless you:")
                 console.print("  1. Use --empty-buckets flag to auto-delete data, OR")
-                console.print("  2. Manually empty buckets first")
+                console.print("  2. Use --force-delete-all to delete everything, OR")
+                console.print("  3. Manually empty buckets first")
+
+        if force_delete_all:
+            console.print()
+            console.print("[bold red]⚠️  FORCE DELETE ALL will remove:[/bold red]")
+            console.print("  • All S3 buckets (including LoggingBucket)")
+            console.print("  • All CloudWatch Log Groups")
+            console.print("  • All DynamoDB Tables")
+            console.print("  • Any other retained resources")
+            console.print()
+            console.print(
+                "[bold yellow]This happens AFTER CloudFormation deletion completes[/bold yellow]"
+            )
 
         console.print()
         console.print("[bold red]This action cannot be undone.[/bold red]")
@@ -386,15 +412,22 @@ def delete(
 
         # Confirmation unless --force
         if not force:
-            response = click.confirm(
-                "Are you sure you want to delete this stack?", default=False
-            )
+            if force_delete_all:
+                response = click.confirm(
+                    "Are you ABSOLUTELY sure you want to force delete ALL resources?",
+                    default=False,
+                )
+            else:
+                response = click.confirm(
+                    "Are you sure you want to delete this stack?", default=False
+                )
+
             if not response:
                 console.print("[yellow]Deletion cancelled[/yellow]")
                 return
 
-            # Double confirmation if --empty-buckets
-            if empty_buckets:
+            # Double confirmation if --empty-buckets (and not force-delete-all)
+            if empty_buckets and not force_delete_all:
                 console.print()
                 console.print(
                     "[bold red]⚠️  You are about to permanently delete all bucket data![/bold red]"
@@ -416,20 +449,11 @@ def delete(
                 wait=wait,
             )
 
-        # Show results
+        # Show CloudFormation deletion results
         if result.get("success"):
             console.print("\n[green]✓ Stack deleted successfully![/green]")
             console.print(f"Stack: {stack_name}")
             console.print(f"Status: {result.get('status')}")
-
-            # Note about LoggingBucket
-            console.print()
-            console.print(
-                "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
-            )
-            console.print("Delete it manually if no longer needed:")
-            console.print("  [cyan]aws s3 rb s3://<logging-bucket-name> --force[/cyan]")
-            console.print()
         else:
             console.print("\n[red]✗ Stack deletion failed![/red]")
             console.print(f"Status: {result.get('status')}")
@@ -438,10 +462,96 @@ def delete(
             if "bucket" in result.get("error", "").lower():
                 console.print()
                 console.print(
-                    "[yellow]Tip: Try again with --empty-buckets flag[/yellow]"
+                    "[yellow]Tip: Try again with --empty-buckets or --force-delete-all flag[/yellow]"
                 )
 
-            sys.exit(1)
+            if not force_delete_all:
+                sys.exit(1)
+            else:
+                console.print()
+                console.print(
+                    "[yellow]Stack deletion failed, but continuing with force cleanup...[/yellow]"
+                )
+
+        # Post-deletion cleanup if --force-delete-all
+        cleanup_result = None
+        if force_delete_all:
+            console.print()
+            console.print("[bold blue]━" * 60 + "[/bold blue]")
+            console.print(
+                "[bold blue]Starting force cleanup of retained resources...[/bold blue]"
+            )
+            console.print("[bold blue]━" * 60 + "[/bold blue]")
+
+            try:
+                # Use stack ID for deleted stacks (CloudFormation requires ID for deleted stacks)
+                stack_identifier = result.get("stack_id", stack_name)
+                cleanup_result = deployer.cleanup_retained_resources(stack_identifier)
+
+                # Show cleanup summary
+                console.print()
+                console.print("[bold green]✓ Cleanup phase complete![/bold green]")
+                console.print()
+
+                total_deleted = (
+                    len(cleanup_result.get("dynamodb_deleted", []))
+                    + len(cleanup_result.get("logs_deleted", []))
+                    + len(cleanup_result.get("buckets_deleted", []))
+                )
+
+                if total_deleted > 0:
+                    console.print("[bold]Resources deleted:[/bold]")
+
+                    if cleanup_result.get("dynamodb_deleted"):
+                        console.print(
+                            f"  • DynamoDB Tables: {len(cleanup_result['dynamodb_deleted'])}"
+                        )
+                        for table in cleanup_result["dynamodb_deleted"]:
+                            console.print(f"    - {table}")
+
+                    if cleanup_result.get("logs_deleted"):
+                        console.print(
+                            f"  • CloudWatch Log Groups: {len(cleanup_result['logs_deleted'])}"
+                        )
+                        for log_group in cleanup_result["logs_deleted"]:
+                            console.print(f"    - {log_group}")
+
+                    if cleanup_result.get("buckets_deleted"):
+                        console.print(
+                            f"  • S3 Buckets: {len(cleanup_result['buckets_deleted'])}"
+                        )
+                        for bucket in cleanup_result["buckets_deleted"]:
+                            console.print(f"    - {bucket}")
+
+                if cleanup_result.get("errors"):
+                    console.print()
+                    console.print(
+                        "[bold yellow]⚠️  Some resources could not be deleted:[/bold yellow]"
+                    )
+                    for error in cleanup_result["errors"]:
+                        console.print(f"  • {error['type']}: {error['resource']}")
+                        console.print(f"    Error: {error['error']}")
+
+                console.print()
+
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}", exc_info=True)
+                console.print(f"\n[red]✗ Cleanup phase error: {e}[/red]")
+                console.print(
+                    "[yellow]Some resources may remain - check AWS Console[/yellow]"
+                )
+        else:
+            # Standard deletion without force-delete-all
+            if result.get("success"):
+                console.print()
+                console.print(
+                    "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
+                )
+                console.print("Delete it manually if no longer needed:")
+                console.print(
+                    "  [cyan]aws s3 rb s3://<logging-bucket-name> --force[/cyan]"
+                )
+                console.print()
 
     except Exception as e:
         logger.error(f"Error deleting stack: {e}", exc_info=True)
