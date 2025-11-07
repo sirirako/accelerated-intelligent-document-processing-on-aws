@@ -8,6 +8,7 @@ Handles IDP stack deployment and testing in AWS CodeBuild environment.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -480,21 +481,31 @@ def cleanup_stack(stack_name, pattern_name):
 
         # CloudWatch log groups
         print(f"[{pattern_name}] Cleaning up CloudWatch log groups...")
-        result = run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output text", check=False)
+        result = run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output json", check=False)
         if result.stdout.strip():
-            log_group_names = [name for name in result.stdout.strip().split('\t') if name]
-            for log_group_name in log_group_names:
-                print(f"[{pattern_name}] Deleting log group: {log_group_name}")
-                run_command(f"aws logs delete-log-group --log-group-name '{log_group_name}'", check=False)
+            try:
+                import json
+                log_group_names = json.loads(result.stdout.strip())
+                for log_group_name in log_group_names:
+                    if log_group_name:  # Skip empty names
+                        print(f"[{pattern_name}] Deleting log group: {log_group_name}")
+                        run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(log_group_name)}", check=False)
+            except json.JSONDecodeError:
+                print(f"[{pattern_name}] Failed to parse log group names")
 
         # AppSync logs
         print(f"[{pattern_name}] Cleaning up AppSync logs...")
-        result = run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output text", check=False)
+        result = run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output json", check=False)
         if result.stdout.strip():
-            api_ids = [api_id for api_id in result.stdout.strip().split('\t') if api_id]
-            for api_id in api_ids:
-                print(f"[{pattern_name}] Deleting AppSync log group for API: {api_id}")
-                run_command(f"aws logs delete-log-group --log-group-name '/aws/appsync/apis/{api_id}'", check=False)
+            try:
+                import json
+                api_ids = json.loads(result.stdout.strip())
+                for api_id in api_ids:
+                    if api_id:  # Skip empty IDs
+                        print(f"[{pattern_name}] Deleting AppSync log group for API: {api_id}")
+                        run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(f'/aws/appsync/apis/{api_id}')}", check=False)
+            except json.JSONDecodeError:
+                print(f"[{pattern_name}] Failed to parse AppSync API IDs")
         
         # Clean up CloudWatch Logs Resource Policy only if stack-specific
         print(f"[{pattern_name}] Checking CloudWatch resource policies...")

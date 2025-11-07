@@ -165,19 +165,16 @@ integration_tests:
           echo "$FULL_LOGS" > codebuild_logs.txt
           echo "📁 Full deployment logs saved to: codebuild_logs.txt"
           
-          # Extract and show AI summary or manual summary
+          # Extract and show deployment summary (AI or manual)
           echo ""
-          AI_SUMMARY=$(echo "$FULL_LOGS" | grep -A 50 "AI Deployment Analysis" | head -50)
-          MANUAL_SUMMARY=$(echo "$FULL_LOGS" | grep -A 20 "DEPLOYMENT SUMMARY REPORT" | head -20)
+          SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100)
           
-          if [ -n "$AI_SUMMARY" ]; then
-            echo "🤖 AI-Powered Deployment Analysis:"
-            echo "$AI_SUMMARY"
-          elif [ -n "$MANUAL_SUMMARY" ]; then
-            echo "📋 Deployment Summary:"
-            echo "$MANUAL_SUMMARY"
+          if [ -n "$SUMMARY" ]; then
+            echo "🤖 Deployment Analysis:"
+            echo "$SUMMARY"
           else
-            echo "⚠️ No deployment summary available"
+            echo "⚠️ No deployment summary found - check codebuild_logs.txt for details"
+          fi
           fi
         else
           echo "Could not find CodeBuild execution"
