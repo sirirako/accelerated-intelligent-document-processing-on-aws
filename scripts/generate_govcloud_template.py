@@ -120,7 +120,35 @@ class GovCloudTemplateGenerator:
             'ProcessChangesResolverFunction',
             'ProcessChangesResolverFunctionLogGroup',
             'ProcessChangesDataSource',
-            'ProcessChangesResolver'
+            'ProcessChangesResolver',
+            # Chat Session Management Resources (added for GovCloud compatibility)
+            'ChatSessionsTable',
+            'ListAgentChatSessionsFunction',
+            'ListAgentChatSessionsFunctionLogGroup',
+            'GetAgentChatMessagesFunction',
+            'GetAgentChatMessagesFunctionLogGroup',
+            'DeleteAgentChatSessionFunction',
+            'DeleteAgentChatSessionFunctionLogGroup',
+            'ListAgentChatSessionsDataSource',
+            'GetAgentChatMessagesDataSource',
+            'DeleteAgentChatSessionDataSource',
+            'ListChatSessionsResolver',
+            'GetChatMessagesResolver',
+            'DeleteChatSessionResolver',
+            # Chat Infrastructure Resources (added for GovCloud compatibility)
+            'ChatMessagesTable',
+            'IdHelperChatMemoryTable',
+            'NoneDataSource',
+            'ChatMessagesDataSource',
+            'OnAgentChatMessageUpdateResolver',
+            'SendAgentChatMessageResolver',
+            'AgentChatDataSource',
+            'AgentChatResolverDataSource',
+            # Agent Chat Lambda Functions (added for GovCloud compatibility)
+            'AgentChatProcessorFunction',
+            'AgentChatProcessorLogGroup',
+            'AgentChatResolverFunction',
+            'AgentChatResolverLogGroup'
         }
         
         self.auth_resources = {
