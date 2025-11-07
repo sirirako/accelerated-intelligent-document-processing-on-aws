@@ -6705,8 +6705,8 @@ Resources:
       Runtime: python3.12
       CodeUri: ./src/lambda/test_runner
       Description: Lambda function to run test sets via GraphQL API
-      MemorySize: 512
-      Timeout: 900
+      MemorySize: 256
+      Timeout: 300
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -6717,6 +6717,7 @@ Resources:
             - !Ref EvaluationBaselineBucketName
           CONFIG_TABLE: !Ref ConfigurationTable
           TRACKING_TABLE: !Ref TrackingTable
+          FILE_COPY_QUEUE_URL: !Ref TestFileCopyQueue
       LoggingConfig:
         LogGroup: !Ref TestRunnerFunctionLogGroup
       Policies:
@@ -6724,6 +6725,131 @@ Resources:
             TableName: !Ref TrackingTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConfigurationTable
+        - S3CrudPolicy:
+            BucketName: !Ref InputBucket
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateEvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucketName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TestFileCopyQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestRunnerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # SQS Queue for test file copying jobs
+  ##########################################################################
+
+  TestFileCopyQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      MessageRetentionPeriod: 1209600 # 14 days
+      VisibilityTimeout: 900
+
+  TestFileCopyQueueDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TestFileCopyQueueDLQ
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt TestFileCopyQueueDLQ.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  TestFileCopyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      VisibilityTimeout: 900
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TestFileCopyQueueDLQ.Arn
+        maxReceiveCount: 3
+
+  TestFileCopyQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TestFileCopyQueue
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt TestFileCopyQueue.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  ##########################################################################
+  # Lambda function to copy test files
+  ##########################################################################
+
+  TestFileCopierFunctionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  TestFileCopierFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ configured for SQS triggered function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/test_file_copier
+      Description: Lambda function to copy test files from SQS queue
+      MemorySize: 1024
+      Timeout: 900
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt TestFileCopierFunctionDLQ.Arn
+      LoggingConfig:
+        LogGroup: !Ref TestFileCopierFunctionLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          INPUT_BUCKET: !Ref InputBucket
+          BASELINE_BUCKET: !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
         - S3CrudPolicy:
             BucketName: !Ref InputBucket
         - S3CrudPolicy:
@@ -6740,8 +6866,14 @@ Resources:
                 - kms:GenerateDataKey*
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TestFileCopyQueue.Arn
+            BatchSize: 1
 
-  TestRunnerFunctionLogGroup:
+  TestFileCopierFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
