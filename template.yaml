@@ -530,7 +530,7 @@ Metadata:
           - KnowledgeBaseVectorStore
           - KnowledgeBaseModelId
       - Label:
-          default: "Agentic Analysis"
+          default: "Agentic Companion Chat"
         Parameters:
           - ChatCompanionModelId
       - Label:
