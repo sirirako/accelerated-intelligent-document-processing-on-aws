@@ -101,9 +101,9 @@ def _capture_config(config_table):
 
 def _copy_baseline_files(baseline_bucket, test_run_id, files):
     """Copy baseline files to test run prefix and validate baseline documents exist"""
-    baseline_files_found = False
+    import concurrent.futures
     
-    for file_key in files:
+    def process_baseline_for_file(file_key):
         # Check if baseline document record exists in tracking table
         table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
         baseline_response = table.get_item(Key={'PK': f'doc#{file_key}', 'SK': 'none'})
@@ -145,7 +145,7 @@ def _copy_baseline_files(baseline_bucket, test_run_id, files):
                 files_copied += 1
             
             logger.info(f"Copied {files_copied} baseline files: {baseline_prefix} -> {new_prefix}")
-            baseline_files_found = True
+            return file_key, True, files_copied, None
             
         except ClientError as e:
             logger.error(f"S3 error for baseline files {baseline_prefix}: {e}")
@@ -158,14 +158,43 @@ def _copy_baseline_files(baseline_bucket, test_run_id, files):
             logger.error(f"Failed to copy baseline files {baseline_prefix}: {e}")
             raise
     
+    baseline_files_found = False
+    failed_files = []
+    
+    # Process baseline files in parallel with max 5 concurrent operations
+    max_workers = min(5, len(files))
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_file = {executor.submit(process_baseline_for_file, file_key): file_key for file_key in files}
+        
+        for future in concurrent.futures.as_completed(future_to_file):
+            try:
+                file_key, success, files_copied, error = future.result(timeout=120)
+                if success:
+                    baseline_files_found = True
+                else:
+                    failed_files.append(f"{file_key}: {error}")
+            except concurrent.futures.TimeoutError:
+                file_key = future_to_file[future]
+                logger.error(f"Timeout processing baseline for {file_key}")
+                failed_files.append(f"{file_key}: timeout")
+            except Exception as e:
+                file_key = future_to_file[future]
+                logger.error(f"Exception processing baseline for {file_key}: {e}")
+                failed_files.append(f"{file_key}: {str(e)}")
+    
+    if failed_files:
+        raise Exception(f"Failed to process baseline files: {failed_files}")
+    
     if not baseline_files_found:
         raise ValueError("No baseline files found for any of the test documents. Please create baseline data first by processing documents and using 'Use as baseline'.")
 
 def _copy_and_process_documents(input_bucket, test_run_id, files):
     """Copy documents to test run prefix to trigger processing"""
-    for file_key in files:
+    import concurrent.futures
+    
+    def copy_single_document(file_key):
         new_key = f"{test_run_id}/{file_key}"
-        
         try:
             s3.copy_object(
                 CopySource={'Bucket': input_bucket, 'Key': file_key},
@@ -173,9 +202,34 @@ def _copy_and_process_documents(input_bucket, test_run_id, files):
                 Key=new_key
             )
             logger.info(f"Copied document for processing: {file_key} -> {new_key}")
+            return file_key, True, None
         except Exception as e:
             logger.error(f"Failed to copy document {file_key}: {e}")
-            raise
+            return file_key, False, str(e)
+    
+    # Process files in parallel with max 10 concurrent operations
+    max_workers = min(10, len(files))
+    failed_files = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_file = {executor.submit(copy_single_document, file_key): file_key for file_key in files}
+        
+        for future in concurrent.futures.as_completed(future_to_file):
+            try:
+                file_key, success, error = future.result(timeout=60)
+                if not success:
+                    failed_files.append(f"{file_key}: {error}")
+            except concurrent.futures.TimeoutError:
+                file_key = future_to_file[future]
+                logger.error(f"Timeout copying document {file_key}")
+                failed_files.append(f"{file_key}: timeout")
+            except Exception as e:
+                file_key = future_to_file[future]
+                logger.error(f"Exception copying document {file_key}: {e}")
+                failed_files.append(f"{file_key}: {str(e)}")
+    
+    if failed_files:
+        raise Exception(f"Failed to copy {len(failed_files)} documents: {failed_files}")
 
 def _store_test_run_metadata(tracking_table, test_run_id, test_set_name, config, files, context=None):
     """Store test run metadata in tracking table"""

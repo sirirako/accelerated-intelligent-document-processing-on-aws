@@ -16,7 +16,7 @@ extras_require = {
     "core": [],
     # Analytics agent dependencies
     "analytics": [
-        "strands-agents>=1.0.0",
+        "strands-agents==1.14.0",  # Pin to exact working version
         "pandas>=2.0.0",
     ],
     # Code intelligence module dependencies
@@ -87,8 +87,8 @@ extras_require = {
     ],
     # Agents module dependencies
     "agents": [
-        "strands-agents>=1.0.0",
-        "strands-agents-tools>=0.2.2",
+        "strands-agents==1.14.0",  # Pin to exact working version
+        "strands-agents-tools==0.2.13",  # Pin to exact working version
         "bedrock-agentcore>=0.1.1",  # Specifically for the code interpreter tool
         "regex>=2024.0.0,<2026.0.0",  # Pin regex version to avoid conflicts
     ],
@@ -104,8 +104,8 @@ extras_require = {
         "pyarrow==20.0.0",
         "openpyxl==3.1.5",
         "python-docx==1.2.0",
-        "strands-agents>=1.0.0",
-        "strands-agents-tools>=0.2.2",
+        "strands-agents==1.14.0",  # Pin to exact working version
+        "strands-agents-tools==0.2.13",  # Pin to exact working version
         "bedrock-agentcore>=0.1.1",
         "regex>=2024.0.0,<2026.0.0",
     ],

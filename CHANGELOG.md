@@ -25,7 +25,7 @@ SPDX-License-Identifier: MIT-0
   - Fixed bug where metering data and document_section data stopped being written to the reporting database after evaluation was migrated from EventBridge to Step Functions workflow
 - **IDP CLI Deploy Command Parameter Preservation Bug**
   - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
-- **Pattern-2 Intermittent HITLStatusUpdateFunction ECR Access Failure**
+- **Pattern-2 Deployment Intermittent Lambda (HITLStatusUpdateFunction) ECR Access Failure**
   - Fixed intermittent "Lambda does not have permission to access the ECR image" (403) errors during Pattern-2 deployment
   - **Root Cause**: Race condition where Lambda functions were created before ECR images were fully available and scannable
   - **Solution**: Enhanced CodeBuild custom resource to verify ECR image availability before completing, including:
@@ -34,6 +34,8 @@ SPDX-License-Identifier: MIT-0
   - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (current default: false) to allow users to enable/disable ECR vulnerability scanning if experiencing deployment issues
     - Recommended: Set enabled (true) for production to maintain security posture
     - Optional: Disable (false) only as temporary workaround for deployment reliability
+- **Resolved failing Docker build issue related to Python pymupdf package version update**
+  - Pinned pymupdf version to prevent attempted (failing) deployment of newly published version (which is missing ARM64 wheels)
 
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.1.yaml`

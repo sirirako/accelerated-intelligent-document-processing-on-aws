@@ -22,6 +22,10 @@ export const documentsNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Agent Analysis', href: `#${DOCUMENTS_ANALYTICS_PATH}` },
+  { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
+  { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
+  { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
+  { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
   {
     type: 'section',
     text: 'Test Studio',
@@ -31,10 +35,6 @@ export const documentsNavItems = [
       { type: 'link', text: 'Test Results', href: `#${TEST_STUDIO_PATH}?tab=results` },
     ],
   },
-  { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
-  { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
-  { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
-  { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
   {
     type: 'section',
     text: 'Resources',
