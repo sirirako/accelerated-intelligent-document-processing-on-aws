@@ -291,7 +291,7 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         
         # Create prompt for Bedrock with actual logs
         prompt = dedent(f"""
-        You are an AWS deployment analyst. Analyze the following deployment logs and create a comprehensive summary.
+        You are an AWS deployment analyst. Analyze the following deployment logs and create a concise summary in table format.
 
         Deployment Information:
         - Timestamp: {datetime.now().isoformat()}
@@ -305,14 +305,36 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         Pattern Results Summary:
         {json.dumps(deployment_results, indent=2)}
 
-        Please provide:
-        1. Executive Summary (2-3 sentences)
-        2. Deployment Status Overview
-        3. Pattern-by-Pattern Analysis
-        4. Failure Analysis (extract specific errors from logs)
-        5. Recommendations based on log analysis
+        Create a summary with this EXACT format:
 
-        Focus on extracting failure reasons from the actual logs and provide actionable insights.
+        ┌─────────────────────────────────────────────────────────────────────────────┐
+        │                              DEPLOYMENT RESULTS                             │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ Pattern               │ Status    │ Duration  │ Key Metrics               │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ Pattern 1 - BDA       │ SUCCESS   │ 15m 30s   │ 28 functions validated    │
+        │ Pattern 2 - OCR       │ SUCCESS   │ 12m 45s   │ All tests passed          │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │                              ROOT CAUSE ANALYSIS                            │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ • CloudWatch log cleanup failed due to concatenated log group names        │
+        │ • AWS CLI text output parsing caused parameter validation errors           │
+        │ • Provide specific error messages, resource names, and failure points      │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │                              RECOMMENDATIONS                                │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ • Fix CloudWatch log cleanup to use JSON output instead of text            │
+        │ • Add proper error handling for resource cleanup operations                 │
+        └─────────────────────────────────────────────────────────────────────────────┘
+
+        Requirements:
+        - Use EXACT table format above
+        - For failures: provide detailed root cause analysis for ALL failed patterns
+        - Include specific error messages, resource names, and exact failure points from logs
+        - Include sufficient technical details to understand WHY each pattern failed
+        - Maximum 2-3 bullet points for recommendations
+        - Keep each line under 75 characters
+        - Extract actual error messages and resource identifiers from logs
         """)
         
         # Call Bedrock API
@@ -334,10 +356,23 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         response_body = json.loads(response['body'].read())
         summary = response_body['content'][0]['text']
         
-        print("📊 Deployment Summary Generated:")
-        print("=" * 80)
-        print(summary)
-        print("=" * 80)
+        try:
+            from rich.console import Console
+            from rich.panel import Panel
+            
+            console = Console()
+            console.print(Panel(
+                summary, 
+                title="🤖 AI Deployment Analysis", 
+                border_style="green",
+                padding=(1, 2)
+            ))
+        except ImportError:
+            # Fallback to plain text if Rich not available
+            print("📊 Deployment Summary Generated:")
+            print("=" * 80)
+            print(summary)
+            print("=" * 80)
         
         return summary
         

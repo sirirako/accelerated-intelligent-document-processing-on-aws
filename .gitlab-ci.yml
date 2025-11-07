@@ -155,11 +155,30 @@ integration_tests:
           LOG_STREAM_NAME="${BUILD_ID#*:}"
           echo "Log Stream: $LOG_STREAM_NAME"
           echo ""
-          echo "=== CODEBUILD LOGS ==="
+          echo "=== DEPLOYMENT SUMMARY ==="
           # Wait for CloudWatch Logs to flush all events
           echo "Waiting 30 seconds for logs to flush..."
           sleep 30
-          aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --start-from-head --query 'events[].message' --output text 2>/dev/null || echo "Could not retrieve CodeBuild logs"
+          FULL_LOGS=$(aws logs get-log-events --log-group-name "/aws/codebuild/app-sdlc" --log-stream-name "$LOG_STREAM_NAME" --start-from-head --query 'events[].message' --output text 2>/dev/null || echo "Could not retrieve CodeBuild logs")
+          
+          # Save full logs to artifact
+          echo "$FULL_LOGS" > codebuild_logs.txt
+          echo "📁 Full deployment logs saved to: codebuild_logs.txt"
+          
+          # Extract and show AI summary or manual summary
+          echo ""
+          AI_SUMMARY=$(echo "$FULL_LOGS" | grep -A 50 "AI Deployment Analysis" | head -50)
+          MANUAL_SUMMARY=$(echo "$FULL_LOGS" | grep -A 20 "DEPLOYMENT SUMMARY REPORT" | head -20)
+          
+          if [ -n "$AI_SUMMARY" ]; then
+            echo "🤖 AI-Powered Deployment Analysis:"
+            echo "$AI_SUMMARY"
+          elif [ -n "$MANUAL_SUMMARY" ]; then
+            echo "📋 Deployment Summary:"
+            echo "$MANUAL_SUMMARY"
+          else
+            echo "⚠️ No deployment summary available"
+          fi
         else
           echo "Could not find CodeBuild execution"
         fi
@@ -171,4 +190,5 @@ integration_tests:
     when: always
     paths:
       - pipeline_execution_id.txt
+      - codebuild_logs.txt
     expire_in: 1 week
