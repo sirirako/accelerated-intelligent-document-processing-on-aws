@@ -175,7 +175,6 @@ integration_tests:
           else
             echo "⚠️ No deployment summary found - check codebuild_logs.txt for details"
           fi
-          fi
         else
           echo "Could not find CodeBuild execution"
         fi
