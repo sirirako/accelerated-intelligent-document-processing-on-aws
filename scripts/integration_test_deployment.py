@@ -200,8 +200,8 @@ def main():
     # Get configuration from environment
     account_id = get_env_var("IDP_ACCOUNT_ID", "020432867916")
     region = get_env_var("AWS_DEFAULT_REGION", "us-east-1")
-    bucket_name = f"idp-sdlc-sourcecode-{account_id}-{region}"
-    pipeline_name = get_env_var("IDP_PIPELINE_NAME", "idp-sdlc-deploy-pipeline")
+    bucket_name = f"genaiic-sdlc-sourcecode-{account_id}-{region}"
+    pipeline_name = get_env_var("IDP_PIPELINE_NAME", "genaiic-sdlc-deploy-pipeline")
 
     print(f"Account ID: {account_id}")
     print(f"Region: {region}")

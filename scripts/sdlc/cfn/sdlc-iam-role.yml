@@ -7,7 +7,7 @@ Description: 'CloudFormation template to create Limited IAM Policy and SDLC Role
 Parameters:
   BuilderRoleName:
     Type: String
-    Default: idp-sdlc-role
+    Default: genaiic-sdlc-role
     Description: Name for the Builder Role
 
 Resources:
