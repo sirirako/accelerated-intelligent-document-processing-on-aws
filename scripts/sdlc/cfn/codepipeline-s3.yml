@@ -8,12 +8,12 @@ Parameters:
   PipelineName:
     Type: String
     Description: 'Name of the CodePipeline'
-    Default: idp-sdlc-deploy-pipeline
+    Default: genaiic-sdlc-deploy-pipeline
 
   BucketName:
     Type: String
     Description: 'Name of the S3 bucket containing the deployment assets'
-    Default: !Sub 'idp-sdlc-sourcecode-${AWS::AccountId}-${AWS::Region}'
+    Default: genaiic-sdlc-sourcecode-YOUR_AWS_ACCOUNT-YOUR_REGION
   
   FileKey:
     Type: String
@@ -28,11 +28,51 @@ Parameters:
   KMSKeyArn:
     Type: String
     Description: 'ARN of customer-managed KMS key for encrypting CodePipeline artifacts'
+    Default: ''
 
 Conditions:
+  CreateKMSKey: !Equals [!Ref KMSKeyArn, '']
   CreateCodeBuildRole: !Equals [!Ref CodeBuildRoleArn, '']
 
 Resources:
+  PipelineKMSKey:
+    Type: AWS::KMS::Key
+    Condition: CreateKMSKey
+    Properties:
+      Description: 'KMS key for CodePipeline artifact encryption'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow CodePipeline Service
+            Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+          - Sid: Allow CodeBuild Service
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+
+  PipelineKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Condition: CreateKMSKey
+    Properties:
+      AliasName: !Sub 'alias/${PipelineName}-key'
+      TargetKeyId: !Ref PipelineKMSKey
+
   CodePipelineRole:
       Type: 'AWS::IAM::Role'
       Properties:
@@ -69,7 +109,7 @@ Resources:
                   Action:
                     - 'kms:Decrypt'
                     - 'kms:GenerateDataKey'
-                  Resource: !Ref KMSKeyArn
+                  Resource: !If [CreateKMSKey, !GetAtt PipelineKMSKey.Arn, !Ref KMSKeyArn]
 
   CodeBuildRole:
     Type: 'AWS::IAM::Role'
@@ -159,7 +199,7 @@ Resources:
               commands:
                 - n 22 && node --version || { echo "Node setup failed"; exit 1; }
                 - npm install -g aws-cdk || { echo "CDK installation failed"; exit 1; }
-                - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket idp-sdlc-sourcecode-${AWS_ACCOUNT_ID:-020432867916}-${AWS_DEFAULT_REGION:-us-east-1} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
+                - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket genaiic-sdlc-sourcecode-${AWS_ACCOUNT_ID:-020432867916}-${AWS_DEFAULT_REGION:-us-east-1} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
                 - cd idp_cli && pip install -e . && cd .. || { echo "IDP CLI installation failed"; exit 1; }
                 - pip install rich || echo "Rich installation failed, using fallback formatting"
             build:
@@ -179,7 +219,7 @@ Resources:
         Type: S3
         Location: !Ref ArtifactBucket
         EncryptionKey:
-          Id: !Ref KMSKeyArn
+          Id: !If [CreateKMSKey, !GetAtt PipelineKMSKey.Arn, !Ref KMSKeyArn]
           Type: KMS
       Stages:
         - Name: Source
@@ -281,7 +321,7 @@ Resources:
   PipelineTriggerRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: idp-pipeline-trigger
+      Name: genaiic-sdlc-pipeline-trigger
       Description: Trigger CodePipeline on S3 object changes
       EventPattern:
         source:
@@ -305,7 +345,7 @@ Resources:
   PipelineTriggerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: idp-pipeline-trigger-role
+      RoleName: genaiic-sdlc-pipeline-trigger-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
