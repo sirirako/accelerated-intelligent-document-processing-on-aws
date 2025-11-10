@@ -370,10 +370,6 @@ STDERR:
         self.prefix_and_version = f"{self.prefix}/{self.version}"
         self.bucket = f"{self.bucket_basename}-{self.region}"
 
-        # Generate content-based Lambda image version
-        # Must be after bucket/prefix are set (needed for checksum cache key)
-        self.lambda_image_version = self._generate_lambda_image_version()
-
         # Set UDOP model path based on region
         self.public_sample_udop_model = f"s3://aws-ml-blog-{self.region}/artifacts/genai-idp/udop-finetuning/rvl-cdip/model.tar.gz"
 
@@ -415,52 +411,6 @@ STDERR:
                 f"[red]Error: Python version >= {min_python_version} is required. (Installed version is {python_version})[/red]"
             )
             sys.exit(1)
-
-    def _generate_lambda_image_version(self):
-        """Generate content-based version for Lambda container images.
-
-        Uses content hash of relevant source files to ensure builds are reproducible
-        and only change when actual code changes.
-
-        Hash includes:
-        - lib/idp_common_pkg source code
-        - Dockerfile.optimized
-        - patterns/pattern-2/src (all function code)
-
-        Format: <content-hash>
-        Example: a1b2c3d4
-
-        Returns:
-            str: Content-based version string (8-char hash)
-        """
-        import hashlib
-
-        # Compute hash of all relevant content
-        paths_to_hash = [
-            "lib/idp_common_pkg/idp_common",
-            "Dockerfile.optimized",
-            "patterns/pattern-2/src",
-        ]
-
-        combined_hash = hashlib.sha256()
-
-        for path in paths_to_hash:
-            if os.path.isfile(path):
-                # Single file
-                file_hash = self.get_file_checksum(path)
-                if file_hash:
-                    combined_hash.update(file_hash.encode())
-            elif os.path.isdir(path):
-                # Directory - use existing component checksum
-                dir_hash = self.get_component_checksum(path)
-                if dir_hash:
-                    combined_hash.update(dir_hash.encode())
-
-        # Return first 8 characters of hash for readability
-        content_hash = combined_hash.hexdigest()[:8]
-
-        self.log_verbose(f"Generated content-based image version: {content_hash}")
-        return content_hash
 
     def version_compare(self, version1, version2):
         """Compare two version strings. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2"""
@@ -693,8 +643,11 @@ STDERR:
             if self.verbose:
                 cmd.append("--debug")
 
-            # Pattern-2 needs --image-repository even though images are built in CodeBuild
-            if directory == "patterns/pattern-2" and self.pattern2_use_containers:
+            # Pattern-1, Pattern-2, and Pattern-3 need --image-repository even with SkipBuild: True
+            # SAM package uses this to generate correct ImageUri references in the template
+            if directory in ["patterns/pattern-1", "patterns/pattern-3"] or (
+                directory == "patterns/pattern-2" and self.pattern2_use_containers
+            ):
                 placeholder_ecr = (
                     f"{self.account_id}.dkr.ecr.{self.region}.amazonaws.com/placeholder"
                 )
@@ -922,8 +875,8 @@ STDERR:
 
                 self.log_verbose(f"Validating function: {func_key} → {function_name}")
 
-                # Skip validation for Pattern-2 functions when using containers
-                if "pattern-2" in func_key and self.pattern2_use_containers:
+                # Skip validation for Pattern-1 and Pattern-2 functions (use containers)
+                if "pattern-1" in func_key or "pattern-2" in func_key:
                     results.append((func_key, True, "Skipped (container deployment)"))
                     self.log_verbose(
                         f"⏭️  {func_key}: Skipping validation for container deployment"
@@ -1024,10 +977,10 @@ STDERR:
         if patterns_dir.exists():
             for pattern_dir in patterns_dir.iterdir():
                 if pattern_dir.is_dir() and (pattern_dir / "template.yaml").exists():
-                    # Skip Pattern-2 validation since it uses containers
-                    if pattern_dir.name == "pattern-2" and self.pattern2_use_containers:
+                    # Skip Pattern-1, Pattern-2, and Pattern-3 validation since they use containers
+                    if pattern_dir.name in ["pattern-1", "pattern-2", "pattern-3"]:
                         self.console.print(
-                            "[dim]Skipping validation for Pattern-2 (uses containers)[/dim]"
+                            f"[dim]Skipping validation for {pattern_dir.name} (uses containers)[/dim]"
                         )
                         continue
                     pattern_src = pattern_dir / "src"
@@ -1422,6 +1375,122 @@ except Exception as e:
 
         return zipfile_name
 
+    def package_pattern1_source(self):
+        """Package Pattern-1 source code for CodeBuild to build Docker images"""
+        self.console.print(
+            "[bold cyan]📦 Packaging Pattern-1 source for Docker builds[/bold cyan]"
+        )
+
+        # Calculate content hash for versioning
+        paths_to_hash = [
+            "Dockerfile.optimized",
+            "patterns/pattern-1/buildspec.yml",
+            "lib/idp_common_pkg",
+            "patterns/pattern-1/src",
+        ]
+
+        combined_hash = hashlib.sha256()
+        for path in paths_to_hash:
+            if os.path.isfile(path):
+                file_hash = self.get_file_checksum(path)
+                if file_hash:
+                    combined_hash.update(file_hash.encode())
+            elif os.path.isdir(path):
+                dir_hash = self.get_component_checksum(path)
+                if dir_hash:
+                    combined_hash.update(dir_hash.encode())
+
+        content_hash = combined_hash.hexdigest()[:8]
+        zipfile_name = f"pattern-1-source-{content_hash}.zip"
+        zipfile_path = os.path.join(".aws-sam", zipfile_name)
+
+        # Create zip if it doesn't exist
+        if not os.path.exists(zipfile_path):
+            os.makedirs(".aws-sam", exist_ok=True)
+            self.console.print(
+                f"[cyan]Creating Pattern-1 source zip: {zipfile_name}[/cyan]"
+            )
+
+            with zipfile.ZipFile(zipfile_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                # Add Dockerfile
+                zipf.write("Dockerfile.optimized", "Dockerfile.optimized")
+
+                # Add buildspec.yml
+                zipf.write(
+                    "patterns/pattern-1/buildspec.yml",
+                    "patterns/pattern-1/buildspec.yml",
+                )
+
+                # Add lib/idp_common_pkg
+                for root, dirs, files in os.walk("lib/idp_common_pkg"):
+                    # Exclude build artifacts and cache
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if d
+                        not in {
+                            "__pycache__",
+                            ".pytest_cache",
+                            "dist",
+                            "build",
+                            "*.egg-info",
+                        }
+                    ]
+                    for file in files:
+                        if file.endswith((".pyc", ".pyo")):
+                            continue
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, ".")
+                        zipf.write(file_path, arcname)
+
+                # Add patterns/pattern-1/src
+                for root, dirs, files in os.walk("patterns/pattern-1/src"):
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if d not in {"__pycache__", ".pytest_cache", ".aws-sam"}
+                    ]
+                    for file in files:
+                        if file.endswith((".pyc", ".pyo")):
+                            continue
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, ".")
+                        zipf.write(file_path, arcname)
+
+            self.console.print(
+                f"[green]✅ Created Pattern-1 source zip ({os.path.getsize(zipfile_path) / 1024 / 1024:.2f} MB)[/green]"
+            )
+
+        # Upload to S3 if needed
+        s3_key = f"{self.prefix_and_version}/{zipfile_name}"
+        try:
+            self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+            self.console.print(
+                f"[green]Pattern-1 source already exists in S3: {zipfile_name}[/green]"
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                self.console.print(
+                    f"[cyan]Uploading Pattern-1 source to S3: {s3_key}[/cyan]"
+                )
+                try:
+                    self.s3_client.upload_file(zipfile_path, self.bucket, s3_key)
+                    self.console.print(
+                        "[green]✅ Uploaded Pattern-1 source to S3[/green]"
+                    )
+                except ClientError as upload_error:
+                    self.console.print(
+                        f"[red]❌ Error uploading Pattern-1 source: {upload_error}[/red]"
+                    )
+                    sys.exit(1)
+            else:
+                self.console.print(
+                    f"[red]❌ Error checking S3 for Pattern-1 source: {e}[/red]"
+                )
+                sys.exit(1)
+
+        return zipfile_name
+
     def package_pattern2_source(self):
         """Package Pattern-2 source code for CodeBuild to build Docker images"""
         self.console.print(
@@ -1538,6 +1607,122 @@ except Exception as e:
 
         return zipfile_name
 
+    def package_pattern3_source(self):
+        """Package Pattern-3 source code for CodeBuild to build Docker images"""
+        self.console.print(
+            "[bold cyan]📦 Packaging Pattern-3 source for Docker builds[/bold cyan]"
+        )
+
+        # Calculate content hash for versioning
+        paths_to_hash = [
+            "Dockerfile.optimized",
+            "patterns/pattern-3/buildspec.yml",
+            "lib/idp_common_pkg",
+            "patterns/pattern-3/src",
+        ]
+
+        combined_hash = hashlib.sha256()
+        for path in paths_to_hash:
+            if os.path.isfile(path):
+                file_hash = self.get_file_checksum(path)
+                if file_hash:
+                    combined_hash.update(file_hash.encode())
+            elif os.path.isdir(path):
+                dir_hash = self.get_component_checksum(path)
+                if dir_hash:
+                    combined_hash.update(dir_hash.encode())
+
+        content_hash = combined_hash.hexdigest()[:8]
+        zipfile_name = f"pattern-3-source-{content_hash}.zip"
+        zipfile_path = os.path.join(".aws-sam", zipfile_name)
+
+        # Create zip if it doesn't exist
+        if not os.path.exists(zipfile_path):
+            os.makedirs(".aws-sam", exist_ok=True)
+            self.console.print(
+                f"[cyan]Creating Pattern-3 source zip: {zipfile_name}[/cyan]"
+            )
+
+            with zipfile.ZipFile(zipfile_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                # Add Dockerfile
+                zipf.write("Dockerfile.optimized", "Dockerfile.optimized")
+
+                # Add buildspec.yml
+                zipf.write(
+                    "patterns/pattern-3/buildspec.yml",
+                    "patterns/pattern-3/buildspec.yml",
+                )
+
+                # Add lib/idp_common_pkg
+                for root, dirs, files in os.walk("lib/idp_common_pkg"):
+                    # Exclude build artifacts and cache
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if d
+                        not in {
+                            "__pycache__",
+                            ".pytest_cache",
+                            "dist",
+                            "build",
+                            "*.egg-info",
+                        }
+                    ]
+                    for file in files:
+                        if file.endswith((".pyc", ".pyo")):
+                            continue
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, ".")
+                        zipf.write(file_path, arcname)
+
+                # Add patterns/pattern-3/src
+                for root, dirs, files in os.walk("patterns/pattern-3/src"):
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if d not in {"__pycache__", ".pytest_cache", ".aws-sam"}
+                    ]
+                    for file in files:
+                        if file.endswith((".pyc", ".pyo")):
+                            continue
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, ".")
+                        zipf.write(file_path, arcname)
+
+            self.console.print(
+                f"[green]✅ Created Pattern-3 source zip ({os.path.getsize(zipfile_path) / 1024 / 1024:.2f} MB)[/green]"
+            )
+
+        # Upload to S3 if needed
+        s3_key = f"{self.prefix_and_version}/{zipfile_name}"
+        try:
+            self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+            self.console.print(
+                f"[green]Pattern-3 source already exists in S3: {zipfile_name}[/green]"
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                self.console.print(
+                    f"[cyan]Uploading Pattern-3 source to S3: {s3_key}[/cyan]"
+                )
+                try:
+                    self.s3_client.upload_file(zipfile_path, self.bucket, s3_key)
+                    self.console.print(
+                        "[green]✅ Uploaded Pattern-3 source to S3[/green]"
+                    )
+                except ClientError as upload_error:
+                    self.console.print(
+                        f"[red]❌ Error uploading Pattern-3 source: {upload_error}[/red]"
+                    )
+                    sys.exit(1)
+            else:
+                self.console.print(
+                    f"[red]❌ Error checking S3 for Pattern-3 source: {e}[/red]"
+                )
+                sys.exit(1)
+
+        return zipfile_name
+
     def _upload_template_to_s3(self, template_path, s3_key, description):
         """Helper method to upload template to S3 with error handling"""
         self.console.print(f"[cyan]Uploading {description} to S3: {s3_key}[/cyan]")
@@ -1572,7 +1757,12 @@ except Exception as e:
                 self.console.print(str(e), style="red", markup=False)
 
     def build_main_template(
-        self, webui_zipfile, pattern2_source_zipfile, components_needing_rebuild
+        self,
+        webui_zipfile,
+        pattern1_source_zipfile,
+        pattern2_source_zipfile,
+        pattern3_source_zipfile,
+        components_needing_rebuild,
     ):
         """Build and package main template with smart detection"""
         try:
@@ -1612,6 +1802,18 @@ except Exception as e:
                 config_files_list = self.generate_config_file_list()
                 config_files_json = json.dumps(config_files_list)
 
+                # Extract content-based hashes from zipfile names for per-pattern ImageVersions
+                # Format: pattern-X-source-{hash}.zip -> extract {hash}
+                pattern1_image_version = pattern1_source_zipfile.replace(
+                    "pattern-1-source-", ""
+                ).replace(".zip", "")
+                pattern2_image_version = pattern2_source_zipfile.replace(
+                    "pattern-2-source-", ""
+                ).replace(".zip", "")
+                pattern3_image_version = pattern3_source_zipfile.replace(
+                    "pattern-3-source-", ""
+                ).replace(".zip", "")
+
                 # Get various hashes
                 workforce_url_file = "src/lambda/get-workforce-url/index.py"
                 a2i_resources_file = "src/lambda/create_a2i_resources/index.py"
@@ -1646,8 +1848,13 @@ except Exception as e:
                     "<ARTIFACT_BUCKET_TOKEN>": self.bucket,
                     "<ARTIFACT_PREFIX_TOKEN>": self.prefix_and_version,
                     "<WEBUI_ZIPFILE_TOKEN>": webui_zipfile,
+                    "<PATTERN1_SOURCE_ZIPFILE_TOKEN>": pattern1_source_zipfile,
                     "<PATTERN2_SOURCE_ZIPFILE_TOKEN>": pattern2_source_zipfile,
-                    "<LAMBDA_IMAGE_VERSION>": self.lambda_image_version,
+                    "<PATTERN3_SOURCE_ZIPFILE_TOKEN>": pattern3_source_zipfile,
+                    # Use pattern-specific image versions extracted from zipfile hashes
+                    "<PATTERN1_IMAGE_VERSION>": pattern1_image_version,
+                    "<PATTERN2_IMAGE_VERSION>": pattern2_image_version,
+                    "<PATTERN3_IMAGE_VERSION>": pattern3_image_version,
                     "<HASH_TOKEN>": self.get_directory_checksum("./lib")[:16],
                     "<CONFIG_LIBRARY_HASH_TOKEN>": self.get_directory_checksum(
                         "config_library"
@@ -1919,6 +2126,7 @@ except Exception as e:
                 LIB_DEPENDENCY,
                 "patterns/pattern-3/src",
                 "patterns/pattern-3/template.yaml",
+                "Dockerfile.optimized",
             ],
             # Option components (no lib dependency - they don't use idp_common)
             "options/bda-lending-project": [
@@ -2331,12 +2539,22 @@ except Exception as e:
             # Package UI and start validation in parallel if needed
             webui_zipfile = self.package_ui()
 
+            # Package Pattern-1 source for CodeBuild Docker builds
+            pattern1_source_zipfile = self.package_pattern1_source()
+
             # Package Pattern-2 source for CodeBuild Docker builds
             pattern2_source_zipfile = self.package_pattern2_source()
 
+            # Package Pattern-3 source for CodeBuild Docker builds
+            pattern3_source_zipfile = self.package_pattern3_source()
+
             # Build main template
             self.build_main_template(
-                webui_zipfile, pattern2_source_zipfile, components_needing_rebuild
+                webui_zipfile,
+                pattern1_source_zipfile,
+                pattern2_source_zipfile,
+                pattern3_source_zipfile,
+                components_needing_rebuild,
             )
 
             # Validate Lambda builds for idp_common inclusion (after all builds complete)

@@ -5,6 +5,95 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+## [0.4.2]
+
+### Added
+
+- **Stickler-Based Evaluation System for Enhanced Comparison Capabilities**
+  - Migrated evaluation service from custom comparison logic to [AWS Labs Stickler library](https://github.com/awslabs/stickler/tree/main) for structured object evaluation
+  - **Field Importance Weights**: New capability to assign business criticality weights to fields (e.g., shipment ID weight=3.0 vs notes weight=0.5)
+  - **Enhanced Configuration**: Added `x-aws-idp-evaluation-*` extensions for evaluation configuration
+  - **Backward compatible**: Maintained API compatibility - all existing code works unchanged
+  - **Enhanced Comparators**: Leverages Stickler's optimized comparison algorithms (Exact, Levenshtein, Numeric, Fuzzy, Semantic) with LLM evaluation preserved through custom wrapper
+  - **Better List Matching**: Hungarian algorithm via Stickler for optimal list comparisons regardless of order
+
+- **UI: Evaluation Configuration in Document Schema UI**
+  - Added evaluation weight, threshold (with conditional display), and document-level match threshold fields for complete Stickler configuration control
+  - Added LEVENSHTEIN and HUNGARIAN evaluation methods with auto-populated threshold defaults based on selected method
+  
+- **IDP CLI Force Delete All Resources Option**
+  - Added `--force-delete-all` flag to `idp-cli delete` command for comprehensive stack cleanup
+  - **Post-CloudFormation Cleanup**: Analyzes resources after CloudFormation deletion completes to identify retained resources (DELETE_SKIPPED status)
+  - **Use Cases**: Complete test environment cleanup, CI/CD pipelines requiring full teardown, cost optimization by removing all retained resources
+
+### Changed
+
+- **Containerized Pattern-1 and Pattern-3 Deployment Pipelines**
+  - Migrated Pattern-1 and Pattern-3 Lambda functions to Docker image deployments (following Pattern-2 approach from v0.3.20)
+  - Builds and pushes all Lambda images via CodeBuild with automated ECR cleanup
+  - Increases Lambda package size limit from 250 MB (zip) to 10 GB (Docker image) to accommodate larger dependencies
+
+- **Agent Companion Chat - Chat History Feature**
+  - Added chat history feature from Agent Analysis back into Agent Companion Chat
+  - Users can now load and view previous chat sessions with full conversation context
+  - Chat history dropdown displays recent sessions with timestamps and message counts
+
+### Fixed
+
+- **Agent Companion Chat - Session Persistence and input control**
+  - Agent Companion Chat in-session memory now persists even when user changes pages
+  - Prompt input is disabled during active streaming responses to prevent concurrent requests
+  - Fixed issue where charts in loaded chat history were not displaying
+
+- **GovCloud Template Generation errors**
+  - Fixed CloudFormation deployment error `Fn::GetAtt references undefined resource GraphQLApi` when deploying GovCloud templates
+
+- **Example Notebook error fixed**
+  - Example notebooks updated to work with new v0.4.0+ JSON schema
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.2yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.2.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.2.yaml`
+
+## [0.4.1]
+
+### Changed
+
+- **Configuration Library Updates with JSON Schema Support**
+  - Updated configuration library with JSON schema format for lending package, bank statement, and RVL-CDIP package samples
+  - Enhanced configuration files to align with JSON Schema Draft 2020-12 format introduced in v0.4.0
+  - Updated notebooks and documentation to reflect JSON schema configuration structure
+
+### Fixed
+
+- **UI Few Shot Examples Display** - Fixed issue where few shot examples were not displaying correctly from configuration in the Web UI
+- **Re-enabled Regex Functionality** - Restored document name and page content regex functionality for Pattern-2 classification that was temporarily missing
+- **Pattern-2 ECR Enhanced Scanning Support** - Added required IAM permissions (inspector2:ListCoverage, inspector2:ListFindings) to Pattern2DockerBuildRole to support AWS accounts with Amazon Inspector Enhanced Scanning enabled. Also added KMS permissions (kms:Decrypt, kms:CreateGrant) for customer-managed encryption keys. This resolves AccessDenied errors and CodeBuild timeouts when deploying Pattern-2 in accounts with enhanced scanning enabled.
+- **Reporting Database Data Loss After Evaluation Refactoring - Fixes #121**
+  - Fixed bug where metering data and document_section data stopped being written to the reporting database after evaluation was migrated from EventBridge to Step Functions workflow
+- **IDP CLI Deploy Command Parameter Preservation Bug**
+  - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+- **Pattern-2 Deployment Intermittent Lambda (HITLStatusUpdateFunction) ECR Access Failure**
+  - Fixed intermittent "Lambda does not have permission to access the ECR image" (403) errors during Pattern-2 deployment
+  - **Root Cause**: Race condition where Lambda functions were created before ECR images were fully available and scannable
+  - **Solution**: Enhanced CodeBuild custom resource to verify ECR image availability before completing, including:
+    - Verification that all required Lambda images exist in ECR repository
+    - Check that image scanning is complete (repository has `ScanOnPush: true`)
+  - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (current default: false) to allow users to enable/disable ECR vulnerability scanning if experiencing deployment issues
+    - Recommended: Set enabled (true) for production to maintain security posture
+    - Optional: Disable (false) only as temporary workaround for deployment reliability
+- **Resolved failing Docker build issue related to Python pymupdf package version update**
+  - Pinned pymupdf version to prevent attempted (failing) deployment of newly published version (which is missing ARM64 wheels)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.1.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.1.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.1.yaml`
+
 ## [0.4.0]
 
 > **⚠️ IMPORTANT NOTICE - SIGNIFICANT CONFIGURATION CHANGES**
@@ -74,6 +163,10 @@ SPDX-License-Identifier: MIT-0
   - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
   - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.0.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.0.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.0.yaml`
 
 ## [0.3.21]
 

@@ -63,7 +63,7 @@
     "build": "npm run lint && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "lint": "npx eslint \"src/**/*.{js,jsx}\""
+    "lint": "eslint \"src/**/*.{js,jsx}\""
   },
   "eslintConfig": {
     "extends": [

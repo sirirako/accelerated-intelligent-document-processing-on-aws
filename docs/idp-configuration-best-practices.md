@@ -106,19 +106,20 @@ Attributes define the structured data to extract from documents. Comprehensive a
 
 **Good Example:**
 ```yaml
-attributes:
-  - name: YTDNetPay
+properties:
+  YTDNetPay:
+    type: string
     description: >-
       Year-to-date net pay amount representing cumulative take-home earnings after all deductions 
       from the beginning of the year to the current pay period.
-    evaluation_method: NUMERIC_EXACT
-    attributeType: simple
+    x-aws-idp-evaluation-method: NUMERIC_EXACT
 ```
 
 **Enhanced Example with Location Hints:**
 ```yaml
-attributes:
-  - name: invoice_number
+properties:
+  invoice_number:
+    type: string
     description: >-
       The unique identifier for this invoice, typically labeled as 'Invoice #', 'Invoice Number', 
       or similar. Usually found in the upper portion of the document, often in a prominent box or header.
@@ -128,54 +129,64 @@ attributes:
 
 **Simple Attributes** - Single value fields:
 ```yaml
-- name: PayDate
-  description: >-
-    The actual date when the employee was paid, representing when the compensation was issued 
-    or deposited.
-  evaluation_method: EXACT
-  attributeType: simple
+properties:
+  PayDate:
+    type: string
+    description: >-
+      The actual date when the employee was paid, representing when the compensation was issued 
+      or deposited.
+    x-aws-idp-evaluation-method: EXACT
 ```
 
 **Group Attributes** - Nested structured data:
 ```yaml
-- name: CompanyAddress
-  groupAttributes:
-    - name: State
-      description: The state or province portion of the company's business address.
-      evaluation_method: EXACT
-    - name: ZipCode
-      description: The postal code portion of the company's business address.
-      evaluation_method: EXACT
-    - name: City
-      description: The city portion of the company's business address.
-      evaluation_method: EXACT
-  description: >-
-    The complete business address of the employing company, including street address, 
-    city, state, and postal code information.
-  evaluation_method: LLM
-  attributeType: group
+properties:
+  CompanyAddress:
+    type: object
+    description: >-
+      The complete business address of the employing company, including street address, 
+      city, state, and postal code information.
+    x-aws-idp-evaluation-method: LLM
+    properties:
+      State:
+        type: string
+        description: The state or province portion of the company's business address.
+        x-aws-idp-evaluation-method: EXACT
+      ZipCode:
+        type: string
+        description: The postal code portion of the company's business address.
+        x-aws-idp-evaluation-method: EXACT
+      City:
+        type: string
+        description: The city portion of the company's business address.
+        x-aws-idp-evaluation-method: EXACT
 ```
 
 **List Attributes** - Arrays of structured items:
 ```yaml
-- name: FederalTaxes
-  listItemTemplate:
-    itemAttributes:
-      - name: YTD
-        description: Year-to-date amount for this federal tax item.
-        evaluation_method: NUMERIC_EXACT
-      - name: Period
-        description: Current period amount for this federal tax item.
-        evaluation_method: NUMERIC_EXACT
-      - name: ItemDescription
-        description: Description of the specific federal tax type or category.
-        evaluation_method: EXACT
-    itemDescription: Each item represents a specific federal tax withholding category
-  description: >-
-    List of federal tax withholdings showing different types of federal taxes deducted, 
-    with both current period and year-to-date amounts.
-  evaluation_method: LLM
-  attributeType: list
+properties:
+  FederalTaxes:
+    type: array
+    description: >-
+      List of federal tax withholdings showing different types of federal taxes deducted, 
+      with both current period and year-to-date amounts.
+    x-aws-idp-evaluation-method: LLM
+    x-aws-idp-list-item-description: Each item represents a specific federal tax withholding category
+    items:
+      type: object
+      properties:
+        YTD:
+          type: string
+          description: Year-to-date amount for this federal tax item.
+          x-aws-idp-evaluation-method: NUMERIC_EXACT
+        Period:
+          type: string
+          description: Current period amount for this federal tax item.
+          x-aws-idp-evaluation-method: NUMERIC_EXACT
+        ItemDescription:
+          type: string
+          description: Description of the specific federal tax type or category.
+          x-aws-idp-evaluation-method: EXACT
 ```
 
 #### Evaluation Methods Integration
@@ -261,63 +272,63 @@ classes:
 
 **Example 1: Employee Address vs Company Address**
 ```yaml
-attributes:
-  - name: employee_address
+properties:
+  employee_address:
+    type: string
     description: >-
       The residential address of the employee receiving the payslip or benefits.
       Usually found in the "Employee Information", "Pay To", or recipient section, often indented or in a box.
       This is NOT the company address, which appears in the header/letterhead area
       and represents the employer's business location with company logos or "From" labels.
-    attributeType: simple
   
-  - name: company_address  
+  company_address:
+    type: string
     description: >-
       The business address of the employing company or organization.
       Typically found in the header, letterhead, or "From" section with company branding.
       This is NOT the employee address, which appears in the employee details section
       and represents the recipient's personal residence, often in a "Pay To" or "Mail To" area.
-    attributeType: simple
 ```
 
 **Example 2: Bill To vs Ship To Address**
 ```yaml
-attributes:
-  - name: bill_to_address
+properties:
+  bill_to_address:
+    type: string
     description: >-
       The billing address where the invoice should be sent for payment processing.
       Usually labeled "Bill To", "Billing Address", "Invoice To", or "Accounts Payable".
       This is NOT the shipping address where goods are physically delivered,
       which is labeled "Ship To", "Delivery Address", or "Service Location".
-    attributeType: simple
 
-  - name: ship_to_address
+  ship_to_address:
+    type: string
     description: >-
       The delivery address where goods/services are provided or shipped.
       Usually labeled "Ship To", "Delivery Address", "Service Location", or "Deliver To".
       This is NOT the billing address where invoices are sent for payment,
       which is labeled "Bill To", "Billing Address", or "Accounts Payable".
-    attributeType: simple
 ```
 
 **Example 3: Patient Name vs Physician Name**
 ```yaml
-attributes:
-  - name: patient_name
+properties:
+  patient_name:
+    type: string
     description: >-
       The full name of the patient receiving medical care, testing, or treatment.
       Usually found in patient information sections, labeled "Patient", "Patient Name", or in demographic areas.
       This is NOT the physician name, which appears in provider sections
       and may be preceded by "Dr.", "MD", found in signature areas, or labeled "Physician", "Provider".
-    attributeType: simple
 
-  - name: physician_name
+  physician_name:
+    type: string
     description: >-
       The name of the medical doctor or healthcare provider.
       Usually found in provider sections, preceded by "Dr.", "MD", or in signature areas.
       May be labeled "Physician", "Provider", "Attending", or "Ordering Physician".
       This is NOT the patient name, which appears in patient demographic sections
       and is labeled "Patient", "Patient Name", or in the main subject area of the document.
-    attributeType: simple
 ```
 
 #### Best Practices for Negative Prompting
@@ -1636,32 +1647,43 @@ classes:
 
 **Simple Attributes:**
 ```yaml
-- name: date_field
-  description: "Specific date with clear location hint and format requirement"
-  evaluation_method: EXACT
-  attributeType: simple
+properties:
+  date_field:
+    type: string
+    description: "Specific date with clear location hint and format requirement"
+    x-aws-idp-evaluation-method: EXACT
 ```
 
 **Complex Nested Structures:**
 ```yaml
-- name: address_group
-  groupAttributes:
-    - name: street
-    - name: city
-    - name: state
-    - name: zip_code
-  attributeType: group
+properties:
+  address_group:
+    type: object
+    properties:
+      street:
+        type: string
+      city:
+        type: string
+      state:
+        type: string
+      zip_code:
+        type: string
 ```
 
 **Dynamic Lists:**
 ```yaml
-- name: transaction_list
-  listItemTemplate:
-    itemAttributes:
-      - name: date
-      - name: amount
-      - name: description
-  attributeType: list
+properties:
+  transaction_list:
+    type: array
+    items:
+      type: object
+      properties:
+        date:
+          type: string
+        amount:
+          type: string
+        description:
+          type: string
 ```
 
 ### Prompt Templates

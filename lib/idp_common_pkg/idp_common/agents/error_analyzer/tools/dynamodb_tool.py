@@ -19,194 +19,33 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def dynamodb_status(object_key: str) -> Dict[str, Any]:
-    """
-    Get the current processing status of a specific document.
-
-    Retrieves document status, timestamps, and execution information from the
-    DynamoDB tracking table to understand document processing state.
-    If tracking table is unavailable, suggests using alternative tools.
-
-    Use this tool to:
-    - Check if a document is COMPLETED, FAILED, or IN_PROGRESS
-    - Get document processing timestamps
-    - Find the Step Function execution ARN
-    - Verify document exists in the system
-
-    Tool chaining: If tracking_available=False, use cloudwatch_document_logs or xray_trace instead.
-
-    Example usage:
-    - "What's the status of report.pdf?"
-    - "Is lending_package.pdf completed?"
-    - "Check the processing status of document xyz.pdf"
-
-    Args:
-        object_key: Document filename/S3 object key (e.g., "report.pdf", "lending_package.pdf")
-
-    Returns:
-        Dict with keys:
-        - tracking_available (bool): Whether tracking table is configured
-        - document_found (bool): Whether document exists in tracking table
-        - object_key (str): The document identifier
-        - status (str): Processing status (COMPLETED, FAILED, IN_PROGRESS) if found
-        - initial_event_time (str): When processing started if found
-        - completion_time (str): When processing finished if found
-        - execution_arn (str): Step Function execution ARN if found
-        - suggestion (str): Alternative tools to use if tracking unavailable
-    """
-    result = dynamodb_record(object_key)
-
-    if result.get("document_found"):
-        document = result.get("document", {})
-        response = create_response(
-            {
-                "tracking_available": True,
-                "document_found": True,
-                "object_key": object_key,
-                "status": document.get("ObjectStatus")
-                or document.get("WorkflowStatus"),
-                "initial_event_time": document.get("InitialEventTime"),
-                "completion_time": document.get("CompletionTime"),
-                "execution_arn": document.get("WorkflowExecutionArn")
-                or document.get("ExecutionArn"),
-            }
-        )
-        logger.info(f"DynamoDB status response for {object_key}: {response}")
-        return response
-    return result
-
-
-@tool
-def dynamodb_query(
-    date: str = "", hours_back: int = 24, limit: int = 100
-) -> Dict[str, Any]:
-    """
-    Query DynamoDB tracking table using efficient time-based partition scanning.
-    Searches through time-partitioned data to find documents processed within the specified timeframe.
-    Uses optimized querying to minimize DynamoDB read costs.
-    If tracking table is unavailable, suggests using alternative tools.
-
-    Use this tool to:
-    - Find documents processed in a specific time window
-    - Analyze processing patterns and volumes
-    - Identify recent document processing activity
-
-    Tool chaining: If tracking_available=False, use cloudwatch_logs or xray_performance_analysis for system-wide analysis.
-
-    Example usage:
-    - "Show me documents processed today"
-    - "What documents were processed in the last 2 hours?"
-    - "Find all documents processed on 2024-01-15"
-
-    Args:
-        date: Date in YYYY-MM-DD format (defaults to today)
-        hours_back: Number of hours to look back from date (default 24)
-        limit: Maximum number of items to return
-
-    Returns:
-        Dict with keys:
-        - tracking_available (bool): Whether tracking table is configured
-        - items_found (int): Number of documents found
-        - items (list): Document records if found
-        - table_name (str): Table name if available
-        - query_date (str): Date queried
-        - hours_back (int): Hours looked back
-        - suggestion (str): Alternative tools to use if tracking unavailable
-    """
-    try:
-        tracking_table, table_name = _get_tracking_table()
-        if not tracking_table:
-            return create_response(
-                {
-                    "tracking_available": False,
-                    "reason": "Tracking table not configured",
-                    "items_found": 0,
-                    "items": [],
-                    "suggestion": "Try using CloudWatch logs or X-Ray traces for analysis",
-                }
-            )
-
-        # Use current date if not provided
-        if not date:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        # Generate time-based partition keys to query
-        base_date = datetime.strptime(date, "%Y-%m-%d")
-        end_time = base_date + timedelta(days=1)
-        start_time = end_time - timedelta(hours=hours_back)
-
-        all_items = []
-        current_time = start_time
-
-        # Query by hour partitions for efficiency
-        while current_time < end_time and len(all_items) < limit:
-            hour_str = current_time.strftime("%Y-%m-%dT%H")
-
-            # Query the list partition for this hour
-            partition_key = f"list#{current_time.strftime('%Y-%m-%d')}#s#{current_time.hour // 4:02d}"
-            sort_key_prefix = f"ts#{hour_str}"
-
-            try:
-                response = tracking_table.query(
-                    KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-                    ExpressionAttributeValues={
-                        ":pk": partition_key,
-                        ":sk_prefix": sort_key_prefix,
-                    },
-                    Limit=min(limit - len(all_items), 50),
-                )
-
-                items = response.get("Items", [])
-                all_items.extend(items)
-
-            except Exception as query_error:
-                logger.debug(f"Query failed for {partition_key}: {query_error}")
-
-            current_time += timedelta(hours=1)
-
-        items = [decimal_to_float(item) for item in all_items[:limit]]
-
-        response = create_response(
-            {
-                "tracking_available": True,
-                "table_name": table_name,
-                "items_found": len(items),
-                "items": items,
-                "query_date": date,
-                "hours_back": hours_back,
-            }
-        )
-        logger.info(f"DynamoDB query response for date={date}: {response}")
-        return response
-
-    except Exception as e:
-        return _handle_dynamodb_error(
-            "query", f"date={date}", e, items_found=0, items=[]
-        )
-
-
-@tool
-def dynamodb_record(object_key: str) -> Dict[str, Any]:
+def fetch_document_record(object_key: str) -> Dict[str, Any]:
     """
     Retrieve complete document record with all metadata from tracking table.
 
     Gets the full document record including processing details, timestamps,
     configuration, and execution information for comprehensive analysis.
-    If tracking table is unavailable, suggests using alternative tools.
+    Agents can extract status, timestamps, or any other needed information
+    from the complete record. If tracking table is unavailable, suggests
+    using alternative tools.
 
     Use this tool to:
-    - Get complete document processing details
+    - Get complete document processing details and status
     - Access all document metadata and configuration
     - Retrieve processing timestamps and execution info
-    - Get detailed document attributes
+    - Check if document is COMPLETED, FAILED, or IN_PROGRESS
+    - Find Step Function execution ARN
+    - Verify document exists in the system
 
-    Tool chaining: If tracking_available=False, use cloudwatch_document_logs,
-    xray_trace, or lambda_lookup for document analysis.
+    Tool chaining: If tracking_available=False, use search_cloudwatch_logs,
+    xray_trace, or retrieve_document_context for document analysis.
 
     Example usage:
+    - "What's the status of report.pdf?"
     - "Get full details for document report.pdf"
     - "Show me all information about lending_package.pdf"
-    - "Retrieve complete record for document xyz.pdf"
+    - "Is lending_package.pdf completed?"
+    - "Check the processing status of document xyz.pdf"
 
     Args:
         object_key: Document filename/S3 object key (e.g., "report.pdf", "lending_package.pdf")
@@ -229,7 +68,7 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
                     "reason": "Tracking table not configured",
                     "document_found": False,
                     "object_key": object_key,
-                    "suggestion": "Try using CloudWatch logs or X-Ray traces for document analysis",
+                    "suggestion": "Try using search_cloudwatch_logs or X-Ray traces for document analysis",
                 }
             )
 
@@ -248,7 +87,7 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
                     "object_key": object_key,
                 }
             )
-            logger.info(f"DynamoDB record response for {object_key}: {response}")
+            logger.info(f"Document record response for {object_key}: {response}")
             return response
         else:
             response = create_response(
@@ -259,14 +98,87 @@ def dynamodb_record(object_key: str) -> Dict[str, Any]:
                     "reason": f"Document not found for key: {object_key}",
                 }
             )
-            logger.info(
-                f"DynamoDB record not found response for {object_key}: {response}"
-            )
+            logger.info(f"Document record not found for {object_key}: {response}")
             return response
 
     except Exception as e:
         return _handle_dynamodb_error(
             "lookup", object_key, e, document_found=False, object_key=object_key
+        )
+
+
+@tool
+def fetch_recent_records(
+    date: str = "", hours_back: int = 24, limit: int = 100
+) -> Dict[str, Any]:
+    """
+    Fetch multiple document records processed within a specific time window.
+
+    Retrieves document records from the tracking table using efficient time-based
+    partition scanning. Returns a list of documents processed within the specified
+    timeframe, useful for analyzing processing patterns, volumes, and recent activity.
+    Returns empty results if tracking table is unavailable.
+
+    Use this tool to:
+    - Get documents processed in the last few hours or days
+    - Analyze document processing patterns and volumes
+    - Find recent document processing activity
+    - Review processing history for a specific date
+    - Identify processing trends or issues
+
+    Example usage:
+    - "Show me documents processed today"
+    - "What documents were processed in the last 2 hours?"
+    - "Find all documents processed on 2024-01-15"
+    - "List recent document processing activity"
+    - "Show me the last 50 processed documents"
+
+    Args:
+        date: Date in YYYY-MM-DD format (defaults to today)
+        hours_back: Number of hours to look back from date (default 24)
+        limit: Maximum number of records to return (default 100)
+
+    Returns:
+        Dict with keys:
+        - total_documents (int): Total number of document records found
+        - completed_documents (int): Number of documents with COMPLETED status
+        - failed_documents (int): Number of documents with FAILED status
+        - in_progress_documents (int): Number of documents with IN_PROGRESS status
+        - items (list): Document records with processing details if found
+        - query_date (str): Date queried
+        - hours_back (int): Hours looked back
+    """
+    try:
+        tracking_table, table_name = _get_tracking_table()
+        if not tracking_table:
+            return _create_empty_response(date, hours_back)
+
+        # Use current date if not provided
+        if not date:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        # Query documents from tracking table
+        raw_items = _query_documents_by_time(tracking_table, date, hours_back, limit)
+        items = [decimal_to_float(item) for item in raw_items[:limit]]
+
+        # Calculate status statistics
+        status_stats = _calculate_status_statistics(items)
+
+        response = {
+            "total_documents": len(items),
+            "completed_documents": status_stats["completed"],
+            "failed_documents": status_stats["failed"],
+            "in_progress_documents": status_stats["in_progress"],
+            "items": items,
+            "query_date": date,
+            "hours_back": hours_back,
+        }
+        logger.info(f"Recent records response for date={date}: {response}")
+        return response
+
+    except Exception as e:
+        return _handle_dynamodb_error(
+            "query", f"date={date}", e, items_found=0, items=[]
         )
 
 
@@ -282,7 +194,87 @@ def _get_tracking_table():
         return None, None
 
     dynamodb = boto3.resource("dynamodb")
-    return dynamodb.Table(table_name), table_name
+    table = dynamodb.Table(table_name)  # type: ignore[attr-defined]
+    return table, table_name
+
+
+def _create_empty_response(date: str, hours_back: int) -> Dict[str, Any]:
+    """
+    Create empty response when tracking table is unavailable.
+    """
+    return {
+        "total_documents": 0,
+        "completed_documents": 0,
+        "failed_documents": 0,
+        "in_progress_documents": 0,
+        "items": [],
+        "query_date": date or datetime.now().strftime("%Y-%m-%d"),
+        "hours_back": hours_back,
+    }
+
+
+def _query_documents_by_time(
+    tracking_table, date: str, hours_back: int, limit: int
+) -> list:
+    """
+    Query documents from tracking table using time-based partitions.
+    """
+    base_date = datetime.strptime(date, "%Y-%m-%d")
+    end_time = base_date + timedelta(days=1)
+    start_time = end_time - timedelta(hours=hours_back)
+
+    all_items = []
+    current_time = start_time
+
+    while current_time < end_time and len(all_items) < limit:
+        hour_str = current_time.strftime("%Y-%m-%dT%H")
+        partition_key = (
+            f"list#{current_time.strftime('%Y-%m-%d')}#s#{current_time.hour // 4:02d}"
+        )
+        sort_key_prefix = f"ts#{hour_str}"
+
+        try:
+            response = tracking_table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": partition_key,
+                    ":sk_prefix": sort_key_prefix,
+                },
+                Limit=min(limit - len(all_items), 50),
+            )
+            all_items.extend(response.get("Items", []))
+        except Exception as query_error:
+            logger.debug(f"Query failed for {partition_key}: {query_error}")
+
+        current_time += timedelta(hours=1)
+
+    return all_items
+
+
+def _calculate_status_statistics(items: list) -> Dict[str, int]:
+    """
+    Calculate document status statistics from items.
+    Any status that is not COMPLETED or FAILED is considered in_progress.
+    """
+    stats = {"completed": 0, "failed": 0, "in_progress": 0}
+
+    for item in items:
+        status = _extract_document_status(item)
+        if status == "COMPLETED":
+            stats["completed"] += 1
+        elif status == "FAILED":
+            stats["failed"] += 1
+        else:
+            stats["in_progress"] += 1
+
+    return stats
+
+
+def _extract_document_status(item: Dict[str, Any]) -> str:
+    """
+    Extract document status from tracking table item.
+    """
+    return item.get("ObjectStatus") or item.get("WorkflowStatus") or "UNKNOWN"
 
 
 def _handle_dynamodb_error(

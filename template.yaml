@@ -249,9 +249,8 @@ Parameters:
 
   ChatCompanionModelId:
     Type: String
-    Default: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+    Default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
     AllowedValues:
-      - "us.amazon.nova-lite-v1:0"
       - "us.amazon.nova-pro-v1:0"
       - "us.amazon.nova-premier-v1:0"
       - "us.anthropic.claude-3-haiku-20240307-v1:0"
@@ -259,7 +258,6 @@ Parameters:
       - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
       - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
       - "us.anthropic.claude-sonnet-4-20250514-v1:0"
-      - "eu.amazon.nova-lite-v1:0"
       - "eu.amazon.nova-pro-v1:0"
       - "eu.anthropic.claude-3-haiku-20240307-v1:0"
       - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
@@ -327,6 +325,17 @@ Parameters:
       Leave blank if no Permissions Boundary is required.
     AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
+
+  EnableECRImageScanning:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      Enable automatic vulnerability scanning for Lambda container images in ECR (applies to Pattern-1 and Pattern-2). 
+      Disabling may improve deployment reliability but reduces security posture. 
+      Recommended: true for production, false only if experiencing deployment issues.
 
   # Logging configuration
   LogLevel:
@@ -521,7 +530,7 @@ Metadata:
           - KnowledgeBaseVectorStore
           - KnowledgeBaseModelId
       - Label:
-          default: "Agentic Analysis"
+          default: "Agentic Companion Chat"
         Parameters:
           - ChatCompanionModelId
       - Label:
@@ -906,7 +915,20 @@ Resources:
           - IsHITLEnabled
           - !GetAtt WorkforceURLResource.PortalURL
           - ""
-        EvaluationFunctionArn: !GetAtt EvaluationFunction.Arn
+        ReportingBucket: !If
+          - ShouldCreateReportingBucket
+          - !Ref ReportingBucket
+          - !Ref ReportingBucketName
+        BaselineBucket: !If
+          - ShouldCreateEvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucketName
+        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        ImageVersion: "<PATTERN1_IMAGE_VERSION>"
+        ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
+        ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
+        SourceZipfile: "<PATTERN1_SOURCE_ZIPFILE_TOKEN>"
+        EnableECRImageScanning: !Ref EnableECRImageScanning
 
   PATTERN2STACK:
     DependsOn:
@@ -955,11 +977,20 @@ Resources:
           - ""
         EnableXRayTracing: !Ref EnableXRayTracing
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-        ImageVersion: "<LAMBDA_IMAGE_VERSION>"
+        ImageVersion: "<PATTERN2_IMAGE_VERSION>"
         ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
         ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
-        Pattern2SourceZipfile: "<PATTERN2_SOURCE_ZIPFILE_TOKEN>"
-        EvaluationFunctionArn: !GetAtt EvaluationFunction.Arn
+        SourceZipfile: "<PATTERN2_SOURCE_ZIPFILE_TOKEN>"
+        ReportingBucket: !If
+          - ShouldCreateReportingBucket
+          - !Ref ReportingBucket
+          - !Ref ReportingBucketName
+        BaselineBucket: !If
+          - ShouldCreateEvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucketName
+        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        EnableECRImageScanning: !Ref EnableECRImageScanning
 
   PATTERN3STACK:
     DependsOn:
@@ -1007,7 +1038,20 @@ Resources:
           - ""
         EnableXRayTracing: !Ref EnableXRayTracing
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-        EvaluationFunctionArn: !GetAtt EvaluationFunction.Arn
+        ReportingBucket: !If
+          - ShouldCreateReportingBucket
+          - !Ref ReportingBucket
+          - !Ref ReportingBucketName
+        BaselineBucket: !If
+          - ShouldCreateEvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucketName
+        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        ImageVersion: "<PATTERN3_IMAGE_VERSION>"
+        ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
+        ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
+        SourceZipfile: "<PATTERN3_SOURCE_ZIPFILE_TOKEN>"
+        EnableECRImageScanning: !Ref EnableECRImageScanning
 
   ##########################################################################
   # Encryption key
@@ -1626,6 +1670,8 @@ Resources:
               Type: double
             - Name: false_discovery_rate
               Type: double
+            - Name: weighted_overall_score
+              Type: double
             - Name: execution_time
               Type: double
           Compressed: true
@@ -1687,6 +1733,8 @@ Resources:
             - Name: false_alarm_rate
               Type: double
             - Name: false_discovery_rate
+              Type: double
+            - Name: weighted_overall_score
               Type: double
             - Name: evaluation_date
               Type: timestamp
@@ -1756,6 +1804,8 @@ Resources:
               Type: string
             - Name: confidence_threshold
               Type: string
+            - Name: weight
+              Type: double
             - Name: evaluation_date
               Type: timestamp
           Compressed: true
@@ -1981,7 +2031,7 @@ Resources:
 
   WebUIBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: RetainExceptOnCreate
+    DeletionPolicy: Retain
     Properties:
       AccessControl: Private
       BucketEncryption:
@@ -2901,111 +2951,6 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
-  # Evaluation Lambda, optionally triggered on completion of workflow
-  ##########################################################################
-
-  EvaluationFunctionDLQ:
-    Type: AWS::SQS::Queue
-    Properties:
-      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
-      VisibilityTimeout: 30
-      MessageRetentionPeriod: 345600 # 4 days
-
-  EvaluationFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: "Role requires * resource access for CloudWatch Metrics and Logs"
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/evaluation_function/
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 900
-      DeadLetterQueue:
-        Type: SQS
-        TargetArn: !GetAtt EvaluationFunctionDLQ.Arn
-      LoggingConfig:
-        LogGroup: !Ref EvaluationFunctionLogGroup
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          METRIC_NAMESPACE: !Ref AWS::StackName
-          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
-          PROCESSING_OUTPUT_BUCKET: !Ref OutputBucket
-          EVALUATION_OUTPUT_BUCKET: !Ref OutputBucket
-          REPORTING_BUCKET: !If
-            - ShouldCreateReportingBucket
-            - !Ref ReportingBucket
-            - !Ref ReportingBucketName
-          BASELINE_BUCKET: !If
-            - ShouldCreateEvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucketName
-          SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
-          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
-          WORKING_BUCKET: !Ref WorkingBucket
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref ConfigurationTable
-        - S3ReadPolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - S3CrudPolicy:
-            BucketName: !Ref OutputBucket
-        - S3CrudPolicy:
-            BucketName: !Ref WorkingBucket
-        - LambdaInvokePolicy:
-            FunctionName: !Ref SaveReportingDataFunction
-        - Statement:
-            - Effect: Allow
-              Action:
-                - cloudwatch:PutMetricData
-              Resource: "*"
-            - Effect: Allow
-              Action:
-                - appsync:GraphQL
-              Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-            - Effect: Allow
-              Action: bedrock:InvokeModel
-              Resource:
-                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-
-  EvaluationFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  ##########################################################################
   # CloudWatch monitoring
   ##########################################################################
 
@@ -3411,19 +3356,6 @@ Resources:
                 "width": 12,
                 "height": 6,
                 "properties": {
-                  "query": "SOURCE '${EvaluationFunctionLogGroup}' | fields @timestamp, @logStream, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20",
-                  "region": "${AWS::Region}",
-                  "title": "Evaluation Tracker Lambda Errors",
-                  "view": "table"
-                }
-              },
-              {
-                "type": "log",
-                "x": 0,
-                "y": 30,
-                "width": 12,
-                "height": 6,
-                "properties": {
                   "query": "SOURCE '${SaveReportingDataFunctionLogGroup}' | fields @timestamp, @logStream, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20",
                   "region": "${AWS::Region}",
                   "title": "Save Reporting Data Tracker Lambda Errors",
@@ -3614,6 +3546,21 @@ Resources:
   # Lambda function for agent chat resolver
   AgentChatResolverFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W58
+            reason: "DLQ not required for AppSeync Resolver function"
+          - id: W11
+            reason: "Role requires * resource access for Marketplace, CloudWatch Metrics and Logs"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
     Properties:
       PermissionsBoundary:
         !If [
@@ -3630,6 +3577,7 @@ Resources:
           CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
           AGENT_CHAT_PROCESSOR_FUNCTION: !Ref AgentChatProcessorFunction
           DATA_RETENTION_DAYS: !Ref DataRetentionInDays
+          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
       LoggingConfig:
         LogGroup: !Ref AgentChatResolverLogGroup
       Policies:
@@ -3639,6 +3587,8 @@ Resources:
             Resource: !GetAtt AgentChatProcessorFunction.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ChatMessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatSessionsTable
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentChatProcessorFunction
         - Statement:
@@ -3770,6 +3720,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -3857,6 +3813,259 @@ Resources:
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
+
+##########################################################################
+# DynamoDB Table for Agent Chat Session Metadata
+##########################################################################
+
+  ChatSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: sessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: sessionId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAfter
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+##########################################################################
+# Lambda Functions for Agent Chat Session Management
+##########################################################################
+
+  # Lambda function for listing agent chat sessions
+  ListAgentChatSessionsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/list_agent_chat_sessions_resolver/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
+      LoggingConfig:
+        LogGroup: !Ref ListAgentChatSessionsFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatSessionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  ListAgentChatSessionsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Lambda function for getting agent chat messages
+  GetAgentChatMessagesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/get_agent_chat_messages_resolver/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
+      LoggingConfig:
+        LogGroup: !Ref GetAgentChatMessagesFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatMessagesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  GetAgentChatMessagesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Lambda function for deleting agent chat sessions
+  DeleteAgentChatSessionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/delete_agent_chat_session_resolver/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
+          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
+      LoggingConfig:
+        LogGroup: !Ref DeleteAgentChatSessionFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatMessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatSessionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  DeleteAgentChatSessionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # AppSync Data Sources for Agent Chat Session Management
+  ##########################################################################
+
+  ListAgentChatSessionsDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ListAgentChatSessionsDataSource
+      Description: Lambda function for listing agent chat sessions
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt ListAgentChatSessionsFunction.Arn
+
+  GetAgentChatMessagesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: GetAgentChatMessagesDataSource
+      Description: Lambda function for getting agent chat messages
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GetAgentChatMessagesFunction.Arn
+
+  DeleteAgentChatSessionDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: DeleteAgentChatSessionDataSource
+      Description: Lambda function for deleting agent chat sessions
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt DeleteAgentChatSessionFunction.Arn
+
+  ##########################################################################
+  # AppSync Resolvers for Agent Chat Session Management
+  ##########################################################################
+
+  ListChatSessionsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listChatSessions
+      DataSourceName: !GetAtt ListAgentChatSessionsDataSource.Name
+
+  GetChatMessagesResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getChatMessages
+      DataSourceName: !GetAtt GetAgentChatMessagesDataSource.Name
+
+  DeleteChatSessionResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteChatSession
+      DataSourceName: !GetAtt DeleteAgentChatSessionDataSource.Name
 
   # Lambda function for listing available agents
   ListAvailableAgentsFunction:
@@ -3952,7 +4161,18 @@ Resources:
           "version": "2017-02-28",
           "operation": "Invoke",
           "payload": {
-            "arguments": $util.toJson($context.arguments)
+            "arguments": $util.toJson($context.arguments),
+            "identity": {
+              "username": $util.toJson($context.identity.username),
+              "sub": $util.toJson($context.identity.sub),
+              "sourceIp": $util.toJson($context.identity.sourceIp),
+              "userArn": $util.toJson($context.identity.userArn),
+              "accountId": $util.toJson($context.identity.accountId),  
+              "cognitoIdentityPoolId": $util.toJson($context.identity.cognitoIdentityPoolId),
+              "cognitoIdentityId": $util.toJson($context.identity.cognitoIdentityId),
+              "userPoolUserId": $util.toJson($context.identity.claims.sub),
+              "claims": $util.toJson($context.identity.claims)
+            }
           }
         }
       ResponseMappingTemplate: |
@@ -4422,6 +4642,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -4549,8 +4775,6 @@ Resources:
             <p>Welcome to the AWS GenAIIDP Solution! Your temporary password is: <strong>{####}</strong></p>
             <p>When the CloudFormation stack is COMPLETE, use the link below to log in and set your permanent password.
             <p>     https://${CloudFrontDistribution.DomainName}/
-            <p>
-            <p>If you have not previously done so, you must request access to the following Amazon Bedrock models: Amazon: Titan Text Embeddings V2, Amazon: Nova models, Anthropic: Claude 3, 3.x, and 4.x models. (https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
             <p>
             <p>Thanks,</p>
             <p>AWS GenAIIDP Team</p>
@@ -5513,6 +5737,7 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DiscoveryTrackingTable}"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatMessagesTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatSessionsTable}"
               - Effect: Allow
                 Action:
                   - kms:Encrypt
@@ -5540,6 +5765,9 @@ Resources:
                   - !GetAtt ChatWithDocumentResolverFunction.Arn
                   - !GetAtt DiscoveryUploadResolverFunction.Arn
                   - !GetAtt AgentRequestHandlerFunction.Arn  # <-- Backward Compatibility for error analyzer agent
+                  - !GetAtt ListAgentChatSessionsFunction.Arn
+                  - !GetAtt GetAgentChatMessagesFunction.Arn  
+                  - !GetAtt DeleteAgentChatSessionFunction.Arn  
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
@@ -6661,6 +6889,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
 
   DiscoveryProcessorFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -6683,6 +6917,8 @@ Resources:
             reason: "Function does not require reserved concurrency as it scales based on demand"
           - id: W12
             reason: "Lambda requires CloudWatch logs permissions"
+          - id: W11
+            reason: "Role requires * resource access for Marketplace and CloudWatch Metrics and Logs"
     # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
     # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
     # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
@@ -6739,6 +6975,12 @@ Resources:
                 - "bedrock:GetInferenceProfile"
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -6852,6 +7094,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - Effect: Allow
               Action:
                 - cloudwatch:PutMetricData
@@ -7171,12 +7419,7 @@ Resources:
                 - n 22.14.0
                 - npm install -g npm@11.1.0
                 - echo Installing Web UI dependencies
-                - rm -rf node_modules
-                - rm -f package-lock.json
-                - npm cache clean --force
-                - npm install
-                - echo Checking for and fixing security vulnerabilities
-                - npm audit fix || echo "Some vulnerabilities could not be automatically fixed"
+                - npm ci
             build:
               commands:
                 - echo Build started on `date`

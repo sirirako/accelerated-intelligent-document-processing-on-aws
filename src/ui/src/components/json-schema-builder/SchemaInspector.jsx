@@ -11,10 +11,20 @@ import ExamplesEditor from './constraints/ExamplesEditor';
 import {
   TYPE_OPTIONS,
   EVALUATION_METHOD_OPTIONS,
+  EVALUATION_THRESHOLD_DEFAULTS,
+  EVALUATION_MATCH_THRESHOLD_DEFAULTS,
+  METHODS_REQUIRING_THRESHOLD,
+  METHODS_REQUIRING_MATCH_THRESHOLD,
+  EVALUATION_METHOD_HUNGARIAN,
   X_AWS_IDP_DOCUMENT_TYPE,
   X_AWS_IDP_EVALUATION_METHOD,
+  X_AWS_IDP_EVALUATION_THRESHOLD,
+  X_AWS_IDP_EVALUATION_WEIGHT,
+  X_AWS_IDP_EVALUATION_MATCH_THRESHOLD,
   X_AWS_IDP_CONFIDENCE_THRESHOLD,
   X_AWS_IDP_EXAMPLES,
+  X_AWS_IDP_DOCUMENT_NAME_REGEX,
+  X_AWS_IDP_PAGE_CONTENT_REGEX,
 } from '../../constants/schemaConstants';
 
 const SchemaInspector = ({
@@ -99,10 +109,58 @@ const SchemaInspector = ({
           </FormField>
 
           {selectedClass[X_AWS_IDP_DOCUMENT_TYPE] && (
-            <ExamplesEditor
-              examples={selectedClass[X_AWS_IDP_EXAMPLES] || []}
-              onChange={(examples) => onUpdateClass({ [X_AWS_IDP_EXAMPLES]: examples })}
-            />
+            <>
+              <ExamplesEditor
+                examples={selectedClass[X_AWS_IDP_EXAMPLES] || []}
+                onChange={(examples) => onUpdateClass({ [X_AWS_IDP_EXAMPLES]: examples })}
+              />
+
+              <FormField
+                label="Document Name Regex (Optional)"
+                description="Pattern to match document ID/name. When matched, instantly classifies all pages as this type (single-class configs only). Use case-insensitive patterns like (?i).*(invoice|bill).*"
+              >
+                <Input
+                  value={selectedClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] || ''}
+                  onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_DOCUMENT_NAME_REGEX]: detail.value || undefined })}
+                  placeholder="e.g., (?i).*(invoice|bill).*"
+                />
+              </FormField>
+
+              <FormField
+                label="Page Content Regex (Optional)"
+                description="Pattern to match page text content. When matched during page-level classification, classifies the page as this type. Use case-insensitive patterns like (?i)(invoice\\s+number|amount\\s+due)"
+              >
+                <Input
+                  value={selectedClass[X_AWS_IDP_PAGE_CONTENT_REGEX] || ''}
+                  onChange={({ detail }) => onUpdateClass({ [X_AWS_IDP_PAGE_CONTENT_REGEX]: detail.value || undefined })}
+                  placeholder="e.g., (?i)(invoice\\s+number|bill\\s+to)"
+                />
+              </FormField>
+
+              <Header variant="h5">Evaluation Configuration</Header>
+
+              <FormField
+                label="Overall Match Threshold"
+                description="Minimum weighted score for document-level baseline evaluation match (0-1)"
+              >
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={selectedClass[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]?.toString() || '0.8'}
+                  onChange={({ detail }) => {
+                    const value = detail.value ? parseFloat(detail.value) : 0.8;
+                    if (value >= 0 && value <= 1) {
+                      onUpdateClass({
+                        [X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]: value,
+                      });
+                    }
+                  }}
+                  placeholder="0.8"
+                />
+              </FormField>
+            </>
           )}
 
           {usedIn.length > 0 && (
@@ -341,22 +399,12 @@ const SchemaInspector = ({
 
         <ValueConstraints attribute={selectedAttribute} onUpdate={onUpdate} />
 
-        <Header variant="h4">AWS IDP Extensions</Header>
+        <Header variant="h4">Assessment Configuration</Header>
 
-        <FormField label="Evaluation Method">
-          <Select
-            selectedOption={EVALUATION_METHOD_OPTIONS.find((opt) => opt.value === selectedAttribute[X_AWS_IDP_EVALUATION_METHOD]) || null}
-            onChange={({ detail }) =>
-              onUpdate({
-                [X_AWS_IDP_EVALUATION_METHOD]: detail.selectedOption.value,
-              })
-            }
-            options={EVALUATION_METHOD_OPTIONS}
-            placeholder="Select evaluation method"
-          />
-        </FormField>
-
-        <FormField label="Confidence Threshold" description="Minimum confidence score (0-1)">
+        <FormField
+          label="Confidence Threshold"
+          description="Minimum confidence score for extraction quality - triggers alert if below this threshold (0-1)"
+        >
           <Input
             type="number"
             step="0.01"
@@ -368,8 +416,152 @@ const SchemaInspector = ({
                 [X_AWS_IDP_CONFIDENCE_THRESHOLD]: detail.value ? parseFloat(detail.value) : undefined,
               })
             }
+            placeholder="e.g., 0.9"
           />
         </FormField>
+
+        <Header variant="h4">Evaluation Configuration (Baseline Accuracy)</Header>
+
+        {(() => {
+          // Detect if this is a structured array (List[Object])
+          // Must check BOTH inline objects AND $ref to classes (matches backend logic)
+          const isStructuredArray =
+            selectedAttribute.type === 'array' && (selectedAttribute.items?.type === 'object' || selectedAttribute.items?.$ref);
+
+          // Filter available methods based on field type
+          const availableMethods = EVALUATION_METHOD_OPTIONS.filter((opt) => {
+            // HUNGARIAN requires structured array
+            if (opt.requiresStructuredItems) {
+              return isStructuredArray;
+            }
+            // Methods with validFor restrictions
+            if (opt.validFor) {
+              // For arrays, check if method is valid for arrays
+              if (selectedAttribute.type === 'array') {
+                return opt.validFor.includes('array');
+              }
+              // For other types, check directly
+              return opt.validFor.includes(selectedAttribute.type);
+            }
+            // Default: allow for non-structured-arrays
+            return !isStructuredArray;
+          });
+
+          const currentMethod = selectedAttribute[X_AWS_IDP_EVALUATION_METHOD];
+
+          return (
+            <>
+              <FormField label="Evaluation Method" description="Comparison algorithm for baseline accuracy assessment">
+                <Select
+                  selectedOption={availableMethods.find((opt) => opt.value === currentMethod) || null}
+                  onChange={({ detail }) => {
+                    const method = detail.selectedOption.value;
+                    const updates = {
+                      [X_AWS_IDP_EVALUATION_METHOD]: method,
+                    };
+
+                    // Auto-set appropriate threshold based on field type
+                    if (isStructuredArray) {
+                      // For structured arrays, use match_threshold
+                      if (EVALUATION_MATCH_THRESHOLD_DEFAULTS[method]) {
+                        updates[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] = EVALUATION_MATCH_THRESHOLD_DEFAULTS[method];
+                      }
+                      // Clear regular threshold if present
+                      updates[X_AWS_IDP_EVALUATION_THRESHOLD] = undefined;
+                    } else {
+                      // For regular fields, use threshold
+                      if (EVALUATION_THRESHOLD_DEFAULTS[method]) {
+                        updates[X_AWS_IDP_EVALUATION_THRESHOLD] = EVALUATION_THRESHOLD_DEFAULTS[method];
+                      }
+                      // Clear match_threshold if present
+                      updates[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] = undefined;
+                    }
+
+                    onUpdate(updates);
+                  }}
+                  options={availableMethods}
+                  placeholder="Select evaluation method"
+                />
+              </FormField>
+
+              {/* Show match-threshold for structured arrays */}
+              {isStructuredArray && currentMethod && METHODS_REQUIRING_MATCH_THRESHOLD.includes(currentMethod) && (
+                <FormField
+                  label="Match Threshold"
+                  description="Minimum score for matching items in the array (0-1). Stickler uses Hungarian algorithm to find optimal item pairing."
+                >
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={selectedAttribute[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]?.toString() || ''}
+                    onChange={({ detail }) =>
+                      onUpdate({
+                        [X_AWS_IDP_EVALUATION_MATCH_THRESHOLD]: detail.value ? parseFloat(detail.value) : undefined,
+                      })
+                    }
+                    placeholder={`Default: ${EVALUATION_MATCH_THRESHOLD_DEFAULTS[currentMethod] || '0.8'}`}
+                  />
+                </FormField>
+              )}
+
+              {/* Show threshold for non-array fields */}
+              {!isStructuredArray && currentMethod && METHODS_REQUIRING_THRESHOLD.includes(currentMethod) && (
+                <FormField label="Evaluation Threshold" description="Minimum similarity score to consider a baseline match (0-1)">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={selectedAttribute[X_AWS_IDP_EVALUATION_THRESHOLD]?.toString() || ''}
+                    onChange={({ detail }) =>
+                      onUpdate({
+                        [X_AWS_IDP_EVALUATION_THRESHOLD]: detail.value ? parseFloat(detail.value) : undefined,
+                      })
+                    }
+                    placeholder={`Default: ${EVALUATION_THRESHOLD_DEFAULTS[currentMethod] || ''}`}
+                  />
+                </FormField>
+              )}
+
+              {/* Show weight for non-array fields */}
+              {!isStructuredArray && (
+                <FormField
+                  label="Evaluation Weight"
+                  description="Field importance for business criticality (1.0=normal, 2.0=critical, 0.5=optional)"
+                >
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    value={selectedAttribute[X_AWS_IDP_EVALUATION_WEIGHT]?.toString() || '1.0'}
+                    onChange={({ detail }) => {
+                      const value = detail.value ? parseFloat(detail.value) : 1.0;
+                      // Validate minimum
+                      if (value >= 0.1) {
+                        onUpdate({
+                          [X_AWS_IDP_EVALUATION_WEIGHT]: value,
+                        });
+                      }
+                    }}
+                    placeholder="1.0"
+                  />
+                </FormField>
+              )}
+
+              {/* Info alert for structured arrays */}
+              {isStructuredArray && currentMethod === EVALUATION_METHOD_HUNGARIAN && (
+                <Alert type="info">
+                  <strong>Hungarian Matching</strong>
+                  <br />
+                  Stickler uses the Hungarian algorithm to find the optimal pairing between expected and actual list items. The match
+                  threshold you set applies to individual item comparisons.
+                </Alert>
+              )}
+            </>
+          );
+        })()}
       </SpaceBetween>
     </Box>
   );

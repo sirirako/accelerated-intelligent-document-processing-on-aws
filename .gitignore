@@ -32,3 +32,8 @@ package-lock.json
 # Type checking
 pyrightconfig.temp.json
 .pyright/
+
+# Python virtual environments
+.venv/
+.venv-*/
+venv/

@@ -100,15 +100,29 @@ Parameters:
     Type: String
     Description: "Hash token from config library to force updates when config library changes"
 
-  EvaluationFunctionArn:
+  ReportingBucket:
     Type: String
-    Description: "ARN of the Evaluation Lambda function"
+    Description: "S3 bucket for evaluation metrics and analytics"
+
+  BaselineBucket:
+    Type: String
+    Description: "S3 bucket containing baseline/ground truth documents"
+
+  SaveReportingFunctionName:
+    Type: String
+    Description: "Name of Lambda function to save evaluation metrics"
 
   EnableXRayTracing:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: Enable X-Ray tracing
+
+  EnableECRImageScanning:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable automatic vulnerability scanning for Lambda container images in ECR
 
   PermissionsBoundaryArn:
     Type: String
@@ -131,7 +145,7 @@ Parameters:
   ArtifactPrefix:
     Type: String
     Description: "S3 prefix where deployment artifacts are stored"
-  Pattern2SourceZipfile:
+  SourceZipfile:
     Type: String
     Description: "Pattern-2 source zipfile object name"
 
@@ -147,15 +161,18 @@ Conditions:
     !Not [!Equals [!Ref CustomExtractionModelARN, ""]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
+  IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
 
 Resources:
-  Pattern2DockerBuildRole:
+  DockerBuildRole:
     Type: AWS::IAM::Role
     Metadata:
       cfn_nag:
         rules_to_suppress:
           - id: W11
             reason: "Wildcard permissions required for CloudWatch Logs creation"
+          - id: W12
+            reason: "Amazon Inspector ListCoverage and ListFindings require wildcard resource per AWS documentation"
     Properties:
       Path: /
       AssumeRolePolicyDocument:
@@ -196,18 +213,33 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
               - Resource:
-                  - !GetAtt Pattern2ECRRepository.Arn
+                  - !GetAtt ECRRepository.Arn
                 Effect: Allow
                 Action:
                   - ecr:DescribeImageScanFindings
+                  - ecr:DescribeImages
                   - ecr:StartImageScan
+              # Required for Amazon Inspector Enhanced Scanning
+              # https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning-enhanced-iam.html
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - inspector2:ListCoverage
+                  - inspector2:ListFindings
+              # Required when ECR repository uses customer-managed KMS key encryption
+              - Resource:
+                  - !Ref CustomerManagedEncryptionKeyArn
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:CreateGrant
 
-  Pattern2ECRRepository:
+  ECRRepository:
     Type: AWS::ECR::Repository
     # checkov:skip=CKV_AWS_51: "Mutable tags allowed for workflow flexibility and version updates."
     Properties:
       ImageScanningConfiguration:
-        ScanOnPush: true
+        ScanOnPush: !If [IsECRImageScanningEnabled, true, false]
       EncryptionConfiguration:
         EncryptionType: KMS
         KmsKey: !Ref CustomerManagedEncryptionKeyArn
@@ -226,21 +258,21 @@ Resources:
             }]
           }
 
-  Pattern2DockerBuildProject:
+  DockerBuildProject:
     Type: AWS::CodeBuild::Project
     DependsOn:
-      - Pattern2DockerBuildRole
-      - Pattern2ECRRepository
+      - DockerBuildRole
+      - ECRRepository
     Properties:
-      Name: !Sub "${AWS::StackName}-pattern2-docker-build"
+      Name: !Sub "${AWS::StackName}-docker-build"
       Description: !Sub >-
         Pattern-2 Docker image builder for GenAIIDP stack - ${AWS::StackName}
-      ServiceRole: !GetAtt Pattern2DockerBuildRole.Arn
+      ServiceRole: !GetAtt DockerBuildRole.Arn
       EncryptionKey: alias/aws/s3
       Artifacts:
         Type: NO_ARTIFACTS
       Source:
-        Location: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}/${ArtifactPrefix}/${Pattern2SourceZipfile}"
+        Location: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}/${ArtifactPrefix}/${SourceZipfile}"
         Type: S3
         BuildSpec: patterns/pattern-2/buildspec.yml
       Environment:
@@ -250,14 +282,14 @@ Resources:
         PrivilegedMode: true
         EnvironmentVariables:
           - Name: ECR_URI
-            Value: !GetAtt Pattern2ECRRepository.RepositoryUri
+            Value: !GetAtt ECRRepository.RepositoryUri
           - Name: IMAGE_VERSION
             Value: !Ref ImageVersion
           - Name: AWS_REGION
             Value: !Ref AWS::Region
       TimeoutInMinutes: 90
 
-  Pattern2CodeBuildExecutionRole:
+  CodeBuildExecutionRole:
     Type: AWS::IAM::Role
     Metadata:
       cfn_nag:
@@ -292,7 +324,7 @@ Resources:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
                 Resource:
-                  - !GetAtt Pattern2DockerBuildProject.Arn
+                  - !GetAtt DockerBuildProject.Arn
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -303,8 +335,9 @@ Resources:
                 Action:
                   - ecr:ListImages
                   - ecr:BatchDeleteImage
+                  - ecr:DescribeImages
                 Resource:
-                  - !GetAtt Pattern2ECRRepository.Arn
+                  - !GetAtt ECRRepository.Arn
           # Used by custom resource helper poller
           # https://github.com/aws-cloudformation/custom-resource-helper
         - PolicyName: CustomResourcePoller
@@ -326,7 +359,7 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
 
-  Pattern2CodeBuildTrigger:
+  CodeBuildTrigger:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -345,42 +378,55 @@ Resources:
           !Ref PermissionsBoundaryArn,
           !Ref AWS::NoValue,
         ]
-      Role: !GetAtt Pattern2CodeBuildExecutionRole.Arn
+      Role: !GetAtt CodeBuildExecutionRole.Arn
       Runtime: python3.12
       Timeout: 60
       MemorySize: 128
       Handler: index.handler
       CodeUri: ../../src/lambda/start_codebuild
-      Description: Pattern2 CodeBuild trigger Lambda for Docker image builds
+      Description:  CodeBuild trigger Lambda for Docker image builds
       LoggingConfig:
-        LogGroup: !Ref Pattern2CodeBuildTriggerLogGroup
+        LogGroup: !Ref CodeBuildTriggerLogGroup
 
-  Pattern2CodeBuildTriggerLogGroup:
+  CodeBuildTriggerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
-      LogGroupName: !Sub "/${AWS::StackName}/lambda/Pattern2CodeBuildTrigger"
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/CodeBuildTrigger"
       RetentionInDays: !Ref LogRetentionDays
 
-  Pattern2DockerBuildRun:
+  DockerBuildRun:
     Type: Custom::CodeBuildRun
     DependsOn:
-      - Pattern2DockerBuildProject
-      - Pattern2CodeBuildTrigger
+      - DockerBuildProject
+      - CodeBuildTrigger
     Properties:
-      ServiceToken: !GetAtt Pattern2CodeBuildTrigger.Arn
-      BuildProjectName: !Ref Pattern2DockerBuildProject
+      ServiceToken: !GetAtt CodeBuildTrigger.Arn
+      BuildProjectName: !Ref DockerBuildProject
       # Force rebuild when source changes (filename includes content hash)
-      CodeLocation: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}/${ArtifactPrefix}/${Pattern2SourceZipfile}"
+      CodeLocation: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}/${ArtifactPrefix}/${SourceZipfile}"
+      ImageVersion: !Ref ImageVersion
+      ExpectedImages:
+        - "ocr-function"
+        - "classification-function"
+        - "extraction-function"
+        - "assessment-function"
+        - "processresults-function"
+        - "summarization-function"
+        - "evaluation-function"
+        - "hitl-wait-function"
+        - "hitl-status-update-function"
+        - "hitl-process-function"
 
-  Pattern2EcrRepositoryCleanup:
+  EcrRepositoryCleanup:
     Type: Custom::ECRRepositoryCleanup
     DependsOn:
-      - Pattern2DockerBuildRun
-      - Pattern2ECRRepository
+      - DockerBuildRun
+      - ECRRepository
     Properties:
-      ServiceToken: !GetAtt Pattern2CodeBuildTrigger.Arn
-      RepositoryName: !Ref Pattern2ECRRepository
+      ServiceToken: !GetAtt CodeBuildTrigger.Arn
+      RepositoryName: !Ref ECRRepository
+      
   # Shared IAM policy for Lambda functions to pull container images from ECR
   LambdaECRAccessPolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -1468,7 +1514,7 @@ Resources:
 
   OCRFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -1491,7 +1537,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:ocr-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:ocr-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -1551,6 +1597,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             # AppSync permissions for updating document status (only if AppSync API is available)
             - !If
               - HasAppSyncApi
@@ -1570,7 +1622,7 @@ Resources:
 
   ClassificationFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -1593,7 +1645,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:classification-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:classification-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -1666,6 +1718,12 @@ Resources:
                   - HasCustomClassificationModelARN
                   - !Ref CustomClassificationModelARN
                   - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -1682,7 +1740,7 @@ Resources:
 
   ExtractionFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -1707,7 +1765,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:extraction-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:extraction-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -1782,6 +1840,12 @@ Resources:
                   - !Ref CustomExtractionModelARN
                   - !Ref AWS::NoValue
             - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
+            - Effect: Allow
               Action: lambda:InvokeFunction
               Resource:
                 - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:GENAIIDP-*"
@@ -1804,7 +1868,7 @@ Resources:
 
   AssessmentFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -1827,7 +1891,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:assessment-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:assessment-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -1891,6 +1955,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -1907,7 +1977,7 @@ Resources:
 
   ProcessResultsFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -1930,7 +2000,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:processresults-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:processresults-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -2013,7 +2083,7 @@ Resources:
 
   HITLWaitFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2036,7 +2106,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:hitl-wait-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:hitl-wait-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -2090,7 +2160,7 @@ Resources:
 
   HITLStatusUpdateFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2110,7 +2180,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:hitl-status-update-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:hitl-status-update-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -2167,7 +2237,7 @@ Resources:
 
   HITLProcessLambdaFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2192,7 +2262,7 @@ Resources:
       LoggingConfig:
         LogGroup: !Ref HITLProcessLambdaLogGroup
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:hitl-process-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:hitl-process-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -2289,7 +2359,7 @@ Resources:
 
   SummarizationFunction:
     Type: AWS::Serverless::Function
-    DependsOn: Pattern2DockerBuildRun
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2312,7 +2382,7 @@ Resources:
           !Ref AWS::NoValue,
         ]
       PackageType: Image
-      ImageUri: !Sub "${Pattern2ECRRepository.RepositoryUri}:summarization-function-${ImageVersion}"
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:summarization-function-${ImageVersion}"
       Architectures:
         - arm64
       ImageConfig:
@@ -2378,6 +2448,12 @@ Resources:
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -2390,6 +2466,110 @@ Resources:
     Properties:
       KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
       LogGroupName: !Sub "/${AWS::StackName}/lambda/SummarizationFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
+  EvaluationFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
+    Metadata:
+      SkipBuild: True
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Role requires * resource access for CloudWatch Metrics and Logs"
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      PackageType: Image
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:evaluation-function-${ImageVersion}"
+      Architectures:
+        - arm64
+      ImageConfig:
+        Command:
+          - "index.handler"
+      Timeout: 900
+      MemorySize: 1024
+      Tracing: Active
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          METRIC_NAMESPACE: !Ref StackName
+          APPSYNC_API_URL: !Ref AppSyncApiUrl
+          PROCESSING_OUTPUT_BUCKET: !Ref OutputBucket
+          EVALUATION_OUTPUT_BUCKET: !Ref OutputBucket
+          REPORTING_BUCKET: !Ref ReportingBucket
+          BASELINE_BUCKET: !Ref BaselineBucket
+          SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingFunctionName
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          WORKING_BUCKET: !Ref WorkingBucket
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
+      LoggingConfig:
+        LogGroup: !Ref EvaluationFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - !Ref LambdaECRAccessPolicy
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3ReadPolicy:
+            BucketName: !Ref BaselineBucket
+        - S3CrudPolicy:
+            BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - Statement:
+            - Effect: Allow
+              Action: cloudwatch:PutMetricData
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !Ref CustomerManagedEncryptionKeyArn
+            # AppSync permissions for updating document status (only if AppSync API is available)
+            - !If
+              - HasAppSyncApi
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${AppSyncApiArn}/types/Mutation/*"
+              - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            # Lambda invoke permission for SaveReportingFunction (in main template)
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${SaveReportingFunctionName}"
+
+  EvaluationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/EvaluationFunction"
       RetentionInDays: !Ref LogRetentionDays
 
   DocumentProcessingStateMachine:
@@ -2412,7 +2592,7 @@ Resources:
         HITLWaitFunctionArn: !GetAtt HITLWaitFunction.Arn
         HITLStatusUpdateFunctionArn: !GetAtt HITLStatusUpdateFunction.Arn
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
-        EvaluationLambdaArn: !Ref EvaluationFunctionArn
+        EvaluationLambdaArn: !GetAtt EvaluationFunction.Arn
         OutputBucket: !Ref OutputBucket
       Logging:
         Level: ALL
@@ -2438,10 +2618,8 @@ Resources:
             FunctionName: !Ref HITLStatusUpdateFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref SummarizationFunction
-        - Statement:
-            - Effect: Allow
-              Action: lambda:InvokeFunction
-              Resource: !Ref EvaluationFunctionArn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref EvaluationFunction
         - CloudWatchLogsFullAccess
 
   StateMachineLogGroup:

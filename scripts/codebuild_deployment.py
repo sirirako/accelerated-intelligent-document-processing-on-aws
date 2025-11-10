@@ -5,12 +5,17 @@ CodeBuild Deployment Script
 Handles IDP stack deployment and testing in AWS CodeBuild environment.
 """
 
+import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from textwrap import dedent
+
+import boto3
 
 # Configuration for patterns to deploy
 DEPLOY_PATTERNS = [
@@ -60,8 +65,8 @@ def get_env_var(name, default=None):
 
 
 def generate_stack_prefix():
-    """Generate unique stack prefix with timestamp"""
-    timestamp = datetime.now().strftime("%m%d-%H%M")  # Shorter format: MMDD-HHMM
+    """Generate unique stack prefix with timestamp including seconds"""
+    timestamp = datetime.now().strftime("%m%d-%H%M%S")  # Format: MMDD-HHMMSS
     return f"idp-{timestamp}"
 
 
@@ -74,7 +79,7 @@ def publish_templates():
     region = get_env_var("AWS_DEFAULT_REGION", "us-east-1")
 
     # Generate bucket name and prefix
-    bucket_basename = f"idp-sdlc-sourcecode-{account_id}-{region}"
+    bucket_basename = f"genaiic-sdlc-sourcecode-{account_id}-{region}"
     prefix = f"codebuild-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
     # Run publish.sh
@@ -97,7 +102,7 @@ def publish_templates():
         sys.exit(1)
 
 
-def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url):
+def deploy_test_and_cleanup_pattern(stack_prefix, pattern_config, admin_email, template_url):
     """Deploy and test a specific IDP pattern"""
     pattern_name = pattern_config["name"]
     pattern_id = pattern_config["id"]
@@ -130,6 +135,7 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": False,
+                "error": f"Stack deployment failed with status: {result.stdout.strip()}"
             }
 
         print(f"[{pattern_name}] ✅ Stack is healthy")
@@ -161,6 +167,7 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": False,
+                "error": f"No result file found at expected location: {result_location}"
             }
 
         # Verify the result file contains expected content
@@ -190,39 +197,302 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
                     "stack_name": stack_name,
                     "pattern_name": pattern_name,
                     "success": False,
+                    "error": f"Verification failed: Expected string '{verify_string}' not found in result"
                 }
 
             print(
                 f"[{pattern_name}] ✅ Found expected verification string: '{verify_string}'"
             )
-            return {
+            
+            success_result = {
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": True,
+                "verification_string": verify_string
             }
 
         except Exception as e:
             print(f"[{pattern_name}] ❌ Failed to validate result content: {e}")
-            return {
+            success_result = {
                 "stack_name": stack_name,
                 "pattern_name": pattern_name,
                 "success": False,
+                "error": f"Result validation failed: {str(e)}"
             }
 
     except Exception as e:
         print(f"[{pattern_name}] ❌ Testing failed: {e}")
-        return {
+        success_result = {
             "stack_name": stack_name,
             "pattern_name": pattern_name,
             "success": False,
+            "error": f"Deployment/testing failed: {str(e)}"
         }
+
+    # Always cleanup the stack regardless of success/failure
+    finally:
+        cleanup_stack(stack_name, pattern_name)
+    
+    return success_result
+
+
+def get_codebuild_logs():
+    """Get CodeBuild logs from CloudWatch"""
+    try:
+        # Get CodeBuild build ID from environment
+        build_id = os.environ.get('CODEBUILD_BUILD_ID', '')
+        if not build_id:
+            return "CodeBuild logs not available (not running in CodeBuild)"
+        
+        # Extract log group and stream from build ID
+        log_group = f"/aws/codebuild/{build_id.split(':')[0]}"
+        log_stream = build_id.split(':')[-1]
+        
+        # Get logs from CloudWatch
+        logs_client = boto3.client('logs')
+        response = logs_client.get_log_events(
+            logGroupName=log_group,
+            logStreamName=log_stream,
+            startFromHead=True
+        )
+        
+        # Extract log messages
+        log_messages = []
+        for event in response.get('events', []):
+            log_messages.append(event['message'])
+        
+        return '\n'.join(log_messages)
+        
+    except Exception as e:
+        return f"Failed to retrieve CodeBuild logs: {str(e)}"
+
+
+def generate_deployment_summary(deployment_results, stack_prefix, template_url):
+    """
+    Generate deployment summary using Bedrock API
+    
+    Args:
+        deployment_results: List of deployment result dictionaries
+        stack_prefix: Stack prefix used for deployment
+        template_url: Template URL used for deployment
+    
+    Returns:
+        str: Generated summary text
+    """
+    try:
+        # Get CodeBuild logs
+        deployment_logs = get_codebuild_logs()
+        
+        # Check if log retrieval failed
+        if deployment_logs.startswith("Failed to retrieve CodeBuild logs"):
+            raise Exception("CodeBuild logs unavailable")
+        
+        # Initialize Bedrock client
+        bedrock = boto3.client('bedrock-runtime')
+        
+        # Create prompt for Bedrock with actual logs
+        prompt = dedent(f"""
+        You are an AWS deployment analyst. Analyze the following deployment logs and create a concise summary in table format.
+
+        Deployment Information:
+        - Timestamp: {datetime.now().isoformat()}
+        - Stack Prefix: {stack_prefix}
+        - Template URL: {template_url}
+        - Total Patterns: {len(deployment_results)}
+
+        Raw Deployment Logs:
+        {deployment_logs}
+
+        Pattern Results Summary:
+        {json.dumps(deployment_results, indent=2)}
+
+        Create a summary with this EXACT format:
+
+        ┌─────────────────────────────────────────────────────────────────────────────┐
+        │                              DEPLOYMENT RESULTS                             │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ Pattern               │ Status    │ Duration  │ Key Metrics               │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ Pattern 1 - BDA       │ SUCCESS   │ 15m 30s   │ 28 functions validated    │
+        │ Pattern 2 - OCR       │ SUCCESS   │ 12m 45s   │ All tests passed          │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │                              ROOT CAUSE ANALYSIS                            │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ • CloudWatch log cleanup failed due to concatenated log group names        │
+        │ • AWS CLI text output parsing caused parameter validation errors           │
+        │ • Provide specific error messages, resource names, and failure points      │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │                              RECOMMENDATIONS                                │
+        ├─────────────────────────────────────────────────────────────────────────────┤
+        │ • Fix CloudWatch log cleanup to use JSON output instead of text            │
+        │ • Add proper error handling for resource cleanup operations                 │
+        └─────────────────────────────────────────────────────────────────────────────┘
+
+        Requirements:
+        - Use EXACT table format above
+        - For failures: provide detailed root cause analysis for ALL failed components (publish, deployments, etc.)
+        - Analyze publish/build logs to determine root cause of template publishing errors
+        - Include specific error messages, resource names, and exact failure points from logs
+        - Include sufficient technical details to understand WHY each component failed
+        - Maximum 2-3 bullet points for recommendations
+        - Keep each line under 75 characters
+        - Extract actual error messages and resource identifiers from logs
+        - For publish failures: check S3 permissions, npm/pip errors, CDK issues, template syntax
+        """)
+        
+        # Call Bedrock API
+        response = bedrock.invoke_model(
+            modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 4000,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            })
+        )
+        
+        # Parse response
+        response_body = json.loads(response['body'].read())
+        summary = response_body['content'][0]['text']
+        
+        try:
+            from rich.console import Console
+            from rich.panel import Panel
+            
+            console = Console()
+            console.print(Panel(
+                summary, 
+                title="🤖 AI Deployment Analysis", 
+                border_style="green",
+                padding=(1, 2)
+            ))
+        except ImportError:
+            # Fallback to plain text if Rich not available
+            print("📊 Deployment Summary Generated:")
+            print("=" * 80)
+            print(summary)
+            print("=" * 80)
+        
+        return summary
+        
+    except Exception as e:
+        print(f"⚠️ Failed to generate Bedrock summary: {e}")
+        # Manual summary when Bedrock unavailable
+        successful = sum(1 for r in deployment_results if r["success"])
+        total = len(deployment_results)
+        
+        manual_summary = dedent(f"""
+        DEPLOYMENT SUMMARY REPORT (MANUAL)
+        ==================================
+        
+        Timestamp: {datetime.now().isoformat()}
+        Stack Prefix: {stack_prefix}
+        Template URL: {template_url}
+        
+        Overall Status: {'SUCCESS' if successful == total else 'PARTIAL_FAILURE' if successful > 0 else 'FAILURE'}
+        Successful Patterns: {successful}/{total}
+        
+        Pattern Results:
+        """)
+        
+        for result in deployment_results:
+            status = "✅ SUCCESS" if result["success"] else "❌ FAILED"
+            manual_summary += f"- {result['pattern_name']}: {status}\n"
+        
+        if successful < total:
+            manual_summary += "\nRecommendation: Review failed patterns and retry deployment.\n"
+        
+        print("📊 Deployment Summary (Manual):")
+        print("=" * 80)
+        print(manual_summary)
+        print("=" * 80)
+        
+        return manual_summary
+
+
+def delete_versioned_bucket(bucket_name):
+    """Delete all versions and delete markers from a versioned S3 bucket, then delete the bucket."""
+    import boto3
+    try:
+        s3 = boto3.client('s3')
+        paginator = s3.get_paginator('list_object_versions')
+        
+        for page in paginator.paginate(Bucket=bucket_name):
+            # Delete object versions
+            if 'Versions' in page:
+                for version in page['Versions']:
+                    s3.delete_object(Bucket=bucket_name, Key=version['Key'], VersionId=version['VersionId'])
+            
+            # Delete delete markers
+            if 'DeleteMarkers' in page:
+                for marker in page['DeleteMarkers']:
+                    s3.delete_object(Bucket=bucket_name, Key=marker['Key'], VersionId=marker['VersionId'])
+        
+        # Delete the bucket
+        s3.delete_bucket(Bucket=bucket_name)
+        return True
+    except Exception:
+        return False
 
 
 def cleanup_stack(stack_name, pattern_name):
-    """Clean up a deployed stack"""
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
     try:
-        run_command(f"idp-cli delete --stack-name {stack_name} --force", check=False)
+        # Check stack status first
+        result = run_command(f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text", check=False)
+        stack_status = result.stdout.strip() if result.returncode == 0 else "NOT_FOUND"
+        
+        print(f"[{pattern_name}] Stack status: {stack_status}")
+        
+        # Delete the stack and wait for completion
+        print(f"[{pattern_name}] Attempting stack deletion...")
+        run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --force-delete-all --wait", check=False)
+        
+        # Clean up additional log groups that might not be caught by idp-cli
+        print(f"[{pattern_name}] Cleaning up additional log groups...")
+        
+        # Set AWS retry configuration to handle throttling
+        os.environ['AWS_MAX_ATTEMPTS'] = '10'
+        os.environ['AWS_RETRY_MODE'] = 'adaptive'
+
+        # CloudWatch log groups
+        result = run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output json", check=False)
+        if result.stdout.strip():
+            try:
+                import json
+                log_group_names = json.loads(result.stdout.strip())
+                for log_group_name in log_group_names:
+                    if log_group_name:  # Skip empty names
+                        print(f"[{pattern_name}] Deleting log group: {log_group_name}")
+                        run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(log_group_name)}", check=False)
+            except json.JSONDecodeError:
+                print(f"[{pattern_name}] Failed to parse log group names")
+
+        # AppSync logs
+        result = run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output json", check=False)
+        if result.stdout.strip():
+            try:
+                import json
+                api_ids = json.loads(result.stdout.strip())
+                for api_id in api_ids:
+                    if api_id:  # Skip empty IDs
+                        print(f"[{pattern_name}] Deleting AppSync log group for API: {api_id}")
+                        run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(f'/aws/appsync/apis/{api_id}')}", check=False)
+            except json.JSONDecodeError:
+                print(f"[{pattern_name}] Failed to parse AppSync API IDs")
+        
+        # Clean up CloudWatch Logs Resource Policy only if stack-specific
+        result = run_command(f"aws logs describe-resource-policies --query 'resourcePolicies[?contains(policyName, `{stack_name}`)].policyName' --output text", check=False)
+        if result.stdout.strip():
+            policy_names = [name for name in result.stdout.strip().split('\t') if name]
+            for policy_name in policy_names:
+                print(f"[{pattern_name}] Deleting resource policy: {policy_name}")
+                run_command(f"aws logs delete-resource-policy --policy-name '{policy_name}'", check=False)
+        
         print(f"[{pattern_name}] ✅ Cleanup completed")
     except Exception as e:
         print(f"[{pattern_name}] ⚠️ Cleanup failed: {e}")
@@ -232,7 +502,7 @@ def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
-    admin_email = get_env_var("IDP_ADMIN_EMAIL", "strahanr@amazon.com")
+    admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
     stack_prefix = generate_stack_prefix()
 
     print(f"Stack Prefix: {stack_prefix}")
@@ -240,53 +510,72 @@ def main():
     print(f"Patterns to deploy: {[p['name'] for p in DEPLOY_PATTERNS]}")
 
     # Step 1: Publish templates to S3
-    template_url = publish_templates()
+    try:
+        template_url = publish_templates()
+        publish_success = True
+    except Exception as e:
+        print(f"❌ Publish failed: {e}")
+        template_url = "N/A - Publish failed"
+        publish_success = False
 
-    deployed_stacks = []
-    all_success = True
+    all_success = publish_success
+    deployment_results = []
 
-    # Step 2: Deploy and test patterns concurrently
-    print("🚀 Starting concurrent deployment of all patterns...")
-    with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
-        # Submit all deployment tasks
-        future_to_pattern = {
-            executor.submit(
-                deploy_and_test_pattern,
-                stack_prefix,
-                pattern_config,
-                admin_email,
-                template_url,
-            ): pattern_config
-            for pattern_config in DEPLOY_PATTERNS
-        }
+    # Step 2: Deploy, test, and cleanup patterns concurrently (only if publish succeeded)
+    if publish_success:
+        print("🚀 Starting concurrent deployment of all patterns...")
+        with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
+            # Submit all deployment tasks
+            future_to_pattern = {
+                executor.submit(
+                    deploy_test_and_cleanup_pattern,
+                    stack_prefix,
+                    pattern_config,
+                    admin_email,
+                    template_url,
+                ): pattern_config
+                for pattern_config in DEPLOY_PATTERNS
+            }
 
-        # Collect results as they complete
-        for future in as_completed(future_to_pattern):
-            pattern_config = future_to_pattern[future]
-            try:
-                result = future.result()
-                deployed_stacks.append(result)
-                if not result["success"]:
+            # Collect results as they complete (cleanup happens within each pattern)
+            for future in as_completed(future_to_pattern):
+                pattern_config = future_to_pattern[future]
+                try:
+                    result = future.result()
+                    deployment_results.append(result)
+                    if not result["success"]:
+                        all_success = False
+                        print(f"[{pattern_config['name']}] ❌ Failed")
+                    else:
+                        print(f"[{pattern_config['name']}] ✅ Success")
+                        
+                except Exception as e:
+                    print(f"[{pattern_config['name']}] ❌ Exception: {e}")
+                    # Add failed result for exception cases
+                    deployment_results.append({
+                        "stack_name": f"{stack_prefix}-{pattern_config['suffix']}",
+                        "pattern_name": pattern_config['name'],
+                        "success": False,
+                        "error": str(e)
+                    })
                     all_success = False
-                    print(f"[{pattern_config['name']}] ❌ Failed")
-                else:
-                    print(f"[{pattern_config['name']}] ✅ Success")
-            except Exception as e:
-                print(f"[{pattern_config['name']}] ❌ Exception: {e}")
-                all_success = False
+    else:
+        # Add publish failure to results for AI analysis
+        deployment_results.append({
+            "stack_name": "N/A",
+            "pattern_name": "Template Publishing",
+            "success": False,
+            "error": "Failed to publish templates to S3"
+        })
 
-    # Step 3: Cleanup all stacks concurrently
-    print("🧹 Starting concurrent cleanup of all stacks...")
-    with ThreadPoolExecutor(max_workers=len(deployed_stacks)) as executor:
-        cleanup_futures = [
-            executor.submit(cleanup_stack, result["stack_name"], result["pattern_name"])
-            for result in deployed_stacks
-        ]
+    # Step 3: Generate deployment summary using Bedrock (ALWAYS run for analysis)
+    print("\n🤖 Generating deployment summary with Bedrock...")
+    try:
+        generate_deployment_summary(deployment_results, stack_prefix, template_url)
+    except Exception as e:
+        print(f"⚠️ Failed to generate deployment summary: {e}")
 
-        # Wait for all cleanups to complete
-        for future in as_completed(cleanup_futures):
-            future.result()  # Wait for completion
-
+    # Check final status after all cleanups are done
     if all_success:
         print("🎉 All pattern deployments completed successfully!")
         sys.exit(0)

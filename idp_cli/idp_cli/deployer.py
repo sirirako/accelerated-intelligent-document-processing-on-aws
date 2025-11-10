@@ -314,13 +314,21 @@ class StackDeployer:
             wait: Whether to wait for deletion to complete
 
         Returns:
-            Dictionary with deletion result
+            Dictionary with deletion result including stack_id
         """
         logger.info(f"Deleting stack: {stack_name}")
 
         # Check if stack exists
         if not self._stack_exists(stack_name):
             raise ValueError(f"Stack '{stack_name}' does not exist")
+
+        # Get stack ID before deletion (needed for querying deleted stacks)
+        try:
+            response = self.cfn.describe_stacks(StackName=stack_name)
+            stack_id = response["Stacks"][0]["StackId"]
+        except Exception as e:
+            logger.warning(f"Could not get stack ID: {e}")
+            stack_id = stack_name  # Fallback to name
 
         # Get stack resources to find buckets
         bucket_info = self._get_stack_buckets(stack_name)
@@ -336,12 +344,15 @@ class StackDeployer:
 
             result = {
                 "stack_name": stack_name,
+                "stack_id": stack_id,
                 "operation": "DELETE",
                 "status": "INITIATED",
             }
 
             if wait:
                 result = self._wait_for_deletion(stack_name)
+                # Ensure stack_id is preserved after wait
+                result["stack_id"] = stack_id
 
             return result
 
@@ -512,6 +523,348 @@ class StackDeployer:
                 bucket_dict["size_display"] = "Unknown"
 
         return buckets
+
+    def get_retained_resources_after_deletion(
+        self, stack_name: str, include_nested: bool = True
+    ) -> Dict:
+        """
+        Get resources that CloudFormation didn't delete
+
+        Queries stack after deletion attempt to find resources
+        with status DELETE_SKIPPED or still existing.
+
+        Args:
+            stack_name: Stack name
+            include_nested: Include nested stack resources
+
+        Returns:
+            Dictionary with categorized retained resources
+        """
+        retained_resources = {
+            "dynamodb_tables": [],
+            "log_groups": [],
+            "s3_buckets": [],
+            "other": [],
+        }
+
+        # Get all stacks to check (main + nested)
+        stacks_to_check = [stack_name]
+
+        if include_nested:
+            nested_stacks = self._get_nested_stacks(stack_name)
+            stacks_to_check.extend(nested_stacks)
+
+        for stack in stacks_to_check:
+            try:
+                # Query resources for this stack
+                paginator = self.cfn.get_paginator("list_stack_resources")
+                pages = paginator.paginate(StackName=stack)
+
+                for page in pages:
+                    for resource in page.get("StackResourceSummaries", []):
+                        status = resource.get("ResourceStatus")
+                        resource_type = resource.get("ResourceType")
+                        physical_id = resource.get("PhysicalResourceId")
+
+                        # Special handling for log groups - CF may mark DELETE_COMPLETE but they still exist
+                        if resource_type == "AWS::Logs::LogGroup":
+                            if physical_id and self._log_group_exists(physical_id):
+                                resource_info = {
+                                    "logical_id": resource.get("LogicalResourceId"),
+                                    "physical_id": physical_id,
+                                    "type": resource_type,
+                                    "status": "EXISTS",  # Override CF status
+                                    "status_reason": "Verified to exist in CloudWatch",
+                                    "stack": stack,
+                                }
+                                retained_resources["log_groups"].append(resource_info)
+                        # For other resources, use CF status
+                        elif status not in ["DELETE_COMPLETE", "DELETE_IN_PROGRESS"]:
+                            resource_info = {
+                                "logical_id": resource.get("LogicalResourceId"),
+                                "physical_id": physical_id,
+                                "type": resource_type,
+                                "status": status,
+                                "status_reason": resource.get(
+                                    "ResourceStatusReason", ""
+                                ),
+                                "stack": stack,
+                            }
+
+                            # Categorize by type
+                            if resource_type == "AWS::DynamoDB::Table":
+                                retained_resources["dynamodb_tables"].append(
+                                    resource_info
+                                )
+                            elif resource_type == "AWS::S3::Bucket":
+                                retained_resources["s3_buckets"].append(resource_info)
+                            else:
+                                retained_resources["other"].append(resource_info)
+
+            except self.cfn.exceptions.ClientError as e:
+                # Stack might not exist anymore - that's ok
+                if "does not exist" not in str(e):
+                    logger.warning(f"Error checking resources for {stack}: {e}")
+
+        return retained_resources
+
+    def _get_nested_stacks(self, stack_name: str) -> List[str]:
+        """
+        Recursively find all nested stacks
+
+        Args:
+            stack_name: Parent stack name
+
+        Returns:
+            List of nested stack names
+        """
+        nested_stacks = []
+
+        try:
+            paginator = self.cfn.get_paginator("list_stack_resources")
+            pages = paginator.paginate(StackName=stack_name)
+
+            for page in pages:
+                for resource in page.get("StackResourceSummaries", []):
+                    if resource.get("ResourceType") == "AWS::CloudFormation::Stack":
+                        nested_name = resource.get("PhysicalResourceId")
+                        if nested_name:
+                            nested_stacks.append(nested_name)
+                            # Recursively get nested stacks of nested stacks
+                            nested_stacks.extend(self._get_nested_stacks(nested_name))
+
+        except Exception as e:
+            logger.warning(f"Error getting nested stacks for {stack_name}: {e}")
+
+        return nested_stacks
+
+    def _log_group_exists(self, log_group_name: str) -> bool:
+        """
+        Check if log group actually exists in CloudWatch
+
+        Args:
+            log_group_name: Log group name to check
+
+        Returns:
+            True if log group exists, False otherwise
+        """
+        logs = boto3.client("logs", region_name=self.region)
+
+        try:
+            response = logs.describe_log_groups(
+                logGroupNamePrefix=log_group_name, limit=1
+            )
+            # Check if exact match exists
+            for group in response.get("logGroups", []):
+                if group["logGroupName"] == log_group_name:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking log group {log_group_name}: {e}")
+            return False
+
+    def cleanup_retained_resources(self, stack_identifier: str) -> Dict:
+        """
+        Delete resources that CloudFormation retained
+
+        Args:
+            stack_identifier: Stack name or stack ID (use ID for deleted stacks)
+
+        Returns:
+            Cleanup summary with deleted resources and errors
+        """
+        from rich.console import Console
+        from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+
+        console = Console()
+
+        console.print("\n[bold blue]Analyzing retained resources...[/bold blue]")
+
+        # Get resources that weren't deleted
+        retained = self.get_retained_resources_after_deletion(stack_identifier)
+
+        # Count resources
+        total = (
+            len(retained["dynamodb_tables"])
+            + len(retained["log_groups"])
+            + len(retained["s3_buckets"])
+        )
+
+        if total == 0:
+            console.print(
+                "[green]✓ No retained resources found - CloudFormation deleted everything![/green]"
+            )
+            return {"total_deleted": 0, "errors": []}
+
+        console.print(f"Found {total} retained resources:")
+        console.print(f"  • DynamoDB Tables: {len(retained['dynamodb_tables'])}")
+        console.print(f"  • CloudWatch Logs: {len(retained['log_groups'])}")
+        console.print(f"  • S3 Buckets: {len(retained['s3_buckets'])}")
+
+        if retained["other"]:
+            console.print(f"  • Other: {len(retained['other'])}")
+            console.print(
+                "[yellow]Warning: Some resources cannot be auto-deleted[/yellow]"
+            )
+
+        results = {
+            "dynamodb_deleted": [],
+            "logs_deleted": [],
+            "buckets_deleted": [],
+            "errors": [],
+        }
+
+        # Delete each type with progress bar
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        ) as progress:
+            # Phase 1: DynamoDB
+            if retained["dynamodb_tables"]:
+                task = progress.add_task(
+                    "Deleting DynamoDB tables...",
+                    total=len(retained["dynamodb_tables"]),
+                )
+                for table in retained["dynamodb_tables"]:
+                    try:
+                        self._delete_dynamodb_table(table["physical_id"])
+                        results["dynamodb_deleted"].append(table["physical_id"])
+                    except Exception as e:
+                        results["errors"].append(
+                            {
+                                "resource": table["physical_id"],
+                                "type": "DynamoDB",
+                                "error": str(e),
+                            }
+                        )
+                    progress.advance(task)
+
+            # Phase 2: Log Groups
+            if retained["log_groups"]:
+                task = progress.add_task(
+                    "Deleting CloudWatch logs...", total=len(retained["log_groups"])
+                )
+                for log_group in retained["log_groups"]:
+                    try:
+                        self._delete_log_group(log_group["physical_id"])
+                        results["logs_deleted"].append(log_group["physical_id"])
+                    except Exception as e:
+                        results["errors"].append(
+                            {
+                                "resource": log_group["physical_id"],
+                                "type": "LogGroup",
+                                "error": str(e),
+                            }
+                        )
+                    progress.advance(task)
+
+            # Phase 3: S3 Buckets (LoggingBucket last)
+            if retained["s3_buckets"]:
+                # Separate LoggingBucket from others
+                logging_bucket = None
+                regular_buckets = []
+
+                for bucket in retained["s3_buckets"]:
+                    if "logging" in bucket["logical_id"].lower():
+                        logging_bucket = bucket
+                    else:
+                        regular_buckets.append(bucket)
+
+                # Delete regular buckets first, then logging bucket
+                all_buckets = regular_buckets + (
+                    [logging_bucket] if logging_bucket else []
+                )
+
+                task = progress.add_task(
+                    "Deleting S3 buckets...", total=len(all_buckets)
+                )
+                for bucket in all_buckets:
+                    try:
+                        self._empty_and_delete_bucket(bucket["physical_id"])
+                        results["buckets_deleted"].append(bucket["physical_id"])
+                    except Exception as e:
+                        results["errors"].append(
+                            {
+                                "resource": bucket["physical_id"],
+                                "type": "S3Bucket",
+                                "error": str(e),
+                            }
+                        )
+                    progress.advance(task)
+
+        return results
+
+    def _delete_dynamodb_table(self, table_name: str) -> None:
+        """
+        Delete a DynamoDB table
+
+        Args:
+            table_name: Table name to delete
+        """
+        dynamodb = boto3.client("dynamodb", region_name=self.region)
+
+        try:
+            # Disable point-in-time recovery if enabled
+            try:
+                dynamodb.update_continuous_backups(
+                    TableName=table_name,
+                    PointInTimeRecoverySpecification={
+                        "PointInTimeRecoveryEnabled": False
+                    },
+                )
+            except Exception:
+                # May not have PITR enabled, continue
+                pass
+
+            # Delete the table
+            dynamodb.delete_table(TableName=table_name)
+            logger.info(f"Deleted DynamoDB table: {table_name}")
+
+        except Exception as e:
+            logger.error(f"Error deleting DynamoDB table {table_name}: {e}")
+            raise
+
+    def _delete_log_group(self, log_group_name: str) -> None:
+        """
+        Delete a CloudWatch Log Group
+
+        Args:
+            log_group_name: Log group name to delete
+        """
+        logs = boto3.client("logs", region_name=self.region)
+
+        try:
+            logs.delete_log_group(logGroupName=log_group_name)
+            logger.info(f"Deleted log group: {log_group_name}")
+
+        except Exception as e:
+            logger.error(f"Error deleting log group {log_group_name}: {e}")
+            raise
+
+    def _empty_and_delete_bucket(self, bucket_name: str) -> None:
+        """
+        Empty and delete an S3 bucket
+
+        Args:
+            bucket_name: Bucket name to delete
+        """
+        s3 = boto3.resource("s3", region_name=self.region)
+
+        try:
+            bucket = s3.Bucket(bucket_name)
+
+            # Delete all objects and versions
+            bucket.object_versions.all().delete()
+
+            # Delete the bucket
+            bucket.delete()
+            logger.info(f"Deleted S3 bucket: {bucket_name}")
+
+        except Exception as e:
+            logger.error(f"Error deleting bucket {bucket_name}: {e}")
+            raise
 
 
 def is_local_file_path(path: str) -> bool:
@@ -694,11 +1047,11 @@ def upload_local_config(
 
 
 def build_parameters(
-    pattern: str,
-    admin_email: str,
-    max_concurrent: int = 100,
-    log_level: str = "INFO",
-    enable_hitl: str = "false",
+    pattern: Optional[str] = None,
+    admin_email: Optional[str] = None,
+    max_concurrent: Optional[int] = None,
+    log_level: Optional[str] = None,
+    enable_hitl: Optional[str] = None,
     pattern_config: Optional[str] = None,
     custom_config: Optional[str] = None,
     additional_params: Optional[Dict[str, str]] = None,
@@ -708,42 +1061,54 @@ def build_parameters(
     """
     Build CloudFormation parameters dictionary
 
+    Only includes parameters that are explicitly provided. For stack updates,
+    CloudFormation will automatically use previous values for parameters not included.
+
     If custom_config is a local file path, it will be uploaded to S3:
     - For existing stacks: Uses the stack's ConfigurationBucket
     - For new stacks: Creates a temporary bucket
 
     Args:
-        pattern: IDP pattern (pattern-1, pattern-2, pattern-3)
-        admin_email: Admin user email
-        max_concurrent: Maximum concurrent workflows
-        log_level: Logging level
-        enable_hitl: Enable HITL (true/false)
-        pattern_config: Pattern configuration preset
-        custom_config: Custom configuration (local file path or S3 URI)
-        additional_params: Additional parameters as dict
+        pattern: IDP pattern (pattern-1, pattern-2, pattern-3) - optional for updates
+        admin_email: Admin user email - optional for updates
+        max_concurrent: Maximum concurrent workflows - optional
+        log_level: Logging level - optional
+        enable_hitl: Enable HITL (true/false) - optional
+        pattern_config: Pattern configuration preset - optional
+        custom_config: Custom configuration (local file path or S3 URI) - optional
+        additional_params: Additional parameters as dict - optional
         region: AWS region (auto-detected if not provided)
         stack_name: Stack name (helps determine upload bucket for updates)
 
     Returns:
-        Dictionary of parameter key-value pairs
+        Dictionary of parameter key-value pairs (only includes explicitly provided values)
     """
-    # Map pattern names to CloudFormation values
-    pattern_map = {
-        "pattern-1": "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)",
-        "pattern-2": "Pattern2 - Packet processing with Textract and Bedrock",
-        "pattern-3": "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-    }
+    parameters = {}
 
-    parameters = {
-        "AdminEmail": admin_email,
-        "IDPPattern": pattern_map.get(pattern, pattern),
-        "MaxConcurrentWorkflows": str(max_concurrent),
-        "LogLevel": log_level,
-        "EnableHITL": enable_hitl,
-    }
+    # Only add parameters if explicitly provided
+    if admin_email is not None:
+        parameters["AdminEmail"] = admin_email
 
-    # Add pattern-specific configuration
-    if pattern_config:
+    if pattern is not None:
+        # Map pattern names to CloudFormation values
+        pattern_map = {
+            "pattern-1": "Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)",
+            "pattern-2": "Pattern2 - Packet processing with Textract and Bedrock",
+            "pattern-3": "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
+        }
+        parameters["IDPPattern"] = pattern_map.get(pattern, pattern)
+
+    if max_concurrent is not None:
+        parameters["MaxConcurrentWorkflows"] = str(max_concurrent)
+
+    if log_level is not None:
+        parameters["LogLevel"] = log_level
+
+    if enable_hitl is not None:
+        parameters["EnableHITL"] = enable_hitl
+
+    # Add pattern-specific configuration (only if provided)
+    if pattern_config is not None:
         if pattern == "pattern-1":
             parameters["Pattern1Configuration"] = pattern_config
         elif pattern == "pattern-2":

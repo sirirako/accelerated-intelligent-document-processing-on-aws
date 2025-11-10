@@ -25,6 +25,10 @@ X_AWS_IDP_DOCUMENT_TYPE = "x-aws-idp-document-type"
 # Classification metadata for document type
 X_AWS_IDP_CLASSIFICATION = "x-aws-idp-classification"
 
+# Regex patterns for classification optimization
+X_AWS_IDP_DOCUMENT_NAME_REGEX = "x-aws-idp-document-name-regex"
+X_AWS_IDP_PAGE_CONTENT_REGEX = "x-aws-idp-document-page-content-regex"
+
 # ============================================================================
 # Legacy Attribute Type Values (for migration only)
 # ============================================================================
@@ -48,31 +52,46 @@ X_AWS_IDP_ORIGINAL_NAME = "x-aws-idp-original-name"
 # ============================================================================
 # AWS IDP Evaluation Extensions
 # ============================================================================
-# Evaluation method for attribute comparison
+# Evaluation method for attribute comparison (maps to Stickler comparators)
 X_AWS_IDP_EVALUATION_METHOD = "x-aws-idp-evaluation-method"
 
+# Evaluation threshold for comparison (0.0 to 1.0)
+X_AWS_IDP_EVALUATION_THRESHOLD = "x-aws-idp-evaluation-threshold"
 
+# Evaluation weight for field importance (business criticality)
+X_AWS_IDP_EVALUATION_WEIGHT = "x-aws-idp-evaluation-weight"
 
-X_AWS_IDP_EXAMPLES= "x-aws-idp-examples"
+# Model name for evaluation (document-level configuration)
+X_AWS_IDP_EVALUATION_MODEL_NAME = "x-aws-idp-evaluation-model-name"
+
+# Match threshold for overall document evaluation (0.0 to 1.0)
+X_AWS_IDP_EVALUATION_MATCH_THRESHOLD = "x-aws-idp-evaluation-match-threshold"
+
+X_AWS_IDP_EXAMPLES = "x-aws-idp-examples"
 
 # Valid evaluation methods
 EVALUATION_METHOD_EXACT = "EXACT"
 EVALUATION_METHOD_NUMERIC_EXACT = "NUMERIC_EXACT"
 EVALUATION_METHOD_FUZZY = "FUZZY"
+EVALUATION_METHOD_LEVENSHTEIN = "LEVENSHTEIN"
 EVALUATION_METHOD_SEMANTIC = "SEMANTIC"
 EVALUATION_METHOD_LLM = "LLM"
+EVALUATION_METHOD_HUNGARIAN = "HUNGARIAN"
 
 VALID_EVALUATION_METHODS = frozenset(
     [
         EVALUATION_METHOD_EXACT,
         EVALUATION_METHOD_NUMERIC_EXACT,
         EVALUATION_METHOD_FUZZY,
+        EVALUATION_METHOD_LEVENSHTEIN,
         EVALUATION_METHOD_SEMANTIC,
         EVALUATION_METHOD_LLM,
+        EVALUATION_METHOD_HUNGARIAN,
     ]
 )
 
-# Confidence threshold for evaluation (0.0 to 1.0)
+# Legacy: Confidence threshold for evaluation (0.0 to 1.0)
+# Note: This is now superseded by X_AWS_IDP_EVALUATION_THRESHOLD
 X_AWS_IDP_CONFIDENCE_THRESHOLD = "x-aws-idp-confidence-threshold"
 
 # ============================================================================
@@ -113,6 +132,10 @@ LEGACY_EXAMPLES = "examples"
 LEGACY_CLASS_PROMPT = "classPrompt"
 LEGACY_ATTRIBUTES_PROMPT = "attributesPrompt"
 LEGACY_IMAGE_PATH = "imagePath"
+
+# Legacy regex fields (same name in both legacy and new format)
+LEGACY_DOCUMENT_NAME_REGEX = "document_name_regex"
+LEGACY_DOCUMENT_PAGE_CONTENT_REGEX = "document_page_content_regex"
 
 # ============================================================================
 # JSON Schema Standard Property Names

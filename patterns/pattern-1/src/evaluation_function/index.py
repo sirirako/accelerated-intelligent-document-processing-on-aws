@@ -53,7 +53,7 @@ def update_document_evaluation_status(document: Document, status: EvaluationStat
     Raises:
         DocumentServiceError: If the operation fails
     """
-    document.status = Status.COMPLETED
+    document.status = Status.EVALUATING
     document.evaluation_status = status.value
     logger.info(f"Updating document via document service: {document.input_key} with status: {status.value}")
     return document_service.update_document(document)
@@ -160,7 +160,7 @@ def handler(event, context):
     working_bucket = os.environ.get('WORKING_BUCKET')
     
     try:
-        logger.info(f"Starting evaluation process")
+        logger.info(f"Starting evaluation process: {json.dumps(event)}")
         
         # Extract document from event
         actual_document = extract_document_from_event(event)

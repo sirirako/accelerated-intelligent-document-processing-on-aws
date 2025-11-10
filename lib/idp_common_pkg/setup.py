@@ -16,7 +16,7 @@ extras_require = {
     "core": [],
     # Analytics agent dependencies
     "analytics": [
-        "strands-agents>=1.0.0",
+        "strands-agents==1.14.0",  # Pin to exact working version
         "pandas>=2.0.0",
     ],
     # Code intelligence module dependencies
@@ -52,6 +52,8 @@ extras_require = {
     ],
     # Evaluation module dependencies
     "evaluation": [
+        "stickler-eval==0.1.2",
+        "genson==1.3.0",
         "munkres>=1.1.4",  # For Hungarian algorithm
         "numpy==1.26.4",  # For numeric operations
     ],
@@ -87,13 +89,15 @@ extras_require = {
     ],
     # Agents module dependencies
     "agents": [
-        "strands-agents>=1.0.0",
-        "strands-agents-tools>=0.2.2",
+        "strands-agents==1.14.0",  # Pin to exact working version
+        "strands-agents-tools==0.2.13",  # Pin to exact working version
         "bedrock-agentcore>=0.1.1",  # Specifically for the code interpreter tool
         "regex>=2024.0.0,<2026.0.0",  # Pin regex version to avoid conflicts
     ],
     # Full package with all dependencies
     "all": [
+        "stickler-eval==0.1.2",
+        "genson==1.3.0",
         "Pillow==11.2.1",
         "PyMuPDF==1.25.5",
         "amazon-textract-textractor[pandas]==1.9.2",
@@ -104,8 +108,8 @@ extras_require = {
         "pyarrow==20.0.0",
         "openpyxl==3.1.5",
         "python-docx==1.2.0",
-        "strands-agents>=1.0.0",
-        "strands-agents-tools>=0.2.2",
+        "strands-agents==1.14.0",  # Pin to exact working version
+        "strands-agents-tools==0.2.13",  # Pin to exact working version
         "bedrock-agentcore>=0.1.1",
         "regex>=2024.0.0,<2026.0.0",
     ],
@@ -113,7 +117,7 @@ extras_require = {
 
 setup(
     name="idp_common",
-    version="0.3.13",
+    version="0.4.2",
     packages=find_packages(
         exclude=[
             "build",
