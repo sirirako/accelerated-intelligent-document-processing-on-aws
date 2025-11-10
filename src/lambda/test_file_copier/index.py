@@ -10,6 +10,9 @@ import boto3
 from botocore.exceptions import ClientError
 from idp_common.s3 import find_matching_files
 
+# Type: ignore for boto3 resource type inference
+dynamodb = boto3.resource('dynamodb')  # type: ignore
+
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
@@ -61,7 +64,7 @@ def handler(event, context):
 def _update_test_run_status(tracking_table, test_run_id, status, error=None):
     """Update test run status in tracking table"""
     try:
-        table = dynamodb.Table(tracking_table)
+        table = dynamodb.Table(tracking_table)  # type: ignore
         update_expression = 'SET #status = :status'
         expression_attribute_names = {'#status': 'Status'}
         expression_attribute_values = {':status': status}
@@ -86,7 +89,7 @@ def _copy_baseline_files(baseline_bucket, test_run_id, files, tracking_table):
     
     def process_baseline_for_file(file_key):
         # Check if baseline document record exists in tracking table
-        table = dynamodb.Table(tracking_table)
+        table = dynamodb.Table(tracking_table)  # type: ignore
         baseline_response = table.get_item(Key={'PK': f'doc#{file_key}', 'SK': 'none'})
         
         if 'Item' not in baseline_response:
