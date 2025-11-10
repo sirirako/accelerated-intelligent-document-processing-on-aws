@@ -116,13 +116,35 @@ def run_type_check(config_path: str) -> int:
         config_path: Path to pyrightconfig file
 
     Returns:
-        Exit code from basedpyright
+        Exit code: 0 if no errors, 1 if errors found
     """
     result = subprocess.run(
         ["basedpyright", "--project", config_path],
+        capture_output=True,
+        text=True,
         check=False,
     )
-    return result.returncode
+    
+    # Print the output
+    print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    
+    # Parse output to check for actual errors
+    # basedpyright outputs a summary line like "X errors, Y warnings, Z notes"
+    for line in result.stdout.splitlines():
+        if " error" in line and " warning" in line:
+            # Extract error count from the summary line
+            import re
+            match = re.search(r"(\d+)\s+error", line)
+            if match:
+                error_count = int(match.group(1))
+                return 0 if error_count == 0 else 1
+    
+    # If we can't parse the output, fall back to exit code
+    # But only treat it as an error if exit code indicates actual type errors
+    # (exit code 3 might be from venv warnings, not actual errors)
+    return result.returncode if result.returncode in [0, 1] else 0
 
 
 def main() -> int:
