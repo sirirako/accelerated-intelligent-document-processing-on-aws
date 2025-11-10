@@ -5,16 +5,35 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
 ## [0.4.2]
 
 ### Added
 
+- **Stickler-Based Evaluation System for Enhanced Comparison Capabilities**
+  - Migrated evaluation service from custom comparison logic to [AWS Labs Stickler library](https://github.com/awslabs/stickler/tree/main) for structured object evaluation
+  - **Field Importance Weights**: New capability to assign business criticality weights to fields (e.g., shipment ID weight=3.0 vs notes weight=0.5)
+  - **Enhanced Configuration**: Added `x-aws-idp-evaluation-*` extensions for evaluation configuration
+  - **Backward compatible**: Maintained API compatibility - all existing code works unchanged
+  - **Enhanced Comparators**: Leverages Stickler's optimized comparison algorithms (Exact, Levenshtein, Numeric, Fuzzy, Semantic) with LLM evaluation preserved through custom wrapper
+  - **Better List Matching**: Hungarian algorithm via Stickler for optimal list comparisons regardless of order
+
+- **UI: Evaluation Configuration in Document Schema UI**
+  - Added evaluation weight, threshold (with conditional display), and document-level match threshold fields for complete Stickler configuration control
+  - Added LEVENSHTEIN and HUNGARIAN evaluation methods with auto-populated threshold defaults based on selected method
+  
 - **IDP CLI Force Delete All Resources Option**
   - Added `--force-delete-all` flag to `idp-cli delete` command for comprehensive stack cleanup
   - **Post-CloudFormation Cleanup**: Analyzes resources after CloudFormation deletion completes to identify retained resources (DELETE_SKIPPED status)
   - **Use Cases**: Complete test environment cleanup, CI/CD pipelines requiring full teardown, cost optimization by removing all retained resources
 
 ### Changed
+
+- **Containerized Pattern-1 and Pattern-3 Deployment Pipelines**
+  - Migrated Pattern-1 and Pattern-3 Lambda functions to Docker image deployments (following Pattern-2 approach from v0.3.20)
+  - Builds and pushes all Lambda images via CodeBuild with automated ECR cleanup
+  - Increases Lambda package size limit from 250 MB (zip) to 10 GB (Docker image) to accommodate larger dependencies
 
 - **Agent Companion Chat - Chat History Feature**
   - Added chat history feature from Agent Analysis back into Agent Companion Chat
@@ -28,8 +47,17 @@ SPDX-License-Identifier: MIT-0
   - Prompt input is disabled during active streaming responses to prevent concurrent requests
   - Fixed issue where charts in loaded chat history were not displaying
 
-- **GovCloud Template Generation - Missing Chat Resources**
+- **GovCloud Template Generation errors**
   - Fixed CloudFormation deployment error `Fn::GetAtt references undefined resource GraphQLApi` when deploying GovCloud templates
+
+- **Example Notebook error fixed**
+  - Example notebooks updated to work with new v0.4.0+ JSON schema
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.2yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.2.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.2.yaml`
 
 ## [0.4.1]
 

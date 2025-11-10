@@ -100,7 +100,7 @@ classes:
         x-aws-idp-list-item-description: Each item represents a specific federal tax withholding category
         items:
           $ref: "#/$defs/TaxInfo"
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       CurrentGrossPay:
         type: number
         description: >-
@@ -123,11 +123,12 @@ classes:
         description: >-
           List of city or local tax withholdings showing different municipal
           taxes deducted,  with both current period and year-to-date amounts.
+        x-aws-idp-evaluation-match-threshold: '0.4'
         type: array
         x-aws-idp-list-item-description: Each item represents a specific city or local tax withholding
         items:
-          $ref: "#/$defs/TaxInfo"
-        x-aws-idp-evaluation-method: LLM
+          $ref: '#/$defs/TaxInfo'
+        x-aws-idp-evaluation-method: HUNGARIAN
       PayPeriodEndDate:
         format: date
         description: >-
@@ -218,7 +219,7 @@ classes:
         x-aws-idp-list-item-description: Each item represents a specific state tax withholding category
         items:
           $ref: "#/$defs/TaxInfo"
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       PayrollNumber:
         type: string
         description: >-
@@ -402,7 +403,7 @@ classes:
           type: string
           x-aws-idp-original-name: endorsement
           x-aws-idp-evaluation-method: EXACT
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       PERSONAL_DETAILS:
         description: >-
           Physical characteristics and personal details of the license holder
@@ -421,7 +422,7 @@ classes:
           type: string
           x-aws-idp-original-name: restriction
           x-aws-idp-evaluation-method: EXACT
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       CLASS:
         type: string
         description: >-
@@ -634,7 +635,7 @@ classes:
         x-aws-idp-list-item-description: Each item represents a key account balance or summary figure
         items:
           $ref: "#/$defs/account_summaryItem"
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       statement_end_date:
         format: date
         description: >-
@@ -676,7 +677,7 @@ classes:
         x-aws-idp-list-item-description: Each item represents an individual transaction record
         items:
           $ref: "#/$defs/transaction_detail"
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
     $id: Bank-Statement
   - $schema: https://json-schema.org/draft/2020-12/schema
     $defs:
@@ -874,7 +875,7 @@ classes:
           its corresponding code
         items:
           $ref: "#/$defs/code"
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       other:
         type: string
         description: >-
@@ -899,7 +900,7 @@ classes:
           jurisdiction
         items:
           $ref: "#/$defs/state_taxes_tableItem"
-        x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: HUNGARIAN
       employee_general_info:
         description: >-
           Complete personal information about the employee including full name,

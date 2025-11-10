@@ -150,6 +150,7 @@
                 "document.$": "$.Result.document"
             },
             "ResultPath": "$.Result",
+            "OutputPath": "$.Result.document",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -174,9 +175,9 @@
             "Resource": "${EvaluationLambdaArn}",
             "Parameters": {
                 "execution_arn.$": "$$.Execution.Id",
-                "document.$": "$.Result.document"
+                "document.$": "$"
             },
-            "ResultPath": "$.Result",
+            "ResultPath": "$",
             "Retry": [
                 {
                     "ErrorEquals": [

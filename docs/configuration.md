@@ -312,6 +312,63 @@ Status lookup returns comprehensive information:
 }
 ```
 
+## Evaluation Extensions in JSON Schema
+
+Document class schemas support evaluation-specific extensions for fine-grained control over accuracy assessment. These extensions work with the [Stickler](https://github.com/awslabs/stickler)-based evaluation framework to provide flexible, business-aligned evaluation capabilities.
+
+### Available Extensions
+
+- `x-aws-idp-evaluation-method`: Comparison method (EXACT, FUZZY, NUMERIC_EXACT, SEMANTIC, LLM, HUNGARIAN)
+- `x-aws-idp-evaluation-threshold`: Minimum score to consider a match (0.0-1.0)
+- `x-aws-idp-evaluation-weight`: Field importance for weighted scoring (default: 1.0, higher values = more important)
+
+### Example Configuration
+
+```yaml
+classes:
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    x-aws-idp-document-type: "Invoice"
+    x-aws-idp-evaluation-match-threshold: 0.8  # Document-level threshold
+    properties:
+      invoice_number:
+        type: string
+        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-weight: 2.0  # Critical field - double weight
+      invoice_date:
+        type: string
+        x-aws-idp-evaluation-method: FUZZY
+        x-aws-idp-evaluation-threshold: 0.9
+        x-aws-idp-evaluation-weight: 1.5  # Important field
+      vendor_name:
+        type: string
+        x-aws-idp-evaluation-method: FUZZY
+        x-aws-idp-evaluation-threshold: 0.85
+        x-aws-idp-evaluation-weight: 1.0  # Normal weight (default)
+      vendor_notes:
+        type: string
+        x-aws-idp-evaluation-method: SEMANTIC
+        x-aws-idp-evaluation-threshold: 0.7
+        x-aws-idp-evaluation-weight: 0.5  # Less critical - half weight
+```
+
+### Stickler Backend Integration
+
+The evaluation framework uses [Stickler](https://github.com/awslabs/stickler) as its evaluation engine. The `SticklerConfigMapper` automatically translates these IDP extensions to Stickler's native format, providing:
+
+- **Field-level weighting** for business-critical attributes
+- **Optimal list matching** using the Hungarian algorithm
+- **Extensible comparator system** with exact, fuzzy, numeric, semantic, and LLM-based comparison
+- **Native JSON Schema support** with $ref resolution
+
+### Benefits
+
+1. **Business Alignment**: Weight critical fields higher to ensure evaluation scores reflect business priorities
+2. **Flexible Comparison**: Choose the right evaluation method for each field type
+3. **Tunable Thresholds**: Set field-specific thresholds for matching sensitivity
+4. **Dynamic Schema Generation**: Auto-generates evaluation schema from baseline data when configuration is missing (for development/prototyping)
+
+For detailed evaluation capabilities and best practices, see [evaluation.md](evaluation.md).
+
 ## Cost Tracking and Optimization
 
 The solution includes built-in cost tracking capabilities:

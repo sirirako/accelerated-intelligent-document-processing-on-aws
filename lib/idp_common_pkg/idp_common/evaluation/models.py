@@ -54,6 +54,9 @@ class AttributeEvaluationResult:
     confidence_threshold: Optional[float] = (
         None  # Confidence threshold from assessment for actual values
     )
+    weight: Optional[float] = (
+        None  # Field importance weight from Stickler (business criticality)
+    )
 
 
 @dataclass
@@ -106,6 +109,7 @@ class DocumentEvaluationResult:
                             "comparator_type": ar.comparator_type,
                             "confidence": ar.confidence,
                             "confidence_threshold": ar.confidence_threshold,
+                            "weight": ar.weight,
                         }
                         for ar in sr.attributes
                     ],
@@ -171,6 +175,21 @@ class DocumentEvaluationResult:
         sections.append(
             f"- **Precision**: {precision:.2f} | **Recall**: {recall:.2f} | **F1 Score**: {f1_indicator} {f1_score:.2f}"
         )
+
+        # Add weighted overall score if available
+        weighted_score = self.overall_metrics.get("weighted_overall_score", 0)
+        if weighted_score >= 0.9:
+            weighted_indicator = "🟢"
+        elif weighted_score >= 0.7:
+            weighted_indicator = "🟡"
+        elif weighted_score >= 0.5:
+            weighted_indicator = "🟠"
+        else:
+            weighted_indicator = "🔴"
+
+        sections.append(
+            f"- **Weighted Overall Score**: {weighted_indicator} {weighted_score:.4f} (Stickler's field-weighted aggregate)"
+        )
         sections.append("")
 
         # Add overall metrics with enhanced formatting
@@ -178,7 +197,13 @@ class DocumentEvaluationResult:
         metrics_table = "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
         for metric, value in self.overall_metrics.items():
             # Add a visual indicator based on metric value
-            if metric in ["precision", "recall", "f1_score", "accuracy"]:
+            if metric in [
+                "precision",
+                "recall",
+                "f1_score",
+                "accuracy",
+                "weighted_overall_score",
+            ]:
                 if value >= 0.9:
                     indicator = "🟢 Excellent"
                 elif value >= 0.7:
@@ -208,14 +233,80 @@ class DocumentEvaluationResult:
         for sr in self.section_results:
             sections.append(f"## Section: {sr.section_id} ({sr.document_class})")
 
-            # Section metrics with enhanced formatting
+            # Check if this section had an evaluation failure
+            if sr.metrics.get("evaluation_failed", False):
+                sections.append("")
+                sections.append("⚠️ **EVALUATION FAILED**")
+                sections.append("")
+                sections.append(
+                    f"This section could not be evaluated because no configuration was found for document class: **{sr.document_class}**"
+                )
+                sections.append("")
+                sections.append("**Reasons for failure:**")
+                sections.append(
+                    "- No schema configuration exists for this document class in your evaluation config"
+                )
+                sections.append(
+                    "- No baseline data was provided to auto-generate a schema"
+                )
+                sections.append("")
+                sections.append("**Impact:**")
+                sections.append(
+                    "- This section contributes **zero accuracy** to all metrics (precision, recall, F1, etc.)"
+                )
+                sections.append(
+                    "- The failure is reflected in document-level aggregate metrics"
+                )
+                sections.append("")
+                sections.append("**How to fix:**")
+                sections.append(
+                    f"1. Add a configuration for '{sr.document_class}' in your `evaluation` config YAML"
+                )
+                sections.append(
+                    "2. Ensure the document class name matches exactly (case-insensitive)"
+                )
+                sections.append(
+                    "3. Or provide baseline/expected data when calling evaluate_document() to enable auto-generation"
+                )
+                sections.append("")
+
+                # Show the failure reason from attributes if available
+                if sr.attributes and sr.attributes[0].reason:
+                    sections.append("**Detailed error:**")
+                    sections.append(f"```\n{sr.attributes[0].reason}\n```")
+                    sections.append("")
+
+                # Still show the metrics (all zeros) for transparency
+                sections.append("### Metrics (Failure State)")
+                metrics_table = (
+                    "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
+                )
+                for metric, value in sr.metrics.items():
+                    if metric == "evaluation_failed":
+                        continue  # Skip the flag itself in the table
+                    metrics_table += f"| {metric} | {value:.4f} | ❌ Failed |\n"
+                sections.append(metrics_table)
+                sections.append("")
+                continue  # Skip attribute display for failed sections
+
+            # Section metrics with enhanced formatting (normal case)
             sections.append("### Metrics")
             metrics_table = (
                 "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
             )
             for metric, value in sr.metrics.items():
+                # Skip the evaluation_failed flag in normal display
+                if metric == "evaluation_failed":
+                    continue
+
                 # Add a visual indicator based on metric value
-                if metric in ["precision", "recall", "f1_score", "accuracy"]:
+                if metric in [
+                    "precision",
+                    "recall",
+                    "f1_score",
+                    "accuracy",
+                    "weighted_overall_score",
+                ]:
                     if value >= 0.9:
                         indicator = "🟢 Excellent"
                     elif value >= 0.7:
@@ -243,40 +334,16 @@ class DocumentEvaluationResult:
 
             # Attribute results
             sections.append("### Attributes")
-            attr_table = "| Status | Attribute | Expected | Actual | Confidence | Confidence Threshold | Score | Method | Reason |\n"
-            attr_table += "| :----: | --------- | -------- | ------ | :---------------: | :---------------: | ----- | ------ | ------ |\n"
+            attr_table = "| Status | Attribute | Expected | Actual | Confidence | Confidence Threshold | Score | Weight | Method | Reason |\n"
+            attr_table += "| :----: | --------- | -------- | ------ | :---------------: | :---------------: | ----- | :----: | ------ | ------ |\n"
             for ar in sr.attributes:
                 expected = str(ar.expected).replace("\n", " ")
                 actual = str(ar.actual).replace("\n", " ")
                 # Don't truncate the reason field for the report
                 reason = str(ar.reason).replace("\n", " ") if ar.reason else ""
-                # Format the method with evaluation_threshold and comparator_type if applicable
+
+                # Use evaluation_method directly - it's already formatted with threshold
                 method_display = ar.evaluation_method
-
-                # Add threshold for methods that use it directly
-                if ar.evaluation_threshold is not None and ar.evaluation_method in [
-                    "FUZZY",
-                    "SEMANTIC",
-                ]:
-                    method_display = (
-                        f"{ar.evaluation_method} (threshold: {ar.evaluation_threshold})"
-                    )
-
-                # Add comparator type for Hungarian method
-                if (
-                    ar.comparator_type is not None
-                    and ar.evaluation_method == "HUNGARIAN"
-                ):
-                    # If comparator is FUZZY, also include the threshold
-                    if (
-                        ar.comparator_type == "FUZZY"
-                        and ar.evaluation_threshold is not None
-                    ):
-                        method_display = f"{ar.evaluation_method} (comparator: {ar.comparator_type}, threshold: {ar.evaluation_threshold})"
-                    else:
-                        method_display = (
-                            f"{ar.evaluation_method} (comparator: {ar.comparator_type})"
-                        )
 
                 # Add color-coded status symbols (will render in markdown-compatible viewers)
                 if ar.matched:
@@ -298,7 +365,10 @@ class DocumentEvaluationResult:
                     else "N/A"
                 )
 
-                attr_table += f"| {status_symbol} | {ar.name} | {expected} | {actual} | {confidence_str} | {threshold_str} | {ar.score:.2f} | {method_display} | {reason} |\n"
+                # Format weight value (defaults to 1.0 if not specified)
+                weight_str = f"{ar.weight:.2f}" if ar.weight is not None else "1.00"
+
+                attr_table += f"| {status_symbol} | {ar.name} | {expected} | {actual} | {confidence_str} | {threshold_str} | {ar.score:.2f} | {weight_str} | {method_display} | {reason} |\n"
             sections.append(attr_table)
             sections.append("")
 
@@ -310,35 +380,117 @@ class DocumentEvaluationResult:
         sections.append("## Evaluation Methods Used")
         sections.append("")
         sections.append(
-            "This evaluation used the following methods to compare expected and actual values:"
+            "This evaluation uses Stickler-based comparison with the following methods:"
+        )
+        sections.append("")
+        sections.append("### Field-Level Comparison Methods")
+        sections.append("")
+        sections.append("1. **EXACT** - Exact string match (case-sensitive)")
+        sections.append(
+            "   - Use for: IDs, codes, exact text requiring character-for-character match"
         )
         sections.append("")
         sections.append(
-            "1. **EXACT** - Exact string match after stripping punctuation and whitespace"
+            "2. **NUMERIC_EXACT** - Numeric comparison with configurable tolerance"
         )
-        sections.append("2. **NUMERIC_EXACT** - Exact numeric match after normalizing")
+        sections.append("   - Tolerance specified via `x-aws-idp-evaluation-threshold`")
+        sections.append("   - Use for: Monetary amounts, percentages, numeric values")
+        sections.append("")
+        sections.append("3. **FUZZY** - Fuzzy string matching using similarity metrics")
         sections.append(
-            "3. **FUZZY** - Fuzzy string matching using string similarity metrics (with evaluation_threshold)"
+            "   - Threshold specified via `x-aws-idp-evaluation-threshold` (0.0-1.0)"
         )
+        sections.append("   - Use for: Names, addresses, text with minor variations")
+        sections.append("")
         sections.append(
-            "4. **SEMANTIC** - Semantic similarity comparison using Bedrock Titan embeddings (with evaluation_threshold)"
+            "4. **LEVENSHTEIN** - Levenshtein distance-based string comparison"
         )
+        sections.append("   - Configurable threshold for acceptable edit distance")
         sections.append(
-            "5. **HUNGARIAN** - Bipartite matching algorithm for lists of values"
+            "   - Use for: Similar to FUZZY but using specific edit distance algorithm"
         )
+        sections.append("")
+        sections.append("5. **SEMANTIC** - Semantic similarity using embedding models")
+        sections.append("   - Threshold specified via `x-aws-idp-evaluation-threshold`")
         sections.append(
-            "   - **EXACT** - Hungarian matching with exact string comparison"
-        )
-        sections.append(
-            "   - **FUZZY** - Hungarian matching with fuzzy string comparison (with evaluation_threshold)"
-        )
-        sections.append("   - **NUMERIC** - Hungarian matching with numeric comparison")
-        sections.append(
-            "6. **LLM** - Advanced semantic evaluation using Bedrock large language models"
+            "   - Use for: Text where meaning matters more than exact wording"
         )
         sections.append("")
         sections.append(
-            "Each attribute is configured with a specific evaluation method based on the data type and comparison needs."
+            "6. **LLM** - Advanced semantic evaluation using **AWS Bedrock LLMs**"
+        )
+        sections.append("   - Configured via `evaluation.llm_method` section:")
+        sections.append("     - `model`: Bedrock model ID (e.g., Claude Haiku, Sonnet)")
+        sections.append(
+            "     - `task_prompt`: Custom prompt template with context placeholders"
+        )
+        sections.append("     - `system_prompt`: System instructions for the LLM")
+        sections.append(
+            "     - `temperature`, `top_k`, `top_p`, `max_tokens`: LLM generation parameters"
+        )
+        sections.append("   - Provides contextual evaluation with reasoning")
+        sections.append(
+            "   - Use for: Complex nested objects, structured data, semantic understanding"
+        )
+        sections.append("")
+        sections.append("### Array-Level Matching")
+        sections.append("")
+        sections.append(
+            "7. **HUNGARIAN** - Bipartite graph matching for arrays of structured objects"
+        )
+        sections.append(
+            "   - Finds optimal 1:1 mapping between expected and actual lists"
+        )
+        sections.append(
+            "   - Each matched item pair is then compared using field-level methods"
+        )
+        sections.append(
+            '   - Configured with `x-aws-idp-evaluation-method: "HUNGARIAN"` on array properties'
+        )
+        sections.append("")
+        sections.append(
+            "8. **LLM for Arrays** - Semantic evaluation of entire list structures"
+        )
+        sections.append("   - Evaluates whether lists semantically match as a whole")
+        sections.append(
+            '   - Configured with `x-aws-idp-evaluation-method: "LLM"` on array properties'
+        )
+        sections.append("")
+        sections.append("### Field Weighting")
+        sections.append("")
+        sections.append(
+            "Fields can be assigned importance weights using `x-aws-stickler-weight` in the schema:"
+        )
+        sections.append("- **Default weight**: 1.0 (standard importance)")
+        sections.append(
+            "- **Higher weights** (e.g., 2.0, 3.0): Critical fields that matter more for overall quality"
+        )
+        sections.append(
+            "- **Lower weights** (e.g., 0.5): Less important optional fields"
+        )
+        sections.append(
+            "- **Impact**: Used in Stickler's weighted_overall_score calculation"
+        )
+        sections.append(
+            "- **Display**: Shown in the Weight column of attribute results"
+        )
+        sections.append("")
+        sections.append("**Example field weights:**")
+        sections.append("- Account Number (weight: 3.0) - Critical identifier")
+        sections.append("- Phone Number (weight: 1.0) - Standard field")
+        sections.append("- Notes (weight: 0.5) - Optional supplementary info")
+        sections.append("")
+        sections.append(
+            "The **Weighted Overall Score** aggregates individual field scores weighted by importance:"
+        )
+        sections.append("- **Formula**: `Σ(weight_i × score_i) / Σ(weight_i)`")
+        sections.append("- **Section-level**: Weighted score for that specific section")
+        sections.append("- **Document-level**: Average of all section weighted scores")
+        sections.append("")
+        sections.append("---")
+        sections.append("")
+        sections.append(
+            "**Note**: Each attribute specifies its evaluation method via `x-aws-idp-evaluation-method` in the schema."
         )
 
         return "\n".join(sections)

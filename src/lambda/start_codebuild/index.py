@@ -60,12 +60,13 @@ def create_or_update(event, _):
     raise ValueError(f"invalid resource type: {resource_type}")
 
 
-def _verify_ecr_images_available(ecr_uri: str, image_version: str) -> bool:
+def _verify_ecr_images_available(ecr_uri: str, image_version: str, expected_images: List[str] = None) -> bool:
     """Verify all required Lambda images exist in ECR and are pullable.
     
     Args:
         ecr_uri: ECR repository URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/repo-name)
         image_version: Image version tag (e.g., "latest" or "0.3.19")
+        expected_images: List of base image names (without version suffix). If not provided, defaults to Pattern-2 images.
     
     Returns:
         True if all images are available and scannable, False otherwise
@@ -73,18 +74,23 @@ def _verify_ecr_images_available(ecr_uri: str, image_version: str) -> bool:
     try:
         repository_name = ecr_uri.split("/")[-1]
         
-        # List of all image tags used by Lambda functions in Pattern 2
-        required_images = [
-            f"ocr-function-{image_version}",
-            f"classification-function-{image_version}",
-            f"extraction-function-{image_version}",
-            f"assessment-function-{image_version}",
-            f"processresults-function-{image_version}",
-            f"hitl-wait-function-{image_version}",
-            f"hitl-status-update-function-{image_version}",
-            f"hitl-process-function-{image_version}",
-            f"summarization-function-{image_version}",
-        ]
+        # If expected_images not provided, fall back to Pattern-2 images for backward compatibility
+        if expected_images is None:
+            expected_images = [
+                "ocr-function",
+                "classification-function",
+                "extraction-function",
+                "assessment-function",
+                "processresults-function",
+                "summarization-function",
+                "evaluation-function",
+                "hitl-wait-function",
+                "hitl-status-update-function",
+                "hitl-process-function",
+            ]
+        
+        # Append version to each base image name
+        required_images = [f"{img}-{image_version}" for img in expected_images]
         
         LOGGER.info(
             "verifying %d images in repository %s with version %s",
@@ -169,13 +175,17 @@ def poll_create_or_update(event, _):
                 # This prevents Lambda functions from being created before images are pullable
                 env_vars = build.get("environment", {}).get("environmentVariables", [])
                 
-                # Extract ECR URI and image version from build environment
+                # Extract ECR URI, image version, and expected images from build/resource properties
                 ecr_uri = next((v["value"] for v in env_vars if v["name"] == "ECR_URI"), None)
                 image_version = next((v["value"] for v in env_vars if v["name"] == "IMAGE_VERSION"), None)
                 
+                # Get expected images from resource properties (optional)
+                resource_properties = event.get("ResourceProperties", {})
+                expected_images = resource_properties.get("ExpectedImages")
+                
                 if ecr_uri and image_version:
                     LOGGER.info("verifying ECR images are available and pullable...")
-                    if _verify_ecr_images_available(ecr_uri, image_version):
+                    if _verify_ecr_images_available(ecr_uri, image_version, expected_images):
                         LOGGER.info("ECR image verification complete - returning True")
                         return True
                     
