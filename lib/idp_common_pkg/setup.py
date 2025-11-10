@@ -52,6 +52,8 @@ extras_require = {
     ],
     # Evaluation module dependencies
     "evaluation": [
+        "stickler-eval==0.1.2",
+        "genson==1.3.0",
         "munkres>=1.1.4",  # For Hungarian algorithm
         "numpy==1.26.4",  # For numeric operations
     ],
@@ -94,6 +96,8 @@ extras_require = {
     ],
     # Full package with all dependencies
     "all": [
+        "stickler-eval==0.1.2",
+        "genson==1.3.0",
         "Pillow==11.2.1",
         "PyMuPDF==1.25.5",
         "amazon-textract-textractor[pandas]==1.9.2",
@@ -113,7 +117,7 @@ extras_require = {
 
 setup(
     name="idp_common",
-    version="0.3.13",
+    version="0.4.2",
     packages=find_packages(
         exclude=[
             "build",

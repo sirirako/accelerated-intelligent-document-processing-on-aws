@@ -16,6 +16,7 @@ test:
 
 # Run both linting and formatting in one command
 lint: ruff-lint format check-arn-partitions validate-buildspec ui-lint
+fastlint: ruff-lint format check-arn-partitions validate-buildspec
 
 # Run linting checks and fix issues automatically
 ruff-lint:
@@ -118,6 +119,13 @@ ui-build:
 	cd src/ui && npm ci --prefer-offline --no-audit && npm run build
 
 commit: lint test
+	$(info Generating commit message...)
+	export COMMIT_MESSAGE="$(shell q chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
+	git add . && \
+	git commit -am "$${COMMIT_MESSAGE}" && \
+	git push
+
+fastcommit: fastlint
 	$(info Generating commit message...)
 	export COMMIT_MESSAGE="$(shell q chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
 	git add . && \
