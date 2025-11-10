@@ -11,6 +11,8 @@ import sys
 import time
 
 import boto3
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 
 def run_command(cmd, check=True):
@@ -104,76 +106,108 @@ def upload_to_s3(bucket_name):
 
 def find_pipeline_execution_by_version(pipeline_name, version_id, max_wait=300):
     """Find pipeline execution that corresponds to specific S3 version ID"""
-    print(f"Finding pipeline execution for version: {version_id}")
+    console = Console()
+    console.print(f"[cyan]Finding pipeline execution for version:[/cyan] {version_id}")
     
     codepipeline = boto3.client("codepipeline")
     start_time = time.time()
     
-    while time.time() - start_time < max_wait:
-        try:
-            response = codepipeline.list_pipeline_executions(
-                pipelineName=pipeline_name, maxResults=10
-            )
-            
-            for execution in response["pipelineExecutionSummaries"]:
-                execution_id = execution["pipelineExecutionId"]
-                
-                # Get execution details to check source version
-                details = codepipeline.get_pipeline_execution(
-                    pipelineName=pipeline_name,
-                    pipelineExecutionId=execution_id
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        task = progress.add_task("[yellow]Searching for pipeline execution...", total=None)
+        
+        while time.time() - start_time < max_wait:
+            try:
+                response = codepipeline.list_pipeline_executions(
+                    pipelineName=pipeline_name, maxResults=10
                 )
                 
-                # Check if this execution matches our version ID
-                for artifact in details["pipelineExecution"].get("artifactRevisions", []):
-                    if artifact.get("revisionId") == version_id:
-                        print(f"✅ Found matching execution: {execution_id}")
-                        return execution_id
+                for execution in response["pipelineExecutionSummaries"]:
+                    execution_id = execution["pipelineExecutionId"]
+                    
+                    # Get execution details to check source version
+                    details = codepipeline.get_pipeline_execution(
+                        pipelineName=pipeline_name,
+                        pipelineExecutionId=execution_id
+                    )
+                    
+                    # Check if this execution matches our version ID
+                    for artifact in details["pipelineExecution"].get("artifactRevisions", []):
+                        if artifact.get("revisionId") == version_id:
+                            progress.update(task, description="[green]✅ Found matching execution!")
+                            console.print(f"[green]✅ Found matching execution:[/green] {execution_id}")
+                            return execution_id
+                
+                elapsed = int(time.time() - start_time)
+                progress.update(task, description=f"[yellow]Waiting for pipeline trigger ({elapsed}s)...")
                         
-        except Exception as e:
-            print(f"Error finding execution: {e}")
-            
-        time.sleep(10)
-    
-    print(f"❌ Could not find pipeline execution for version {version_id}")
+            except Exception as e:
+                progress.update(task, description=f"[red]Error: {str(e)[:50]}...")
+                console.print(f"[red]Error finding execution: {e}[/red]")
+                
+            time.sleep(10)
+        
+        progress.update(task, description="[red]❌ No matching execution found")
+        console.print(f"[red]❌ Could not find pipeline execution for version {version_id}[/red]")
     return None
 
 
 def monitor_pipeline_execution(pipeline_name, execution_id, max_wait=7200):
-    """Monitor specific pipeline execution until completion"""
-    print(f"Monitoring execution: {execution_id}")
+    """Monitor specific pipeline execution until completion with live progress"""
+    console = Console()
+    console.print(f"[cyan]Monitoring pipeline execution:[/cyan] {execution_id}")
     
     codepipeline = boto3.client("codepipeline")
-    wait_time = 0
     poll_interval = 30
     
-    while wait_time < max_wait:
-        try:
-            response = codepipeline.get_pipeline_execution(
-                pipelineName=pipeline_name,
-                pipelineExecutionId=execution_id
-            )
-            
-            status = response["pipelineExecution"]["status"]
-            print(f"Pipeline execution {execution_id}: {status}")
-            
-            if status == "Succeeded":
-                print("✅ Pipeline completed successfully!")
-                return True
-            elif status in ["Failed", "Cancelled", "Superseded"]:
-                print(f"❌ Pipeline failed with status: {status}")
-                return False
-            elif status == "InProgress":
-                print(f"⏳ Pipeline still running... ({wait_time}s elapsed)")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        task = progress.add_task("[yellow]Pipeline executing...", total=None)
+        
+        wait_time = 0
+        while wait_time < max_wait:
+            try:
+                response = codepipeline.get_pipeline_execution(
+                    pipelineName=pipeline_name,
+                    pipelineExecutionId=execution_id
+                )
                 
-        except Exception as e:
-            print(f"Error checking pipeline status: {e}")
-            
-        time.sleep(poll_interval)
-        wait_time += poll_interval
-    
-    print(f"❌ Pipeline monitoring timed out after {max_wait} seconds")
-    return False
+                status = response["pipelineExecution"]["status"]
+                elapsed_mins = wait_time // 60
+                
+                if status == "Succeeded":
+                    progress.update(task, description="[green]✅ Pipeline completed successfully!")
+                    console.print("[green]✅ Pipeline completed successfully![/green]")
+                    return True
+                elif status in ["Failed", "Cancelled", "Superseded"]:
+                    progress.update(task, description=f"[red]❌ Pipeline failed: {status}")
+                    console.print(f"[red]❌ Pipeline failed with status: {status}[/red]")
+                    return False
+                elif status == "InProgress":
+                    progress.update(task, description=f"[yellow]⏳ Pipeline running ({elapsed_mins}m elapsed)...")
+                    
+            except Exception as e:
+                progress.update(task, description=f"[red]Error: {str(e)[:50]}...")
+                console.print(f"[red]Error checking pipeline status: {e}[/red]")
+                
+            time.sleep(poll_interval)
+            wait_time += poll_interval
+        
+        progress.update(task, description=f"[red]❌ Timeout after {max_wait//60} minutes")
+        console.print(f"[red]❌ Pipeline monitoring timed out after {max_wait} seconds[/red]")
+        return False
 
 
 def monitor_pipeline(pipeline_name, version_id, max_wait=7200):
@@ -200,8 +234,8 @@ def main():
     # Get configuration from environment
     account_id = get_env_var("IDP_ACCOUNT_ID", "020432867916")
     region = get_env_var("AWS_DEFAULT_REGION", "us-east-1")
-    bucket_name = f"idp-sdlc-sourcecode-{account_id}-{region}"
-    pipeline_name = get_env_var("IDP_PIPELINE_NAME", "idp-sdlc-deploy-pipeline")
+    bucket_name = f"genaiic-sdlc-sourcecode-{account_id}-{region}"
+    pipeline_name = get_env_var("IDP_PIPELINE_NAME", "genaiic-sdlc-deploy-pipeline")
 
     print(f"Account ID: {account_id}")
     print(f"Region: {region}")
