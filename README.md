@@ -8,6 +8,7 @@ SPDX-License-Identifier: MIT-0
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Alternative Implementations](#alternative-implementations)
 - [Key Features](#key-features)
 - [Architecture Overview](#architecture-overview)
 - [Quick Start](#quick-start)
@@ -28,6 +29,10 @@ A scalable, serverless solution for automated document processing and informatio
 https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
 
 White-glove customization, deployment, and integration support for production use cases is also available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
+
+## Alternative Implementations
+
+**Prefer AWS CDK?** This solution is also available as [GenAI IDP Accelerator for AWS CDK](https://github.com/cdklabs/genai-idp), providing the same functional capabilities through AWS CDK constructs for customers who prefer Infrastructure-as-Code with CDK.
 
 ## Key Features
 

@@ -125,7 +125,7 @@ integration_tests:
     - unzip awscliv2.zip
     - ./aws/install
     # Install boto3 for Python script
-    - pip install boto3
+    - pip install boto3 rich
 
   script:
     - aws --version
@@ -134,7 +134,7 @@ integration_tests:
     # Set environment variables for Python script
     - export IDP_ACCOUNT_ID=${IDP_ACCOUNT_ID:-020432867916}
     - export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-    - export IDP_PIPELINE_NAME=idp-sdlc-deploy-pipeline
+    - export IDP_PIPELINE_NAME=genaiic-sdlc-deploy-pipeline
 
     # Run integration test deployment
     - python3 scripts/integration_test_deployment.py
@@ -147,7 +147,7 @@ integration_tests:
         echo "Pipeline Execution: $EXECUTION_ID"
         
         # Get CodeBuild ID from the pipeline execution
-        BUILD_ID=$(aws codepipeline list-action-executions --pipeline-name ${IDP_PIPELINE_NAME:-idp-sdlc-deploy-pipeline} --filter pipelineExecutionId=$EXECUTION_ID --query 'actionExecutionDetails[?actionName==`BuildAction`].output.executionResult.externalExecutionId' --output text 2>/dev/null || echo "")
+        BUILD_ID=$(aws codepipeline list-action-executions --pipeline-name ${IDP_PIPELINE_NAME:-genaiic-sdlc-deploy-pipeline} --filter pipelineExecutionId=$EXECUTION_ID --query 'actionExecutionDetails[?actionName==`BuildAction`].output.executionResult.externalExecutionId' --output text 2>/dev/null || echo "")
         
         if [ "$BUILD_ID" != "" ] && [ "$BUILD_ID" != "None" ]; then
           echo "CodeBuild ID: $BUILD_ID"
@@ -174,7 +174,6 @@ integration_tests:
             echo "$SUMMARY"
           else
             echo "⚠️ No deployment summary found - check codebuild_logs.txt for details"
-          fi
           fi
         else
           echo "Could not find CodeBuild execution"

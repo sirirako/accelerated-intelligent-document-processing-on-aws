@@ -564,12 +564,25 @@ class StackDeployer:
                     for resource in page.get("StackResourceSummaries", []):
                         status = resource.get("ResourceStatus")
                         resource_type = resource.get("ResourceType")
+                        physical_id = resource.get("PhysicalResourceId")
 
-                        # Only care about resources that weren't deleted
-                        if status not in ["DELETE_COMPLETE", "DELETE_IN_PROGRESS"]:
+                        # Special handling for log groups - CF may mark DELETE_COMPLETE but they still exist
+                        if resource_type == "AWS::Logs::LogGroup":
+                            if physical_id and self._log_group_exists(physical_id):
+                                resource_info = {
+                                    "logical_id": resource.get("LogicalResourceId"),
+                                    "physical_id": physical_id,
+                                    "type": resource_type,
+                                    "status": "EXISTS",  # Override CF status
+                                    "status_reason": "Verified to exist in CloudWatch",
+                                    "stack": stack,
+                                }
+                                retained_resources["log_groups"].append(resource_info)
+                        # For other resources, use CF status
+                        elif status not in ["DELETE_COMPLETE", "DELETE_IN_PROGRESS"]:
                             resource_info = {
                                 "logical_id": resource.get("LogicalResourceId"),
-                                "physical_id": resource.get("PhysicalResourceId"),
+                                "physical_id": physical_id,
                                 "type": resource_type,
                                 "status": status,
                                 "status_reason": resource.get(
@@ -583,8 +596,6 @@ class StackDeployer:
                                 retained_resources["dynamodb_tables"].append(
                                     resource_info
                                 )
-                            elif resource_type == "AWS::Logs::LogGroup":
-                                retained_resources["log_groups"].append(resource_info)
                             elif resource_type == "AWS::S3::Bucket":
                                 retained_resources["s3_buckets"].append(resource_info)
                             else:
@@ -626,6 +637,31 @@ class StackDeployer:
             logger.warning(f"Error getting nested stacks for {stack_name}: {e}")
 
         return nested_stacks
+
+    def _log_group_exists(self, log_group_name: str) -> bool:
+        """
+        Check if log group actually exists in CloudWatch
+
+        Args:
+            log_group_name: Log group name to check
+
+        Returns:
+            True if log group exists, False otherwise
+        """
+        logs = boto3.client("logs", region_name=self.region)
+
+        try:
+            response = logs.describe_log_groups(
+                logGroupNamePrefix=log_group_name, limit=1
+            )
+            # Check if exact match exists
+            for group in response.get("logGroups", []):
+                if group["logGroupName"] == log_group_name:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking log group {log_group_name}: {e}")
+            return False
 
     def cleanup_retained_resources(self, stack_identifier: str) -> Dict:
         """

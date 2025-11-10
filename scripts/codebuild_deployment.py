@@ -79,7 +79,7 @@ def publish_templates():
     region = get_env_var("AWS_DEFAULT_REGION", "us-east-1")
 
     # Generate bucket name and prefix
-    bucket_basename = f"idp-sdlc-sourcecode-{account_id}-{region}"
+    bucket_basename = f"genaiic-sdlc-sourcecode-{account_id}-{region}"
     prefix = f"codebuild-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
     # Run publish.sh
@@ -450,37 +450,16 @@ def cleanup_stack(stack_name, pattern_name):
         
         # Delete the stack and wait for completion
         print(f"[{pattern_name}] Attempting stack deletion...")
-        run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --wait", check=False)
+        run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --force-delete-all --wait", check=False)
         
-        # Always clean up orphaned resources after deletion attempt
-        print(f"[{pattern_name}] Cleaning up orphaned resources...")
+        # Clean up additional log groups that might not be caught by idp-cli
+        print(f"[{pattern_name}] Cleaning up additional log groups...")
         
         # Set AWS retry configuration to handle throttling
         os.environ['AWS_MAX_ATTEMPTS'] = '10'
         os.environ['AWS_RETRY_MODE'] = 'adaptive'
-        
-        # ECR repositories
-        print(f"[{pattern_name}] Cleaning up ECR repositories...")
-        result = run_command(f"aws ecr describe-repositories --query 'repositories[?contains(repositoryName, `{stack_name}`)].repositoryName' --output text", check=False)
-        if result.stdout.strip():
-            repo_names = [name for name in result.stdout.strip().split('\t') if name]
-            for repo_name in repo_names:
-                print(f"[{pattern_name}] Deleting ECR repository: {repo_name}")
-                run_command(f"aws ecr delete-repository --repository-name '{repo_name}' --force", check=False)
-
-        # S3 buckets (empty and delete orphaned buckets)
-        print(f"[{pattern_name}] Cleaning up S3 buckets...")
-        result = run_command(f"aws s3api list-buckets --query 'Buckets[?contains(Name, `{stack_name}`)].Name' --output text", check=False)
-        if result.stdout.strip():
-            bucket_names = [name for name in result.stdout.strip().split('\t') if name]
-            for bucket_name in bucket_names:
-                print(f"[{pattern_name}] Deleting bucket: {bucket_name}")
-                # Try versioned bucket deletion first, fallback to regular deletion
-                if not delete_versioned_bucket(bucket_name):
-                    run_command(f"aws s3 rb s3://{bucket_name} --force", check=False)
 
         # CloudWatch log groups
-        print(f"[{pattern_name}] Cleaning up CloudWatch log groups...")
         result = run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output json", check=False)
         if result.stdout.strip():
             try:
@@ -494,7 +473,6 @@ def cleanup_stack(stack_name, pattern_name):
                 print(f"[{pattern_name}] Failed to parse log group names")
 
         # AppSync logs
-        print(f"[{pattern_name}] Cleaning up AppSync logs...")
         result = run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output json", check=False)
         if result.stdout.strip():
             try:
@@ -508,7 +486,6 @@ def cleanup_stack(stack_name, pattern_name):
                 print(f"[{pattern_name}] Failed to parse AppSync API IDs")
         
         # Clean up CloudWatch Logs Resource Policy only if stack-specific
-        print(f"[{pattern_name}] Checking CloudWatch resource policies...")
         result = run_command(f"aws logs describe-resource-policies --query 'resourcePolicies[?contains(policyName, `{stack_name}`)].policyName' --output text", check=False)
         if result.stdout.strip():
             policy_names = [name for name in result.stdout.strip().split('\t') if name]
