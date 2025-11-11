@@ -277,7 +277,9 @@ def generate_publish_failure_summary(publish_error):
         Publish Error: {publish_error}
         
         Build Logs:
-        {get_codebuild_logs()}
+        {deployment_logs}
+
+        ANALYZE THE LOGS FOR: npm ci errors, package-lock.json sync issues, missing @esbuild packages, UI build failures
 
         Create a summary focused on BUILD/PUBLISH issues with 75-character table width:
 
@@ -319,9 +321,7 @@ def generate_publish_failure_summary(publish_error):
         summary = response_body['content'][0]['text']
         
         print("🔧 Build Failure Analysis:")
-        print("=" * 80)
         print(summary)
-        print("=" * 80)
         
     except Exception as e:
         print(f"⚠️ Failed to generate build failure summary: {e}")
@@ -431,10 +431,8 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             ))
         except ImportError:
             # Fallback to plain text if Rich not available
-            print("📊 Deployment Summary Generated:")
-            print("=" * 80)
+            print("📊 Deployment Analysis:")
             print(summary)
-            print("=" * 80)
         
         return summary
         
