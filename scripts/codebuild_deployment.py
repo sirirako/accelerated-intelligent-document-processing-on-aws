@@ -51,7 +51,7 @@ def run_command(cmd, check=True):
         print(result.stderr, file=sys.stderr)
     if check and result.returncode != 0:
         print(f"Command failed with exit code {result.returncode}")
-        sys.exit(1)
+        raise Exception(f"Command failed: {cmd}")
     return result
 
 
@@ -59,8 +59,7 @@ def get_env_var(name, default=None):
     """Get environment variable with optional default"""
     value = os.environ.get(name, default)
     if value is None:
-        print(f"Error: Environment variable {name} is required")
-        sys.exit(1)
+        raise Exception(f"Environment variable {name} is required")
     return value
 
 
@@ -99,7 +98,7 @@ def publish_templates():
         return template_url
     else:
         print("❌ Failed to extract template URL from publish output")
-        sys.exit(1)
+        raise Exception("Failed to extract template URL from publish output")
 
 
 def deploy_test_and_cleanup_pattern(stack_prefix, pattern_config, admin_email, template_url):
