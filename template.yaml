@@ -2738,6 +2738,7 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
+      Tracing: Active
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt WorkflowTrackerDLQ.Arn
@@ -2901,6 +2902,7 @@ Resources:
       Runtime: python3.12
       Timeout: 300
       MemorySize: 1024
+      Tracing: Active
       LoggingConfig:
         LogGroup: !Ref SaveReportingDataFunctionLogGroup
       Policies:
@@ -3671,6 +3673,19 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
+          CLOUDWATCH_LOG_GROUPS: !Join
+            - ","
+            - - !Ref QueueSenderLogGroup
+              - !Ref QueueProcessorLogGroup
+              - !Ref WorkflowTrackerLogGroup
+              - !Ref SaveReportingDataFunctionLogGroup
+              - !If
+                - IsPattern1
+                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
+                - !If
+                  - IsPattern2
+                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
+                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
       LoggingConfig:
         LogGroup: !Ref AgentChatProcessorLogGroup
       Policies:
@@ -3768,8 +3783,13 @@ Resources:
                 - logs:FilterLogEvents
                 - logs:GetLogEvents
               Resource:
-                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${AWS::StackName}*"
                 - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vendedlogs/states/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${AWS::StackName}*"
+                - !GetAtt QueueSenderLogGroup.Arn
+                - !GetAtt QueueProcessorLogGroup.Arn
+                - !GetAtt WorkflowTrackerLogGroup.Arn
+                - !GetAtt SaveReportingDataFunctionLogGroup.Arn
             - Effect: Allow
               Action:
                 - logs:DescribeLogGroups
@@ -4603,6 +4623,19 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
+          CLOUDWATCH_LOG_GROUPS: !Join
+            - ","
+            - - !Ref QueueSenderLogGroup
+              - !Ref QueueProcessorLogGroup
+              - !Ref WorkflowTrackerLogGroup
+              - !Ref SaveReportingDataFunctionLogGroup
+              - !If
+                - IsPattern1
+                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
+                - !If
+                  - IsPattern2
+                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
+                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
       LoggingConfig:
         LogGroup: !Ref AgentProcessorLogGroup
       Policies:
@@ -4690,8 +4723,13 @@ Resources:
                 - logs:FilterLogEvents
                 - logs:GetLogEvents
               Resource:
-                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${AWS::StackName}*"
                 - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vendedlogs/states/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${AWS::StackName}*"
+                - !GetAtt QueueSenderLogGroup.Arn
+                - !GetAtt QueueProcessorLogGroup.Arn
+                - !GetAtt WorkflowTrackerLogGroup.Arn
+                - !GetAtt SaveReportingDataFunctionLogGroup.Arn
             - Effect: Allow
               Action:
                 - logs:DescribeLogGroups

@@ -2515,6 +2515,18 @@ Outputs:
     Description: Step Functions State machine LogGroup
     Value: !Ref StateMachineLogGroup
 
+  PatternLogGroups:
+    Description: Comma-separated list of pattern-specific log groups
+    Value: !Join
+      - ","
+      - - !Ref OCRFunctionLogGroup
+        - !Ref ClassificationFunctionLogGroup
+        - !Ref ExtractionFunctionLogGroup
+        - !Ref AssessmentFunctionLogGroup
+        - !Ref ProcessResultsFunctionLogGroup
+        - !Ref SummarizationFunctionLogGroup
+        - !Ref StateMachineLogGroup
+
   DashboardName:
     Description: Name of the Pattern 3 (UDOP) CloudWatch Dashboard
     Value: !Ref Dashboard

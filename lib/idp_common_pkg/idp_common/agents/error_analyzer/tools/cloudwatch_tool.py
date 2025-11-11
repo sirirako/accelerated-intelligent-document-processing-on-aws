@@ -101,6 +101,53 @@ def _get_stack_name(document_record: Optional[Dict[str, Any]] = None) -> str:
     raise ValueError("No stack name available from document context or environment")
 
 
+def _get_stack_log_groups() -> List[Dict[str, str]]:
+    """
+    Get prioritized log groups from environment variable.
+    """
+    env_log_groups = os.environ.get("CLOUDWATCH_LOG_GROUPS", "")
+    if env_log_groups:
+        log_groups = [
+            {"name": lg.strip()} for lg in env_log_groups.split(",") if lg.strip()
+        ]
+        logger.info(
+            f"Log groups: [{len(log_groups)}]{[lg['name'] for lg in log_groups]}"
+        )
+        prioritized_groups = _prioritize_log_groups(log_groups)
+        logger.info(
+            f"Prioritized log groups: {[lg['name'] for lg in prioritized_groups]}"
+        )
+        return prioritized_groups
+
+    logger.warning("CLOUDWATCH_LOG_GROUPS environment variable not set")
+    return []
+
+
+def _prioritize_log_groups(log_groups: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """
+    Prioritize log groups by business logic importance.
+    """
+    priority_patterns = [
+        "Function",  # Pattern functions (BDA, OCR, Classification, Extraction)
+        "workflow",  # Step Functions
+        "QueueProcessor",  # Document ingestion
+        "WorkflowTracker",  # Status tracking
+        "QueueSender",  # Supporting functions
+    ]
+
+    prioritized = []
+    remaining = log_groups.copy()
+
+    for pattern in priority_patterns:
+        matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
+        prioritized.extend(matching)
+        remaining = [lg for lg in remaining if lg not in matching]
+
+    # Add any remaining log groups
+    prioritized.extend(remaining)
+    return prioritized
+
+
 def _search_document_logs(
     document_id: str, filter_pattern: str, max_log_events: int, max_log_groups: int
 ) -> Dict[str, Any]:
@@ -114,15 +161,22 @@ def _search_document_logs(
 
     # Get stack name from document context
     actual_stack_name = _get_stack_name(context.get("document_record"))
+    logger.info(f"Document search for '{document_id}' using stack: {actual_stack_name}")
 
     # Get log groups for the stack
-    log_groups = _get_log_groups_from_stack_prefix(actual_stack_name)
-    if log_groups.get("log_groups_found", 0) == 0:
+    log_groups = _get_stack_log_groups()
+    if len(log_groups) == 0:
         return {
             "document_id": document_id,
             "events_found": 0,
             "message": f"No log groups found for stack {actual_stack_name}",
         }
+
+    # Log which groups will be searched
+    groups_to_search = log_groups[:max_log_groups]
+    logger.info(
+        f"Searching {len(groups_to_search)} log groups (max: {max_log_groups}): {[lg['name'] for lg in groups_to_search]}"
+    )
 
     # Calculate processing time window with buffer
     time_window = _get_processing_time_window(context["document_record"])
@@ -136,7 +190,7 @@ def _search_document_logs(
     search_results = _search_by_request_ids(
         request_ids_info,
         context["lambda_function_to_request_id_map"],
-        log_groups["log_groups"][:max_log_groups],
+        log_groups[:max_log_groups],
         time_window,
         max_log_events,
     )
@@ -145,7 +199,7 @@ def _search_document_logs(
     if search_results["total_events"] == 0:
         search_results = _search_by_document_fallback(
             document_id,
-            log_groups["log_groups"][:3],
+            log_groups[:5],
             time_window,
             max_log_events,
         )
@@ -169,20 +223,11 @@ def _search_stack_logs(
     """
     # Get stack name from environment
     stack_name = _get_stack_name()
+    logger.info(f"System-wide search using stack: {stack_name}")
 
-    # Get log group prefix
-    prefix_info = _get_log_group_prefix(stack_name)
-    if "error" in prefix_info:
-        return {
-            "error": f"Failed to get log prefix: {prefix_info['error']}",
-            "events_found": 0,
-        }
-
-    log_prefix = prefix_info.get("log_group_prefix", "")
-
-    # Get log groups with the prefix
-    log_groups = _get_cloudwatch_log_groups(prefix=log_prefix)
-    if log_groups.get("log_groups_found", 0) == 0:
+    # Get log groups for the stack
+    log_groups = _get_stack_log_groups()
+    if len(log_groups) == 0:
         return {
             "stack_name": stack_name,
             "events_found": 0,
@@ -190,7 +235,10 @@ def _search_stack_logs(
         }
 
     # Search each log group
-    groups_to_search = log_groups["log_groups"][:max_log_groups]
+    groups_to_search = log_groups[:max_log_groups]
+    logger.info(
+        f"Searching {len(groups_to_search)} log groups (max: {max_log_groups}): {[lg['name'] for lg in groups_to_search]}"
+    )
     all_results = []
     total_events = 0
 
@@ -214,6 +262,8 @@ def _search_stack_logs(
                 }
             )
             total_events += search_result["events_found"]
+        else:
+            logger.info(f"No events found in log group: {log_group['name']}")
 
     return {
         "analysis_type": "system_wide",
@@ -372,9 +422,6 @@ def _search_by_request_ids(
 
         if matching_log_groups:
             for log_group in matching_log_groups:
-                logger.info(
-                    f"Searching log group {log_group['name']} for Lambda function {function_name} ({function_type}) with request ID {request_id}"
-                )
                 search_result = _search_cloudwatch_logs(
                     log_group_name=log_group["name"],
                     filter_pattern="ERROR",
@@ -513,7 +560,7 @@ def _build_response(
     }
 
     # Log complete response for troubleshooting
-    logger.info(f"CloudWatch document logs complete response: {response}")
+    logger.info(f"CloudWatch document logs response: {response}")
     return response
 
 
@@ -565,13 +612,9 @@ def _search_cloudwatch_logs(
         if final_filter_pattern:
             params["filterPattern"] = final_filter_pattern
 
-        logger.info(
-            f"CloudWatch search params for {log_group_name}: filter='{final_filter_pattern}', request_id={request_id}"
-        )
-
         try:
             response = client.filter_log_events(**params)
-            logger.info(
+            logger.debug(
                 f"CloudWatch API returned {len(response.get('events', []))} raw events for {log_group_name}"
             )
         except client.exceptions.ResourceNotFoundException:
@@ -630,116 +673,6 @@ def _build_filter_pattern(base_pattern: str, request_id: str = "") -> str:
         return base_pattern
     else:
         return ""
-
-
-def _get_cloudwatch_log_groups(prefix: str = "") -> Dict[str, Any]:
-    """
-    Lists CloudWatch log groups matching specified prefix.
-    """
-    try:
-        if not prefix or len(prefix) < 5:
-            return {"log_groups_found": 0, "log_groups": []}
-
-        client = boto3.client("logs")
-        response = client.describe_log_groups(logGroupNamePrefix=prefix)
-
-        groups = []
-        for group in response.get("logGroups", []):
-            groups.append(
-                {
-                    "name": group["logGroupName"],
-                    "creation_time": datetime.fromtimestamp(
-                        group["creationTime"] / 1000
-                    ).isoformat(),
-                    "retention_days": group.get("retentionInDays", "Never expire"),
-                    "size_bytes": group.get("storedBytes", 0),
-                }
-            )
-
-        return {"log_groups_found": len(groups), "log_groups": groups}
-
-    except Exception as e:
-        return create_error_response(str(e), log_groups_found=0, log_groups=[])
-
-
-def _extract_prefix_from_state_machine_arn(arn: str) -> str:
-    """
-    Extracts log group prefix from Step Functions State Machine ARN.
-    """
-    if ":stateMachine:" in arn:
-        state_machine_name = arn.split(":stateMachine:")[-1]
-        if "-DocumentProcessingWorkflow" in state_machine_name:
-            return state_machine_name.replace("-DocumentProcessingWorkflow", "")
-        parts = state_machine_name.split("-")
-        if len(parts) > 1:
-            return "-".join(parts[:-1])
-    return ""
-
-
-def _get_log_groups_from_stack_prefix(stack_name: str) -> Dict[str, Any]:
-    """
-    Get all CloudWatch log groups that start with the stack prefix.
-    """
-    if not stack_name:
-        return {"log_groups_found": 0, "log_groups": []}
-
-    log_group_prefix = f"/{stack_name}/lambda"
-
-    try:
-        client = boto3.client("logs")
-        response = client.describe_log_groups(logGroupNamePrefix=log_group_prefix)
-
-        log_groups = []
-        for group in response.get("logGroups", []):
-            log_groups.append(
-                {
-                    "name": group["logGroupName"],
-                    "creation_time": datetime.fromtimestamp(
-                        group["creationTime"] / 1000
-                    ).isoformat(),
-                    "retention_days": group.get("retentionInDays", "Never expire"),
-                    "size_bytes": group.get("storedBytes", 0),
-                }
-            )
-
-        return {"log_groups_found": len(log_groups), "log_groups": log_groups}
-
-    except Exception as e:
-        logger.error(f"Failed to get log groups for stack {stack_name}: {e}")
-        return {"log_groups_found": 0, "log_groups": []}
-
-
-def _get_log_group_prefix(stack_name: str) -> Dict[str, Any]:
-    """
-    Determines CloudWatch log group prefix from CloudFormation stack.
-    """
-    try:
-        cf_client = boto3.client("cloudformation")
-        stack_response = cf_client.describe_stacks(StackName=stack_name)
-        stacks = stack_response.get("Stacks", [])
-
-        if stacks:
-            outputs = stacks[0].get("Outputs", [])
-            for output in outputs:
-                if output.get("OutputKey") == "StateMachineArn":
-                    extracted_prefix = _extract_prefix_from_state_machine_arn(
-                        output.get("OutputValue", "")
-                    )
-                    if extracted_prefix:
-                        return {
-                            "stack_name": stack_name,
-                            "prefix_type": "pattern",
-                            "log_group_prefix": f"/{extracted_prefix}/lambda",
-                        }
-
-        return {
-            "stack_name": stack_name,
-            "prefix_type": "main",
-            "log_group_prefix": f"/aws/lambda/{stack_name}",
-        }
-
-    except Exception as e:
-        return create_error_response(str(e), stack_name=stack_name)
 
 
 def _extract_function_type(lambda_function_name: str) -> str:
