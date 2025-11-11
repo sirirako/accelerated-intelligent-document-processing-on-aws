@@ -277,7 +277,7 @@ def generate_publish_failure_summary(publish_error):
         Publish Error: {publish_error}
         
         Build Logs:
-        {deployment_logs}
+        {get_codebuild_logs()}
 
         ANALYZE THE LOGS FOR: npm ci errors, package-lock.json sync issues, missing @esbuild packages, UI build failures
 
