@@ -281,38 +281,37 @@ def generate_publish_failure_summary(publish_error):
 
         ANALYZE THE LOGS FOR: npm ci errors, package-lock.json sync issues, missing @esbuild packages, UI build failures
 
-        Create a summary focused on BUILD/PUBLISH issues with 75-character table width:
+        Create a summary focused on BUILD/PUBLISH issues with bullet points:
 
-        ┌─────────────────────────────────────────────────────────────────────────┐
-        │                        BUILD FAILURE ANALYSIS                           │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ Component      │ Status │ Error Type         │ Specific Issue         │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ UI Build       │ FAILED │ npm dependency     │ package-lock.json      │
-        │ Lambda Builds  │ SUCCESS│ N/A                │ All patterns built     │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │                       TECHNICAL ROOT CAUSE                              │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ • Extract exact npm/pip/CDK error messages from logs                   │
-        │ • Identify specific missing packages, version conflicts, sync issues   │
-        │ • Focus on build-time errors, not deployment errors                    │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │                          FIX COMMANDS                                   │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ • Provide exact terminal commands to resolve the build issue            │
-        │ • Include specific file paths and package manager commands              │
-        └─────────────────────────────────────────────────────────────────────────┘
+        🔧 BUILD FAILURE ANALYSIS
 
-        Focus on: npm ci errors, package-lock.json sync, missing dependencies
+        📋 Component Status:
+        • UI Build: FAILED - npm dependency issues
+        • Lambda Build: SUCCESS - All patterns built correctly
+        • Template Publish: FAILED - S3 access denied
+
+        🔍 Technical Root Cause:
+        • Extract exact npm/pip error messages from logs
+        • Identify specific missing packages or version conflicts
+        • Focus on build-time errors, not deployment errors
+        • Check AWS credentials and S3 bucket permissions
+
+        💡 Fix Commands:
+        • Run: cd src/ui && rm package-lock.json && npm install
+        • Check AWS profile: aws configure list --profile <name>
+        • Verify S3 access: aws s3 ls s3://bucket-name --profile <name>
+        • Update package-lock.json and commit changes
+
+        Keep each bullet point under 75 characters. Use sub-bullets for details.
         
-        IMPORTANT: Respond ONLY with the table format above. Do not include any text before or after the table.
+        IMPORTANT: Respond ONLY with the bullet format above. Do not include any text before or after.
         """)
         
         response = bedrock.invoke_model(
             modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 4000,
+                "max_tokens": 2000,
                 "messages": [{"role": "user", "content": prompt}]
             })
         )
@@ -373,19 +372,23 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         ├─────────────────────────────────────────────────────────────────────────┤
         │ Component        │ Status  │ Duration │ Details                        │
         ├─────────────────────────────────────────────────────────────────────────┤
-        │ Template Publish │ FAILED  │ 52s      │ npm ci sync error              │
-        │ Pattern 1 - BDA  │ SKIPPED │ N/A      │ Publish failed                 │
+        │ Pattern 1 - BDA  │ SUCCESS │ 120s     │ Stack deployed successfully    │
+        │ Pattern 2 - OCR  │ FAILED  │ 89s      │ CloudFormation CREATE_FAILED   │
+        │ Pattern 3 - UDOP │ SKIPPED │ N/A      │ Not selected for deployment    │
         ├─────────────────────────────────────────────────────────────────────────┤
         │                      ROOT CAUSE ANALYSIS                                │
         ├─────────────────────────────────────────────────────────────────────────┤
-        │ • UI build failed: package-lock.json out of sync with package.json     │
-        │ • Missing @esbuild/* platform packages in lock file                    │
-        │ • npm ci requires exact lock file match, use npm install to regenerate │
+        │ • Analyze actual deployment results from the Pattern Results Summary    │
+        │ • Extract specific CloudFormation error messages and resource names     │
+        │ • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events               │
+        │ • Check for smoke test failures and their underlying causes            │
+        │ • Report Lambda function errors, API Gateway issues, IAM permissions   │
         ├─────────────────────────────────────────────────────────────────────────┤
         │                        RECOMMENDATIONS                                  │
         ├─────────────────────────────────────────────────────────────────────────┤
-        │ • Run: cd src/ui && rm package-lock.json && npm install                │
-        │ • Commit updated package-lock.json to fix dependency sync              │
+        │ • Use actual pattern names and statuses from deployment_results         │
+        │ • Include specific CloudFormation stack names and error details        │
+        │ • Provide smoke test error details and remediation steps               │
         └─────────────────────────────────────────────────────────────────────────┘
 
         Requirements:
