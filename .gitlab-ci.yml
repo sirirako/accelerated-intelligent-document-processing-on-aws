@@ -170,7 +170,6 @@ integration_tests:
           SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100 || true)
           
           if [ -n "$SUMMARY" ]; then
-            echo "🤖 Deployment Analysis:"
             echo "$SUMMARY"
           else
             echo "⚠️ No deployment summary found - check codebuild_logs.txt for details"
