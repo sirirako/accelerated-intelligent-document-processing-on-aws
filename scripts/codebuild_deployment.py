@@ -266,7 +266,7 @@ def get_codebuild_logs():
         return f"Failed to retrieve CodeBuild logs: {str(e)}"
 
 
-def generate_publish_failure_summary(publish_error, deployment_logs):
+def generate_publish_failure_summary(publish_error):
     """Generate summary for publish/build failures"""
     try:
         bedrock = boto3.client('bedrock-runtime')
@@ -277,7 +277,7 @@ def generate_publish_failure_summary(publish_error, deployment_logs):
         Publish Error: {publish_error}
         
         Build Logs:
-        {deployment_logs}
+        {get_codebuild_logs()}
 
         Create a summary focused on BUILD/PUBLISH issues with 75-character table width:
 
@@ -301,7 +301,9 @@ def generate_publish_failure_summary(publish_error, deployment_logs):
         │ • Include specific file paths and package manager commands              │
         └─────────────────────────────────────────────────────────────────────────┘
 
-        Focus on: npm ci errors, package-lock.json sync, missing dependencies, CDK synthesis issues
+        Focus on: npm ci errors, package-lock.json sync, missing dependencies
+        
+        IMPORTANT: Respond ONLY with the table format above. Do not include any text before or after the table.
         """)
         
         response = bedrock.invoke_model(
@@ -389,10 +391,12 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         Requirements:
         - Use EXACT table format above with fixed 75-character table width
         - Analyze ALL error messages in logs for specific technical details
-        - Include exact npm/pip/CDK error messages and specific commands to fix
-        - Extract specific error patterns like "npm ci", "esbuild", "package-lock"
-        - Provide detailed technical root cause analysis with specific file names
+        - Include exact CloudFormation/Lambda error messages and specific commands to fix
+        - Extract specific error patterns like "CREATE_FAILED", "UPDATE_FAILED", "ROLLBACK"
+        - Provide detailed technical root cause analysis with specific resource names
         - Include actionable recommendations with exact terminal commands
+        
+        IMPORTANT: Respond ONLY with the table format above. Do not include any text before or after the table.
         """)
         
         # Call Bedrock API
@@ -603,7 +607,7 @@ def main():
     print("\n🤖 Generating deployment summary with Bedrock...")
     try:
         if not publish_success:
-            generate_publish_failure_summary(publish_error, deployment_logs=get_codebuild_logs())
+            generate_publish_failure_summary(publish_error)
         else:
             generate_deployment_summary(deployment_results, stack_prefix, template_url)
     except Exception as e:
