@@ -163,11 +163,11 @@ integration_tests:
           
           # Save full logs to artifact
           echo "$FULL_LOGS" > codebuild_logs.txt
-          echo "📁 Full deployment logs saved to: codebuild_logs.txt"
-          
+          echo -e "\033[1;36m📁 Full deployment logs saved to: \033[1;33mcodebuild_logs.txt\033[0m"
+          echo -e "\033[1;34m🔗 View logs: ${CI_JOB_URL}/artifacts/external_file/codebuild_logs.txt\033[0m"
           # Extract and show deployment summary (AI or manual)
           echo ""
-          SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100)
+          SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100 || true)
           
           if [ -n "$SUMMARY" ]; then
             echo "🤖 Deployment Analysis:"
