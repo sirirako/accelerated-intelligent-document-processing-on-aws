@@ -167,7 +167,7 @@ integration_tests:
           echo -e "\033[1;34m🔗 View logs: ${CI_JOB_URL}/artifacts/external_file/codebuild_logs.txt\033[0m"
           # Extract and show deployment summary (AI or manual)
           echo ""
-          SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100 || true)
+          SUMMARY=$(echo "$FULL_LOGS" | sed -n '/🤖 Generating deployment summary with Bedrock.../,$p' | sed 's/^\t*//' || true)
           
           if [ -n "$SUMMARY" ]; then
             echo "$SUMMARY"
