@@ -266,6 +266,65 @@ def get_codebuild_logs():
         return f"Failed to retrieve CodeBuild logs: {str(e)}"
 
 
+def generate_publish_failure_summary(publish_error, deployment_logs):
+    """Generate summary for publish/build failures"""
+    try:
+        bedrock = boto3.client('bedrock-runtime')
+        
+        prompt = dedent(f"""
+        You are a build system analyst. Analyze this publish/build failure and provide specific technical guidance.
+
+        Publish Error: {publish_error}
+        
+        Build Logs:
+        {deployment_logs}
+
+        Create a summary focused on BUILD/PUBLISH issues with 75-character table width:
+
+        ┌─────────────────────────────────────────────────────────────────────────┐
+        │                        BUILD FAILURE ANALYSIS                           │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ Component      │ Status │ Error Type         │ Specific Issue         │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ UI Build       │ FAILED │ npm dependency     │ package-lock.json      │
+        │ Lambda Builds  │ SUCCESS│ N/A                │ All patterns built     │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │                       TECHNICAL ROOT CAUSE                              │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ • Extract exact npm/pip/CDK error messages from logs                   │
+        │ • Identify specific missing packages, version conflicts, sync issues   │
+        │ • Focus on build-time errors, not deployment errors                    │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │                          FIX COMMANDS                                   │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ • Provide exact terminal commands to resolve the build issue            │
+        │ • Include specific file paths and package manager commands              │
+        └─────────────────────────────────────────────────────────────────────────┘
+
+        Focus on: npm ci errors, package-lock.json sync, missing dependencies, CDK synthesis issues
+        """)
+        
+        response = bedrock.invoke_model(
+            modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 4000,
+                "messages": [{"role": "user", "content": prompt}]
+            })
+        )
+        
+        response_body = json.loads(response['body'].read())
+        summary = response_body['content'][0]['text']
+        
+        print("🔧 Build Failure Analysis:")
+        print("=" * 80)
+        print(summary)
+        print("=" * 80)
+        
+    except Exception as e:
+        print(f"⚠️ Failed to generate build failure summary: {e}")
+
+
 def generate_deployment_summary(deployment_results, stack_prefix, template_url):
     """
     Generate deployment summary using Bedrock API
@@ -307,36 +366,33 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
 
         Create a summary with this EXACT format:
 
-        ┌─────────────────────────────────────────────────────────────────────────────┐
-        │                              DEPLOYMENT RESULTS                             │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ Pattern               │ Status    │ Duration  │ Key Metrics               │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ Pattern 1 - BDA       │ SUCCESS   │ 15m 30s   │ 28 functions validated    │
-        │ Pattern 2 - OCR       │ SUCCESS   │ 12m 45s   │ All tests passed          │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │                              ROOT CAUSE ANALYSIS                            │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ • CloudWatch log cleanup failed due to concatenated log group names        │
-        │ • AWS CLI text output parsing caused parameter validation errors           │
-        │ • Provide specific error messages, resource names, and failure points      │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │                              RECOMMENDATIONS                                │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ • Fix CloudWatch log cleanup to use JSON output instead of text            │
-        │ • Add proper error handling for resource cleanup operations                 │
-        └─────────────────────────────────────────────────────────────────────────────┘
+        ┌─────────────────────────────────────────────────────────────────────────┐
+        │                       DEPLOYMENT RESULTS                                │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ Component        │ Status  │ Duration │ Details                        │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ Template Publish │ FAILED  │ 52s      │ npm ci sync error              │
+        │ Pattern 1 - BDA  │ SKIPPED │ N/A      │ Publish failed                 │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │                      ROOT CAUSE ANALYSIS                                │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ • UI build failed: package-lock.json out of sync with package.json     │
+        │ • Missing @esbuild/* platform packages in lock file                    │
+        │ • npm ci requires exact lock file match, use npm install to regenerate │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │                        RECOMMENDATIONS                                  │
+        ├─────────────────────────────────────────────────────────────────────────┤
+        │ • Run: cd src/ui && rm package-lock.json && npm install                │
+        │ • Commit updated package-lock.json to fix dependency sync              │
+        └─────────────────────────────────────────────────────────────────────────┘
 
         Requirements:
-        - Use EXACT table format above
-        - For failures: provide detailed root cause analysis for ALL failed components (publish, deployments, etc.)
-        - Analyze publish/build logs to determine root cause of template publishing errors
-        - Include specific error messages, resource names, and exact failure points from logs
-        - Include sufficient technical details to understand WHY each component failed
-        - Maximum 2-3 bullet points for recommendations
-        - Keep each line under 75 characters
-        - Extract actual error messages and resource identifiers from logs
-        - For publish failures: check S3 permissions, npm/pip errors, CDK issues, template syntax
+        - Use EXACT table format above with fixed 75-character table width
+        - Analyze ALL error messages in logs for specific technical details
+        - Include exact npm/pip/CDK error messages and specific commands to fix
+        - Extract specific error patterns like "npm ci", "esbuild", "package-lock"
+        - Provide detailed technical root cause analysis with specific file names
+        - Include actionable recommendations with exact terminal commands
         """)
         
         # Call Bedrock API
@@ -412,32 +468,6 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         
         return manual_summary
 
-
-def delete_versioned_bucket(bucket_name):
-    """Delete all versions and delete markers from a versioned S3 bucket, then delete the bucket."""
-    import boto3
-    try:
-        s3 = boto3.client('s3')
-        paginator = s3.get_paginator('list_object_versions')
-        
-        for page in paginator.paginate(Bucket=bucket_name):
-            # Delete object versions
-            if 'Versions' in page:
-                for version in page['Versions']:
-                    s3.delete_object(Bucket=bucket_name, Key=version['Key'], VersionId=version['VersionId'])
-            
-            # Delete delete markers
-            if 'DeleteMarkers' in page:
-                for marker in page['DeleteMarkers']:
-                    s3.delete_object(Bucket=bucket_name, Key=marker['Key'], VersionId=marker['VersionId'])
-        
-        # Delete the bucket
-        s3.delete_bucket(Bucket=bucket_name)
-        return True
-    except Exception:
-        return False
-
-
 def cleanup_stack(stack_name, pattern_name):
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
     try:
@@ -512,10 +542,12 @@ def main():
     try:
         template_url = publish_templates()
         publish_success = True
+        publish_error = None
     except Exception as e:
         print(f"❌ Publish failed: {e}")
         template_url = "N/A - Publish failed"
         publish_success = False
+        publish_error = str(e)
 
     all_success = publish_success
     deployment_results = []
@@ -570,7 +602,10 @@ def main():
     # Step 3: Generate deployment summary using Bedrock (ALWAYS run for analysis)
     print("\n🤖 Generating deployment summary with Bedrock...")
     try:
-        generate_deployment_summary(deployment_results, stack_prefix, template_url)
+        if not publish_success:
+            generate_publish_failure_summary(publish_error, deployment_logs=get_codebuild_logs())
+        else:
+            generate_deployment_summary(deployment_results, stack_prefix, template_url)
     except Exception as e:
         print(f"⚠️ Failed to generate deployment summary: {e}")
 
