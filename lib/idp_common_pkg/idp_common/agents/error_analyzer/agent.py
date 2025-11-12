@@ -69,7 +69,7 @@ def create_error_analyzer_agent(
         model_id = config.get(
             "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
         )
-
+    logger.info(f"Model ID: {model_id}")
     bedrock_model = create_strands_bedrock_model(
         model_id=model_id, boto_session=session
     )
