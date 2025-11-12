@@ -6,7 +6,6 @@ External MCP Agent implementation using Strands framework.
 """
 
 import logging
-import os
 from typing import Any, Dict, Optional
 
 import boto3
@@ -174,7 +173,7 @@ def create_external_mcp_agent(
     Args:
         config: Configuration dictionary (ignored - MCP agent uses its own config)
         session: Boto3 session for AWS operations. If None, creates default session
-        model_id: Model ID to use. If None, reads from CHAT_COMPANION_MODEL_ID environment variable
+        model_id: Model ID to use (required)
         mcp_server_config: Individual MCP server configuration dict (required)
         **kwargs: Additional arguments
 
@@ -239,11 +238,9 @@ def create_external_mcp_agent(
 
             # Get model ID from parameter or environment variable
             if model_id is None:
-                model_id = os.environ.get("CHAT_COMPANION_MODEL_ID")
-                if not model_id:
-                    error_msg = "CHAT_COMPANION_MODEL_ID environment variable not set"
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
+                error_msg = "model_id parameter is required"
+                logger.error(error_msg)
+                raise Exception(error_msg)
 
             # Create Bedrock model
             bedrock_model = create_strands_bedrock_model(

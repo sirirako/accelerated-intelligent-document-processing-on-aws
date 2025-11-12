@@ -14,6 +14,7 @@ import strands
 from idp_common.config import get_config
 
 from ..common.strands_bedrock_model import create_strands_bedrock_model
+from .config import get_error_analyzer_model_id
 from .tools import (
     analyze_document_trace,
     analyze_system_performance,
@@ -59,8 +60,18 @@ def create_error_analyzer_agent(
         analyze_document_trace,
         analyze_system_performance,
     ]
+
+    # Get model ID using modern configuration system (reads user-changed values from DynamoDB)
+    try:
+        model_id = get_error_analyzer_model_id()
+    except Exception as e:
+        logger.warning(f"Failed to get chat companion model ID, using default: {e}")
+        model_id = config.get(
+            "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        )
+
     bedrock_model = create_strands_bedrock_model(
-        model_id=config.agents.error_analyzer.model_id, boto_session=session
+        model_id=model_id, boto_session=session
     )
 
     return strands.Agent(
