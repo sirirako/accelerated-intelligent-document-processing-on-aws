@@ -365,34 +365,32 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         Pattern Results Summary:
         {json.dumps(deployment_results, indent=2)}
 
-        Create a summary with this EXACT format:
+        Create a summary with clean bullet format:
 
-        ┌─────────────────────────────────────────────────────────────────────────┐
-        │                       DEPLOYMENT RESULTS                                │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ Component        │ Status  │ Duration │ Details                        │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ Pattern 1 - BDA  │ SUCCESS │ 120s     │ Stack deployed successfully    │
-        │ Pattern 2 - OCR  │ FAILED  │ 89s      │ CloudFormation CREATE_FAILED   │
-        │ Pattern 3 - UDOP │ SKIPPED │ N/A      │ Not selected for deployment    │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │                      ROOT CAUSE ANALYSIS                                │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ • Analyze actual deployment results from the Pattern Results Summary    │
-        │ • Extract specific CloudFormation error messages and resource names     │
-        │ • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events               │
-        │ • Check for smoke test failures and their underlying causes            │
-        │ • Report Lambda function errors, API Gateway issues, IAM permissions   │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │                        RECOMMENDATIONS                                  │
-        ├─────────────────────────────────────────────────────────────────────────┤
-        │ • Use actual pattern names and statuses from deployment_results         │
-        │ • Include specific CloudFormation stack names and error details        │
-        │ • Provide smoke test error details and remediation steps               │
-        └─────────────────────────────────────────────────────────────────────────┘
+        🚀 DEPLOYMENT RESULTS
+
+        📋 Pattern Status:
+        • Pattern 1 - BDA: SUCCESS - Stack deployed successfully (120s)
+        • Pattern 2 - OCR: FAILED - CloudFormation CREATE_FAILED (89s)  
+        • Pattern 3 - UDOP: SKIPPED - Not selected for deployment
+
+        🔍 Root Cause Analysis:
+        • Analyze actual deployment results from Pattern Results Summary
+        • Extract specific CloudFormation error messages and resource names
+        • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events
+        • Check for smoke test failures and their underlying causes
+        • Report Lambda function errors, API Gateway issues, IAM permissions
+
+        💡 Recommendations:
+        • Use actual pattern names and statuses from deployment_results
+        • Include specific CloudFormation stack names and error details
+        • Provide smoke test error details and remediation steps
+
+        Keep each bullet point under 75 characters. Use clean text format.
+        
+        IMPORTANT: Respond ONLY with clean bullet format above. No tables or boxes.
 
         Requirements:
-        - Use EXACT table format above with fixed 75-character table width
         - Analyze ALL error messages in logs for specific technical details
         - Include exact CloudFormation/Lambda error messages and specific commands to fix
         - Extract specific error patterns like "CREATE_FAILED", "UPDATE_FAILED", "ROLLBACK"

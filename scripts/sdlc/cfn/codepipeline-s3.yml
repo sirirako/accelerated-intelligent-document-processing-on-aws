@@ -197,7 +197,7 @@ Resources:
               runtime-versions:
                 python: 3.12
               commands:
-                - n 18 && node --version || { echo "Node setup failed"; exit 1; }
+                - n 20 && node --version || { echo "Node setup failed"; exit 1; }
                 - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket genaiic-sdlc-sourcecode-${AWS_ACCOUNT_ID:-020432867916}-${AWS_DEFAULT_REGION:-us-east-1} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
                 - cd idp_cli && pip install -e . && cd .. || { echo "IDP CLI installation failed"; exit 1; }
                 - pip install rich || echo "Rich installation failed, using fallback formatting"
