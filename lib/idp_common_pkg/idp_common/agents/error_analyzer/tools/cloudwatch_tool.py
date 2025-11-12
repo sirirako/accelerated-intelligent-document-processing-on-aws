@@ -357,7 +357,6 @@ def _prioritize_log_groups(
     - In-progress documents: Focus on QueueProcessor/WorkflowTracker first
     - Completed documents: Use standard prioritization
     """
-    logger.info(f"Log prioritization - Document status: {document_status}")
 
     # Status-aware priority patterns (using generic matching)
     if document_status == "FAILED":
@@ -369,9 +368,6 @@ def _prioritize_log_groups(
             "Workflow",  # Orchestration (WorkflowTracker, workflow)
             "QueueSender",  # Supporting functions
         ]
-        logger.info(
-            "Log prioritization - Using FAILED document strategy: Classification/Extraction functions first"
-        )
     elif document_status == "IN_PROGRESS":
         priority_patterns = [
             "Processor",  # Current ingestion activity (QueueProcessor)
@@ -379,9 +375,6 @@ def _prioritize_log_groups(
             "Function",  # Currently processing functions
             "QueueSender",  # Supporting functions
         ]
-        logger.info(
-            "Log prioritization - Using IN_PROGRESS document strategy: Processor/Workflow first"
-        )
     else:
         # Default/COMPLETED behavior
         priority_patterns = [
@@ -390,9 +383,6 @@ def _prioritize_log_groups(
             "Processor",  # Document ingestion (QueueProcessor)
             "QueueSender",  # Supporting functions
         ]
-        logger.info(
-            f"Log prioritization - Using default strategy for status '{document_status}': Function-first prioritization"
-        )
 
     prioritized = []
     remaining = log_groups.copy()
@@ -400,26 +390,13 @@ def _prioritize_log_groups(
     for i, pattern in enumerate(priority_patterns):
         matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
         if matching:
-            logger.info(
-                f"Log prioritization - Priority {i + 1} '{pattern}': Found {len(matching)} log groups"
-            )
             prioritized.extend(matching)
             remaining = [lg for lg in remaining if lg not in matching]
-        else:
-            logger.info(
-                f"Log prioritization - Priority {i + 1} '{pattern}': No matching log groups"
-            )
 
     # Add any remaining log groups
     if remaining:
-        logger.info(
-            f"Log prioritization - Adding {len(remaining)} remaining log groups at end"
-        )
         prioritized.extend(remaining)
 
-    logger.info(
-        f"Log prioritization - Final order: {[lg['name'] for lg in prioritized]}"
-    )
     return prioritized
 
 
@@ -572,12 +549,10 @@ def _search_stack_logs(
     total_events = 0
     events_limit = 5
 
-    logger.info(f"Early termination - System-wide search events limit: {events_limit}")
-
     for log_group in groups_to_search:
         if total_events >= events_limit:
             logger.info(
-                f"Early termination - Reached {events_limit} error events, stopping system-wide search"
+                f"Reached {events_limit} error events, stopping system-wide search"
             )
             break
 
@@ -600,15 +575,10 @@ def _search_stack_logs(
                 }
             )
             total_events += search_result["events_found"]
-            logger.info(
-                f"Early termination - Total events found so far: {total_events}/{events_limit}"
-            )
         else:
             logger.info(f"No events found in log group: {log_group['name']}")
 
-    logger.info(
-        f"Early termination - System-wide search completed with {total_events} total events"
-    )
+    logger.info(f"System-wide search completed with {total_events} total events")
 
     return {
         "analysis_type": "system_wide",
@@ -686,12 +656,12 @@ def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, An
     - Completed documents: Actual processing time + 30 seconds buffer
     """
     # Log complete document record for debugging
-    logger.info(f"Smart time window - Complete document record: {document_record}")
+    logger.info(f"Document record: {document_record}")
 
     document_status = document_record.get("ObjectStatus") or document_record.get(
         "WorkflowStatus"
     )
-    logger.info(f"Smart time window - Document status: {document_status}")
+    logger.info(f"Document status: {document_status}")
 
     # Get timestamps
     start_time = None
@@ -701,52 +671,28 @@ def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, An
         start_time = datetime.fromisoformat(
             document_record["InitialEventTime"].replace("Z", "+00:00")
         )
-        logger.info(f"Smart time window - InitialEventTime: {start_time}")
     if document_record.get("CompletionTime"):
         end_time = datetime.fromisoformat(
             document_record["CompletionTime"].replace("Z", "+00:00")
         )
-        logger.info(f"Smart time window - CompletionTime: {end_time}")
 
-    # Smart time window based on document status
     if document_status == "FAILED" and end_time:
         # Failed: 5-minute window around failure time
         buffer = timedelta(minutes=2.5)
         result_start = end_time - buffer
         result_end = end_time + buffer
-        logger.info(
-            "Smart time window - FAILED strategy: 5-minute window around failure time"
-        )
-        logger.info(
-            f"Smart time window - Search window: {result_start} to {result_end} (duration: {result_end - result_start})"
-        )
         return {"start_time": result_start, "end_time": result_end}
     elif document_status == "IN_PROGRESS" or not end_time:
         # In-progress or missing completion time: Last 30 minutes from now
         now = datetime.now()
         result_start = now - timedelta(minutes=30)
         result_end = now
-        logger.info(
-            "Smart time window - IN_PROGRESS/missing completion strategy: Last 30 minutes from now"
-        )
-        logger.info(
-            f"Smart time window - Search window: {result_start} to {result_end} (duration: 30 minutes)"
-        )
         return {"start_time": result_start, "end_time": result_end}
     elif start_time and end_time:
         # Completed: Actual processing time + 30 seconds buffer
         buffer = timedelta(seconds=30)
         result_start = start_time - buffer
         result_end = end_time + buffer
-        processing_duration = end_time - start_time
-        total_window = result_end - result_start
-        logger.info(
-            "Smart time window - COMPLETED strategy: Actual processing time + 30s buffer"
-        )
-        logger.info(f"Smart time window - Processing duration: {processing_duration}")
-        logger.info(
-            f"Smart time window - Search window: {result_start} to {result_end} (duration: {total_window})"
-        )
         return {"start_time": result_start, "end_time": result_end}
 
     # Fallback to current behavior for edge cases
@@ -755,20 +701,8 @@ def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, An
         time_buffer = min(timedelta(minutes=2), processing_duration * 0.1)
         result_start = start_time - time_buffer
         result_end = end_time + time_buffer
-        logger.info(
-            "Smart time window - FALLBACK strategy: Original behavior (min 2min or 10% duration)"
-        )
-        logger.info(
-            f"Smart time window - Processing duration: {processing_duration}, Buffer: {time_buffer}"
-        )
-        logger.info(
-            f"Smart time window - Search window: {result_start} to {result_end} (duration: {result_end - result_start})"
-        )
         return {"start_time": result_start, "end_time": result_end}
 
-    logger.info(
-        "Smart time window - NO TIME WINDOW: Missing timestamps, returning None values"
-    )
     return {"start_time": start_time, "end_time": end_time}
 
 
@@ -814,13 +748,9 @@ def _search_by_request_ids(
     search_method_used = "none"
     events_limit = 5
 
-    logger.info(f"Early termination - Document search events limit: {events_limit}")
-
     for request_id in request_ids_info["request_ids_to_search"]:
         if total_events >= events_limit:
-            logger.info(
-                f"Early termination - Reached {events_limit} error events, stopping search"
-            )
+            logger.info(f"Reached {events_limit} error events, stopping search")
             break
 
         function_name = next(
@@ -847,7 +777,7 @@ def _search_by_request_ids(
             for log_group in matching_log_groups:
                 if total_events >= events_limit:
                     logger.info(
-                        f"Early termination - Reached {events_limit} error events, stopping log group search"
+                        f"Reached {events_limit} error events, stopping log group search"
                     )
                     break
 
@@ -876,9 +806,6 @@ def _search_by_request_ids(
                         }
                     )
                     total_events += search_result["events_found"]
-                    logger.info(
-                        f"Early termination - Total events found so far: {total_events}/{events_limit}"
-                    )
         else:
             logger.info(
                 f"No matching log group found for Lambda function {function_name} ({function_type})"
@@ -888,9 +815,7 @@ def _search_by_request_ids(
         if total_events > 0:
             break
 
-    logger.info(
-        f"Early termination - Document search completed with {total_events} total events"
-    )
+    logger.info(f"Document search completed with {total_events} total events")
     return {
         "all_results": all_results,
         "total_events": total_events,
@@ -912,15 +837,12 @@ def _search_by_document_fallback(
     search_method_used = "none"
     events_limit = 5
 
-    logger.info(
-        f"Early termination - Document fallback search events limit: {events_limit}"
-    )
     doc_identifier = document_id.replace(".pdf", "").replace(".", "-")
 
     for log_group in groups_to_search:
         if total_events >= events_limit:
             logger.info(
-                f"Early termination - Reached {events_limit} error events, stopping fallback search"
+                f"Reached {events_limit} error events, stopping fallback search"
             )
             break
 
@@ -957,14 +879,9 @@ def _search_by_document_fallback(
                     }
                 )
                 total_events += len(error_events)
-                logger.info(
-                    f"Early termination - Total events found so far: {total_events}/{events_limit}"
-                )
                 break
 
-    logger.info(
-        f"Early termination - Document fallback search completed with {total_events} total events"
-    )
+    logger.info(f"Document fallback search completed with {total_events} total events")
     return {
         "all_results": all_results,
         "total_events": total_events,
