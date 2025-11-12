@@ -319,7 +319,6 @@ def generate_publish_failure_summary(publish_error):
         response_body = json.loads(response['body'].read())
         summary = response_body['content'][0]['text']
         
-        print("🔧 Build Failure Analysis:")
         print(summary)
         
     except Exception as e:
@@ -397,7 +396,6 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         - Provide detailed technical root cause analysis with specific resource names
         - Include actionable recommendations with exact terminal commands
         
-        IMPORTANT: Respond ONLY with the table format above. Do not include any text before or after the table.
         """)
         
         # Call Bedrock API
@@ -419,21 +417,7 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         response_body = json.loads(response['body'].read())
         summary = response_body['content'][0]['text']
         
-        try:
-            from rich.console import Console
-            from rich.panel import Panel
-            
-            console = Console()
-            console.print(Panel(
-                summary, 
-                title="🤖 AI Deployment Analysis", 
-                border_style="green",
-                padding=(1, 2)
-            ))
-        except ImportError:
-            # Fallback to plain text if Rich not available
-            print("📊 Deployment Analysis:")
-            print(summary)
+        print(summary)
         
         return summary
         
