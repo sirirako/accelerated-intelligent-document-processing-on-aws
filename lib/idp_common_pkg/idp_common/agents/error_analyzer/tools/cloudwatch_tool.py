@@ -75,6 +75,161 @@ def search_cloudwatch_logs(
         return create_error_response(str(e), document_id=document_id, events_found=0)
 
 
+@tool
+def search_performance_issues(
+    issue_type: str = "performance",
+    hours_back: int = 24,
+    max_log_events: int = 10,
+) -> Dict[str, Any]:
+    """
+    Search CloudWatch logs for system performance and infrastructure issues.
+
+    Use this tool when:
+    - System is running slowly or unresponsively
+    - Investigating throttling or rate limiting issues
+    - Checking for timeout or capacity problems
+    - Analyzing infrastructure performance bottlenecks
+    - Looking for memory or resource constraints
+
+    Args:
+        issue_type: Type of performance issue to search for:
+                   "performance" (default) - General performance issues
+                   "throttling" - Rate limiting and throttling
+                   "timeout" - Timeout-related issues
+                   "memory" - Memory and resource issues
+                   "capacity" - Capacity and concurrency limits
+        hours_back: Hours to look back from now (default: 24, max: 168)
+        max_log_events: Maximum events to return per log group (default: 10, max: 50)
+
+    Returns:
+        Dict containing performance events, search metadata, and infrastructure context
+    """
+    try:
+        # Performance search patterns by issue type
+        performance_patterns = {
+            "performance": ["timeout", "slow", "latency", "duration", "performance"],
+            "throttling": [
+                "throttl",
+                "rate limit",
+                "too many requests",
+                "limit exceeded",
+            ],
+            "timeout": ["timeout", "timed out", "deadline", "duration exceeded"],
+            "memory": ["memory", "out of memory", "oom", "heap", "allocation"],
+            "capacity": ["concurrent", "capacity", "limit", "quota", "maximum"],
+        }
+
+        # Get search patterns for the specified issue type
+        search_patterns = performance_patterns.get(
+            issue_type, performance_patterns["performance"]
+        )
+        logger.info(
+            f"Performance search - Issue type: {issue_type}, Patterns: {search_patterns}"
+        )
+
+        # Get stack name and log groups
+        stack_name = _get_stack_name()
+        log_groups = _prioritize_performance_log_groups(_get_stack_log_groups())
+
+        if len(log_groups) == 0:
+            return {
+                "analysis_type": "performance_issues",
+                "issue_type": issue_type,
+                "stack_name": stack_name,
+                "events_found": 0,
+                "message": "No log groups found",
+            }
+
+        # Search with early termination
+        all_results = []
+        total_events = 0
+        events_limit = 5
+
+        logger.info(f"Performance search - Events limit: {events_limit}")
+        logger.info(
+            f"Performance search - Searching {len(log_groups)} log groups: {[lg['name'] for lg in log_groups]}"
+        )
+
+        for log_group in log_groups:
+            if total_events >= events_limit:
+                logger.info(
+                    f"Performance search - Reached {events_limit} events, stopping search"
+                )
+                break
+
+            # Search each pattern in this log group
+            for pattern in search_patterns:
+                if total_events >= events_limit:
+                    break
+
+                search_result = _search_cloudwatch_logs(
+                    log_group_name=log_group["name"],
+                    filter_pattern=pattern,
+                    hours_back=hours_back,
+                    max_events=max_log_events,
+                )
+
+                if search_result.get("events_found", 0) > 0:
+                    logger.info(
+                        f"Performance search - Found {search_result['events_found']} events for pattern '{pattern}' in {log_group['name']}"
+                    )
+
+                    # Filter events for performance indicators
+                    performance_events = []
+                    for event in search_result.get("events", []):
+                        message = event.get("message", "").lower()
+                        if any(p.lower() in message for p in search_patterns):
+                            performance_events.append(event)
+
+                    if performance_events:
+                        all_results.append(
+                            {
+                                "log_group": log_group["name"],
+                                "search_pattern": pattern,
+                                "events_found": len(performance_events),
+                                "events": performance_events,
+                                "performance_indicators": [
+                                    p
+                                    for p in search_patterns
+                                    if p.lower()
+                                    in " ".join(
+                                        [
+                                            e.get("message", "")
+                                            for e in performance_events
+                                        ]
+                                    ).lower()
+                                ],
+                            }
+                        )
+                        total_events += len(performance_events)
+                        logger.info(
+                            f"Performance search - Total events found so far: {total_events}/{events_limit}"
+                        )
+
+                        # Break to next log group after finding performance events
+                        break
+
+        logger.info(f"Performance search - Completed with {total_events} total events")
+
+        response = {
+            "analysis_type": "performance_issues",
+            "issue_type": issue_type,
+            "stack_name": stack_name,
+            "search_patterns_used": search_patterns,
+            "total_events_found": total_events,
+            "log_groups_searched": len([r for r in all_results]),
+            "results": all_results,
+        }
+
+        # Log complete response for testing and troubleshooting
+        logger.info(f"Performance search response: {response}")
+        return response
+
+    except Exception as e:
+        logger.error(f"Performance search failed: {e}")
+        return create_error_response(str(e), events_found=0)
+
+
 # =============================================================================
 # CONSOLIDATED SEARCH HELPER FUNCTIONS
 # =============================================================================
@@ -101,9 +256,9 @@ def _get_stack_name(document_record: Optional[Dict[str, Any]] = None) -> str:
     raise ValueError("No stack name available from document context or environment")
 
 
-def _get_stack_log_groups() -> List[Dict[str, str]]:
+def _get_stack_log_groups(document_status: str = None) -> List[Dict[str, str]]:
     """
-    Get prioritized log groups from environment variable.
+    Get prioritized log groups from environment variable with status-aware prioritization.
     """
     env_log_groups = os.environ.get("CLOUDWATCH_LOG_GROUPS", "")
     if env_log_groups:
@@ -113,7 +268,7 @@ def _get_stack_log_groups() -> List[Dict[str, str]]:
         logger.info(
             f"Log groups: [{len(log_groups)}]{[lg['name'] for lg in log_groups]}"
         )
-        prioritized_groups = _prioritize_log_groups(log_groups)
+        prioritized_groups = _prioritize_log_groups(log_groups, document_status)
         logger.info(
             f"Prioritized log groups: {[lg['name'] for lg in prioritized_groups]}"
         )
@@ -123,28 +278,125 @@ def _get_stack_log_groups() -> List[Dict[str, str]]:
     return []
 
 
-def _prioritize_log_groups(log_groups: List[Dict[str, str]]) -> List[Dict[str, str]]:
+def _prioritize_log_groups(
+    log_groups: List[Dict[str, str]], document_status: str = None
+) -> List[Dict[str, str]]:
     """
-    Prioritize log groups by business logic importance.
+    Prioritize log groups by business logic importance with status-aware prioritization.
+
+    - Failed documents: Focus on Classification/Extraction functions first
+    - In-progress documents: Focus on QueueProcessor/WorkflowTracker first
+    - Completed documents: Use standard prioritization
     """
-    priority_patterns = [
-        "Function",  # Pattern functions (BDA, OCR, Classification, Extraction)
-        "workflow",  # Step Functions
-        "QueueProcessor",  # Document ingestion
-        "WorkflowTracker",  # Status tracking
-        "QueueSender",  # Supporting functions
+    logger.info(f"Log prioritization - Document status: {document_status}")
+
+    # Status-aware priority patterns (using generic matching)
+    if document_status == "FAILED":
+        priority_patterns = [
+            "Classification",  # Classification failures
+            "Extraction",  # Extraction failures
+            "Function",  # Other processing functions (OCR, BDA)
+            "Processor",  # Ingestion issues (QueueProcessor)
+            "Workflow",  # Orchestration (WorkflowTracker, workflow)
+            "QueueSender",  # Supporting functions
+        ]
+        logger.info(
+            "Log prioritization - Using FAILED document strategy: Classification/Extraction functions first"
+        )
+    elif document_status == "IN_PROGRESS":
+        priority_patterns = [
+            "Processor",  # Current ingestion activity (QueueProcessor)
+            "Workflow",  # Current status tracking (WorkflowTracker, workflow)
+            "Function",  # Currently processing functions
+            "QueueSender",  # Supporting functions
+        ]
+        logger.info(
+            "Log prioritization - Using IN_PROGRESS document strategy: Processor/Workflow first"
+        )
+    else:
+        # Default/COMPLETED behavior
+        priority_patterns = [
+            "Function",  # Pattern functions (BDA, OCR, Classification, Extraction)
+            "Workflow",  # Step Functions (workflow, WorkflowTracker)
+            "Processor",  # Document ingestion (QueueProcessor)
+            "QueueSender",  # Supporting functions
+        ]
+        logger.info(
+            f"Log prioritization - Using default strategy for status '{document_status}': Function-first prioritization"
+        )
+
+    prioritized = []
+    remaining = log_groups.copy()
+
+    for i, pattern in enumerate(priority_patterns):
+        matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
+        if matching:
+            logger.info(
+                f"Log prioritization - Priority {i + 1} '{pattern}': Found {len(matching)} log groups"
+            )
+            prioritized.extend(matching)
+            remaining = [lg for lg in remaining if lg not in matching]
+        else:
+            logger.info(
+                f"Log prioritization - Priority {i + 1} '{pattern}': No matching log groups"
+            )
+
+    # Add any remaining log groups
+    if remaining:
+        logger.info(
+            f"Log prioritization - Adding {len(remaining)} remaining log groups at end"
+        )
+        prioritized.extend(remaining)
+
+    logger.info(
+        f"Log prioritization - Final order: {[lg['name'] for lg in prioritized]}"
+    )
+    return prioritized
+
+
+def _prioritize_performance_log_groups(
+    log_groups: List[Dict[str, str]],
+) -> List[Dict[str, str]]:
+    """
+    Prioritize log groups for performance issue analysis.
+    Focus on infrastructure components that commonly have performance bottlenecks.
+    """
+    logger.info("Performance log prioritization - Using infrastructure-first strategy")
+
+    # Performance-focused priority patterns
+    performance_priority_patterns = [
+        "Processor",  # Queue processing bottlenecks
+        "Workflow",  # Step Function limits/timeouts
+        "Function",  # Lambda performance issues
+        "QueueSender",  # Queue delivery performance
     ]
 
     prioritized = []
     remaining = log_groups.copy()
 
-    for pattern in priority_patterns:
+    for i, pattern in enumerate(performance_priority_patterns):
         matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
-        prioritized.extend(matching)
-        remaining = [lg for lg in remaining if lg not in matching]
+        if matching:
+            logger.info(
+                f"Performance prioritization - Priority {i + 1} '{pattern}': Found {len(matching)} log groups"
+            )
+            prioritized.extend(matching)
+            remaining = [lg for lg in remaining if lg not in matching]
+        else:
+            logger.info(
+                f"Performance prioritization - Priority {i + 1} '{pattern}': No matching log groups"
+            )
 
     # Add any remaining log groups
-    prioritized.extend(remaining)
+    if remaining:
+        logger.info(
+            f"Performance prioritization - Adding {len(remaining)} remaining log groups at end"
+        )
+        prioritized.extend(remaining)
+
+    logger.info(
+        f"Performance prioritization - Final order: {[lg['name'] for lg in prioritized]}"
+    )
     return prioritized
 
 
@@ -163,8 +415,16 @@ def _search_document_logs(
     actual_stack_name = _get_stack_name(context.get("document_record"))
     logger.info(f"Document search for '{document_id}' using stack: {actual_stack_name}")
 
-    # Get log groups for the stack
-    log_groups = _get_stack_log_groups()
+    # Get document status for prioritization
+    document_status = context["document_record"].get("ObjectStatus") or context[
+        "document_record"
+    ].get("WorkflowStatus")
+    logger.info(
+        f"Document search - Document status for log prioritization: {document_status}"
+    )
+
+    # Get log groups for the stack with status-aware prioritization
+    log_groups = _get_stack_log_groups(document_status)
     if len(log_groups) == 0:
         return {
             "document_id": document_id,
@@ -225,7 +485,7 @@ def _search_stack_logs(
     stack_name = _get_stack_name()
     logger.info(f"System-wide search using stack: {stack_name}")
 
-    # Get log groups for the stack
+    # Get log groups for the stack (system-wide search uses default prioritization)
     log_groups = _get_stack_log_groups()
     if len(log_groups) == 0:
         return {
@@ -241,8 +501,17 @@ def _search_stack_logs(
     )
     all_results = []
     total_events = 0
+    events_limit = 5
+
+    logger.info(f"Early termination - System-wide search events limit: {events_limit}")
 
     for log_group in groups_to_search:
+        if total_events >= events_limit:
+            logger.info(
+                f"Early termination - Reached {events_limit} error events, stopping system-wide search"
+            )
+            break
+
         search_result = _search_cloudwatch_logs(
             log_group_name=log_group["name"],
             filter_pattern=filter_pattern,
@@ -262,8 +531,15 @@ def _search_stack_logs(
                 }
             )
             total_events += search_result["events_found"]
+            logger.info(
+                f"Early termination - Total events found so far: {total_events}/{events_limit}"
+            )
         else:
             logger.info(f"No events found in log group: {log_group['name']}")
+
+    logger.info(
+        f"Early termination - System-wide search completed with {total_events} total events"
+    )
 
     return {
         "analysis_type": "system_wide",
@@ -334,8 +610,21 @@ def _extract_stack_name(document_record: Dict[str, Any]) -> str:
 
 def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract processing time window with buffer for isolation.
+    Extract optimized processing time window based on document status.
+
+    - Failed documents: 5-minute window around failure time
+    - In-progress documents: Last 30 minutes from now
+    - Completed documents: Actual processing time + 30 seconds buffer
     """
+    # Log complete document record for debugging
+    logger.info(f"Smart time window - Complete document record: {document_record}")
+
+    document_status = document_record.get("ObjectStatus") or document_record.get(
+        "WorkflowStatus"
+    )
+    logger.info(f"Smart time window - Document status: {document_status}")
+
+    # Get timestamps
     start_time = None
     end_time = None
 
@@ -343,18 +632,74 @@ def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, An
         start_time = datetime.fromisoformat(
             document_record["InitialEventTime"].replace("Z", "+00:00")
         )
+        logger.info(f"Smart time window - InitialEventTime: {start_time}")
     if document_record.get("CompletionTime"):
         end_time = datetime.fromisoformat(
             document_record["CompletionTime"].replace("Z", "+00:00")
         )
+        logger.info(f"Smart time window - CompletionTime: {end_time}")
 
-    # Add time buffer for isolation
+    # Smart time window based on document status
+    if document_status == "FAILED" and end_time:
+        # Failed: 5-minute window around failure time
+        buffer = timedelta(minutes=2.5)
+        result_start = end_time - buffer
+        result_end = end_time + buffer
+        logger.info(
+            "Smart time window - FAILED strategy: 5-minute window around failure time"
+        )
+        logger.info(
+            f"Smart time window - Search window: {result_start} to {result_end} (duration: {result_end - result_start})"
+        )
+        return {"start_time": result_start, "end_time": result_end}
+    elif document_status == "IN_PROGRESS" or not end_time:
+        # In-progress or missing completion time: Last 30 minutes from now
+        now = datetime.now()
+        result_start = now - timedelta(minutes=30)
+        result_end = now
+        logger.info(
+            "Smart time window - IN_PROGRESS/missing completion strategy: Last 30 minutes from now"
+        )
+        logger.info(
+            f"Smart time window - Search window: {result_start} to {result_end} (duration: 30 minutes)"
+        )
+        return {"start_time": result_start, "end_time": result_end}
+    elif start_time and end_time:
+        # Completed: Actual processing time + 30 seconds buffer
+        buffer = timedelta(seconds=30)
+        result_start = start_time - buffer
+        result_end = end_time + buffer
+        processing_duration = end_time - start_time
+        total_window = result_end - result_start
+        logger.info(
+            "Smart time window - COMPLETED strategy: Actual processing time + 30s buffer"
+        )
+        logger.info(f"Smart time window - Processing duration: {processing_duration}")
+        logger.info(
+            f"Smart time window - Search window: {result_start} to {result_end} (duration: {total_window})"
+        )
+        return {"start_time": result_start, "end_time": result_end}
+
+    # Fallback to current behavior for edge cases
     if start_time and end_time:
         processing_duration = end_time - start_time
         time_buffer = min(timedelta(minutes=2), processing_duration * 0.1)
-        start_time = start_time - time_buffer
-        end_time = end_time + time_buffer
+        result_start = start_time - time_buffer
+        result_end = end_time + time_buffer
+        logger.info(
+            "Smart time window - FALLBACK strategy: Original behavior (min 2min or 10% duration)"
+        )
+        logger.info(
+            f"Smart time window - Processing duration: {processing_duration}, Buffer: {time_buffer}"
+        )
+        logger.info(
+            f"Smart time window - Search window: {result_start} to {result_end} (duration: {result_end - result_start})"
+        )
+        return {"start_time": result_start, "end_time": result_end}
 
+    logger.info(
+        "Smart time window - NO TIME WINDOW: Missing timestamps, returning None values"
+    )
     return {"start_time": start_time, "end_time": end_time}
 
 
@@ -398,8 +743,17 @@ def _search_by_request_ids(
     all_results = []
     total_events = 0
     search_method_used = "none"
+    events_limit = 5
+
+    logger.info(f"Early termination - Document search events limit: {events_limit}")
 
     for request_id in request_ids_info["request_ids_to_search"]:
+        if total_events >= events_limit:
+            logger.info(
+                f"Early termination - Reached {events_limit} error events, stopping search"
+            )
+            break
+
         function_name = next(
             (
                 func
@@ -422,6 +776,12 @@ def _search_by_request_ids(
 
         if matching_log_groups:
             for log_group in matching_log_groups:
+                if total_events >= events_limit:
+                    logger.info(
+                        f"Early termination - Reached {events_limit} error events, stopping log group search"
+                    )
+                    break
+
                 search_result = _search_cloudwatch_logs(
                     log_group_name=log_group["name"],
                     filter_pattern="ERROR",
@@ -447,6 +807,9 @@ def _search_by_request_ids(
                         }
                     )
                     total_events += search_result["events_found"]
+                    logger.info(
+                        f"Early termination - Total events found so far: {total_events}/{events_limit}"
+                    )
         else:
             logger.info(
                 f"No matching log group found for Lambda function {function_name} ({function_type})"
@@ -456,6 +819,9 @@ def _search_by_request_ids(
         if total_events > 0:
             break
 
+    logger.info(
+        f"Early termination - Document search completed with {total_events} total events"
+    )
     return {
         "all_results": all_results,
         "total_events": total_events,
@@ -475,10 +841,20 @@ def _search_by_document_fallback(
     all_results = []
     total_events = 0
     search_method_used = "none"
+    events_limit = 5
 
+    logger.info(
+        f"Early termination - Document fallback search events limit: {events_limit}"
+    )
     doc_identifier = document_id.replace(".pdf", "").replace(".", "-")
 
     for log_group in groups_to_search:
+        if total_events >= events_limit:
+            logger.info(
+                f"Early termination - Reached {events_limit} error events, stopping fallback search"
+            )
+            break
+
         search_result = _search_cloudwatch_logs(
             log_group_name=log_group["name"],
             filter_pattern=doc_identifier,
@@ -512,8 +888,14 @@ def _search_by_document_fallback(
                     }
                 )
                 total_events += len(error_events)
+                logger.info(
+                    f"Early termination - Total events found so far: {total_events}/{events_limit}"
+                )
                 break
 
+    logger.info(
+        f"Early termination - Document fallback search completed with {total_events} total events"
+    )
     return {
         "all_results": all_results,
         "total_events": total_events,
