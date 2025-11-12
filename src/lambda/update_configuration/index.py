@@ -278,6 +278,12 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 and properties["Custom"].get("Info") != "Custom inference settings"
             ):
                 resolved_custom = resolve_content(properties["Custom"])
+                
+                # Apply region-specific model swapping BEFORE saving
+                if region_type in ["us", "eu"]:
+                    resolved_custom = swap_model_ids(resolved_custom, region_type)
+                    logger.info(f"Applied model swapping for {region_type} region to Custom config")
+                
                 # New API: save_configuration() accepts dict and converts to IDPConfig internally
                 # ConfigurationManager handles migration automatically
                 manager.save_configuration("Custom", resolved_custom)

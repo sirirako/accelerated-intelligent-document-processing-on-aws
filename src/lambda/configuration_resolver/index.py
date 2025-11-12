@@ -12,12 +12,86 @@ from pydantic import ValidationError
 import os
 import json
 import logging
+import boto3
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger("idp_common.bedrock.client").setLevel(
     os.environ.get("BEDROCK_LOG_LEVEL", "INFO")
 )
+
+# Model mapping between regions
+MODEL_MAPPINGS = {
+    "us.amazon.nova-lite-v1:0": "eu.amazon.nova-lite-v1:0",
+    "us.amazon.nova-pro-v1:0": "eu.amazon.nova-pro-v1:0",
+    "us.amazon.nova-premier-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-3-haiku-20240307-v1:0": "eu.anthropic.claude-3-haiku-20240307-v1:0",
+    "us.anthropic.claude-3-5-haiku-20241022-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-20250514-v1:0",
+    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
+    "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-opus-4-1-20250805-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+}
+
+
+def get_current_region():
+    """Get the current AWS region"""
+    return boto3.Session().region_name
+
+
+def is_eu_region(region):
+    """Check if the region is an EU region"""
+    return region.startswith("eu-")
+
+
+def is_us_region(region):
+    """Check if the region is a US region"""
+    return region.startswith("us-")
+
+
+def get_model_mapping(model_id, target_region_type):
+    """Get the equivalent model for the target region type"""
+    if target_region_type == "eu":
+        return MODEL_MAPPINGS.get(model_id, model_id)
+    elif target_region_type == "us":
+        # Reverse mapping for US
+        for us_model, eu_model in MODEL_MAPPINGS.items():
+            if model_id == eu_model:
+                return us_model
+        return model_id
+    return model_id
+
+
+def swap_model_ids(data, region_type):
+    """Swap model IDs to match the region type"""
+    if isinstance(data, dict):
+        swapped_data = {}
+        for key, value in data.items():
+            if isinstance(value, str) and ("us." in value or "eu." in value):
+                # This is a model ID - check if it needs swapping
+                if region_type == "us" and value.startswith("eu."):
+                    new_model = get_model_mapping(value, "us")
+                    if new_model != value:
+                        logger.info(f"Swapped EU model {value} to US model {new_model}")
+                    swapped_data[key] = new_model
+                elif region_type == "eu" and value.startswith("us."):
+                    new_model = get_model_mapping(value, "eu")
+                    if new_model != value:
+                        logger.info(f"Swapped US model {value} to EU model {new_model}")
+                    swapped_data[key] = new_model
+                else:
+                    swapped_data[key] = value
+            else:
+                swapped_data[key] = swap_model_ids(value, region_type)
+        return swapped_data
+    elif isinstance(data, list):
+        return [swap_model_ids(item, region_type) for item in data]
+    return data
 
 
 def handler(event, context):
@@ -118,6 +192,17 @@ def handle_get_configuration(manager):
     New ConfigurationManager API returns IDPConfig directly - convert to dict for GraphQL
     """
     try:
+        # Detect region type for model swapping
+        current_region = get_current_region()
+        region_type = (
+            "eu"
+            if is_eu_region(current_region)
+            else "us"
+            if is_us_region(current_region)
+            else "other"
+        )
+        logger.info(f"Detected region: {current_region}, region type: {region_type}")
+
         # Get all configurations - migration happens automatically in get_configuration
         # API returns SchemaConfig for Schema, IDPConfig for Default/Custom
         schema_config = manager.get_configuration(CONFIG_TYPE_SCHEMA)
@@ -134,6 +219,10 @@ def handle_get_configuration(manager):
             default_dict = default_config.model_dump(
                 mode="python", exclude={"config_type"}
             )
+            # Apply model swapping to default config
+            if region_type in ["us", "eu"]:
+                default_dict = swap_model_ids(default_dict, region_type)
+                logger.info(f"Applied model swapping for {region_type} region to Default config")
         else:
             default_dict = {}
 
@@ -157,6 +246,10 @@ def handle_get_configuration(manager):
             custom_dict = custom_config.model_dump(
                 mode="python", exclude={"config_type"}
             )
+            # Apply model swapping to custom config
+            if region_type in ["us", "eu"]:
+                custom_dict = swap_model_ids(custom_dict, region_type)
+                logger.info(f"Applied model swapping for {region_type} region to Custom config")
         else:
             custom_dict = {}
 
