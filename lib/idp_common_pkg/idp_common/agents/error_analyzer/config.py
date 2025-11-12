@@ -6,7 +6,6 @@ Configuration management for error analyzer agents.
 """
 
 import logging
-import os
 from typing import Any, Dict
 
 from ..common.config import configure_logging, get_environment_config
@@ -41,52 +40,34 @@ def get_error_analyzer_config() -> Dict[str, Any]:
     return config
 
 
-def get_error_analyzer_model_id(config_manager=None) -> str:
+def get_error_analyzer_model_id() -> str:
     """
     Get the error analyzer model ID from configuration.
 
-    Priority order:
-    1. Environment variable CHAT_COMPANION_MODEL_ID (shared with chat companion)
-    2. Configuration table agents.error_analyzer.model_id
-    3. Default fallback
-
-    Args:
-        config_manager: Optional ConfigurationManager instance
+    Uses the modern configuration system that reads user-changed values from DynamoDB.
 
     Returns:
         Model ID string
     """
-    # First check environment variable (shared with chat companion)
-    model_id = os.environ.get("CHAT_COMPANION_MODEL_ID")
-    if model_id:
-        logger.info(f"Using error analyzer model ID from environment: {model_id}")
+    try:
+        from ...config import get_config
+
+        # Use the modern configuration system that reads from DynamoDB
+        config = get_config(as_model=True)
+
+        # Get model ID from configuration with type safety
+        model_id = config.agents.chat_companion.model_id
+
+        logger.info(f"Using error analyzer model ID from configuration: {model_id}")
         return model_id
 
-    # Try to get from configuration table
-    if config_manager:
-        try:
-            from ...config import get_merged_configuration
+    except Exception as e:
+        logger.warning(f"Failed to load model ID from configuration: {e}")
 
-            merged_config = get_merged_configuration(config_manager)
-
-            # Navigate to agents.error_analyzer.model_id
-            agents_config = merged_config.get("agents", {})
-            error_analyzer_config = agents_config.get("error_analyzer", {})
-            config_model_id = error_analyzer_config.get("model_id")
-
-            if config_model_id:
-                logger.info(
-                    f"Using error analyzer model ID from configuration: {config_model_id}"
-                )
-                return config_model_id
-
-        except Exception as e:
-            logger.warning(f"Failed to load model ID from configuration: {e}")
-
-    # Fallback to default (same as chat companion default)
-    default_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
-    logger.info(f"Using default error analyzer model ID: {default_model_id}")
-    return default_model_id
+        # Final fallback to default
+        default_model_id = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        logger.info(f"Using default error analyzer model ID: {default_model_id}")
+        return default_model_id
 
 
 def get_aws_service_capabilities() -> Dict[str, Any]:

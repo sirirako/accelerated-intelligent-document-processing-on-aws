@@ -278,12 +278,9 @@ Example:
 
 """
 
-    # Get model ID using configuration helper (checks env vars, config table, then defaults)
+    # Get model ID using modern configuration system (reads user-changed values from DynamoDB)
     try:
-        from ...config import ConfigurationManager
-
-        config_manager = ConfigurationManager()
-        model_id = get_chat_companion_model_id(config_manager=config_manager)
+        model_id = get_chat_companion_model_id()
     except Exception as e:
         logger.warning(f"Failed to get chat companion model ID, using default: {e}")
         model_id = config.get(
@@ -293,7 +290,7 @@ Example:
     # Create the orchestrator agent
     model = create_strands_bedrock_model(
         model_id=model_id,
-        session=session,
+        boto_session=session,
     )
 
     # Get hooks from kwargs if provided

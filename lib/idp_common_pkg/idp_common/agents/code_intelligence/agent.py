@@ -80,13 +80,11 @@ def create_code_intelligence_agent(
             logger.info("Connected to DeepWiki via SSE transport (no authentication)")
             logger.info(f"Discovered {len(tools)} tools from DeepWiki: {tool_names}")
 
-            # Get model ID using configuration helper (checks env vars, config table, then defaults)
+            # Get model ID using configuration system (reads user-changed values from DynamoDB)
             try:
-                from ...config import ConfigurationManager
                 from ..orchestrator.config import get_chat_companion_model_id
 
-                config_manager = ConfigurationManager()
-                model_id = get_chat_companion_model_id(config_manager=config_manager)
+                model_id = get_chat_companion_model_id()
             except Exception as e:
                 logger.warning(
                     f"Failed to get code intelligence model ID, using default: {e}"
