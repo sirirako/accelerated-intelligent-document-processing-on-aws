@@ -108,8 +108,8 @@ check_nodejs_dependencies() {
   node_version=$(node --version 2>/dev/null | sed 's/v//')
   node_major=$(echo "$node_version" | cut -d'.' -f1)
 
-  if [[ "$node_major" -lt 18 ]]; then
-    print_error "Node.js $node_version found, but 18+ is required for UI validation"
+  if [[ "$node_major" -lt 20 ]]; then
+    print_error "Node.js $node_version found, but 20+ is required for UI validation"
     print_info "Please upgrade Node.js to version 18 or later"
     exit 1
   else

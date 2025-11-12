@@ -17,7 +17,7 @@ Example contents of `.env` file:
   VITE_SETTINGS_PARAMETER=CFN-IDPSettingsParameter-XXXXXXXXXXXX
 ```
 
-2. Make sure you have NodeJS 16+ installed.
+2. Make sure you have NodeJS 20.19+ installed.
 3. Run `npm install` to install dependencies
 4. Run `npm run start` to start the local development mode.
 5. Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
