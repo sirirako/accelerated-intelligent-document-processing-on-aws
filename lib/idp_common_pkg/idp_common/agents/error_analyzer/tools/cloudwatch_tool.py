@@ -89,14 +89,13 @@ def search_performance_issues(
     - Investigating throttling or rate limiting issues
     - Checking for timeout or capacity problems
     - Analyzing infrastructure performance bottlenecks
-    - Looking for memory or resource constraints
+    - Looking for capacity or concurrency constraints
 
     Args:
         issue_type: Type of performance issue to search for:
                    "performance" (default) - General performance issues
                    "throttling" - Rate limiting and throttling
                    "timeout" - Timeout-related issues
-                   "memory" - Memory and resource issues
                    "capacity" - Capacity and concurrency limits
         hours_back: Hours to look back from now (default: 24, max: 168)
         max_log_events: Maximum events to return per log group (default: 10, max: 50)
@@ -105,129 +104,199 @@ def search_performance_issues(
         Dict containing performance events, search metadata, and infrastructure context
     """
     try:
-        # Performance search patterns by issue type
-        performance_patterns = {
-            "performance": ["timeout", "slow", "latency", "duration", "performance"],
-            "throttling": [
-                "throttl",
-                "rate limit",
-                "too many requests",
-                "limit exceeded",
-            ],
-            "timeout": ["timeout", "timed out", "deadline", "duration exceeded"],
-            "memory": ["memory", "out of memory", "oom", "heap", "allocation"],
-            "capacity": ["concurrent", "capacity", "limit", "quota", "maximum"],
-        }
-
-        # Get search patterns for the specified issue type
-        search_patterns = performance_patterns.get(
-            issue_type, performance_patterns["performance"]
-        )
-        logger.info(
-            f"Performance search - Issue type: {issue_type}, Patterns: {search_patterns}"
-        )
-
-        # Get stack name and log groups
-        stack_name = _get_stack_name()
-        log_groups = _prioritize_performance_log_groups(_get_stack_log_groups())
+        # Get search patterns and setup
+        search_patterns = _get_performance_patterns(issue_type)
+        stack_name, log_groups = _setup_performance_search()
 
         if len(log_groups) == 0:
-            return {
-                "analysis_type": "performance_issues",
-                "issue_type": issue_type,
-                "stack_name": stack_name,
-                "events_found": 0,
-                "message": "No log groups found",
-            }
+            return _create_empty_performance_response(issue_type, stack_name)
 
-        # Search with early termination
-        all_results = []
-        total_events = 0
-        events_limit = 5
-
-        logger.info(f"Performance search - Events limit: {events_limit}")
-        logger.info(
-            f"Performance search - Searching {len(log_groups)} log groups: {[lg['name'] for lg in log_groups]}"
+        # Execute search across log groups
+        search_results = _execute_performance_search(
+            log_groups, search_patterns, hours_back, max_log_events
         )
 
-        for log_group in log_groups:
-            if total_events >= events_limit:
-                logger.info(
-                    f"Performance search - Reached {events_limit} events, stopping search"
-                )
-                break
-
-            # Search each pattern in this log group
-            for pattern in search_patterns:
-                if total_events >= events_limit:
-                    break
-
-                search_result = _search_cloudwatch_logs(
-                    log_group_name=log_group["name"],
-                    filter_pattern=pattern,
-                    hours_back=hours_back,
-                    max_events=max_log_events,
-                )
-
-                if search_result.get("events_found", 0) > 0:
-                    logger.info(
-                        f"Performance search - Found {search_result['events_found']} events for pattern '{pattern}' in {log_group['name']}"
-                    )
-
-                    # Filter events for performance indicators
-                    performance_events = []
-                    for event in search_result.get("events", []):
-                        message = event.get("message", "").lower()
-                        if any(p.lower() in message for p in search_patterns):
-                            performance_events.append(event)
-
-                    if performance_events:
-                        all_results.append(
-                            {
-                                "log_group": log_group["name"],
-                                "search_pattern": pattern,
-                                "events_found": len(performance_events),
-                                "events": performance_events,
-                                "performance_indicators": [
-                                    p
-                                    for p in search_patterns
-                                    if p.lower()
-                                    in " ".join(
-                                        [
-                                            e.get("message", "")
-                                            for e in performance_events
-                                        ]
-                                    ).lower()
-                                ],
-                            }
-                        )
-                        total_events += len(performance_events)
-                        logger.info(
-                            f"Performance search - Total events found so far: {total_events}/{events_limit}"
-                        )
-
-                        # Break to next log group after finding performance events
-                        break
-
-        logger.info(f"Performance search - Completed with {total_events} total events")
-
-        response = {
-            "analysis_type": "performance_issues",
-            "issue_type": issue_type,
-            "stack_name": stack_name,
-            "search_patterns_used": search_patterns,
-            "total_events_found": total_events,
-            "log_groups_searched": len([r for r in all_results]),
-            "results": all_results,
-        }
-
-        # Log complete response for testing and troubleshooting
-        logger.info(f"Performance search response: {response}")
-        return response
+        # Build and return final response
+        return _build_performance_response(
+            issue_type, stack_name, search_patterns, search_results
+        )
 
     except Exception as e:
         logger.error(f"Performance search failed: {e}")
         return create_error_response(str(e), events_found=0)
+
+
+# =============================================================================
+# PERFORMANCE SEARCH HELPER FUNCTIONS
+# =============================================================================
+
+
+def _get_performance_patterns(issue_type: str) -> List[str]:
+    """
+    Get optimized performance search patterns for the specified issue type.
+    """
+    performance_patterns = {
+        "performance": ["timeout", "slow"],  # Most critical performance indicators
+        "throttling": ["throttl", "limit exceeded"],  # Core throttling patterns
+        "timeout": ["timeout", "timed out"],  # Essential timeout patterns
+        "capacity": ["concurrent", "limit"],  # Primary capacity constraints
+    }
+
+    search_patterns = performance_patterns.get(
+        issue_type, performance_patterns["performance"]
+    )
+    logger.info(
+        f"Performance search - Issue type: {issue_type}, Patterns: {search_patterns}"
+    )
+    return search_patterns
+
+
+def _setup_performance_search() -> tuple[str, List[Dict[str, str]]]:
+    """
+    Setup performance search by getting stack name and prioritized log groups.
+    """
+    stack_name = _get_stack_name()
+    log_groups = _prioritize_performance_log_groups(_get_stack_log_groups())
+    return stack_name, log_groups
+
+
+def _create_empty_performance_response(
+    issue_type: str, stack_name: str
+) -> Dict[str, Any]:
+    """
+    Create response for when no log groups are found.
+    """
+    return {
+        "analysis_type": "performance_issues",
+        "issue_type": issue_type,
+        "stack_name": stack_name,
+        "events_found": 0,
+        "message": "No log groups found",
+    }
+
+
+def _execute_performance_search(
+    log_groups: List[Dict[str, str]],
+    search_patterns: List[str],
+    hours_back: int,
+    max_log_events: int,
+) -> Dict[str, Any]:
+    """
+    Execute performance search across log groups with early termination.
+    """
+    combined_pattern = " OR ".join(search_patterns)
+    logger.info(f"Performance search - Combined pattern: {combined_pattern}")
+
+    all_results = []
+    total_events = 0
+    events_limit = 5
+
+    logger.info(f"Performance search - Events limit: {events_limit}")
+    logger.info(
+        f"Performance search - Searching {len(log_groups)} log groups: {[lg['name'] for lg in log_groups]}"
+    )
+
+    for log_group in log_groups:
+        if total_events >= events_limit:
+            logger.info(
+                f"Performance search - Reached {events_limit} events, stopping search"
+            )
+            break
+
+        # Single API call with combined pattern
+        search_result = _search_cloudwatch_logs(
+            log_group_name=log_group["name"],
+            filter_pattern=combined_pattern,
+            hours_back=hours_back,
+            max_events=max_log_events,
+        )
+
+        if search_result.get("events_found", 0) > 0:
+            logger.info(
+                f"Performance search - Found {search_result['events_found']} events in {log_group['name']}"
+            )
+
+            # Filter and process events
+            performance_events = _filter_performance_events(
+                search_result.get("events", []), search_patterns
+            )
+
+            if performance_events:
+                result_entry = _create_performance_result_entry(
+                    log_group["name"],
+                    combined_pattern,
+                    performance_events,
+                    search_patterns,
+                )
+                all_results.append(result_entry)
+                total_events += len(performance_events)
+                logger.info(
+                    f"Performance search - Total events found so far: {total_events}/{events_limit}"
+                )
+
+    logger.info(f"Performance search - Completed with {total_events} total events")
+    return {"all_results": all_results, "total_events": total_events}
+
+
+def _filter_performance_events(
+    events: List[Dict], search_patterns: List[str]
+) -> List[Dict]:
+    """
+    Filter events for performance indicators.
+    """
+    performance_events = []
+    for event in events:
+        message = event.get("message", "").lower()
+        if any(p.lower() in message for p in search_patterns):
+            performance_events.append(event)
+    return performance_events
+
+
+def _create_performance_result_entry(
+    log_group_name: str,
+    combined_pattern: str,
+    performance_events: List[Dict],
+    search_patterns: List[str],
+) -> Dict[str, Any]:
+    """
+    Create a result entry for performance events found in a log group.
+    """
+    return {
+        "log_group": log_group_name,
+        "search_pattern": combined_pattern,
+        "events_found": len(performance_events),
+        "events": performance_events,
+        "performance_indicators": [
+            p
+            for p in search_patterns
+            if p.lower()
+            in " ".join([e.get("message", "") for e in performance_events]).lower()
+        ],
+    }
+
+
+def _build_performance_response(
+    issue_type: str,
+    stack_name: str,
+    search_patterns: List[str],
+    search_results: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Build final performance search response.
+    """
+    response = {
+        "analysis_type": "performance_issues",
+        "issue_type": issue_type,
+        "stack_name": stack_name,
+        "search_patterns_used": search_patterns,
+        "total_events_found": search_results["total_events"],
+        "log_groups_searched": len(search_results["all_results"]),
+        "results": search_results["all_results"],
+    }
+
+    # Log complete response for testing and troubleshooting
+    logger.info(f"Performance search response: {response}")
+    return response
 
 
 # =============================================================================
