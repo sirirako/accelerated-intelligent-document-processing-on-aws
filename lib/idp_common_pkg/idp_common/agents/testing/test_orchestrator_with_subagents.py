@@ -14,7 +14,6 @@ Usage:
 
 import argparse
 import logging
-import os
 import sys
 
 import boto3
@@ -24,9 +23,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Set required environment variable for Code Intelligence and other agents
-os.environ["CHAT_COMPANION_MODEL_ID"] = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
 
 
 def test_orchestrator_with_analytics_agent():
