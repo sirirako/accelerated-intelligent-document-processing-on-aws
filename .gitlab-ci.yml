@@ -45,6 +45,7 @@ developer_tests:
     # Install Node.js and npm for basedpyright
     - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     - apt-get install -y nodejs
+    - npm install -g npm@11
     - npm install -g basedpyright
     - uv pip install ruff
     # Install dependencies needed by publish.py for test imports
