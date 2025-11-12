@@ -50,7 +50,7 @@ developer_tests:
     # Install dependencies needed by publish.py for test imports
     - uv pip install typer rich boto3
     # Install test dependencies
-    - cd lib/idp_common_pkg && uv pip install -e ".[test]" && cd ../..
+    - cd lib/idp_common_pkg && uv pip install -e ".[test,evaluation]" && cd ../..
 
   script:
     - make lint-cicd
