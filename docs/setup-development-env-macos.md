@@ -142,7 +142,7 @@ sam --version
 ```
 
 
-## 7) Node.js via nvm (Node 20 LTS)
+## 7) Node.js via nvm (Node 22 LTS)
 
 Use nvm to manage Node versions. This mirrors your Linux section but uses zsh-friendly profile updates.
 
@@ -156,9 +156,9 @@ fi
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-# Install Node 20 LTS
-nvm install 20
-nvm alias default 20
+# Install Node 22 LTS
+nvm install 22
+nvm alias default 22
 
 # Test
 node -v
