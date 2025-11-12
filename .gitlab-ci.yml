@@ -43,7 +43,7 @@ developer_tests:
     - uv venv .venv
     - source .venv/bin/activate
     # Install Node.js and npm for basedpyright
-    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
     - apt-get install -y nodejs
     - npm install -g basedpyright
     - uv pip install ruff
