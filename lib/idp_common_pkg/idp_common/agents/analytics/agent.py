@@ -298,13 +298,11 @@ def create_analytics_agent(
         get_table_info,  # Detailed schema for specific tables
     ]
 
-    # Get model ID using configuration helper (checks env vars, config table, then defaults)
+    # Get model ID using configuration system (reads user-changed values from DynamoDB)
     try:
-        from ...config import ConfigurationManager
         from .config import get_analytics_model_id
 
-        config_manager = ConfigurationManager()
-        model_id = get_analytics_model_id(config_manager=config_manager)
+        model_id = get_analytics_model_id()
     except Exception as e:
         logger.warning(f"Failed to get analytics model ID, using default: {e}")
         model_id = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
