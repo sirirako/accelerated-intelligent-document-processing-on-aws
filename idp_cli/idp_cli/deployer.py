@@ -663,6 +663,245 @@ class StackDeployer:
             logger.warning(f"Error checking log group {log_group_name}: {e}")
             return False
 
+    def _get_stack_cloudfront_distributions(self, stack_name: str) -> List[Dict]:
+        """
+        Get CloudFront distributions from stack resources
+
+        Args:
+            stack_name: Stack name
+
+        Returns:
+            List of CloudFront distribution information
+        """
+        distributions = []
+
+        try:
+            paginator = self.cfn.get_paginator("list_stack_resources")
+            pages = paginator.paginate(StackName=stack_name)
+
+            for page in pages:
+                for resource in page.get("StackResourceSummaries", []):
+                    if resource.get("ResourceType") == "AWS::CloudFront::Distribution":
+                        dist_id = resource.get("PhysicalResourceId")
+                        if dist_id:
+                            distributions.append(
+                                {
+                                    "logical_id": resource.get("LogicalResourceId"),
+                                    "distribution_id": dist_id,
+                                    "status": resource.get("ResourceStatus"),
+                                }
+                            )
+
+            return distributions
+
+        except self.cfn.exceptions.ClientError as e:
+            if "does not exist" in str(e):
+                # Stack deleted - distributions should be gone
+                return []
+            logger.warning(f"Error getting CloudFront distributions: {e}")
+            return []
+
+    def _verify_cloudfront_distributions_deleted(
+        self, stack_name: str, max_wait_seconds: int = 300
+    ) -> None:
+        """
+        Verify CloudFront distributions are deleted before proceeding with S3 deletion
+
+        This prevents orphaned CloudFront distributions pointing to deleted S3 origins.
+
+        Args:
+            stack_name: Stack name
+            max_wait_seconds: Maximum time to wait for distributions to be deleted
+
+        Raises:
+            Exception: If distributions still exist after max wait time
+        """
+        from rich.console import Console
+
+        console = Console()
+
+        # Get CloudFront distributions from stack
+        distributions = self._get_stack_cloudfront_distributions(stack_name)
+
+        if not distributions:
+            logger.info("No CloudFront distributions found in stack")
+            return
+
+        console.print(
+            f"[cyan]Verifying {len(distributions)} CloudFront distribution(s) are deleted...[/cyan]"
+        )
+
+        cloudfront = boto3.client("cloudfront")
+        start_time = time.time()
+
+        for dist_info in distributions:
+            dist_id = dist_info["distribution_id"]
+            logical_id = dist_info["logical_id"]
+
+            # Check if distribution still exists
+            while True:
+                try:
+                    response = cloudfront.get_distribution(Id=dist_id)
+                    dist_config = response.get("Distribution", {})
+                    status = dist_config.get("Status", "")
+                    enabled = dist_config.get("DistributionConfig", {}).get(
+                        "Enabled", False
+                    )
+
+                    elapsed = time.time() - start_time
+
+                    if elapsed > max_wait_seconds:
+                        raise Exception(
+                            f"CloudFront distribution {logical_id} ({dist_id}) still exists after {max_wait_seconds}s. "
+                            f"Status: {status}, Enabled: {enabled}. "
+                            f"Cannot proceed with S3 bucket deletion to prevent orphaned distributions. "
+                            f"Please disable/delete the distribution manually and retry."
+                        )
+
+                    # Distribution still exists - wait for it to be deleted
+                    console.print(
+                        f"  Waiting for {logical_id} ({dist_id}) to be deleted... "
+                        f"Status: {status}, Enabled: {enabled} ({int(elapsed)}s elapsed)"
+                    )
+                    time.sleep(10)
+
+                except cloudfront.exceptions.NoSuchDistribution:
+                    # Distribution deleted - good to proceed
+                    console.print(f"  ✓ {logical_id} ({dist_id}) is deleted")
+                    break
+                except Exception as e:
+                    if "NoSuchDistribution" in str(e):
+                        # Distribution deleted
+                        console.print(f"  ✓ {logical_id} ({dist_id}) is deleted")
+                        break
+                    else:
+                        raise
+
+    def _discover_auto_created_log_groups(self, stack_name: str) -> List[str]:
+        """
+        Discover auto-created log groups that match stack name patterns
+
+        These are log groups created automatically by AWS services (Lambda, CodeBuild,
+        Glue Crawlers, etc.) that are not tracked by CloudFormation.
+
+        Args:
+            stack_name: Stack name to match patterns against
+
+        Returns:
+            List of log group names matching stack patterns
+        """
+        logs = boto3.client("logs", region_name=self.region)
+        discovered_log_groups = []
+
+        # Define patterns to match - these are auto-created by AWS services
+        # Use exact prefixes to avoid inadvertent matches to longer stack names
+        # (e.g., "idp1" should not match "idp10")
+        patterns_to_check = [
+            # Lambda functions - pattern requires hyphen after stack name
+            f"/aws/lambda/{stack_name}-DOCUMENTKB",
+            f"/aws/lambda/{stack_name}-BDASAMPLEPROJECT",  # BDA sample project
+            f"/aws/lambda/{stack_name}-DashboardMergerFunction",
+            f"/aws/lambda/{stack_name}-InitializeConcurrencyTableLambda",
+            # Nested stacks - pattern requires hyphen after stack name
+            f"/{stack_name}-PATTERN1STACK-",  # e.g., /IDPDocker-P1-PATTERN1STACK-ABC123/lambda/...
+            f"/{stack_name}-PATTERN2STACK-",
+            f"/{stack_name}-PATTERN3STACK-",
+            # CodeBuild projects - pattern requires hyphen after stack name
+            f"/aws/codebuild/{stack_name}-PATTERN1STACK",  # Nested stack CodeBuild
+            f"/aws/codebuild/{stack_name}-PATTERN2STACK",
+            f"/aws/codebuild/{stack_name}-PATTERN3STACK",
+            f"/aws/codebuild/{stack_name}-webui-build",  # Main stack webui build
+            # Glue crawlers - pattern requires hyphen after stack name
+            f"/aws-glue/crawlers-role/{stack_name}-DocumentSectionsCrawlerRole",
+        ]
+
+        # Also check for explicit log group names (these may or may not be in CFN)
+        # These are exact prefixes with hyphens to prevent matching longer stack names
+        explicit_patterns = [
+            f"{stack_name}-GetDomainLambdaLogGroup-",
+            f"{stack_name}-StacknameCheckFunctionLogGroup-",
+            f"{stack_name}-ConfigurationCopyFunctionLogGroup-",
+            f"{stack_name}-UpdateSettingsFunctionLogGroup-",
+        ]
+
+        try:
+            # Use paginator to handle large numbers of log groups
+            paginator = logs.get_paginator("describe_log_groups")
+
+            # Track matches found per pattern for debugging
+            pattern_match_count = {}
+
+            # Check each pattern
+            for pattern in patterns_to_check:
+                try:
+                    matches_for_pattern = 0
+                    page_iterator = paginator.paginate(logGroupNamePrefix=pattern)
+
+                    for page in page_iterator:
+                        for log_group in page.get("logGroups", []):
+                            log_group_name = log_group["logGroupName"]
+
+                            # Additional validation: ensure we don't match longer stack names
+                            # The pattern already includes a hyphen, so this should be safe
+                            # But we double-check by ensuring the log group starts with exactly our pattern
+                            if log_group_name.startswith(pattern):
+                                if log_group_name not in discovered_log_groups:
+                                    discovered_log_groups.append(log_group_name)
+                                    matches_for_pattern += 1
+                                    logger.debug(
+                                        f"Discovered auto-created log group: {log_group_name}"
+                                    )
+
+                    pattern_match_count[pattern] = matches_for_pattern
+
+                except Exception as e:
+                    logger.warning(f"Error checking pattern {pattern}: {e}")
+                    continue
+
+            # Check explicit patterns
+            for pattern in explicit_patterns:
+                try:
+                    matches_for_pattern = 0
+                    response = logs.describe_log_groups(
+                        logGroupNamePrefix=pattern,
+                        limit=50,  # Should be enough for exact matches
+                    )
+
+                    for log_group in response.get("logGroups", []):
+                        log_group_name = log_group["logGroupName"]
+                        # Verify exact prefix match to avoid matching longer stack names
+                        if log_group_name.startswith(pattern):
+                            if log_group_name not in discovered_log_groups:
+                                discovered_log_groups.append(log_group_name)
+                                matches_for_pattern += 1
+                                logger.debug(
+                                    f"Discovered explicit log group: {log_group_name}"
+                                )
+
+                    pattern_match_count[pattern] = matches_for_pattern
+
+                except Exception as e:
+                    logger.warning(f"Error checking explicit pattern {pattern}: {e}")
+                    continue
+
+            # Log summary with pattern match counts
+            if discovered_log_groups:
+                logger.info(
+                    f"Discovered {len(discovered_log_groups)} auto-created log groups for stack {stack_name}"
+                )
+                logger.debug(f"Pattern match counts: {pattern_match_count}")
+            else:
+                logger.info(f"No auto-created log groups found for stack {stack_name}")
+                logger.debug(
+                    f"Checked {len(patterns_to_check) + len(explicit_patterns)} patterns"
+                )
+
+            return discovered_log_groups
+
+        except Exception as e:
+            logger.error(f"Error discovering auto-created log groups: {e}")
+            return []
+
     def cleanup_retained_resources(self, stack_identifier: str) -> Dict:
         """
         Delete resources that CloudFormation retained
@@ -680,10 +919,44 @@ class StackDeployer:
 
         console.print("\n[bold blue]Analyzing retained resources...[/bold blue]")
 
-        # Get resources that weren't deleted
+        # Get resources that weren't deleted by CloudFormation
         retained = self.get_retained_resources_after_deletion(stack_identifier)
 
-        # Count resources
+        # Extract stack name from identifier (handle both stack name and stack ARN/ID)
+        # Stack ARN format: arn:aws:cloudformation:region:account:stack/stack-name/guid
+        stack_name = stack_identifier
+        if stack_identifier.startswith("arn:"):
+            try:
+                # Extract stack name from ARN
+                stack_name = stack_identifier.split("/")[1]
+            except IndexError:
+                logger.warning(
+                    f"Could not extract stack name from ARN: {stack_identifier}"
+                )
+
+        # Discover auto-created log groups that CloudFormation doesn't track
+        console.print("[cyan]Discovering auto-created log groups...[/cyan]")
+        auto_created_log_groups = self._discover_auto_created_log_groups(stack_name)
+
+        # Merge auto-created log groups with CloudFormation-tracked ones
+        # Use a set to avoid duplicates
+        cfn_log_group_names = {lg["physical_id"] for lg in retained["log_groups"]}
+
+        for log_group_name in auto_created_log_groups:
+            if log_group_name not in cfn_log_group_names:
+                # Add to retained log groups list
+                retained["log_groups"].append(
+                    {
+                        "logical_id": "Auto-created",
+                        "physical_id": log_group_name,
+                        "type": "AWS::Logs::LogGroup",
+                        "status": "AUTO_CREATED",
+                        "status_reason": "Auto-created by AWS service",
+                        "stack": stack_name,
+                    }
+                )
+
+        # Count resources (including newly discovered log groups)
         total = (
             len(retained["dynamodb_tables"])
             + len(retained["log_groups"])
@@ -760,7 +1033,37 @@ class StackDeployer:
                         )
                     progress.advance(task)
 
-            # Phase 3: S3 Buckets (LoggingBucket last)
+            # Phase 3: Verify CloudFront distributions are deleted before S3 buckets
+            # This prevents orphaned CloudFront distributions pointing to deleted S3 origins
+            if retained["s3_buckets"]:
+                console.print()
+                console.print(
+                    "[cyan]Verifying CloudFront distributions are deleted...[/cyan]"
+                )
+                try:
+                    self._verify_cloudfront_distributions_deleted(stack_name)
+                    console.print(
+                        "[green]✓ CloudFront distributions verified as deleted[/green]"
+                    )
+                except Exception as e:
+                    error_msg = str(e)
+                    console.print(
+                        f"[red]✗ CloudFront verification failed: {error_msg}[/red]"
+                    )
+                    results["errors"].append(
+                        {
+                            "resource": "CloudFront Distribution",
+                            "type": "CloudFront",
+                            "error": error_msg,
+                        }
+                    )
+                    # Do not proceed with S3 deletion if CloudFront still exists
+                    console.print(
+                        "[yellow]Skipping S3 bucket deletion to prevent orphaned CloudFront distributions[/yellow]"
+                    )
+                    return results
+
+            # Phase 4: S3 Buckets (LoggingBucket last)
             if retained["s3_buckets"]:
                 # Separate LoggingBucket from others
                 logging_bucket = None

@@ -81,40 +81,123 @@ export const X_AWS_IDP_LIST_ITEM_DESCRIPTION = 'x-aws-idp-list-item-description'
 export const X_AWS_IDP_ORIGINAL_NAME = 'x-aws-idp-original-name';
 
 // ============================================================================
-// AWS IDP Evaluation Extensions
+// AWS IDP Evaluation Extensions (Stickler-based Baseline Accuracy)
 // ============================================================================
-/** Evaluation method for attribute comparison */
+/** Evaluation method for baseline comparison */
 export const X_AWS_IDP_EVALUATION_METHOD = 'x-aws-idp-evaluation-method';
+
+/** Evaluation threshold for baseline match (0.0 to 1.0) */
+export const X_AWS_IDP_EVALUATION_THRESHOLD = 'x-aws-idp-evaluation-threshold';
+
+/** Evaluation weight for field importance (business criticality) */
+export const X_AWS_IDP_EVALUATION_WEIGHT = 'x-aws-idp-evaluation-weight';
+
+/** Overall match threshold for document-level evaluation (0.0 to 1.0) */
+export const X_AWS_IDP_EVALUATION_MATCH_THRESHOLD = 'x-aws-idp-evaluation-match-threshold';
+
+/** Evaluation model name (optional, defaults to document type name) */
+export const X_AWS_IDP_EVALUATION_MODEL_NAME = 'x-aws-idp-evaluation-model-name';
 
 // Valid evaluation methods
 export const EVALUATION_METHOD_EXACT = 'EXACT';
 export const EVALUATION_METHOD_NUMERIC_EXACT = 'NUMERIC_EXACT';
 export const EVALUATION_METHOD_FUZZY = 'FUZZY';
+export const EVALUATION_METHOD_LEVENSHTEIN = 'LEVENSHTEIN';
 export const EVALUATION_METHOD_SEMANTIC = 'SEMANTIC';
 export const EVALUATION_METHOD_LLM = 'LLM';
+export const EVALUATION_METHOD_HUNGARIAN = 'HUNGARIAN';
 
 export const VALID_EVALUATION_METHODS = [
   EVALUATION_METHOD_EXACT,
   EVALUATION_METHOD_NUMERIC_EXACT,
   EVALUATION_METHOD_FUZZY,
+  EVALUATION_METHOD_LEVENSHTEIN,
   EVALUATION_METHOD_SEMANTIC,
   EVALUATION_METHOD_LLM,
+  EVALUATION_METHOD_HUNGARIAN,
 ];
 
-// UI-friendly evaluation method options
+// UI-friendly evaluation method options with descriptions and validation metadata
 export const EVALUATION_METHOD_OPTIONS = [
-  { label: 'Exact', value: EVALUATION_METHOD_EXACT },
-  { label: 'Numeric Exact', value: EVALUATION_METHOD_NUMERIC_EXACT },
-  { label: 'Fuzzy', value: EVALUATION_METHOD_FUZZY },
-  { label: 'Semantic', value: EVALUATION_METHOD_SEMANTIC },
-  { label: 'LLM', value: EVALUATION_METHOD_LLM },
+  {
+    label: 'Exact',
+    value: EVALUATION_METHOD_EXACT,
+    description: 'Character-by-character match after normalization',
+    validFor: [TYPE_STRING, TYPE_NUMBER, TYPE_INTEGER, TYPE_BOOLEAN],
+  },
+  {
+    label: 'Numeric Exact',
+    value: EVALUATION_METHOD_NUMERIC_EXACT,
+    description: 'Numeric comparison (currency/format normalized)',
+    validFor: [TYPE_NUMBER, TYPE_INTEGER, TYPE_STRING],
+  },
+  {
+    label: 'Fuzzy',
+    value: EVALUATION_METHOD_FUZZY,
+    description: 'Allows minor formatting variations',
+    validFor: [TYPE_STRING],
+  },
+  {
+    label: 'Levenshtein',
+    value: EVALUATION_METHOD_LEVENSHTEIN,
+    description: 'String distance-based matching',
+    validFor: [TYPE_STRING],
+  },
+  {
+    label: 'Semantic',
+    value: EVALUATION_METHOD_SEMANTIC,
+    description: 'Embedding-based meaning comparison',
+    validFor: [TYPE_STRING, TYPE_OBJECT],
+  },
+  {
+    label: 'LLM',
+    value: EVALUATION_METHOD_LLM,
+    description: 'AI-powered functional equivalence',
+    validFor: [TYPE_STRING, TYPE_OBJECT],
+  },
+  {
+    label: 'Hungarian',
+    value: EVALUATION_METHOD_HUNGARIAN,
+    description: 'Optimal matching for arrays of objects (List[Object] only)',
+    validFor: [TYPE_ARRAY],
+    requiresStructuredItems: true, // Only for arrays with object items
+  },
 ];
 
-/** Confidence threshold for evaluation (0.0 to 1.0) */
-export const X_AWS_IDP_CONFIDENCE_THRESHOLD = 'x-aws-idp-confidence-threshold';
+// Default threshold values per evaluation method (for regular fields)
+// Only methods that use similarity thresholds have defaults here
+export const EVALUATION_THRESHOLD_DEFAULTS = {
+  [EVALUATION_METHOD_FUZZY]: 0.85,
+  [EVALUATION_METHOD_LEVENSHTEIN]: 0.8,
+  [EVALUATION_METHOD_SEMANTIC]: 0.7,
+  // No defaults for EXACT (binary), NUMERIC_EXACT (uses tolerance), LLM (binary)
+};
 
-/** Hungarian algorithm comparator for list matching */
-export const X_AWS_IDP_HUNGARIAN_COMPARATOR = 'x-aws-idp-hungarian-comparator';
+// Default match_threshold values per evaluation method (for structured arrays)
+// Note: Only HUNGARIAN uses match_threshold. LLM evaluates arrays semantically without match_threshold.
+export const EVALUATION_MATCH_THRESHOLD_DEFAULTS = {
+  [EVALUATION_METHOD_HUNGARIAN]: 0.8,
+};
+
+// Methods that require threshold configuration (for non-array fields)
+// Only methods that use similarity-based scoring require thresholds
+export const METHODS_REQUIRING_THRESHOLD = [
+  EVALUATION_METHOD_FUZZY,
+  EVALUATION_METHOD_LEVENSHTEIN,
+  EVALUATION_METHOD_SEMANTIC,
+  // EXACT, NUMERIC_EXACT, and LLM do not use thresholds
+];
+
+// Methods that require match_threshold configuration (for structured arrays)
+// Note: Only HUNGARIAN uses match_threshold for item-by-item optimal matching.
+// LLM evaluates arrays semantically as a whole and does not use match_threshold.
+export const METHODS_REQUIRING_MATCH_THRESHOLD = [EVALUATION_METHOD_HUNGARIAN];
+
+// ============================================================================
+// AWS IDP Assessment Extensions (Extraction Confidence Alerts)
+// ============================================================================
+/** Confidence threshold for extraction quality alerts (0.0 to 1.0) */
+export const X_AWS_IDP_CONFIDENCE_THRESHOLD = 'x-aws-idp-confidence-threshold';
 
 // ============================================================================
 // AWS IDP Prompt Extensions

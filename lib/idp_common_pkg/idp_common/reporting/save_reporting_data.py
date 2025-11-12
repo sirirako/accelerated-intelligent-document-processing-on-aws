@@ -585,6 +585,7 @@ class SaveReportingData:
                 ("f1_score", pa.float64()),
                 ("false_alarm_rate", pa.float64()),
                 ("false_discovery_rate", pa.float64()),
+                ("weighted_overall_score", pa.float64()),
                 ("execution_time", pa.float64()),
             ]
         )
@@ -600,6 +601,7 @@ class SaveReportingData:
                 ("f1_score", pa.float64()),
                 ("false_alarm_rate", pa.float64()),
                 ("false_discovery_rate", pa.float64()),
+                ("weighted_overall_score", pa.float64()),
                 ("evaluation_date", pa.timestamp("ms")),
             ]
         )
@@ -618,6 +620,7 @@ class SaveReportingData:
                 ("evaluation_method", pa.string()),
                 ("confidence", pa.string()),
                 ("confidence_threshold", pa.string()),
+                ("weight", pa.float64()),
                 ("evaluation_date", pa.timestamp("ms")),
             ]
         )
@@ -671,6 +674,9 @@ class SaveReportingData:
             "false_discovery_rate": eval_result.get("overall_metrics", {}).get(
                 "false_discovery_rate", 0.0
             ),
+            "weighted_overall_score": eval_result.get("overall_metrics", {}).get(
+                "weighted_overall_score", 0.0
+            ),
             "execution_time": eval_result.get("execution_time", 0.0),
         }
 
@@ -706,6 +712,9 @@ class SaveReportingData:
                 "false_discovery_rate": section_result.get("metrics", {}).get(
                     "false_discovery_rate", 0.0
                 ),
+                "weighted_overall_score": section_result.get("metrics", {}).get(
+                    "weighted_overall_score", 0.0
+                ),
                 "evaluation_date": evaluation_date,  # Use document's initial_event_time
             }
             section_records.append(section_record)
@@ -720,6 +729,10 @@ class SaveReportingData:
             logger.debug(f"Section {section_id} has {len(attributes)} attributes")
 
             for attr in attributes:
+                # Handle weight field - default to 1.0 if None or missing
+                weight_value = attr.get("weight")
+                weight = weight_value if weight_value is not None else 1.0
+
                 attribute_record = {
                     "document_id": document_id,
                     "section_id": section_id,
@@ -737,6 +750,7 @@ class SaveReportingData:
                     "confidence_threshold": self._serialize_value(
                         attr.get("confidence_threshold")
                     ),
+                    "weight": weight,  # Explicitly handle None values
                     "evaluation_date": evaluation_date,  # Use document's initial_event_time
                 }
                 attribute_records.append(attribute_record)
