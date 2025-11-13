@@ -9,6 +9,11 @@ The GenAIIDP solution includes a built-in evaluation framework to assess the acc
 - Generate detailed evaluation reports using configurable methods and thresholds
 - Track and improve processing accuracy over time
 
+
+https://github.com/user-attachments/assets/0ff17f3e-1eb5-4883-9d6f-3d4e4e84cbea
+
+
+
 ## Stickler Evaluation Engine
 
 The evaluation framework is powered by [Stickler](https://github.com/awslabs/stickler), AWS's open-source library for structured object comparison. Stickler provides:
