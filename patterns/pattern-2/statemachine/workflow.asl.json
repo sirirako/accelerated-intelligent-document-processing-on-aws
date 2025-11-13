@@ -20,7 +20,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 2,
@@ -48,7 +49,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -83,7 +85,8 @@
                                     "ServiceQuotaExceededException",
                                     "ThrottlingException",
                                     "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded"
+                                    "RequestLimitExceeded",
+                                    "ServiceUnavailableException"
                                 ],
                                 "IntervalSeconds": 2,
                                 "MaxAttempts": 10,
@@ -112,7 +115,8 @@
                                     "ServiceQuotaExceededException",
                                     "ThrottlingException",
                                     "ProvisionedThroughputExceededException",
-                                    "RequestLimitExceeded"
+                                    "RequestLimitExceeded",
+                                    "ServiceUnavailableException"
                                 ],
                                 "IntervalSeconds": 2,
                                 "MaxAttempts": 10,
@@ -150,7 +154,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -190,7 +195,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -216,7 +222,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -245,7 +252,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
@@ -273,7 +281,8 @@
                         "ServiceQuotaExceededException",
                         "ThrottlingException",
                         "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded"
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
                     ],
                     "IntervalSeconds": 2,
                     "MaxAttempts": 10,
