@@ -139,7 +139,7 @@ Parameters:
 
   EnableXRayTracing:
     Type: String
-    Default: 'false'
+    Default: 'true'
     AllowedValues: ['true', 'false']
     Description: Enable X-Ray tracing
 
@@ -1049,6 +1049,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           TRACKING_TABLE: !Ref TrackingTable
@@ -1117,6 +1118,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -1211,6 +1213,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -1312,6 +1315,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -1508,6 +1512,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           TRACKING_TABLE: !Ref TrackingTable
@@ -2256,6 +2261,20 @@ Outputs:
   StateMachineLogGroup:
     Description: Step Functions State machine LogGroup
     Value: !Ref StateMachineLogGroup
+
+  PatternLogGroups:
+    Description: Comma-separated list of pattern-specific log groups
+    Value: !Join
+      - ","
+      - - !Ref InvokeBDAFunctionLogGroup
+        - !Ref ProcessResultsFunctionLogGroup
+        - !Ref SummarizationFunctionLogGroup
+        - !Ref BDACompletionFunctionLogGroup
+        - !Ref BDADiscoveryFunctionLogGroup
+        - !Ref HITLProcessLambdaLogGroup
+        - !Ref HITLWaitFunctionLogGroup
+        - !Ref HITLStatusUpdateFunctionLogGroup
+        - !Ref StateMachineLogGroup
 
   DashboardName:
     Description: Name of the Pattern 1 (BDA) CloudWatch Dashboard

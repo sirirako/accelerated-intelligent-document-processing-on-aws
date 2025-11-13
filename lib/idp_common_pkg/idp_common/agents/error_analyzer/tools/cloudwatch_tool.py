@@ -75,6 +75,224 @@ def search_cloudwatch_logs(
         return create_error_response(str(e), document_id=document_id, events_found=0)
 
 
+@tool
+def search_performance_issues(
+    issue_type: str = "performance",
+    hours_back: int = 24,
+    max_log_events: int = 10,
+) -> Dict[str, Any]:
+    """
+    Search CloudWatch logs for system performance and infrastructure issues.
+
+    Use this tool when:
+    - System is running slowly or unresponsively
+    - Investigating throttling or rate limiting issues
+    - Checking for timeout or capacity problems
+    - Analyzing infrastructure performance bottlenecks
+    - Looking for capacity or concurrency constraints
+
+    Args:
+        issue_type: Type of performance issue to search for:
+                   "performance" (default) - General performance issues
+                   "throttling" - Rate limiting and throttling
+                   "timeout" - Timeout-related issues
+                   "capacity" - Capacity and concurrency limits
+        hours_back: Hours to look back from now (default: 24, max: 168)
+        max_log_events: Maximum events to return per log group (default: 10, max: 50)
+
+    Returns:
+        Dict containing performance events, search metadata, and infrastructure context
+    """
+    try:
+        # Get search patterns and setup
+        search_patterns = _get_performance_patterns(issue_type)
+        stack_name, log_groups = _setup_performance_search()
+
+        if len(log_groups) == 0:
+            return _create_empty_performance_response(issue_type, stack_name)
+
+        # Execute search across log groups
+        search_results = _execute_performance_search(
+            log_groups, search_patterns, hours_back, max_log_events
+        )
+
+        # Build and return final response
+        return _build_performance_response(
+            issue_type, stack_name, search_patterns, search_results
+        )
+
+    except Exception as e:
+        logger.error(f"Performance search failed: {e}")
+        return create_error_response(str(e), events_found=0)
+
+
+# =============================================================================
+# PERFORMANCE SEARCH HELPER FUNCTIONS
+# =============================================================================
+
+
+def _get_performance_patterns(issue_type: str) -> List[str]:
+    """
+    Get optimized performance search patterns for the specified issue type.
+    """
+    performance_patterns = {
+        "performance": ["timeout", "slow"],  # Most critical performance indicators
+        "throttling": ["throttl", "limit exceeded"],  # Core throttling patterns
+        "timeout": ["timeout", "timed out"],  # Essential timeout patterns
+        "capacity": ["concurrent", "limit"],  # Primary capacity constraints
+    }
+
+    search_patterns = performance_patterns.get(
+        issue_type, performance_patterns["performance"]
+    )
+    logger.info(f"Issue type: {issue_type}, Patterns: {search_patterns}")
+    return search_patterns
+
+
+def _setup_performance_search() -> tuple[str, List[Dict[str, str]]]:
+    """
+    Setup performance search by getting stack name and prioritized log groups.
+    """
+    stack_name = _get_stack_name()
+    log_groups = _prioritize_performance_log_groups(_get_stack_log_groups())
+    return stack_name, log_groups
+
+
+def _create_empty_performance_response(
+    issue_type: str, stack_name: str
+) -> Dict[str, Any]:
+    """
+    Create response for when no log groups are found.
+    """
+    return {
+        "analysis_type": "performance_issues",
+        "issue_type": issue_type,
+        "stack_name": stack_name,
+        "events_found": 0,
+        "message": "No log groups found",
+    }
+
+
+def _execute_performance_search(
+    log_groups: List[Dict[str, str]],
+    search_patterns: List[str],
+    hours_back: int,
+    max_log_events: int,
+) -> Dict[str, Any]:
+    """
+    Execute performance search across log groups with early termination.
+    """
+    combined_pattern = " OR ".join(search_patterns)
+    logger.info(f"Combined pattern: {combined_pattern}")
+
+    all_results = []
+    total_events = 0
+    events_limit = 5
+
+    logger.info(f"Events limit: {events_limit}")
+    logger.info(
+        f"Searching {len(log_groups)} log groups: {[lg['name'] for lg in log_groups]}"
+    )
+
+    for log_group in log_groups:
+        if total_events >= events_limit:
+            logger.info(f"Reached {events_limit} events, stopping search")
+            break
+
+        # Single API call with combined pattern
+        search_result = _search_cloudwatch_logs(
+            log_group_name=log_group["name"],
+            filter_pattern=combined_pattern,
+            hours_back=hours_back,
+            max_events=max_log_events,
+        )
+
+        if search_result.get("events_found", 0) > 0:
+            logger.info(
+                f"Found {search_result['events_found']} events in {log_group['name']}"
+            )
+
+            # Filter and process events
+            performance_events = _filter_performance_events(
+                search_result.get("events", []), search_patterns
+            )
+
+            if performance_events:
+                result_entry = _create_performance_result_entry(
+                    log_group["name"],
+                    combined_pattern,
+                    performance_events,
+                    search_patterns,
+                )
+                all_results.append(result_entry)
+                total_events += len(performance_events)
+                logger.info(f"Total events found so far: {total_events}/{events_limit}")
+
+    logger.info(f"Completed with {total_events} total events")
+    return {"all_results": all_results, "total_events": total_events}
+
+
+def _filter_performance_events(
+    events: List[Dict], search_patterns: List[str]
+) -> List[Dict]:
+    """
+    Filter events for performance indicators.
+    """
+    performance_events = []
+    for event in events:
+        message = event.get("message", "").lower()
+        if any(p.lower() in message for p in search_patterns):
+            performance_events.append(event)
+    return performance_events
+
+
+def _create_performance_result_entry(
+    log_group_name: str,
+    combined_pattern: str,
+    performance_events: List[Dict],
+    search_patterns: List[str],
+) -> Dict[str, Any]:
+    """
+    Create a result entry for performance events found in a log group.
+    """
+    return {
+        "log_group": log_group_name,
+        "search_pattern": combined_pattern,
+        "events_found": len(performance_events),
+        "events": performance_events,
+        "performance_indicators": [
+            p
+            for p in search_patterns
+            if p.lower()
+            in " ".join([e.get("message", "") for e in performance_events]).lower()
+        ],
+    }
+
+
+def _build_performance_response(
+    issue_type: str,
+    stack_name: str,
+    search_patterns: List[str],
+    search_results: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Build final performance search response.
+    """
+    response = {
+        "analysis_type": "performance_issues",
+        "issue_type": issue_type,
+        "stack_name": stack_name,
+        "search_patterns_used": search_patterns,
+        "total_events_found": search_results["total_events"],
+        "log_groups_searched": len(search_results["all_results"]),
+        "results": search_results["all_results"],
+    }
+
+    # Log complete response for testing and troubleshooting
+    logger.info(f"Search response: {response}")
+    return response
+
+
 # =============================================================================
 # CONSOLIDATED SEARCH HELPER FUNCTIONS
 # =============================================================================
@@ -101,6 +319,114 @@ def _get_stack_name(document_record: Optional[Dict[str, Any]] = None) -> str:
     raise ValueError("No stack name available from document context or environment")
 
 
+def _get_stack_log_groups(document_status: str = None) -> List[Dict[str, str]]:
+    """
+    Get prioritized log groups from environment variable with status-aware prioritization.
+    """
+    env_log_groups = os.environ.get("CLOUDWATCH_LOG_GROUPS", "")
+    if env_log_groups:
+        log_groups = [
+            {"name": lg.strip()} for lg in env_log_groups.split(",") if lg.strip()
+        ]
+        logger.info(
+            f"Log groups: [{len(log_groups)}]{[lg['name'] for lg in log_groups]}"
+        )
+        prioritized_groups = _prioritize_log_groups(log_groups, document_status)
+        logger.info(
+            f"Prioritized log groups: {[lg['name'] for lg in prioritized_groups]}"
+        )
+        return prioritized_groups
+
+    logger.warning("CLOUDWATCH_LOG_GROUPS environment variable not set")
+    return []
+
+
+def _prioritize_log_groups(
+    log_groups: List[Dict[str, str]], document_status: str = None
+) -> List[Dict[str, str]]:
+    """
+    Prioritize log groups by business logic importance with status-aware prioritization.
+
+    - Failed documents: Focus on Classification/Extraction functions first
+    - In-progress documents: Focus on QueueProcessor/WorkflowTracker first
+    - Completed documents: Use standard prioritization
+    """
+
+    # Status-aware priority patterns (using generic matching)
+    if document_status == "FAILED":
+        priority_patterns = [
+            "Classification",  # Classification failures
+            "Extraction",  # Extraction failures
+            "Function",  # Other processing functions (OCR, BDA)
+            "Processor",  # Ingestion issues (QueueProcessor)
+            "Workflow",  # Orchestration (WorkflowTracker, workflow)
+            "QueueSender",  # Supporting functions
+        ]
+    elif document_status == "IN_PROGRESS":
+        priority_patterns = [
+            "Processor",  # Current ingestion activity (QueueProcessor)
+            "Workflow",  # Current status tracking (WorkflowTracker, workflow)
+            "Function",  # Currently processing functions
+            "QueueSender",  # Supporting functions
+        ]
+    else:
+        # Default/COMPLETED behavior
+        priority_patterns = [
+            "Function",  # Pattern functions (BDA, OCR, Classification, Extraction)
+            "Workflow",  # Step Functions (workflow, WorkflowTracker)
+            "Processor",  # Document ingestion (QueueProcessor)
+            "QueueSender",  # Supporting functions
+        ]
+
+    prioritized = []
+    remaining = log_groups.copy()
+
+    for i, pattern in enumerate(priority_patterns):
+        matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
+        if matching:
+            prioritized.extend(matching)
+            remaining = [lg for lg in remaining if lg not in matching]
+
+    # Add any remaining log groups
+    if remaining:
+        prioritized.extend(remaining)
+
+    return prioritized
+
+
+def _prioritize_performance_log_groups(
+    log_groups: List[Dict[str, str]],
+) -> List[Dict[str, str]]:
+    """
+    Prioritize log groups for performance issue analysis.
+    Focus on infrastructure components that commonly have performance bottlenecks.
+    """
+    logger.info("Performance log prioritization - Using infrastructure-first strategy")
+
+    # Performance-focused priority patterns
+    performance_priority_patterns = [
+        "Processor",  # Queue processing bottlenecks
+        "Workflow",  # Step Function limits/timeouts
+        "Function",  # Lambda performance issues
+        "QueueSender",  # Queue delivery performance
+    ]
+
+    prioritized = []
+    remaining = log_groups.copy()
+
+    for i, pattern in enumerate(performance_priority_patterns):
+        matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
+        if matching:
+            prioritized.extend(matching)
+            remaining = [lg for lg in remaining if lg not in matching]
+
+    # Add any remaining log groups
+    if remaining:
+        prioritized.extend(remaining)
+
+    return prioritized
+
+
 def _search_document_logs(
     document_id: str, filter_pattern: str, max_log_events: int, max_log_groups: int
 ) -> Dict[str, Any]:
@@ -114,15 +440,30 @@ def _search_document_logs(
 
     # Get stack name from document context
     actual_stack_name = _get_stack_name(context.get("document_record"))
+    logger.info(f"Document search for '{document_id}' using stack: {actual_stack_name}")
 
-    # Get log groups for the stack
-    log_groups = _get_log_groups_from_stack_prefix(actual_stack_name)
-    if log_groups.get("log_groups_found", 0) == 0:
+    # Get document status for prioritization
+    document_status = context["document_record"].get("ObjectStatus") or context[
+        "document_record"
+    ].get("WorkflowStatus")
+    logger.info(
+        f"Document search - Document status for log prioritization: {document_status}"
+    )
+
+    # Get log groups for the stack with status-aware prioritization
+    log_groups = _get_stack_log_groups(document_status)
+    if len(log_groups) == 0:
         return {
             "document_id": document_id,
             "events_found": 0,
             "message": f"No log groups found for stack {actual_stack_name}",
         }
+
+    # Log which groups will be searched
+    groups_to_search = log_groups[:max_log_groups]
+    logger.info(
+        f"Searching {len(groups_to_search)} log groups (max: {max_log_groups}): {[lg['name'] for lg in groups_to_search]}"
+    )
 
     # Calculate processing time window with buffer
     time_window = _get_processing_time_window(context["document_record"])
@@ -136,7 +477,7 @@ def _search_document_logs(
     search_results = _search_by_request_ids(
         request_ids_info,
         context["lambda_function_to_request_id_map"],
-        log_groups["log_groups"][:max_log_groups],
+        log_groups[:max_log_groups],
         time_window,
         max_log_events,
     )
@@ -145,7 +486,7 @@ def _search_document_logs(
     if search_results["total_events"] == 0:
         search_results = _search_by_document_fallback(
             document_id,
-            log_groups["log_groups"][:3],
+            log_groups[:5],
             time_window,
             max_log_events,
         )
@@ -169,20 +510,11 @@ def _search_stack_logs(
     """
     # Get stack name from environment
     stack_name = _get_stack_name()
+    logger.info(f"System-wide search using stack: {stack_name}")
 
-    # Get log group prefix
-    prefix_info = _get_log_group_prefix(stack_name)
-    if "error" in prefix_info:
-        return {
-            "error": f"Failed to get log prefix: {prefix_info['error']}",
-            "events_found": 0,
-        }
-
-    log_prefix = prefix_info.get("log_group_prefix", "")
-
-    # Get log groups with the prefix
-    log_groups = _get_cloudwatch_log_groups(prefix=log_prefix)
-    if log_groups.get("log_groups_found", 0) == 0:
+    # Get log groups for the stack (system-wide search uses default prioritization)
+    log_groups = _get_stack_log_groups()
+    if len(log_groups) == 0:
         return {
             "stack_name": stack_name,
             "events_found": 0,
@@ -190,11 +522,21 @@ def _search_stack_logs(
         }
 
     # Search each log group
-    groups_to_search = log_groups["log_groups"][:max_log_groups]
+    groups_to_search = log_groups[:max_log_groups]
+    logger.info(
+        f"Searching {len(groups_to_search)} log groups (max: {max_log_groups}): {[lg['name'] for lg in groups_to_search]}"
+    )
     all_results = []
     total_events = 0
+    events_limit = 5
 
     for log_group in groups_to_search:
+        if total_events >= events_limit:
+            logger.info(
+                f"Reached {events_limit} error events, stopping system-wide search"
+            )
+            break
+
         search_result = _search_cloudwatch_logs(
             log_group_name=log_group["name"],
             filter_pattern=filter_pattern,
@@ -214,6 +556,10 @@ def _search_stack_logs(
                 }
             )
             total_events += search_result["events_found"]
+        else:
+            logger.info(f"No events found in log group: {log_group['name']}")
+
+    logger.info(f"System-wide search completed with {total_events} total events")
 
     return {
         "analysis_type": "system_wide",
@@ -284,8 +630,21 @@ def _extract_stack_name(document_record: Dict[str, Any]) -> str:
 
 def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract processing time window with buffer for isolation.
+    Extract optimized processing time window based on document status.
+
+    - Failed documents: 5-minute window around failure time
+    - In-progress documents: Last 30 minutes from now
+    - Completed documents: Actual processing time + 30 seconds buffer
     """
+    # Log complete document record for debugging
+    logger.info(f"Document record: {document_record}")
+
+    document_status = document_record.get("ObjectStatus") or document_record.get(
+        "WorkflowStatus"
+    )
+    logger.info(f"Document status: {document_status}")
+
+    # Get timestamps
     start_time = None
     end_time = None
 
@@ -298,12 +657,32 @@ def _get_processing_time_window(document_record: Dict[str, Any]) -> Dict[str, An
             document_record["CompletionTime"].replace("Z", "+00:00")
         )
 
-    # Add time buffer for isolation
+    if document_status == "FAILED" and end_time:
+        # Failed: 5-minute window around failure time
+        buffer = timedelta(minutes=2.5)
+        result_start = end_time - buffer
+        result_end = end_time + buffer
+        return {"start_time": result_start, "end_time": result_end}
+    elif document_status == "IN_PROGRESS" or not end_time:
+        # In-progress or missing completion time: Last 30 minutes from now
+        now = datetime.now()
+        result_start = now - timedelta(minutes=30)
+        result_end = now
+        return {"start_time": result_start, "end_time": result_end}
+    elif start_time and end_time:
+        # Completed: Actual processing time + 30 seconds buffer
+        buffer = timedelta(seconds=30)
+        result_start = start_time - buffer
+        result_end = end_time + buffer
+        return {"start_time": result_start, "end_time": result_end}
+
+    # Fallback to current behavior for edge cases
     if start_time and end_time:
         processing_duration = end_time - start_time
         time_buffer = min(timedelta(minutes=2), processing_duration * 0.1)
-        start_time = start_time - time_buffer
-        end_time = end_time + time_buffer
+        result_start = start_time - time_buffer
+        result_end = end_time + time_buffer
+        return {"start_time": result_start, "end_time": result_end}
 
     return {"start_time": start_time, "end_time": end_time}
 
@@ -348,8 +727,13 @@ def _search_by_request_ids(
     all_results = []
     total_events = 0
     search_method_used = "none"
+    events_limit = 5
 
     for request_id in request_ids_info["request_ids_to_search"]:
+        if total_events >= events_limit:
+            logger.info(f"Reached {events_limit} error events, stopping search")
+            break
+
         function_name = next(
             (
                 func
@@ -372,9 +756,12 @@ def _search_by_request_ids(
 
         if matching_log_groups:
             for log_group in matching_log_groups:
-                logger.info(
-                    f"Searching log group {log_group['name']} for Lambda function {function_name} ({function_type}) with request ID {request_id}"
-                )
+                if total_events >= events_limit:
+                    logger.info(
+                        f"Reached {events_limit} error events, stopping log group search"
+                    )
+                    break
+
                 search_result = _search_cloudwatch_logs(
                     log_group_name=log_group["name"],
                     filter_pattern="ERROR",
@@ -409,6 +796,7 @@ def _search_by_request_ids(
         if total_events > 0:
             break
 
+    logger.info(f"Document search completed with {total_events} total events")
     return {
         "all_results": all_results,
         "total_events": total_events,
@@ -428,10 +816,19 @@ def _search_by_document_fallback(
     all_results = []
     total_events = 0
     search_method_used = "none"
+    events_limit = 5
 
-    doc_identifier = document_id.replace(".pdf", "").replace(".", "-")
+    # Extract just the filename without path
+    filename = document_id.split("/")[-1]
+    doc_identifier = filename.replace(".pdf", "").replace(".", "-")
 
     for log_group in groups_to_search:
+        if total_events >= events_limit:
+            logger.info(
+                f"Reached {events_limit} error events, stopping fallback search"
+            )
+            break
+
         search_result = _search_cloudwatch_logs(
             log_group_name=log_group["name"],
             filter_pattern=doc_identifier,
@@ -467,6 +864,7 @@ def _search_by_document_fallback(
                 total_events += len(error_events)
                 break
 
+    logger.info(f"Document fallback search completed with {total_events} total events")
     return {
         "all_results": all_results,
         "total_events": total_events,
@@ -513,7 +911,7 @@ def _build_response(
     }
 
     # Log complete response for troubleshooting
-    logger.info(f"CloudWatch document logs complete response: {response}")
+    logger.info(f"CloudWatch document logs response: {response}")
     return response
 
 
@@ -565,13 +963,12 @@ def _search_cloudwatch_logs(
         if final_filter_pattern:
             params["filterPattern"] = final_filter_pattern
 
-        logger.info(
-            f"CloudWatch search params for {log_group_name}: filter='{final_filter_pattern}', request_id={request_id}"
-        )
+        # Log parameters before API call
+        logger.debug(f"API params: {params}")
 
         try:
             response = client.filter_log_events(**params)
-            logger.info(
+            logger.debug(
                 f"CloudWatch API returned {len(response.get('events', []))} raw events for {log_group_name}"
             )
         except client.exceptions.ResourceNotFoundException:
@@ -630,116 +1027,6 @@ def _build_filter_pattern(base_pattern: str, request_id: str = "") -> str:
         return base_pattern
     else:
         return ""
-
-
-def _get_cloudwatch_log_groups(prefix: str = "") -> Dict[str, Any]:
-    """
-    Lists CloudWatch log groups matching specified prefix.
-    """
-    try:
-        if not prefix or len(prefix) < 5:
-            return {"log_groups_found": 0, "log_groups": []}
-
-        client = boto3.client("logs")
-        response = client.describe_log_groups(logGroupNamePrefix=prefix)
-
-        groups = []
-        for group in response.get("logGroups", []):
-            groups.append(
-                {
-                    "name": group["logGroupName"],
-                    "creation_time": datetime.fromtimestamp(
-                        group["creationTime"] / 1000
-                    ).isoformat(),
-                    "retention_days": group.get("retentionInDays", "Never expire"),
-                    "size_bytes": group.get("storedBytes", 0),
-                }
-            )
-
-        return {"log_groups_found": len(groups), "log_groups": groups}
-
-    except Exception as e:
-        return create_error_response(str(e), log_groups_found=0, log_groups=[])
-
-
-def _extract_prefix_from_state_machine_arn(arn: str) -> str:
-    """
-    Extracts log group prefix from Step Functions State Machine ARN.
-    """
-    if ":stateMachine:" in arn:
-        state_machine_name = arn.split(":stateMachine:")[-1]
-        if "-DocumentProcessingWorkflow" in state_machine_name:
-            return state_machine_name.replace("-DocumentProcessingWorkflow", "")
-        parts = state_machine_name.split("-")
-        if len(parts) > 1:
-            return "-".join(parts[:-1])
-    return ""
-
-
-def _get_log_groups_from_stack_prefix(stack_name: str) -> Dict[str, Any]:
-    """
-    Get all CloudWatch log groups that start with the stack prefix.
-    """
-    if not stack_name:
-        return {"log_groups_found": 0, "log_groups": []}
-
-    log_group_prefix = f"/{stack_name}/lambda"
-
-    try:
-        client = boto3.client("logs")
-        response = client.describe_log_groups(logGroupNamePrefix=log_group_prefix)
-
-        log_groups = []
-        for group in response.get("logGroups", []):
-            log_groups.append(
-                {
-                    "name": group["logGroupName"],
-                    "creation_time": datetime.fromtimestamp(
-                        group["creationTime"] / 1000
-                    ).isoformat(),
-                    "retention_days": group.get("retentionInDays", "Never expire"),
-                    "size_bytes": group.get("storedBytes", 0),
-                }
-            )
-
-        return {"log_groups_found": len(log_groups), "log_groups": log_groups}
-
-    except Exception as e:
-        logger.error(f"Failed to get log groups for stack {stack_name}: {e}")
-        return {"log_groups_found": 0, "log_groups": []}
-
-
-def _get_log_group_prefix(stack_name: str) -> Dict[str, Any]:
-    """
-    Determines CloudWatch log group prefix from CloudFormation stack.
-    """
-    try:
-        cf_client = boto3.client("cloudformation")
-        stack_response = cf_client.describe_stacks(StackName=stack_name)
-        stacks = stack_response.get("Stacks", [])
-
-        if stacks:
-            outputs = stacks[0].get("Outputs", [])
-            for output in outputs:
-                if output.get("OutputKey") == "StateMachineArn":
-                    extracted_prefix = _extract_prefix_from_state_machine_arn(
-                        output.get("OutputValue", "")
-                    )
-                    if extracted_prefix:
-                        return {
-                            "stack_name": stack_name,
-                            "prefix_type": "pattern",
-                            "log_group_prefix": f"/{extracted_prefix}/lambda",
-                        }
-
-        return {
-            "stack_name": stack_name,
-            "prefix_type": "main",
-            "log_group_prefix": f"/aws/lambda/{stack_name}",
-        }
-
-    except Exception as e:
-        return create_error_response(str(e), stack_name=stack_name)
 
 
 def _extract_function_type(lambda_function_name: str) -> str:

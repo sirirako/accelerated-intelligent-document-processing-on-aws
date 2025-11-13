@@ -23,6 +23,7 @@ from .tools import (
     fetch_recent_records,
     retrieve_document_context,
     search_cloudwatch_logs,
+    search_performance_issues,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ def create_error_analyzer_agent(
     # Create agent with specific tools - let LLM choose directly
     tools = [
         search_cloudwatch_logs,
+        search_performance_issues,
         fetch_document_record,
         fetch_recent_records,
         retrieve_document_context,
@@ -67,7 +69,7 @@ def create_error_analyzer_agent(
         model_id = config.get(
             "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
         )
-
+    logger.info(f"Model ID: {model_id}")
     bedrock_model = create_strands_bedrock_model(
         model_id=model_id, boto_session=session
     )
