@@ -145,9 +145,7 @@ def _get_performance_patterns(issue_type: str) -> List[str]:
     search_patterns = performance_patterns.get(
         issue_type, performance_patterns["performance"]
     )
-    logger.info(
-        f"Performance search - Issue type: {issue_type}, Patterns: {search_patterns}"
-    )
+    logger.info(f"Issue type: {issue_type}, Patterns: {search_patterns}")
     return search_patterns
 
 
@@ -185,22 +183,20 @@ def _execute_performance_search(
     Execute performance search across log groups with early termination.
     """
     combined_pattern = " OR ".join(search_patterns)
-    logger.info(f"Performance search - Combined pattern: {combined_pattern}")
+    logger.info(f"Combined pattern: {combined_pattern}")
 
     all_results = []
     total_events = 0
     events_limit = 5
 
-    logger.info(f"Performance search - Events limit: {events_limit}")
+    logger.info(f"Events limit: {events_limit}")
     logger.info(
-        f"Performance search - Searching {len(log_groups)} log groups: {[lg['name'] for lg in log_groups]}"
+        f"Searching {len(log_groups)} log groups: {[lg['name'] for lg in log_groups]}"
     )
 
     for log_group in log_groups:
         if total_events >= events_limit:
-            logger.info(
-                f"Performance search - Reached {events_limit} events, stopping search"
-            )
+            logger.info(f"Reached {events_limit} events, stopping search")
             break
 
         # Single API call with combined pattern
@@ -213,7 +209,7 @@ def _execute_performance_search(
 
         if search_result.get("events_found", 0) > 0:
             logger.info(
-                f"Performance search - Found {search_result['events_found']} events in {log_group['name']}"
+                f"Found {search_result['events_found']} events in {log_group['name']}"
             )
 
             # Filter and process events
@@ -230,11 +226,9 @@ def _execute_performance_search(
                 )
                 all_results.append(result_entry)
                 total_events += len(performance_events)
-                logger.info(
-                    f"Performance search - Total events found so far: {total_events}/{events_limit}"
-                )
+                logger.info(f"Total events found so far: {total_events}/{events_limit}")
 
-    logger.info(f"Performance search - Completed with {total_events} total events")
+    logger.info(f"Completed with {total_events} total events")
     return {"all_results": all_results, "total_events": total_events}
 
 
@@ -295,7 +289,7 @@ def _build_performance_response(
     }
 
     # Log complete response for testing and troubleshooting
-    logger.info(f"Performance search response: {response}")
+    logger.info(f"Search response: {response}")
     return response
 
 
@@ -423,26 +417,13 @@ def _prioritize_performance_log_groups(
     for i, pattern in enumerate(performance_priority_patterns):
         matching = [lg for lg in remaining if pattern.lower() in lg["name"].lower()]
         if matching:
-            logger.info(
-                f"Performance prioritization - Priority {i + 1} '{pattern}': Found {len(matching)} log groups"
-            )
             prioritized.extend(matching)
             remaining = [lg for lg in remaining if lg not in matching]
-        else:
-            logger.info(
-                f"Performance prioritization - Priority {i + 1} '{pattern}': No matching log groups"
-            )
 
     # Add any remaining log groups
     if remaining:
-        logger.info(
-            f"Performance prioritization - Adding {len(remaining)} remaining log groups at end"
-        )
         prioritized.extend(remaining)
 
-    logger.info(
-        f"Performance prioritization - Final order: {[lg['name'] for lg in prioritized]}"
-    )
     return prioritized
 
 
