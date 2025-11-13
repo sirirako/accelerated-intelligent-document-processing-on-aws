@@ -240,11 +240,18 @@ Parameters:
       - "us.anthropic.claude-3-5-haiku-20241022-v1:0"
       - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
       - "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+      - "us.anthropic.claude-sonnet-4-20250514-v1:0"
+      - "us.anthropic.claude-sonnet-4-20250514-v1:0:1m"
+      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
       - "eu.amazon.nova-lite-v1:0"
       - "eu.amazon.nova-pro-v1:0"
       - "eu.anthropic.claude-3-haiku-20240307-v1:0"
       - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
       - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
+      - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
+      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
     Description: Model to use for optional Document Knowledge Base. Model access MUST be enabled in Amazon Bedrock. Note - Nova Premier may not be available in all EU regions.
 
   # Optional - Post processing Lambda hook
@@ -2326,22 +2333,6 @@ Resources:
   # Pattern stacks can update the Configuration table with a CustomResource, using the
   # UpdateConfigurationFunctionArn parameter passed to them. See examples in provided
   # pattern templates.
-
-  # Set up default agent configuration
-  DefaultAgentConfiguration:
-    Type: Custom::UpdateConfiguration
-    DependsOn:
-      - ConfigurationTable
-    Properties:
-      ServiceToken: !GetAtt UpdateConfigurationFunction.Arn
-      Default:
-        agents:
-          chat_companion:
-            model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-          analytics:
-            model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-          error_analyzer:
-            model_id: "us.anthropic.claude-sonnet-4-20250514-v1:0"
 
   ##########################################################################
   # SSM Parameter for application settings
