@@ -11,9 +11,9 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
-- Fix #133 - Cast topK to int to defend against transient ValidationException exceptions
 - Add ServiceUnavailableException to retryable exceptions in statemachine to better defend against processing failure due to quota overload
-
+- Fix #133 - Cast topK to int to defend against transient ValidationException exceptions
+- Fix #132 - TRACKING_TABLE environment variable needed in EvaluationFunction
 
 
 
