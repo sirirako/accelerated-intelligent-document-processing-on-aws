@@ -12,14 +12,12 @@ from pydantic import ValidationError
 import os
 import json
 import logging
-import boto3
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger("idp_common.bedrock.client").setLevel(
     os.environ.get("BEDROCK_LOG_LEVEL", "INFO")
 )
-
 def handler(event, context):
     """
     AWS Lambda handler for GraphQL operations related to configuration.
