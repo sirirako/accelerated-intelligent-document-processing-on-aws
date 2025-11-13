@@ -1787,8 +1787,6 @@ agents:
       3. Log Analysis: Use cloudwatch_document_logs or cloudwatch_logs for error details
       4. Distributed Tracing: Use xray_performance_analysis for service interaction issues
       5. Context: Use lambda_lookup for execution environment
-  chat_companion:
-    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
 
       RECOMMENDATION GUIDELINES:
       For code-related issues or system bugs:
@@ -1810,6 +1808,8 @@ agents:
       - No time specified: 24 hours (default)
 
       IMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence.
+  chat_companion:
+    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
     parameters:
       max_log_events: 5
       time_range_hours_default: 24
