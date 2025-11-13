@@ -813,7 +813,7 @@ classification:
     target_height: ""
     target_width: ""
   classificationMethod: multimodalPageLevelClassification
-  model_id: us.amazon.nova-pro-v1:0
+  model: us.amazon.nova-pro-v1:0
   temperature: "0.0"
   top_p: "0.1"
   top_k: "5"
@@ -866,7 +866,7 @@ extraction:
   image:
     target_height: ""
     target_width: ""
-  model_id: us.amazon.nova-pro-v1:0
+  model: us.amazon.nova-pro-v1:0
   temperature: "0.0"
   top_p: "0.1"
   top_k: "5"
@@ -976,7 +976,7 @@ assessment:
   max_tokens: "10000"
   top_k: "5"
   temperature: "0.0"
-  model_id: us.amazon.nova-lite-v1:0
+  model: us.amazon.nova-lite-v1:0
   system_prompt: >-
     You are a document analysis assessment expert. Your role is to evaluate the confidence and accuracy of data extraction results by analyzing them against source documents.
 
@@ -1227,7 +1227,7 @@ summarization:
 
     </document>
   temperature: "0.0"
-  model_id: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+  model: us.anthropic.claude-3-7-sonnet-20250219-v1:0
   system_prompt: >
     You are a document summarization expert who can analyze and summarize
     documents from various domains including medical, financial, legal, and
@@ -1434,6 +1434,8 @@ agents:
     parameters:
       max_log_events: 5
       time_range_hours_default: 24
+  chat_companion:
+    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
 pricing:
   - name: textract/detect_document_text
     units:
