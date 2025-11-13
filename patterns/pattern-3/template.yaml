@@ -1922,6 +1922,7 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           WORKING_BUCKET: !Ref WorkingBucket
           DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
+          TRACKING_TABLE: !Ref TrackingTable
       LoggingConfig:
         LogGroup: !Ref EvaluationFunctionLogGroup
       Policies:
