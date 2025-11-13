@@ -2111,7 +2111,7 @@ Resources:
         - arm64
       ImageConfig:
         Command:
-          - "index.lambda_handler"
+          - "index.handler"
       Timeout: 300
       MemorySize: 512
       Environment:
@@ -2267,7 +2267,7 @@ Resources:
         - arm64
       ImageConfig:
         Command:
-          - "index.lambda_handler"
+          - "index.handler"
       Timeout: 300
       Role: !GetAtt HITLProcessLambdaRole.Arn
       Environment:
