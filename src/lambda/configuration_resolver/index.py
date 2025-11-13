@@ -31,9 +31,7 @@ MODEL_MAPPINGS = {
     "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
     "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-opus-4-1-20250805-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
 }
@@ -72,17 +70,31 @@ def swap_model_ids(data, region_type):
     if isinstance(data, dict):
         swapped_data = {}
         for key, value in data.items():
-            if isinstance(value, str) and ("us." in value or "eu." in value):
-                # This is a model ID - check if it needs swapping
-                if region_type == "us" and value.startswith("eu."):
+            if (key == "model_id" or key == "model") and isinstance(value, str) and ("us." in value or "eu." in value):
+                # This is a model_id field - check if it needs swapping
+                if region_type == "eu" and value.startswith("us."):
+                    new_model = get_model_mapping(value, "eu")
+                    if new_model != value:
+                        logger.info(f"Swapped US model {value} to EU model {new_model}")
+                    swapped_data[key] = new_model
+                elif region_type == "us" and value.startswith("eu."):
                     new_model = get_model_mapping(value, "us")
                     if new_model != value:
                         logger.info(f"Swapped EU model {value} to US model {new_model}")
                     swapped_data[key] = new_model
-                elif region_type == "eu" and value.startswith("us."):
+                else:
+                    swapped_data[key] = value
+            elif key == "model" and isinstance(value, str) and ("us." in value or "eu." in value):
+                # Handle legacy 'model' field as well
+                if region_type == "eu" and value.startswith("us."):
                     new_model = get_model_mapping(value, "eu")
                     if new_model != value:
                         logger.info(f"Swapped US model {value} to EU model {new_model}")
+                    swapped_data[key] = new_model
+                elif region_type == "us" and value.startswith("eu."):
+                    new_model = get_model_mapping(value, "us")
+                    if new_model != value:
+                        logger.info(f"Swapped EU model {value} to US model {new_model}")
                     swapped_data[key] = new_model
                 else:
                     swapped_data[key] = value

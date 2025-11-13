@@ -6,7 +6,7 @@ assessment:
   enabled: true
   validation_enabled: false
 criteria_validation:
-  model: us.anthropic.claude-3-5-sonnet-20240620-v1:0
+  model_id: us.anthropic.claude-3-5-sonnet-20240620-v1:0
   temperature: 0.0
   top_k: 20
   top_p: 0.01
