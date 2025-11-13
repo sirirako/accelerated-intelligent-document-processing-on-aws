@@ -292,7 +292,6 @@ discovery:
 agents:
   error_analyzer:
     model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
-
     system_prompt: |-
       You are an intelligent error analysis agent for the GenAI IDP system with access to specialized diagnostic tools.
 
@@ -381,7 +380,9 @@ agents:
     parameters:
       max_log_events: 5
       time_range_hours_default: 24
-
+  
+  chat_companion:
+    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
 # Pricing configuration for cost tracking
 pricing:
   - name: textract/detect_document_text

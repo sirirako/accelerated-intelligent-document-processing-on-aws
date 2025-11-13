@@ -80,7 +80,7 @@ MODEL_MAPPINGS = {
     "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
     "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-sonnet-4-20250514-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -219,26 +219,20 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         manager = ConfigurationManager()
 
         if request_type in ["Create", "Update"]:
-            # Update Schema configuration
+            # Collect all configurations to process
+            configurations = {}
+            
+            # Process Schema configuration
             if "Schema" in properties:
                 resolved_schema = resolve_content(properties["Schema"])
-
                 # Filter models based on region
                 if region_type in ["us", "eu"]:
-                    resolved_schema = filter_models_by_region(
-                        resolved_schema, region_type
-                    )
-                    logger.info(f"Filtered schema models for {region_type} region")
+                    resolved_schema = filter_models_by_region(resolved_schema, region_type)
+                configurations["Schema"] = {"Schema": resolved_schema}
 
-                # New API: save_configuration() accepts dict and converts to IDPConfig internally
-                # ConfigurationManager handles migration automatically
-                manager.save_configuration("Schema", {"Schema": resolved_schema})
-                logger.info("Updated Schema configuration")
-
-            # Update Default configuration
+            # Process Default configuration
             if "Default" in properties:
                 resolved_default = resolve_content(properties["Default"])
-
                 # Apply custom model ARNs if provided
                 if isinstance(resolved_default, dict):
                     # Replace classification model if CustomClassificationModelARN is provided and not empty
@@ -266,22 +260,25 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             logger.info(
                                 f"Updated extraction model to: {properties['CustomExtractionModelARN']}"
                             )
+                configurations["Default"] = resolved_default
 
-                # New API: save_configuration() accepts dict and converts to IDPConfig internally
-                # ConfigurationManager handles migration and type conversion automatically
-                manager.save_configuration("Default", resolved_default)
-                logger.info("Updated Default configuration")
-
-            # Update Custom configuration if provided and not empty
+            # Process Custom configuration if provided and not empty
             if (
                 "Custom" in properties
                 and properties["Custom"].get("Info") != "Custom inference settings"
             ):
                 resolved_custom = resolve_content(properties["Custom"])
-                # New API: save_configuration() accepts dict and converts to IDPConfig internally
-                # ConfigurationManager handles migration automatically
-                manager.save_configuration("Custom", resolved_custom)
-                logger.info("Updated Custom configuration")
+                configurations["Custom"] = resolved_custom
+
+            # Apply region-specific model swapping to all configurations at once
+            if region_type in ["us", "eu"] and configurations:
+                configurations = swap_model_ids(configurations, region_type)
+                logger.info(f"Applied model swapping for {region_type} region to all configurations")
+
+            # Save all configurations
+            for config_name, config_data in configurations.items():
+                manager.save_configuration(config_name, config_data)
+                logger.info(f"Updated {config_name} configuration")
 
             cfnresponse.send(
                 event,
