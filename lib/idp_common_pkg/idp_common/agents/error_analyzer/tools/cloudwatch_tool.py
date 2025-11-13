@@ -837,7 +837,9 @@ def _search_by_document_fallback(
     search_method_used = "none"
     events_limit = 5
 
-    doc_identifier = document_id.replace(".pdf", "").replace(".", "-")
+    # Extract just the filename without path
+    filename = document_id.split("/")[-1]
+    doc_identifier = filename.replace(".pdf", "").replace(".", "-")
 
     for log_group in groups_to_search:
         if total_events >= events_limit:
@@ -979,6 +981,9 @@ def _search_cloudwatch_logs(
         final_filter_pattern = _build_filter_pattern(filter_pattern, request_id)
         if final_filter_pattern:
             params["filterPattern"] = final_filter_pattern
+
+        # Log parameters before API call
+        logger.debug(f"API params: {params}")
 
         try:
             response = client.filter_log_events(**params)
