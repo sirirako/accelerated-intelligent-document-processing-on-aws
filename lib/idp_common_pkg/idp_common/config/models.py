@@ -523,7 +523,7 @@ class ChatCompanionConfig(BaseModel):
     """Chat companion agent configuration"""
 
     model_id: str = Field(
-        default="us.anthropic.claude-sonnet-4-20250514-v1:0:1m",
+        default="us.anthropic.claude-sonnet-4-20250514-v1:0",
         description="Bedrock model ID for chat companion",
     )
 

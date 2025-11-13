@@ -80,9 +80,7 @@ MODEL_MAPPINGS = {
     "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
     "us.anthropic.claude-sonnet-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-20250514-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-opus-4-1-20250805-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
 }
@@ -266,6 +264,11 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             logger.info(
                                 f"Updated extraction model to: {properties['CustomExtractionModelARN']}"
                             )
+
+                # Apply region-specific model swapping BEFORE saving
+                if region_type in ["us", "eu"]:
+                    resolved_default = swap_model_ids(resolved_default, region_type)
+                    logger.info(f"Applied model swapping for {region_type} region to Default config")
 
                 # New API: save_configuration() accepts dict and converts to IDPConfig internally
                 # ConfigurationManager handles migration and type conversion automatically

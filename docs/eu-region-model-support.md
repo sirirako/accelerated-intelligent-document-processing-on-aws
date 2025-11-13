@@ -20,7 +20,6 @@ The following table shows all US to EU model mappings currently configured in th
 | `us.anthropic.claude-3-7-sonnet-20250219-v1:0` | `eu.anthropic.claude-3-7-sonnet-20250219-v1:0` | Direct mapping |
 | `us.anthropic.claude-sonnet-4-20250514-v1:0` | `eu.anthropic.claude-sonnet-4-20250514-v1:0` | Direct mapping |
 | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | Direct mapping |
-| `us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m` | Direct mapping |
 | `us.anthropic.claude-opus-4-20250514-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | **Fallback mapping** |
 | `us.anthropic.claude-opus-4-1-20250805-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | **Fallback mapping** |
 
@@ -44,7 +43,6 @@ Based on the mappings above, the following EU models are supported:
 - `eu.anthropic.claude-3-7-sonnet-20250219-v1:0`
 - `eu.anthropic.claude-sonnet-4-20250514-v1:0`
 - `eu.anthropic.claude-sonnet-4-5-20250929-v1:0`
-- `eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
 
 ## Model Mapping Behavior
 
