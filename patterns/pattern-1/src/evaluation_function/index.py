@@ -239,7 +239,7 @@ def handler(event, context):
         return {'document': evaluated_document.serialize_document(working_bucket, 'evaluation')}
     
     except Exception as e:
-        error_msg = f"Error in lambda_handler: {str(e)}"
+        error_msg = f"Error in handler: {str(e)}"
         logger.error(error_msg)
         
         # Update document status to FAILED if we have the document
