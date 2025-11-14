@@ -436,8 +436,14 @@ const SchemaInspector = ({
             }
             // Methods with validFor restrictions
             if (opt.validFor) {
-              // For arrays, check if method is valid for arrays
-              if (selectedAttribute.type === 'array') {
+              // For arrays with SIMPLE items (Array[String], Array[Number], etc.)
+              // check if method is valid for the ITEM type
+              if (selectedAttribute.type === 'array' && !isStructuredArray) {
+                const itemType = selectedAttribute.items?.type || 'string';
+                return opt.validFor.includes(itemType);
+              }
+              // For structured arrays (Array[Object]), check if method is valid for arrays
+              if (selectedAttribute.type === 'array' && isStructuredArray) {
                 return opt.validFor.includes('array');
               }
               // For other types, check directly
