@@ -9,9 +9,13 @@ SPDX-License-Identifier: MIT-0
 
 ## [0.4.3]
 
+
 ### Fixed
 
 - Add ServiceUnavailableException to retryable exceptions in statemachine to better defend against processing failure due to quota overload
+- Evaluation Configuration Robustness
+  - Improved JSON Schema error messages with actionable diagnostics when configuration issues occur
+  - Added automatic type coercion for numeric constraints (e.g., `maxItems: "7"` → `maxItems: 7`) to handle common YAML parsing quirks gracefully
 - Fix #133 - Cast topK to int to defend against transient ValidationException exceptions
 - Fix #132 - TRACKING_TABLE environment variable needed in EvaluationFunction
 - Fix #131 - HITL functions broken post docker migration
