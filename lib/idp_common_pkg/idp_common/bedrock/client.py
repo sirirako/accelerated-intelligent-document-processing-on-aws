@@ -390,7 +390,7 @@ class BedrockClient:
         if "anthropic" in model_id.lower():
             # Add parameters to additionalModelRequestFields for Claude (snake_case)
             if top_k is not None:
-                additional_model_fields["top_k"] = top_k
+                additional_model_fields["top_k"] = int(top_k)
 
             if max_tokens is not None:
                 additional_model_fields["max_tokens"] = max_tokens

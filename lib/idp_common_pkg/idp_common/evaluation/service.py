@@ -378,17 +378,95 @@ class EvaluationService:
         schema = stickler_config["schema"]
         model_name = stickler_config["model_name"]
 
-        logger.info(f"Creating Stickler model for class: {document_class}")
-
-        # Use JsonSchemaFieldConverter to handle the full JSON Schema natively
-        from stickler.structured_object_evaluator.models.json_schema_field_converter import (
-            JsonSchemaFieldConverter,
+        # Enhanced logging: Log schema details before creating model
+        logger.info(
+            f"Creating Stickler model for class: {document_class}\n"
+            f"  Schema summary:\n"
+            f"    - Properties: {list(schema.get('properties', {}).keys())}\n"
+            f"    - Required fields: {schema.get('required', [])}\n"
+            f"    - Schema ID: {schema.get('$id', 'N/A')}\n"
+            f"    - Model name: {model_name}"
         )
 
-        converter = JsonSchemaFieldConverter(schema)
-        field_definitions = converter.convert_properties_to_fields(
-            schema.get("properties", {}), schema.get("required", [])
-        )
+        # Log expected and actual data structure for troubleshooting
+        if expected_data:
+            logger.info(
+                f"  Expected data keys for {document_class}: {list(expected_data.keys())}"
+            )
+
+        try:
+            # Use JsonSchemaFieldConverter to handle the full JSON Schema natively
+            from stickler.structured_object_evaluator.models.json_schema_field_converter import (
+                JsonSchemaFieldConverter,
+            )
+
+            logger.debug(f"Converting schema properties for {document_class}")
+
+            converter = JsonSchemaFieldConverter(schema)
+            field_definitions = converter.convert_properties_to_fields(
+                schema.get("properties", {}), schema.get("required", [])
+            )
+
+            logger.info(
+                f"Successfully converted schema for {document_class} with {len(field_definitions)} fields"
+            )
+
+        except Exception as e:
+            # Enhanced error handling with user guidance
+            import json
+            import re
+
+            error_message = str(e)
+
+            # Check if it's a JSON Schema validation error
+            if (
+                "jsonschema.exceptions.SchemaError" in str(type(e))
+                or "Invalid JSON Schema" in error_message
+            ):
+                # Try to extract the problematic field from the error
+                field_match = re.search(
+                    r"On schema\['properties'\]\['([^']+)'\]", error_message
+                )
+                field_name = field_match.group(1) if field_match else "unknown"
+
+                # Parse for constraint information
+                constraint_match = re.search(
+                    r"\['([^']+)'\]\s*:\s*'([^']+)'", error_message
+                )
+                constraint = (
+                    constraint_match.group(1) if constraint_match else "unknown"
+                )
+                bad_value = constraint_match.group(2) if constraint_match else "unknown"
+
+                # Build helpful error message
+                helpful_message = (
+                    f"Invalid JSON Schema for document class '{document_class}'.\n\n"
+                    f"Problem detected:\n"
+                    f"  Field: {field_name}\n"
+                    f"  Constraint: {constraint}\n"
+                    f"  Current value: '{bad_value}' (type: {type(bad_value).__name__})\n\n"
+                    f"Common fixes:\n"
+                    f"  1. If '{constraint}' should be a number, remove quotes in your config:\n"
+                    f"     {constraint}: '{bad_value}' → {constraint}: {bad_value}\n"
+                    f"  2. Check your config YAML for field '{field_name}' in class '{document_class}'\n"
+                    f"  3. Ensure all numeric constraints (maxItems, minItems, minimum, maximum, etc.) are numbers, not strings\n\n"
+                    f"Original error: {error_message}"
+                )
+
+                logger.error(helpful_message)
+                logger.error(
+                    f"Full schema that caused the error:\n{json.dumps(schema, indent=2, default=str)}"
+                )
+                raise ValueError(helpful_message) from e
+            else:
+                # Re-raise other errors with schema details
+                logger.error(
+                    f"Unexpected error creating Stickler model for {document_class}: {error_message}"
+                )
+                logger.error(
+                    f"Schema being processed:\n{json.dumps(schema, indent=2, default=str)}"
+                )
+                raise
 
         # Create the model using Pydantic's create_model
         from pydantic import create_model

@@ -139,7 +139,7 @@ Parameters:
 
   EnableXRayTracing:
     Type: String
-    Default: 'false'
+    Default: 'true'
     AllowedValues: ['true', 'false']
     Description: Enable X-Ray tracing
 
@@ -460,7 +460,7 @@ Resources:
               model:
                 type: string
                 description: Bedrock model ID
-                enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"]
+                enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"]
                 order: 1
               temperature:
                 type: number
@@ -610,7 +610,7 @@ Resources:
                   model_id:
                     type: string
                     description: Model ID for the chat companion agents
-                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0"]
+                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"]
                     default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
                     order: 0
               error_analyzer:
@@ -1049,6 +1049,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           TRACKING_TABLE: !Ref TrackingTable
@@ -1117,6 +1118,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -1211,6 +1213,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -1312,6 +1315,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -1420,6 +1424,8 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           WORKING_BUCKET: !Ref WorkingBucket
           DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
+          TRACKING_TABLE: !Ref TrackingTable
+          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
       LoggingConfig:
         LogGroup: !Ref EvaluationFunctionLogGroup
       Policies:
@@ -1508,6 +1514,7 @@ Resources:
         - arm64
       Timeout: 900
       MemorySize: 4096
+      Tracing: Active
       Environment:
         Variables:
           TRACKING_TABLE: !Ref TrackingTable
@@ -2256,6 +2263,20 @@ Outputs:
   StateMachineLogGroup:
     Description: Step Functions State machine LogGroup
     Value: !Ref StateMachineLogGroup
+
+  PatternLogGroups:
+    Description: Comma-separated list of pattern-specific log groups
+    Value: !Join
+      - ","
+      - - !Ref InvokeBDAFunctionLogGroup
+        - !Ref ProcessResultsFunctionLogGroup
+        - !Ref SummarizationFunctionLogGroup
+        - !Ref BDACompletionFunctionLogGroup
+        - !Ref BDADiscoveryFunctionLogGroup
+        - !Ref HITLProcessLambdaLogGroup
+        - !Ref HITLWaitFunctionLogGroup
+        - !Ref HITLStatusUpdateFunctionLogGroup
+        - !Ref StateMachineLogGroup
 
   DashboardName:
     Description: Name of the Pattern 1 (BDA) CloudWatch Dashboard

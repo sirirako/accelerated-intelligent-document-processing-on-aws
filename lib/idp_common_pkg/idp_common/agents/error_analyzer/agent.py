@@ -14,6 +14,7 @@ import strands
 from idp_common.config import get_config
 
 from ..common.strands_bedrock_model import create_strands_bedrock_model
+from .config import get_error_analyzer_model_id
 from .tools import (
     analyze_document_trace,
     analyze_system_performance,
@@ -22,6 +23,7 @@ from .tools import (
     fetch_recent_records,
     retrieve_document_context,
     search_cloudwatch_logs,
+    search_performance_issues,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,7 @@ def create_error_analyzer_agent(
     # Create agent with specific tools - let LLM choose directly
     tools = [
         search_cloudwatch_logs,
+        search_performance_issues,
         fetch_document_record,
         fetch_recent_records,
         retrieve_document_context,
@@ -57,8 +60,18 @@ def create_error_analyzer_agent(
         analyze_document_trace,
         analyze_system_performance,
     ]
+
+    # Get model ID using modern configuration system (reads user-changed values from DynamoDB)
+    try:
+        model_id = get_error_analyzer_model_id()
+    except Exception as e:
+        logger.warning(f"Failed to get chat companion model ID, using default: {e}")
+        model_id = config.get(
+            "default_model_id", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        )
+    logger.info(f"Model ID: {model_id}")
     bedrock_model = create_strands_bedrock_model(
-        model_id=config.agents.error_analyzer.model_id, boto_session=session
+        model_id=model_id, boto_session=session
     )
 
     return strands.Agent(
