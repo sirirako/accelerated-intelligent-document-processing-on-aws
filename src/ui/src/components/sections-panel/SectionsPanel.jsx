@@ -275,10 +275,19 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
   // Get available classes from configuration
   const getAvailableClasses = () => {
     if (!configuration?.classes) return [];
-    return configuration.classes.map((cls) => ({
-      label: cls.name,
-      value: cls.name,
-    }));
+    return configuration.classes
+      .map((cls) => {
+        // Support both JSON Schema and legacy formats
+        // JSON Schema: $id or x-aws-idp-document-type
+        // Legacy: name
+        const className = cls.$id || cls['x-aws-idp-document-type'] || cls.name;
+
+        return {
+          label: className,
+          value: className,
+        };
+      })
+      .filter((option) => option.value); // Remove any undefined entries
   };
 
   // Generate next sequential section ID
