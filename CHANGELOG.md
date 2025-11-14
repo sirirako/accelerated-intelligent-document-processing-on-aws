@@ -9,18 +9,22 @@ SPDX-License-Identifier: MIT-0
 
 ## [0.4.3]
 
-
 ### Fixed
 
-- Add ServiceUnavailableException to retryable exceptions in statemachine to better defend against processing failure due to quota overload
-- Evaluation Configuration Robustness
-  - Improved JSON Schema error messages with actionable diagnostics when configuration issues occur
-  - Added automatic type coercion for numeric constraints (e.g., `maxItems: "7"` → `maxItems: 7`) to handle common YAML parsing quirks gracefully
 - Fix #134 - Doc class dropdown shows no options when editing sections
 - Fix #133 - Cast topK to int to defend against transient ValidationException exceptions
 - Fix #132 - TRACKING_TABLE environment variable needed in EvaluationFunction
 - Fix #131 - HITL functions broken post docker migration
 - Fix #130 - Enable EU models for Agent Configuration and KB Configuration
+- Add ServiceUnavailableException to retryable exceptions in statemachine to better defend against processing failure due to quota overload
+- Evaluation Configuration Robustness
+  - Improved JSON Schema error messages with actionable diagnostics when configuration issues occur
+  - Added automatic type coercion for numeric constraints (e.g., `maxItems: "7"` → `maxItems: 7`) to handle common YAML parsing quirks gracefully
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.3.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.3.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.3.yaml`
 
 ## [0.4.2]
 
