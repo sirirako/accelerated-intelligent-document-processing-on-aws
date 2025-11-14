@@ -7,6 +7,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+### Fixed
+
 ## [0.4.3]
 
 ### Fixed
@@ -20,6 +22,11 @@ SPDX-License-Identifier: MIT-0
 - Evaluation Configuration Robustness
   - Improved JSON Schema error messages with actionable diagnostics when configuration issues occur
   - Added automatic type coercion for numeric constraints (e.g., `maxItems: "7"` → `maxItems: 7`) to handle common YAML parsing quirks gracefully
+- UI: Document Schema Editor Input Field Fixes
+  - Fixed Examples, Default Value, Const, and Enum Values fields not allowing first character deletion or comma input
+  - Fixed Enum field remaining disabled after clearing Const value
+  - Fixed "Clear all enum values" button not working
+  - Fixed empty Evaluation Method picklist for Array[String] and other simple array types
 
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.3.yaml`
