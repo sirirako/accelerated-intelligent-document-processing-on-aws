@@ -298,7 +298,7 @@ def get_test_run_status(test_run_id):
         
         # Always check actual document status from tracking table
         completed_files = 0
-        failed_files = 0
+        processing_failed_files = 0  # Only count processing failures found during scan
         evaluating_files = 0
         
         for file_key in files:
@@ -325,7 +325,7 @@ def get_test_run_status(test_run_id):
                         logger.info(f"File {file_key}: counted as evaluating (eval not started)")
                     elif eval_status == 'FAILED':
                         # Evaluation failed - count as failed
-                        failed_files += 1
+                        processing_failed_files += 1
                         logger.info(f"File {file_key}: counted as failed (eval failed)")
                     elif eval_status == 'NO_BASELINE':
                         # No baseline data available - count as completed
@@ -336,23 +336,27 @@ def get_test_run_status(test_run_id):
                         evaluating_files += 1
                         logger.info(f"File {file_key}: counted as evaluating (unknown eval status: {eval_status})")
                 elif doc_status == 'FAILED':
-                    failed_files += 1
+                    processing_failed_files += 1
                     logger.info(f"File {file_key}: counted as failed")
                 else:
                     logger.info(f"File {file_key}: still processing (status: {doc_status})")
             else:
                 logger.warning(f"Document not found: doc#{test_run_id}/{file_key}")
         
-        logger.info(f"Test run {test_run_id} counts: completed={completed_files}, failed={failed_files}, evaluating={evaluating_files}, total={files_count}")
+        # Calculate total failed files
+        baseline_failed_files = item.get('BaselineFailedFiles', 0)  # Set by copier, never updated
+        total_failed_files = baseline_failed_files + processing_failed_files  # Recalculated each call
+        
+        logger.info(f"Test run {test_run_id} counts: completed={completed_files}, processing_failed={processing_failed_files}, baseline_failed={baseline_failed_files}, total_failed={total_failed_files}, evaluating={evaluating_files}, total={files_count}")
         
         # Determine overall test run status based on document and evaluation states
-        if completed_files == files_count and files_count > 0:
+        if completed_files == files_count and files_count > 0 and total_failed_files == 0:
             overall_status = 'COMPLETE'
-        elif failed_files > 0 and (completed_files + failed_files + evaluating_files) == files_count:
+        elif total_failed_files > 0 and (completed_files + total_failed_files + evaluating_files) == files_count:
             overall_status = 'PARTIAL_COMPLETE'
         elif evaluating_files > 0:
             overall_status = 'EVALUATING'
-        elif completed_files + failed_files + evaluating_files < files_count:
+        elif completed_files + total_failed_files + evaluating_files < files_count:
             overall_status = 'RUNNING'
         else:
             overall_status = item.get('Status', 'RUNNING')
@@ -370,7 +374,7 @@ def get_test_run_status(test_run_id):
                         ':status': overall_status,
                         ':completedAt': datetime.utcnow().isoformat() + 'Z' if overall_status in ['COMPLETE', 'PARTIAL_COMPLETE'] else item.get('CompletedAt'),
                         ':completedFiles': completed_files,
-                        ':failedFiles': failed_files
+                        ':failedFiles': total_failed_files
                     }
                 )
                 logger.info(f"Successfully updated test run {test_run_id} status to {overall_status}")
@@ -384,7 +388,7 @@ def get_test_run_status(test_run_id):
             'status': overall_status,
             'filesCount': files_count,
             'completedFiles': completed_files,
-            'failedFiles': failed_files,
+            'failedFiles': total_failed_files,
             'evaluatingFiles': evaluating_files,
             'progress': progress
         }
