@@ -101,7 +101,7 @@ def publish_templates():
         raise Exception("Failed to extract template URL from publish output")
 
 
-def deploy_test_and_cleanup_pattern(stack_prefix, pattern_config, admin_email, template_url):
+def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url):
     """Deploy and test a specific IDP pattern"""
     pattern_name = pattern_config["name"]
     pattern_id = pattern_config["id"]
@@ -319,83 +319,83 @@ def generate_publish_failure_summary(publish_error):
         response_body = json.loads(response['body'].read())
         summary = response_body['content'][0]['text']
         
-        print(summary)
+        return summary
         
     except Exception as e:
-        print(f"⚠️ Failed to generate build failure summary: {e}")
+        return f"⚠️ Failed to generate build failure summary: {e}"
+
+
+def get_cloudformation_logs(stack_name):
+    """Get CloudFormation stack events for error analysis"""
+    try:
+        cf_client = boto3.client('cloudformation')
+        response = cf_client.describe_stack_events(StackName=stack_name)
+        events = response.get('StackEvents', [])
+        
+        # Filter for failed events
+        failed_events = []
+        for event in events:
+            status = event.get('ResourceStatus', '')
+            if 'FAILED' in status or 'ROLLBACK' in status:
+                failed_events.append({
+                    'timestamp': event.get('Timestamp', '').isoformat() if event.get('Timestamp') else '',
+                    'resource_type': event.get('ResourceType', ''),
+                    'logical_id': event.get('LogicalResourceId', ''),
+                    'status': status,
+                    'reason': event.get('ResourceStatusReason', 'No reason provided')
+                })
+        
+        return failed_events
+        
+    except Exception as e:
+        return [{'error': f"Failed to retrieve CloudFormation logs: {str(e)}"}]
 
 
 def generate_deployment_summary(deployment_results, stack_prefix, template_url):
-    """
-    Generate deployment summary using Bedrock API
-    
-    Args:
-        deployment_results: List of deployment result dictionaries
-        stack_prefix: Stack prefix used for deployment
-        template_url: Template URL used for deployment
-    
-    Returns:
-        str: Generated summary text
-    """
+    """Generate deployment summary using Bedrock API with CodeBuild and CloudFormation logs"""
     try:
         # Get CodeBuild logs
         deployment_logs = get_codebuild_logs()
         
-        # Check if log retrieval failed
-        if deployment_logs.startswith("Failed to retrieve CodeBuild logs"):
-            raise Exception("CodeBuild logs unavailable")
-        
         # Initialize Bedrock client
         bedrock = boto3.client('bedrock-runtime')
         
-        # Create prompt for Bedrock with actual logs
+        # Create prompt for Bedrock with CodeBuild logs first
         prompt = dedent(f"""
-        You are an AWS deployment analyst. Analyze the following deployment logs and create a concise summary in table format.
+        You are an AWS deployment analyst. Analyze deployment failures and determine root cause.
 
         Deployment Information:
-        - Timestamp: {datetime.now().isoformat()}
         - Stack Prefix: {stack_prefix}
         - Template URL: {template_url}
         - Total Patterns: {len(deployment_results)}
 
-        Raw Deployment Logs:
-        {deployment_logs}
-
-        Pattern Results Summary:
+        Pattern Results:
         {json.dumps(deployment_results, indent=2)}
 
-        Create a summary with clean bullet format:
+        CodeBuild Logs:
+        {deployment_logs}
+
+        FIRST: Analyze CodeBuild logs for clear error messages. If root cause is unclear from CodeBuild logs, respond with "NEED_CF_LOGS" and list the failed stack names.
+
+        IF root cause is clear from CodeBuild logs, create summary:
 
         🚀 DEPLOYMENT RESULTS
 
         📋 Pattern Status:
-        • Pattern 1 - BDA: SUCCESS - Stack deployed successfully (120s)
-        • Pattern 2 - OCR: FAILED - CloudFormation CREATE_FAILED (89s)  
-        • Pattern 3 - UDOP: SKIPPED - Not selected for deployment
+        • Pattern 1 - BDA: FAILED - Stack deployment timeout (300s)
+        • Pattern 2 - OCR: SUCCESS - Stack deployed successfully (120s)
 
         🔍 Root Cause Analysis:
-        • Analyze actual deployment results from Pattern Results Summary
-        • Extract specific CloudFormation error messages and resource names
-        • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events
-        • Check for smoke test failures and their underlying causes
-        • Report Lambda function errors, API Gateway issues, IAM permissions
+        • Extract specific error messages from CodeBuild logs
+        • Focus on deployment failures, timeout errors, permission issues
+        • Check for CLI command failures and their error messages
 
-        💡 Recommendations:
-        • Use actual pattern names and statuses from deployment_results
-        • Include specific CloudFormation stack names and error details
-        • Provide smoke test error details and remediation steps
+        💡 Fix Commands:
+        • Provide specific commands to resolve identified issues
 
-        Keep each bullet point under 75 characters. Use clean text format.
+        Keep each bullet point under 75 characters.
         
-        IMPORTANT: Respond ONLY with clean bullet format above. No tables or boxes.
-
-        Requirements:
-        - Analyze ALL error messages in logs for specific technical details
-        - Include exact CloudFormation/Lambda error messages and specific commands to fix
-        - Extract specific error patterns like "CREATE_FAILED", "UPDATE_FAILED", "ROLLBACK"
-        - Provide detailed technical root cause analysis with specific resource names
-        - Include actionable recommendations with exact terminal commands
-        
+        IMPORTANT: If CodeBuild logs don't show clear root cause, respond ONLY with "NEED_CF_LOGS: stack1,stack2"
         """)
         
         # Call Bedrock API
@@ -404,56 +404,81 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 4000,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+                "messages": [{"role": "user", "content": prompt}]
             })
         )
         
-        # Parse response
         response_body = json.loads(response['body'].read())
-        summary = response_body['content'][0]['text']
+        initial_summary = response_body['content'][0]['text']
         
-        print(summary)
+        # Check if we need CloudFormation logs
+        if initial_summary.startswith("NEED_CF_LOGS"):
+            # Get CloudFormation logs for failed stacks
+            cf_logs = {}
+            for result in deployment_results:
+                if not result["success"] and result.get("stack_name") and result["stack_name"] != "N/A":
+                    cf_logs[result["stack_name"]] = get_cloudformation_logs(result["stack_name"])
+            
+            # Second Bedrock call with CloudFormation logs
+            cf_prompt = dedent(f"""
+            CodeBuild logs were unclear. Analyze CloudFormation logs for root cause.
+
+            Pattern Results:
+            {json.dumps(deployment_results, indent=2)}
+
+            CloudFormation Error Events:
+            {json.dumps(cf_logs, indent=2)}
+
+            Create detailed analysis:
+
+            🚀 DEPLOYMENT RESULTS
+
+            📋 Pattern Status:
+            • Pattern 1 - BDA: FAILED - Lambda CREATE_FAILED (IAM permissions)
+            • Pattern 2 - OCR: SUCCESS - Stack deployed successfully
+
+            🔍 CloudFormation Root Cause:
+            • Extract exact resource names and error messages
+            • Identify specific failed resources (Lambda, IAM, S3, DynamoDB)
+            • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events
+            • Analyze ResourceStatusReason for technical details
+
+            💡 Fix Commands:
+            • Provide specific AWS CLI commands to fix issues
+            • Include IAM policy updates, resource cleanup commands
+
+            Keep each bullet point under 75 characters.
+            """)
+            
+            cf_response = bedrock.invoke_model(
+                modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 4000,
+                    "messages": [{"role": "user", "content": cf_prompt}]
+                })
+            )
+            
+            cf_response_body = json.loads(cf_response['body'].read())
+            return cf_response_body['content'][0]['text']
         
-        return summary
+        return initial_summary
         
     except Exception as e:
-        print(f"⚠️ Failed to generate Bedrock summary: {e}")
         # Manual summary when Bedrock unavailable
         successful = sum(1 for r in deployment_results if r["success"])
         total = len(deployment_results)
         
-        manual_summary = dedent(f"""
-        DEPLOYMENT SUMMARY REPORT (MANUAL)
-        ==================================
+        return dedent(f"""
+        DEPLOYMENT SUMMARY (MANUAL)
         
-        Timestamp: {datetime.now().isoformat()}
-        Stack Prefix: {stack_prefix}
-        Template URL: {template_url}
-        
-        Overall Status: {'SUCCESS' if successful == total else 'PARTIAL_FAILURE' if successful > 0 else 'FAILURE'}
         Successful Patterns: {successful}/{total}
         
         Pattern Results:
+        {chr(10).join(f"- {r['pattern_name']}: {'SUCCESS' if r['success'] else 'FAILED'}" for r in deployment_results)}
+        
+        Error: Failed to generate AI analysis: {e}
         """)
-        
-        for result in deployment_results:
-            status = "✅ SUCCESS" if result["success"] else "❌ FAILED"
-            manual_summary += f"- {result['pattern_name']}: {status}\n"
-        
-        if successful < total:
-            manual_summary += "\nRecommendation: Review failed patterns and retry deployment.\n"
-        
-        print("📊 Deployment Summary (Manual):")
-        print("=" * 80)
-        print(manual_summary)
-        print("=" * 80)
-        
-        return manual_summary
 
 def cleanup_stack(stack_name, pattern_name):
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
@@ -539,14 +564,14 @@ def main():
     all_success = publish_success
     deployment_results = []
 
-    # Step 2: Deploy, test, and cleanup patterns concurrently (only if publish succeeded)
+    # Step 2: Deploy and test patterns concurrently (only if publish succeeded)
     if publish_success:
         print("🚀 Starting concurrent deployment of all patterns...")
         with ThreadPoolExecutor(max_workers=len(DEPLOY_PATTERNS)) as executor:
-            # Submit all deployment tasks
+            # Submit all deployment tasks (without cleanup)
             future_to_pattern = {
                 executor.submit(
-                    deploy_test_and_cleanup_pattern,
+                    deploy_and_test_pattern,
                     stack_prefix,
                     pattern_config,
                     admin_email,
@@ -555,7 +580,7 @@ def main():
                 for pattern_config in DEPLOY_PATTERNS
             }
 
-            # Collect results as they complete (cleanup happens within each pattern)
+            # Collect results as they complete
             for future in as_completed(future_to_pattern):
                 pattern_config = future_to_pattern[future]
                 try:
@@ -586,15 +611,30 @@ def main():
             "error": "Failed to publish templates to S3"
         })
 
-    # Step 3: Generate deployment summary using Bedrock (ALWAYS run for analysis)
-    print("\n🤖 Generating deployment summary with Bedrock...")
+    # Step 3: Generate deployment summary using Bedrock (but don't print yet)
+    print("\n🤖 Analyzing deployment results...")
+    ai_summary = None
     try:
         if not publish_success:
-            generate_publish_failure_summary(publish_error)
+            ai_summary = generate_publish_failure_summary(publish_error)
         else:
-            generate_deployment_summary(deployment_results, stack_prefix, template_url)
+            ai_summary = generate_deployment_summary(deployment_results, stack_prefix, template_url)
     except Exception as e:
-        print(f"⚠️ Failed to generate deployment summary: {e}")
+        ai_summary = f"⚠️ Failed to generate deployment summary: {e}"
+
+    # Step 4: Cleanup stacks after analysis
+    print("\n🧹 Starting cleanup of deployed stacks...")
+    for result in deployment_results:
+        if result.get("stack_name") and result["stack_name"] != "N/A":
+            cleanup_stack(result["stack_name"], result["pattern_name"])
+
+    # Step 5: Print AI analysis results at the end
+    print("\n" + "="*80)
+    print("🤖 DEPLOYMENT ANALYSIS SUMMARY")
+    print("="*80)
+    if ai_summary:
+        print(ai_summary)
+    print("="*80)
 
     # Check final status after all cleanups are done
     if all_success:
