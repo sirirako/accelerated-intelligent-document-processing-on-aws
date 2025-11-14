@@ -19,7 +19,7 @@ SPDX-License-Identifier: MIT-0
 - Fix #133 - Cast topK to int to defend against transient ValidationException exceptions
 - Fix #132 - TRACKING_TABLE environment variable needed in EvaluationFunction
 - Fix #131 - HITL functions broken post docker migration
-
+- Fix #130 - Enable EU models for Agent Configuration and KB Configuration
 
 ## [0.4.2]
 
