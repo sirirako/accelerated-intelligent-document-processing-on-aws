@@ -295,6 +295,83 @@ class SticklerConfigMapper:
         )
 
     @classmethod
+    def _coerce_json_schema_types(
+        cls, schema: Dict[str, Any], field_path: str = ""
+    ) -> None:
+        """
+        Coerce string values to proper JSON Schema types.
+
+        This fixes common issues where numeric constraints are provided as strings
+        instead of numbers (e.g., maxItems: '7' should be maxItems: 7).
+
+        Args:
+            schema: Schema to coerce (modified in-place)
+            field_path: Current path for error messages
+        """
+        if not isinstance(schema, dict):
+            return
+
+        # Numeric constraints that must be integers
+        INTEGER_CONSTRAINTS = [
+            "maxItems",
+            "minItems",
+            "maxLength",
+            "minLength",
+            "maxProperties",
+            "minProperties",
+            "multipleOf",
+        ]
+
+        # Numeric constraints that must be numbers (int or float)
+        NUMBER_CONSTRAINTS = [
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+        ]
+
+        for key, value in list(schema.items()):
+            # Coerce integer constraints
+            if key in INTEGER_CONSTRAINTS and isinstance(value, str):
+                try:
+                    schema[key] = int(value)
+                    logger.info(
+                        f"Field '{field_path}': Coerced {key} from string '{value}' to integer {schema[key]}"
+                    )
+                except ValueError:
+                    logger.error(
+                        f"Field '{field_path}': Cannot coerce {key}='{value}' to integer. "
+                        f"This will cause validation errors."
+                    )
+
+            # Coerce number constraints
+            elif key in NUMBER_CONSTRAINTS and isinstance(value, str):
+                try:
+                    schema[key] = float(value)
+                    logger.info(
+                        f"Field '{field_path}': Coerced {key} from string '{value}' to float {schema[key]}"
+                    )
+                except ValueError:
+                    logger.error(
+                        f"Field '{field_path}': Cannot coerce {key}='{value}' to number. "
+                        f"This will cause validation errors."
+                    )
+
+        # Recursively process nested schemas
+        if SCHEMA_PROPERTIES in schema:
+            for prop_name, prop_schema in schema[SCHEMA_PROPERTIES].items():
+                prop_path = f"{field_path}.{prop_name}" if field_path else prop_name
+                cls._coerce_json_schema_types(prop_schema, prop_path)
+
+        if SCHEMA_ITEMS in schema:
+            items_path = f"{field_path}[]" if field_path else "items"
+            cls._coerce_json_schema_types(schema[SCHEMA_ITEMS], items_path)
+
+        if "$defs" in schema:
+            for def_name, def_schema in schema["$defs"].items():
+                cls._coerce_json_schema_types(def_schema, f"$defs.{def_name}")
+
+    @classmethod
     def _translate_extensions_in_schema(
         cls, schema: Dict[str, Any], field_path: str = ""
     ) -> Dict[str, Any]:
@@ -322,6 +399,9 @@ class SticklerConfigMapper:
         """
         if not isinstance(schema, dict):
             return schema
+
+        # Coerce types FIRST, before any other processing
+        cls._coerce_json_schema_types(schema, field_path)
 
         # If this is an object with properties but no required array, add empty one
         # This makes all fields optional, allowing None values
