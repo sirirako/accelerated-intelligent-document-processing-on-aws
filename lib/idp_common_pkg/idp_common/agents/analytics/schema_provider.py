@@ -129,6 +129,7 @@ def get_evaluation_tables_description() -> str:
 - `f1_score` (double): F1 score (0-1)
 - `false_alarm_rate` (double): False alarm rate (0-1)
 - `false_discovery_rate` (double): False discovery rate (0-1)
+- `weighted_overall_score` (double): Weighted overall score (0-1)
 - `execution_time` (double): Time taken to evaluate (seconds)
 
 **Partitioned by**: date (YYYY-MM-DD format)
@@ -147,6 +148,7 @@ def get_evaluation_tables_description() -> str:
 - `f1_score` (double): Section F1 score (0-1)
 - `false_alarm_rate` (double): Section false alarm rate (0-1)
 - `false_discovery_rate` (double): Section false discovery rate (0-1)
+- `weighted_overall_score` (double): Weighted overall score (0-1)
 - `evaluation_date` (timestamp): When the evaluation was performed
 
 **Partitioned by**: date (YYYY-MM-DD format)
@@ -168,6 +170,7 @@ def get_evaluation_tables_description() -> str:
 - `evaluation_method` (string): Method used for comparison (EXACT, FUZZY, SEMANTIC, etc.)
 - `confidence` (string): Confidence score from extraction process
 - `confidence_threshold` (string): Confidence threshold used for evaluation
+- `weight` (double): Weight assigned to this attribute in the evaluation
 - `evaluation_date` (timestamp): When the evaluation was performed
 
 **Partitioned by**: date (YYYY-MM-DD format)

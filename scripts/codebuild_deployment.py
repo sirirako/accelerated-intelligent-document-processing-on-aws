@@ -51,7 +51,7 @@ def run_command(cmd, check=True):
         print(result.stderr, file=sys.stderr)
     if check and result.returncode != 0:
         print(f"Command failed with exit code {result.returncode}")
-        sys.exit(1)
+        raise Exception(f"Command failed: {cmd}")
     return result
 
 
@@ -59,8 +59,7 @@ def get_env_var(name, default=None):
     """Get environment variable with optional default"""
     value = os.environ.get(name, default)
     if value is None:
-        print(f"Error: Environment variable {name} is required")
-        sys.exit(1)
+        raise Exception(f"Environment variable {name} is required")
     return value
 
 
@@ -99,7 +98,7 @@ def publish_templates():
         return template_url
     else:
         print("❌ Failed to extract template URL from publish output")
-        sys.exit(1)
+        raise Exception("Failed to extract template URL from publish output")
 
 
 def deploy_test_and_cleanup_pattern(stack_prefix, pattern_config, admin_email, template_url):
@@ -267,6 +266,65 @@ def get_codebuild_logs():
         return f"Failed to retrieve CodeBuild logs: {str(e)}"
 
 
+def generate_publish_failure_summary(publish_error):
+    """Generate summary for publish/build failures"""
+    try:
+        bedrock = boto3.client('bedrock-runtime')
+        
+        prompt = dedent(f"""
+        You are a build system analyst. Analyze this publish/build failure and provide specific technical guidance.
+
+        Publish Error: {publish_error}
+        
+        Build Logs:
+        {get_codebuild_logs()}
+
+        ANALYZE THE LOGS FOR: npm ci errors, package-lock.json sync issues, missing @esbuild packages, UI build failures
+
+        Create a summary focused on BUILD/PUBLISH issues with bullet points:
+
+        🔧 BUILD FAILURE ANALYSIS
+
+        📋 Component Status:
+        • UI Build: FAILED - npm dependency issues
+        • Lambda Build: SUCCESS - All patterns built correctly
+        • Template Publish: FAILED - S3 access denied
+
+        🔍 Technical Root Cause:
+        • Extract exact npm/pip error messages from logs
+        • Identify specific missing packages or version conflicts
+        • Focus on build-time errors, not deployment errors
+        • Check AWS credentials and S3 bucket permissions
+
+        💡 Fix Commands:
+        • Run: cd src/ui && rm package-lock.json && npm install
+        • Check AWS profile: aws configure list --profile <name>
+        • Verify S3 access: aws s3 ls s3://bucket-name --profile <name>
+        • Update package-lock.json and commit changes
+
+        Keep each bullet point under 75 characters. Use sub-bullets for details.
+        
+        IMPORTANT: Respond ONLY with the bullet format above. Do not include any text before or after.
+        """)
+        
+        response = bedrock.invoke_model(
+            modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 2000,
+                "messages": [{"role": "user", "content": prompt}]
+            })
+        )
+        
+        response_body = json.loads(response['body'].read())
+        summary = response_body['content'][0]['text']
+        
+        print(summary)
+        
+    except Exception as e:
+        print(f"⚠️ Failed to generate build failure summary: {e}")
+
+
 def generate_deployment_summary(deployment_results, stack_prefix, template_url):
     """
     Generate deployment summary using Bedrock API
@@ -306,38 +364,38 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         Pattern Results Summary:
         {json.dumps(deployment_results, indent=2)}
 
-        Create a summary with this EXACT format:
+        Create a summary with clean bullet format:
 
-        ┌─────────────────────────────────────────────────────────────────────────────┐
-        │                              DEPLOYMENT RESULTS                             │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ Pattern               │ Status    │ Duration  │ Key Metrics               │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ Pattern 1 - BDA       │ SUCCESS   │ 15m 30s   │ 28 functions validated    │
-        │ Pattern 2 - OCR       │ SUCCESS   │ 12m 45s   │ All tests passed          │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │                              ROOT CAUSE ANALYSIS                            │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ • CloudWatch log cleanup failed due to concatenated log group names        │
-        │ • AWS CLI text output parsing caused parameter validation errors           │
-        │ • Provide specific error messages, resource names, and failure points      │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │                              RECOMMENDATIONS                                │
-        ├─────────────────────────────────────────────────────────────────────────────┤
-        │ • Fix CloudWatch log cleanup to use JSON output instead of text            │
-        │ • Add proper error handling for resource cleanup operations                 │
-        └─────────────────────────────────────────────────────────────────────────────┘
+        🚀 DEPLOYMENT RESULTS
+
+        📋 Pattern Status:
+        • Pattern 1 - BDA: SUCCESS - Stack deployed successfully (120s)
+        • Pattern 2 - OCR: FAILED - CloudFormation CREATE_FAILED (89s)  
+        • Pattern 3 - UDOP: SKIPPED - Not selected for deployment
+
+        🔍 Root Cause Analysis:
+        • Analyze actual deployment results from Pattern Results Summary
+        • Extract specific CloudFormation error messages and resource names
+        • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events
+        • Check for smoke test failures and their underlying causes
+        • Report Lambda function errors, API Gateway issues, IAM permissions
+
+        💡 Recommendations:
+        • Use actual pattern names and statuses from deployment_results
+        • Include specific CloudFormation stack names and error details
+        • Provide smoke test error details and remediation steps
+
+        Keep each bullet point under 75 characters. Use clean text format.
+        
+        IMPORTANT: Respond ONLY with clean bullet format above. No tables or boxes.
 
         Requirements:
-        - Use EXACT table format above
-        - For failures: provide detailed root cause analysis for ALL failed components (publish, deployments, etc.)
-        - Analyze publish/build logs to determine root cause of template publishing errors
-        - Include specific error messages, resource names, and exact failure points from logs
-        - Include sufficient technical details to understand WHY each component failed
-        - Maximum 2-3 bullet points for recommendations
-        - Keep each line under 75 characters
-        - Extract actual error messages and resource identifiers from logs
-        - For publish failures: check S3 permissions, npm/pip errors, CDK issues, template syntax
+        - Analyze ALL error messages in logs for specific technical details
+        - Include exact CloudFormation/Lambda error messages and specific commands to fix
+        - Extract specific error patterns like "CREATE_FAILED", "UPDATE_FAILED", "ROLLBACK"
+        - Provide detailed technical root cause analysis with specific resource names
+        - Include actionable recommendations with exact terminal commands
+        
         """)
         
         # Call Bedrock API
@@ -359,23 +417,7 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         response_body = json.loads(response['body'].read())
         summary = response_body['content'][0]['text']
         
-        try:
-            from rich.console import Console
-            from rich.panel import Panel
-            
-            console = Console()
-            console.print(Panel(
-                summary, 
-                title="🤖 AI Deployment Analysis", 
-                border_style="green",
-                padding=(1, 2)
-            ))
-        except ImportError:
-            # Fallback to plain text if Rich not available
-            print("📊 Deployment Summary Generated:")
-            print("=" * 80)
-            print(summary)
-            print("=" * 80)
+        print(summary)
         
         return summary
         
@@ -412,32 +454,6 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         print("=" * 80)
         
         return manual_summary
-
-
-def delete_versioned_bucket(bucket_name):
-    """Delete all versions and delete markers from a versioned S3 bucket, then delete the bucket."""
-    import boto3
-    try:
-        s3 = boto3.client('s3')
-        paginator = s3.get_paginator('list_object_versions')
-        
-        for page in paginator.paginate(Bucket=bucket_name):
-            # Delete object versions
-            if 'Versions' in page:
-                for version in page['Versions']:
-                    s3.delete_object(Bucket=bucket_name, Key=version['Key'], VersionId=version['VersionId'])
-            
-            # Delete delete markers
-            if 'DeleteMarkers' in page:
-                for marker in page['DeleteMarkers']:
-                    s3.delete_object(Bucket=bucket_name, Key=marker['Key'], VersionId=marker['VersionId'])
-        
-        # Delete the bucket
-        s3.delete_bucket(Bucket=bucket_name)
-        return True
-    except Exception:
-        return False
-
 
 def cleanup_stack(stack_name, pattern_name):
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
@@ -513,10 +529,12 @@ def main():
     try:
         template_url = publish_templates()
         publish_success = True
+        publish_error = None
     except Exception as e:
         print(f"❌ Publish failed: {e}")
         template_url = "N/A - Publish failed"
         publish_success = False
+        publish_error = str(e)
 
     all_success = publish_success
     deployment_results = []
@@ -571,7 +589,10 @@ def main():
     # Step 3: Generate deployment summary using Bedrock (ALWAYS run for analysis)
     print("\n🤖 Generating deployment summary with Bedrock...")
     try:
-        generate_deployment_summary(deployment_results, stack_prefix, template_url)
+        if not publish_success:
+            generate_publish_failure_summary(publish_error)
+        else:
+            generate_deployment_summary(deployment_results, stack_prefix, template_url)
     except Exception as e:
         print(f"⚠️ Failed to generate deployment summary: {e}")
 

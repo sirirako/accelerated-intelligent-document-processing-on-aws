@@ -788,6 +788,9 @@ agents:
     parameters:
       max_log_events: 5
       time_range_hours_default: 24
+
+  chat_companion:
+    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
 pricing:
   - name: textract/detect_document_text
     units:

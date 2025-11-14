@@ -22,6 +22,9 @@ from ..config import (
 
 logger = logging.getLogger(__name__)
 
+# X-Ray service graph limit
+MAX_XRAY_SERVICE_GRAPH_HOURS = 1
+
 
 @tool
 def analyze_document_trace(document_id: str) -> Dict[str, Any]:
@@ -607,6 +610,14 @@ def _analyze_service_performance(
     Analyze X-Ray service map for performance issues.
     """
     try:
+        # Check X-Ray service graph limit
+        time_diff = end_time - start_time
+        if time_diff > timedelta(hours=MAX_XRAY_SERVICE_GRAPH_HOURS):
+            start_time = end_time - timedelta(hours=MAX_XRAY_SERVICE_GRAPH_HOURS)
+            logger.info(
+                f"Time range limited to {MAX_XRAY_SERVICE_GRAPH_HOURS} hours for X-Ray service graph analysis"
+            )
+
         response = xray_client.get_service_graph(StartTime=start_time, EndTime=end_time)
         services = response.get("Services", [])
 

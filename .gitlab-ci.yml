@@ -43,14 +43,15 @@ developer_tests:
     - uv venv .venv
     - source .venv/bin/activate
     # Install Node.js and npm for basedpyright
-    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     - apt-get install -y nodejs
+    - npm install -g npm@11
     - npm install -g basedpyright
     - uv pip install ruff
     # Install dependencies needed by publish.py for test imports
     - uv pip install typer rich boto3
     # Install test dependencies
-    - cd lib/idp_common_pkg && uv pip install -e ".[test]" && cd ../..
+    - cd lib/idp_common_pkg && uv pip install -e ".[test,evaluation]" && cd ../..
 
   script:
     - make lint-cicd
@@ -163,15 +164,20 @@ integration_tests:
           
           # Save full logs to artifact
           echo "$FULL_LOGS" > codebuild_logs.txt
-          echo "📁 Full deployment logs saved to: codebuild_logs.txt"
-          
+          echo -e "\033[1;36m📁 Full deployment logs saved to: \033[1;33mcodebuild_logs.txt\033[0m"
+          echo -e "\033[1;34m🔗 View logs: ${CI_JOB_URL}/artifacts/external_file/codebuild_logs.txt\033[0m"
           # Extract and show deployment summary (AI or manual)
           echo ""
-          SUMMARY=$(echo "$FULL_LOGS" | grep -A 100 "🤖 Generating deployment summary with Bedrock..." | head -100)
+          SUMMARY=$(echo "$FULL_LOGS" | sed -n '/🤖 Generating deployment summary with Bedrock.../,$p' | sed 's/^\t*//' | grep -v '\[Container\]' | grep -v 'Phase complete:' | grep -v 'Phase context status code:' | grep -v 'Entering phase' || true)
           
           if [ -n "$SUMMARY" ]; then
-            echo "🤖 Deployment Analysis:"
-            echo "$SUMMARY"
+            echo "┌─────────────────────────────────────────────────────────────────────────┐"
+            echo "│                        DEPLOYMENT SUMMARY                               │"
+            echo "├─────────────────────────────────────────────────────────────────────────┤"
+            echo "$SUMMARY" | while IFS= read -r line; do
+              printf "│ %-71s │\n" "$line"
+            done
+            echo "└─────────────────────────────────────────────────────────────────────────┘"
           else
             echo "⚠️ No deployment summary found - check codebuild_logs.txt for details"
           fi
