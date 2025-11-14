@@ -228,10 +228,6 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
             "error": f"Deployment/testing failed: {str(e)}"
         }
 
-    # Always cleanup the stack regardless of success/failure
-    finally:
-        cleanup_stack(stack_name, pattern_name)
-    
     return success_result
 
 
@@ -480,7 +476,8 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         Error: Failed to generate AI analysis: {e}
         """)
 
-def cleanup_stack(stack_name, pattern_name):
+def cleanup_single_stack(stack_name, pattern_name):
+    """Clean up a single stack"""
     print(f"[{pattern_name}] Cleaning up: {stack_name}")
     try:
         # Check stack status first
@@ -538,6 +535,32 @@ def cleanup_stack(stack_name, pattern_name):
     except Exception as e:
         print(f"[{pattern_name}] ⚠️ Cleanup failed: {e}")
 
+
+def cleanup_stacks(deployment_results):
+    """Clean up multiple stacks in parallel"""
+    stacks_to_cleanup = [
+        (result["stack_name"], result["pattern_name"])
+        for result in deployment_results
+        if result.get("stack_name") and result["stack_name"] != "N/A"
+    ]
+    
+    if not stacks_to_cleanup:
+        print("No stacks to cleanup")
+        return
+    
+    print(f"🧹 Starting parallel cleanup of {len(stacks_to_cleanup)} stacks...")
+    
+    with ThreadPoolExecutor(max_workers=len(stacks_to_cleanup)) as executor:
+        futures = [
+            executor.submit(cleanup_single_stack, stack_name, pattern_name)
+            for stack_name, pattern_name in stacks_to_cleanup
+        ]
+        
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"⚠️ Cleanup task failed: {e}")
 
 def main():
     """Main execution function"""
@@ -612,7 +635,6 @@ def main():
         })
 
     # Step 3: Generate deployment summary using Bedrock (but don't print yet)
-    print("\n🤖 Generating deployment summary with Bedrock...")
     ai_summary = None
     try:
         if not publish_success:
@@ -623,12 +645,10 @@ def main():
         ai_summary = f"⚠️ Failed to generate deployment summary: {e}"
 
     # Step 4: Cleanup stacks after analysis
-    print("\n🧹 Starting cleanup of deployed stacks...")
-    for result in deployment_results:
-        if result.get("stack_name") and result["stack_name"] != "N/A":
-            cleanup_stack(result["stack_name"], result["pattern_name"])
+    cleanup_stacks(deployment_results)
 
     # Step 5: Print AI analysis results at the end
+    print("\n🤖 Generating deployment summary with Bedrock...")
     if ai_summary:
         print(ai_summary)
 
