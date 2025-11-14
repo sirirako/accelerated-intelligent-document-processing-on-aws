@@ -612,7 +612,7 @@ def main():
         })
 
     # Step 3: Generate deployment summary using Bedrock (but don't print yet)
-    print("\n🤖 Analyzing deployment results...")
+    print("\n🤖 Generating deployment summary with Bedrock...")
     ai_summary = None
     try:
         if not publish_success:
@@ -629,12 +629,8 @@ def main():
             cleanup_stack(result["stack_name"], result["pattern_name"])
 
     # Step 5: Print AI analysis results at the end
-    print("\n" + "="*80)
-    print("🤖 DEPLOYMENT ANALYSIS SUMMARY")
-    print("="*80)
     if ai_summary:
         print(ai_summary)
-    print("="*80)
 
     # Check final status after all cleanups are done
     if all_success:
