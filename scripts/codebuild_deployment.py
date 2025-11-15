@@ -409,13 +409,18 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         
         # Check if we need CloudFormation logs
         if initial_summary.startswith("NEED_CF_LOGS"):
+            print("🔍 Getting CloudFormation logs for detailed analysis...")
             # Get CloudFormation logs for failed stacks
             cf_logs = {}
             for result in deployment_results:
                 if not result["success"] and result.get("stack_name") and result["stack_name"] != "N/A":
+                    print(f"📋 Getting CF logs for: {result['stack_name']}")
                     cf_logs[result["stack_name"]] = get_cloudformation_logs(result["stack_name"])
             
+            print(f"✅ Retrieved CF logs for {len(cf_logs)} stacks")
+            
             # Second Bedrock call with CloudFormation logs
+            print("🤖 Making second Bedrock call with CF logs...")
             cf_prompt = dedent(f"""
             CodeBuild logs were unclear. Analyze CloudFormation logs for root cause.
 
@@ -456,6 +461,7 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             )
             
             cf_response_body = json.loads(cf_response['body'].read())
+            print("✅ Second Bedrock call completed successfully")
             return cf_response_body['content'][0]['text']
         
         return initial_summary
