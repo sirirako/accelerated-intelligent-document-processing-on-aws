@@ -381,7 +381,7 @@ def get_test_run_status(test_run_id):
             except Exception as e:
                 logger.error(f"Failed to auto-update test run {test_run_id} status: {e}")
         
-        progress = (completed_files / files_count * 100) if files_count > 0 else 0
+        progress = ((completed_files + total_failed_files) / files_count * 100) if files_count > 0 else 0
         
         result = {
             'testRunId': test_run_id,
@@ -412,13 +412,14 @@ def _aggregate_test_run_metrics(test_run_id):
     """Aggregate metrics from evaluation reports for all documents in test run"""
     table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
     
-    # Get all documents for this test run
+    # Get all documents for this test run that completed successfully
     items = []
     scan_kwargs = {
-        'FilterExpression': 'begins_with(PK, :pk) AND SK = :sk',
+        'FilterExpression': 'begins_with(PK, :pk) AND SK = :sk AND ObjectStatus = :status',
         'ExpressionAttributeValues': {
             ':pk': f'doc#{test_run_id}/',
-            ':sk': 'none'
+            ':sk': 'none',
+            ':status': 'COMPLETED'
         }
     }
     
