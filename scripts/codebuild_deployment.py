@@ -325,12 +325,29 @@ def get_cloudformation_logs(stack_name):
     """Get CloudFormation stack events for error analysis"""
     try:
         cf_client = boto3.client('cloudformation')
-        response = cf_client.describe_stack_events(StackName=stack_name)
-        events = response.get('StackEvents', [])
+        all_events = []
+        next_token = None
+        
+        # Paginate through all events
+        while True:
+            if next_token:
+                response = cf_client.describe_stack_events(
+                    StackName=stack_name,
+                    NextToken=next_token
+                )
+            else:
+                response = cf_client.describe_stack_events(StackName=stack_name)
+            
+            events = response.get('StackEvents', [])
+            all_events.extend(events)
+            
+            next_token = response.get('NextToken')
+            if not next_token:
+                break
         
         # Filter for failed events
         failed_events = []
-        for event in events:
+        for event in all_events:
             status = event.get('ResourceStatus', '')
             if 'FAILED' in status or 'ROLLBACK' in status:
                 failed_events.append({
