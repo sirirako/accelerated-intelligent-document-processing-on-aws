@@ -325,10 +325,12 @@ def get_cloudformation_logs(stack_name):
     """Get CloudFormation stack events for error analysis"""
     try:
         cf_client = boto3.client('cloudformation')
+        all_failed_events = []
+        
+        # Get events from main stack
         all_events = []
         next_token = None
         
-        # Paginate through all events
         while True:
             if next_token:
                 response = cf_client.describe_stack_events(
@@ -345,20 +347,71 @@ def get_cloudformation_logs(stack_name):
             if not next_token:
                 break
         
-        # Filter for failed events
-        failed_events = []
+        # Filter for failed events and extract nested stack ARNs
+        nested_stack_arns = []
         for event in all_events:
             status = event.get('ResourceStatus', '')
             if 'FAILED' in status or 'ROLLBACK' in status:
-                failed_events.append({
+                all_failed_events.append({
+                    'stack_name': stack_name,
                     'timestamp': event.get('Timestamp', '').isoformat() if event.get('Timestamp') else '',
                     'resource_type': event.get('ResourceType', ''),
                     'logical_id': event.get('LogicalResourceId', ''),
                     'status': status,
                     'reason': event.get('ResourceStatusReason', 'No reason provided')
                 })
+                
+                # Extract nested stack ARN from CREATE_FAILED events
+                if (status == 'CREATE_FAILED' and 
+                    event.get('ResourceType') == 'AWS::CloudFormation::Stack' and
+                    'Embedded stack arn:aws:cloudformation:' in event.get('ResourceStatusReason', '')):
+                    reason = event.get('ResourceStatusReason', '')
+                    start = reason.find('arn:aws:cloudformation:')
+                    end = reason.find(' was not successfully created')
+                    if start != -1 and end != -1:
+                        nested_arn = reason[start:end]
+                        nested_stack_arns.append(nested_arn)
         
-        return failed_events
+        # Get events from nested stacks
+        for nested_arn in nested_stack_arns:
+            try:
+                nested_events = []
+                next_token = None
+                
+                while True:
+                    if next_token:
+                        response = cf_client.describe_stack_events(
+                            StackName=nested_arn,
+                            NextToken=next_token
+                        )
+                    else:
+                        response = cf_client.describe_stack_events(StackName=nested_arn)
+                    
+                    events = response.get('StackEvents', [])
+                    nested_events.extend(events)
+                    
+                    next_token = response.get('NextToken')
+                    if not next_token:
+                        break
+                
+                # Add failed events from nested stack
+                for event in nested_events:
+                    status = event.get('ResourceStatus', '')
+                    if 'FAILED' in status or 'ROLLBACK' in status:
+                        all_failed_events.append({
+                            'stack_name': nested_arn.split('/')[-2],  # Extract stack name from ARN
+                            'timestamp': event.get('Timestamp', '').isoformat() if event.get('Timestamp') else '',
+                            'resource_type': event.get('ResourceType', ''),
+                            'logical_id': event.get('LogicalResourceId', ''),
+                            'status': status,
+                            'reason': event.get('ResourceStatusReason', 'No reason provided')
+                        })
+                        
+            except Exception:
+                # Skip nested stacks we can't access
+                continue
+        
+        return all_failed_events
         
     except Exception as e:
         return [{'error': f"Failed to retrieve CloudFormation logs: {str(e)}"}]
@@ -439,7 +492,7 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             # Second Bedrock call with CloudFormation logs
             print("🤖 Making second Bedrock call with CF logs...")
             cf_prompt = dedent(f"""
-            CodeBuild logs were unclear. Analyze CloudFormation logs for root cause.
+            Analyze CloudFormation error events to determine root cause of deployment failures.
 
             Pattern Results:
             {json.dumps(deployment_results, indent=2)}
@@ -447,23 +500,23 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             CloudFormation Error Events:
             {json.dumps(cf_logs, indent=2)}
 
-            Create detailed analysis:
+            Search through the events and find CREATE_FAILED events. Determine the root cause based on ResourceStatusReason.
+
+            Provide analysis in this format:
 
             🚀 DEPLOYMENT RESULTS
 
             📋 Pattern Status:
-            • Pattern 1 - BDA: FAILED - Lambda CREATE_FAILED (IAM permissions)
-            • Pattern 2 - OCR: SUCCESS - Stack deployed successfully
+            [Determine actual status from the data provided]
 
             🔍 CloudFormation Root Cause:
-            • Extract exact resource names and error messages
-            • Identify specific failed resources (Lambda, IAM, S3, DynamoDB)
-            • Focus on CREATE_FAILED, UPDATE_FAILED, ROLLBACK events
-            • Analyze ResourceStatusReason for technical details
+            • Find CREATE_FAILED events and extract ResourceStatusReason
+            • Identify which specific resources failed to create
+            • Analyze error messages for technical root cause
 
             💡 Fix Commands:
-            • Provide specific AWS CLI commands to fix issues
-            • Include IAM policy updates, resource cleanup commands
+            • Provide specific AWS CLI commands based on actual failures found
+            • Focus on the resources that actually failed
 
             Keep each bullet point under 75 characters.
             """)
@@ -545,6 +598,28 @@ def cleanup_single_stack(stack_name, pattern_name):
                         run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(f'/aws/appsync/apis/{api_id}')}", check=False)
             except json.JSONDecodeError:
                 print(f"[{pattern_name}] Failed to parse AppSync API IDs")
+        
+        # Clean up CloudWatch Logs Resource Policy entries for this stack
+        try:
+            result = run_command("aws logs describe-resource-policies --query 'resourcePolicies[0].policyDocument' --output text", check=False)
+            if result.returncode == 0 and result.stdout.strip():
+                import json
+                policy_doc = json.loads(result.stdout.strip())
+                original_count = len(policy_doc.get('Statement', []))
+                
+                # Remove statements that reference this stack
+                policy_doc['Statement'] = [
+                    stmt for stmt in policy_doc.get('Statement', [])
+                    if stack_name not in stmt.get('Resource', '')
+                ]
+                
+                new_count = len(policy_doc.get('Statement', []))
+                if new_count < original_count:
+                    print(f"[{pattern_name}] Removing {original_count - new_count} CloudWatch Logs policy entries")
+                    updated_policy = json.dumps(policy_doc)
+                    run_command(f"aws logs put-resource-policy --policy-name AWSLogDeliveryWrite20150319 --policy-document '{updated_policy}'", check=False)
+        except Exception as e:
+            print(f"[{pattern_name}] Failed to clean up CloudWatch Logs policy: {e}")
         
         # Clean up CloudWatch Logs Resource Policy only if stack-specific
         result = run_command(f"aws logs describe-resource-policies --query 'resourcePolicies[?contains(policyName, `{stack_name}`)].policyName' --output text", check=False)
