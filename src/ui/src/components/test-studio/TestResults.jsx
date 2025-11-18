@@ -115,6 +115,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [reRunContext, setReRunContext] = useState('');
   const [currentFileCount, setCurrentFileCount] = useState(null);
   const [loadingFileCount, setLoadingFileCount] = useState(false);
+  const [filePattern, setFilePattern] = useState(null);
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -269,10 +270,12 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       if (!testSet?.filePattern) {
         console.log('No test set found or no file pattern for testSetId:', results.testSetId);
         setCurrentFileCount(0);
+        setFilePattern(null);
         return;
       }
 
       console.log('Found file pattern:', testSet.filePattern);
+      setFilePattern(testSet.filePattern);
 
       // Get current file count using the file pattern
       const filesResult = await client.graphql({
@@ -286,6 +289,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     } catch (err) {
       console.error('Failed to fetch current file count:', err);
       setCurrentFileCount(0);
+      setFilePattern(null);
     } finally {
       setLoadingFileCount(false);
     }
@@ -431,6 +435,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         <SpaceBetween size="m">
           <Box>
             <strong>Test Set:</strong> {results?.testSetName || 'N/A'}
+            <br />
+            <strong>File Pattern:</strong> {filePattern || 'N/A'}
             <br />
             <strong>Current Files:</strong>{' '}
             {loadingFileCount ? 'Loading...' : currentFileCount !== null ? `${currentFileCount} files` : 'N/A'}
