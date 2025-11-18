@@ -117,6 +117,47 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [loadingFileCount, setLoadingFileCount] = useState(false);
   const [filePattern, setFilePattern] = useState(null);
 
+  const fetchCurrentFileCount = async () => {
+    if (!results?.testSetId) return;
+
+    setLoadingFileCount(true);
+    try {
+      // Get all test sets and find the matching one
+      const testSetsResult = await client.graphql({
+        query: GET_TEST_SETS,
+      });
+
+      const testSets = testSetsResult.data.getTestSets || [];
+      const testSet = testSets.find((ts) => ts.id === results.testSetId);
+
+      if (!testSet?.filePattern) {
+        console.log('No test set found or no file pattern for testSetId:', results.testSetId);
+        setCurrentFileCount(0);
+        setFilePattern(null);
+        return;
+      }
+
+      console.log('Found file pattern:', testSet.filePattern);
+      setFilePattern(testSet.filePattern);
+
+      // Get current file count using the file pattern
+      const filesResult = await client.graphql({
+        query: LIST_INPUT_BUCKET_FILES,
+        variables: { filePattern: testSet.filePattern },
+      });
+
+      const files = filesResult.data.listInputBucketFiles || [];
+      console.log('Found files:', files.length);
+      setCurrentFileCount(files.length);
+    } catch (err) {
+      console.error('Failed to fetch current file count:', err);
+      setCurrentFileCount(0);
+      setFilePattern(null);
+    } finally {
+      setLoadingFileCount(false);
+    }
+  };
+
   useEffect(() => {
     const fetchResults = async () => {
       try {
@@ -136,6 +177,12 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
     fetchResults();
   }, [testRunId]);
+
+  useEffect(() => {
+    if (results?.testSetId) {
+      fetchCurrentFileCount();
+    }
+  }, [results]);
 
   if (loading) return <ProgressBar status="in-progress" label="Loading test results..." />;
   if (error) return <Box>Error loading test results: {error}</Box>;
@@ -254,54 +301,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     console.log('=== handleReRun END ===');
   };
 
-  const fetchCurrentFileCount = async () => {
-    if (!results?.testSetId) return;
-
-    setLoadingFileCount(true);
-    try {
-      // Get all test sets and find the matching one
-      const testSetsResult = await client.graphql({
-        query: GET_TEST_SETS,
-      });
-
-      const testSets = testSetsResult.data.getTestSets || [];
-      const testSet = testSets.find((ts) => ts.id === results.testSetId);
-
-      if (!testSet?.filePattern) {
-        console.log('No test set found or no file pattern for testSetId:', results.testSetId);
-        setCurrentFileCount(0);
-        setFilePattern(null);
-        return;
-      }
-
-      console.log('Found file pattern:', testSet.filePattern);
-      setFilePattern(testSet.filePattern);
-
-      // Get current file count using the file pattern
-      const filesResult = await client.graphql({
-        query: LIST_INPUT_BUCKET_FILES,
-        variables: { filePattern: testSet.filePattern },
-      });
-
-      const files = filesResult.data.listInputBucketFiles || [];
-      console.log('Found files:', files.length);
-      setCurrentFileCount(files.length);
-    } catch (err) {
-      console.error('Failed to fetch current file count:', err);
-      setCurrentFileCount(0);
-      setFilePattern(null);
-    } finally {
-      setLoadingFileCount(false);
-    }
-  };
-
   const reRunButton = results?.testSetId ? (
     <Button
       onClick={() => {
         setShowReRunModal(true);
-        fetchCurrentFileCount();
       }}
       iconName="arrow-right"
+      disabled={currentFileCount === 0}
     >
       Re-Run
     </Button>
