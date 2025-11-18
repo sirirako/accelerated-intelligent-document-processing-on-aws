@@ -136,6 +136,7 @@ def get_test_results(test_run_id):
         # Use cached metrics but get dynamic fields from current metadata
         return {
             'testRunId': test_run_id,
+            'testSetId': metadata.get('TestSetId'),
             'testSetName': metadata.get('TestSetName'),
             'status': current_status,
             'filesCount': metadata.get('FilesCount', 0),
@@ -158,6 +159,7 @@ def get_test_results(test_run_id):
     
     result = {
         'testRunId': test_run_id,
+        'testSetId': metadata.get('TestSetId'),
         'testSetName': metadata.get('TestSetName'),
         'status': current_status,
         'filesCount': metadata.get('FilesCount', 0),
@@ -252,6 +254,7 @@ def get_test_runs(time_period_hours=2):
     
     test_runs = [{
         'testRunId': item['TestRunId'],
+        'testSetId': item.get('TestSetId'),
         'testSetName': item.get('TestSetName'),
         'status': item.get('Status'),
         'filesCount': item.get('FilesCount', 0),

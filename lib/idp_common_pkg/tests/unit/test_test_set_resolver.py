@@ -77,24 +77,31 @@ class TestTestSetResolver:
             assert mock_delete.call_count == 2
             assert result is True
 
+    @patch.dict(os.environ, {"INPUT_BUCKET": "test-bucket"})
     def test_get_test_sets_uses_scan_all(self):
         """Test get_test_sets uses scan_all method"""
-        with patch.object(test_set_index.db_client, "scan_all") as mock_scan:
-            mock_scan.return_value = [
-                {
-                    "id": "test-id",
-                    "name": "test-name",
-                    "filePattern": "*.pdf",
-                    "fileCount": 5,
-                    "createdAt": "2025-10-17T16:00:00Z",
-                }
-            ]
+        with patch.object(test_set_index, "find_matching_files") as mock_find_files:
+            # Mock find_matching_files to return 3 files
+            mock_find_files.return_value = ["file1.pdf", "file2.pdf", "file3.pdf"]
 
-            result = test_set_index.get_test_sets()
+            with patch.object(test_set_index.db_client, "scan_all") as mock_scan:
+                mock_scan.return_value = [
+                    {
+                        "PK": "testset#test-id",
+                        "SK": "metadata", 
+                        "id": "test-id",
+                        "name": "test-name",
+                        "filePattern": "*.pdf",
+                        "fileCount": 5,
+                        "createdAt": "2025-10-17T16:00:00Z",
+                    }
+                ]
 
-            mock_scan.assert_called_once()
-            assert len(result) == 1
-            assert result[0]["id"] == "test-id"
+                result = test_set_index.get_test_sets()
+
+                mock_scan.assert_called_once()
+                assert len(result) == 1
+                assert result[0]["id"] == "test-id"
 
     @patch.dict("os.environ", {"INPUT_BUCKET": "test-bucket"})
     def test_list_input_bucket_files(self):

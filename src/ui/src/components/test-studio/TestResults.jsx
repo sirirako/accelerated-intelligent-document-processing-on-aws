@@ -13,10 +13,17 @@ import {
   Alert,
   Table,
   Button,
+  Modal,
+  Textarea,
+  FormField,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
+import START_TEST_RUN from '../../graphql/queries/startTestRun';
+import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
+import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 import TestStudioHeader from './TestStudioHeader';
+import useAppContext from '../../contexts/app';
 
 const client = generateClient();
 
@@ -99,9 +106,15 @@ const ComprehensiveBreakdown = ({ costBreakdown, usageBreakdown, accuracyBreakdo
 };
 
 const TestResults = ({ testRunId, setSelectedTestRunId }) => {
+  const { addTestRun } = useAppContext();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reRunLoading, setReRunLoading] = useState(false);
+  const [showReRunModal, setShowReRunModal] = useState(false);
+  const [reRunContext, setReRunContext] = useState('');
+  const [currentFileCount, setCurrentFileCount] = useState(null);
+  const [loadingFileCount, setLoadingFileCount] = useState(false);
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -185,6 +198,111 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handleReRun = async () => {
+    console.log('=== handleReRun START ===');
+    console.log('results.testSetId:', results?.testSetId);
+    console.log('results.testSetName:', results?.testSetName);
+
+    const testSetId = results?.testSetId;
+    console.log('Using testSetId:', testSetId);
+
+    if (!testSetId) {
+      console.error('No testSetId found in results. Cannot re-run without testSetId.');
+      return;
+    }
+
+    setReRunLoading(true);
+
+    try {
+      const input = {
+        testSetId: testSetId,
+        ...(reRunContext && { context: reRunContext }),
+      };
+
+      console.log('About to call GraphQL with input:', input);
+
+      const result = await client.graphql({
+        query: START_TEST_RUN,
+        variables: { input },
+      });
+
+      console.log('GraphQL call completed, result:', result);
+
+      if (result?.data?.startTestRun) {
+        console.log('Success! Closing modal and redirecting...');
+        const newTestRun = result.data.startTestRun;
+        // Add to active test runs
+        addTestRun(newTestRun.testRunId, newTestRun.testSetName);
+        setShowReRunModal(false);
+        setReRunContext('');
+        // Navigate to test runner tab
+        window.location.hash = '#/test-studio?tab=runner';
+      } else {
+        console.error('No startTestRun data in result');
+      }
+    } catch (err) {
+      console.error('GraphQL call failed:', err);
+      if (err.errors) {
+        err.errors.forEach((errorItem, index) => {
+          console.error(`Error ${index}:`, errorItem.message);
+        });
+      }
+    } finally {
+      setReRunLoading(false);
+    }
+    console.log('=== handleReRun END ===');
+  };
+
+  const fetchCurrentFileCount = async () => {
+    if (!results?.testSetId) return;
+
+    setLoadingFileCount(true);
+    try {
+      // Get all test sets and find the matching one
+      const testSetsResult = await client.graphql({
+        query: GET_TEST_SETS,
+      });
+
+      const testSets = testSetsResult.data.getTestSets || [];
+      const testSet = testSets.find((ts) => ts.id === results.testSetId);
+
+      if (!testSet?.filePattern) {
+        console.log('No test set found or no file pattern for testSetId:', results.testSetId);
+        setCurrentFileCount(0);
+        return;
+      }
+
+      console.log('Found file pattern:', testSet.filePattern);
+
+      // Get current file count using the file pattern
+      const filesResult = await client.graphql({
+        query: LIST_INPUT_BUCKET_FILES,
+        variables: { filePattern: testSet.filePattern },
+      });
+
+      const files = filesResult.data.listInputBucketFiles || [];
+      console.log('Found files:', files.length);
+      setCurrentFileCount(files.length);
+    } catch (err) {
+      console.error('Failed to fetch current file count:', err);
+      setCurrentFileCount(0);
+    } finally {
+      setLoadingFileCount(false);
+    }
+  };
+
+  const reRunButton = results?.testSetId ? (
+    <Button
+      onClick={() => {
+        setShowReRunModal(true);
+        fetchCurrentFileCount();
+      }}
+      iconName="arrow-right"
+    >
+      Re-Run
+    </Button>
+  ) : null;
+
   const configButton = (
     <Button onClick={downloadConfig} iconName="download">
       Config
@@ -212,7 +330,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           title={`Test Results: ${results.testRunId} (${results.testSetName})`}
           description={contextDescription}
           showPrintButton={true}
-          additionalActions={[configButton]}
+          additionalActions={[configButton, reRunButton].filter(Boolean)}
           onBackClick={handleBackClick}
         />
       }
@@ -240,7 +358,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         )}
 
         {/* Key Metrics */}
-        <ColumnLayout columns={3} variant="text-grid">
+        <ColumnLayout columns={4} variant="text-grid">
           <Box>
             <Box variant="awsui-key-label">Total Cost</Box>
             <Box fontSize="heading-l">
@@ -263,6 +381,19 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                 : 'N/A'}
             </Box>
           </Box>
+          <Box>
+            <Box variant="awsui-key-label">Duration</Box>
+            <Box fontSize="heading-l">
+              {results.createdAt && results.completedAt
+                ? (() => {
+                    const duration = new Date(results.completedAt) - new Date(results.createdAt);
+                    const minutes = Math.floor(duration / 60000);
+                    const seconds = Math.floor((duration % 60000) / 1000);
+                    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                  })()
+                : 'N/A'}
+            </Box>
+          </Box>
         </ColumnLayout>
 
         {/* Breakdown Tables */}
@@ -270,6 +401,50 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           <ComprehensiveBreakdown costBreakdown={costBreakdown} usageBreakdown={usageBreakdown} accuracyBreakdown={accuracyBreakdown} />
         )}
       </SpaceBetween>
+
+      <Modal
+        visible={showReRunModal}
+        onDismiss={() => {
+          setShowReRunModal(false);
+          setReRunContext('');
+        }}
+        header="Re-Run Test"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowReRunModal(false);
+                  setReRunContext('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleReRun} loading={reRunLoading}>
+                Re-Run Test
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Box>
+            <strong>Test Set:</strong> {results?.testSetName || 'N/A'}
+            <br />
+            <strong>Current Files:</strong>{' '}
+            {loadingFileCount ? 'Loading...' : currentFileCount !== null ? `${currentFileCount} files` : 'N/A'}
+          </Box>
+          <FormField label="Context" description="Optional context information for this test run">
+            <Textarea
+              value={reRunContext}
+              onChange={({ detail }) => setReRunContext(detail.value)}
+              placeholder="Enter context information..."
+              rows={3}
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
     </Container>
   );
 };

@@ -5,6 +5,7 @@ const GET_TEST_RUN = `
   query GetTestRun($testRunId: String!) {
     getTestRun(testRunId: $testRunId) {
       testRunId
+      testSetId
       testSetName
       status
       filesCount

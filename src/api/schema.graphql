@@ -266,6 +266,7 @@ type TestRunStatus @aws_cognito_user_pools @aws_iam {
 
 type TestRun @aws_cognito_user_pools @aws_iam {
   testRunId: String!
+  testSetId: String
   testSetName: String
   status: String!
   filesCount: Int!
