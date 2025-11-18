@@ -88,7 +88,7 @@ class TestTestSetResolver:
                 mock_scan.return_value = [
                     {
                         "PK": "testset#test-id",
-                        "SK": "metadata", 
+                        "SK": "metadata",
                         "id": "test-id",
                         "name": "test-name",
                         "filePattern": "*.pdf",
