@@ -394,6 +394,15 @@ class EvaluationService:
                 f"  Expected data keys for {document_class}: {list(expected_data.keys())}"
             )
 
+        # DEBUG: Log full JSON Schema for detailed troubleshooting
+        if logger.isEnabledFor(logging.DEBUG):
+            import json
+
+            logger.debug(
+                f"Full JSON Schema for {document_class}: "
+                f"{json.dumps(schema, default=str)}"
+            )
+
         try:
             # Use JsonSchemaFieldConverter to handle the full JSON Schema natively
             from stickler.structured_object_evaluator.models.json_schema_field_converter import (
@@ -410,6 +419,34 @@ class EvaluationService:
             logger.info(
                 f"Successfully converted schema for {document_class} with {len(field_definitions)} fields"
             )
+
+            # DEBUG: Log converted field definitions with detailed type information
+            if logger.isEnabledFor(logging.DEBUG):
+                properties = schema.get("properties", {})
+                field_details = []
+                for name, field_info in field_definitions.items():
+                    prop_schema = properties.get(name, {})
+                    comparator = prop_schema.get(
+                        "x-aws-stickler-comparator", "inferred"
+                    )
+                    threshold = prop_schema.get("x-aws-stickler-threshold")
+                    weight = prop_schema.get("x-aws-stickler-weight")
+
+                    detail = f"  - {name}: {field_info[0].__name__ if hasattr(field_info[0], '__name__') else field_info[0]}"
+                    if comparator != "inferred":
+                        detail += f" (comparator={comparator}"
+                        if threshold is not None:
+                            detail += f", threshold={threshold}"
+                        if weight is not None:
+                            detail += f", weight={weight}"
+                        detail += ")"
+
+                    field_details.append(detail)
+
+                logger.debug(
+                    f"Converted field definitions for {document_class}:\n"
+                    + "\n".join(field_details)
+                )
 
         except Exception as e:
             # Enhanced error handling with user guidance
@@ -479,6 +516,52 @@ class EvaluationService:
         # Cache for reuse
         self._model_cache[cache_key] = model_class
         logger.debug(f"Cached Stickler model: {model_class.__name__}")
+
+        # DEBUG: Log Pydantic model structure for verification
+        if logger.isEnabledFor(logging.DEBUG):
+            model_fields_info = (
+                model_class.model_fields if hasattr(model_class, "model_fields") else {}
+            )
+            field_types = [
+                f"    {k}: {v.annotation}" for k, v in model_fields_info.items()
+            ]
+            logger.debug(
+                f"Created Pydantic model structure for {document_class}:\n"
+                f"  Model: {model_class.__name__}\n"
+                f"  Base classes: {[base.__name__ for base in model_class.__bases__]}\n"
+                f"  Field count: {len(model_fields_info)}\n"
+                f"  Field types:\n" + "\n".join(field_types)
+                if field_types
+                else "    (no fields)"
+            )
+
+        # DEBUG: Test instantiation with expected data (if available)
+        if expected_data and logger.isEnabledFor(logging.DEBUG):
+            try:
+                # Clean and coerce data before test instantiation
+                cleaned_data = self._remove_none_values(expected_data)
+                coerced_data = self._coerce_data_to_schema(cleaned_data, model_class)
+                test_instance = model_class(**coerced_data)
+
+                # Serialize the instance to show what Stickler will work with
+                if hasattr(test_instance, "model_dump"):
+                    serialized = test_instance.model_dump()
+                elif hasattr(test_instance, "dict"):
+                    serialized = test_instance.dict()
+                else:
+                    serialized = dict(test_instance)
+
+                import json
+
+                logger.debug(
+                    f"Test instantiation successful for {document_class}: "
+                    f"{json.dumps(serialized, default=str)}"
+                )
+            except Exception as e:
+                logger.debug(
+                    f"Test instantiation failed for {document_class} "
+                    f"(this is informational only): {str(e)}"
+                )
 
         return model_class
 
