@@ -252,18 +252,31 @@ def get_test_runs(time_period_hours=2):
     else:
         logger.info("No items found in scan")
     
-    test_runs = [{
-        'testRunId': item['TestRunId'],
-        'testSetId': item.get('TestSetId'),
-        'testSetName': item.get('TestSetName'),
-        'status': item.get('Status'),
-        'filesCount': item.get('FilesCount', 0),
-        'completedFiles': item.get('CompletedFiles', 0),
-        'failedFiles': item.get('FailedFiles', 0),
-        'createdAt': _format_datetime(item.get('CreatedAt')),
-        'completedAt': _format_datetime(item.get('CompletedAt')),
-        'context': item.get('Context')
-    } for item in items]
+    test_runs = []
+    for item in items:
+        # If completedAt is missing, call get_test_run_status to update it
+        status_result = None
+        if not item.get('CompletedAt'):
+            status_result = get_test_run_status(item['TestRunId'])
+            # Refresh item from database to get updated CompletedAt
+            updated_response = table.get_item(
+                Key={'PK': f'testrun#{item["TestRunId"]}', 'SK': 'metadata'}
+            )
+            if 'Item' in updated_response:
+                item = updated_response['Item']
+        
+        test_runs.append({
+            'testRunId': item['TestRunId'],
+            'testSetId': item.get('TestSetId'),
+            'testSetName': item.get('TestSetName'),
+            'status': status_result.get('status') if status_result else item.get('Status'),
+            'filesCount': item.get('FilesCount', 0),
+            'completedFiles': status_result.get('completedFiles') if status_result else item.get('CompletedFiles', 0),
+            'failedFiles': status_result.get('failedFiles') if status_result else item.get('FailedFiles', 0),
+            'createdAt': _format_datetime(item.get('CreatedAt')),
+            'completedAt': _format_datetime(item.get('CompletedAt')),
+            'context': item.get('Context')
+        })
     
     # Sort by createdAt descending (most recent first)
     # Handle None values and convert to datetime for proper sorting
@@ -276,6 +289,24 @@ def get_test_runs(time_period_hours=2):
     test_runs.sort(key=sort_key, reverse=True)
     
     return test_runs
+
+def _calculate_completed_at(test_run_id, files, table):
+    """Calculate completedAt timestamp from document CompletionTime"""
+    latest_completion_time = None
+    
+    for file_key in files:
+        doc_response = table.get_item(
+            Key={'PK': f'doc#{test_run_id}/{file_key}', 'SK': 'none'}
+        )
+        if 'Item' in doc_response:
+            doc_item = doc_response['Item']
+            completion_time = doc_item.get('CompletionTime')
+            if completion_time:
+                completion_time = completion_time.replace('+00:00', 'Z')
+                if not latest_completion_time or completion_time > latest_completion_time:
+                    latest_completion_time = completion_time
+    
+    return latest_completion_time
 
 def get_test_run_status(test_run_id):
     """Get lightweight status for specific test run - checks both document and evaluation status"""
@@ -367,6 +398,11 @@ def get_test_run_status(test_run_id):
         # Auto-update database metadata if calculated status differs from stored status
         stored_status = item.get('Status', 'RUNNING')
         if overall_status != stored_status:
+            # Calculate completedAt from document completion times if status is complete
+            calculated_completed_at = item.get('CompletedAt')
+            if overall_status in ['COMPLETE', 'PARTIAL_COMPLETE'] and not calculated_completed_at:
+                calculated_completed_at = _calculate_completed_at(test_run_id, files, table)
+            
             logger.info(f"Auto-updating test run {test_run_id} status from {stored_status} to {overall_status}")
             try:
                 table.update_item(
@@ -375,7 +411,7 @@ def get_test_run_status(test_run_id):
                     ExpressionAttributeNames={'#status': 'Status', '#completedAt': 'CompletedAt'},
                     ExpressionAttributeValues={
                         ':status': overall_status,
-                        ':completedAt': datetime.utcnow().isoformat() + 'Z' if overall_status in ['COMPLETE', 'PARTIAL_COMPLETE'] else item.get('CompletedAt'),
+                        ':completedAt': calculated_completed_at,
                         ':completedFiles': completed_files,
                         ':failedFiles': total_failed_files
                     }
