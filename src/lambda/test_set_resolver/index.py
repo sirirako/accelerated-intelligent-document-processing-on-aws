@@ -77,13 +77,26 @@ def get_test_sets():
         }
     )
     
+    input_bucket = os.environ['INPUT_BUCKET']
     result = []
+    
     for item in items:
+        # Get current file count from S3
+        current_files = find_matching_files(input_bucket, item['filePattern'])
+        current_file_count = len(current_files)
+        
+        # Update the file count in database
+        db_client.update_item(
+            key={'PK': item['PK'], 'SK': item['SK']},
+            update_expression='SET fileCount = :count',
+            expression_attribute_values={':count': current_file_count}
+        )
+        
         result.append({
             'id': item['id'],
             'name': item['name'],
             'filePattern': item['filePattern'],
-            'fileCount': item['fileCount'],
+            'fileCount': current_file_count,
             'createdAt': item['createdAt']
         })
     

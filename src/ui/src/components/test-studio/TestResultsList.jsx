@@ -76,7 +76,7 @@ TextCell.propTypes = {
   text: PropTypes.string.isRequired,
 };
 
-const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, setSelectedItems }) => {
+const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, setSelectedItems, preSelectedTestRunId }) => {
   const [selectedTestRunId, setSelectedTestRunId] = useState(null);
   const [testRuns, setTestRuns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +96,12 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
     pagination: { pageSize },
     sorting: { defaultState: { sortingColumn: { sortingField: 'createdAt' }, isDescending: true } },
   });
+
+  useEffect(() => {
+    if (preSelectedTestRunId) {
+      setSelectedTestRunId(preSelectedTestRunId);
+    }
+  }, [preSelectedTestRunId]);
 
   const handleTestRunSelect = (testRunId) => {
     setSelectedTestRunId(testRunId);
@@ -309,6 +315,12 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
             cell: (item) => new Date(item.createdAt).toLocaleString(),
             sortingField: 'createdAt',
           },
+          {
+            id: 'completedAt',
+            header: 'Completed At',
+            cell: (item) => (item.completedAt ? new Date(item.completedAt).toLocaleString() : 'N/A'),
+            sortingField: 'completedAt',
+          },
         ]}
         selectionType="multi"
         filter={
@@ -373,6 +385,7 @@ TestResultsList.propTypes = {
     }),
   ).isRequired,
   setSelectedItems: PropTypes.func.isRequired,
+  preSelectedTestRunId: PropTypes.string,
 };
 
 TestResultsList.defaultProps = {};

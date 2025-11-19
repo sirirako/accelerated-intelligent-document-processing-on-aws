@@ -42,15 +42,19 @@ const TestStudioLayout = () => {
         return <TestSets />;
       case 'runner':
         return <TestRunner onTestStart={handleTestStart} onTestComplete={handleTestComplete} activeTestRuns={activeTestRuns} />;
-      case 'results':
+      case 'results': {
+        const urlParams = new URLSearchParams(location.search);
+        const testRunId = urlParams.get('testRunId');
         return (
           <TestResultsList
             timePeriodHours={timePeriodHours}
             setTimePeriodHours={setTimePeriodHours}
             selectedItems={selectedTestItems}
             setSelectedItems={setSelectedTestItems}
+            preSelectedTestRunId={testRunId}
           />
         );
+      }
       case 'comparison': {
         const urlParams = new URLSearchParams(location.search);
         const testIds = urlParams.get('testIds');

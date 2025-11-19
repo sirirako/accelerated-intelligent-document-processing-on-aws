@@ -9,18 +9,6 @@ import TestStudioHeader from './TestStudioHeader';
 
 const client = generateClient();
 
-// Helper functions for rendering change values with colored arrows
-const renderChangeValue = (value) => {
-  if (value === 'N/A') return 'N/A';
-  const numValue = parseFloat(value);
-  const isPositive = numValue > 0;
-  return (
-    <>
-      {Math.abs(numValue).toFixed(2)}%<span style={{ color: isPositive ? 'green' : 'red' }}>{isPositive ? ' ↑' : ' ↓'}</span>
-    </>
-  );
-};
-
 const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   const [comparisonData, setComparisonData] = useState(null);
   const [comparing, setComparing] = useState(false);
@@ -76,11 +64,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     );
   };
 
-  const downloadToExcel = () => {
+  const downloadToCsv = () => {
     if (!comparisonData || !comparisonData.metrics) return;
 
     const completeTestRuns = Object.fromEntries(
-      Object.entries(comparisonData.metrics).filter(([, testRun]) => testRun.status === 'COMPLETE'),
+      Object.entries(comparisonData.metrics).filter(
+        ([, testRun]) => testRun.status === 'COMPLETE' || testRun.status === 'PARTIAL_COMPLETE',
+      ),
     );
 
     // Create headers
@@ -108,6 +98,18 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         ...Object.values(completeTestRuns).map((run) =>
           run.averageConfidence !== null && run.averageConfidence !== undefined ? `${(run.averageConfidence * 100).toFixed(1)}%` : 'N/A',
         ),
+      ],
+      [
+        'Duration',
+        ...Object.values(completeTestRuns).map((run) => {
+          if (run.createdAt && run.completedAt) {
+            const duration = new Date(run.completedAt) - new Date(run.createdAt);
+            const minutes = Math.floor(duration / 60000);
+            const seconds = Math.floor((duration % 60000) / 1000);
+            return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+          }
+          return 'N/A';
+        }),
       ],
     ];
 
@@ -208,7 +210,9 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     if (!comparisonData) return;
 
     const completeTestRuns = Object.fromEntries(
-      Object.entries(comparisonData.metrics).filter(([, testRun]) => testRun.status === 'COMPLETE'),
+      Object.entries(comparisonData.metrics).filter(
+        ([, testRun]) => testRun.status === 'COMPLETE' || testRun.status === 'PARTIAL_COMPLETE',
+      ),
     );
 
     // Create JSON structure matching the UI sections
@@ -224,6 +228,15 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             totalCost: testRun.totalCost,
             overallAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
+            duration:
+              testRun.createdAt && testRun.completedAt
+                ? (() => {
+                    const duration = new Date(testRun.completedAt) - new Date(testRun.createdAt);
+                    const minutes = Math.floor(duration / 60000);
+                    const seconds = Math.floor((duration % 60000) / 1000);
+                    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                  })()
+                : 'N/A',
           },
         ]),
       ),
@@ -275,13 +288,17 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   console.log('Comparison data structure:', comparisonData);
   console.log('Metrics structure:', comparisonData.metrics);
 
-  // Filter out incomplete test runs
+  // Filter out incomplete test runs (include COMPLETE and PARTIAL_COMPLETE)
   const completeTestRuns = comparisonData.metrics
-    ? Object.fromEntries(Object.entries(comparisonData.metrics).filter(([, testRun]) => testRun.status === 'COMPLETE'))
+    ? Object.fromEntries(
+        Object.entries(comparisonData.metrics).filter(
+          ([, testRun]) => testRun.status === 'COMPLETE' || testRun.status === 'PARTIAL_COMPLETE',
+        ),
+      )
     : {};
 
   const hasIncompleteRuns = comparisonData.metrics
-    ? Object.values(comparisonData.metrics).some((testRun) => testRun.status !== 'COMPLETE')
+    ? Object.values(comparisonData.metrics).some((testRun) => testRun.status !== 'COMPLETE' && testRun.status !== 'PARTIAL_COMPLETE')
     : false;
 
   const downloadButton = (
@@ -294,7 +311,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       ]}
       onItemClick={({ detail }) => {
         if (detail.id === 'csv') {
-          downloadToExcel();
+          downloadToCsv();
         } else if (detail.id === 'json') {
           downloadToJson();
         }
@@ -373,6 +390,20 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                     ]),
                   ),
                 },
+                {
+                  metric: 'Duration',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                      if (testRun.createdAt && testRun.completedAt) {
+                        const duration = new Date(testRun.completedAt) - new Date(testRun.createdAt);
+                        const minutes = Math.floor(duration / 60000);
+                        const seconds = Math.floor((duration % 60000) / 1000);
+                        return [testRunId, minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`];
+                      }
+                      return [testRunId, 'N/A'];
+                    }),
+                  ),
+                },
               ]}
               columnDefinitions={[
                 { id: 'metric', header: 'Metric', cell: (item) => item.metric },
@@ -380,11 +411,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   id: testRunId,
                   header: createTestRunHeader(testRunId),
                   cell: (item) => {
-                    const value = item[testRunId];
-                    if (item.metric === 'Accuracy Change') {
-                      return renderChangeValue(value);
-                    }
-                    return value;
+                    return item[testRunId];
                   },
                 })),
               ]}

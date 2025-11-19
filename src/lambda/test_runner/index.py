@@ -46,7 +46,7 @@ def handler(event, context):
         config = _capture_config(config_table)
         
         # Store initial test run metadata
-        _store_test_run_metadata(tracking_table, test_run_id, test_set['name'], config, matching_files, test_context)
+        _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set['name'], config, matching_files, test_context)
         
         # Send file copying job to SQS queue
         queue_url = os.environ['FILE_COPY_QUEUE_URL']
@@ -109,7 +109,7 @@ def _capture_config(config_table):
     
     return config
 
-def _store_test_run_metadata(tracking_table, test_run_id, test_set_name, config, files, context=None):
+def _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set_name, config, files, context=None):
     """Store test run metadata in tracking table"""
     table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
     
@@ -117,6 +117,7 @@ def _store_test_run_metadata(tracking_table, test_run_id, test_set_name, config,
         item = {
             'PK': f'testrun#{test_run_id}',
             'SK': 'metadata',
+            'TestSetId': test_set_id,
             'TestSetName': test_set_name,
             'TestRunId': test_run_id,
             'Status': 'QUEUED',
