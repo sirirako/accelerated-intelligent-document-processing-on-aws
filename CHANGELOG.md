@@ -5,7 +5,16 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.4]
+
 ### Added
+
+- **IDP CLI --from-code Flag for Local Development Deployment**
+  - Added `--from-code` flag to `idp-cli deploy` command enabling deployment directly from local source code
+  - Automatically builds project using `publish.py` script with streaming output for real-time build progress
+- **IDP CLI --no-rollback Flag for Stack Deployment Troubleshooting**
+  - Added `--no-rollback` flag to `idp-cli deploy` command to disable automatic rollback on CloudFormation stack creation failure
+  - When enabled, failed stacks remain in `CREATE_FAILED` state instead of rolling back, allowing inspection of failed resources for troubleshooting
 
 ### Fixed
 
