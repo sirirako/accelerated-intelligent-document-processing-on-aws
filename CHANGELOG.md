@@ -15,6 +15,9 @@ SPDX-License-Identifier: MIT-0
 - **IDP CLI --no-rollback Flag for Stack Deployment Troubleshooting**
   - Added `--no-rollback` flag to `idp-cli deploy` command to disable automatic rollback on CloudFormation stack creation failure
   - When enabled, failed stacks remain in `CREATE_FAILED` state instead of rolling back, allowing inspection of failed resources for troubleshooting
+- **Add support for prompt caching for Claude Haiku 4.5**
+- **Add support for prompt caching for for EU region models**
+
 
 ### Fixed
 
