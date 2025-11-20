@@ -209,8 +209,15 @@ Parameters:
   EnableXRayTracing:
     Type: String
     Default: 'true'
-    AllowedValues: ['true', 'false']
+    AllowedValues: [ 'true', 'false' ]
     Description: Enable X-Ray tracing
+
+  # External App Authentication
+  EnableAgentCore:
+    Type: String
+    Default: 'true'
+    AllowedValues: [ 'true', 'false' ]
+    Description: Enable AgentCore integration
 
   # Optional Knowledge Base Configuration
   DocumentKnowledgeBase:
@@ -403,7 +410,7 @@ Rules:
         "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
       ]
     Assertions:
-      - Assert: !Not [!Equals [!Ref Pattern3UDOPModelArtifactPath, ""]]
+      - Assert: !Not [ !Equals [ !Ref Pattern3UDOPModelArtifactPath, "" ] ]
         AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
 
 Conditions:
@@ -424,44 +431,46 @@ Conditions:
       "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
     ]
   ShouldCreateBDASampleProject:
-    !And [!Condition IsPattern1, !Equals [!Ref Pattern1BDAProjectArn, ""]]
+    !And [ !Condition IsPattern1, !Equals [ !Ref Pattern1BDAProjectArn, "" ] ]
   HasGuardrailConfig:
     !And [
-      !Not [!Equals [!Ref BedrockGuardrailId, ""]],
-      !Not [!Equals [!Ref BedrockGuardrailVersion, ""]],
+      !Not [ !Equals [ !Ref BedrockGuardrailId, "" ] ],
+      !Not [ !Equals [ !Ref BedrockGuardrailVersion, "" ] ],
     ]
 
   # HITL and Private Workforce conditions
-  IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
+  IsHITLEnabled: !Equals [ !Ref EnableHITL, "true" ]
   ShouldCreatePrivateWorkteam:
     !And [
       !Condition IsHITLEnabled,
-      !Equals [!Ref ExistingPrivateWorkforceArn, ""],
+      !Equals [ !Ref ExistingPrivateWorkforceArn, "" ],
     ]
   ShouldUseExistingPrivateWorkteam:
     !And [
       !Condition IsHITLEnabled,
-      !Not [!Equals [!Ref ExistingPrivateWorkforceArn, ""]],
+      !Not [ !Equals [ !Ref ExistingPrivateWorkforceArn, "" ] ],
     ]
 
   # General rules
   ShouldAllowSignUpEmailDomain:
-    !Not [!Equals [!Ref AllowedSignUpEmailDomain, ""]]
-  ShouldEnableGeoRestriction: !Not [!Equals [!Ref CloudFrontAllowedGeos, ""]]
+    !Not [ !Equals [ !Ref AllowedSignUpEmailDomain, "" ] ]
+  ShouldEnableGeoRestriction: !Not [ !Equals [ !Ref CloudFrontAllowedGeos, "" ] ]
   ShouldEnablePostProcessingLambdaHook:
-    !Not [!Equals [!Ref PostProcessingLambdaHookFunctionArn, ""]]
+    !Not [ !Equals [ !Ref PostProcessingLambdaHookFunctionArn, "" ] ]
   ShouldCreateEvaluationBaselineBucket:
-    !Equals [!Ref EvaluationBaselineBucketName, ""]
-  ShouldCreateReportingBucket: !Equals [!Ref ReportingBucketName, ""]
-  IsWafEnabled: !Not [!Equals [!Ref WAFAllowedIPv4Ranges, "0.0.0.0/0"]]
+    !Equals [ !Ref EvaluationBaselineBucketName, "" ]
+  ShouldCreateReportingBucket: !Equals [ !Ref ReportingBucketName, "" ]
+  IsWafEnabled: !Not [ !Equals [ !Ref WAFAllowedIPv4Ranges, "0.0.0.0/0" ] ]
   ShouldCreateDocumentKnowledgeBase:
-    !Equals [!Ref DocumentKnowledgeBase, "BEDROCK_KNOWLEDGE_BASE (Create)"]
+    !Equals [ !Ref DocumentKnowledgeBase, "BEDROCK_KNOWLEDGE_BASE (Create)" ]
   ShouldUseDocumentKnowledgeBase: !Condition ShouldCreateDocumentKnowledgeBase
   DocumentSectionsCrawlerScheduleEnabled:
-    !Not [!Equals [!Ref DocumentSectionsCrawlerFrequency, "Manual"]]
-  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
-  HasCustomConfigPath: !Not [!Equals [!Ref CustomConfigPath, ""]]
-  IsS3VectorsVectorStore: !Equals [!Ref KnowledgeBaseVectorStore, "S3_VECTORS"]
+    !Not [ !Equals [ !Ref DocumentSectionsCrawlerFrequency, "Manual" ] ]
+  HasPermissionsBoundary: !Not [ !Equals [ !Ref PermissionsBoundaryArn, "" ] ]
+  HasCustomConfigPath: !Not [ !Equals [ !Ref CustomConfigPath, "" ] ]
+  IsS3VectorsVectorStore: !Equals [ !Ref KnowledgeBaseVectorStore, "S3_VECTORS" ]
+  CreateAgentCoreLambda: !Equals [ !Ref EnableAgentCore, "true" ]
+  CreateExternalAppClient: !Equals [ !Ref EnableAgentCore, "true" ]
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -529,6 +538,10 @@ Metadata:
         Parameters:
           - PermissionsBoundaryArn
           - WAFAllowedIPv4Ranges
+      - Label:
+          default: "AgentCore Configuration"
+        Parameters:
+          - EnableAgentCore
       - Label:
           default: "General Configuration"
         Parameters:
@@ -604,6 +617,8 @@ Metadata:
         default: "CloudFront Allowed Geos"
       WAFAllowedIPv4Ranges:
         default: "WAF Allowed IPv4 Ranges"
+      EnableAgentCore:
+        default: "Enable AgentCore"
 
 Resources:
   # Custom resource to enforce max length of StackName - prevent downstream failures
@@ -705,37 +720,37 @@ Resources:
 
         def handler(event, context):
             logger.info(json.dumps(event))
-            
+        
             try:
                 source_bucket = event['ResourceProperties']['SourceBucket']
                 source_prefix = event['ResourceProperties']['SourcePrefix']
                 target_bucket = event['ResourceProperties']['TargetBucket']
                 target_prefix = event['ResourceProperties'].get('TargetPrefix', '')
-                
+        
                 file_list = event['ResourceProperties'].get('FileList', [])
-                
+        
                 s3_client = boto3.client('s3')
-                
+        
                 if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
                     # Copy files explicitly from the provided list
                     copied_count = 0
-                    
+        
                     for relative_file_path in file_list:
                         # Skip empty entries
                         if not relative_file_path.strip():
                             continue
-                            
+        
                         # Construct source key
                         source_key = f"{source_prefix}/{relative_file_path}"
-                        
+        
                         # Construct target key with optional target prefix
                         if target_prefix:
                             target_key = f"{target_prefix}/{relative_file_path}"
                         else:
                             target_key = relative_file_path
-                        
+        
                         logger.info(f"Copying {source_bucket}/{source_key} to {target_bucket}/{target_key}")
-                        
+        
                         try:
                             copy_source = {'Bucket': source_bucket, 'Key': source_key}
                             s3_client.copy_object(
@@ -747,19 +762,19 @@ Resources:
                         except Exception as copy_error:
                             logger.warning(f"Failed to copy {source_key}: {str(copy_error)}")
                             # Continue with other files instead of failing the entire operation
-                    
+        
                     logger.info(f"Successfully copied {copied_count} configuration files")
                     cfnresponse.send(event, context, cfnresponse.SUCCESS, {
                         'CopiedFiles': copied_count
                     }, reason=f"Successfully copied {copied_count} configuration files")
-                    
+        
                 elif event['RequestType'] == 'Delete':
                     # For delete, we don't need to clean up the configuration files
                     # as they may be needed by other resources
                     logger.info("Delete request - no action needed for configuration files")
                     cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, 
                                    reason="Delete completed - configuration files retained")
-                    
+        
             except Exception as e:
                 logger.error(f"Error: {str(e)}")
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, 
@@ -839,6 +854,311 @@ Resources:
         pVectorStoreType: !Ref KnowledgeBaseVectorStore
         LogLevel: !Ref LogLevel
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+
+
+
+  ##########################################################################
+  # AgentCore Analytics Lambda Function
+  ##########################################################################
+
+  AgentCoreAnalyticsLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: CreateAgentCoreLambda
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-AgentCore-Analytics-Role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      PermissionsBoundary: !If [ HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue" ]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AthenaQueryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - athena:StartQueryExecution
+                  - athena:GetQueryExecution
+                  - athena:GetQueryResults
+                  - athena:StopQueryExecution
+                Resource: !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub
+                  - "${BucketArn}/*"
+                  - BucketArn: !If
+                      - ShouldCreateReportingBucket
+                      - !GetAtt ReportingBucket.Arn
+                      - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !If
+                  - ShouldCreateReportingBucket
+                  - !GetAtt ReportingBucket.Arn
+                  - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+        - PolicyName: GlueReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:GetPartitions
+                Resource:
+                  - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                  - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                  - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+        - PolicyName: KMSDecryptPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+        - PolicyName: BedrockInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+
+  AgentCoreAnalyticsLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: CreateAgentCoreLambda
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-agentcore-analytics"
+      RetentionInDays: !Ref LogRetentionDays
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  AgentCoreAnalyticsLambdaFunction:
+    Type: AWS::Serverless::Function
+    Condition: CreateAgentCoreLambda
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AgentCore analytics function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-agentcore-analytics"
+      CodeUri: src/lambda/agentcore_analytics_processor/
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      MemorySize: 1024
+      Timeout: 900
+      Role: !GetAtt AgentCoreAnalyticsLambdaRole.Arn
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
+          TRACKING_TABLE_NAME: !Ref TrackingTable
+          LOOKUP_FUNCTION_NAME: !Ref LookupFunction
+          STRANDS_LOG_LEVEL: !Ref LogLevel
+          AGENT_TABLE: !Ref AgentTable
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+          ATHENA_DATABASE: !Ref ReportingDatabase
+          ATHENA_WORKGROUP: primary
+          QUERY_RESULTS_BUCKET: !If
+            - ShouldCreateReportingBucket
+            - !Ref ReportingBucket
+            - !Ref ReportingBucketName
+          ATHENA_OUTPUT_LOCATION: !Sub
+            - "s3://${Bucket}/athena-results/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
+          AWS_STACK_NAME: !Ref AWS::StackName
+          GUARDRAIL_ID_AND_VERSION:
+            !If [
+              HasGuardrailConfig,
+              !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}",
+              "",
+            ]
+          CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
+          CLOUDWATCH_LOG_GROUPS: !Join
+            - ","
+            - - !Ref QueueSenderLogGroup
+              - !Ref QueueProcessorLogGroup
+              - !Ref WorkflowTrackerLogGroup
+              - !Ref SaveReportingDataFunctionLogGroup
+              - !If
+                - IsPattern1
+                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
+                - !If
+                  - IsPattern2
+                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
+                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+      LoggingConfig:
+        LogGroup: !Ref AgentCoreAnalyticsLambdaLogGroup
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action: bedrock-agentcore:InvokeAgentRuntime
+            Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action: appsync:GraphQL
+            Resource: !Sub "arn:${AWS::Partition}:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/*"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatMessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IdHelperChatMemoryTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateReportingBucket
+              - !Ref ReportingBucket
+              - !Ref ReportingBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+              Resource:
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+            - Effect: Allow
+              Action:
+                - glue:GetTable
+                - glue:GetTables
+                - glue:GetDatabase
+                - glue:GetDatabases
+                - glue:GetPartitions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - aws-marketplace:Subscribe
+                - aws-marketplace:Unsubscribe
+                - aws-marketplace:ViewSubscriptions
+              Resource: "*"
+            - !If
+              - HasGuardrailConfig
+              - Effect: Allow
+                Action:
+                  - "bedrock:ApplyGuardrail"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
+              - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            - Effect: Allow
+              Action:
+                - bedrock-agentcore:StartCodeInterpreterSession
+                - bedrock-agentcore:StopCodeInterpreterSession
+                - bedrock-agentcore:InvokeCodeInterpreter
+                - bedrock-agentcore:GetCodeInterpreterSession
+                - bedrock-agentcore:ListCodeInterpreterSessions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock-agentcore:*:aws:code-interpreter/*"
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref ExternalMCPAgentsSecret
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogGroups
+                - logs:DescribeLogStreams
+                - logs:FilterLogEvents
+                - logs:GetLogEvents
+              Resource:
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vendedlogs/states/${AWS::StackName}*"
+                - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${AWS::StackName}*"
+                - !GetAtt QueueSenderLogGroup.Arn
+                - !GetAtt QueueProcessorLogGroup.Arn
+                - !GetAtt WorkflowTrackerLogGroup.Arn
+                - !GetAtt SaveReportingDataFunctionLogGroup.Arn
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogGroups
+              Resource:
+                - "*"
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeTable
+                - dynamodb:Scan
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt TrackingTable.Arn
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStackResources
+                - cloudformation:DescribeStacks
+              Resource:
+                - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:GetExecutionHistory
+              Resource:
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - xray:GetTraceSummaries
+                - xray:BatchGetTraces
+                - xray:GetServiceGraph
+              Resource: "*"
 
   ##########################################################################
   # Nested stack for selected pattern
@@ -2301,7 +2621,7 @@ Resources:
                   - "s3:GetObject"
                 Resource: !Sub
                   - "arn:${AWS::Partition}:s3:::${Path}"
-                  - Path: !Select [1, !Split ["s3://", !Ref CustomConfigPath]]
+                  - Path: !Select [ 1, !Split [ "s3://", !Ref CustomConfigPath ] ]
               - !Ref AWS::NoValue
             # Allow listing the specific bucket containing the custom config file
             - !If
@@ -2316,7 +2636,7 @@ Resources:
                         0,
                         !Split [
                           "/",
-                          !Select [1, !Split ["s3://", !Ref CustomConfigPath]],
+                          !Select [ 1, !Split [ "s3://", !Ref CustomConfigPath ] ],
                         ],
                       ]
               - !Ref AWS::NoValue
@@ -3813,9 +4133,9 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-##########################################################################
-# DynamoDB Table for Agent Chat Session Metadata
-##########################################################################
+  ##########################################################################
+  # DynamoDB Table for Agent Chat Session Metadata
+  ##########################################################################
 
   ChatSessionsTable:
     Type: AWS::DynamoDB::Table
@@ -3841,9 +4161,9 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
-##########################################################################
-# Lambda Functions for Agent Chat Session Management
-##########################################################################
+  ##########################################################################
+  # Lambda Functions for Agent Chat Session Management
+  ##########################################################################
 
   # Lambda function for listing agent chat sessions
   ListAgentChatSessionsFunction:
@@ -4767,6 +5087,36 @@ Resources:
       DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
 
   ##########################################################################
+  # External Client
+  ##########################################################################
+
+  ExternalAppClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: CreateExternalAppClient
+    Properties:
+      ClientName: "External-App-Client"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - !Sub "https://${CloudFrontDistribution.DomainName}/"
+        - "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback"
+      LogoutURLs:
+        - !Sub "https://${CloudFrontDistribution.DomainName}/"
+
+  ##########################################################################
   # Cognoito user authentication for AppSync API and WebUI
   ##########################################################################
 
@@ -4838,7 +5188,7 @@ Resources:
         - phone
         - profile
       CallbackURLs:
-        - http://localhost:3000
+        - !Sub "https://${CloudFrontDistribution.DomainName}"
       AccessTokenValidity: 1
       EnableTokenRevocation: true
       ExplicitAuthFlows:
@@ -5502,7 +5852,7 @@ Resources:
       WorkteamName: !If
         - ShouldCreatePrivateWorkteam
         - !GetAtt PrivateWorkteam.WorkteamName
-        - !Select [2, !Split ["/", !Ref ExistingPrivateWorkforceArn]]
+        - !Select [ 2, !Split [ "/", !Ref ExistingPrivateWorkforceArn ] ]
       SourceCodeHash: <WORKFORCE_URL_HASH_TOKEN>
 
   ##########################################################################
@@ -5525,7 +5875,7 @@ Resources:
         CloudWatchLogsRoleArn: !GetAtt AppSyncCwlRole.Arn
         ExcludeVerboseContent: false
         FieldLogLevel:
-          !FindInMap [AppSyncLogLevelMap, !Ref LogLevel, FieldLogLevel]
+          !FindInMap [ AppSyncLogLevelMap, !Ref LogLevel, FieldLogLevel ]
       # Disable introspection for security purposes
       IntrospectionConfig: DISABLED
 
@@ -5569,7 +5919,7 @@ Resources:
       Description: IP ranges allowed to access the AppSync API
       Scope: REGIONAL
       IPAddressVersion: IPV4
-      Addresses: !Split [", ", !Ref WAFAllowedIPv4Ranges]
+      Addresses: !Split [ ", ", !Ref WAFAllowedIPv4Ranges ]
 
   WAFLambdaServiceIPSet:
     Type: AWS::WAFv2::IPSet
@@ -5579,7 +5929,7 @@ Resources:
       Description: IP ranges used by AWS Lambda service
       Scope: REGIONAL
       IPAddressVersion: IPV4
-      Addresses: ["0.0.0.0/32"] # Placeholder - will be updated by IPSetUpdaterFunction
+      Addresses: [ "0.0.0.0/32" ] # Placeholder - will be updated by IPSetUpdaterFunction
 
   IPSetUpdaterFunction:
     Type: AWS::Serverless::Function
@@ -5646,7 +5996,7 @@ Resources:
       Description: Web ACL for AppSync API
       Scope: REGIONAL
       DefaultAction:
-        Block: {}
+        Block: { }
       Rules:
         - Name: AllowLambdaServiceIPs
           Priority: 1
@@ -5654,7 +6004,7 @@ Resources:
             IPSetReferenceStatement:
               Arn: !GetAtt WAFLambdaServiceIPSet.Arn
           Action:
-            Allow: {}
+            Allow: { }
           VisibilityConfig:
             SampledRequestsEnabled: true
             CloudWatchMetricsEnabled: true
@@ -5665,7 +6015,7 @@ Resources:
             IPSetReferenceStatement:
               Arn: !GetAtt WAFIPV4Set.Arn
           Action:
-            Allow: {}
+            Allow: { }
           VisibilityConfig:
             SampledRequestsEnabled: true
             CloudWatchMetricsEnabled: true
@@ -5782,8 +6132,8 @@ Resources:
                   - !GetAtt DiscoveryUploadResolverFunction.Arn
                   - !GetAtt AgentRequestHandlerFunction.Arn  # <-- Backward Compatibility for error analyzer agent
                   - !GetAtt ListAgentChatSessionsFunction.Arn
-                  - !GetAtt GetAgentChatMessagesFunction.Arn  
-                  - !GetAtt DeleteAgentChatSessionFunction.Arn  
+                  - !GetAtt GetAgentChatMessagesFunction.Arn
+                  - !GetAtt DeleteAgentChatSessionFunction.Arn
 
   # Lambda function for Create Document resolver
   CreateDocumentResolverFunction:
@@ -7352,7 +7702,7 @@ Resources:
           - ShouldEnableGeoRestriction
           - GeoRestriction:
               RestrictionType: whitelist
-              Locations: !Split [",", !Ref CloudFrontAllowedGeos]
+              Locations: !Split [ ",", !Ref CloudFrontAllowedGeos ]
           - GeoRestriction:
               RestrictionType: none
 
@@ -7767,3 +8117,31 @@ Outputs:
   ExternalMCPAgentsSecretConsoleURL:
     Description: External MCP Agents secret console URL - configure MCP server credentials here (JSON array format)
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/secretsmanager/secret?name=${AWS::StackName}/external-mcp-agents/credentials&region=${AWS::Region}"
+  ExternalAppTokenURL:
+    Condition: CreateExternalAppClient
+    Description: "OAuth2 Token URL for external app authentication"
+    Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
+  ExternalAppAuthorizationURL:
+    Condition: CreateExternalAppClient
+    Description: "OAuth2 Authorization URL for external app authentication"
+    Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
+  ExternalAppClientId:
+    Condition: CreateExternalAppClient
+    Description: "Cognito Client ID for external applications (e.g., QuickSuite)"
+    Value: !Ref ExternalAppClient
+  ExternalAppClientSecret:
+    Condition: CreateExternalAppClient
+    Description: "Cognito Client Secret for external applications (e.g., QuickSuite)"
+    Value: !GetAtt ExternalAppClient.ClientSecret
+  ExternalAppUserPoolId:
+    Condition: CreateExternalAppClient
+    Description: "User Pool ID for external applications"
+    Value: !Ref UserPool
+  AgentCoreAnalyticsLambdaArn:
+    Condition: CreateAgentCoreLambda
+    Description: "ARN of the AgentCore Analytics Lambda function"
+    Value: !GetAtt AgentCoreAnalyticsLambdaFunction.Arn
+  AgentCoreAnalyticsLambdaName:
+    Condition: CreateAgentCoreLambda
+    Description: "Name of the AgentCore Analytics Lambda function"
+    Value: !Ref AgentCoreAnalyticsLambdaFunction

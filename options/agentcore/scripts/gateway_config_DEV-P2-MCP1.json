@@ -1,0 +1,14 @@
+{
+  "gateway_url": "https://dev-p2-mcp1-analytics-gateway-20251120103248-shbbdaf8i3.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+  "gateway_id": "dev-p2-mcp1-analytics-gateway-20251120103248-shbbdaf8i3",
+  "gateway_arn": "arn:aws:bedrock-agentcore:us-east-1:969317006553:gateway/dev-p2-mcp1-analytics-gateway-20251120103248-shbbdaf8i3",
+  "gateway_name": "DEV-P2-MCP1-analytics-gateway-20251120103248",
+  "log_group_name": "/aws/bedrock/agentcore/gateway/DEV-P2-MCP1-analytics-gateway-20251120103248",
+  "region": "us-east-1",
+  "stack_name": "DEV-P2-MCP1",
+  "lambda_arn": "arn:aws:lambda:us-east-1:969317006553:function:DEV-P2-MCP1-agentcore-analytics",
+  "user_pool_id": "us-east-1_IisOIqu01",
+  "client_id": "4231263prbalsc4868j1dki1he",
+  "client_secret": "463qggh36jb96r8j9jnhqtticpta9a7d7faipc0qoenc7h0gdnd",
+  "domain_name": "dev-p2-mcp1-1763592012916014121"
+}
