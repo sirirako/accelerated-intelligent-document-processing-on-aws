@@ -249,7 +249,7 @@ def find_matching_files(bucket: str, pattern: str) -> List[str]:
     
     Args:
         bucket: S3 bucket name
-        pattern: File pattern with wildcards (* and ?) - must match from beginning (^pattern)
+        pattern: File pattern with wildcards (* and ?) - case sensitive, * doesn't match /
         
     Returns:
         List of matching file keys
@@ -260,9 +260,9 @@ def find_matching_files(bucket: str, pattern: str) -> List[str]:
         s3 = get_s3_client()
         paginator = s3.get_paginator('list_objects_v2')
         
-        # Convert glob pattern to regex - pattern must match from beginning
-        regex_pattern = pattern.replace('*', '.*').replace('?', '.')
-        regex = re.compile(f'^{regex_pattern}$', re.IGNORECASE)
+        # Convert pattern: * matches anything except /, ? matches single char except /
+        regex_pattern = pattern.replace('*', '[^/]*').replace('?', '[^/]')
+        regex = re.compile(f'^{regex_pattern}$')
         
         matching_files = []
         
@@ -270,8 +270,6 @@ def find_matching_files(bucket: str, pattern: str) -> List[str]:
             if 'Contents' in page:
                 for obj in page['Contents']:
                     key = obj['Key']
-                    
-                    # Check if the key matches the pattern (must match from beginning)
                     if regex.match(key):
                         matching_files.append(key)
         

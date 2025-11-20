@@ -273,6 +273,7 @@ type TestRun @aws_cognito_user_pools @aws_iam {
   completedFiles: Int
   failedFiles: Int
   overallAccuracy: Float
+  weightedOverallScores: [Float]
   averageConfidence: Float
   accuracyBreakdown: AWSJSON
   totalCost: Float

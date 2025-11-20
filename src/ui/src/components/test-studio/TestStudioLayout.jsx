@@ -6,8 +6,8 @@ import { useLocation } from 'react-router-dom';
 
 import Navigation from '../genaiidp-layout/navigation';
 import TestSets from './TestSets';
-import TestRunner from './TestRunner';
-import TestResultsList from './TestResultsList';
+import TestExecutions from './TestExecutions';
+import TestResults from './TestResults';
 import TestComparison from './TestComparison';
 import { appLayoutLabels } from '../common/labels';
 import useAppContext from '../../contexts/app';
@@ -23,13 +23,13 @@ const TestStudioLayout = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const tab = urlParams.get('tab');
-    if (tab && ['sets', 'runner', 'results', 'comparison'].includes(tab)) {
+    if (tab && ['sets', 'executions', 'results', 'comparison'].includes(tab)) {
       setActiveTabId(tab);
     }
   }, [location.search]);
 
-  const handleTestStart = (testRunId, testSetName) => {
-    addTestRun(testRunId, testSetName);
+  const handleTestStart = (testRunId, testSetName, context) => {
+    addTestRun(testRunId, testSetName, context);
   };
 
   const handleTestComplete = (testRunId) => {
@@ -40,20 +40,26 @@ const TestStudioLayout = () => {
     switch (activeTabId) {
       case 'sets':
         return <TestSets />;
-      case 'runner':
-        return <TestRunner onTestStart={handleTestStart} onTestComplete={handleTestComplete} activeTestRuns={activeTestRuns} />;
-      case 'results': {
+      case 'executions': {
         const urlParams = new URLSearchParams(location.search);
         const testRunId = urlParams.get('testRunId');
         return (
-          <TestResultsList
+          <TestExecutions
             timePeriodHours={timePeriodHours}
             setTimePeriodHours={setTimePeriodHours}
             selectedItems={selectedTestItems}
             setSelectedItems={setSelectedTestItems}
             preSelectedTestRunId={testRunId}
+            activeTestRuns={activeTestRuns}
+            onTestStart={handleTestStart}
+            onTestComplete={handleTestComplete}
           />
         );
+      }
+      case 'results': {
+        const urlParams = new URLSearchParams(location.search);
+        const testRunId = urlParams.get('testRunId');
+        return <TestResults testRunId={testRunId} />;
       }
       case 'comparison': {
         const urlParams = new URLSearchParams(location.search);

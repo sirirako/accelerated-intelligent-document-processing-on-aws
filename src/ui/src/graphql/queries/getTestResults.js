@@ -12,6 +12,7 @@ const GET_TEST_RUN = `
       completedFiles
       failedFiles
       overallAccuracy
+      weightedOverallScores
       averageConfidence
       accuracyBreakdown
       totalCost

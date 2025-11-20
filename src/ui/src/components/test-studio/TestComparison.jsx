@@ -81,6 +81,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       ['Test Set', ...Object.values(completeTestRuns).map((run) => run.testSetName || 'N/A')],
       ['Context', ...Object.values(completeTestRuns).map((run) => run.context || 'N/A')],
       ['Files Processed', ...Object.values(completeTestRuns).map((run) => run.filesCount || 'N/A')],
+      ['Files Completed', ...Object.values(completeTestRuns).map((run) => run.completedFiles || 'N/A')],
+      ['Files Failed', ...Object.values(completeTestRuns).map((run) => run.failedFiles || 'N/A')],
       [
         'Total Cost',
         ...Object.values(completeTestRuns).map((run) =>
@@ -225,6 +227,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             testSetName: testRun.testSetName,
             context: testRun.context,
             filesCount: testRun.filesCount,
+            completedFiles: testRun.completedFiles,
+            failedFiles: testRun.failedFiles,
             totalCost: testRun.totalCost,
             overallAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
@@ -360,6 +364,18 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   ),
                 },
                 {
+                  metric: 'Files Completed',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.completedFiles || 'N/A']),
+                  ),
+                },
+                {
+                  metric: 'Files Failed',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.failedFiles || 'N/A']),
+                  ),
+                },
+                {
                   metric: 'Total Cost',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
@@ -377,6 +393,19 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                         ? `${(testRun.overallAccuracy * 100).toFixed(1)}%`
                         : 'N/A',
                     ]),
+                  ),
+                },
+                {
+                  metric: 'Weighted Overall Score',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                      if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
+                        const avg =
+                          testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+                        return [testRunId, `${(avg * 100).toFixed(1)}%`];
+                      }
+                      return [testRunId, 'N/A'];
+                    }),
                   ),
                 },
                 {

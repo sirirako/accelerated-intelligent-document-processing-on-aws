@@ -7,7 +7,6 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
-import ActiveTestRunsList from './ActiveTestRunsList';
 import handlePrint from './PrintUtils';
 
 const client = generateClient();
@@ -64,7 +63,7 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
       }
 
       logger.info('Test run started:', result.data.startTestRun);
-      onTestStart(result.data.startTestRun.testRunId, selectedTestSet.label.split(' (')[0]);
+      onTestStart(result.data.startTestRun.testRunId, selectedTestSet.label.split(' (')[0], context);
       setError('');
     } catch (err) {
       logger.error('Failed to start test run:', err);
@@ -94,57 +93,53 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
   }));
 
   return (
-    <SpaceBetween size="l">
-      <Container
-        header={
-          <Header
-            variant="h2"
-            description="Select a test set and execute test runs for document processing"
-            actions={
-              <SpaceBetween direction="horizontal" size="xs">
-                <Button variant="primary" onClick={handleRunTest} loading={loading} disabled={!selectedTestSet}>
-                  Run Test
-                </Button>
-                <Button onClick={handlePrint} iconName="print">
-                  Print
-                </Button>
-              </SpaceBetween>
-            }
-          >
-            Run Test Set
-          </Header>
-        }
-      >
-        <SpaceBetween size="l">
-          {error && (
-            <Alert type="error" dismissible onDismiss={() => setError('')}>
-              {error}
-            </Alert>
-          )}
+    <Container
+      header={
+        <Header
+          variant="h2"
+          description="Select a test set and execute test runs for document processing"
+          actions={
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="primary" onClick={handleRunTest} loading={loading} disabled={!selectedTestSet}>
+                Run Test
+              </Button>
+              <Button onClick={handlePrint} iconName="print">
+                Print
+              </Button>
+            </SpaceBetween>
+          }
+        >
+          Run Test Set
+        </Header>
+      }
+    >
+      <SpaceBetween size="l">
+        {error && (
+          <Alert type="error" dismissible onDismiss={() => setError('')}>
+            {error}
+          </Alert>
+        )}
 
-          <FormField label="Select Test Set" description="Choose an existing test set to run">
-            <Select
-              selectedOption={selectedTestSet}
-              onChange={({ detail }) => setSelectedTestSet(detail.selectedOption)}
-              options={testSetOptions}
-              placeholder="Choose a test set..."
-              empty="No test sets available"
-            />
-          </FormField>
+        <FormField label="Select Test Set" description="Choose an existing test set to run">
+          <Select
+            selectedOption={selectedTestSet}
+            onChange={({ detail }) => setSelectedTestSet(detail.selectedOption)}
+            options={testSetOptions}
+            placeholder="Choose a test set..."
+            empty="No test sets available"
+          />
+        </FormField>
 
-          <FormField label="Context" description="Optional context information for this test run">
-            <Textarea
-              value={context}
-              onChange={({ detail }) => setContext(detail.value)}
-              placeholder="Enter context information..."
-              rows={3}
-            />
-          </FormField>
-        </SpaceBetween>
-      </Container>
-
-      <ActiveTestRunsList activeTestRuns={activeTestRuns} onTestComplete={onTestComplete} />
-    </SpaceBetween>
+        <FormField label="Context" description="Optional context information for this test run">
+          <Textarea
+            value={context}
+            onChange={({ detail }) => setContext(detail.value)}
+            placeholder="Enter context information..."
+            rows={2}
+          />
+        </FormField>
+      </SpaceBetween>
+    </Container>
   );
 };
 

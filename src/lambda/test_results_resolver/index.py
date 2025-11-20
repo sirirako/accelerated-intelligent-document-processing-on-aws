@@ -143,6 +143,7 @@ def get_test_results(test_run_id):
             'completedFiles': metadata.get('CompletedFiles', 0),
             'failedFiles': metadata.get('FailedFiles', 0),
             'overallAccuracy': cached_metrics.get('overallAccuracy'),
+            'weightedOverallScores': cached_metrics.get('weightedOverallScores', []),
             'averageConfidence': cached_metrics.get('averageConfidence'),
             'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
             'totalCost': cached_metrics.get('totalCost', 0),
@@ -166,6 +167,7 @@ def get_test_results(test_run_id):
         'completedFiles': metadata.get('CompletedFiles', 0),
         'failedFiles': metadata.get('FailedFiles', 0),
         'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
+        'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', []),
         'averageConfidence': aggregated_metrics.get('average_confidence'),
         'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
         'totalCost': aggregated_metrics.get('total_cost', 0),
@@ -193,6 +195,7 @@ def get_test_results(test_run_id):
         # Cache only static metrics
         metrics_to_cache = {
             'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
+            'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', []),
             'averageConfidence': aggregated_metrics.get('average_confidence'),
             'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
             'totalCost': aggregated_metrics.get('total_cost', 0),
@@ -478,6 +481,7 @@ def _aggregate_test_run_metrics(test_run_id):
     total_cost = 0
     accuracy_count = 0
     confidence_count = 0
+    weighted_overall_scores = []  # List to collect individual weighted overall scores
     cost_breakdown = {}
     usage_breakdown = {}
     
@@ -513,6 +517,10 @@ def _aggregate_test_run_metrics(test_run_id):
                 if overall_metrics.get('accuracy'):
                     total_accuracy += overall_metrics['accuracy']
                     accuracy_count += 1
+                
+                # Extract weighted overall score
+                if overall_metrics.get('weighted_overall_score') is not None:
+                    weighted_overall_scores.append(overall_metrics['weighted_overall_score'])
                 
                 # Extract additional accuracy metrics
                 if overall_metrics.get('precision'):
@@ -577,6 +585,7 @@ def _aggregate_test_run_metrics(test_run_id):
     
     return {
         'overall_accuracy': total_accuracy / accuracy_count if accuracy_count > 0 else None,
+        'weighted_overall_scores': weighted_overall_scores if weighted_overall_scores else [],
         'average_confidence': total_confidence / confidence_count if confidence_count > 0 else None,
         'accuracy_breakdown': {
             'precision': total_precision / precision_count if precision_count > 0 else None,

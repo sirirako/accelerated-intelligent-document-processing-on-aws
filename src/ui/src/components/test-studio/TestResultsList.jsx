@@ -7,9 +7,9 @@ import { useCollection } from '@cloudscape-design/collection-hooks';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
 import DELETE_TESTS from '../../graphql/queries/deleteTests';
-import TestResults from './TestResults';
 import DeleteTestModal from './DeleteTestModal';
 import { paginationLabels } from '../common/labels';
+import TestRunnerStatus from './TestRunnerStatus';
 import { TableHeader } from '../common/table';
 
 const client = generateClient();
@@ -76,8 +76,9 @@ TextCell.propTypes = {
   text: PropTypes.string.isRequired,
 };
 
-const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, setSelectedItems, preSelectedTestRunId }) => {
-  const [selectedTestRunId, setSelectedTestRunId] = useState(null);
+const TIME_PERIOD_STORAGE_KEY = 'testResultsTimePeriodHours';
+
+const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, setSelectedItems, activeTestRuns = [], onTestComplete }) => {
   const [testRuns, setTestRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -85,6 +86,25 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [pageSize, setPageSize] = useState(10);
+
+  // Load saved time period from localStorage on mount
+  useEffect(() => {
+    const savedTimePeriod = localStorage.getItem(TIME_PERIOD_STORAGE_KEY);
+    if (savedTimePeriod) {
+      const parsedPeriod = JSON.parse(savedTimePeriod);
+      if (parsedPeriod !== timePeriodHours) {
+        setTimePeriodHours(parsedPeriod);
+      }
+    }
+  }, []);
+
+  const handleTimePeriodChange = ({ detail }) => {
+    const selectedOption = TIME_PERIOD_OPTIONS.find((opt) => opt.id === detail.id);
+    if (selectedOption) {
+      setTimePeriodHours(selectedOption.hours);
+      localStorage.setItem(TIME_PERIOD_STORAGE_KEY, JSON.stringify(selectedOption.hours));
+    }
+  };
 
   // Remove the URL effect since we're using props now
   // Use collection hook for pagination, filtering, and sorting
@@ -97,19 +117,20 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
     sorting: { defaultState: { sortingColumn: { sortingField: 'createdAt' }, isDescending: true } },
   });
 
-  useEffect(() => {
-    if (preSelectedTestRunId) {
-      setSelectedTestRunId(preSelectedTestRunId);
-    }
-  }, [preSelectedTestRunId]);
-
   const handleTestRunSelect = (testRunId) => {
-    setSelectedTestRunId(testRunId);
+    window.location.hash = `#/test-studio?tab=results&testRunId=${testRunId}`;
   };
 
   const getTestRunIdCell = (item) => <TestRunIdCell item={item} onSelect={handleTestRunSelect} />;
   const getTestSetNameCell = (item) => <TextCell text={item.testSetName} />;
   const getContextCell = (item) => <TextCell text={item.context || 'N/A'} />;
+
+  const getStatusCell = (item) => {
+    if (item.isActive) {
+      return <TestRunnerStatus testRunId={item.testRunId} onComplete={() => onTestComplete(item.testRunId)} />;
+    }
+    return item.status;
+  };
 
   const fetchTestRuns = async () => {
     try {
@@ -122,7 +143,29 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
       console.log('Raw GraphQL result:', result);
       console.log('getTestRuns data:', result.data.getTestRuns);
       console.log('Number of test runs returned:', result.data.getTestRuns?.length || 0);
-      setTestRuns(result.data.getTestRuns || []);
+
+      const completedRuns = result.data.getTestRuns || [];
+
+      // Add active test runs with progress
+      const activeRunsWithProgress = activeTestRuns.map((run) => ({
+        testRunId: run.testRunId,
+        testSetName: run.testSetName,
+        status: 'Running',
+        isActive: true,
+        progress: Math.min(90, Math.floor(((Date.now() - run.startTime.getTime()) / 1000 / 60) * 10)), // Simulate progress
+        filesCount: 0,
+        createdAt: run.startTime.toISOString(),
+        completedAt: null,
+        context: run.context || 'N/A',
+      }));
+
+      // Filter out completed runs that match active run IDs to avoid duplicates
+      const activeRunIds = new Set(activeTestRuns.map((run) => run.testRunId));
+      const filteredCompletedRuns = completedRuns.filter((run) => !activeRunIds.has(run.testRunId));
+
+      // Merge active and completed runs, active runs first
+      const allRuns = [...activeRunsWithProgress, ...filteredCompletedRuns];
+      setTestRuns(allRuns);
       setError(null);
     } catch (err) {
       console.error('Error fetching test runs:', err);
@@ -135,7 +178,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
 
   useEffect(() => {
     fetchTestRuns();
-  }, [timePeriodHours]);
+  }, [timePeriodHours, activeTestRuns]);
 
   const downloadToExcel = () => {
     // Convert test runs data to CSV format
@@ -205,14 +248,6 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
     }
   };
 
-  if (selectedTestRunId) {
-    return (
-      <div>
-        <TestResults testRunId={selectedTestRunId} setSelectedTestRunId={setSelectedTestRunId} />
-      </div>
-    );
-  }
-
   if (loading) return <div>Loading test runs...</div>;
   if (error) return <div>Error loading test runs: {error}</div>;
 
@@ -234,17 +269,8 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
         title={`Test Results (${testRuns.length})`}
         actionButtons={
           <SpaceBetween direction="horizontal" size="xs">
-            <ButtonDropdown
-              loading={loading}
-              onItemClick={({ detail }) => {
-                const selectedOption = TIME_PERIOD_OPTIONS.find((opt) => opt.id === detail.id);
-                if (selectedOption) {
-                  setTimePeriodHours(selectedOption.hours);
-                }
-              }}
-              items={TIME_PERIOD_OPTIONS}
-            >
-              {`Load: ${TIME_PERIOD_OPTIONS.find((opt) => opt.hours === timePeriodHours)?.text || '2 hrs'}`}
+            <ButtonDropdown loading={loading} onItemClick={handleTimePeriodChange} items={TIME_PERIOD_OPTIONS}>
+              {`Load: ${TIME_PERIOD_OPTIONS.find((opt) => opt.hours === timePeriodHours)?.text || ''}`}
             </ButtonDropdown>
             <Button iconName="refresh" variant="normal" loading={loading} onClick={handleRefresh} />
             <Button iconName="download" variant="normal" loading={loading} onClick={downloadToExcel} />
@@ -260,9 +286,6 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
                 Test Comparison ({selectedItems.length})
               </Button>
             )}
-            <Button onClick={() => window.print()} iconName="print">
-              Print
-            </Button>
           </SpaceBetween>
         }
       />
@@ -300,7 +323,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
           {
             id: 'status',
             header: 'Status',
-            cell: (item) => item.status,
+            cell: getStatusCell,
             sortingField: 'status',
           },
           {
@@ -385,7 +408,14 @@ TestResultsList.propTypes = {
     }),
   ).isRequired,
   setSelectedItems: PropTypes.func.isRequired,
-  preSelectedTestRunId: PropTypes.string,
+  activeTestRuns: PropTypes.arrayOf(
+    PropTypes.shape({
+      testRunId: PropTypes.string.isRequired,
+      testSetName: PropTypes.string.isRequired,
+      startTime: PropTypes.instanceOf(Date).isRequired,
+    }),
+  ),
+  onTestComplete: PropTypes.func.isRequired,
 };
 
 TestResultsList.defaultProps = {};

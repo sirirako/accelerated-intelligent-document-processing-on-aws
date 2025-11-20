@@ -16,6 +16,8 @@ import {
   Modal,
   Textarea,
   FormField,
+  BarChart,
+  Select,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
@@ -116,6 +118,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [currentFileCount, setCurrentFileCount] = useState(null);
   const [loadingFileCount, setLoadingFileCount] = useState(false);
   const [filePattern, setFilePattern] = useState(null);
+  const [chartType, setChartType] = useState({ label: 'Bar Chart', value: 'bar' });
 
   const fetchCurrentFileCount = async () => {
     if (!results?.testSetId) return;
@@ -191,7 +194,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       if (setSelectedTestRunId) {
         setSelectedTestRunId(null);
       } else {
-        window.location.replace('#/test-studio?tab=results');
+        window.location.replace('#/test-studio?tab=executions');
       }
     };
 
@@ -283,8 +286,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         addTestRun(newTestRun.testRunId, newTestRun.testSetName);
         setShowReRunModal(false);
         setReRunContext('');
-        // Navigate to test runner tab
-        window.location.hash = '#/test-studio?tab=runner';
+        // Navigate to test executions tab
+        window.location.hash = '#/test-studio?tab=executions';
       } else {
         console.error('No startTestRun data in result');
       }
@@ -329,7 +332,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     if (setSelectedTestRunId) {
       setSelectedTestRunId(null);
     } else {
-      window.location.replace('#/test-studio?tab=results');
+      window.location.replace('#/test-studio?tab=executions');
     }
   };
 
@@ -368,7 +371,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         )}
 
         {/* Key Metrics */}
-        <ColumnLayout columns={4} variant="text-grid">
+        <ColumnLayout columns={5} variant="text-grid">
           <Box>
             <Box variant="awsui-key-label">Total Cost</Box>
             <Box fontSize="heading-l">
@@ -404,7 +407,99 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                 : 'N/A'}
             </Box>
           </Box>
+          <Box>
+            <Box variant="awsui-key-label">Weighted Overall Scores</Box>
+            <Box fontSize="heading-l">
+              {results.weightedOverallScores && results.weightedOverallScores.length > 0 ? results.weightedOverallScores.join(' ') : 'N/A'}
+            </Box>
+          </Box>
         </ColumnLayout>
+
+        {/* Weighted Overall Scores Distribution Chart */}
+        {results.weightedOverallScores && results.weightedOverallScores.length > 1 && (
+          <Container
+            header={
+              <Header
+                variant="h3"
+                actions={
+                  <Select
+                    selectedOption={chartType}
+                    onChange={({ detail }) => setChartType(detail.selectedOption)}
+                    options={[
+                      { label: 'Bar Chart', value: 'bar' },
+                      { label: 'Line Chart', value: 'line' },
+                    ]}
+                    placeholder="Select chart type"
+                  />
+                }
+              >
+                Weighted Overall Score Distribution
+              </Header>
+            }
+          >
+            <BarChart
+              title={`Distribution of Weighted Overall Scores (${results.testSetName})`}
+              series={[
+                {
+                  title: 'Number of Documents',
+                  type: chartType.value,
+                  data: (() => {
+                    // Create score range buckets
+                    const buckets = {
+                      '0-10%': 0,
+                      '10-20%': 0,
+                      '20-30%': 0,
+                      '30-40%': 0,
+                      '40-50%': 0,
+                      '50-60%': 0,
+                      '60-70%': 0,
+                      '70-80%': 0,
+                      '80-90%': 0,
+                      '90-100%': 0,
+                    };
+
+                    // Count documents in each bucket
+                    results.weightedOverallScores.forEach((score) => {
+                      const percentage = score * 100;
+                      if (percentage < 10) buckets['0-10%']++;
+                      else if (percentage < 20) buckets['10-20%']++;
+                      else if (percentage < 30) buckets['20-30%']++;
+                      else if (percentage < 40) buckets['30-40%']++;
+                      else if (percentage < 50) buckets['40-50%']++;
+                      else if (percentage < 60) buckets['50-60%']++;
+                      else if (percentage < 70) buckets['60-70%']++;
+                      else if (percentage < 80) buckets['70-80%']++;
+                      else if (percentage < 90) buckets['80-90%']++;
+                      else buckets['90-100%']++;
+                    });
+
+                    return Object.entries(buckets).map(([range, count]) => ({
+                      x: range,
+                      y: count,
+                    }));
+                  })(),
+                },
+              ]}
+              xDomain={['0-10%', '10-20%', '20-30%', '30-40%', '40-50%', '50-60%', '60-70%', '70-80%', '80-90%', '90-100%']}
+              yDomain={[0, Math.max(...results.weightedOverallScores.map(() => 1)) * results.weightedOverallScores.length]}
+              xTitle="Weighted Overall Score Range"
+              yTitle="Number of Documents"
+              yTitleOrientation="vertical"
+              height={300}
+              hideFilter
+              hideLegend
+              i18nStrings={{
+                filterLabel: 'Filter displayed data',
+                filterPlaceholder: 'Filter data',
+                filterSelectedAriaLabel: 'selected',
+                legendAriaLabel: 'Legend',
+                chartAriaRoleDescription: 'bar chart',
+                xTickFormatter: (value) => value,
+                yTickFormatter: (value) => value.toString(),
+              }}
+            />
+          </Container>
+        )}
 
         {/* Breakdown Tables */}
         {(costBreakdown || usageBreakdown || accuracyBreakdown) && (

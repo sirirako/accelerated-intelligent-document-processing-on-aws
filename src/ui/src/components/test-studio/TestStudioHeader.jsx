@@ -9,7 +9,7 @@ const TestStudioHeader = ({ title, description, showBackButton = true, showPrint
   const actions = [];
 
   if (showBackButton) {
-    const handleBackClick = onBackClick || (() => window.location.replace('#/test-studio?tab=results'));
+    const handleBackClick = onBackClick || (() => window.location.replace('#/test-studio?tab=executions'));
 
     actions.push(
       <Button key="back" onClick={handleBackClick} iconName="arrow-left">

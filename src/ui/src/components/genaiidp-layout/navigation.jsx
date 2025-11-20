@@ -29,8 +29,7 @@ export const documentsNavItems = [
     text: 'Test Studio',
     items: [
       { type: 'link', text: 'Test Sets', href: `#${TEST_STUDIO_PATH}?tab=sets` },
-      { type: 'link', text: 'Test Runner', href: `#${TEST_STUDIO_PATH}?tab=runner` },
-      { type: 'link', text: 'Test Results', href: `#${TEST_STUDIO_PATH}?tab=results` },
+      { type: 'link', text: 'Test Executions', href: `#${TEST_STUDIO_PATH}?tab=executions` },
     ],
   },
   {
