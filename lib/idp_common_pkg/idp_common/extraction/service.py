@@ -8,14 +8,34 @@ This module provides a service for extracting fields and values from documents
 using LLMs, with support for text and image content.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from idp_common import bedrock, image, metrics, s3, utils
+from idp_common.config.models import IDPConfig
+from idp_common.config.schema_constants import (
+    ID_FIELD,
+    SCHEMA_PROPERTIES,
+    X_AWS_IDP_DOCUMENT_TYPE,
+)
 from idp_common.models import Document
+from idp_common.utils.few_shot_example_builder import (
+    build_few_shot_extraction_examples_content,
+)
+
+# Conditional import for agentic extraction (requires Python 3.10+ dependencies)
+try:
+    from idp_common.extraction.agentic_idp import structured_output
+    from idp_common.schema import create_pydantic_model_from_json_schema
+
+    AGENTIC_AVAILABLE = True
+except ImportError:
+    AGENTIC_AVAILABLE = False
 from idp_common.utils import extract_json_from_text
 
 logger = logging.getLogger(__name__)
@@ -24,100 +44,106 @@ logger = logging.getLogger(__name__)
 class ExtractionService:
     """Service for extracting fields from documents using LLMs."""
 
-    def __init__(self, region: str = None, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        region: str = None,
+        config: Union[Dict[str, Any], "IDPConfig"] = None,
+    ):
         """
         Initialize the extraction service.
 
         Args:
             region: AWS region for Bedrock
-            config: Configuration dictionary
+            config: Configuration dictionary or IDPConfig model
         """
-        self.config = config or {}
-        self.region = (
-            region or self.config.get("region") or os.environ.get("AWS_REGION")
-        )
+        # Convert dict to IDPConfig if needed
+        if config is not None and isinstance(config, dict):
+            config_model: IDPConfig = IDPConfig(**config)
+        elif config is None:
+            config_model = IDPConfig()
+        else:
+            config_model = config
 
-        # Get model_id from config for logging
-        model_id = self.config.get("model_id") or self.config.get("extraction", {}).get(
-            "model"
+        self.config = config_model
+        self.region = region or os.environ.get("AWS_REGION")
+
+        # Get model_id from config for logging (type-safe access with fallback)
+        model_id = (
+            self.config.extraction.model if self.config.extraction else "not configured"
         )
         logger.info(f"Initialized extraction service with model {model_id}")
 
-    def _get_class_attributes(self, class_label: str) -> List[Dict[str, Any]]:
+    def _get_class_schema(self, class_label: str) -> Dict[str, Any]:
         """
-        Get attributes for a specific document class from configuration.
+        Get JSON Schema for a specific document class from configuration.
 
         Args:
             class_label: The document class name
 
         Returns:
-            List of attribute configurations
+            JSON Schema for the class, or empty dict if not found
         """
-        classes_config = self.config.get("classes", [])
-        class_config = next(
-            (
-                class_obj
-                for class_obj in classes_config
-                if class_obj.get("name", "").lower() == class_label.lower()
-            ),
-            None,
-        )
-        if class_config is None:
-            return []
+        # Access classes through IDPConfig - returns List of dicts
+        classes_config = self.config.classes
 
-        # Get attributes and ensure it's always a list, never None
-        attributes = class_config.get("attributes", [])
-        return attributes if attributes is not None else []
+        # Find class by $id or x-aws-idp-document-type using constants
+        for class_obj in classes_config:
+            class_id = class_obj.get(ID_FIELD, "") or class_obj.get(
+                X_AWS_IDP_DOCUMENT_TYPE, ""
+            )
+            if class_id.lower() == class_label.lower():
+                return class_obj
 
-    def _format_attribute_descriptions(self, attributes: List[Dict[str, Any]]) -> str:
+        return {}
+
+    def _clean_schema_for_prompt(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Format attribute descriptions for the prompt, supporting nested structures.
+        Clean JSON Schema by removing IDP custom fields (x-aws-idp-*) for the prompt.
+        Keeps all standard JSON Schema fields including descriptions.
 
         Args:
-            attributes: List of attribute configurations
+            schema: JSON Schema definition
 
         Returns:
-            Formatted attribute descriptions as a string
+            Cleaned JSON Schema
         """
-        # Defensive coding: handle None input
-        if attributes is None:
-            return ""
+        cleaned = {}
 
-        formatted_lines = []
+        for key, value in schema.items():
+            # Skip IDP custom fields
+            if key.startswith("x-aws-idp-"):
+                continue
 
-        for attr in attributes:
-            attr_name = attr.get("name", "")
-            attr_description = attr.get("description", "")
-            attr_type = attr.get("attributeType", "simple")
-
-            if attr_type == "group":
-                # Handle group attributes with nested groupAttributes
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                group_attributes = attr.get("groupAttributes", [])
-                for group_attr in group_attributes:
-                    group_name = group_attr.get("name", "")
-                    group_desc = group_attr.get("description", "")
-                    formatted_lines.append(f"  - {group_name}  \t[ {group_desc} ]")
-
-            elif attr_type == "list":
-                # Handle list attributes with listItemTemplate
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
-                list_template = attr.get("listItemTemplate", {})
-                item_description = list_template.get("itemDescription", "")
-                if item_description:
-                    formatted_lines.append(f"  Each item: {item_description}")
-
-                item_attributes = list_template.get("itemAttributes", [])
-                for item_attr in item_attributes:
-                    item_name = item_attr.get("name", "")
-                    item_desc = item_attr.get("description", "")
-                    formatted_lines.append(f"  - {item_name}  \t[ {item_desc} ]")
-
+            # Recursively clean nested objects and arrays
+            if isinstance(value, dict):
+                cleaned[key] = self._clean_schema_for_prompt(value)
+            elif isinstance(value, list):
+                cleaned[key] = [
+                    self._clean_schema_for_prompt(item)
+                    if isinstance(item, dict)
+                    else item
+                    for item in value
+                ]
             else:
-                # Handle simple attributes (default case for backward compatibility)
-                formatted_lines.append(f"{attr_name}  \t[ {attr_description} ]")
+                cleaned[key] = value
 
-        return "\n".join(formatted_lines)
+        return cleaned
+
+    def _format_schema_for_prompt(self, schema: Dict[str, Any]) -> str:
+        """
+        Format JSON Schema for inclusion in the extraction prompt.
+
+        Args:
+            schema: JSON Schema definition
+
+        Returns:
+            Formatted JSON Schema as a string with IDP custom fields removed
+        """
+        # Clean the schema to remove IDP custom fields
+        cleaned_schema = self._clean_schema_for_prompt(schema)
+
+        # Return the cleaned JSON Schema with nice formatting
+        return json.dumps(cleaned_schema, indent=2)
 
     def _prepare_prompt_from_template(
         self,
@@ -392,14 +418,9 @@ class ExtractionService:
             List of content items containing text and image content for examples
         """
         content = []
-        classes = self.config.get("classes", [])
 
-        # Find the specific class that matches the class_label
-        target_class = None
-        for class_obj in classes:
-            if class_obj.get("name", "").lower() == class_label.lower():
-                target_class = class_obj
-                break
+        # Find the specific class that matches the class_label (now in JSON Schema format)
+        target_class = self._get_class_schema(class_label)
 
         if not target_class:
             logger.warning(
@@ -407,58 +428,8 @@ class ExtractionService:
             )
             return content
 
-        # Get examples from the target class only
-        examples = target_class.get("examples", [])
-        for example in examples:
-            attributes_prompt = example.get("attributesPrompt")
-
-            # Only process this example if it has a non-empty attributesPrompt
-            if not attributes_prompt or not attributes_prompt.strip():
-                logger.info(
-                    f"Skipping example with empty attributesPrompt: {example.get('name')}"
-                )
-                continue
-
-            content.append({"text": attributes_prompt})
-
-            image_path = example.get("imagePath")
-            if image_path:
-                try:
-                    # Load image content from the path
-
-                    from idp_common import image, s3
-
-                    # Get list of image files from the path (supports directories/prefixes)
-                    image_files = self._get_image_files_from_path(image_path)
-
-                    # Process each image file
-                    for image_file_path in image_files:
-                        try:
-                            # Load image content
-                            if image_file_path.startswith("s3://"):
-                                # Direct S3 URI
-                                image_content = s3.get_binary_content(image_file_path)
-                            else:
-                                # Local file
-                                with open(image_file_path, "rb") as f:
-                                    image_content = f.read()
-
-                            # Prepare image content for Bedrock
-                            image_attachment = image.prepare_bedrock_image_attachment(
-                                image_content
-                            )
-                            content.append(image_attachment)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to load image {image_file_path}: {e}"
-                            )
-                            continue
-
-                except Exception as e:
-                    raise ValueError(
-                        f"Failed to load example images from {image_path}: {e}"
-                    )
+        # Get examples from the JSON Schema for this specific class
+        content = build_few_shot_extraction_examples_content(target_class)
 
         return content
 
@@ -761,6 +732,15 @@ class ExtractionService:
         sorted_page_ids = sorted(section.page_ids, key=int)
         start_page = int(sorted_page_ids[0])
         end_page = int(sorted_page_ids[-1])
+
+        # Find minimum page ID across all sections in the document to determine offset
+        min_page_id = min(
+            int(page_id) for sec in document.sections for page_id in sec.page_ids
+        )
+
+        # Adjust page indices to be zero-based if document pages start at 1
+        page_indices = [int(page_id) - min_page_id for page_id in sorted_page_ids]
+
         logger.info(
             f"Processing {len(sorted_page_ids)} pages, class {class_label}: {start_page}-{end_page}"
         )
@@ -789,11 +769,9 @@ class ExtractionService:
             t1 = time.time()
             logger.info(f"Time taken to read text content: {t1 - t0:.2f} seconds")
 
-            # Read page images with configurable dimensions
-            extraction_config = self.config.get("extraction", {})
-            image_config = extraction_config.get("image", {})
-            target_width = image_config.get("target_width")
-            target_height = image_config.get("target_height")
+            # Read page images with configurable dimensions (type-safe access)
+            target_width = self.config.extraction.image.target_width
+            target_height = self.config.extraction.image.target_height
 
             page_images = []
             for page_id in sorted_page_ids:
@@ -811,24 +789,29 @@ class ExtractionService:
             t2 = time.time()
             logger.info(f"Time taken to read images: {t2 - t1:.2f} seconds")
 
-            # Get extraction configuration
-            model_id = self.config.get("model_id") or extraction_config.get("model")
-            temperature = float(extraction_config.get("temperature", 0))
-            top_k = float(extraction_config.get("top_k", 5))
-            top_p = float(extraction_config.get("top_p", 0.1))
+            # Get extraction configuration (type-safe access, automatic type conversion)
+            model_id = self.config.extraction.model
+            temperature = (
+                self.config.extraction.temperature
+            )  # Already float, no conversion needed!
+            top_k = self.config.extraction.top_k  # Already float!
+            top_p = self.config.extraction.top_p  # Already float!
             max_tokens = (
-                int(extraction_config.get("max_tokens", 4096))
-                if extraction_config.get("max_tokens")
+                self.config.extraction.max_tokens
+                if self.config.extraction.max_tokens
                 else None
             )
-            system_prompt = extraction_config.get("system_prompt", "")
+            system_prompt = self.config.extraction.system_prompt
 
-            # Get attributes for this document class
-            attributes = self._get_class_attributes(class_label)
-            attribute_descriptions = self._format_attribute_descriptions(attributes)
+            # Get JSON Schema for this document class
+            class_schema = self._get_class_schema(class_label)
+            attribute_descriptions = self._format_schema_for_prompt(class_schema)
 
-            # Check if attributes list is empty - if so, skip LLM invocation entirely
-            if not attributes or not attribute_descriptions.strip():
+            # Check if schema has properties - if not, skip LLM invocation entirely
+            if (
+                not class_schema.get(SCHEMA_PROPERTIES)
+                or not attribute_descriptions.strip()
+            ):
                 logger.info(
                     f"No attributes defined for class {class_label}, skipping LLM extraction"
                 )
@@ -847,6 +830,7 @@ class ExtractionService:
                 # Write to S3 with empty extraction result
                 output = {
                     "document_class": {"type": class_label},
+                    "split_document": {"page_indices": page_indices},
                     "inference_result": extracted_fields,
                     "metadata": {
                         "parsing_succeeded": parsing_succeeded,
@@ -872,8 +856,8 @@ class ExtractionService:
                 )
                 return document
 
-            # Check for custom prompt Lambda function
-            custom_lambda_arn = extraction_config.get("custom_prompt_lambda_arn")
+            # Check for custom prompt Lambda function (type-safe access)
+            custom_lambda_arn = self.config.extraction.custom_prompt_lambda_arn
 
             if custom_lambda_arn and custom_lambda_arn.strip():
                 logger.info(f"Using custom prompt Lambda: {custom_lambda_arn}")
@@ -898,7 +882,7 @@ class ExtractionService:
                 )
 
                 # Build default content for Lambda input
-                prompt_template = extraction_config.get("task_prompt", "")
+                prompt_template = self.config.extraction.task_prompt
                 if prompt_template:
                     # Check if task prompt contains FEW_SHOT_EXAMPLES placeholder
                     if "{FEW_SHOT_EXAMPLES}" in prompt_template:
@@ -981,9 +965,7 @@ class ExtractionService:
                         # Ultimate fallback to minimal payload
                         payload = {
                             "config": {
-                                "extraction": {
-                                    "model": extraction_config.get("model", "")
-                                }
+                                "extraction": {"model": self.config.extraction.model}
                             },
                             "prompt_placeholders": prompt_placeholders,
                             "default_task_prompt_content": [
@@ -1011,7 +993,7 @@ class ExtractionService:
                 logger.info(
                     "No custom prompt Lambda configured - using default prompt generation"
                 )
-                prompt_template = extraction_config.get("task_prompt", "")
+                prompt_template = self.config.extraction.task_prompt
 
                 if not prompt_template:
                     # Default prompt if template not found
@@ -1092,44 +1074,94 @@ class ExtractionService:
             # Time the model invocation
             request_start_time = time.time()
 
-            # Invoke Bedrock with the common library
-            response_with_metering = bedrock.invoke_model(
-                model_id=model_id,
-                system_prompt=system_prompt,
-                content=content,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-                max_tokens=max_tokens,
-                context="Extraction",
-            )
+            # Type-safe boolean access - no string conversion needed!
+            if self.config.extraction.agentic.enabled:
+                if not AGENTIC_AVAILABLE:
+                    raise ImportError(
+                        "Agentic extraction requires Python 3.10+ and strands-agents dependencies. "
+                        "Install with: pip install 'idp_common[agents]' or use agentic=False"
+                    )
+
+                # Create dynamic Pydantic model from JSON Schema
+                # Schema is already cleaned by _clean_schema_for_prompt before being passed here
+                dynamic_model = create_pydantic_model_from_json_schema(
+                    schema=class_schema,
+                    class_label=class_label,
+                    clean_schema=False,  # Already cleaned
+                )
+
+                # Log the Pydantic model schema for debugging
+                model_schema = dynamic_model.model_json_schema()
+                logger.debug(f"Pydantic model schema for {class_label}:")
+                logger.debug(json.dumps(model_schema, indent=2))
+
+                # Use agentic extraction with the dynamic model
+                # Wrap content list in proper Message format for agentic_idp compatibility
+                if isinstance(content, list):
+                    message_prompt = {"role": "user", "content": content}
+                else:
+                    message_prompt = content
+                logger.info("Using Agentic extraction")
+                logger.debug(f"Using input: {str(message_prompt)}")
+                structured_data, response_with_metering = structured_output(  # pyright: ignore[reportPossiblyUnboundVariable]
+                    model_id=model_id,
+                    data_format=dynamic_model,
+                    prompt=message_prompt,  # pyright: ignore[reportArgumentType]
+                    custom_instruction=system_prompt,
+                    review_agent=self.config.extraction.agentic.review_agent,  # Type-safe boolean!
+                    context="Extraction",
+                )
+
+                # Extract the structured data as dict for compatibility with existing code
+                extracted_fields = structured_data.model_dump()
+                # Extract metering from BedrockInvokeModelResponse
+                metering = response_with_metering["metering"]
+                parsing_succeeded = True  # Agentic approach always succeeds in parsing since it returns structured data
+
+            else:
+                # Invoke Bedrock with the common library
+                response_with_metering = bedrock.invoke_model(
+                    model_id=model_id,
+                    system_prompt=system_prompt,
+                    content=content,
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                    max_tokens=max_tokens,
+                    context="Extraction",
+                )
+                # For non-agentic approach, response_with_metering is BedrockInvokeModelResponse
+                # Extract text from response for non-agentic approach
+                extracted_text = bedrock.extract_text_from_response(
+                    dict(response_with_metering)
+                )
+                metering = response_with_metering["metering"]
+
+                # Parse response into JSON
+                extracted_fields = {}
+                parsing_succeeded = True  # Flag to track if parsing was successful
+
+                try:
+                    # Try to parse the extracted text as JSON
+                    extracted_fields = json.loads(
+                        extract_json_from_text(extracted_text)
+                    )
+                except Exception as e:
+                    # Handle parsing error
+                    logger.error(
+                        f"Error parsing LLM output - invalid JSON?: {extracted_text} - {e}"
+                    )
+                    logger.info("Using unparsed LLM output.")
+                    extracted_fields = {"raw_output": extracted_text}
+                    parsing_succeeded = False  # Mark that parsing failed
 
             total_duration = time.time() - request_start_time
             logger.info(f"Time taken for extraction: {total_duration:.2f} seconds")
 
-            # Extract text from response
-            extracted_text = bedrock.extract_text_from_response(response_with_metering)
-            metering = response_with_metering.get("metering", {})
-
-            # Parse response into JSON
-            extracted_fields = {}
-            parsing_succeeded = True  # Flag to track if parsing was successful
-
-            try:
-                # Try to parse the extracted text as JSON
-                extracted_fields = json.loads(extract_json_from_text(extracted_text))
-            except Exception as e:
-                # Handle parsing error
-                logger.error(
-                    f"Error parsing LLM output - invalid JSON?: {extracted_text} - {e}"
-                )
-                logger.info("Using unparsed LLM output.")
-                extracted_fields = {"raw_output": extracted_text}
-                parsing_succeeded = False  # Mark that parsing failed
-
             # Write to S3
             output = {
                 "document_class": {"type": class_label},
+                "split_document": {"page_indices": page_indices},
                 "inference_result": extracted_fields,
                 "metadata": {
                     "parsing_succeeded": parsing_succeeded,

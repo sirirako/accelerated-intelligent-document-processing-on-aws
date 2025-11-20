@@ -1,0 +1,598 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+"""
+Lambda function to process agent chat messages with streaming support.
+
+This function creates a conversational orchestrator with all registered agents
+and streams responses in real-time via AppSync subscriptions.
+"""
+
+import asyncio
+import json
+import logging
+import os
+import re
+import uuid
+
+import boto3
+
+from idp_common.agents.analytics import get_analytics_config
+from idp_common.agents.common.config import configure_logging
+from idp_common.agents.factory import agent_factory
+from idp_common.appsync.client import AppSyncClient
+
+# Configure logging for both application and Strands framework
+configure_logging()
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
+
+# Sub-agent streaming is always enabled
+
+# Track Lambda cold/warm starts for debugging
+_lambda_invocation_count = 0
+
+# GraphQL mutation for streaming agent chat messages
+STREAMING_MUTATION = """
+mutation SendAgentChatMessage($prompt: String!, $sessionId: String, $method: String) {
+    sendAgentChatMessage(prompt: $prompt, sessionId: $sessionId, method: $method) {
+        role
+        content
+        timestamp
+        isProcessing
+        sessionId
+    }
+}
+"""
+
+
+def clean_content_for_display(content):
+    """
+    Remove thinking tags from content for display.
+    
+    Agents may use <thinking>...</thinking> tags for internal reasoning.
+    This function removes those tags so only the final response is shown to users.
+    
+    Args:
+        content: The raw content from the agent
+        
+    Returns:
+        Cleaned content without thinking tags
+    """
+    cleaned = re.sub(r'<thinking>.*?</thinking>', '', content, flags=re.DOTALL)
+    return cleaned.strip()
+
+
+async def publish_stream_update(
+    appsync_client, session_id, content, method, message_id, is_processing=True
+):
+    """
+    Publish streaming updates via AppSync mutation.
+    
+    This function sends chunks of the agent's response to the frontend
+    via AppSync GraphQL mutations, which trigger subscriptions for real-time updates.
+    
+    Args:
+        appsync_client: The AppSync client instance to use
+        session_id: The conversation session ID
+        content: The content to send
+        method: The message method (e.g., "assistant_stream", "assistant_final_response")
+        message_id: Unique ID for this message
+        is_processing: Whether the agent is still processing
+        
+    Returns:
+        The AppSync response
+    """
+    try:
+        # Clean and truncate content if needed
+        cleaned_content = str(content).replace('\r', ' ')
+        if len(cleaned_content) > 10000:
+            cleaned_content = cleaned_content[:10000] + "..."
+        
+        # Execute the GraphQL mutation
+        response = appsync_client.execute_mutation(
+            STREAMING_MUTATION,
+            {
+                "prompt": cleaned_content,
+                "sessionId": str(session_id),
+                "method": method
+            }
+        )
+        logger.info(f"Published message via AppSync: {method}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error publishing stream update: {e}")
+        return None
+
+
+async def stream_agent_response(appsync_client, orchestrator, prompt, session_id):
+    """
+    Stream agent responses in real-time.
+    
+    This function processes the user's prompt through the orchestrator and
+    streams the response chunks as they're generated, providing a real-time
+    conversational experience.
+    
+    Args:
+        orchestrator: The conversational orchestrator agent
+        prompt: The user's message
+        session_id: The conversation session ID
+        
+    Returns:
+        The final displayed text (without thinking tags)
+    """
+    try:
+        full_text_buffer = ""
+        displayed_text = ""
+        message_id = str(uuid.uuid4())
+        current_subagent = None
+        current_tool_use_id = None
+        sent_subagent_starts = set()  # Track which tool use IDs we've already sent starts for
+        sent_tool_use_ids = set()  # Track which nested tool use IDs we've already announced
+        tool_input_buffers = {}  # Track input text sent for each tool use ID
+        
+        logger.info(f"Starting to stream response for session {session_id}")
+        logger.info("Sub-agent streaming enabled")
+        
+        # Stream the agent's response asynchronously
+        async for event in orchestrator.stream_async(prompt):
+            
+            if "data" in event:
+                # Handle streaming chunk
+                chunk_text = event["data"]
+                full_text_buffer += chunk_text
+                
+                # Clean the content (remove thinking tags)
+                clean_text = clean_content_for_display(full_text_buffer)
+                
+                # Only send new text that hasn't been displayed yet
+                if len(clean_text) > len(displayed_text):
+                    new_text = clean_text[len(displayed_text):]
+                    displayed_text = clean_text
+                    
+                    # Publish the chunk to AppSync
+                    await publish_stream_update(
+                        appsync_client,
+                        session_id, 
+                        new_text, 
+                        "assistant_stream", 
+                        message_id, 
+                        True
+                    )
+            
+            # Handle sub-agent start (tool use detected)
+            elif "current_tool_use" in event:
+                tool_use = event["current_tool_use"]
+                tool_name = tool_use.get("name")
+                
+                if tool_name:
+                    current_subagent = tool_name
+                    current_tool_use_id = tool_use.get("toolUseId")
+                    
+                    # Check if we've already sent a start message for this tool use ID
+                    if current_tool_use_id not in sent_subagent_starts:
+                        # Mark this tool use ID as having a start message sent
+                        sent_subagent_starts.add(current_tool_use_id)
+                        
+                        # Extract display name
+                        agent_display_name = tool_name.replace("_agent", "").replace("_", " ").title()
+
+                        # Publish sub-agent start event
+                        try:
+                            await publish_stream_update(
+                                appsync_client,
+                                session_id,
+                                json.dumps({
+                                    "type": "subagent_start",
+                                    "agent_name": agent_display_name,
+                                    "tool_name": tool_name,
+                                    "tool_use_id": current_tool_use_id
+                                }),
+                                "subagent_start",
+                                message_id,
+                                True
+                            )
+                            logger.info(f"Sub-agent started: {agent_display_name} ({tool_name})")
+                        except Exception as e:
+                            logger.error(f"Failed to publish subagent_start event: {e}")
+                            # Continue processing even if publish fails
+                    else:
+                        logger.debug(f"Skipping duplicate subagent_start for tool use ID: {current_tool_use_id}")
+            
+            # Handle sub-agent streaming output
+            elif "tool_stream_event" in event:
+                tool_stream = event["tool_stream_event"]
+                tool_data = tool_stream.get("data")
+                
+                # Skip low-level Bedrock events
+                if isinstance(tool_data, dict) and any(key in tool_data for key in ["init_event_loop", "start_event_loop", "start", "event"]):
+                    logger.debug(f"Skipping low-level event: {list(tool_data.keys())}")
+                    continue
+                
+                # Log what we received for debugging
+                logger.debug(f"Received tool_stream_event: data type={type(tool_data)}, data={str(tool_data)[:200]}")
+                
+                # Check if this is a structured data detection event (special case - not streamed to FE)
+                if isinstance(tool_data, dict) and "structured_data_detected" in tool_data:
+                    response_type = tool_data.get("responseType")
+                    logger.info(f"Detected structured data response from tool stream: {response_type}")
+                    
+                    # Notify FE that structured data is coming
+                    try:
+                        await publish_stream_update(
+                            appsync_client,
+                            session_id,
+                            json.dumps({
+                                "type": "structured_data_start",
+                                "responseType": response_type
+                            }),
+                            "structured_data_start",
+                            message_id,
+                            True
+                        )
+                        logger.info(f"Notified FE of {response_type} response")
+                    except Exception as e:
+                        logger.error(f"Failed to publish structured_data_start: {e}")
+                
+                # Handle string data (direct text streaming from sub-agent)
+                elif isinstance(tool_data, str):
+                    logger.debug(f"Sub-agent text stream (string): {tool_data[:100]}")
+                    try:
+                        await publish_stream_update(
+                            appsync_client,
+                            session_id,
+                            tool_data,
+                            "subagent_stream",
+                            message_id,
+                            True
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to publish subagent_stream text: {e}")
+                
+                # Handle dict events from sub-agent
+                elif isinstance(tool_data, dict):
+                    content = None
+                    
+                    # Text streaming wrapped in dict
+                    if "data" in tool_data:
+                        content = tool_data["data"]
+                        logger.debug(f"Sub-agent text stream (dict): {str(content)[:100]}")
+                    
+                    # Sub-agent calling its own tool
+                    elif "current_tool_use" in tool_data:
+                        tool_use = tool_data["current_tool_use"]
+                        tool_name = tool_use.get("name", "unknown")
+                        tool_use_id = tool_use.get("toolUseId")
+                        tool_input_raw = tool_use.get("input", "")
+                        
+                        # Convert input to string for streaming
+                        current_input = str(tool_input_raw) if tool_input_raw else ""
+                        
+                        # Check if this is the first time seeing this tool use
+                        if tool_use_id and tool_use_id not in sent_tool_use_ids:
+                            # First time - announce the tool with markdown line breaks
+                            sent_tool_use_ids.add(tool_use_id)
+                            tool_input_buffers[tool_use_id] = ""  # Initialize buffer
+                            logger.info(f"Sub-agent {current_subagent} calling tool: {tool_name} (ID: {tool_use_id})")
+                            content = f"\n\n ### 🔧 **Using tool: {tool_name}**  \n" 
+                        else:
+                            # Subsequent updates - only send NEW characters (delta)
+                            previous_input = tool_input_buffers.get(tool_use_id, "")
+                            
+                            if len(current_input) > len(previous_input):
+                                # New characters added
+                                new_chars = current_input[len(previous_input):]
+                                tool_input_buffers[tool_use_id] = current_input
+                                content = new_chars
+                                logger.debug(f"Tool input delta: {new_chars[:50]}")
+                            else:
+                                # No new characters
+                                content = None
+                    
+                    # Nested tool streaming from sub-agent's own tool calls
+                    # elif "tool_stream_event" in tool_data:
+                    #     nested_stream = tool_data["tool_stream_event"]
+                    #     nested_data = nested_stream.get("data")
+                        
+                    #     if isinstance(nested_data, str):
+                    #         # Text from nested tool
+                    #         content = nested_data
+                    #         logger.debug(f"Sub-agent nested tool text: {content[:100]}")
+                    #     elif isinstance(nested_data, dict) and "data" in nested_data:
+                    #         # Text wrapped in dict from nested tool
+                    #         content = nested_data["data"]
+                    #         logger.debug(f"Sub-agent nested tool text (dict): {str(content)[:100]}")
+                    #     else:
+                    #         logger.debug(f"Sub-agent nested tool event (skipping): {type(nested_data)}")
+                    
+                    # Sub-agent tool result
+                    elif "message" in tool_data:
+                        msg = tool_data["message"]
+                        msg_role = msg.get("role")
+                        
+                        # Check if this is a tool result message
+                        if msg_role == "user":
+                            msg_content = msg.get("content", [])
+                            for content_item in msg_content:
+                                if isinstance(content_item, dict) and "toolResult" in content_item:
+                                    tool_result = content_item["toolResult"]
+                                    result_content = tool_result.get("content", [])
+                                    
+                                    # Try to extract meaningful result text
+                                    result_text = ""
+                                    for result_item in result_content:
+                                        if isinstance(result_item, dict) and "text" in result_item:
+                                            result_text = result_item["text"]
+                                            break
+                                    
+                                    if result_text:
+                                        # Truncate long results
+                                        if len(result_text) > 1000:
+                                            result_text = result_text[:1000] + "..."
+                                        content = f"\n\n ✅ **Tool completed - Result:** {result_text}  \n"
+                                        logger.debug(f"Sub-agent tool result")
+                                    else:
+                                        content = "\n\nTool completed  \n"
+                                    break
+                        
+                        if not content:
+                            logger.debug(f"Sub-agent message event (skipping): role={msg_role}")
+                    
+                    else:
+                        # Other dict events - log but don't send
+                        logger.debug(f"Sub-agent other event (skipping): {list(tool_data.keys())}")
+                    
+                    # Only publish if we have content to send
+                    if content:
+                        try:
+                            await publish_stream_update(
+                                appsync_client,
+                                session_id,
+                                content,
+                                "subagent_stream",
+                                message_id,
+                                True
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to publish subagent_stream event: {e}")
+                
+                else:
+                    logger.debug(f"tool_stream_event data doesn't match expected format: {tool_data}")
+            
+            # Handle sub-agent completion (tool result message)
+            elif "message" in event:
+                msg = event["message"]
+                
+                # Tool results come as user messages with toolResult content
+                if msg.get("role") == "user":
+                    for content in msg.get("content", []):
+                        if "toolResult" in content:
+                            tool_result = content["toolResult"]
+                            
+                            # Check if this is the current sub-agent completing
+                            if tool_result.get("toolUseId") == current_tool_use_id:
+                                # Publish sub-agent end event
+                                try:
+                                    await publish_stream_update(
+                                        appsync_client,
+                                        session_id,
+                                        json.dumps({
+                                            "type": "subagent_end",
+                                            "agent_name": current_subagent,
+                                            "tool_use_id": current_tool_use_id
+                                        }),
+                                        "subagent_end",
+                                        message_id,
+                                        True
+                                    )
+                                    logger.info(f"Sub-agent completed: {current_subagent}")
+                                except Exception as e:
+                                    logger.error(f"Failed to publish subagent_end event: {e}")
+                                
+                                # Reset current sub-agent
+                                current_subagent = None
+                                current_tool_use_id = None
+            
+            elif "result" in event:
+                # Handle final response
+                if len(displayed_text) < len(full_text_buffer):
+                    displayed_text = clean_content_for_display(full_text_buffer)
+                
+                # Publish the final response
+                await publish_stream_update(
+                    appsync_client,
+                    session_id, 
+                    displayed_text, 
+                    "assistant_final_response", 
+                    message_id, 
+                    False
+                )
+                logger.info(f"Completed streaming for session {session_id}")
+                break
+        
+        return displayed_text
+        
+    except Exception as e:
+        logger.error(f"Error in stream_agent_response: {e}")
+        # Publish error message
+        await publish_stream_update(
+            appsync_client,
+            session_id, 
+            f"Error: {str(e)}", 
+            "assistant_error", 
+            message_id, 
+            False
+        )
+        raise
+
+
+def handler(event, context):
+    """
+    Process agent chat messages with streaming.
+    
+    This handler:
+    1. Gets ALL registered agents automatically
+    2. Creates a conversational orchestrator with memory
+    3. Streams the response in real-time via AppSync
+    
+    Args:
+        event: The event dict containing:
+            - sessionId: The conversation session ID
+            - prompt: The user's message
+            - method: The message method (default: "chat")
+            - timestamp: The message timestamp
+        context: The Lambda context
+        
+    Returns:
+        Success/error status
+    """
+    global _lambda_invocation_count
+    _lambda_invocation_count += 1
+    is_cold_start = _lambda_invocation_count == 1
+    
+    logger.info(f"Lambda invocation #{_lambda_invocation_count} ({'COLD START' if is_cold_start else 'WARM'})")
+    logger.info(f"Received agent chat processor event: {json.dumps(event)}")
+    
+    try:
+        # Create fresh AWS clients for each invocation to avoid stale connection issues
+        # This is critical for warm Lambda containers where reused sessions can have
+        # exhausted connection pools or stale credentials
+        session = boto3.Session()
+        logger.info("Created fresh boto3 session")
+        
+        # Extract parameters from event
+        prompt = event.get("prompt", "")
+        session_id = event.get("sessionId")
+        method = event.get("method", "chat")
+        timestamp = event.get("timestamp")
+        enable_code_intelligence = event.get("enableCodeIntelligence", True)
+        
+        # Validate required parameters
+        if not prompt or not session_id:
+            error_msg = "prompt and sessionId are required"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+        
+        # Get analytics configuration (used by agents)
+        config = get_analytics_config()
+        logger.info("Configuration loaded successfully")
+        
+        # Get ALL registered agents automatically
+        # No user selection needed - orchestrator has access to all agents
+        all_agents = agent_factory.list_available_agents()
+        agent_ids = [agent["agent_id"] for agent in all_agents]
+        
+        # Filter out Code Intelligence Agent if not enabled by user
+        CODE_INTELLIGENCE_AGENT_ID = "Code-Intelligence-Agent"
+        if not enable_code_intelligence and CODE_INTELLIGENCE_AGENT_ID in agent_ids:
+            agent_ids.remove(CODE_INTELLIGENCE_AGENT_ID)
+            logger.info(f"Code Intelligence Agent disabled by user, excluding from orchestrator")
+        
+        logger.info(f"Creating orchestrator with {len(agent_ids)} agents: {agent_ids}")
+        
+        # Create conversational orchestrator with memory and streaming support
+        orchestrator = agent_factory.create_conversational_orchestrator(
+            agent_ids=agent_ids,
+            session_id=session_id,
+            config=config,
+            session=session
+        )
+        logger.info(f"Conversational orchestrator created for session {session_id}")
+        
+        # Set up async event loop for streaming
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Use context manager for AppSync client
+            with AppSyncClient() as appsync_client:
+                logger.info("AppSync client initialized")
+                # Stream the agent response
+                result = loop.run_until_complete(
+                    stream_agent_response(appsync_client, orchestrator, prompt, session_id)
+                )
+                logger.info(f"Streaming completed successfully for session {session_id}")
+        finally:
+            # Clean up orchestrator resources (MCP clients, etc.)
+            try:
+                if hasattr(orchestrator, '__exit__'):
+                    orchestrator.__exit__(None, None, None)
+                elif hasattr(orchestrator, 'close'):
+                    orchestrator.close()
+                logger.info("Orchestrator resources cleaned up")
+            except Exception as e:
+                logger.warning(f"Error cleaning up orchestrator: {e}")
+            
+            # Cancel all pending tasks before closing the loop
+            # This is CRITICAL to prevent task leakage between warm Lambda invocations
+            try:
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    logger.info(f"Cancelling {len(pending)} pending async tasks")
+                    for task in pending:
+                        task.cancel()
+                    
+                    # Give tasks time to handle cancellation gracefully
+                    # Use gather with return_exceptions to catch CancelledError
+                    try:
+                        loop.run_until_complete(
+                            asyncio.wait_for(
+                                asyncio.gather(*pending, return_exceptions=True),
+                                timeout=5.0  # 5 second timeout for cleanup
+                            )
+                        )
+                        logger.info("All pending tasks cancelled gracefully")
+                    except asyncio.TimeoutError:
+                        logger.warning("Some tasks did not cancel within timeout, forcing cleanup")
+            except Exception as e:
+                logger.warning(f"Error cancelling pending tasks: {e}")
+            
+            # Shutdown async generators to prevent "was destroyed but it is pending" errors
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                logger.debug("Async generators shut down")
+            except Exception as e:
+                logger.warning(f"Error shutting down async generators: {e}")
+            
+            # Now close the loop
+            loop.close()
+            logger.info("Event loop closed and all resources cleaned up")
+        
+        return {
+            "statusCode": 200,
+            "body": "Streaming completed successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in agent chat processor: {str(e)}")
+        
+        # Try to publish error message to frontend
+        try:
+            session_id = event.get("sessionId")
+            if session_id:
+                # Create fresh AppSync client for error publishing
+                error_appsync_client = AppSyncClient()
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(
+                        publish_stream_update(
+                            error_appsync_client,
+                            session_id, 
+                            f"Error: {str(e)}", 
+                            "assistant_error", 
+                            str(uuid.uuid4()), 
+                            False
+                        )
+                    )
+                finally:
+                    loop.close()
+        except Exception as publish_error:
+            logger.error(f"Error publishing error message: {publish_error}")
+        
+        return {
+            "statusCode": 500,
+            "body": str(e)
+        }

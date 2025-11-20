@@ -5,12 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 The GenAIIDP solution provides multiple configuration approaches to customize document processing behavior to suit your specific needs.
 
+> **📝 Note:** Starting with version 0.3.21, document class definitions use **JSON Schema** format instead of the legacy custom format. See [json-schema-migration.md](json-schema-migration.md) for migration details and format comparison. Legacy configurations are automatically migrated on first use.
+
 ## Pattern Configuration via Web UI
 
 The web interface allows real-time configuration updates without stack redeployment:
 
-- **Document Classes**: Define and modify document categories and their descriptions
-- **Extraction Attributes**: Configure fields to extract for each document class
+- **Document Classes**: Define and modify document categories and their descriptions (using JSON Schema format)
+- **Extraction Attributes**: Configure fields to extract for each document class (defined as JSON Schema properties)
 - **Few Shot Examples**: Upload and configure example documents to improve accuracy (supported in Pattern 2)
 - **Model Selection**: Choose between available Bedrock models for classification and extraction
 - **Prompt Engineering**: Customize system and task prompts for optimal results
@@ -155,7 +157,6 @@ Key parameters that can be configured during CloudFormation deployment:
 
 ### Optional Features
 - `EvaluationBaselineBucketName`: Optional existing bucket for ground truth data
-- `EvaluationAutoEnabled`: Enable automatic accuracy evaluation (default: true)
 - `DocumentKnowledgeBase`: Enable document knowledge base functionality
 - `KnowledgeBaseModelId`: Bedrock model for knowledge base queries
 - `PostProcessingLambdaHookFunctionArn`: Optional Lambda ARN for custom post-processing (see [post-processing-lambda-hook.md](post-processing-lambda-hook.md) for detailed implementation guidance)
@@ -310,6 +311,63 @@ Status lookup returns comprehensive information:
   "error_details": null
 }
 ```
+
+## Evaluation Extensions in JSON Schema
+
+Document class schemas support evaluation-specific extensions for fine-grained control over accuracy assessment. These extensions work with the [Stickler](https://github.com/awslabs/stickler)-based evaluation framework to provide flexible, business-aligned evaluation capabilities.
+
+### Available Extensions
+
+- `x-aws-idp-evaluation-method`: Comparison method (EXACT, FUZZY, NUMERIC_EXACT, SEMANTIC, LLM, HUNGARIAN)
+- `x-aws-idp-evaluation-threshold`: Minimum score to consider a match (0.0-1.0)
+- `x-aws-idp-evaluation-weight`: Field importance for weighted scoring (default: 1.0, higher values = more important)
+
+### Example Configuration
+
+```yaml
+classes:
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    x-aws-idp-document-type: "Invoice"
+    x-aws-idp-evaluation-match-threshold: 0.8  # Document-level threshold
+    properties:
+      invoice_number:
+        type: string
+        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-weight: 2.0  # Critical field - double weight
+      invoice_date:
+        type: string
+        x-aws-idp-evaluation-method: FUZZY
+        x-aws-idp-evaluation-threshold: 0.9
+        x-aws-idp-evaluation-weight: 1.5  # Important field
+      vendor_name:
+        type: string
+        x-aws-idp-evaluation-method: FUZZY
+        x-aws-idp-evaluation-threshold: 0.85
+        x-aws-idp-evaluation-weight: 1.0  # Normal weight (default)
+      vendor_notes:
+        type: string
+        x-aws-idp-evaluation-method: SEMANTIC
+        x-aws-idp-evaluation-threshold: 0.7
+        x-aws-idp-evaluation-weight: 0.5  # Less critical - half weight
+```
+
+### Stickler Backend Integration
+
+The evaluation framework uses [Stickler](https://github.com/awslabs/stickler) as its evaluation engine. The `SticklerConfigMapper` automatically translates these IDP extensions to Stickler's native format, providing:
+
+- **Field-level weighting** for business-critical attributes
+- **Optimal list matching** using the Hungarian algorithm
+- **Extensible comparator system** with exact, fuzzy, numeric, semantic, and LLM-based comparison
+- **Native JSON Schema support** with $ref resolution
+
+### Benefits
+
+1. **Business Alignment**: Weight critical fields higher to ensure evaluation scores reflect business priorities
+2. **Flexible Comparison**: Choose the right evaluation method for each field type
+3. **Tunable Thresholds**: Set field-specific thresholds for matching sensitivity
+4. **Dynamic Schema Generation**: Auto-generates evaluation schema from baseline data when configuration is missing (for development/prototyping)
+
+For detailed evaluation capabilities and best practices, see [evaluation.md](evaluation.md).
 
 ## Cost Tracking and Optimization
 

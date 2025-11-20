@@ -17,13 +17,16 @@ import {
   Textarea,
   Modal,
   Alert,
-} from '@awsui/components-react';
-import { API, graphqlOperation } from 'aws-amplify';
+} from '@cloudscape-design/components';
+import { generateClient } from 'aws-amplify/api';
+
 import FileViewer from '../document-viewer/JSONViewer';
 import { getSectionConfidenceAlertCount, getSectionConfidenceAlerts } from '../common/confidence-alerts-utils';
 import useConfiguration from '../../hooks/use-configuration';
 import useSettingsContext from '../../contexts/settings';
 import processChanges from '../../graphql/queries/processChanges';
+
+const client = generateClient();
 
 // Cell renderer components
 const IdCell = ({ item }) => <span>{item.Id}</span>;
@@ -35,11 +38,7 @@ const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
   if (!mergedConfig) {
     // Fallback to original behavior - just show the count as a number
     const count = getSectionConfidenceAlertCount(item);
-    return count === 0 ? (
-      <StatusIndicator type="success">0</StatusIndicator>
-    ) : (
-      <StatusIndicator type="warning">{count}</StatusIndicator>
-    );
+    return count === 0 ? <StatusIndicator type="success">0</StatusIndicator> : <StatusIndicator type="warning">{count}</StatusIndicator>;
   }
 
   const alerts = getSectionConfidenceAlerts(item, mergedConfig);
@@ -87,9 +86,7 @@ const EditableClassCell = ({ item, validationErrors, updateSection, getAvailable
 
 const EditablePageIdsCell = ({ item, validationErrors, updateSection }) => {
   // Store the raw input value separately from the parsed PageIds
-  const [inputValue, setInputValue] = React.useState(
-    item.PageIds && item.PageIds.length > 0 ? item.PageIds.join(', ') : '',
-  );
+  const [inputValue, setInputValue] = React.useState(item.PageIds && item.PageIds.length > 0 ? item.PageIds.join(', ') : '');
 
   // Update input value when item changes (e.g., when entering edit mode)
   React.useEffect(() => {
@@ -208,19 +205,11 @@ const createColumnDefinitions = (pages, documentItem, mergedConfig) => [
 ];
 
 // Edit mode column definitions - expanded to use maximum available width
-const createEditColumnDefinitions = (
-  validationErrors,
-  updateSection,
-  updateSectionId,
-  getAvailableClasses,
-  deleteSection,
-) => [
+const createEditColumnDefinitions = (validationErrors, updateSection, updateSectionId, getAvailableClasses, deleteSection) => [
   {
     id: 'id',
     header: 'Section ID',
-    cell: (item) => (
-      <EditableIdCell item={item} validationErrors={validationErrors} updateSectionId={updateSectionId} />
-    ),
+    cell: (item) => <EditableIdCell item={item} validationErrors={validationErrors} updateSectionId={updateSectionId} />,
     minWidth: 160,
     width: 300,
     isResizable: true,
@@ -243,9 +232,7 @@ const createEditColumnDefinitions = (
   {
     id: 'pageIds',
     header: 'Page IDs',
-    cell: (item) => (
-      <EditablePageIdsCell item={item} validationErrors={validationErrors} updateSection={updateSection} />
-    ),
+    cell: (item) => <EditablePageIdsCell item={item} validationErrors={validationErrors} updateSection={updateSection} />,
     minWidth: 250,
     width: 500,
     isResizable: true,
@@ -288,10 +275,19 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
   // Get available classes from configuration
   const getAvailableClasses = () => {
     if (!configuration?.classes) return [];
-    return configuration.classes.map((cls) => ({
-      label: cls.name,
-      value: cls.name,
-    }));
+    return configuration.classes
+      .map((cls) => {
+        // Support both JSON Schema and legacy formats
+        // JSON Schema: $id or x-aws-idp-document-type
+        // Legacy: name
+        const className = cls.$id || cls['x-aws-idp-document-type'] || cls.name;
+
+        return {
+          label: className,
+          value: className,
+        };
+      })
+      .filter((option) => option.value); // Remove any undefined entries
   };
 
   // Generate next sequential section ID
@@ -382,9 +378,7 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
         }
 
         if (nonExistentPageIds.length > 0) {
-          sectionErrors.push(
-            `Page IDs ${nonExistentPageIds.join(', ')} do not exist in this document (available: 1-${maxPageId})`,
-          );
+          sectionErrors.push(`Page IDs ${nonExistentPageIds.join(', ')} do not exist in this document (available: 1-${maxPageId})`);
         }
       }
 
@@ -604,12 +598,13 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
 
       // Call the GraphQL API with timeout
       const result = await Promise.race([
-        API.graphql(
-          graphqlOperation(processChanges, {
+        client.graphql({
+          query: processChanges,
+          variables: {
             objectKey,
             modifiedSections: allChanges,
-          }),
-        ),
+          },
+        }),
         new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Request timed out after 30 seconds')), 30000);
         }),
@@ -771,8 +766,7 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
           </ul>
           <Box>
             {/* eslint-disable-next-line max-len */}
-            For fine-grained section control, consider using <strong>Pattern-2</strong> or <strong>Pattern-3</strong>{' '}
-            for future documents.
+            For fine-grained section control, consider using <strong>Pattern-2</strong> or <strong>Pattern-3</strong> for future documents.
           </Box>
         </SpaceBetween>
       </Modal>
@@ -793,8 +787,7 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
         <SpaceBetween size="m">
           <Alert type="info" header="Feature Not Available for Pattern-1">
             <Box>
-              The Edit Sections feature is currently available for <strong>Pattern-2</strong> and{' '}
-              <strong>Pattern-3</strong> only.
+              The Edit Sections feature is currently available for <strong>Pattern-2</strong> and <strong>Pattern-3</strong> only.
             </Box>
           </Alert>
 
@@ -803,9 +796,9 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
           </Box>
 
           <Box>
-            Pattern-1 uses <strong>Bedrock Data Automation (BDA)</strong> which has its own section management approach
-            that integrates directly with Amazon Bedrock&apos;s document processing blueprints. Section boundaries are
-            automatically determined by the BDA service based on the document structure and configured blueprints.
+            Pattern-1 uses <strong>Bedrock Data Automation (BDA)</strong> which has its own section management approach that integrates
+            directly with Amazon Bedrock&apos;s document processing blueprints. Section boundaries are automatically determined by the BDA
+            service based on the document structure and configured blueprints.
           </Box>
 
           <Box>
@@ -814,22 +807,21 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
 
           <ul>
             <li>
-              <strong>View/Edit Data</strong>: Use the &quot;View/Edit Data&quot; buttons to review and modify extracted
-              information within each section
+              <strong>View/Edit Data</strong>: Use the &quot;View/Edit Data&quot; buttons to review and modify extracted information within
+              each section
             </li>
             <li>
               <strong>Configuration</strong>: Adjust document classes and extraction rules in the Configuration tab
             </li>
             <li>
-              <strong>Reprocess Document</strong>: Use the &quot;Reprocess&quot; button to run the document through the
-              pipeline again with updated configuration
+              <strong>Reprocess Document</strong>: Use the &quot;Reprocess&quot; button to run the document through the pipeline again with
+              updated configuration
             </li>
           </ul>
 
           <Box>
             {/* eslint-disable-next-line max-len */}
-            For fine-grained section control, consider using <strong>Pattern-2</strong> or <strong>Pattern-3</strong>{' '}
-            for future documents.
+            For fine-grained section control, consider using <strong>Pattern-2</strong> or <strong>Pattern-3</strong> for future documents.
           </Box>
         </SpaceBetween>
       </Modal>

@@ -14,6 +14,10 @@ import time
 from idp_common import get_config, ocr
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from idp_common.utils import calculate_lambda_metering, merge_metering_data
+from aws_xray_sdk.core import xray_recorder, patch_all
+
+patch_all()
 
 # Configuration will be loaded in handler function
 
@@ -26,10 +30,12 @@ region = os.environ['AWS_REGION']
 METRIC_NAMESPACE = os.environ.get('METRIC_NAMESPACE')
 MAX_WORKERS = int(os.environ.get('MAX_WORKERS', 20))
 
+@xray_recorder.capture('ocr_function')
 def handler(event, context): 
     """
     Lambda handler for OCR processing.
-    """       
+    """
+    start_time = time.time()  # Capture start time for Lambda metering
     logger.info(f"Event: {json.dumps(event)}")
     
     # Get document from event - handle both compressed and uncompressed
@@ -43,6 +49,10 @@ def handler(event, context):
     logger.info(f"Document pages count: {len(document.pages)}, sections count: {len(document.sections)}")
     logger.info(f"Full document content: {json.dumps(document.to_dict(), default=str)}")
     
+    # X-Ray annotations
+    xray_recorder.put_annotation('document_id', {document.id})
+    xray_recorder.put_annotation('processing_stage', 'ocr')
+
     # Intelligent OCR detection: Skip if pages already have OCR data
     pages_with_ocr = 0
     for page in document.pages.values():
@@ -60,6 +70,13 @@ def handler(event, context):
             document_service = create_document_service()
             logger.info(f"Updating document execution ARN for OCR skip")
             document_service.update_document(document)
+        
+        # Add Lambda metering for OCR skip execution
+        try:
+            lambda_metering = calculate_lambda_metering("OCR", context, start_time)
+            document.metering = merge_metering_data(document.metering, lambda_metering)
+        except Exception as e:
+            logger.warning(f"Failed to add Lambda metering for OCR skip: {str(e)}")
         
         # Prepare output with existing document data
         working_bucket = os.environ.get('WORKING_BUCKET')
@@ -81,8 +98,8 @@ def handler(event, context):
     t0 = time.time()
     
     # Load configuration and initialize the OCR service using new simplified pattern
-    config = get_config()
-    backend = config.get("ocr", {}).get("backend", "textract")
+    config = get_config(as_model=True)
+    backend = config.ocr.backend
     
     logger.info(f"Initializing OCR with backend: {backend}")
     service = ocr.OcrService(
@@ -104,6 +121,13 @@ def handler(event, context):
     
     t1 = time.time()
     logger.info(f"Total OCR processing time: {t1-t0:.2f} seconds")
+    
+    # Add Lambda metering for successful OCR execution
+    try:
+        lambda_metering = calculate_lambda_metering("OCR", context, start_time)
+        document.metering = merge_metering_data(document.metering, lambda_metering)
+    except Exception as e:
+        logger.warning(f"Failed to add Lambda metering for OCR: {str(e)}")
     
     # Prepare output with automatic compression if needed
     working_bucket = os.environ.get('WORKING_BUCKET')

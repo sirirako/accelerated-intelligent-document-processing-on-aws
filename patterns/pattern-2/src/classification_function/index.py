@@ -14,6 +14,10 @@ import time
 from idp_common import classification, metrics, get_config
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from idp_common.utils import calculate_lambda_metering, merge_metering_data
+from aws_xray_sdk.core import xray_recorder, patch_all
+
+patch_all()
 
 # Configuration will be loaded in handler function
 region = os.environ['AWS_REGION']
@@ -23,16 +27,18 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 logging.getLogger('idp_common.bedrock.client').setLevel(os.environ.get("BEDROCK_LOG_LEVEL", "INFO"))
 
+@xray_recorder.capture('classification_function')
 def handler(event, context):
     """
     Lambda handler for document classification.
     """
+    start_time = time.time()  # Capture start time for Lambda metering
     logger.info(f"Event: {json.dumps(event)}")
     
     # Load configuration
-    config = get_config()
+    config = get_config(as_model=True)
     # Use default=str to handle Decimal and other non-serializable types
-    logger.info(f"Config: {json.dumps(config, default=str)}")
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
     
     # Extract document from the OCR result - handle both compressed and uncompressed
     working_bucket = os.environ.get('WORKING_BUCKET')
@@ -44,6 +50,10 @@ def handler(event, context):
     logger.info(f"Document status: {document.status}, num_pages: {document.num_pages}")
     logger.info(f"Document pages count: {len(document.pages)}, sections count: {len(document.sections)}")
     logger.info(f"Full document content: {json.dumps(document.to_dict(), default=str)}")
+
+    # X-Ray annotations
+    xray_recorder.put_annotation('document_id', {document.id})
+    xray_recorder.put_annotation('processing_stage', 'classification')
     
     # Intelligent Classification detection: Skip if pages already have classifications
     pages_with_classification = 0
@@ -61,6 +71,13 @@ def handler(event, context):
         document_service = create_document_service()
         logger.info(f"Updating document execution ARN for classification skip")
         document_service.update_document(document)
+        
+        # Add Lambda metering for classification skip execution
+        try:
+            lambda_metering = calculate_lambda_metering("Classification", context, start_time)
+            document.metering = merge_metering_data(document.metering, lambda_metering)
+        except Exception as e:
+            logger.warning(f"Failed to add Lambda metering for classification skip: {str(e)}")
         
         # Prepare output with existing document data
         response = {
@@ -135,6 +152,13 @@ def handler(event, context):
     
     t1 = time.time()
     logger.info(f"Time taken for classification: {t1-t0:.2f} seconds")
+    
+    # Add Lambda metering for successful classification execution
+    try:
+        lambda_metering = calculate_lambda_metering("Classification", context, start_time)
+        document.metering = merge_metering_data(document.metering, lambda_metering)
+    except Exception as e:
+        logger.warning(f"Failed to add Lambda metering for classification: {str(e)}")
     
     # Prepare output with automatic compression if needed
     response = {

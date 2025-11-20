@@ -16,19 +16,22 @@ import {
   FormField,
   Input,
   RadioGroup,
-} from '@awsui/components-react';
+} from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
 import useConfiguration from '../../hooks/use-configuration';
-import FormView from './FormView';
+import ConfigBuilder from './ConfigBuilder';
+import { deepMerge } from '../../utils/configUtils';
 
 const ConfigurationLayout = () => {
   const {
     schema,
     mergedConfig,
     defaultConfig,
+    customConfig,
     loading,
+    refreshing,
     error,
     updateConfiguration,
     fetchConfiguration,
@@ -50,8 +53,21 @@ const ConfigurationLayout = () => {
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
+  const [extractionSchema, setExtractionSchema] = useState(null);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [pendingImportConfig, setPendingImportConfig] = useState(null);
 
   const editorRef = useRef(null);
+
+  // Helper function to detect legacy format
+  const isLegacyFormat = (config) => {
+    if (!config || !config.classes || !Array.isArray(config.classes)) return false;
+    if (config.classes.length === 0) return false;
+
+    // Check if first class has legacy attributes format (array instead of object with properties)
+    const firstClass = config.classes[0];
+    return firstClass.attributes && Array.isArray(firstClass.attributes);
+  };
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -61,6 +77,11 @@ const ConfigurationLayout = () => {
       // Make a deep copy to ensure we're not dealing with references
       const formData = JSON.parse(JSON.stringify(mergedConfig));
       setFormValues(formData);
+
+      // Initialize extraction schema from config (stored in classes field)
+      if (mergedConfig.classes) {
+        setExtractionSchema(mergedConfig.classes);
+      }
 
       // Set both JSON and YAML content
       const jsonString = JSON.stringify(mergedConfig, null, 2);
@@ -183,6 +204,15 @@ const ConfigurationLayout = () => {
 
           // Skip validation if value is undefined (already handled by required check)
           if (value === undefined) return;
+
+          // Skip deep validation for classes field - it has its own complex JSON Schema structure
+          // Just check it's an array if present
+          if (key === 'classes') {
+            if (!Array.isArray(value)) {
+              errors.push({ message: `Field 'classes' must be an array` });
+            }
+            return;
+          }
 
           // Type validation
           if (prop.type === 'number' || prop.type === 'integer') {
@@ -505,6 +535,7 @@ const ConfigurationLayout = () => {
         // Add debugging for granular assessment
         if (path.includes('granular')) {
           console.log(`DEBUG: compareWithDefault called with path '${path}':`, {
+            // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
             current,
             currentType: typeof current,
             defaultObj,
@@ -555,12 +586,7 @@ const ConfigurationLayout = () => {
           for (let i = 0; i < current.length; i += 1) {
             // Use += 1 instead of ++
             // For objects in arrays, recursively compare
-            if (
-              typeof current[i] === 'object' &&
-              current[i] !== null &&
-              typeof defaultObj[i] === 'object' &&
-              defaultObj[i] !== null
-            ) {
+            if (typeof current[i] === 'object' && current[i] !== null && typeof defaultObj[i] === 'object' && defaultObj[i] !== null) {
               const nestedPath = path ? `${path}[${i}]` : `[${i}]`;
               const nestedDiff = compareWithDefault(current[i], defaultObj[i], nestedPath);
 
@@ -594,6 +620,7 @@ const ConfigurationLayout = () => {
             // Add debugging for granular assessment
             if (newPath.includes('granular')) {
               console.log(`DEBUG: Comparing object key '${key}' at path '${newPath}':`, {
+                // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
                 currentValue: current[key],
                 defaultValue: defaultObj[key],
                 keyInCurrent: key in current,
@@ -612,6 +639,7 @@ const ConfigurationLayout = () => {
               // Add debugging for granular assessment
               if (newPath.includes('granular')) {
                 console.log(`DEBUG: Recursive call result for '${newPath}':`, {
+                  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
                   nestedResults,
                   nestedResultsKeys: Object.keys(nestedResults),
                   nestedResultsLength: Object.keys(nestedResults).length,
@@ -628,6 +656,7 @@ const ConfigurationLayout = () => {
         // Handle primitive values
         if (current !== defaultObj) {
           console.log(`DEBUG: Primitive difference detected at path '${path}':`, {
+            // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
             current,
             currentType: typeof current,
             defaultObj,
@@ -646,18 +675,24 @@ const ConfigurationLayout = () => {
       let configToSave;
 
       if (saveAsDefault) {
-        // When saving as default, save the entire current configuration
-        configToSave = { ...formValues, saveAsDefault: true };
-        console.log('Saving entire config as new default:', configToSave);
+        // When saving as default, merge form changes with complete Custom config
+        // This ensures we capture both:
+        // 1. User's form edits (formValues)
+        // 2. Fields not in form like notes, system_prompt, task_prompt (from customConfig)
+        const mergedConfigToSave = deepMerge(customConfig || {}, formValues);
+        configToSave = { ...mergedConfigToSave, saveAsDefault: true };
+        console.log('Saving merged config as new Default:', configToSave);
       } else {
-        // Create our customized config by comparing with defaults
-        console.log('DEBUG: About to compare formValues with defaultConfig:', {
+        // CRITICAL: Compare formValues against customConfig (what we loaded)
+        // This ensures we only send actual changes as the diff
+        // Backend will merge this diff into existing Custom, preserving all other fields
+        console.log('DEBUG: About to compare formValues with customConfig:', {
           formValues,
-          defaultConfig,
+          customConfig,
           granularInFormValues: formValues?.assessment?.granular,
-          granularInDefaultConfig: defaultConfig?.assessment?.granular,
+          granularInCustomConfig: customConfig?.assessment?.granular,
         });
-        const differences = compareWithDefault(formValues, defaultConfig);
+        const differences = compareWithDefault(formValues, customConfig);
         console.log('DEBUG: Differences found by compareWithDefault:', differences);
 
         // Flatten path results into a proper object structure - revised to avoid ESLint errors
@@ -699,20 +734,20 @@ const ConfigurationLayout = () => {
                 for (let i = 0; i < parts.length - 1; i += 1) {
                   // Use += 1 instead of ++
                   current[parts[i]] = {};
-                  current = current[parts[i]];
+                  current = current[parts[i]]; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop - Index from controlled array iteration
                 }
 
                 // Set the value at the final path - IMPORTANT: preserve boolean false values!
                 current[parts[parts.length - 1]] = value;
 
                 // Deep merge this into result
-                const deepMerge = (target, source) => {
+                const deepMergeNested = (target, source) => {
                   const output = { ...target };
 
                   Object.keys(source).forEach((key) => {
                     if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
                       if (target[key] && typeof target[key] === 'object') {
-                        output[key] = deepMerge(target[key], source[key]);
+                        output[key] = deepMergeNested(target[key], source[key]);
                       } else {
                         output[key] = { ...source[key] };
                       }
@@ -726,7 +761,7 @@ const ConfigurationLayout = () => {
                 };
 
                 // Merge into result without modifying original objects
-                Object.assign(newResult, deepMerge(newResult, objectToMerge));
+                Object.assign(newResult, deepMergeNested(newResult, objectToMerge));
               }
             } else {
               // For top-level values, create a new object with the property
@@ -740,12 +775,28 @@ const ConfigurationLayout = () => {
         // Convert the difference paths to a proper nested structure
         const builtObject = buildObjectFromPaths(differences);
         console.log('DEBUG: Built object from paths:', builtObject);
+
+        // CRITICAL: Always include the current document schema (classes) if it exists OR is explicitly empty
+        // This ensures empty arrays are saved (to wipe all classes) and prevents schema loss
+        if (formValues.classes && Array.isArray(formValues.classes)) {
+          builtObject.classes = formValues.classes;
+          console.log('DEBUG: Including document schema (classes) in save:', formValues.classes);
+        }
+
+        // CRITICAL: If there are no differences AND no schema changes, don't send update to backend
+        // This prevents unnecessary API calls and potential data issues
+        if (Object.keys(builtObject).length === 0) {
+          console.log('No changes detected, skipping save');
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+          return;
+        }
+
         Object.assign(customConfigToSave, builtObject);
         configToSave = customConfigToSave;
         console.log('Saving customized config:', configToSave);
       }
 
-      // Make sure we send at least the Info field, even if no customizations
       const success = await updateConfiguration(configToSave);
 
       if (success) {
@@ -753,10 +804,6 @@ const ConfigurationLayout = () => {
         if (saveAsDefault) {
           setShowSaveAsDefaultModal(false);
         }
-        // Force a refresh of the configuration to ensure UI is in sync with backend
-        setTimeout(() => {
-          fetchConfiguration();
-        }, 1000);
       } else {
         setSaveError('Failed to save configuration. Please try again.');
       }
@@ -812,16 +859,13 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      // Reset custom configuration to an empty object
-      const success = await updateConfiguration({});
+      // Reset custom configuration by sending a special reset flag
+      // Backend will clear Custom, and on next read it will copy Default -> Custom
+      const success = await updateConfiguration({ resetToDefault: true });
 
       if (success) {
         setSaveSuccess(true);
         setShowResetModal(false);
-        // Force a refresh of the configuration to ensure UI is in sync with backend
-        setTimeout(() => {
-          fetchConfiguration();
-        }, 1000);
       } else {
         setSaveError('Failed to reset configuration. Please try again.');
       }
@@ -872,19 +916,25 @@ const ConfigurationLayout = () => {
     reader.onload = (e) => {
       try {
         setImportError(null);
-        let importedConfig;
         const content = e.target.result;
 
-        if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
-          importedConfig = yaml.load(content);
-        } else {
-          importedConfig = JSON.parse(content);
-        }
+        const importedConfig = file.name.endsWith('.yaml') || file.name.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
 
         if (importedConfig && typeof importedConfig === 'object') {
-          handleFormChange(importedConfig);
-          setSaveSuccess(false);
-          setSaveError(null);
+          // Check if config is in legacy format
+          if (isLegacyFormat(importedConfig)) {
+            // Show migration modal and store config for later
+            setPendingImportConfig(importedConfig);
+            setShowMigrationModal(true);
+          } else {
+            // Modern format - load directly into form
+            if (importedConfig.classes) {
+              setExtractionSchema(importedConfig.classes);
+            }
+            handleFormChange(importedConfig);
+            setSaveSuccess(false);
+            setSaveError(null);
+          }
         } else {
           setImportError('Invalid configuration file format');
         }
@@ -894,8 +944,36 @@ const ConfigurationLayout = () => {
     };
     reader.readAsText(file);
     // Clear the input value to allow re-importing the same file
-    const input = event.target;
-    input.value = '';
+    event.target.value = '';
+  };
+
+  const handleMigrationConfirm = async () => {
+    if (!pendingImportConfig) return;
+
+    setIsSaving(true);
+    try {
+      // Send to backend for migration, then reload to get migrated version
+      const success = await updateConfiguration(pendingImportConfig);
+
+      if (success) {
+        await fetchConfiguration();
+        setShowMigrationModal(false);
+        setPendingImportConfig(null);
+      } else {
+        setImportError('Failed to import configuration');
+        setShowMigrationModal(false);
+      }
+    } catch (err) {
+      setImportError(`Import failed: ${err.message}`);
+      setShowMigrationModal(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMigrationCancel = () => {
+    setShowMigrationModal(false);
+    setPendingImportConfig(null);
   };
 
   if (loading) {
@@ -913,10 +991,14 @@ const ConfigurationLayout = () => {
     return (
       <Container header={<Header variant="h2">Configuration</Header>}>
         <Alert type="error" header="Error loading configuration">
-          {error}
-          <Button onClick={fetchConfiguration} variant="primary" style={{ marginTop: '1rem' }}>
-            Retry
-          </Button>
+          <SpaceBetween size="s">
+            <div>{error}</div>
+            <Box>
+              <Button onClick={fetchConfiguration} variant="primary">
+                Retry
+              </Button>
+            </Box>
+          </SpaceBetween>
         </Alert>
       </Container>
     );
@@ -926,10 +1008,14 @@ const ConfigurationLayout = () => {
     return (
       <Container header={<Header variant="h2">Configuration</Header>}>
         <Alert type="error" header="Configuration not available">
-          Unable to load configuration schema or values.
-          <Button onClick={fetchConfiguration} variant="primary" style={{ marginTop: '1rem' }}>
-            Retry
-          </Button>
+          <SpaceBetween size="s">
+            <div>Unable to load configuration schema or values.</div>
+            <Box>
+              <Button onClick={fetchConfiguration} variant="primary">
+                Retry
+              </Button>
+            </Box>
+          </SpaceBetween>
         </Alert>
       </Container>
     );
@@ -954,9 +1040,7 @@ const ConfigurationLayout = () => {
           </Box>
         }
       >
-        <Box variant="span">
-          Are you sure you want to reset all configuration settings to default values? This action cannot be undone.
-        </Box>
+        <Box variant="span">Are you sure you want to reset all configuration settings to default values? This action cannot be undone.</Box>
       </Modal>
 
       <Modal
@@ -978,13 +1062,12 @@ const ConfigurationLayout = () => {
       >
         <SpaceBetween direction="vertical" size="m">
           <Box variant="span">
-            Are you sure you want to save the current configuration as the new default? This will replace the existing
-            default configuration and cannot be undone.
+            Are you sure you want to save the current configuration as the new default? This will replace the existing default configuration
+            and cannot be undone.
           </Box>
           <Alert type="warning" header="Important: Version upgrade considerations">
-            The default configuration may be overwritten when you update the solution to a new version. We recommend
-            using the Export button to download and save your configuration so you can easily restore it after an
-            upgrade if needed.
+            The default configuration may be overwritten when you update the solution to a new version. We recommend using the Export button
+            to download and save your configuration so you can easily restore it after an upgrade if needed.
           </Alert>
         </SpaceBetween>
       </Modal>
@@ -1018,12 +1101,43 @@ const ConfigurationLayout = () => {
             />
           </FormField>
           <FormField label="File name">
-            <Input
-              value={exportFileName}
-              onChange={({ detail }) => setExportFileName(detail.value)}
-              placeholder="configuration"
-            />
+            <Input value={exportFileName} onChange={({ detail }) => setExportFileName(detail.value)} placeholder="configuration" />
           </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      <Modal
+        visible={showMigrationModal}
+        onDismiss={handleMigrationCancel}
+        header="Configuration Migration Required"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={handleMigrationCancel}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleMigrationConfirm} loading={isSaving}>
+                Save and Migrate
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="m">
+          <Box variant="span">
+            The configuration file you are importing uses a legacy format that needs to be migrated to the current JSON Schema format.
+          </Box>
+          <Alert type="info" header="What will happen">
+            <ul>
+              <li>The configuration will be automatically converted to the new format</li>
+              <li>All your settings and document classes will be preserved</li>
+              <li>The migrated configuration will be saved to the database</li>
+              <li>You can review the changes after migration</li>
+            </ul>
+          </Alert>
+          <Box variant="span">
+            Click &quot;Save and Migrate&quot; to proceed with the migration, or &quot;Cancel&quot; to abort the import.
+          </Box>
         </SpaceBetween>
       </Modal>
 
@@ -1043,12 +1157,12 @@ const ConfigurationLayout = () => {
                   ]}
                 />
                 {viewMode === 'json' && (
-                  <Button onClick={formatJson} iconName="file-text">
+                  <Button onClick={formatJson} iconName="file">
                     Format JSON
                   </Button>
                 )}
                 {viewMode === 'yaml' && (
-                  <Button onClick={formatYaml} iconName="file-text">
+                  <Button onClick={formatYaml} iconName="file">
                     Format YAML
                   </Button>
                 )}
@@ -1058,13 +1172,7 @@ const ConfigurationLayout = () => {
                 <Button variant="normal" onClick={() => document.getElementById('import-file').click()}>
                   Import
                 </Button>
-                <input
-                  id="import-file"
-                  type="file"
-                  accept=".json,.yaml,.yml"
-                  style={{ display: 'none' }}
-                  onChange={handleImport}
-                />
+                <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)
                 </Button>
@@ -1082,13 +1190,17 @@ const ConfigurationLayout = () => {
         }
       >
         <Form>
+          {refreshing && (
+            <Alert type="info" header="Syncing configuration...">
+              <Box display="flex" alignItems="center">
+                <Spinner size="normal" />
+                <Box margin={{ left: 's' }}>Refreshing data from server</Box>
+              </Box>
+            </Alert>
+          )}
+
           {saveSuccess && (
-            <Alert
-              type="success"
-              dismissible
-              onDismiss={() => setSaveSuccess(false)}
-              header="Configuration saved successfully"
-            >
+            <Alert type="success" dismissible onDismiss={() => setSaveSuccess(false)} header="Configuration saved successfully">
               Your configuration changes have been saved.
             </Alert>
           )}
@@ -1118,13 +1230,45 @@ const ConfigurationLayout = () => {
 
           <Box padding="s">
             {viewMode === 'form' && (
-              <FormView
-                schema={schema}
+              <ConfigBuilder
+                schema={{
+                  ...schema,
+                  properties: Object.fromEntries(Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes')),
+                }}
                 formValues={formValues}
                 defaultConfig={defaultConfig}
                 isCustomized={isCustomized}
                 onResetToDefault={resetToDefault}
                 onChange={handleFormChange}
+                extractionSchema={extractionSchema}
+                onSchemaChange={(schemaData, isDirty) => {
+                  setExtractionSchema(schemaData);
+                  if (isDirty) {
+                    const updatedConfig = { ...formValues };
+                    // CRITICAL: Always set classes, even if empty array (to support wipe all functionality)
+                    // Handle null (no classes) by setting empty array
+                    if (schemaData === null) {
+                      updatedConfig.classes = [];
+                    } else if (Array.isArray(schemaData)) {
+                      // Store as 'classes' field with JSON Schema content
+                      updatedConfig.classes = schemaData;
+                    }
+                    setFormValues(updatedConfig);
+                    setJsonContent(JSON.stringify(updatedConfig, null, 2));
+                    try {
+                      setYamlContent(yaml.dump(updatedConfig));
+                    } catch (e) {
+                      console.error('Error converting to YAML:', e);
+                    }
+                  }
+                }}
+                onSchemaValidate={(valid, errors) => {
+                  if (!valid) {
+                    setValidationErrors(errors.map((e) => ({ message: `Schema: ${e.path} - ${e.message}` })));
+                  } else {
+                    setValidationErrors([]);
+                  }
+                }}
               />
             )}
 

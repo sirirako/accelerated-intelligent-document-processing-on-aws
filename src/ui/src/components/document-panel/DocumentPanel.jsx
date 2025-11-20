@@ -13,8 +13,8 @@ import {
   Table,
   ExpandableSection,
   StatusIndicator,
-} from '@awsui/components-react';
-import { Logger } from 'aws-amplify';
+} from '@cloudscape-design/components';
+import { ConsoleLogger } from 'aws-amplify/utils';
 import './DocumentPanel.css';
 import DocumentViewers from '../document-viewers/DocumentViewers';
 import SectionsPanel from '../sections-panel';
@@ -24,10 +24,11 @@ import useConfiguration from '../../hooks/use-configuration';
 import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
 import StepFunctionFlowViewer from '../step-function-flow/StepFunctionFlowViewer';
+import TroubleshootModal from './TroubleshootModal';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
-const logger = new Logger('DocumentPanel');
+const logger = new ConsoleLogger('DocumentPanel');
 
 // Component to display confidence alerts count only
 const ConfidenceAlertsSection = ({ sections, mergedConfig }) => {
@@ -334,7 +335,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
     <Box margin={{ top: 'l', bottom: 'm' }}>
       <ExpandableSection
         variant="container"
-        header={
+        headerText={
           <Header variant="h3" description={`Estimated cost per page: $${costPerPage.toFixed(4)}`}>
             Estimated Cost
           </Header>
@@ -343,11 +344,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
         onChange={({ detail }) => setExpanded(detail.expanded)}
       >
         <div style={{ width: '100%' }}>
-          <MeteringTable
-            meteringData={meteringData}
-            documentItem={documentItem}
-            preCalculatedTotals={{ totalCost, costPerPage }}
-          />
+          <MeteringTable meteringData={meteringData} documentItem={documentItem} preCalculatedTotals={{ totalCost, costPerPage }} />
         </div>
       </ExpandableSection>
     </Box>
@@ -457,6 +454,10 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
 
   // State for Step Function flow viewer
   const [isFlowViewerVisible, setIsFlowViewerVisible] = useState(false);
+  // State for Troubleshoot modal
+  const [isTroubleshootModalVisible, setIsTroubleshootModalVisible] = useState(false);
+  // State for tracking troubleshoot jobs per document
+  const [troubleshootJobs, setTroubleshootJobs] = useState({});
 
   // Fetch configuration for dynamic confidence threshold
   const { mergedConfig } = useConfiguration();
@@ -475,6 +476,16 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
             variant="h2"
             actions={
               <SpaceBetween direction="horizontal" size="xs">
+                <Button
+                  iconName="gen-ai"
+                  variant="normal"
+                  onClick={() => {
+                    logger.info('Opening troubleshoot modal for document:', item.objectKey);
+                    setIsTroubleshootModalVisible(true);
+                  }}
+                >
+                  Troubleshoot
+                </Button>
                 {item?.executionArn && (
                   <Button
                     iconName="status-positive"
@@ -506,11 +517,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         }
       >
         <SpaceBetween size="l">
-          <DocumentAttributes
-            item={enhancedItem}
-            setToolsOpen={setToolsOpen}
-            getDocumentDetailsFromIds={getDocumentDetailsFromIds}
-          />
+          <DocumentAttributes item={enhancedItem} setToolsOpen={setToolsOpen} getDocumentDetailsFromIds={getDocumentDetailsFromIds} />
 
           {item.metering && (
             <div>
@@ -519,11 +526,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
           )}
         </SpaceBetween>
       </Container>
-      <DocumentViewers
-        objectKey={item.objectKey}
-        evaluationReportUri={item.evaluationReportUri}
-        summaryReportUri={item.summaryReportUri}
-      />
+      <DocumentViewers objectKey={item.objectKey} evaluationReportUri={item.evaluationReportUri} summaryReportUri={item.summaryReportUri} />
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
       <PagesPanel pages={item.pages} />
       <ChatPanel objectKey={item.objectKey} />
@@ -534,8 +537,23 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
           executionArn={item.executionArn}
           visible={isFlowViewerVisible}
           onDismiss={() => setIsFlowViewerVisible(false)}
+          mergedConfig={mergedConfig}
         />
       )}
+
+      {/* Troubleshoot Modal */}
+      <TroubleshootModal
+        visible={isTroubleshootModalVisible}
+        onDismiss={() => setIsTroubleshootModalVisible(false)}
+        documentItem={item}
+        existingJob={troubleshootJobs[item?.objectKey]}
+        onJobUpdate={(jobData) => {
+          setTroubleshootJobs((prev) => ({
+            ...prev,
+            [item.objectKey]: jobData,
+          }));
+        }}
+      />
     </SpaceBetween>
   );
 };

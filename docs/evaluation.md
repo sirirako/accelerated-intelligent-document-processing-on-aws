@@ -9,6 +9,37 @@ The GenAIIDP solution includes a built-in evaluation framework to assess the acc
 - Generate detailed evaluation reports using configurable methods and thresholds
 - Track and improve processing accuracy over time
 
+
+https://github.com/user-attachments/assets/0ff17f3e-1eb5-4883-9d6f-3d4e4e84cbea
+
+
+
+## Stickler Evaluation Engine
+
+The evaluation framework is powered by [Stickler](https://github.com/awslabs/stickler), AWS's open-source library for structured object comparison. Stickler provides:
+
+- **Field-Level Weighting**: Prioritize accuracy on business-critical fields
+- **Optimal List Matching**: Hungarian algorithm for comparing arrays of objects
+- **Extensible Comparators**: Support for exact, fuzzy, numeric, semantic, and LLM-based comparison
+- **Native JSON Schema Support**: Direct use of JSON Schema with custom extensions
+
+The IDP solution uses a feature branch of Stickler (commit: de7d0fda) that adds JSON Schema construction support. This will migrate to the main branch once [PR #20](https://github.com/awslabs/stickler/pull/20) merges.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    IDP[IDP Configuration] --> Mapper[SticklerConfigMapper]
+    Mapper --> Schema[JSON Schema with Extensions]
+    Schema --> Stickler[Stickler StructuredModel]
+    Baseline[Baseline Data] --> Stickler
+    Actual[Actual Results] --> Stickler
+    Stickler --> Comparison[Field-by-Field Comparison]
+    Comparison --> Results[Evaluation Results]
+```
+
+The `SticklerConfigMapper` translates IDP's evaluation extensions (`x-aws-idp-evaluation-*`) to Stickler's format (`x-aws-stickler-*`), maintaining independence from any specific evaluation backend.
+
 ## How It Works
 
 1. **Baseline Data**
@@ -16,9 +47,11 @@ The GenAIIDP solution includes a built-in evaluation framework to assess the acc
    - Use an existing bucket or let the solution create one
    - Can use outputs from another GenAIIDP stack to compare different patterns/prompts
 
-2. **Automatic Evaluation**
-   - When enabled, automatically evaluates each processed document
-   - Compares against baseline data if available
+2. **Integrated Evaluation Step**
+   - Evaluation runs as the final step in the Step Functions workflow (after summarization)
+   - Executes **before** the workflow marks documents as COMPLETE, eliminating race conditions
+   - When `evaluation.enabled: true` in configuration, evaluates against baseline data if available
+   - When `evaluation.enabled: false` in configuration, step executes but skips processing
    - Generates detailed markdown reports using AI analysis
 
 3. **Evaluation Reports**
@@ -27,19 +60,299 @@ The GenAIIDP solution includes a built-in evaluation framework to assess the acc
    - Identify patterns in discrepancies
    - Assess severity of differences (cosmetic vs. substantial)
 
+## Dynamic Schema Generation
+
+When running evaluation without explicit configuration for a document class, the evaluation service can automatically generate a default document schema based on the structure of the expected (baseline) document. This enables evaluation even when document classes haven't been formally configured.
+
+### How It Works
+
+```mermaid
+flowchart TD
+    Start[Start Evaluation] --> CheckConfig{Configuration<br/>Exists?}
+    
+    CheckConfig -->|Yes| UseConfig[Use Explicit Config]
+    CheckConfig -->|No| LoadExpected[Load Expected Results]
+    
+    LoadExpected --> InferSchema[Infer Schema from<br/>Expected Structure]
+    InferSchema --> GenerateConfig[Generate Default<br/>Stickler Config]
+    GenerateConfig --> LogWarning[Log Warning:<br/>Using Auto-Generated Schema]
+    LogWarning --> CacheConfig[Cache for Session]
+    
+    UseConfig --> Compare[Compare Results]
+    CacheConfig --> Compare
+    
+    Compare --> Annotate[Annotate Results with<br/>Auto-Generation Notice]
+    Annotate --> Results[Return Evaluation Results]
+```
+
+### Type Inference Rules
+
+The auto-generation system infers evaluation methods based on detected data types:
+
+| Data Type | Evaluation Method | Default Threshold | Use Case |
+|-----------|-------------------|-------------------|----------|
+| `string` | FUZZY | 0.85 | Text fields, names, addresses |
+| `integer` | NUMERIC_EXACT | 0.01 | Counts, IDs, whole numbers |
+| `float` | NUMERIC_EXACT | 0.01 | Amounts, percentages, decimals |
+| `boolean` | EXACT | N/A | True/false flags |
+| `object` | Nested structure | N/A | Address, contact info (recursive) |
+| `array[object]` | HUNGARIAN | N/A | Transactions, line items (optimal matching) |
+| `array[primitive]` | Simple array | N/A | Tags, categories, lists |
+| `null` | EXACT (string) | N/A | Optional fields, missing values |
+
+### Auto-Generated Schema Example
+
+**Input Data:**
+```json
+{
+  "invoice_number": "INV-12345",
+  "amount": 1250.50,
+  "customer_address": {
+    "street": "123 Main St",
+    "city": "Seattle"
+  },
+  "line_items": [
+    {"description": "Widget", "price": 10.50}
+  ]
+}
+```
+
+**Generated Schema:**
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "x-aws-idp-document-type": "Invoice",
+  "x-aws-idp-evaluation-match-threshold": 0.8,
+  "properties": {
+    "invoice_number": {
+      "type": "string",
+      "x-aws-idp-evaluation-method": "FUZZY",
+      "x-aws-idp-evaluation-threshold": 0.85
+    },
+    "amount": {
+      "type": "number",
+      "x-aws-idp-evaluation-method": "NUMERIC_EXACT",
+      "x-aws-idp-evaluation-threshold": 0.01
+    },
+    "customer_address": {
+      "type": "object",
+      "properties": {
+        "street": {
+          "type": "string",
+          "x-aws-idp-evaluation-method": "FUZZY"
+        },
+        "city": {
+          "type": "string",
+          "x-aws-idp-evaluation-method": "FUZZY"
+        }
+      }
+    },
+    "line_items": {
+      "type": "array",
+      "x-aws-idp-evaluation-method": "HUNGARIAN",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "price": {"type": "number"}
+        }
+      }
+    }
+  }
+}
+```
+
+### Result Annotation
+
+When using auto-generated schemas, all evaluation results include a clear annotation in the `reason` field:
+
+**With Auto-Generated Schema:**
+```
+"reason": "Exact match. Note: Schema inferred (no config)"
+```
+
+**With Explicit Configuration:**
+```
+"reason": "Exact match"
+```
+
+This transparency ensures users can immediately identify which evaluations used carefully crafted configurations versus quick defaults.
+
+### When to Use Auto-Generation
+
+✅ **Recommended For:**
+- **Exploratory Testing**: Quick evaluation without config setup
+- **Development Iteration**: Fast feedback during development
+- **Schema Discovery**: Understanding document structure before formalizing config
+- **Ad-hoc Analysis**: One-time evaluations without production setup
+
+⚠️ **Not Recommended For:**
+- **Production Workloads**: Lacks domain-specific comparison logic
+- **Complex Requirements**: Cannot encode business rules or custom thresholds
+- **Regulatory Compliance**: Explicit configs provide audit trail and governance
+
+### Logging and Monitoring
+
+Auto-generation events are logged with WARNING level for visibility:
+
+```
+WARNING: Auto-generated schema for document class 'Invoice' from expected data structure.
+For production use, please define an explicit configuration. Generated 8 properties.
+```
+
+### Implementation Details
+
+The dynamic schema generation uses:
+- **genson library**: Industry-standard, production-ready JSON Schema generator
+- **Automatic type detection**: Handles strings, numbers, booleans, nested objects, arrays
+- **Union type support**: Correctly handles mixed-type fields (e.g., `["string", "integer"]`)
+- **Robust edge case handling**: Empty arrays, null values, deeply nested structures
+
+
 ## Evaluation Methods
 
-The framework supports multiple comparison methods:
+The framework supports multiple comparison methods. All method names in evaluation reports use **PascalCase** formatting (e.g., `Fuzzy`, `NumericExact`) to match the UI configuration interface.
 
-- **Exact Match (EXACT)**: Compares values character-by-character after normalizing whitespace and punctuation
-- **Numeric Exact Match (NUMERIC_EXACT)**: Compares numeric values after normalizing formats (removing currency symbols, commas, etc.)
-- **Fuzzy Match (FUZZY)**: Allows for minor variations in formatting and whitespace with configurable similarity thresholds
-- **Semantic Match (SEMANTIC)**: Evaluates meaning equivalence using embedding-based similarity with Bedrock Titan embeddings
-- **List Matching (HUNGARIAN)**: Uses the Hungarian algorithm for optimal bipartite matching of lists with multiple comparator types:
-  - **EXACT**: Default comparator for exact string matching after normalization
-  - **FUZZY**: Fuzzy string matching with configurable threshold
-  - **NUMERIC**: Numeric comparison after normalizing currency symbols and formats
-- **LLM-Powered Analysis (LLM)**: Uses AI to determine functional equivalence of extracted data with detailed explanations
+### Supported Methods and Their Characteristics
+
+The evaluation framework provides different comparison methods optimized for various data types and use cases:
+
+| Method | Use Case | Uses Threshold? | Default Value | Description |
+|--------|----------|----------------|---------------|-------------|
+| **Exact** | IDs, codes, booleans | No | N/A | Character-by-character comparison after normalizing whitespace and punctuation. Returns 1.0 for match, 0.0 otherwise |
+| **NumericExact** | Amounts, quantities | No (uses tolerance) | N/A | Numeric comparison with configurable tolerance for rounding differences. Uses absolute/relative tolerance, not similarity threshold |
+| **Fuzzy** | Names, addresses, general text | Yes | 0.7 | Token-based fuzzy matching allowing minor variations and reordering. Threshold controls minimum similarity score |
+| **Levenshtein** | Text with typos, variations | Yes | 0.7 | Edit distance-based string comparison for detecting character-level differences. Threshold controls minimum similarity score |
+| **Semantic** | Descriptions, free text | Yes | 0.7 | Embedding-based similarity using Bedrock Titan embeddings for meaning comparison. Threshold controls minimum similarity score |
+| **LLM** | Complex semantic equivalence | No (binary) | N/A | AI-powered comparison with detailed reasoning. Returns binary match decision (1.0 or 0.0), not similarity score |
+| **Hungarian** | Arrays of structured objects | Yes (match_threshold) | 0.8 | Optimal bipartite matching algorithm for list comparison. Uses document-level match threshold for item pairing |
+| **AggregateObject** | Nested objects | No | N/A | Recursive field-by-field comparison of nested structures. No top-level threshold |
+
+### Threshold Display in Reports
+
+Evaluation reports display thresholds **only for methods that use similarity-based scoring**:
+
+**Methods WITH Threshold Display:**
+- `Fuzzy (threshold: 0.70)` - Using Stickler's default
+- `Fuzzy (threshold: 0.85)` - Using field-specific configuration
+- `Levenshtein (threshold: 0.70)` - Using default
+- `Semantic (threshold: 0.70)` - Using default
+- `Hungarian (threshold: 0.80)` - Using document-level match threshold
+
+**Methods WITHOUT Threshold Display:**
+- `Exact` - Binary comparison (no threshold concept)
+- `NumericExact` - Uses tolerance, not threshold
+- `LLM` - Returns binary match decision
+- `AggregateObject` - Recursive comparison
+
+This distinction ensures clarity: thresholds are shown only when they represent a similarity score cutoff, not for binary or tolerance-based comparisons
+
+## Field Weighting for Business Criticality
+
+Stickler supports field-level weights to prioritize accuracy on business-critical fields. Fields with higher weights contribute more to the overall evaluation score, allowing you to maintain high standards for critical data while being more tolerant of errors in less important fields.
+
+### Configuration
+
+Add the `x-aws-idp-evaluation-weight` extension to any field in your schema:
+
+```yaml
+classes:
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    x-aws-idp-document-type: invoice
+    properties:
+      invoice_number:
+        type: string
+        x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-weight: 2.0  # Critical field - double weight
+      invoice_date:
+        type: string
+        x-aws-idp-evaluation-method: FUZZY
+        x-aws-idp-evaluation-weight: 1.5  # Important field
+      vendor_name:
+        type: string
+        x-aws-idp-evaluation-method: FUZZY
+        x-aws-idp-evaluation-weight: 1.0  # Normal weight (default)
+      vendor_notes:
+        type: string
+        x-aws-idp-evaluation-method: SEMANTIC
+        x-aws-idp-evaluation-weight: 0.5  # Less critical - half weight
+```
+
+### Weighted Score Calculation
+
+The evaluation framework calculates a `weighted_overall_score` that reflects field importance:
+
+- **Section-level**: Aggregates weighted scores across all fields in the section
+- **Document-level**: Averages section-level weighted scores across all sections
+- **Displayed in reports**: Shows alongside traditional accuracy metrics
+
+**Example Calculation:**
+```
+Field A: score=1.0, weight=2.0 → weighted contribution = 2.0
+Field B: score=0.8, weight=1.0 → weighted contribution = 0.8
+Field C: score=0.6, weight=0.5 → weighted contribution = 0.3
+
+Weighted Overall Score = (2.0 + 0.8 + 0.3) / (2.0 + 1.0 + 0.5) = 3.1 / 3.5 = 0.886
+```
+
+### Benefits
+
+- **Business Alignment**: Evaluation scores reflect business priorities, not just technical accuracy
+- **Flexible Tolerances**: Accept minor errors in low-priority fields while demanding perfection for critical data
+- **Actionable Metrics**: Quickly identify when important fields are failing evaluation
+- **Cost Optimization**: Focus human review efforts on documents with low weighted scores
+
+### Best Practices
+
+1. **Weight Critical Fields Higher**: Invoice amounts, dates, IDs should have weights ≥ 1.5
+2. **Use Default Weight for Standard Fields**: Most fields should use weight=1.0 (or omit for default)
+3. **Reduce Weight for Optional Fields**: Notes, descriptions can use weight=0.5
+4. **Test Different Weightings**: Adjust weights based on business feedback and error impact analysis
+
+## Type Coercion and Data Compatibility
+
+The evaluation framework automatically coerces data types to match schema expectations, preventing validation errors from type mismatches between baseline and actual data.
+
+### Automatic Type Conversion
+
+The system intelligently converts data types when baseline format differs from schema:
+
+**Common Scenarios:**
+- Baseline has float `1250.5` but schema expects string → Converts to `"1250.5"`
+- Baseline has string `"123"` but schema expects integer → Converts to `123`
+- Baseline has string `"true"` but schema expects boolean → Converts to `true`
+- Nested objects and arrays are recursively coerced
+
+### When Type Coercion Happens
+
+Type coercion occurs automatically during evaluation:
+
+1. **Schema Analysis**: System examines expected field types from JSON Schema
+2. **Data Loading**: Baseline and actual results loaded from S3
+3. **Type Detection**: Identifies mismatches between data and schema types
+4. **Automatic Coercion**: Converts values to match schema expectations
+5. **Evaluation**: Performs comparison using coerced, type-compatible values
+
+### Benefits
+
+- **Flexible Baselines**: Use baseline data from any source without format concerns
+- **Focus on Semantics**: Evaluation focuses on content accuracy, not type strictness
+- **Backward Compatibility**: Works with legacy baseline data created before schema standardization
+- **Reduced Errors**: Prevents Pydantic validation failures from type mismatches
+
+### Limitations
+
+- **Loss of Precision**: Some conversions may lose precision (e.g., very large integers to floats)
+- **String Coercion**: Complex objects converted to strings may not convert back perfectly
+- **Null Handling**: Null values are preserved and handled as missing fields
+
+### Best Practices
+
+1. **Create Consistent Baselines**: Use processed outputs as baseline templates when possible
+2. **Test with Representative Data**: Validate type coercion with real documents
+3. **Monitor Warnings**: Check logs for type coercion warnings during development
+4. **Update Schemas**: Define schema types that match your baseline data format when practical
 
 ## Assessment Confidence Integration
 
@@ -79,20 +392,37 @@ The confidence integration is fully backward compatible:
 
 ## Configuration
 
-Set the following parameters during stack deployment:
+### Stack Deployment Parameters
+
+Set the following parameter during stack deployment:
 
 ```yaml
 EvaluationBaselineBucketName:
   Description: Existing bucket with baseline data, or leave empty to create new bucket
-  
-EvaluationAutoEnabled:
-  Default: true
-  Description: Automatically evaluate each document (if baseline exists)
-  
-EvaluationModelId:
-  Default: "anthropic.claude-3-sonnet-20240229-v1:0"
-  Description: Model to use for evaluation reports (e.g., "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
 ```
+
+### Runtime Configuration
+
+Control evaluation behavior through the configuration file (no stack redeployment needed):
+
+```yaml
+evaluation:
+  enabled: true  # Set to false to disable evaluation processing
+  llm_method:
+    model: "us.anthropic.claude-3-haiku-20240307-v1:0"  # Model for evaluation reports
+    temperature: "0.0"
+    top_p: "0.1"
+    max_tokens: "4096"
+    # Additional model parameters...
+```
+
+**Benefits of Configuration-Based Control:**
+- Enable/disable evaluation without stack redeployment
+- Runtime control similar to summarization and assessment features
+- Zero LLM costs when disabled (step executes but skips processing)
+- Consistent feature control pattern across the solution
+
+### Attribute-Specific Evaluation Methods
 
 You can also configure evaluation methods for specific document classes and attributes through the solution's configuration. The framework supports three types of attributes with different evaluation approaches:
 
@@ -102,19 +432,24 @@ Basic single-value extractions evaluated as individual fields:
 
 ```yaml
 classes:
-  - name: invoice
-    attributes:
-      - name: invoice_number
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: invoice
+    x-aws-idp-document-type: invoice
+    type: object
+    properties:
+      invoice_number:
+        type: string
         description: The unique identifier for the invoice
-        attributeType: simple  # or omit for default
-        evaluation_method: EXACT  # Use exact string matching
-      - name: amount_due
+        x-aws-idp-evaluation-method: EXACT  # Use exact string matching
+      amount_due:
+        type: string
         description: The total amount to be paid
-        evaluation_method: NUMERIC_EXACT  # Use numeric comparison
-      - name: vendor_name
+        x-aws-idp-evaluation-method: NUMERIC_EXACT  # Use numeric comparison
+      vendor_name:
+        type: string
         description: Name of the vendor
-        evaluation_method: FUZZY  # Use fuzzy matching
-        evaluation_threshold: 0.8  # Minimum similarity threshold
+        x-aws-idp-evaluation-method: FUZZY  # Use fuzzy matching
+        x-aws-idp-confidence-threshold: 0.8  # Minimum similarity threshold
 ```
 
 ### Group Attributes
@@ -123,58 +458,139 @@ Nested object structures where each sub-attribute is evaluated individually:
 
 ```yaml
 classes:
-  - name: "Bank Statement"
-    attributes:
-      - name: "Account Holder Address"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: BankStatement
+    x-aws-idp-document-type: "Bank Statement"
+    type: object
+    properties:
+      Account Holder Address:
+        type: object
         description: "Complete address information for the account holder"
-        attributeType: group
-        groupAttributes:
-          - name: "Street Number"
+        properties:
+          Street Number:
+            type: string
             description: "House or building number"
-            evaluation_method: FUZZY
-            evaluation_threshold: 0.9
-          - name: "Street Name"
+            x-aws-idp-evaluation-method: FUZZY
+            x-aws-idp-confidence-threshold: 0.9
+          Street Name:
+            type: string
             description: "Name of the street"
-            evaluation_method: FUZZY
-            evaluation_threshold: 0.8
-          - name: "City"
+            x-aws-idp-evaluation-method: FUZZY
+            x-aws-idp-confidence-threshold: 0.8
+          City:
+            type: string
             description: "City name"
-            evaluation_method: FUZZY
-            evaluation_threshold: 0.9
-          - name: "State"
+            x-aws-idp-evaluation-method: FUZZY
+            x-aws-idp-confidence-threshold: 0.9
+          State:
+            type: string
             description: "State abbreviation (e.g., CA, NY)"
-            evaluation_method: EXACT
-          - name: "ZIP Code"
+            x-aws-idp-evaluation-method: EXACT
+          ZIP Code:
+            type: string
             description: "5 or 9 digit postal code"
-            evaluation_method: EXACT
+            x-aws-idp-evaluation-method: EXACT
 ```
 
 ### List Attributes
 
-Arrays of items where each item's attributes are evaluated individually across all list entries:
+Arrays of items where each item's attributes are evaluated individually across all list entries.
+
+**Important**: Structured arrays (arrays of objects) use **HUNGARIAN matching** with a special `match-threshold` parameter that applies to the entire list, not individual fields.
 
 ```yaml
 classes:
-  - name: "Bank Statement"
-    attributes:
-      - name: "Transactions"
+  - $schema: "https://json-schema.org/draft/2020-12/schema"
+    $id: BankStatement
+    x-aws-idp-document-type: "Bank Statement"
+    type: object
+    properties:
+      Transactions:
+        type: array
         description: "List of all transactions in the statement period"
-        attributeType: list
-        listItemTemplate:
-          itemDescription: "Individual transaction record"
-          itemAttributes:
-            - name: "Date"
+        x-aws-idp-list-item-description: "Individual transaction record"
+        x-aws-idp-evaluation-method: HUNGARIAN  # Required for List[Object]
+        x-aws-idp-evaluation-match-threshold: 0.8  # Threshold for item matching
+        items:
+          type: object
+          properties:
+            Date:
+              type: string
               description: "Transaction date (MM/DD/YYYY)"
-              evaluation_method: FUZZY
-              evaluation_threshold: 0.9
-            - name: "Description"
+              x-aws-idp-evaluation-method: FUZZY
+              x-aws-idp-evaluation-threshold: 0.9
+            Description:
+              type: string
               description: "Transaction description or merchant name"
-              evaluation_method: SEMANTIC
-              evaluation_threshold: 0.7
-            - name: "Amount"
-              description: "Transaction amount (positive for deposits, negative for withdrawals)"
-              evaluation_method: NUMERIC_EXACT
+              x-aws-idp-evaluation-method: SEMANTIC
+              x-aws-idp-evaluation-threshold: 0.7
+            Amount:
+              type: string
+              description: "Transaction amount"
+              x-aws-idp-evaluation-method: NUMERIC_EXACT
 ```
+
+### Understanding Threshold vs Match-Threshold
+
+The evaluation framework uses **two different threshold concepts** depending on the field type:
+
+#### For Regular Fields (String, Number, Object):
+Use `x-aws-idp-evaluation-threshold` to control how closely values must match:
+
+```yaml
+vendor_name:
+  type: string
+  x-aws-idp-evaluation-method: FUZZY
+  x-aws-idp-evaluation-threshold: 0.85  # 85% similarity required
+```
+
+#### For Structured Arrays (List[Object] with HUNGARIAN):
+Use `x-aws-idp-evaluation-match-threshold` to control item pairing:
+
+```yaml
+CityTaxes:
+  type: array
+  x-aws-idp-evaluation-method: HUNGARIAN
+  x-aws-idp-evaluation-match-threshold: 0.8  # 80% match for optimal pairing
+  items:
+    type: object
+    properties:
+      city: 
+        type: string
+      tax_amount:
+        type: number
+```
+
+**Why the distinction?**
+- **Regular threshold**: Applied to individual field comparisons
+- **Match threshold**: Applied to Hungarian algorithm's optimal item pairing logic
+- Using the wrong threshold type will result in a validation error
+
+**UI Behavior**:
+- When you select an array field with object items in the configuration UI
+- And choose HUNGARIAN method
+- The UI automatically shows "Match Threshold" instead of "Evaluation Threshold"
+- The system prevents you from using incompatible method-field combinations
+
+### Method Compatibility Rules
+
+Different evaluation methods work with different field types:
+
+| Method | Compatible Types | Requires |
+|--------|-----------------|----------|
+| EXACT | String, Number, Integer, Boolean | `evaluation-threshold` (optional) |
+| NUMERIC_EXACT | Number, Integer, String | `evaluation-threshold` (tolerance) |
+| FUZZY | String | `evaluation-threshold` (required) |
+| LEVENSHTEIN | String | `evaluation-threshold` (required) |
+| SEMANTIC | String, Object | `evaluation-threshold` (required) |
+| LLM | String, Object, Array | `evaluation-threshold` (required) |
+| HUNGARIAN | Array[Object] ONLY | `evaluation-match-threshold` (required) |
+
+**Validation**:
+- Backend validates method-type compatibility and raises clear errors for mismatches
+- UI filters available methods based on the selected field type
+- Cannot select HUNGARIAN for non-array fields
+- Cannot select other methods for structured arrays (must use HUNGARIAN)
 
 ## Attribute Processing and Evaluation
 
@@ -233,21 +649,11 @@ This multi-level analysis helps identify specific areas for improvement, such as
 - Performance degradation with larger transaction lists
 - Specific list item attributes that frequently fail evaluation
 
-## Viewing Reports
+## Setup and Usage
 
-1. In the web UI, select a document from the Documents list
-2. Click "View Evaluation Report" button 
-3. The report shows:
-   - Section classification accuracy
-   - Field-by-field comparison with visual indicators (✅/❌)
-   - Analysis of differences with detailed reasons
-   - Overall accuracy assessment with color-coded metrics (🟢 Excellent, 🟡 Good, 🟠 Fair, 🔴 Poor)
-   - Progress bar visualizations for match rates
-   - Comprehensive metrics and performance ratings
+### Step 1: Creating Baseline Data
 
-## Creating Baseline Data
-
-There are two main approaches to creating baseline data:
+Creating accurate baseline data is the foundation of the evaluation framework. There are two main approaches:
 
 ### Method 1: Use Existing Processing Results (Using Copy to Baseline Feature)
 
@@ -263,39 +669,132 @@ There are two main approaches to creating baseline data:
 
 ### Method 2: Create Baseline Data Manually
 
-1. Create a JSON file following the GenAIIDP output schema
-2. Include all required fields and values for each document
-3. Upload to the baseline bucket with an object key matching the input document
+**Important:** Baselines must follow the correct directory structure:
+- Create a directory named after your document (e.g., `invoice.pdf/`)
+- Inside, create a `sections/1/` subdirectory
+- Place your `result.json` file in `sections/1/`
+- Upload the entire directory structure to the baseline bucket
 
-## Baseline Bucket Structure
+**Best Practices for Creating Baseline Files:**
 
+The easiest way to create accurate baseline files is to start with processed results:
+
+1. **Option A: Use Processed Results as Template**
+   - Process your document through the GenAIIDP solution first
+   - Download the results from the OutputBucket
+   - Locate the `sections/1/result.json` file in the output
+   - Find the `inference_result` section within that file
+   - Use this as your baseline template, making any necessary corrections
+   - The `inference_result` contains the extracted attributes in the correct format
+
+2. **Option B: Use the Solution UI**
+   - Process your document through the GenAIIDP solution
+   - In the Web UI, navigate to the processed document
+   - Click "View / Edit data" to review the extracted results
+   - Correct any errors directly in the UI
+   - Export or copy the corrected data to create your baseline
+   - This ensures your baseline matches the exact structure expected by the evaluation framework
+
+**Manual Steps:**
+
+1. Create the directory structure following the pattern: `<document-name>/sections/1/`
+2. Create a `result.json` file with extracted attributes in the correct format (using one of the methods above)
+3. Upload the complete directory structure to the baseline bucket
+
+**Example structure to upload:**
 ```
-baseline-bucket/
-├── document1.pdf.json    # Baseline for document1.pdf
-├── document2.pdf.json    # Baseline for document2.pdf
-└── subfolder/
-    └── document3.pdf.json  # Baseline for subfolder/document3.pdf
+invoice.pdf/
+└── sections/
+    └── 1/
+        └── result.json
 ```
 
-Each baseline file should match the format of the GenAIIDP output, typically including:
-
+**Example result.json content:**
 ```json
 {
-  "documentMetadata": { ... },
-  "sections": [ ... ],
-  "extractedData": { ... }
+  "inference_result": {
+    "Invoice Number": "INV-2024-001",
+    "Invoice Date": "2024-01-15",
+    "Total Amount": "$1,250.00",
+    "Vendor Name": "Acme Corp"
+  }
 }
 ```
 
+### Understanding the Baseline Structure
+
+All baselines must follow this directory structure in your S3 baseline bucket:
+
+```
+baseline-bucket/
+├── document1.pdf/
+│   └── sections/
+│       └── 1/
+│           └── result.json    # Baseline for document1.pdf
+├── document2.pdf/
+│   └── sections/
+│       └── 1/
+│           └── result.json    # Baseline for document2.pdf
+└── subfolder/
+    └── document3.pdf/
+        └── sections/
+            └── 1/
+                └── result.json  # Baseline for subfolder/document3.pdf
+```
+
+**Key Structure Rules:**
+- Directory name matches the document filename (e.g., `invoice.pdf/`)
+- Contains a `sections/1/` subdirectory
+- The `result.json` file contains the inference results in this format:
+
+```json
+{
+  "inference_result": {
+    "Invoice Number": "INV-2024-001",
+    "Invoice Date": "2024-01-15",
+    "Total Amount": "$1,250.00",
+    "Vendor Name": "Acme Corp"
+  }
+}
+```
+
+### Step 2: Viewing Evaluation Reports
+
+Once documents are processed with baselines:
+
+1. In the Web UI, select a document from the Documents list
+2. Click "View Evaluation Report" button
+3. The report displays:
+   - Section classification accuracy
+   - Field-by-field comparison with visual indicators (✅/❌)
+   - Analysis of differences with detailed reasons
+   - Overall accuracy assessment with color-coded metrics (🟢 Excellent, 🟡 Good, 🟠 Fair, 🔴 Poor)
+   - Progress bar visualizations for match rates
+   - Comprehensive metrics and performance ratings
+   - Confidence scores (if assessment is enabled)
+
 ## Best Practices
 
-- Enable auto-evaluation during testing/tuning phases
-- Disable auto-evaluation in production for cost efficiency 
-- Use evaluation reports to:
+### Baseline Management
+- **Start with high-quality baselines**: Use processed results from the UI and correct any errors before creating baselines
+- **Maintain baseline consistency**: Ensure all baseline files follow the correct directory structure
+- **Version your baselines**: Keep different baseline sets for different document versions or testing scenarios
+
+### Evaluation Strategy
+
+- **Enable auto-evaluation during testing/tuning phases**: Get immediate feedback on accuracy
+- **Disable auto-evaluation in production**: Reduce costs by evaluating only when needed
+- **Use evaluation reports to**:
   - Compare different processing patterns
   - Test effects of prompt changes
   - Monitor accuracy over time
   - Identify areas for improvement
+
+### Configuration Best Practices
+
+- **Choose appropriate evaluation methods**: Match methods to your data types (EXACT for IDs, FUZZY for names, SEMANTIC for descriptions)
+- **Set realistic thresholds**: Start with strict thresholds (0.9+) and adjust based on your accuracy requirements
+- **Configure confidence tracking**: Enable assessment to get confidence scores in evaluation reports
 
 ## Automatic Field Discovery
 
@@ -386,7 +885,24 @@ Stores detailed attribute-level metrics including:
 - Individual attribute scores and evaluation methods
 - Detailed reasoning for matches/mismatches
 
-### Querying with Amazon Athena
+### Querying Evaluation Results
+
+You have two primary ways to analyze evaluation data:
+
+#### Option 1: Agent Analytics (Recommended for Most Users)
+
+The **Agent Analytics** feature in the Web UI provides a natural language interface to query and analyze evaluation results without writing SQL:
+
+- **Natural Language Queries**: Ask questions like "Show me documents with accuracy below 80%" or "What attributes have the lowest match rates?"
+- **Automatic SQL Generation**: The AI agent automatically writes optimized Athena queries based on your questions
+- **Interactive Visualizations**: Generate charts, graphs, and tables to visualize evaluation trends
+- **No SQL Knowledge Required**: Ideal for business users and analysts
+
+Access Agent Analytics through the Web UI's "Document Analytics" section. For detailed guidance, see [`docs/agent-analysis.md`](./agent-analysis.md).
+
+#### Option 2: Direct Athena SQL Queries
+
+For advanced users and automated workflows, you can query the evaluation tables directly with Amazon Athena.
 
 All evaluation data is partitioned by date and document for efficient querying:
 
@@ -476,6 +992,57 @@ The solution includes a comprehensive Jupyter notebook (`notebooks/evaluation_re
 4. **Comparative Analysis**: Compare performance across different prompt configurations
 5. **Automated Alerts**: Set up CloudWatch alarms based on accuracy metrics stored in the database
 
+## Migration from Legacy Evaluation
+
+The feature/stickler branch introduces a new Stickler-based evaluation service while preserving the legacy implementation for backward compatibility:
+
+- **New**: `service.py` (Stickler-based) - default for new deployments
+- **Legacy**: `service_legacy.py` - preserved for existing workflows
+
+All existing configurations are compatible with the Stickler service through the `SticklerConfigMapper`, which translates IDP evaluation extensions to Stickler format transparently.
+
+### What Changed
+
+1. **Backend Engine**: Stickler for structured comparison instead of custom comparators
+2. **Field Weighting**: New capability for business-critical fields (`x-aws-idp-evaluation-weight`)
+3. **Dynamic Schema Generation**: Auto-generate schemas from baseline data when configuration is missing
+4. **Type Coercion**: Automatic type conversion for baseline data compatibility
+5. **Weighted Scores**: New `weighted_overall_score` metric in evaluation results
+6. **Enhanced Error Handling**: Graceful degradation with zero-metric results for failed section evaluations
+
+### What Stayed the Same
+
+1. **API**: Same `evaluate_document()` and `evaluate_section()` methods
+2. **Configuration Format**: Same JSON Schema with evaluation extensions
+3. **Report Format**: Same Markdown and JSON outputs
+4. **Evaluation Methods**: Same EXACT, FUZZY, NUMERIC_EXACT, SEMANTIC, LLM, HUNGARIAN
+5. **Assessment Integration**: Same confidence score display in reports
+6. **Analytics Database**: Same table structure and querying capabilities
+
+### Migration Checklist
+
+✅ **No Action Required** - Existing configurations work with Stickler service automatically
+
+✅ **Optional Enhancements**:
+- Add `x-aws-idp-evaluation-weight` to critical fields for business-aligned scoring
+- Review auto-generated schema warnings in logs and create explicit configs
+- Test type coercion with your baseline data format
+
+✅ **Validation**:
+- Run evaluation on sample documents to verify results
+- Review evaluation reports for accuracy and completeness
+- Check CloudWatch logs for any warnings or errors
+
+### Stickler Version Information
+
+The solution uses Stickler from GitHub:
+- **Repository**: https://github.com/awslabs/stickler
+- **Branch**: `sr/json_schema_construction` (temporary)
+- **Commit**: `de7d0fda6d551088d9b43bea5adb39e58d04b314`
+- **Migration Path**: Will switch to main branch once [PR #20](https://github.com/awslabs/stickler/pull/20) merges
+
+For version details, see `lib/idp_common_pkg/idp_common/evaluation/stickler_version.py`
+
 ## Troubleshooting Evaluation Issues
 
 Common issues and resolutions:
@@ -500,3 +1067,21 @@ Common issues and resolutions:
    - Check that evaluation results are being written to the reporting bucket
    - Verify Athena permissions for querying Glue tables
    - Use "MSCK REPAIR TABLE" in Athena to refresh partitions if needed
+
+5. **Stickler Dependency Issues**
+   - Ensure Stickler is installed: `pip install -e '.[evaluation]'`
+   - Verify installation: `python -c "from stickler import StructuredModel; print('OK')"`
+   - Check version: See `lib/idp_common_pkg/idp_common/evaluation/stickler_version.py`
+   - Review Stickler documentation: https://github.com/awslabs/stickler
+
+6. **Type Coercion Warnings**
+   - Check Lambda logs for type coercion messages
+   - Verify baseline data types match schema expectations
+   - Update schema to match baseline format if needed
+   - Test with representative documents before production
+
+7. **Auto-Generated Schema Warnings**
+   - Look for WARNING level logs about auto-generated schemas
+   - Create explicit configuration for production document classes
+   - Review generated schema structure in logs
+   - Test explicit config before disabling auto-generation

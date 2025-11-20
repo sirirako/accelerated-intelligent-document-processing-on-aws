@@ -13,6 +13,7 @@ import time
 from idp_common import get_config, summarization
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from idp_common.utils import calculate_lambda_metering, merge_metering_data
 
 # Configuration will be loaded in handler function
 
@@ -52,7 +53,7 @@ def handler(event, context):
         document_service.update_document(document)
         
         # Load configuration and create the summarization service
-        config = get_config()
+        config = get_config(as_model=True)
         summarization_service = summarization.SummarizationService(
             config=config
         )        
@@ -71,6 +72,13 @@ def handler(event, context):
             logger.info(f"Document summarization successful, report URI: {processed_document.summary_report_uri}")
         else:
             logger.warning("Document summarization completed but no summary report URI was set")
+        
+        # Add Lambda metering for successful summarization execution
+        try:
+            lambda_metering = calculate_lambda_metering("Summarization", context, start_time)
+            processed_document.metering = merge_metering_data(processed_document.metering, lambda_metering)
+        except Exception as e:
+            logger.warning(f"Failed to add Lambda metering for summarization: {str(e)}")
         
         # Prepare output with automatic compression if needed
         return {

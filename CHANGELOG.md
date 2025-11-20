@@ -5,6 +5,362 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.4]
+
+### Added
+
+- **IDP CLI --from-code Flag for Local Development Deployment**
+  - Added `--from-code` flag to `idp-cli deploy` command enabling deployment directly from local source code
+  - Automatically builds project using `publish.py` script with streaming output for real-time build progress
+- **IDP CLI --no-rollback Flag for Stack Deployment Troubleshooting**
+  - Added `--no-rollback` flag to `idp-cli deploy` command to disable automatic rollback on CloudFormation stack creation failure
+  - When enabled, failed stacks remain in `CREATE_FAILED` state instead of rolling back, allowing inspection of failed resources for troubleshooting
+
+### Fixed
+
+## [0.4.3]
+
+### Fixed
+
+- Fix #134 - Doc class dropdown shows no options when editing sections
+- Fix #133 - Cast topK to int to defend against transient ValidationException exceptions
+- Fix #132 - TRACKING_TABLE environment variable needed in EvaluationFunction
+- Fix #131 - HITL functions broken post docker migration
+- Fix #130 - Enable EU models for Agent Configuration and KB Configuration
+- Add ServiceUnavailableException to retryable exceptions in statemachine to better defend against processing failure due to quota overload
+- Evaluation Configuration Robustness
+  - Improved JSON Schema error messages with actionable diagnostics when configuration issues occur
+  - Added automatic type coercion for numeric constraints (e.g., `maxItems: "7"` → `maxItems: 7`) to handle common YAML parsing quirks gracefully
+- UI: Document Schema Editor Input Field Fixes
+  - Fixed Examples, Default Value, Const, and Enum Values fields not allowing first character deletion or comma input
+  - Fixed Enum field remaining disabled after clearing Const value
+  - Fixed "Clear all enum values" button not working
+  - Fixed empty Evaluation Method picklist for Array[String] and other simple array types
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.3.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.3.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.3.yaml`
+
+## [0.4.2]
+
+### Added
+
+- **Stickler-Based Evaluation System for Enhanced Comparison Capabilities**
+  - Migrated evaluation service from custom comparison logic to [AWS Labs Stickler library](https://github.com/awslabs/stickler/tree/main) for structured object evaluation
+  - **Field Importance Weights**: New capability to assign business criticality weights to fields (e.g., shipment ID weight=3.0 vs notes weight=0.5)
+  - **Enhanced Configuration**: Added `x-aws-idp-evaluation-*` extensions for evaluation configuration
+  - **Backward compatible**: Maintained API compatibility - all existing code works unchanged
+  - **Enhanced Comparators**: Leverages Stickler's optimized comparison algorithms (Exact, Levenshtein, Numeric, Fuzzy, Semantic) with LLM evaluation preserved through custom wrapper
+  - **Better List Matching**: Hungarian algorithm via Stickler for optimal list comparisons regardless of order
+
+- **UI: Evaluation Configuration in Document Schema UI**
+  - Added evaluation weight, threshold (with conditional display), and document-level match threshold fields for complete Stickler configuration control
+  - Added LEVENSHTEIN and HUNGARIAN evaluation methods with auto-populated threshold defaults based on selected method
+  
+- **IDP CLI Force Delete All Resources Option**
+  - Added `--force-delete-all` flag to `idp-cli delete` command for comprehensive stack cleanup
+  - **Post-CloudFormation Cleanup**: Analyzes resources after CloudFormation deletion completes to identify retained resources (DELETE_SKIPPED status)
+  - **Use Cases**: Complete test environment cleanup, CI/CD pipelines requiring full teardown, cost optimization by removing all retained resources
+
+### Changed
+
+- **Containerized Pattern-1 and Pattern-3 Deployment Pipelines**
+  - Migrated Pattern-1 and Pattern-3 Lambda functions to Docker image deployments (following Pattern-2 approach from v0.3.20)
+  - Builds and pushes all Lambda images via CodeBuild with automated ECR cleanup
+  - Increases Lambda package size limit from 250 MB (zip) to 10 GB (Docker image) to accommodate larger dependencies
+
+- **Agent Companion Chat - Chat History Feature**
+  - Added chat history feature from Agent Analysis back into Agent Companion Chat
+  - Users can now load and view previous chat sessions with full conversation context
+  - Chat history dropdown displays recent sessions with timestamps and message counts
+
+### Fixed
+
+- **Agent Companion Chat - Session Persistence and input control**
+  - Agent Companion Chat in-session memory now persists even when user changes pages
+  - Prompt input is disabled during active streaming responses to prevent concurrent requests
+  - Fixed issue where charts in loaded chat history were not displaying
+
+- **GovCloud Template Generation errors**
+  - Fixed CloudFormation deployment error `Fn::GetAtt references undefined resource GraphQLApi` when deploying GovCloud templates
+
+- **Example Notebook error fixed**
+  - Example notebooks updated to work with new v0.4.0+ JSON schema
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.2.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.2.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.2.yaml`
+
+## [0.4.1]
+
+### Changed
+
+- **Configuration Library Updates with JSON Schema Support**
+  - Updated configuration library with JSON schema format for lending package, bank statement, and RVL-CDIP package samples
+  - Enhanced configuration files to align with JSON Schema Draft 2020-12 format introduced in v0.4.0
+  - Updated notebooks and documentation to reflect JSON schema configuration structure
+
+### Fixed
+
+- **UI Few Shot Examples Display** - Fixed issue where few shot examples were not displaying correctly from configuration in the Web UI
+- **Re-enabled Regex Functionality** - Restored document name and page content regex functionality for Pattern-2 classification that was temporarily missing
+- **Pattern-2 ECR Enhanced Scanning Support** - Added required IAM permissions (inspector2:ListCoverage, inspector2:ListFindings) to Pattern2DockerBuildRole to support AWS accounts with Amazon Inspector Enhanced Scanning enabled. Also added KMS permissions (kms:Decrypt, kms:CreateGrant) for customer-managed encryption keys. This resolves AccessDenied errors and CodeBuild timeouts when deploying Pattern-2 in accounts with enhanced scanning enabled.
+- **Reporting Database Data Loss After Evaluation Refactoring - Fixes #121**
+  - Fixed bug where metering data and document_section data stopped being written to the reporting database after evaluation was migrated from EventBridge to Step Functions workflow
+- **IDP CLI Deploy Command Parameter Preservation Bug**
+  - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+- **Pattern-2 Deployment Intermittent Lambda (HITLStatusUpdateFunction) ECR Access Failure**
+  - Fixed intermittent "Lambda does not have permission to access the ECR image" (403) errors during Pattern-2 deployment
+  - **Root Cause**: Race condition where Lambda functions were created before ECR images were fully available and scannable
+  - **Solution**: Enhanced CodeBuild custom resource to verify ECR image availability before completing, including:
+    - Verification that all required Lambda images exist in ECR repository
+    - Check that image scanning is complete (repository has `ScanOnPush: true`)
+  - **New Parameter**: Added `EnablePattern2ECRImageScanning` parameter (current default: false) to allow users to enable/disable ECR vulnerability scanning if experiencing deployment issues
+    - Recommended: Set enabled (true) for production to maintain security posture
+    - Optional: Disable (false) only as temporary workaround for deployment reliability
+- **Resolved failing Docker build issue related to Python pymupdf package version update**
+  - Pinned pymupdf version to prevent attempted (failing) deployment of newly published version (which is missing ARM64 wheels)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.1.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.1.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.1.yaml`
+
+## [0.4.0]
+
+> **⚠️ IMPORTANT NOTICE - SIGNIFICANT CONFIGURATION CHANGES**
+>
+> This release introduces **significant changes to the accelerator configuration** for defining document classes and attributes. The configuration format has been migrated to JSON Schema standards, which provides enhanced flexibility and validation capabilities.
+>
+> While automatic migration is provided for backward compatibility, **customers MUST fully test this update in a non-production environment** before upgrading production systems. We strongly recommend:
+>
+> 1. Deploy the update to a test/development environment first
+> 2. Verify all document processing workflows function as expected
+> 3. Test with representative samples of your production documents
+> 4. Review the migration guide at [docs/json-schema-migration.md](./docs/json-schema-migration.md)
+> 5. Only proceed with production upgrade after thorough validation
+>
+> **Do not upgrade production systems without completing validation testing.**
+
+### Added
+
+- **Agent Companion Chat Experience**
+  - Added comprehensive interactive AI assistant interface providing real-time conversational support for the IDP Accelerator
+  - **Session-Based Architecture**: Transformed from job-based (single request/response) to session-based (multi-turn conversations) with unified agentic chat experience
+  - **Persistent Chat Memory**: DynamoDB-backed conversation history with automatic loading of last 20 turns, turn-based message grouping, and intelligent context management with sliding window optimization
+  - **Real-Time Streaming**: AppSync GraphQL subscriptions enable incremental response streaming with proper async task cleanup and thinking tag removal for clean display
+  - **Code Intelligence Agent**: New specialized agent for code-related assistance with DeepWiki MCP server integration, security guardrails to prevent sensitive data exposure, and user-controlled opt-in toggle (default: enabled)
+  - **Rich Chat Interface**: Modern UI with CloudScape Design System featuring real-time message streaming, multi-agent support (Analytics, Code Intelligence, Error Analyzer, General), Markdown rendering with syntax highlighting, structured data visualization (charts via Chart.js, sortable tables), expandable tool usage sections, sample prompts, and auto-scroll behavior
+  - **Privacy & Security**: Explicit user consent for Code Intelligence third-party services, session isolation with unique session IDs, error boundary protection, input validation
+
+- **JSON Schema Format for Class Definitions** - [docs/json-schema-migration.md](./docs/json-schema-migration.md)
+  - Document class definitions now use industry-standard JSON Schema Draft 2020-12 format for improved flexibility and tooling integration
+  - **Standards-Based Validation**: Leverage standard JSON Schema validators and tooling ecosystem for better configuration validation
+  - **Enhanced Extensibility**: Custom IDP properties use standard JSON Schema extension pattern (`x-aws-idp-*` prefix) for clean separation of concerns
+  - **Modern Data Contract**: Define document structures using widely-adopted JSON Schema format with robust type system (`string`, `number`, `boolean`, `object`, `array`)
+  - **Nested Structure Support**: Natural representation of complex documents with nested objects and arrays using JSON Schema's native `properties` and `items` keywords
+  - **Automatic Migration**: Existing legacy configurations automatically migrate to JSON Schema format on first load - completely transparent to users
+  - **Backward Compatible**: Legacy format remains supported through automatic migration - no manual configuration updates required
+  - **Comprehensive Documentation**: New migration guide with format comparison, field mapping table, and best practices
+
+- **IDP CLI Single Document Status Support with Programmatic Output**
+  - Enhanced `status` command to support checking individual document status via new `--document-id` option as alternative to `--batch-id`
+  - Added programmatic output capabilities with exit codes (0=success, 1=failure, 2=processing) for scripting and automation
+  - JSON format output (`--format json`) provides structured data for parsing in CI/CD pipelines and scripts
+  - Live monitoring support with `--wait` flag works for both batch and single document status checks
+  - Mutual exclusion validation ensures only one of `--batch-id` or `--document-id` is specified
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
+
+- **Error Analyzer CloudWatch Tool Enhancements**
+  - Enhanced CloudWatch log filtering with request ID-based filtering for more targeted error analysis
+  - Improved XRay tool tracing and logging capabilities for better diagnostic accuracy
+  - Enhanced error context correlation between CloudWatch logs and X-Ray traces
+  - Consolidated and renamed tools
+  - Provided tools access to agent
+  - Updated system prompt
+
+
+### Fixed
+
+- **UI Robustness for Orphaned List Entries** - [#102](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/102)
+  - Fixed UI error banner "failed to get document details - please try again later" appearing when orphaned list entries exist (list# items without corresponding doc# items in DynamoDB tracking table)
+  - **Root Cause**: When a document had a list entry but no corresponding document record, the error would trigger UI banner and prevent display of all documents in the same time shard
+  - **Solution**: Enhanced error handling to gracefully handle missing documents - now only shows error banner if ALL documents fail to load, not just one
+  - **Enhanced Debugging**: Added detailed console logging with full PK/SK information for both list entries and expected document entries to facilitate cleanup of orphaned records
+  - **User Impact**: All valid documents now display correctly even when orphaned list entries exist; debugging information available in browser console for identifying problematic entries
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.0.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.0.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.0.yaml`
+
+## [0.3.21]
+
+### Added
+
+- **Claude Sonnet 4.5 Haiku Model Support**
+  - Added support for Claude Haiku 4.5
+  - Available for configuration across all document processing steps
+
+- **X-Ray Integration for Error Analyzer Agent**
+  - Integrated AWS X-Ray tracing tools to enhance diagnostic capabilities of the error analyzer agent
+  - X-Ray context enables better distinction between infrastructure issues and application logic failures
+  - Added trace ID persistence in DynamoDB alongside document status for complete traceability
+  - Enhanced CloudWatch error log filtering for more targeted error analysis
+  - Simplified CloudWatch results structure for improved readability and analysis
+  - Updated error analyzer recommendations to leverage X-Ray insights for more accurate root cause identification
+
+- **EU Region Support with Automatic Model Mapping**
+  - Added support for deploying the solution in EU regions (eu-central-1, eu-west-1, etc.)
+  - Automatic model endpoint mapping between US and EU regions for seamless deployment
+  - Comprehensive model mapping table covering Amazon Nova and Anthropic Claude models
+  - Intelligent fallback mappings when direct EU equivalents are unavailable
+  - Quick Launch button for eu-central-1 region in README and deployment documentation
+  - IDP CLI now supports eu-central-1 deployment with automatic template URL selection
+  - Complete technical documentation in `docs/eu-region-model-support.md` with best practices and troubleshooting
+
+### Changed
+
+- **Migrated Evaluation from EventBridge Trigger to Step Functions Workflow**
+  - Moved evaluation processing from external EventBridge-triggered Lambda to integrated Step Functions workflow step
+  - **Race Condition Eliminated**: Evaluation now runs inside state machine before WorkflowTracker marks documents COMPLETE, preventing premature completion status when evaluation is still running
+  - **Config-Driven Control**: Evaluation now controlled by `evaluation.enabled` configuration setting instead of CloudFormation stack parameter, enabling runtime control without stack redeployment
+  - **Enhanced Status Tracking**: Added EVALUATING status to document processing pipeline for better visibility of evaluation progress
+  - **UI Improvements**: Added support for displaying EVALUATING status in processing flow viewer and "NOT ENABLED" badge when evaluation is disabled in configuration
+  - **Consistent Pattern**: Aligns evaluation with summarization and assessment patterns for unified feature control approach
+
+
+- **Migrated UI Build System from Create React App to Vite**
+  - Upgraded to Vite 7 for faster build times
+  - Updated to React 18, AWS Amplify v6, react-router-dom v6, and Cloudscape Design System
+  - Reduced dependencies and node_modules size
+  - Implemented strategic code splitting for improved performance
+  - Environment variables now use `VITE_` prefix instead of `REACT_APP_` for local development
+
+### Fixed
+
+- **IDP CLI Code Cleanup and Portability Improvements** - [#91](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/91), [#92](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/92)
+  - Removed dead code from previous refactors in batch_processor.py (51 lines)
+  - Replaced hardcoded absolute paths with dynamic path resolution in rerun_processor.py for cross-platform compatibility
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.21.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.21.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.3.21.yaml`
+
+## [0.3.20]
+
+### Added
+
+- **Agentic extraction preview with Strands agents (experimental)** introducing intelligent, self-correcting document extraction with improved schema compliance and accuracy improvements over traditional methods.
+  - Leverages the Strands Agent framework with iterative validation loops and automatic error correction to deliver schema compliance
+  - Provides structured output through Pydantic models with built-in validators, automatic retry handling, and superior handling of complex nested structures and date standardization
+  - Includes sample notebooks and configuration assets demonstrating agentic extraction for Pattern-2 lending documents
+  - Programmatic access available via `structured_output` function in `lib/idp_common_pkg/idp_common/extraction/agentic_idp.py`
+  - Currently this is an experimental feature. Future extensibility includes UI-based validation customization, code generation, and Model Context Protocol (MCP) integration for external data enrichment during extraction
+
+- **IDP CLI - Command Line Interface for Batch Document Processing**
+  - Added CLI tool (`idp_cli/`) for programmatic batch document processing and stack management
+  - **Key Features**: Deploy/update/delete CloudFormation stacks, process and reprocess documents from local directories or S3 URIs, live progress monitoring with rich terminal UI, download processing results locally, validate manifests before processing, generate manifests from directories with automatic baseline matching
+  - **Selective Reprocessing**: New `rerun-inference` command to reprocess documents from specific pipeline steps (classification or extraction) while leveraging existing OCR data for cost/time optimization
+  - **Evaluation Framework**: Workflow for accuracy testing including initial processing, manual validation, baseline creation, and automated evaluation with detailed metrics
+  - **Analytics Integration**: Query aggregated results via Athena SQL or use Agent Analytics in Web UI for visual analysis
+  - **Use Cases**: Rapid configuration iteration, large-scale batch processing, CI/CD integration, automated accuracy testing, automated environment cleanup, prompt engineering experiments
+  - **Documentation**: README with Quick Start, Commands Reference, Evaluation Workflow, and troubleshooting guides
+
+- **Extraction Results Integration in Summarization Service**
+  - Integrates extraction results from the extraction service into summarization module for context-aware summaries
+  - **Features**: Fully backward compatible (works with or without extraction results), automatic section handling, error resilient with graceful continuation, comprehensive logging
+  - **Configuration**: Enable by adding `{EXTRACTION_RESULTS}` placeholder to `task_prompt` in config.yaml
+  - **Benefits**: Context-aware summaries referencing extracted values, improved accuracy and quality, better extraction-summary alignment
+
+### Changed
+
+- **Containerized Pattern-2 deployment pipeline** that builds and pushes all Lambda images via CodeBuild using the new Dockerfile, plus automated ECR cleanup and tests.
+  - Lambda docker image deployments have a 10 GB image size limit compared to the 250 MB zip limit of regular deployment. This however doesn't allow for viewing the code in the AWS console.
+    The change was introduced to accommodate the increased package size of introducing Strands into the package dependencies.
+
+### Fixed
+- **Discovery function times out when processing large documents.**
+  - increase lambda discovery processor timeout to 900s
+- **Corrected baseline directory structure documentation in evaluation.md**
+  - Fixed incorrect baseline structure showing flat `.json` files instead of proper directory hierarchy
+  - Updated to correct structure: `<document-name>/sections/1/result.json`
+  - Reorganized document for better logical flow and user experience
+- **GovCloud Template Generation - Removed GraphQLApi References** - #82
+  - Fixed invalid GovCloud template generation where ProcessChanges AppSync resources were not being removed, causing "Fn::GetAtt references undefined resource GraphQLApi" errors
+  - Updated `scripts/generate_govcloud_template.py` to remove all ProcessChanges-related resources and extend AppSync parameter cleanup to all pattern stacks
+  - Fixed InvalidClientTokenId validation error by ensuring CloudFormation client uses the correct region when validating templates (commercial vs GovCloud)
+- **Enhanced Processing Flow Visualization for Disabled Steps**
+  - Fixed UX issue where disabled processing steps (when `summarization.enabled: false` or `assessment.enabled: false` in configuration) appeared visually identical to active steps in the "View Processing Flow" display
+  - **Key Benefit**: Users can now immediately see which steps are actually processing data vs. steps that execute but skip processing based on configuration settings, preventing confusion about whether summarization or assessment ran
+  - Limitation: the new visual indicators are driven from the current config, which may have been altered since the document was processed. We will address this in a later release. See Issue #86.
+
+### Known Issues
+- **GovCloud Deployments fail, due to lack of ARM support for CodeBuild. Fix targeted for next release.**
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.20.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.20.yaml`
+
+## [0.3.19]
+
+### Added
+
+- **Error Analyzer (Troubleshooting Tool) for AI-Powered Failure Diagnosis**
+  - Introduced intelligent AI-powered troubleshooting agent that automatically diagnoses document processing failures using Claude Sonnet 4 with the Strands agent framework
+  - **Key Capabilities**: Natural language query interface, intelligent routing between document-specific and system-wide analysis, multi-source data correlation (CloudWatch Logs, DynamoDB, Step Functions), root cause identification with actionable recommendations, evidence-based analysis with collapsible log details
+  - **Web UI Integration**: Accessible via "Troubleshoot" button on failed documents with real-time job status, progress tracking, automatic job resumption, and formatted results (Root Cause, Recommendations, Evidence sections)
+  - **Tool Ecosystem**: 8 specialized tools including analyze_errors (main router), analyze_document_failure, analyze_recent_system_errors, CloudWatch log search tools, DynamoDB integration tools, and Lambda context retrieval - additional tools will be added as the feature evolves.
+  - **Configuration**: Configurable via Web UI including model selection (Claude Sonnet 4 recommended), system prompt customization, max_log_events (default: 5), and time_range_hours_default (default: 24)
+  - **Documentation**: Comprehensive guide in `docs/error-analyzer.md` with architecture diagrams, usage examples, best practices, troubleshooting guide.
+
+- **Claude Sonnet 4.5 Model Support**
+  - Added support for Claude Sonnet 4.5 and Claude Sonnet 4.5 - Long Context models
+  - Available for configuration across all document processing steps
+
+### Fixed
+
+- **Problem with setting correctly formatted WAF IPv4 CIDR range** - #73
+
+- **Duplicate Step Functions Executions on Document Reprocess - [GitHub Issue #66](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/66)**
+  - Eliminated duplicate workflow executions when reprocessing large documents (>40MB, 500+ pages)
+  - **Root Cause**: S3 `copy_object` operations were triggering multiple "Object Created" events for large files, causing `queue_sender` to create duplicate document entries and workflow executions
+  - **Solution**: Refactored `reprocess_document_resolver` to directly create fresh Document objects and queue to SQS, completely bypassing S3 event notifications
+  - **Benefits**: Eliminates unnecessary S3 copy operations (cost savings)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.19.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.19.yaml`
+
+## [0.3.18]
+
+### Added
+
+- **Lambda Function Execution Cost Metering for Complete Cost Visibility**
+  - Added Lambda execution cost tracking to all core processing functions across all three processing patterns
+  - **Dual Metrics**: Tracks both invocation counts ($0.20 per 1M requests) and GB-seconds duration ($16.67 per 1M GB-seconds) aligned with official AWS Lambda pricing
+  - **Context-Specific Tracking**: Separate cost attribution for each processing step enabling granular cost analysis per document processing context
+  - **Automatic Integration**: Lambda costs automatically integrate with existing cost reporting infrastructure and appear alongside AWS service costs (Textract, Bedrock, SageMaker)
+  - **Configuration Integration**: Added Lambda pricing entries to all 7 configuration files in `config_library/` using official US East pricing
+
+### Fixed
+
+- Defect in v0.3.17 causing workflow tracker failure to (1) update status of failed workflows, and (2) update reporting database for all workflows #72
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.18.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.18.yaml`
+
 ## [0.3.17]
 
 ### Added
@@ -23,9 +379,19 @@ SPDX-License-Identifier: MIT-0
   - **Enhanced SQL Guidance**: Comprehensive Athena/Trino function reference with explicit PostgreSQL operator warnings to prevent common query failures like `~` regex operator mistakes
   - **Faster Time-to-Query**: Agent has immediate access to table overview and can proceed directly to detailed schema loading for relevant tables
 
-### Fixed
-- Fix missing data in Glue tables when using a document class that contains a dash (-). 
+### Changed
 
+- Add UI code lint/validation to publish.py script
+
+### Fixed
+
+- Fix missing data in Glue tables when using a document class that contains a dash (-).
+- Added optional Bedrock Guardrails support to (a) Agent Analytics and (b) Chat with Document
+- Fixed regressions on Permission Boundary support for all roles, and added autimated tests to prevent recurrance - fixes #70
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.17.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.17.yaml`
 
 ## [0.3.16]
 
@@ -48,14 +414,18 @@ SPDX-License-Identifier: MIT-0
   - Administrators can provision the service role once with elevated privileges, then delegate deployment capabilities to developer/DevOps teams
   - Includes comprehensive documentation and cross-referenced deployment guides explaining the security model and setup process
 
-
 ### Fixed
+
 - Fixed issue where CloudFront policy statements were still appearing in generated GovCloud templates despite CloudFront resources being removed
 - Fix duplicate Glue tables are created when using a document class that contains a dash (-). Resolved by replacing dash in section types with underscore character when creating the table, to align with the table name generated later by the Glue crawler - resolves #57.
 - Fix occasional UI error 'Failed to get document details - please try again later' - resolves #58
 - Fixed UI zipfile creation to exclude .aws-sam directories and .env files from deployment package
 - Added security recommendation to set LogLevel parameter to WARN or ERROR (not INFO) for production deployments to prevent logging of sensitive information including PII data, document contents, and S3 presigned URLs
 - Hardened several aspects of the new Discovery feature
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.16.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.16.yaml`
 
 ## [0.3.15]
 
@@ -82,7 +452,6 @@ SPDX-License-Identifier: MIT-0
   - **CloudFormation Integration**: Updated Pattern-2 schema to support regex configuration through the Web UI
   - **Demonstration**: New `step2_classification_with_regex.ipynb` notebook showcasing regex configuration and performance comparisons
   - **Documentation**: Enhanced classification module README and main documentation with regex usage examples and best practices
-  
 - **Windows WSL Development Environment Setup Guide**
   - Added WSL-based development environment setup guide for Windows developers in `docs/setup-development-env-WSL.md`
   - **Key Features**: Automated setup script (`wsl_setup.sh`) for quick installation of Git, Python, Node.js, AWS CLI, and SAM CLI
@@ -90,6 +459,7 @@ SPDX-License-Identifier: MIT-0
   - **Target Use Cases**: Windows developers needing Linux compatibility without Docker Desktop or VM overhead
 
 ### Fixed
+
 - **Throttling Error Detection and Retry Logic for Assessment Functions** - [GitHub Issue #45](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/45)
   - **Assessment Function**: Enhanced throttling detection to check for throttling errors returned in `document.errors` field in addition to thrown exceptions, raising `ThrottlingException` to trigger Step Functions retry when throttling is detected
   - **Granular Assessment Task Caching**: Fixed caching logic to properly cache successful assessment tasks when there are ANY failed tasks (both exception-based and result-based failures), enabling efficient retry optimization by only reprocessing failed tasks while preserving successful results
@@ -112,10 +482,14 @@ SPDX-License-Identifier: MIT-0
   - Fixed bug in list of models supporting cache points - previously claude 4 sonnet and opus had been excluded.
   - Validations added at the assessment step for checking valid json response. The validation fails after extraction/assessment is complete if json parsing issues are encountered.
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.15.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.15.yaml`
 
 ## [0.3.14]
 
 ### Added
+
 - Support for 1m token context for Claude Sonnet 4
 - Video demo of "Chat with Document" in [./docs/web-ui.md](./docs/web-ui.md)
 - **Human-in-the-Loop (HITL) Support Extended to Pattern-2**
@@ -125,15 +499,20 @@ SPDX-License-Identifier: MIT-0
   - Documentation and video demo in [./docs/human-review.md](./docs/human-review.md)
 
 ### Removed
+
 - Windows development environment guide and setup script removed as it proved insufficiently robust
 
 ### Fixed
+
 - Fix 1-click Launch URL output from the GovCloud template generation script
 - Add Agent Analytics to architecture diagram
 - Fix various UX and error reporting issues with the new Python publish script
 - Simplify UDOP model path construction and avoid invalid default for regions other than us-east-1 and us-west-2
 - Permission regression from previous release affecting "Chat with Document"
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.14.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.14.yaml`
 
 ## [0.3.13]
 
@@ -181,9 +560,12 @@ SPDX-License-Identifier: MIT-0
 - **Reverted to python3.12 runtime to resolve build package dependency problems**
 
 ### Fixed
+
 - **Improved Visual Edit bounding box position when using image zoom or pan**
 
-
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.13.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.13.yaml`
 
 ## [0.3.12]
 
@@ -191,7 +573,7 @@ SPDX-License-Identifier: MIT-0
 
 - **Custom Prompt Generator Lambda Support for Patterns 2 & 3**
   - Added `custom_prompt_lambda_arn` configuration field to enable injection of custom business logic into extraction processing
-  - **Key Features**: Lambda interface with all template placeholders (DOCUMENT_TEXT, DOCUMENT_CLASS, ATTRIBUTE_NAMES_AND_DESCRIPTIONS, DOCUMENT_IMAGE), URI-based image handling for JSON serialization, comprehensive error handling with fail-fast behavior, scoped IAM permissions requiring GENAIIDP-* function naming
+  - **Key Features**: Lambda interface with all template placeholders (DOCUMENT_TEXT, DOCUMENT_CLASS, ATTRIBUTE_NAMES_AND_DESCRIPTIONS, DOCUMENT_IMAGE), URI-based image handling for JSON serialization, comprehensive error handling with fail-fast behavior, scoped IAM permissions requiring GENAIIDP-\* function naming
   - **Use Cases**: Document type-specific processing rules, integration with external systems for customer configurations, conditional processing based on document content, regulatory compliance and industry-specific requirements
   - **Demo Resources**: Interactive notebook demonstration (`step3_extraction_with_custom_lambda.ipynb`), SAM deployment template for demo Lambda function, comprehensive documentation and examples in `notebooks/examples/demo-lambda/`
   - **Benefits**: Custom business logic without core code changes, backward compatible (existing deployments unchanged), robust JSON serialization handling all object types, complete observability with detailed logging
@@ -216,7 +598,6 @@ SPDX-License-Identifier: MIT-0
   - Dynamic pricing configuration loading from configuration
   - Enhanced cost analysis capabilities with comprehensive Athena queries for cost tracking, trend analysis, and efficiency metrics
   - Automatic cost calculation as `estimated_cost = value × unit_cost` for all metering records
-  
 - **Configuration-Based Summarization Control**
   - Summarization can now be enabled/disabled via configuration file `summarization.enabled` property instead of CloudFormation stack parameter
   - **Key Benefits**: Runtime control without stack redeployment, zero LLM costs when disabled, simplified state machine architecture, backward compatible defaults
@@ -236,11 +617,13 @@ SPDX-License-Identifier: MIT-0
   - MacOS development environment
 
 ### Removed
+
 - **CloudFormation Parameters**: Removed `IsSummarizationEnabled` and `IsAssessmentEnabled` parameters from all pattern templates
 - **Related Conditions**: Removed parameter conditions and state machine definition substitutions for both features
 - **Conditional Logic**: Eliminated complex conditional logic from state machine definitions for summarization and assessment steps
 
 ### ⚠️ Breaking Changes
+
 - **Configuration Migration Required**: When updating a stack that previously had `IsSummarizationEnabled` or `IsAssessmentEnabled` set to `false`, these features will now default to `enabled: true` after the update. To maintain the disabled behavior:
   1. Update your configuration file to set `summarization.enabled: false` and/or `assessment.enabled: false` as needed
   2. Save the configuration changes immediately after the stack update
@@ -248,9 +631,11 @@ SPDX-License-Identifier: MIT-0
 - **Action Required**: Review your current CloudFormation parameter settings before updating and update your configuration accordingly to preserve existing behavior
 
 ### Changed
+
 - **Updated Python Lambda Runtime to 3.13**
 
 ### Fixed
+
 - **Fixed B615 "Unsafe Hugging Face Hub download without revision pinning" security finding in Pattern-3 fine-tuning module** - Added revision pinning with to prevent supply chain attacks and ensure reproducible deployments
 - **Fixed CloudWatch Log Group Missing Retention regression**
 - **Security: Cross-Site Scripting (XSS) Vulnerability in FileViewer Component** - Fixed high-risk XSS vulnerability in `src/ui/src/components/document-viewer/FileViewer.jsx` where `innerHTML` was used with user-controlled data
@@ -258,6 +643,10 @@ SPDX-License-Identifier: MIT-0
 - **Fixed OutOfMemory Errors in Pattern-2 OCR Lambda for Large High-Resolution Documents**
   - **Root Cause**: Processing large PDFs with high-resolution images (7469×9623 pixels) caused memory spikes when 20 concurrent workers each held ~101MB images simultaneously, exceeding the 4GB Lambda memory limit
   - **Optimal Solution**: Refactored image extraction to render directly at target dimensions using PyMuPDF matrix transformations, completely eliminating oversized image creation
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.12.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.12.yaml`
 
 ## [0.3.11]
 
@@ -267,6 +656,10 @@ SPDX-License-Identifier: MIT-0
 - **Anthropic Claude Opus 4.1** model available in configuration for all document processing steps
 - **Browser tab icon** now features a blue background with a white "IDP"
 - **Experimental new classification method** - multimodalPageBoundaryClassification - for detecting section boundaries during page level classification.
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.11.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.11.yaml`
 
 ## [0.3.10]
 
@@ -289,15 +682,21 @@ SPDX-License-Identifier: MIT-0
   - Tables are configured with partition projection for efficient date-based queries without manual partition management
   - Automatic schema evolution - tables update when new fields are detected in extraction results
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.3.10.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.3.10.yaml`
+
 ## [0.3.9]
 
 ### Added
+
 - **Optional Permissions Boundary Support for Enterprise Deployments**
   - Added `PermissionsBoundaryArn` parameter to all CloudFormation templates for organizations with Service Control Policies (SCPs) requiring permissions boundaries
   - Comprehensive support for both explicit IAM roles and implicit roles created by AWS SAM functions and statemachines`
   - Conditional implementation ensures backward compatibility - when no permissions boundary is provided, roles deploy normally
 
 ### Added
+
 - IDP Configuration and Prompting Best Practices documentation [doc](./docs/idp-configuration-best-practices.md)
 
 ### Changed
@@ -305,9 +704,8 @@ SPDX-License-Identifier: MIT-0
 - Updated lending_package.pdf sample with more realistic driver's license image
 
 ### Fixed
+
 - Issue #27 - removed idp_common bedrock client region default to us-west-2 - PR #28
-
-
 
 ## [0.3.8]
 
@@ -364,19 +762,17 @@ SPDX-License-Identifier: MIT-0
 - Fixed issue where PDF files were being downloaded instead of displayed inline
 - Fixed pricing data for cacheWrite tokens for Amazon Nova models to resolve innacurate cost estimation in UI.
 
-
 ## [0.3.7]
 
 ### Added
 
 - **Criteria Validation Service Class**
-  - New  document validation service that evaluates documents against dynamic business rules using Large Language Models (LLMs)
+  - New document validation service that evaluates documents against dynamic business rules using Large Language Models (LLMs)
   - **Key Capabilities**: Dynamic business rules configuration, asynchronous processing with concurrent criteria evaluation, intelligent text chunking for large documents, multi-file processing with summarization, comprehensive cost and performance tracking
   - **Primary Use Cases**: Healthcare prior authorization workflows, compliance validation, business rule enforcement, quality assurance, and audit preparation
   - **Architecture Features**: Seamless integration with IDP pipeline using common Bedrock client, unified metering with automatic token usage tracking, S3 operations using standardized file operations, configuration compatibility with existing IDP config system
   - **Advanced Features**: Configurable criteria questions without code changes, robust error handling with graceful degradation, Pydantic-based input/output validation with automatic data cleaning, comprehensive timing metrics and token usage tracking
   - **Limitation**: Python idp_common support only, not yet implemented within deployed pattern workflows.
-
 
 - **Document Process Flow Visualization**
   - Added interactive visualization of Step Functions workflow execution for document processing
@@ -411,7 +807,6 @@ SPDX-License-Identifier: MIT-0
     - Manually reorganize existing S3 data to match the new partition structure
     - Create separate Athena tables pointing to the old partition structure for historical queries
 
-
 - **Optimize the classification process for single class configurations in Pattern-2**
   - Detects when only a single document class is defined in the configuration
   - Automatically classifies all document pages as that single class
@@ -431,6 +826,7 @@ SPDX-License-Identifier: MIT-0
   - Resolves "size exceeding the maximum number of bytes service limit" errors for documents with 500+ pages
 
 ### Changed
+
 - **Default behavior for image attachment in Pattern-2 and Pattern3**
   - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
   - If the prompt does NOT contain a `{DOCUMENT_IMAGE}` placeholder, do NOT attach the image at all
@@ -442,6 +838,7 @@ SPDX-License-Identifier: MIT-0
   - Enhanced Plan Mode workflow with requirements gathering, reasoning, and user approval loop
 
 ### Fixed
+
 - Fixed UI list deletion issue where empty lists were not saved correctly - #18
 - Improve structure and clarity for idp_common Python package documentation
 - Improved UI in View/Edit Configuration to clarify that Class and Attribute descriptions are used in the classification and extraction prompts
@@ -451,10 +848,12 @@ SPDX-License-Identifier: MIT-0
 ## [0.3.6]
 
 ### Fixed
+
 - Update Athena/Glue table configuration to use Parquet format instead of JSON #20
 - Cloudformation Error when Changing Evaluation Bucket Name #19
 
 ### Added
+
 - **Extended Document Format Support in OCR Service**
   - Added support for processing additional document formats beyond PDF and images:
     - Plain text (.txt) files with automatic pagination for large documents
@@ -477,6 +876,7 @@ SPDX-License-Identifier: MIT-0
 ## [0.3.5]
 
 ### Added
+
 - **Human-in-the-Loop (HITL) Support - Pattern 1**
   - Added comprehensive Human-in-the-Loop review capabilities using Amazon SageMaker Augmented AI (A2I)
   - **Key Features**:
@@ -484,7 +884,7 @@ SPDX-License-Identifier: MIT-0
     - Integration with SageMaker A2I Review Portal for human validation and correction
     - Configurable confidence threshold through Web UI Portal Configuration tab (0.0-1.0 range)
     - Seamless result integration with human-verified data automatically updating source results
-  - **Workflow Integration**: 
+  - **Workflow Integration**:
     - HITL tasks created automatically when confidence thresholds are not met
     - Reviewers can validate correct extractions or make necessary corrections through the Review Portal
     - Document processing continues with human-verified data after review completion
@@ -523,7 +923,7 @@ SPDX-License-Identifier: MIT-0
 - **YAML Parsing Support for LLM Responses - Pattern 2 and 3**
   - Added comprehensive YAML parsing capabilities to complement existing JSON parsing functionality
   - New `extract_yaml_from_text()` function with robust multi-strategy YAML extraction:
-    - YAML in ```yaml and ```yml code blocks
+    - YAML in `yaml and`yml code blocks
     - YAML with document markers (---)
     - Pattern-based YAML detection using indentation and key indicators
   - New `detect_format()` function for automatic format detection returning 'json', 'yaml', or 'unknown'
@@ -537,6 +937,7 @@ SPDX-License-Identifier: MIT-0
   - **Example Notebook**: Added `notebooks/examples/step3_extraction_using_yaml.ipynb` demonstrating YAML-based extraction with automatic format detection and token efficiency benefits
 
 ### Fixed
+
 - **Enhanced JSON Extraction from LLM Responses (Issue #16)**
   - Modularized duplicate `_extract_json()` functions across classification, extraction, summarization, and assessment services into a common `extract_json_from_text()` utility function
   - Improved multi-line JSON handling with literal newlines in string values that previously caused parsing failures
@@ -547,6 +948,7 @@ SPDX-License-Identifier: MIT-0
 ## [0.3.4]
 
 ### Added
+
 - **Configurable Image Processing and Enhanced Resizing Logic**
   - **Improved Image Resizing Algorithm**: Enhanced aspect-ratio preserving scaling that only downsizes when necessary (scale factor < 1.0) to prevent image distortion
   - **Configurable Image Dimensions**: All processing services (Assessment, Classification, Extraction, OCR) now support configurable image dimensions through configuration with default 951×1268 resolution
@@ -568,7 +970,7 @@ SPDX-License-Identifier: MIT-0
   - **Web UI Enhancements**: Configuration editor now supports viewing and editing nested attribute structures with proper validation
   - **Extraction Service Updates**: Enhanced `{ATTRIBUTE_NAMES_AND_DESCRIPTIONS}` placeholder processing to generate formatted prompts for nested structures
   - **Assessment Service Enhancements**: Added support for nested structure confidence evaluation with recursive processing of group and list attributes, including proper confidence threshold application from configuration
-  - **Evaluation Service Improvements**: 
+  - **Evaluation Service Improvements**:
     - Implemented pattern matching for list attributes (e.g., `Transactions[].Date` maps to `Transactions[0].Date`, `Transactions[1].Date`)
     - Added data flattening for complex extraction results using dot notation and array indices
     - Fixed numerical sorting for list items (now sorts 0, 1, 2, ..., 10, 11 instead of alphabetically)
@@ -592,6 +994,7 @@ SPDX-License-Identifier: MIT-0
   - Added comprehensive reporting database documentation
 
 ### Changed
+
 - Pin packages to tested versions to avoid vulnerability from incompatible new package versions.
 - Updated reporting data to use document's queued_time for consistent timestamps
 - Create new extensible SaveReportingData class in idp_common package for saving evaluation results to Parquet format
@@ -599,6 +1002,7 @@ SPDX-License-Identifier: MIT-0
 - Harden publish process and avoid package version bloat by purging previous build artifacts before re-building
 
 ### Fixed
+
 - Defend against non-numeric confidence_threshold values in the configuration - avoid float conversion or numeric comparison exceptions in Assessement step
 - Prevent creation of empty configuration fields in UI
 - Firefox browser issues with signed URLs (PR #14)
@@ -660,6 +1064,7 @@ SPDX-License-Identifier: MIT-0
   - ReportingDatabase output added to CloudFormation template for easy reference
 
 ### Fixed
+
 - Fixed build failure related to pandas, numpy, and PyMuPDF dependency conflicts in the idp_common_pkg package
 - Fixed deployment failure caused by CodeBuild project timeout, by raising TimeoutInMinutes property
 - Added missing cached token metrics to CloudWatch dashboards
@@ -682,8 +1087,8 @@ SPDX-License-Identifier: MIT-0
   - Significant cost reduction and improved retry performance for large multi-page documents
 
 ### Fixed
-- "Use as Evaluation Baseline" incorrectly sets document status back to QUEUED. It should remain as COMPLETED.
 
+- "Use as Evaluation Baseline" incorrectly sets document status back to QUEUED. It should remain as COMPLETED.
 
 ## [0.3.1]
 
@@ -699,6 +1104,7 @@ SPDX-License-Identifier: MIT-0
   - Enhanced documentation across classification.md, extraction.md, few-shot-examples.md, and pattern-2.md
 
 ### Fixed
+
 - When encountering excessive Bedrock throttling, service returned 'unclassified' instead of retrying, when using multi-modal page level classification method.
 - Minor documentation issues.
 
@@ -708,7 +1114,7 @@ SPDX-License-Identifier: MIT-0
 
 - **Visual Edit Feature for Document Processing**
   - Interactive visual interface for editing extracted document data combining document image display with overlay annotations and form-based editing.
-  - Split-Pane Layout, showing page image(s) and extraction inference results side by side 
+  - Split-Pane Layout, showing page image(s) and extraction inference results side by side
   - Zoom & Pan Controls for page image
   - Bounding Box Overlay System (Pattern-1 BDA only)
   - Confidence Scores (Pattern-1 BDA only)
@@ -745,10 +1151,12 @@ SPDX-License-Identifier: MIT-0
   - Enhanced configuration management with separation of infrastructure and business logic
 
 ### Fixed
+
 - **Lambda Configuration Reload Issue**
   - Fixed lambda functions loading configuration globally which prevented configuration updates from being picked up during warm starts
 
 ### Changed
+
 - **Simplified Model Configuration Architecture**
   - Removed individual model parameters from main template: `Pattern1SummarizationModel`, `Pattern2ClassificationModel`, `Pattern2ExtractionModel`, `Pattern2SummarizationModel`, `Pattern3ExtractionModel`, `Pattern3SummarizationModel`, `EvaluationLLMModelId`
   - Model selection now handled through enum constraints in UpdateSchemaConfig sections within each pattern template
@@ -765,7 +1173,9 @@ SPDX-License-Identifier: MIT-0
   - Added documentation clarifying the separation between GenAIIDP solution issues and underlying AWS service concerns
 
 ## [0.2.20]
+
 ### Added
+
 - Added document summarization functionality
   - New summarization service with default model set to Claude 3 Haiku
   - New summarization function added to all patterns
@@ -789,8 +1199,9 @@ SPDX-License-Identifier: MIT-0
   - Added status transitions (QUEUED → STARTED → RUNNING → OCR → CLASSIFYING → EXTRACTING → POSTPROCESSING → SUMMARIZING → COMPLETE)
 - Default OCR configuration now includes LAYOUT, TABLES, SIGNATURE, and markdown generation now supports tables (via textractor[pandas])
 - Added document reprocessing capability to the UI - New "Reprocess" button with confirmation dialog
-  
+
 ### Changed
+
 - Refactored code for better maintainability
 - Updated UI components to support markdown table viewing
 - Set default evaluation model to Claude 3 Haiku
@@ -805,6 +1216,7 @@ SPDX-License-Identifier: MIT-0
 - Fixed multi-page standard output BDA processing in Pattern 1
 
 ## [0.2.19]
+
 - Added enhanced EvaluationService with smart attribute discovery and evaluation
   - Automatically discovers and evaluates attributes not defined in configuration
   - Applies default semantic evaluation to unconfigured attributes using LLM method
@@ -812,8 +1224,8 @@ SPDX-License-Identifier: MIT-0
   - Added new demo notebook examples showing smart attribute discovery in action
 - Added SEMANTIC evaluation method using embedding-based comparison
 
-
 ## [0.2.18]
+
 - Improved error handling in service classes
 - Support for enum config schema and corresponding picklist in UI. Used for Textract feature selection.
 - Removed LLM model choices preserving only multi-modal modals that support multiple image attachments
@@ -827,14 +1239,16 @@ SPDX-License-Identifier: MIT-0
 ## [0.2.17]
 
 ### Enhanced Textract OCR Features
+
 - Added support for Textract advanced features (TABLES, FORMS, SIGNATURES, LAYOUT)
 - OCR results now output in rich markdown format for better visualization
 - Configurable OCR feature selection through schema configuration
 - Improved metering and tracking for different Textract feature combinations
 
-## [0.2.16] 
+## [0.2.16]
 
 ### Add additional model choice
+
 - Claude, Nova, Meta, and DeepSeek model selection now available
 
 ### New Document-Based Architecture
@@ -842,16 +1256,19 @@ SPDX-License-Identifier: MIT-0
 The `idp_common_pkg` introduces a unified Document model approach for consistent document processing:
 
 #### Core Classes
+
 - **Document**: Central data model that tracks document state through the entire processing pipeline
 - **Page**: Represents individual document pages with OCR results and classification
 - **Section**: Represents logical document sections with classification and extraction results
 
 #### Service Classes
+
 - **OcrService**: Processes documents with AWS Textract or Amazon Bedrock and updates the Document with OCR results
 - **ClassificationService**: Classifies document pages/sections using Bedrock or SageMaker backends
 - **ExtractionService**: Extracts structured information from document sections using Bedrock
 
 ### Pattern Implementation Updates
+
 - Lambda functions refactored, and significantly simplified, to use Document and Section objects, and new Service classes
 
 ### Key Benefits
@@ -867,6 +1284,7 @@ The `idp_common_pkg` introduces a unified Document model approach for consistent
 ### Example Notebook
 
 A new comprehensive Jupyter notebook demonstrates the Document-based workflow:
+
 - Shows complete end-to-end processing (OCR → Classification → Extraction)
 - Uses AWS services (S3, Textract, Bedrock)
 - Demonstrates Document object creation and manipulation
@@ -877,5 +1295,6 @@ A new comprehensive Jupyter notebook demonstrates the Document-based workflow:
 This refactoring sets the foundation for more maintainable, extensible document processing workflows with clearer data flow and easier troubleshooting.
 
 ### Refactored publish.sh script
- - improved modularity with functions
- - improved checksum logic to determine when to rebuild components
+
+- improved modularity with functions
+- improved checksum logic to determine when to rebuild components
