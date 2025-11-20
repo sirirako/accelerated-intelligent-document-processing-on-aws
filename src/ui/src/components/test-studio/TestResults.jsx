@@ -410,7 +410,9 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           <Box>
             <Box variant="awsui-key-label">Weighted Overall Scores</Box>
             <Box fontSize="heading-l">
-              {results.weightedOverallScores && results.weightedOverallScores.length > 0 ? results.weightedOverallScores.join(' ') : 'N/A'}
+              {results.weightedOverallScores && results.weightedOverallScores.length > 0
+                ? (results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length).toFixed(3)
+                : 'N/A'}
             </Box>
           </Box>
         </ColumnLayout>
@@ -433,12 +435,12 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                   />
                 }
               >
-                Weighted Overall Score Distribution
+                Weighted Overall Score Distribution ({results.testRunId})
               </Header>
             }
           >
             <BarChart
-              title={`Distribution of Weighted Overall Scores (${results.testSetName})`}
+              title={`Distribution of Weighted Overall Scores (${results.testRunId})`}
               series={[
                 {
                   title: 'Number of Documents',
@@ -446,31 +448,30 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                   data: (() => {
                     // Create score range buckets
                     const buckets = {
-                      '0-10%': 0,
-                      '10-20%': 0,
-                      '20-30%': 0,
-                      '30-40%': 0,
-                      '40-50%': 0,
-                      '50-60%': 0,
-                      '60-70%': 0,
-                      '70-80%': 0,
-                      '80-90%': 0,
-                      '90-100%': 0,
+                      '0.0-0.1': 0,
+                      '0.1-0.2': 0,
+                      '0.2-0.3': 0,
+                      '0.3-0.4': 0,
+                      '0.4-0.5': 0,
+                      '0.5-0.6': 0,
+                      '0.6-0.7': 0,
+                      '0.7-0.8': 0,
+                      '0.8-0.9': 0,
+                      '0.9-1.0': 0,
                     };
 
                     // Count documents in each bucket
                     results.weightedOverallScores.forEach((score) => {
-                      const percentage = score * 100;
-                      if (percentage < 10) buckets['0-10%']++;
-                      else if (percentage < 20) buckets['10-20%']++;
-                      else if (percentage < 30) buckets['20-30%']++;
-                      else if (percentage < 40) buckets['30-40%']++;
-                      else if (percentage < 50) buckets['40-50%']++;
-                      else if (percentage < 60) buckets['50-60%']++;
-                      else if (percentage < 70) buckets['60-70%']++;
-                      else if (percentage < 80) buckets['70-80%']++;
-                      else if (percentage < 90) buckets['80-90%']++;
-                      else buckets['90-100%']++;
+                      if (score < 0.1) buckets['0.0-0.1']++;
+                      else if (score < 0.2) buckets['0.1-0.2']++;
+                      else if (score < 0.3) buckets['0.2-0.3']++;
+                      else if (score < 0.4) buckets['0.3-0.4']++;
+                      else if (score < 0.5) buckets['0.4-0.5']++;
+                      else if (score < 0.6) buckets['0.5-0.6']++;
+                      else if (score < 0.7) buckets['0.6-0.7']++;
+                      else if (score < 0.8) buckets['0.7-0.8']++;
+                      else if (score < 0.9) buckets['0.8-0.9']++;
+                      else buckets['0.9-1.0']++;
                     });
 
                     return Object.entries(buckets).map(([range, count]) => ({
@@ -480,11 +481,10 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                   })(),
                 },
               ]}
-              xDomain={['0-10%', '10-20%', '20-30%', '30-40%', '40-50%', '50-60%', '60-70%', '70-80%', '80-90%', '90-100%']}
+              xDomain={['0.0-0.1', '0.1-0.2', '0.2-0.3', '0.3-0.4', '0.4-0.5', '0.5-0.6', '0.6-0.7', '0.7-0.8', '0.8-0.9', '0.9-1.0']}
               yDomain={[0, Math.max(...results.weightedOverallScores.map(() => 1)) * results.weightedOverallScores.length]}
               xTitle="Weighted Overall Score Range"
               yTitle="Number of Documents"
-              yTitleOrientation="vertical"
               height={300}
               hideFilter
               hideLegend
