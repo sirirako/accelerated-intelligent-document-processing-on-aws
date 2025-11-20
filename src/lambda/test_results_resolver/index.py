@@ -148,7 +148,6 @@ def get_test_results(test_run_id):
             'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
             'totalCost': cached_metrics.get('totalCost', 0),
             'costBreakdown': cached_metrics.get('costBreakdown', {}),
-            'usageBreakdown': cached_metrics.get('usageBreakdown', {}),
             'createdAt': _format_datetime(metadata.get('CreatedAt')),
             'completedAt': _format_datetime(metadata.get('CompletedAt')),
             'context': metadata.get('Context'),
@@ -172,7 +171,6 @@ def get_test_results(test_run_id):
         'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
         'totalCost': aggregated_metrics.get('total_cost', 0),
         'costBreakdown': aggregated_metrics.get('cost_breakdown', {}),
-        'usageBreakdown': aggregated_metrics.get('usage_breakdown', {}),
         'createdAt': _format_datetime(metadata.get('CreatedAt')),
         'completedAt': _format_datetime(metadata.get('CompletedAt')),
         'context': metadata.get('Context'),
@@ -199,8 +197,7 @@ def get_test_results(test_run_id):
             'averageConfidence': aggregated_metrics.get('average_confidence'),
             'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
             'totalCost': aggregated_metrics.get('total_cost', 0),
-            'costBreakdown': aggregated_metrics.get('cost_breakdown', {}),
-            'usageBreakdown': aggregated_metrics.get('usage_breakdown', {})
+            'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
         }
         
         table.update_item(
@@ -483,7 +480,6 @@ def _aggregate_test_run_metrics(test_run_id):
     confidence_count = 0
     weighted_overall_scores = []  # List to collect individual weighted overall scores
     cost_breakdown = {}
-    usage_breakdown = {}
     
     # Accuracy metrics aggregation
     total_precision = 0
@@ -555,33 +551,28 @@ def _aggregate_test_run_metrics(test_run_id):
             logger.warning(f"Failed to process evaluation report for {item['PK']}: {e}")
             continue
         
-        # Get cost and usage from document metering
-        metering = item.get('Metering', {})
-        if metering:
-            # Aggregate usage metrics
-            for service, metrics in metering.items():
-                if service not in usage_breakdown:
-                    usage_breakdown[service] = {}
-                for metric, value in metrics.items():
-                    usage_breakdown[service][metric] = usage_breakdown[service].get(metric, 0) + value
-        
         # Get cost from completion date if available
         if item.get('CompletionTime'):
             completion_date = datetime.fromisoformat(item['CompletionTime']).strftime('%Y-%m-%d')
             doc_key = item['PK'].replace('doc#', '')
             doc_costs = _get_document_costs_from_reporting_db(doc_key, completion_date)
             
-            for service, cost in doc_costs.items():
-                total_cost += cost
-                # Group by service context with nested structure
-                context = service.split('_')[0] if '_' in service else service
-                service_api = service.split('_')[1] if '_' in service and len(service.split('_')) > 1 else 'total'
-                
+            for context, services in doc_costs.items():
                 if context not in cost_breakdown:
                     cost_breakdown[context] = {}
-                if service_api not in cost_breakdown[context]:
-                    cost_breakdown[context][service_api] = 0
-                cost_breakdown[context][service_api] += cost
+                
+                for service_unit, details in services.items():
+                    if service_unit not in cost_breakdown[context]:
+                        cost_breakdown[context][service_unit] = {
+                            'unit': details['unit'],
+                            'value': 0,
+                            'unit_cost': details['unit_cost'],
+                            'estimated_cost': 0
+                        }
+                    
+                    cost_breakdown[context][service_unit]['value'] += details['value']
+                    cost_breakdown[context][service_unit]['estimated_cost'] += details['estimated_cost']
+                    total_cost += details['estimated_cost']
     
     return {
         'overall_accuracy': total_accuracy / accuracy_count if accuracy_count > 0 else None,
@@ -595,14 +586,13 @@ def _aggregate_test_run_metrics(test_run_id):
             'false_discovery_rate': total_false_discovery_rate / fdr_count if fdr_count > 0 else None
         },
         'total_cost': total_cost,
-        'cost_breakdown': cost_breakdown,
-        'usage_breakdown': usage_breakdown
+        'cost_breakdown': cost_breakdown
     }
 
 
 
 def _get_document_costs_from_reporting_db(document_id, completion_date):
-    """Get actual costs from S3 Parquet files using provided completion date"""
+    """Get detailed costs from S3 Parquet files using provided completion date"""
     try:
         import pyarrow.compute as pc
         import pyarrow.fs as fs
@@ -640,7 +630,7 @@ def _get_document_costs_from_reporting_db(document_id, completion_date):
                 
                 # Filter by document_id if column exists
                 if 'document_id' in table_data.column_names:
-                    mask = pc.equal(table_data['document_id'], document_id)  # type: ignore[attr-defined]
+                    mask = pc.equal(table_data['document_id'], document_id)
                     table_data = table_data.filter(mask)
                 
                 if table_data.num_rows == 0:
@@ -649,18 +639,32 @@ def _get_document_costs_from_reporting_db(document_id, completion_date):
                 # Convert to Python dict for processing
                 data = table_data.to_pydict()
                 
-                # Group and sum costs manually
-                cost_groups = {}
+                # Group detailed cost information
+                cost_details = {}
                 for i in range(len(data['context'])):
                     context = data['context'][i]
                     service_api = data['service_api'][i]
                     unit = data['unit'][i]
-                    cost = float(data['estimated_cost'][i])
+                    value = float(data['value'][i])
+                    unit_cost = float(data['unit_cost'][i])
+                    estimated_cost = float(data['estimated_cost'][i])
                     
-                    key = f"{context}_{service_api}_{unit}"
-                    cost_groups[key] = cost_groups.get(key, 0) + cost
+                    if context not in cost_details:
+                        cost_details[context] = {}
+                    
+                    key = f"{service_api}_{unit}"
+                    if key not in cost_details[context]:
+                        cost_details[context][key] = {
+                            'unit': unit,
+                            'value': 0,
+                            'unit_cost': unit_cost,
+                            'estimated_cost': 0
+                        }
+                    
+                    cost_details[context][key]['value'] += value
+                    cost_details[context][key]['estimated_cost'] += estimated_cost
                 
-                return cost_groups
+                return cost_details
         
         logger.warning(f"No parquet file found for {document_id} in {completion_date}")
         return {}
@@ -669,110 +673,6 @@ def _get_document_costs_from_reporting_db(document_id, completion_date):
         logger.warning(f"Failed to get costs from parquet for {document_id}: {e}")
         return {}
 
-def _compare_document_costs(test_document_id, baseline_document_id, test_completion_date=None, baseline_completion_date=None):
-    """Compare actual costs between test and baseline documents"""
-    
-    # Run both Parquet queries in parallel
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        test_future = executor.submit(_get_document_costs_from_reporting_db, test_document_id, test_completion_date)
-        baseline_future = executor.submit(_get_document_costs_from_reporting_db, baseline_document_id, baseline_completion_date)
-        
-        test_costs = test_future.result()
-        baseline_costs = baseline_future.result()
-    
-    if not test_costs and not baseline_costs:
-        return {}
-    
-    all_services = set(test_costs.keys()) | set(baseline_costs.keys())
-    cost_comparison = {}
-    
-    test_total = sum(test_costs.values())
-    baseline_total = sum(baseline_costs.values())
-    
-    for service in all_services:
-        test_cost = test_costs.get(service, 0)
-        baseline_cost = baseline_costs.get(service, 0)
-        
-        # Calculate percentage difference (positive = higher cost than baseline)
-        if baseline_cost > 0:
-            percentage_diff = ((test_cost - baseline_cost) / baseline_cost) * 100
-            similarity = percentage_diff  # Positive if test costs more (bad)
-        else:
-            similarity = 0.0 if test_cost > 0 else 0.0
-        
-        cost_comparison[f"{service}_cost_similarity"] = similarity
-    
-    # Overall cost similarity
-    if baseline_total > 0:
-        percentage_diff = ((test_total - baseline_total) / baseline_total) * 100
-        overall_similarity = percentage_diff
-    else:
-        overall_similarity = 0.0 if test_total > 0 else 0.0
-    
-    cost_comparison['overall_cost_similarity'] = overall_similarity
-    cost_comparison['test_total_cost'] = test_total
-    cost_comparison['baseline_total_cost'] = baseline_total
-    
-    # Add actual cost breakdown for aggregation
-    cost_comparison['baseline'] = {'total_cost': baseline_total}
-    cost_comparison['test'] = {'total_cost': test_total}
-    
-    # Group costs by context (service prefix)
-    baseline_contexts = {}
-    test_contexts = {}
-    
-    for service in all_services:
-        # Extract context from service name (e.g., "Summarization_bedrock" -> "Summarization")
-        parts = service.split('_')
-        context = parts[0] if parts else service
-        service_type = '_'.join(parts[1:]) if len(parts) > 1 else 'unknown'
-        
-        if context not in baseline_contexts:
-            baseline_contexts[context] = {}
-        if context not in test_contexts:
-            test_contexts[context] = {}
-            
-        baseline_contexts[context][service_type] = baseline_costs.get(service, 0)
-        test_contexts[context][service_type] = test_costs.get(service, 0)
-    
-    cost_comparison['baseline'].update(baseline_contexts)
-    cost_comparison['test'].update(test_contexts)
-    
-    return cost_comparison
-
-def _compare_metering_usage(test_metering, baseline_metering):
-    """Compare usage metrics from DynamoDB metering data"""
-    usage_comparison = {}
-    
-    # Get all service keys from both test and baseline
-    all_services = set(test_metering.keys()) | set(baseline_metering.keys())
-    
-    for service in all_services:
-        test_metrics = test_metering.get(service, {})
-        baseline_metrics = baseline_metering.get(service, {})
-        
-        # Compare each metric type (tokens, pages, invocations, etc.)
-        all_metric_types = set(test_metrics.keys()) | set(baseline_metrics.keys())
-        
-        for metric_type in all_metric_types:
-            test_value = test_metrics.get(metric_type, 0)
-            baseline_value = baseline_metrics.get(metric_type, 0)
-            
-            # Calculate percentage difference (positive = higher usage than baseline)
-            if baseline_value > 0:
-                percentage_diff = ((test_value - baseline_value) / baseline_value) * 100
-                similarity = percentage_diff  # Positive if test uses more (bad)
-            else:
-                similarity = 0.0 if test_value > 0 else 0.0
-            
-            key = f"{service}_{metric_type}_usage_similarity"
-            usage_comparison[key] = similarity
-    
-    # Add actual usage breakdown for aggregation
-    usage_comparison['baseline'] = baseline_metering
-    usage_comparison['test'] = test_metering
-    
-    return usage_comparison
 
 def _get_test_run_config(test_run_id):
     """Get test run configuration from metadata record"""
@@ -799,12 +699,6 @@ def _get_test_run_config(test_run_id):
             return obj
     
     return convert_decimals(config)
-
-def _build_metrics_comparison(results):
-    """Build metrics comparison table - return complete results"""
-    # Convert list to dict with testRunId as key
-    results_dict = {result['testRunId']: result for result in results}
-    return results_dict
 
 def _build_config_comparison(configs):
     """Build configuration differences - compare Custom configs, fallback to Default"""

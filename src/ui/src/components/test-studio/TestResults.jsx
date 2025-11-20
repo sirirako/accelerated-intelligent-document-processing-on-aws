@@ -30,8 +30,8 @@ import useAppContext from '../../contexts/app';
 const client = generateClient();
 
 /* eslint-disable react/prop-types */
-const ComprehensiveBreakdown = ({ costBreakdown, usageBreakdown, accuracyBreakdown }) => {
-  if (!costBreakdown && !usageBreakdown && !accuracyBreakdown) {
+const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown }) => {
+  if (!costBreakdown && !accuracyBreakdown) {
     return <Box>No breakdown data available</Box>;
   }
 
@@ -56,48 +56,133 @@ const ComprehensiveBreakdown = ({ costBreakdown, usageBreakdown, accuracyBreakdo
 
       {/* Cost breakdown */}
       {costBreakdown && (
-        <Container header={<Header variant="h3">Cost Breakdown</Header>}>
+        <Container header={<Header variant="h3">Estimated Cost</Header>}>
           <Table
             items={(() => {
               const costItems = [];
-              Object.entries(costBreakdown).forEach(([category, data]) => {
-                Object.entries(data).forEach(([api, cost]) => {
-                  costItems.push({
-                    metric: `${category} ${api}`,
-                    value: `$${cost.toFixed(4)}`,
-                  });
-                });
-              });
-              return costItems;
-            })()}
-            columnDefinitions={[
-              { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-              { id: 'value', header: 'Amount', cell: (item) => item.value },
-            ]}
-            variant="embedded"
-          />
-        </Container>
-      )}
+              let totalCost = 0;
+              const contextTotals = {};
 
-      {/* Usage breakdown */}
-      {usageBreakdown && (
-        <Container header={<Header variant="h3">Usage Breakdown</Header>}>
-          <Table
-            items={(() => {
-              const usageItems = [];
-              Object.entries(usageBreakdown).forEach(([service, metrics]) => {
-                Object.entries(metrics).forEach(([metric, value]) => {
-                  usageItems.push({
-                    metric: `${service} ${metric}`,
-                    value: value.toLocaleString(),
+              // First pass: collect all items and calculate context totals
+              Object.entries(costBreakdown).forEach(([context, services]) => {
+                let contextSubtotal = 0;
+
+                Object.entries(services).forEach(([serviceUnit, details]) => {
+                  // Parse service_api_unit format
+                  const parts = serviceUnit.split('_');
+                  const service = parts[0];
+                  const api = parts.slice(1, -1).join('/');
+                  const unit = parts[parts.length - 1];
+
+                  const cost = details.estimated_cost || 0;
+                  contextSubtotal += cost;
+
+                  costItems.push({
+                    context,
+                    serviceApi: `${service}/${api}`,
+                    unit: details.unit || unit,
+                    value: details.value || 'N/A',
+                    unitCost: details.unit_cost ? `$${details.unit_cost}` : 'None',
+                    estimatedCost: cost > 0 ? `$${cost.toFixed(4)}` : 'N/A',
+                    sortOrder: 0, // Regular items
                   });
                 });
+
+                contextTotals[context] = contextSubtotal;
+                totalCost += contextSubtotal;
               });
-              return usageItems;
+
+              // Sort items by context first, then by service/api
+              costItems.sort((a, b) => {
+                if (a.context !== b.context) {
+                  return a.context.localeCompare(b.context);
+                }
+                return a.serviceApi.localeCompare(b.serviceApi);
+              });
+
+              // Second pass: insert subtotal rows after each context group
+              const finalItems = [];
+              let currentContext = null;
+
+              costItems.forEach((item, index) => {
+                // Add the regular item
+                finalItems.push(item);
+
+                // Check if this is the last item for this context
+                const nextItem = costItems[index + 1];
+                const isLastInContext = !nextItem || nextItem.context !== item.context;
+
+                if (isLastInContext) {
+                  // Add subtotal row for every context
+                  finalItems.push({
+                    context: '',
+                    serviceApi: `${item.context} Subtotal: $${contextTotals[item.context].toFixed(4)}`,
+                    unit: '',
+                    value: '',
+                    unitCost: '',
+                    estimatedCost: '',
+                    isSubtotal: true,
+                    sortOrder: 1, // Subtotal items
+                  });
+                }
+              });
+
+              // Add total row
+              if (totalCost > 0) {
+                finalItems.push({
+                  context: '',
+                  serviceApi: `Total: $${totalCost.toFixed(4)}`,
+                  unit: '',
+                  value: '',
+                  unitCost: '',
+                  estimatedCost: '',
+                  isTotal: true,
+                  sortOrder: 2, // Total item
+                });
+              }
+
+              return finalItems;
             })()}
             columnDefinitions={[
-              { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-              { id: 'value', header: 'Count', cell: (item) => item.value },
+              {
+                id: 'context',
+                header: 'Context',
+                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.context),
+              },
+              {
+                id: 'serviceApi',
+                header: 'Service/Api',
+                cell: (item) => (
+                  <span
+                    style={{
+                      fontWeight: item.isSubtotal || item.isTotal ? 'bold' : 'normal',
+                      color: item.isTotal ? '#0073bb' : 'inherit',
+                    }}
+                  >
+                    {item.serviceApi}
+                  </span>
+                ),
+              },
+              {
+                id: 'unit',
+                header: 'Unit',
+                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.unit),
+              },
+              {
+                id: 'value',
+                header: 'Value',
+                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.value),
+              },
+              {
+                id: 'unitCost',
+                header: 'Unit Cost',
+                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.unitCost),
+              },
+              {
+                id: 'estimatedCost',
+                header: 'Estimated Cost',
+                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.estimatedCost),
+              },
             ]}
             variant="embedded"
           />
@@ -214,15 +299,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const hasAccuracyData = results.overallAccuracy !== null && results.overallAccuracy !== undefined;
 
   let costBreakdown = null;
-  let usageBreakdown = null;
   let accuracyBreakdown = null;
 
   try {
     if (results.costBreakdown) {
       costBreakdown = typeof results.costBreakdown === 'string' ? JSON.parse(results.costBreakdown) : results.costBreakdown;
-    }
-    if (results.usageBreakdown) {
-      usageBreakdown = typeof results.usageBreakdown === 'string' ? JSON.parse(results.usageBreakdown) : results.usageBreakdown;
     }
     if (results.accuracyBreakdown) {
       accuracyBreakdown = typeof results.accuracyBreakdown === 'string' ? JSON.parse(results.accuracyBreakdown) : results.accuracyBreakdown;
@@ -502,8 +583,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         )}
 
         {/* Breakdown Tables */}
-        {(costBreakdown || usageBreakdown || accuracyBreakdown) && (
-          <ComprehensiveBreakdown costBreakdown={costBreakdown} usageBreakdown={usageBreakdown} accuracyBreakdown={accuracyBreakdown} />
+        {(costBreakdown || accuracyBreakdown) && (
+          <ComprehensiveBreakdown costBreakdown={costBreakdown} accuracyBreakdown={accuracyBreakdown} />
         )}
       </SpaceBetween>
 

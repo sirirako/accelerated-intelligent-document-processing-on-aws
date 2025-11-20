@@ -143,32 +143,6 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       costRows.push(row);
     });
 
-    // Add usage breakdown rows
-    const usageRows = [];
-    const allUsageMetrics = new Set();
-    Object.values(completeTestRuns).forEach((testRun) => {
-      if (testRun.usageBreakdown) {
-        Object.entries(testRun.usageBreakdown).forEach(([service, metrics]) => {
-          Object.keys(metrics).forEach((metric) => {
-            allUsageMetrics.add(`${service}_${metric}`);
-          });
-        });
-      }
-    });
-
-    allUsageMetrics.forEach((metricKey) => {
-      const [service, metric] = metricKey.split('_');
-      const row = [
-        `Usage: ${service} ${metric}`,
-        ...Object.keys(completeTestRuns).map((testRunId) => {
-          const testRun = completeTestRuns[testRunId];
-          const value = testRun.usageBreakdown?.[service]?.[metric] || 0;
-          return value.toLocaleString();
-        }),
-      ];
-      usageRows.push(row);
-    });
-
     // Add config comparison rows
     const configRows = [];
     if (comparisonData.configs && comparisonData.configs.length > 0) {
@@ -187,9 +161,6 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       [''],
       ['=== COST BREAKDOWN ==='],
       ...costRows,
-      [''],
-      ['=== USAGE BREAKDOWN ==='],
-      ...usageRows,
       [''],
       ['=== CONFIGURATION DIFFERENCES ==='],
       ...configRows,
@@ -246,9 +217,6 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       ),
       costBreakdown: Object.fromEntries(
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.costBreakdown || {}]),
-      ),
-      usageBreakdown: Object.fromEntries(
-        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.usageBreakdown || {}]),
       ),
       accuracyBreakdown: Object.fromEntries(
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.accuracyBreakdown || {}]),
@@ -529,49 +497,84 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           </Container>
 
           {/* Cost Comparison */}
-          <Container header={<Header variant="h3">Cost Comparison</Header>}>
+          <Container header={<Header variant="h3">Cost Breakdown Comparison</Header>}>
             {(() => {
-              const allCostMetrics = new Set();
+              const allCostItems = new Set();
+
+              // Collect all unique cost items
               Object.values(completeTestRuns).forEach((testRun) => {
                 if (testRun.costBreakdown) {
-                  Object.entries(testRun.costBreakdown).forEach(([category, data]) => {
-                    if (data && typeof data === 'object') {
-                      Object.keys(data).forEach((api) => {
-                        allCostMetrics.add(`${category}_${api}`);
-                      });
-                    }
+                  Object.entries(testRun.costBreakdown).forEach(([context, services]) => {
+                    Object.keys(services).forEach((serviceUnit) => {
+                      const parts = serviceUnit.split('_');
+                      const service = parts[0];
+                      const api = parts.slice(1, -1).join('/');
+                      const unit = parts[parts.length - 1];
+                      allCostItems.add(`${context}|${service}/${api}|${unit}`);
+                    });
                   });
                 }
               });
 
-              return allCostMetrics.size > 0 ? (
+              const tableItems = Array.from(allCostItems).map((itemKey) => {
+                const [context, serviceApi, unit] = itemKey.split('|');
+                const row = {
+                  context,
+                  serviceApi,
+                  unit,
+                };
+
+                // Add cost for each test run
+                Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+                  const services = testRun.costBreakdown?.[context] || {};
+                  const serviceKey = Object.keys(services).find((key) => {
+                    const parts = key.split('_');
+                    const service = parts[0];
+                    const api = parts.slice(1, -1).join('/');
+                    return `${service}/${api}` === serviceApi;
+                  });
+
+                  const details = services[serviceKey] || {};
+                  const estimatedCost = details.estimated_cost || 0;
+                  row[testRunId] = estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : '$0.0000';
+                });
+
+                return row;
+              });
+
+              // Sort by context, then by service/api
+              tableItems.sort((a, b) => {
+                if (a.context !== b.context) return a.context.localeCompare(b.context);
+                return a.serviceApi.localeCompare(b.serviceApi);
+              });
+
+              return tableItems.length > 0 ? (
                 <Table
-                  items={Array.from(allCostMetrics).map((metricKey) => {
-                    const [category, api] = metricKey.split('_');
-                    return {
-                      metric: `${category} ${api}`,
-                      ...Object.fromEntries(
-                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                          const costBreakdown = testRun.costBreakdown || {};
-                          const cost = costBreakdown?.[category]?.[api] || 0;
-                          return [testRunId, `$${cost.toFixed(4)}`];
-                        }),
-                      ),
-                    };
-                  })}
+                  items={tableItems}
                   columnDefinitions={[
                     {
-                      id: 'metric',
-                      header: 'Cost Metric',
-                      cell: (item) => item.metric,
-                      width: 300,
-                      wrapLines: true,
+                      id: 'context',
+                      header: 'Context',
+                      cell: (item) => item.context,
+                      width: 150,
+                    },
+                    {
+                      id: 'serviceApi',
+                      header: 'Service/Api',
+                      cell: (item) => item.serviceApi,
+                      width: 250,
+                    },
+                    {
+                      id: 'unit',
+                      header: 'Unit',
+                      cell: (item) => item.unit,
+                      width: 120,
                     },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
                       header: createTestRunHeader(testRunId),
-                      cell: (item) => item[testRunId],
-                      width: 150,
+                      cell: (item) => item[testRunId] || '$0.0000',
+                      width: 120,
                     })),
                   ]}
                   variant="embedded"
@@ -583,47 +586,84 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           </Container>
 
           {/* Usage Comparison */}
-          <Container header={<Header variant="h3">Usage Comparison</Header>}>
+          <Container header={<Header variant="h3">Usage Breakdown Comparison</Header>}>
             {(() => {
-              const allUsageMetrics = new Set();
+              const allUsageItems = new Set();
+
+              // Collect all unique usage items
               Object.values(completeTestRuns).forEach((testRun) => {
-                if (testRun.usageBreakdown) {
-                  Object.entries(testRun.usageBreakdown).forEach(([service, metrics]) => {
-                    Object.keys(metrics).forEach((metric) => {
-                      allUsageMetrics.add(`${service}_${metric}`);
+                if (testRun.costBreakdown) {
+                  Object.entries(testRun.costBreakdown).forEach(([context, services]) => {
+                    Object.keys(services).forEach((serviceUnit) => {
+                      const parts = serviceUnit.split('_');
+                      const service = parts[0];
+                      const api = parts.slice(1, -1).join('/');
+                      const unit = parts[parts.length - 1];
+                      allUsageItems.add(`${context}|${service}/${api}|${unit}`);
                     });
                   });
                 }
               });
 
-              return allUsageMetrics.size > 0 ? (
+              const tableItems = Array.from(allUsageItems).map((itemKey) => {
+                const [context, serviceApi, unit] = itemKey.split('|');
+                const row = {
+                  context,
+                  serviceApi,
+                  unit,
+                };
+
+                // Add usage value for each test run
+                Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+                  const services = testRun.costBreakdown?.[context] || {};
+                  const serviceKey = Object.keys(services).find((key) => {
+                    const parts = key.split('_');
+                    const service = parts[0];
+                    const api = parts.slice(1, -1).join('/');
+                    return `${service}/${api}` === serviceApi;
+                  });
+
+                  const details = services[serviceKey] || {};
+                  const value = details.value || 0;
+                  row[testRunId] = value > 0 ? value.toLocaleString() : '0';
+                });
+
+                return row;
+              });
+
+              // Sort by context, then by service/api
+              tableItems.sort((a, b) => {
+                if (a.context !== b.context) return a.context.localeCompare(b.context);
+                return a.serviceApi.localeCompare(b.serviceApi);
+              });
+
+              return tableItems.length > 0 ? (
                 <Table
-                  items={Array.from(allUsageMetrics).map((metricKey) => {
-                    const [service, metric] = metricKey.split('_');
-                    return {
-                      metric: `${service} ${metric}`,
-                      ...Object.fromEntries(
-                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                          const usageBreakdown = testRun.usageBreakdown || {};
-                          const value = usageBreakdown?.[service]?.[metric] || 0;
-                          return [testRunId, value.toLocaleString()];
-                        }),
-                      ),
-                    };
-                  })}
+                  items={tableItems}
                   columnDefinitions={[
                     {
-                      id: 'metric',
-                      header: 'Usage Metric',
-                      cell: (item) => item.metric,
-                      width: 300,
-                      wrapLines: true,
+                      id: 'context',
+                      header: 'Context',
+                      cell: (item) => item.context,
+                      width: 150,
+                    },
+                    {
+                      id: 'serviceApi',
+                      header: 'Service/Api',
+                      cell: (item) => item.serviceApi,
+                      width: 250,
+                    },
+                    {
+                      id: 'unit',
+                      header: 'Unit',
+                      cell: (item) => item.unit,
+                      width: 120,
                     },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
                       header: createTestRunHeader(testRunId),
-                      cell: (item) => item[testRunId],
-                      width: 150,
+                      cell: (item) => item[testRunId] || '0',
+                      width: 120,
                     })),
                   ]}
                   variant="embedded"

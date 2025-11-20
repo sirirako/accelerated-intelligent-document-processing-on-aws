@@ -17,7 +17,6 @@ const GET_TEST_RUN = `
       accuracyBreakdown
       totalCost
       costBreakdown
-      usageBreakdown
       createdAt
       completedAt
       context
