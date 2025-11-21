@@ -43,7 +43,6 @@ const TestSets = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [warningMessage, setWarningMessage] = useState('');
   const [confirmReplacement, setConfirmReplacement] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState(null);
 
   const loadTestSets = async () => {
     try {
@@ -61,40 +60,28 @@ const TestSets = () => {
     loadTestSets();
   }, []);
 
-  // Auto-refresh polling until all test sets are completed or failed
+  // Simple polling for active test sets
   React.useEffect(() => {
     const hasActiveTestSets = testSets.some((testSet) => testSet.status !== 'COMPLETED' && testSet.status !== 'FAILED');
 
-    console.log('Polling check:', {
-      hasActiveTestSets,
-      pollingActive: !!pollingInterval,
-      testSetsCount: testSets.length,
-      testSets: testSets.map((t) => ({ name: t.name, status: t.status })),
-    });
-
-    // Clear existing interval first
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
+    if (!hasActiveTestSets) {
+      console.log('No active test sets, no polling needed');
+      return;
     }
 
-    // Start new interval if needed
-    if (hasActiveTestSets) {
-      console.log('Starting polling...');
-      const interval = setInterval(() => {
-        console.log('Polling refresh...');
-        loadTestSets();
-      }, 3000);
-      setPollingInterval(interval);
-    }
+    console.log('Starting polling for active test sets');
+    const interval = setInterval(() => {
+      console.log('Polling refresh...');
+      loadTestSets();
+    }, 3000);
 
     return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
+      console.log('Cleaning up polling');
+      clearInterval(interval);
     };
   }, [testSets]);
 
+  // Cleanup polling on unmount
   const handleCheckFiles = async () => {
     if (!filePattern.trim()) return;
 
@@ -217,7 +204,6 @@ const TestSets = () => {
         setError('');
         setWarningMessage('');
         setSuccessMessage(`Successfully created test set "${newTestSet.name}"`);
-        setTimeout(() => setSuccessMessage(''), 3000);
       } else {
         setError('Failed to create test set - no data returned');
       }
@@ -401,7 +387,6 @@ const TestSets = () => {
       setTestSets((prev) => [...prev, newTestSet]);
 
       setSuccessMessage(`Test set "${newTestSetName}" created successfully. Files are being processed.`);
-      setTimeout(() => setSuccessMessage(''), 3000);
       setError('');
       setShowAddUploadModal(false);
       setNewTestSetName('');
@@ -418,11 +403,10 @@ const TestSets = () => {
     setRefreshing(true);
     setError('');
     setWarningMessage('');
+    setSuccessMessage('');
     try {
       const result = await client.graphql({ query: GET_TEST_SETS });
       setTestSets(result.data.getTestSets || []);
-      setSuccessMessage('Test sets refreshed');
-      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
       setError(`Failed to refresh test sets: ${err.message}`);
     } finally {
@@ -443,7 +427,6 @@ const TestSets = () => {
       setTestSets(testSets.filter((testSet) => !testSetIds.includes(testSet.id)));
       setSelectedItems([]);
       setSuccessMessage(`Successfully deleted ${deleteCount} test set${deleteCount > 1 ? 's' : ''}`);
-      setTimeout(() => setSuccessMessage(''), 3000);
       setError('');
     } catch (err) {
       setError(`Failed to delete test sets: ${err.message}`);
@@ -452,7 +435,7 @@ const TestSets = () => {
     }
   };
 
-  const filteredTestSets = testSets.filter((item) => item != null);
+  const filteredTestSets = testSets.filter((item) => item != null).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   console.log('Filtered testSets for Table:', filteredTestSets);
 
   const columnDefinitions = [
@@ -524,7 +507,7 @@ const TestSets = () => {
             </SpaceBetween>
           }
         >
-          Test Sets
+          Test Sets ({filteredTestSets.length})
         </Header>
       }
     >

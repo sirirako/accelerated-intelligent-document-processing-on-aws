@@ -235,10 +235,32 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   useEffect(() => {
     const fetchResults = async () => {
       try {
-        const result = await client.graphql({
-          query: GET_TEST_RUN,
-          variables: { testRunId },
-        });
+        let result;
+        let attempt = 1;
+        const maxRetries = 3;
+
+        while (attempt <= maxRetries) {
+          try {
+            result = await client.graphql({
+              query: GET_TEST_RUN,
+              variables: { testRunId },
+            });
+            break;
+          } catch (retryError) {
+            const isTimeout =
+              retryError.message?.includes('timeout') ||
+              retryError.code === 'TIMEOUT' ||
+              retryError.message?.includes('Request failed with status code 504') ||
+              retryError.message?.includes('Gateway Timeout');
+            if (isTimeout && attempt < maxRetries) {
+              console.log(`GET_TEST_RUN attempt ${attempt} failed, retrying...`, retryError.message);
+              attempt++;
+              await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+              continue;
+            }
+            throw retryError;
+          }
+        }
         const testRun = result.data.getTestRun;
         console.log('Test results:', testRun);
         setResults(testRun);

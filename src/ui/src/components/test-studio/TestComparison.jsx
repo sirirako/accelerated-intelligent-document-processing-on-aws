@@ -22,10 +22,32 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
         try {
           console.log('Making GraphQL request...');
-          const result = await client.graphql({
-            query: COMPARE_TEST_RUNS,
-            variables: { testRunIds: preSelectedTestRunIds },
-          });
+          let result;
+          let attempt = 1;
+          const maxRetries = 3;
+
+          while (attempt <= maxRetries) {
+            try {
+              result = await client.graphql({
+                query: COMPARE_TEST_RUNS,
+                variables: { testRunIds: preSelectedTestRunIds },
+              });
+              break;
+            } catch (error) {
+              const isTimeout =
+                error.message?.includes('timeout') ||
+                error.code === 'TIMEOUT' ||
+                error.message?.includes('Request failed with status code 504') ||
+                error.message?.includes('Gateway Timeout');
+              if (isTimeout && attempt < maxRetries) {
+                console.log(`COMPARE_TEST_RUNS attempt ${attempt} failed, retrying...`, error.message);
+                attempt++;
+                await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+                continue;
+              }
+              throw error;
+            }
+          }
 
           const compareData = result.data.compareTestRuns;
 
