@@ -31,6 +31,273 @@ const useAgentChat = (config = {}) => {
 
   const sentMessagesRef = useRef(new Set());
 
+  // Handle tool execution start messages - creates standalone tool message chronologically
+  const handleToolExecutionStart = (newMessage) => {
+    const toolMetadata = newMessage.toolMetadata || {};
+
+    updateMessages((prevMessages) => {
+      const updatedMessages = [...prevMessages];
+
+      // Find active tool_use session
+      const activeToolUseIndex = updatedMessages.findIndex(
+        (msg) => msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId && msg.messageType === 'tool_use',
+      );
+
+      // Create the tool message object
+      const toolMessage = {
+        role: 'assistant',
+        content: '',
+        messageType: 'unified_tool',
+        toolUseId: toolMetadata.toolUseId,
+        toolName: toolMetadata.toolName,
+        executionLoading: true,
+        executionDetails: null,
+        resultLoading: false,
+        resultDetails: null,
+        isProcessing: false,
+        sessionId: newMessage.sessionId,
+        timestamp: newMessage.timestamp,
+        id: `unified-tool-${toolMetadata.toolUseId}`,
+      };
+
+      // If there's an active tool_use session, add to its sessionMessages
+      if (activeToolUseIndex >= 0) {
+        updatedMessages[activeToolUseIndex] = {
+          ...updatedMessages[activeToolUseIndex],
+          toolUseData: {
+            ...updatedMessages[activeToolUseIndex].toolUseData,
+            sessionMessages: [...(updatedMessages[activeToolUseIndex].toolUseData.sessionMessages || []), toolMessage],
+          },
+        };
+        return updatedMessages;
+      }
+
+      // Otherwise, check if this tool already exists as standalone to prevent duplicates
+      const existingToolIndex = updatedMessages.findIndex(
+        (msg) => msg.messageType === 'unified_tool' && msg.toolUseId === toolMetadata.toolUseId,
+      );
+
+      if (existingToolIndex >= 0) {
+        // Update existing tool to reset its state
+        updatedMessages[existingToolIndex] = {
+          ...updatedMessages[existingToolIndex],
+          executionLoading: true,
+          timestamp: newMessage.timestamp,
+        };
+        return updatedMessages;
+      }
+
+      // Finalize any currently streaming message before adding tool
+      const finalizedMessages = updatedMessages.map((msg) => {
+        if (msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId && msg.messageType !== 'tool_use') {
+          return { ...msg, isProcessing: false };
+        }
+        return msg;
+      });
+
+      // Add as standalone tool message
+      return [...finalizedMessages, toolMessage];
+    });
+  };
+
+  // Handle tool execution complete messages - updates execution phase
+  const handleToolExecutionComplete = (newMessage) => {
+    const toolMetadata = newMessage.toolMetadata || {};
+
+    updateMessages((prevMessages) => {
+      return prevMessages.map((msg) => {
+        // Check standalone tools first
+        if (msg.messageType === 'unified_tool' && msg.toolUseId === toolMetadata.toolUseId) {
+          return {
+            ...msg,
+            executionLoading: false,
+            executionDetails: newMessage.content,
+            timestamp: newMessage.timestamp,
+          };
+        }
+
+        // Check tools within agent sessionMessages
+        if (msg.messageType === 'tool_use' && msg.toolUseData?.sessionMessages) {
+          const updatedSessionMessages = msg.toolUseData.sessionMessages.map((sessionMsg) => {
+            if (sessionMsg.messageType === 'unified_tool' && sessionMsg.toolUseId === toolMetadata.toolUseId) {
+              return {
+                ...sessionMsg,
+                executionLoading: false,
+                executionDetails: newMessage.content,
+                timestamp: newMessage.timestamp,
+              };
+            }
+            return sessionMsg;
+          });
+
+          return {
+            ...msg,
+            toolUseData: {
+              ...msg.toolUseData,
+              sessionMessages: updatedSessionMessages,
+            },
+          };
+        }
+
+        // Check nested tools within agents (legacy)
+        if (msg.messageType === 'tool_use' && msg.toolUseData?.tools) {
+          const updatedTools = msg.toolUseData.tools.map((tool) => {
+            if (tool.toolUseId === toolMetadata.toolUseId) {
+              return {
+                ...tool,
+                executionLoading: false,
+                executionDetails: newMessage.content,
+                timestamp: newMessage.timestamp,
+              };
+            }
+            return tool;
+          });
+
+          return {
+            ...msg,
+            toolUseData: {
+              ...msg.toolUseData,
+              tools: updatedTools,
+            },
+          };
+        }
+
+        return msg;
+      });
+    });
+  };
+
+  // Handle tool result start messages - updates result loading phase
+  const handleToolResultStart = (newMessage) => {
+    const toolMetadata = newMessage.toolMetadata || {};
+
+    updateMessages((prevMessages) => {
+      return prevMessages.map((msg) => {
+        // Check standalone tools first
+        if (msg.messageType === 'unified_tool' && msg.toolUseId === toolMetadata.toolUseId) {
+          return {
+            ...msg,
+            resultLoading: true,
+            timestamp: newMessage.timestamp,
+          };
+        }
+
+        // Check tools within agent sessionMessages
+        if (msg.messageType === 'tool_use' && msg.toolUseData?.sessionMessages) {
+          const updatedSessionMessages = msg.toolUseData.sessionMessages.map((sessionMsg) => {
+            if (sessionMsg.messageType === 'unified_tool' && sessionMsg.toolUseId === toolMetadata.toolUseId) {
+              return {
+                ...sessionMsg,
+                resultLoading: true,
+                timestamp: newMessage.timestamp,
+              };
+            }
+            return sessionMsg;
+          });
+
+          return {
+            ...msg,
+            toolUseData: {
+              ...msg.toolUseData,
+              sessionMessages: updatedSessionMessages,
+            },
+          };
+        }
+
+        // Check nested tools within agents (legacy)
+        if (msg.messageType === 'tool_use' && msg.toolUseData?.tools) {
+          const updatedTools = msg.toolUseData.tools.map((tool) => {
+            if (tool.toolUseId === toolMetadata.toolUseId) {
+              return {
+                ...tool,
+                resultLoading: true,
+                timestamp: newMessage.timestamp,
+              };
+            }
+            return tool;
+          });
+
+          return {
+            ...msg,
+            toolUseData: {
+              ...msg.toolUseData,
+              tools: updatedTools,
+            },
+          };
+        }
+
+        return msg;
+      });
+    });
+  };
+
+  // Handle tool result complete messages - completes result phase
+  const handleToolResultComplete = (newMessage) => {
+    const toolMetadata = newMessage.toolMetadata || {};
+
+    updateMessages((prevMessages) => {
+      return prevMessages.map((msg) => {
+        // Check standalone tools first
+        if (msg.messageType === 'unified_tool' && msg.toolUseId === toolMetadata.toolUseId) {
+          return {
+            ...msg,
+            resultLoading: false,
+            resultDetails: newMessage.content,
+            timestamp: newMessage.timestamp,
+          };
+        }
+
+        // Check tools within agent sessionMessages
+        if (msg.messageType === 'tool_use' && msg.toolUseData?.sessionMessages) {
+          const updatedSessionMessages = msg.toolUseData.sessionMessages.map((sessionMsg) => {
+            if (sessionMsg.messageType === 'unified_tool' && sessionMsg.toolUseId === toolMetadata.toolUseId) {
+              return {
+                ...sessionMsg,
+                resultLoading: false,
+                resultDetails: newMessage.content,
+                timestamp: newMessage.timestamp,
+              };
+            }
+            return sessionMsg;
+          });
+
+          return {
+            ...msg,
+            toolUseData: {
+              ...msg.toolUseData,
+              sessionMessages: updatedSessionMessages,
+            },
+          };
+        }
+
+        // Check nested tools within agents (legacy)
+        if (msg.messageType === 'tool_use' && msg.toolUseData?.tools) {
+          const updatedTools = msg.toolUseData.tools.map((tool) => {
+            if (tool.toolUseId === toolMetadata.toolUseId) {
+              return {
+                ...tool,
+                resultLoading: false,
+                resultDetails: newMessage.content,
+                timestamp: newMessage.timestamp,
+              };
+            }
+            return tool;
+          });
+
+          return {
+            ...msg,
+            toolUseData: {
+              ...msg.toolUseData,
+              tools: updatedTools,
+            },
+          };
+        }
+
+        return msg;
+      });
+    });
+  };
+
   // Parse JSON from message content and extract responseType
   const parseResponseData = (content) => {
     try {
@@ -118,18 +385,150 @@ const useAgentChat = (config = {}) => {
     }
   };
 
+  // Add a ref to track when we're in structured data mode (suppressing intermediate messages)
+  const structuredDataModeRef = useRef(false);
+
   // Handle streaming messages with proper phase management
   const handleStreamingMessage = (newMessage) => {
-    updateMessages((prevMessages) => {
-      const isFinalMessage = !newMessage.isProcessing;
+    // Handle new tool message types using the messageType field from GraphQL
+    if (newMessage.messageType === 'tool_execution_start') {
+      return handleToolExecutionStart(newMessage);
+    }
+    if (newMessage.messageType === 'tool_execution_complete') {
+      return handleToolExecutionComplete(newMessage);
+    }
+    if (newMessage.messageType === 'tool_result_start') {
+      return handleToolResultStart(newMessage);
+    }
+    if (newMessage.messageType === 'tool_result_complete') {
+      return handleToolResultComplete(newMessage);
+    }
 
-      if (isFinalMessage) {
-        updateAgentChatState({ waitingForResponse: false });
+    // Handle structured data start - enter suppression mode
+    if (newMessage.messageType === 'structured_data_start') {
+      structuredDataModeRef.current = true;
 
-        // Parse the final message content for responseType
+      // Add a placeholder message to show we're generating the final result
+      updateMessages((prevMessages) => {
+        const placeholderMessage = {
+          role: 'assistant',
+          content: 'Generating final result...',
+          messageType: 'text',
+          toolUseData: null,
+          isProcessing: true,
+          sessionId: newMessage.sessionId,
+          timestamp: newMessage.timestamp,
+          id: `${newMessage.timestamp}-generating`,
+        };
+
+        return [...prevMessages, placeholderMessage];
+      });
+
+      return; // Don't add the structured_data_start message to UI
+    }
+
+    // Handle final response - exit suppression mode and show final message
+    if (newMessage.messageType === 'assistant_final_response') {
+      structuredDataModeRef.current = false;
+
+      updateMessages((prevMessages) => {
+        // Parse the final message content for responseType (tables, charts, etc.)
         const parsedData = parseResponseData(newMessage.content);
 
-        // Update existing messages as not processing and apply parsed data if available
+        // Create the final message
+        const finalMessage = {
+          role: 'assistant',
+          content: newMessage.content,
+          messageType: 'text',
+          toolUseData: null,
+          isProcessing: false,
+          sessionId: newMessage.sessionId,
+          timestamp: newMessage.timestamp,
+          id: newMessage.timestamp,
+        };
+
+        // Add parsed data if available
+        if (parsedData) {
+          finalMessage.parsedData = parsedData;
+          finalMessage.content = parsedData.textContent || newMessage.content;
+        }
+
+        // Find and replace the "Generating final result..." placeholder message
+        const updatedMessages = [...prevMessages];
+        const placeholderIndex = updatedMessages.findIndex(
+          (msg) => msg.content === 'Generating final result...' && msg.sessionId === newMessage.sessionId && msg.isProcessing,
+        );
+
+        if (placeholderIndex >= 0) {
+          // Replace the placeholder with the final message
+          updatedMessages[placeholderIndex] = finalMessage;
+          return updatedMessages;
+        } else {
+          // Fallback: ensure any processing messages are marked complete, then add final message
+          const finalizedMessages = updatedMessages.map((msg) => {
+            if (msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId) {
+              return { ...msg, isProcessing: false };
+            }
+            return msg;
+          });
+          return [...finalizedMessages, finalMessage];
+        }
+      });
+
+      // Mark processing as complete and remove loading indicators
+      updateAgentChatState({
+        waitingForResponse: false,
+        isLoading: false,
+      });
+      return;
+    }
+
+    // General fallback: handle any message with isProcessing: false (stream end detection)
+    if (!newMessage.isProcessing) {
+      updateMessages((prevMessages) => {
+        updateAgentChatState({
+          waitingForResponse: false,
+          isLoading: false,
+        });
+
+        // Parse the final message content for responseType (tables, charts, etc.)
+        const parsedData = parseResponseData(newMessage.content);
+
+        // Create the final message
+        const finalMessage = {
+          role: 'assistant',
+          content: newMessage.content,
+          messageType: 'text',
+          toolUseData: null,
+          isProcessing: false,
+          sessionId: newMessage.sessionId,
+          timestamp: newMessage.timestamp,
+          id: newMessage.timestamp,
+        };
+
+        // Add parsed data if available
+        if (parsedData) {
+          finalMessage.parsedData = parsedData;
+          finalMessage.content = parsedData.textContent || newMessage.content;
+        }
+
+        // If we're in structured data mode, replace placeholder
+        if (structuredDataModeRef.current) {
+          structuredDataModeRef.current = false; // Exit suppression mode
+
+          const updatedMessages = [...prevMessages];
+          const placeholderIndex = updatedMessages.findIndex(
+            (msg) => msg.content === 'Generating final result...' && msg.sessionId === newMessage.sessionId && msg.isProcessing,
+          );
+
+          if (placeholderIndex >= 0) {
+            // Replace the placeholder with the final message
+            updatedMessages[placeholderIndex] = finalMessage;
+            return updatedMessages;
+          }
+        }
+
+        // Standard final message handling - update existing processing messages
         return prevMessages.map((msg) => {
           if (msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId) {
             const updatedMsg = { ...msg, isProcessing: false };
@@ -138,68 +537,36 @@ const useAgentChat = (config = {}) => {
             if (parsedData) {
               updatedMsg.parsedData = parsedData;
               updatedMsg.content = parsedData.textContent || msg.content;
+            } else {
+              updatedMsg.content = newMessage.content;
             }
 
             return updatedMsg;
           }
           return msg;
         });
-      }
+      });
+      return;
+    }
 
-      // Check if this message contains structured data start marker
-      const hasStructuredDataStart = newMessage.content.includes('"type": "structured_data_start"');
-
-      // Check if this message contains subagent markers
+    // If we're in structured data mode, suppress intermediate messages except subagent events
+    if (structuredDataModeRef.current) {
       const hasSubagentStart = newMessage.content.includes('"type": "subagent_start"');
       const hasSubagentEnd = newMessage.content.includes('"type": "subagent_end"');
 
-      if (hasStructuredDataStart) {
-        // This message contains structured_data_start - mark message to stop displaying content
-        try {
-          const structuredDataRegex = /\{[^{}]*"type":\s*"structured_data_start"[^{}]*\}/;
-          const structuredDataMatch = newMessage.content.match(structuredDataRegex);
-
-          if (structuredDataMatch) {
-            const structuredDataInfo = JSON.parse(structuredDataMatch[0]);
-
-            // Find or create the streaming message to mark it
-            const streamingIndex = prevMessages.findIndex(
-              (msg) =>
-                msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId && msg.messageType !== 'tool_use',
-            );
-
-            const updatedMessages = [...prevMessages];
-
-            if (streamingIndex >= 0) {
-              // Mark existing message
-              updatedMessages[streamingIndex] = {
-                ...updatedMessages[streamingIndex],
-                awaitingStructuredData: true,
-                structuredDataType: structuredDataInfo.responseType,
-              };
-            } else {
-              // Create new message marked to await structured data
-              const newMsg = {
-                role: 'assistant',
-                content: '',
-                messageType: 'text',
-                toolUseData: null,
-                isProcessing: true,
-                sessionId: newMessage.sessionId,
-                timestamp: newMessage.timestamp,
-                id: `${newMessage.timestamp}-structured`,
-                awaitingStructuredData: true,
-                structuredDataType: structuredDataInfo.responseType,
-              };
-              updatedMessages.push(newMsg);
-            }
-
-            return updatedMessages;
-          }
-        } catch (e) {
-          console.warn('Failed to parse structured_data_start JSON:', e);
-        }
+      // Allow subagent messages through for tool display
+      if (hasSubagentStart || hasSubagentEnd) {
+        // Continue with normal subagent handling below
+      } else {
+        // Suppress all other intermediate messages
+        return;
       }
+    }
+
+    updateMessages((prevMessages) => {
+      // Check if this message contains subagent markers
+      const hasSubagentStart = newMessage.content.includes('"type": "subagent_start"');
+      const hasSubagentEnd = newMessage.content.includes('"type": "subagent_end"');
 
       if (hasSubagentStart) {
         // This message contains subagent_start - parse it and create tool use message
@@ -226,7 +593,7 @@ const useAgentChat = (config = {}) => {
               };
             }
 
-            // Create new tool use message
+            // Create new tool use message with an array to collect session messages
             const toolUseMessage = {
               role: 'assistant',
               content: '',
@@ -234,6 +601,7 @@ const useAgentChat = (config = {}) => {
               toolUseData: {
                 ...startData,
                 toolContent: '',
+                sessionMessages: [], // Array to collect all messages in this agent session
               },
               isProcessing: true,
               sessionId: newMessage.sessionId,
@@ -287,27 +655,70 @@ const useAgentChat = (config = {}) => {
         }
       }
 
-      // Find existing streaming message for this session
-      const existingStreamingIndex = prevMessages.findIndex(
-        (msg) => msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId,
-      );
+      // Check if there's any tool message after the last finalized text message
+      // This prevents continuing to stream into messages that existed before a tool
+      let lastToolIndex = -1;
+      for (let i = prevMessages.length - 1; i >= 0; i--) {
+        if (prevMessages[i].messageType === 'unified_tool') {
+          lastToolIndex = i;
+          break;
+        }
+      }
+
+      // Find existing streaming message for this session (but only if it comes after any tools)
+      const existingStreamingIndex = prevMessages.findIndex((msg, index) => {
+        return (
+          msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId && index > lastToolIndex // Only continue messages that come after the last tool
+        );
+      });
 
       if (existingStreamingIndex >= 0) {
         const updatedMessages = [...prevMessages];
         const existingMessage = updatedMessages[existingStreamingIndex];
 
         if (existingMessage.messageType === 'tool_use') {
-          // Stream content into tool use area
-          const updatedToolUseData = {
-            ...existingMessage.toolUseData,
-            toolContent: (existingMessage.toolUseData?.toolContent || '') + newMessage.content,
-          };
+          // Check if there's an existing text message in sessionMessages that's still streaming
+          const sessionMessages = existingMessage.toolUseData?.sessionMessages || [];
+          const lastSessionMsg = sessionMessages[sessionMessages.length - 1];
 
-          updatedMessages[existingStreamingIndex] = {
-            ...existingMessage,
-            toolUseData: updatedToolUseData,
-            timestamp: newMessage.timestamp,
-          };
+          if (lastSessionMsg && lastSessionMsg.messageType === 'text' && lastSessionMsg.isProcessing) {
+            // Update the existing text message in sessionMessages
+            const updatedSessionMessages = [...sessionMessages];
+            updatedSessionMessages[updatedSessionMessages.length - 1] = {
+              ...lastSessionMsg,
+              content: lastSessionMsg.content + newMessage.content,
+              timestamp: newMessage.timestamp,
+            };
+
+            updatedMessages[existingStreamingIndex] = {
+              ...existingMessage,
+              toolUseData: {
+                ...existingMessage.toolUseData,
+                sessionMessages: updatedSessionMessages,
+              },
+              timestamp: newMessage.timestamp,
+            };
+          } else {
+            // Create a new text message in sessionMessages
+            const newTextMessage = {
+              role: 'assistant',
+              content: newMessage.content,
+              messageType: 'text',
+              isProcessing: true,
+              sessionId: newMessage.sessionId,
+              timestamp: newMessage.timestamp,
+              id: `session-text-${newMessage.timestamp}`,
+            };
+
+            updatedMessages[existingStreamingIndex] = {
+              ...existingMessage,
+              toolUseData: {
+                ...existingMessage.toolUseData,
+                sessionMessages: [...sessionMessages, newTextMessage],
+              },
+              timestamp: newMessage.timestamp,
+            };
+          }
 
           return updatedMessages;
         }
@@ -331,7 +742,7 @@ const useAgentChat = (config = {}) => {
         return updatedMessages;
       }
 
-      // No existing streaming message, create new one
+      // No existing streaming message or there's a recent tool, create new one
       return [
         ...prevMessages,
         {
@@ -349,6 +760,19 @@ const useAgentChat = (config = {}) => {
   };
 
   const addMessage = (newMessage) => {
+    // Filter out messages with isProcessing=true and content containing responseType (JSON data)
+    // BUT allow structured_data_start messages through
+    if (
+      newMessage.role === 'assistant' &&
+      newMessage.isProcessing &&
+      newMessage.content &&
+      newMessage.content.includes('responseType') &&
+      newMessage.messageType !== 'structured_data_start'
+    ) {
+      logger.debug('Filtering out JSON message with responseType during processing');
+      return;
+    }
+
     if (newMessage.role === 'assistant') {
       handleStreamingMessage(newMessage);
       return;
@@ -416,9 +840,6 @@ const useAgentChat = (config = {}) => {
 
     const messageKey = `${sessionId}:${prompt}`;
     sentMessagesRef.current.add(messageKey);
-
-    // Log the sessionId being used for debugging
-    console.log(`🔍 Sending message with sessionId: ${sessionId}`);
 
     const userMessage = {
       role: 'user',

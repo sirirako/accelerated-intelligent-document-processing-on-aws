@@ -48,15 +48,13 @@
 }
 
 .welcome-text h2 span {
-  background-image:  linear-gradient(
-          #09f,
+  background-image: linear-gradient(#09f,
       #5c7fff,
       #5c7fff,
       #8575ff,
-      #962eff
-    );
-    background-clip: text;
-    color: transparent
+      #962eff);
+  background-clip: text;
+  color: transparent
 }
 
 /* Custom styling for user and assistant messages */
@@ -189,5 +187,116 @@
 }
 
 .tool-usage-container * {
-  font-size: inherit; 
+  font-size: inherit;
+}
+
+/* Nested tools within agent expandable sections */
+.tool-usage-container .agent-tool-component {
+  background: #ffffff;
+  border: 1px solid #e9ebed;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 4px 0;
+}
+
+/* Remove the green border for nested tools */
+.tool-usage-container .agent-tool-component {
+  border-left: 1px solid #e9ebed;
+  padding-left: 12px;
+}
+
+/* Compact styling for nested tools */
+.tool-usage-container .agent-tool-component {
+  font-size: 0.8rem;
+}
+
+.tool-usage-container details[open] {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tool-usage-container details summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 4px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #16191f;
+  list-style: none;
+}
+
+.tool-usage-container details summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-usage-container details summary::before {
+  content: "▶";
+  display: inline-block;
+  width: 16px;
+  transition: transform 0.2s ease;
+  color: #687078;
+  font-size: 0.75em;
+}
+
+.tool-usage-container details[open] summary::before {
+  transform: rotate(90deg);
+  color: #0073bb;
+}
+
+.tool-usage-container details summary:hover {
+  background: #f2f3f3;
+}
+
+
+/* Custom button styling for agent tool component - primary button appearance */
+.agent-tool-component button {
+  background-color: transparent;
+  color: #0073bb;
+  border: none;
+  appearance: none;
+  padding: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-tool-component button:hover {
+  text-decoration: underline;
+}
+
+.agent-tool-component button:disabled {
+  background-color: #d5dbdb;
+  border-color: #d5dbdb;
+  color: #687078;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Enhanced markdown styling within agent tool component */
+.agent-tool-component .awsui-expandable-section-content pre {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-size: 0.875rem;
+}
+
+.agent-tool-component .awsui-expandable-section-content code {
+  background-color: #f1f3f4;
+  border: 1px solid #dadce0;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85em;
+}
+
+.agent-tool-component .awsui-expandable-section-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
 }
