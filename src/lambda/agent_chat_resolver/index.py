@@ -58,6 +58,7 @@ def handler(event, context):
         session_id = arguments.get("sessionId")
         method = arguments.get("method", "chat")
         enable_code_intelligence = arguments.get("enableCodeIntelligence", True)
+        tool_metadata = arguments.get("toolMetadata")
         
         # Validate required parameters
         if not prompt:
@@ -89,26 +90,35 @@ def handler(event, context):
             "assistant_thinking", "assistant_stream", "assistant_tool_use",
             "assistant_tool_result", "assistant_error",
             # Sub-agent event types
-            "subagent_start", "subagent_stream", "subagent_end", "subagent_error",
+            "subagent_start", "subagent_stream", "subagent_end", "subagent_error", "assistant_final_response",
             # Structured data event types
-            "structured_data_start"
+            "structured_data_start",
+            # Tool section event types
+            "tool_execution_start", "tool_execution_complete", 
+            "tool_result_start", "tool_result_complete"
         ]
         is_assistant_response = method in assistant_methods
         role = "assistant" if is_assistant_response else "user"
-        is_processing_complete = method in ["assistant_final_response", "assistant_error"]
+        is_processing_complete = method in [
+            "assistant_final_response", "assistant_error",
+            "tool_execution_complete", "tool_result_complete"
+        ]
         
         # Only store certain message types in DynamoDB
-        # Skip storing streaming chunks, but store user messages and final responses
-        # Sub-agent streaming events (start, stream, end) are NOT stored
-        # Sub-agent errors ARE stored for debugging
+        # Store user messages and final assistant responses only
+        # All intermediate messages (tool executions, tool results, sub-agent messages) are NOT stored
         is_final_response = (
             not is_assistant_response or  # Store all user messages
-            method in ["assistant_final_response", "assistant_error", "subagent_error"]  # Store final responses and errors
+            method in [
+                "assistant_final_response",  # Store only the final generated response
+                "assistant_error"  # Store final errors for debugging
+            ]
         )
         
         if is_final_response:
             # Store message in DynamoDB with session-based keys
             table = dynamodb.Table(CHAT_MESSAGES_TABLE)
+            
             message = {
                 "PK": session_id,  # Session-based partition key
                 "SK": timestamp,   # Timestamp as sort key for chronological ordering
@@ -148,14 +158,33 @@ def handler(event, context):
             )
             logger.info(f"Invoked agent chat processor for session: {session_id} (Code Intelligence: {enable_code_intelligence})")
         
+        # Map method to messageType for frontend
+        message_type = method if method in [
+            "tool_execution_start", "tool_execution_complete",
+            "tool_result_start", "tool_result_complete",
+            "subagent_stream",
+            "assistant_final_response",
+            "structured_data_start"
+        ] else None
+        
         # Return AgentChatMessage format
-        return {
+        response = {
             "role": str(role),
             "content": str(prompt),
             "timestamp": str(timestamp),
             "isProcessing": not is_processing_complete,
             "sessionId": str(session_id)
         }
+        
+        # Add messageType if it's a tool-related message
+        if message_type:
+            response["messageType"] = message_type
+            
+        # Add toolMetadata if provided
+        if tool_metadata:
+            response["toolMetadata"] = tool_metadata
+            
+        return response
         
     except ClientError as e:
         error_msg = f"DynamoDB error: {str(e)}"
@@ -166,7 +195,9 @@ def handler(event, context):
             "content": f"Error: {error_msg}",
             "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             "isProcessing": False,
-            "sessionId": str(session_id) if session_id else ""
+            "sessionId": str(session_id) if session_id else "",
+            "messageType": None,
+            "toolMetadata": None
         }
 
 

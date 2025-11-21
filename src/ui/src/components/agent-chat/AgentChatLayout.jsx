@@ -1,6 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import {
   Container,
@@ -24,6 +24,7 @@ import { useAgentChatContext } from '../../contexts/agentChat';
 import PlotDisplay from '../document-agents-layout/PlotDisplay';
 import TableDisplay from '../document-agents-layout/TableDisplay';
 import AgentChatHistoryDropdown from './AgentChatHistoryDropdown';
+import AgentToolComponent from './AgentToolComponent';
 import './AgentChatLayout.css';
 
 const AgentChatLayout = ({
@@ -36,11 +37,12 @@ const AgentChatLayout = ({
 }) => {
   const [welcomeAnimated, setWelcomeAnimated] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState(new Set());
   const chatMessagesRef = useRef(null);
 
   // Get persistent state from context
   const { agentChatState, updateAgentChatState } = useAgentChatContext();
-  const { inputValue, expandedSections, lastMessageCount, enableCodeIntelligence } = agentChatState;
+  const { inputValue, lastMessageCount, enableCodeIntelligence } = agentChatState;
 
   const { messages, isLoading, waitingForResponse, error, sendMessage, clearError, clearChat, loadChatSession } = useAgentChat(agentConfig);
   const { user } = useAppContext();
@@ -129,15 +131,19 @@ const AgentChatLayout = ({
   };
 
   // Handle expandable section state changes
-  const handleExpandedChange = (messageId, expanded) => {
-    const newSet = new Set(expandedSections);
-    if (expanded) {
-      newSet.add(messageId);
-    } else {
-      newSet.delete(messageId);
-    }
-    updateAgentChatState({ expandedSections: newSet });
-  };
+  const handleExpandedChange = useCallback((messageId, expanded) => {
+    const collapsedKey = `collapsed-${messageId}`;
+
+    setCollapsedSections((prev) => {
+      const newSet = new Set(prev);
+      if (expanded) {
+        newSet.delete(collapsedKey);
+      } else {
+        newSet.add(collapsedKey);
+      }
+      return newSet;
+    });
+  }, []);
 
   // Handle session selection from dropdown
   const handleSessionSelect = async (session, sessionMessages) => {
@@ -204,6 +210,74 @@ const AgentChatLayout = ({
 
       const isUser = message.role === 'user';
 
+      // Handle tool_use messages with collapsible section using sessionMessages
+      if (message.messageType === 'tool_use' && message.toolUseData) {
+        const agentMessageId = message.id || `agent-${message.timestamp}`;
+        const collapsedKey = `collapsed-${agentMessageId}`;
+
+        const isExpanded = !collapsedSections.has(collapsedKey);
+        const sessionMessages = message.toolUseData.sessionMessages || [];
+
+        return (
+          <div key={`agent-session-${message.timestamp}`} className="chat-message-wrapper assistant-message">
+            <div className="message-container">
+              <div className="message-content">
+                <Box>
+                  <div style={{ border: '1px #ddd solid', borderRadius: '14px', padding: '10px', background: '#f6f6f9' }}>
+                    {/* Collapsible section for process and tools */}
+                    <ExpandableSection
+                      variant="footer"
+                      headingTagOverride="h5"
+                      expanded={isExpanded}
+                      onChange={({ detail }) => handleExpandedChange(agentMessageId, detail.expanded)}
+                      headerText={`${message.toolUseData.agent_name}${message.isProcessing ? ' - Thinking...' : ''}`}
+                    >
+                      <div className="tool-usage-container">
+                        {sessionMessages.map((sessionMsg) => {
+                          if (sessionMsg.messageType === 'text') {
+                            return (
+                              <Box
+                                key={sessionMsg.id}
+                                padding={{ right: 's', top: 's', bottom: 'n' }}
+                                backgroundColor="background-container-content"
+                              >
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                  {sessionMsg.content}
+                                </ReactMarkdown>
+                              </Box>
+                            );
+                          }
+
+                          if (sessionMsg.messageType === 'unified_tool') {
+                            return (
+                              <Box padding={{ right: 's', bottom: 'n' }} key={`tool-${sessionMsg.toolUseId}`}>
+                                <AgentToolComponent
+                                  toolName={sessionMsg.toolName}
+                                  toolUseId={sessionMsg.toolUseId}
+                                  executionLoading={sessionMsg.executionLoading}
+                                  executionDetails={sessionMsg.executionDetails}
+                                  resultLoading={sessionMsg.resultLoading}
+                                  resultDetails={sessionMsg.resultDetails}
+                                  timestamp={sessionMsg.timestamp}
+                                  parentProcessing={message.isProcessing}
+                                />
+                              </Box>
+                            );
+                          }
+
+                          return null;
+                        })}
+                      </div>
+                    </ExpandableSection>
+                  </div>
+                </Box>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Handle user messages and other assistant messages normally
       return (
         <div
           key={`${message.role}-${message.timestamp}`}
@@ -217,33 +291,23 @@ const AgentChatLayout = ({
             )}
             <div className="message-content">
               {(() => {
-                if (message.messageType === 'tool_use' && message.toolUseData) {
+                // Handle unified tool message type (standalone tools not part of agent session)
+                if (message.messageType === 'unified_tool') {
                   return (
-                    <div className="tool-usage-container">
-                      <ExpandableSection
-                        headerText={
-                          <>
-                            <div style={{ display: 'flex' }} title="Click to expand for more information">
-                              {message.toolUseData.agent_name} &nbsp; {message.isProcessing && <Spinner />}{' '}
-                            </div>
-                          </>
-                        }
-                        variant="footer"
-                        expanded={expandedSections.has(message.id)}
-                        onChange={({ detail }) => handleExpandedChange(message.id, detail.expanded)}
-                      >
-                        {message.toolUseData.toolContent && (
-                          <Box margin={{ top: 'xs' }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                              {message.toolUseData.toolContent}
-                            </ReactMarkdown>
-                          </Box>
-                        )}
-                      </ExpandableSection>
-                    </div>
+                    <AgentToolComponent
+                      toolName={message.toolName}
+                      toolUseId={message.toolUseId}
+                      executionLoading={message.executionLoading}
+                      executionDetails={message.executionDetails}
+                      resultLoading={message.resultLoading}
+                      resultDetails={message.resultDetails}
+                      timestamp={message.timestamp}
+                      parentProcessing={message.isProcessing}
+                    />
                   );
                 }
 
+                // Handle existing parsedData message type (preserve existing functionality)
                 if (message.parsedData) {
                   return (
                     <SpaceBetween size="m">
@@ -260,6 +324,7 @@ const AgentChatLayout = ({
                   );
                 }
 
+                // Handle regular text messages (preserve existing functionality)
                 return (
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                     {contentText}
@@ -271,7 +336,7 @@ const AgentChatLayout = ({
         </div>
       );
     });
-  }, [messages, user, expandedSections]);
+  }, [messages, user, collapsedSections, handleExpandedChange, userInitial]);
 
   const chatContent = (
     <div className="chat-container">

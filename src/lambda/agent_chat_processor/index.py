@@ -33,15 +33,59 @@ logger = logging.getLogger(__name__)
 # Track Lambda cold/warm starts for debugging
 _lambda_invocation_count = 0
 
+# Global client cache for warm Lambda containers
+# Reusing clients significantly reduces latency in warm starts
+_client_cache = {}
+_appsync_client_cache = None
+
+def get_cached_boto3_session():
+    """
+    Get or create a cached boto3 session for warm Lambda containers.
+    
+    Returns:
+        Cached boto3.Session instance
+    """
+    global _client_cache
+    
+    if 'session' not in _client_cache:
+        _client_cache['session'] = boto3.Session()
+        logger.info("Created new boto3 session (will be cached for warm starts)")
+    else:
+        logger.info("Reusing cached boto3 session from warm container")
+    
+    return _client_cache['session']
+
+def get_cached_appsync_client():
+    """
+    Get or create a cached AppSync client for warm Lambda containers.
+    
+    Returns:
+        Cached AppSyncClient instance
+    """
+    global _appsync_client_cache
+    
+    if _appsync_client_cache is None:
+        _appsync_client_cache = AppSyncClient()
+        logger.info("Created new AppSync client (will be cached for warm starts)")
+    else:
+        logger.info("Reusing cached AppSync client from warm container")
+    
+    return _appsync_client_cache
+
 # GraphQL mutation for streaming agent chat messages
 STREAMING_MUTATION = """
-mutation SendAgentChatMessage($prompt: String!, $sessionId: String, $method: String) {
-    sendAgentChatMessage(prompt: $prompt, sessionId: $sessionId, method: $method) {
+mutation SendAgentChatMessage($prompt: String!, $sessionId: String, $method: String, $toolMetadata: ToolMetadataInput) {
+    sendAgentChatMessage(prompt: $prompt, sessionId: $sessionId, method: $method, toolMetadata: $toolMetadata) {
         role
         content
         timestamp
         isProcessing
         sessionId
+        messageType
+        toolMetadata {
+            toolName
+            toolUseId
+        }
     }
 }
 """
@@ -65,7 +109,7 @@ def clean_content_for_display(content):
 
 
 async def publish_stream_update(
-    appsync_client, session_id, content, method, message_id, is_processing=True
+    appsync_client, session_id, content, method, message_id, is_processing=True, tool_metadata=None
 ):
     """
     Publish streaming updates via AppSync mutation.
@@ -80,6 +124,7 @@ async def publish_stream_update(
         method: The message method (e.g., "assistant_stream", "assistant_final_response")
         message_id: Unique ID for this message
         is_processing: Whether the agent is still processing
+        tool_metadata: Optional tool metadata for tool-related messages
         
     Returns:
         The AppSync response
@@ -90,14 +135,21 @@ async def publish_stream_update(
         if len(cleaned_content) > 10000:
             cleaned_content = cleaned_content[:10000] + "..."
         
+        # Prepare variables for the mutation
+        variables = {
+            "prompt": cleaned_content,
+            "sessionId": str(session_id),
+            "method": method
+        }
+        
+        # Add tool metadata if provided
+        if tool_metadata:
+            variables["toolMetadata"] = tool_metadata
+        
         # Execute the GraphQL mutation
         response = appsync_client.execute_mutation(
             STREAMING_MUTATION,
-            {
-                "prompt": cleaned_content,
-                "sessionId": str(session_id),
-                "method": method
-            }
+            variables
         )
         logger.info(f"Published message via AppSync: {method}")
         return response
@@ -132,9 +184,9 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         sent_subagent_starts = set()  # Track which tool use IDs we've already sent starts for
         sent_tool_use_ids = set()  # Track which nested tool use IDs we've already announced
         tool_input_buffers = {}  # Track input text sent for each tool use ID
+        skip_content = False  # Flag to skip content containing JSON markers
         
         logger.info(f"Starting to stream response for session {session_id}")
-        logger.info("Sub-agent streaming enabled")
         
         # Stream the agent's response asynchronously
         async for event in orchestrator.stream_async(prompt):
@@ -146,7 +198,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                 
                 # Clean the content (remove thinking tags)
                 clean_text = clean_content_for_display(full_text_buffer)
-                
+            
                 # Only send new text that hasn't been displayed yet
                 if len(clean_text) > len(displayed_text):
                     new_text = clean_text[len(displayed_text):]
@@ -170,6 +222,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                 if tool_name:
                     current_subagent = tool_name
                     current_tool_use_id = tool_use.get("toolUseId")
+                    skip_content = False  # Reset skip flag for new agent message
                     
                     # Check if we've already sent a start message for this tool use ID
                     if current_tool_use_id not in sent_subagent_starts:
@@ -235,6 +288,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                         logger.info(f"Notified FE of {response_type} response")
                     except Exception as e:
                         logger.error(f"Failed to publish structured_data_start: {e}")
+
                 
                 # Handle string data (direct text streaming from sub-agent)
                 elif isinstance(tool_data, str):
@@ -267,45 +321,49 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                         tool_use_id = tool_use.get("toolUseId")
                         tool_input_raw = tool_use.get("input", "")
                         
-                        # Convert input to string for streaming
+                        # Convert input to string for buffering
                         current_input = str(tool_input_raw) if tool_input_raw else ""
                         
                         # Check if this is the first time seeing this tool use
                         if tool_use_id and tool_use_id not in sent_tool_use_ids:
-                            # First time - announce the tool with markdown line breaks
+                            # First time - send tool execution start message (no streaming)
                             sent_tool_use_ids.add(tool_use_id)
                             tool_input_buffers[tool_use_id] = ""  # Initialize buffer
                             logger.info(f"Sub-agent {current_subagent} calling tool: {tool_name} (ID: {tool_use_id})")
-                            content = f"\n\n ### 🔧 **Using tool: {tool_name}**  \n" 
+                            
+                            # Send tool execution start message for modal display
+                            try:
+                                await publish_stream_update(
+                                    appsync_client,
+                                    session_id,
+                                    "tool_execution_start",
+                                    "tool_execution_start",
+                                    message_id,
+                                    True,
+                                    tool_metadata={
+                                        "toolName": tool_name,
+                                        "toolUseId": tool_use_id
+                                    }
+                                )
+                                logger.info(f"Sent tool_execution_start for {tool_name} (ID: {tool_use_id})")
+                                content = None  # Don't stream the header
+                            except Exception as e:
+                                logger.error(f"Failed to publish tool_execution_start: {e}")
+                                # Fallback to original streaming behavior
+                                content = f"\n\n**Using tool: {tool_name}**\n\n"
                         else:
-                            # Subsequent updates - only send NEW characters (delta)
+                            # Subsequent updates - buffer execution details instead of streaming
                             previous_input = tool_input_buffers.get(tool_use_id, "")
                             
                             if len(current_input) > len(previous_input):
-                                # New characters added
+                                # New characters added - buffer instead of streaming
                                 new_chars = current_input[len(previous_input):]
                                 tool_input_buffers[tool_use_id] = current_input
-                                content = new_chars
-                                logger.debug(f"Tool input delta: {new_chars[:50]}")
+                                logger.debug(f"Tool input delta buffered: {new_chars[:50]}")
+                                content = None  # Don't stream execution details
                             else:
                                 # No new characters
                                 content = None
-                    
-                    # Nested tool streaming from sub-agent's own tool calls
-                    # elif "tool_stream_event" in tool_data:
-                    #     nested_stream = tool_data["tool_stream_event"]
-                    #     nested_data = nested_stream.get("data")
-                        
-                    #     if isinstance(nested_data, str):
-                    #         # Text from nested tool
-                    #         content = nested_data
-                    #         logger.debug(f"Sub-agent nested tool text: {content[:100]}")
-                    #     elif isinstance(nested_data, dict) and "data" in nested_data:
-                    #         # Text wrapped in dict from nested tool
-                    #         content = nested_data["data"]
-                    #         logger.debug(f"Sub-agent nested tool text (dict): {str(content)[:100]}")
-                    #     else:
-                    #         logger.debug(f"Sub-agent nested tool event (skipping): {type(nested_data)}")
                     
                     # Sub-agent tool result
                     elif "message" in tool_data:
@@ -318,6 +376,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                             for content_item in msg_content:
                                 if isinstance(content_item, dict) and "toolResult" in content_item:
                                     tool_result = content_item["toolResult"]
+                                    tool_use_id = tool_result.get("toolUseId")
                                     result_content = tool_result.get("content", [])
                                     
                                     # Try to extract meaningful result text
@@ -327,14 +386,61 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                                             result_text = result_item["text"]
                                             break
                                     
-                                    if result_text:
-                                        # Truncate long results
-                                        if len(result_text) > 1000:
-                                            result_text = result_text[:1000] + "..."
-                                        content = f"\n\n ✅ **Tool completed - Result:** {result_text}  \n"
-                                        logger.debug(f"Sub-agent tool result")
-                                    else:
-                                        content = "\n\nTool completed  \n"
+                                    # Send tool execution complete with buffered execution details
+                                    if tool_use_id and tool_use_id in tool_input_buffers:
+                                        try:
+                                            execution_content = tool_input_buffers[tool_use_id]
+                                            await publish_stream_update(
+                                                appsync_client,
+                                                session_id,
+                                                execution_content,
+                                                "tool_execution_complete",
+                                                message_id,
+                                                True,
+                                                tool_metadata={
+                                                    "toolUseId": tool_use_id
+                                                }
+                                            )
+                                            logger.info(f"Sent tool_execution_complete for {tool_use_id}")
+                                        except Exception as e:
+                                            logger.error(f"Failed to publish tool_execution_complete: {e}")
+                                    
+                                    # Send tool result start
+                                    try:
+                                        await publish_stream_update(
+                                            appsync_client,
+                                            session_id,
+                                            "",
+                                            "tool_result_start",
+                                            message_id,
+                                            True,
+                                            tool_metadata={
+                                                "toolUseId": tool_use_id
+                                            }
+                                        )
+                                        logger.info(f"Sent tool_result_start for {tool_use_id}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to publish tool_result_start: {e}")
+                                    
+                                    # Send tool result complete with result content
+                                    try:
+                                        result_content_to_send = result_text if result_text else "Tool completed"
+                                        await publish_stream_update(
+                                            appsync_client,
+                                            session_id,
+                                            result_content_to_send,
+                                            "tool_result_complete",
+                                            message_id,
+                                            True,
+                                            tool_metadata={
+                                                "toolUseId": tool_use_id
+                                            }
+                                        )
+                                        logger.info(f"Sent tool_result_complete for {tool_use_id}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to publish tool_result_complete: {e}")
+                                    
+                                    content = None  # Don't stream result content since we sent it via tool lifecycle
                                     break
                         
                         if not content:
@@ -346,17 +452,25 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                     
                     # Only publish if we have content to send
                     if content:
-                        try:
-                            await publish_stream_update(
-                                appsync_client,
-                                session_id,
-                                content,
-                                "subagent_stream",
-                                message_id,
-                                True
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to publish subagent_stream event: {e}")
+                        # Check if content contains JSON marker and skip if so
+                        logger.info(f"content {content}")
+                        
+                        if "{" in content:
+                            skip_content = True
+                            logger.info(f"skip_content {skip_content}")
+                        elif not skip_content:
+                            logger.info(f"not skippedcontent {content}")
+                            try:
+                                await publish_stream_update(
+                                    appsync_client,
+                                    session_id,
+                                    content,
+                                    "subagent_stream",
+                                    message_id,
+                                    True
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to publish subagent_stream event: {e}")
                 
                 else:
                     logger.debug(f"tool_stream_event data doesn't match expected format: {tool_data}")
@@ -397,6 +511,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
             
             elif "result" in event:
                 # Handle final response
+                
                 if len(displayed_text) < len(full_text_buffer):
                     displayed_text = clean_content_for_display(full_text_buffer)
                 
@@ -409,6 +524,7 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                     message_id, 
                     False
                 )
+                
                 logger.info(f"Completed streaming for session {session_id}")
                 break
         
@@ -417,14 +533,17 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
     except Exception as e:
         logger.error(f"Error in stream_agent_response: {e}")
         # Publish error message
-        await publish_stream_update(
-            appsync_client,
-            session_id, 
-            f"Error: {str(e)}", 
-            "assistant_error", 
-            message_id, 
-            False
-        )
+        try:
+            await publish_stream_update(
+                appsync_client,
+                session_id, 
+                f"Error: {str(e)}", 
+                "assistant_error", 
+                message_id, 
+                False
+            )
+        except Exception as publish_error:
+            logger.error(f"Failed to publish error message: {publish_error}")
         raise
 
 
@@ -456,11 +575,8 @@ def handler(event, context):
     logger.info(f"Received agent chat processor event: {json.dumps(event)}")
     
     try:
-        # Create fresh AWS clients for each invocation to avoid stale connection issues
-        # This is critical for warm Lambda containers where reused sessions can have
-        # exhausted connection pools or stale credentials
-        session = boto3.Session()
-        logger.info("Created fresh boto3 session")
+        # Use cached boto3 session for warm Lambda containers (significant performance improvement)
+        session = get_cached_boto3_session()
         
         # Extract parameters from event
         prompt = event.get("prompt", "")
@@ -506,14 +622,15 @@ def handler(event, context):
         asyncio.set_event_loop(loop)
         
         try:
-            # Use context manager for AppSync client
-            with AppSyncClient() as appsync_client:
-                logger.info("AppSync client initialized")
-                # Stream the agent response
-                result = loop.run_until_complete(
-                    stream_agent_response(appsync_client, orchestrator, prompt, session_id)
-                )
-                logger.info(f"Streaming completed successfully for session {session_id}")
+            # Use cached AppSync client for warm Lambda containers
+            appsync_client = get_cached_appsync_client()
+            logger.info("AppSync client ready")
+            
+            # Stream the agent response
+            result = loop.run_until_complete(
+                stream_agent_response(appsync_client, orchestrator, prompt, session_id)
+            )
+            logger.info(f"Streaming completed successfully for session {session_id}")
         finally:
             # Clean up orchestrator resources (MCP clients, etc.)
             try:
