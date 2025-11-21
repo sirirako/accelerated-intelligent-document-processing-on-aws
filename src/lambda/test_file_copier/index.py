@@ -96,14 +96,9 @@ def _list_test_set_files(test_set_bucket, test_set_id, folder_type):
             for obj in response['Contents']:
                 # Skip folder itself, only get actual files
                 if not obj['Key'].endswith('/'):
-                    if folder_type == 'baseline':
-                        # For baseline files, preserve full relative path after the folder_type
-                        relative_path = obj['Key'][len(prefix):]  # Remove "test-set-id/baseline/" prefix
-                        files.append(relative_path)
-                    else:
-                        # For input files, return just the filename for compatibility
-                        filename = obj['Key'].split('/')[-1]
-                        files.append(filename)
+                    # Preserve full relative path after the folder_type prefix
+                    relative_path = obj['Key'][len(prefix):]
+                    files.append(relative_path)
         
         logger.info(f"Found {len(files)} {folder_type} files for test set {test_set_id}")
         return files

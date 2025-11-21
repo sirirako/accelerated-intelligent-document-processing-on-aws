@@ -42,6 +42,8 @@ const TestSets = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [warningMessage, setWarningMessage] = useState('');
+  const [confirmReplacement, setConfirmReplacement] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState(null);
 
   const loadTestSets = async () => {
     try {
@@ -58,6 +60,40 @@ const TestSets = () => {
   React.useEffect(() => {
     loadTestSets();
   }, []);
+
+  // Auto-refresh polling until all test sets are completed or failed
+  React.useEffect(() => {
+    const hasActiveTestSets = testSets.some((testSet) => testSet.status !== 'COMPLETED' && testSet.status !== 'FAILED');
+
+    console.log('Polling check:', {
+      hasActiveTestSets,
+      pollingActive: !!pollingInterval,
+      testSetsCount: testSets.length,
+      testSets: testSets.map((t) => ({ name: t.name, status: t.status })),
+    });
+
+    // Clear existing interval first
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+
+    // Start new interval if needed
+    if (hasActiveTestSets) {
+      console.log('Starting polling...');
+      const interval = setInterval(() => {
+        console.log('Polling refresh...');
+        loadTestSets();
+      }, 2000);
+      setPollingInterval(interval);
+    }
+
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [testSets]);
 
   const handleCheckFiles = async () => {
     if (!filePattern.trim()) return;
@@ -131,20 +167,27 @@ const TestSets = () => {
   const handleAddTestSet = async () => {
     if (!newTestSetName.trim() || !filePattern.trim()) {
       setError('Both test set name and file pattern are required');
-      setWarningMessage('');
       return;
     }
 
     if (!validateTestSetName(newTestSetName.trim())) {
       setError('Test set name can only contain letters, numbers, spaces, underscores, and dashes');
-      setWarningMessage('');
       return;
     }
 
     if (checkTestSetNameToday(newTestSetName.trim())) {
-      setWarningMessage(`Test set "${newTestSetName.trim()}" already exists for today and will be replaced.`);
+      if (!confirmReplacement) {
+        setWarningMessage(
+          `Test set "${newTestSetName.trim()}" already exists for today and will be replaced. Click "Add Test Set" again to confirm.`,
+        );
+        setConfirmReplacement(true);
+        return; // Stop here and let user confirm
+      }
+      // User has confirmed, proceed with replacement
+      setWarningMessage('');
     } else {
       setWarningMessage('');
+      setConfirmReplacement(false);
     }
 
     setLoading(true);
@@ -174,6 +217,7 @@ const TestSets = () => {
         setError('');
         setWarningMessage('');
         setSuccessMessage(`Successfully created test set "${newTestSet.name}"`);
+        setTimeout(() => setSuccessMessage(''), 3000);
       } else {
         setError('Failed to create test set - no data returned');
       }
@@ -187,27 +231,33 @@ const TestSets = () => {
   const handleAddUploadTestSet = async () => {
     if (!newTestSetName.trim()) {
       setError('Test set name is required');
-      setWarningMessage('');
       return;
     }
 
     if (!validateTestSetName(newTestSetName.trim())) {
       setError('Test set name can only contain letters, numbers, spaces, underscores, and dashes');
-      setWarningMessage('');
       return;
     }
 
     if (checkTestSetNameToday(newTestSetName.trim())) {
-      setWarningMessage(`Test set "${newTestSetName.trim()}" already exists for today and will be replaced.`);
+      if (!confirmReplacement) {
+        setWarningMessage(
+          `Test set "${newTestSetName.trim()}" already exists for today and will be replaced. Click "Create Test Set" again to confirm.`,
+        );
+        setConfirmReplacement(true);
+        return; // Stop here and let user confirm
+      }
+      // User has confirmed, proceed with replacement
+      setWarningMessage('');
     } else {
       setWarningMessage('');
+      setConfirmReplacement(false);
     }
 
     // Validate file pairing
     const validation = validateFilePairing();
     if (!validation.isValid) {
       setError(validation.errors.join('. '));
-      setWarningMessage('');
       return;
     }
 
@@ -215,7 +265,6 @@ const TestSets = () => {
     const zipInputFiles = inputFiles.filter((file) => file.name.toLowerCase().endsWith('.zip'));
     if (zipInputFiles.length > 0) {
       setError(`Input files cannot be ZIP files: ${zipInputFiles.map((f) => f.name).join(', ')}`);
-      setWarningMessage('');
       return;
     }
 
@@ -341,13 +390,11 @@ const TestSets = () => {
       await Promise.all(uploadPromises);
 
       setSuccessMessage(`Test set "${newTestSetName}" created successfully. Files are being processed.`);
+      setTimeout(() => setSuccessMessage(''), 3000);
       setShowAddUploadModal(false);
       setNewTestSetName('');
       setInputFiles([]);
       setBaselineFiles([]);
-
-      // Refresh test sets to show the new one
-      await loadTestSets();
     } catch (err) {
       setError(`Failed to create upload test set: ${err.message}`);
     } finally {
@@ -357,6 +404,8 @@ const TestSets = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setError('');
+    setWarningMessage('');
     try {
       const result = await client.graphql({ query: GET_TEST_SETS });
       setTestSets(result.data.getTestSets || []);
@@ -382,6 +431,7 @@ const TestSets = () => {
       setTestSets(testSets.filter((testSet) => !testSetIds.includes(testSet.id)));
       setSelectedItems([]);
       setSuccessMessage(`Successfully deleted ${deleteCount} test set${deleteCount > 1 ? 's' : ''}`);
+      setTimeout(() => setSuccessMessage(''), 3000);
       setError('');
     } catch (err) {
       setError(`Failed to delete test sets: ${err.message}`);
@@ -496,12 +546,23 @@ const TestSets = () => {
 
       <Modal
         visible={showAddPatternModal}
-        onDismiss={() => setShowAddPatternModal(false)}
+        onDismiss={() => {
+          setShowAddPatternModal(false);
+          setConfirmReplacement(false);
+          setWarningMessage('');
+        }}
         header="Add Test Set from Pattern"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowAddPatternModal(false)}>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowAddPatternModal(false);
+                  setConfirmReplacement(false);
+                  setWarningMessage('');
+                }}
+              >
                 Cancel
               </Button>
               <Button variant="primary" loading={loading} onClick={handleAddTestSet} disabled={fileCount === 0}>
@@ -518,7 +579,11 @@ const TestSets = () => {
           <FormField label="Test Set Name">
             <Input
               value={newTestSetName}
-              onChange={({ detail }) => setNewTestSetName(detail.value)}
+              onChange={({ detail }) => {
+                setNewTestSetName(detail.value);
+                setConfirmReplacement(false);
+                setWarningMessage('');
+              }}
               placeholder="e.g., lending-package-v1"
             />
           </FormField>
@@ -551,12 +616,29 @@ const TestSets = () => {
 
       <Modal
         visible={showAddUploadModal}
-        onDismiss={() => setShowAddUploadModal(false)}
+        onDismiss={() => {
+          setShowAddUploadModal(false);
+          setConfirmReplacement(false);
+          setWarningMessage('');
+          setError('');
+          setInputFiles([]);
+          setBaselineFiles([]);
+        }}
         header="Add Test Set from Upload"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowAddUploadModal(false)}>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowAddUploadModal(false);
+                  setConfirmReplacement(false);
+                  setWarningMessage('');
+                  setError('');
+                  setInputFiles([]);
+                  setBaselineFiles([]);
+                }}
+              >
                 Cancel
               </Button>
               <Button
@@ -578,7 +660,11 @@ const TestSets = () => {
           <FormField label="Test Set Name">
             <Input
               value={newTestSetName}
-              onChange={({ detail }) => setNewTestSetName(detail.value)}
+              onChange={({ detail }) => {
+                setNewTestSetName(detail.value);
+                setConfirmReplacement(false);
+                setWarningMessage('');
+              }}
               placeholder="e.g., manual-upload-set-v1"
             />
           </FormField>

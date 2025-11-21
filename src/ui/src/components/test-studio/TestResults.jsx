@@ -200,17 +200,15 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
-  const [currentFileCount, setCurrentFileCount] = useState(null);
-  const [loadingFileCount, setLoadingFileCount] = useState(false);
-  const [filePattern, setFilePattern] = useState(null);
+  const [testSetFileCount, setTestSetFileCount] = useState(null);
+  const [testSetStatus, setTestSetStatus] = useState(null);
+  const [testSetFilePattern, setTestSetFilePattern] = useState(null);
   const [chartType, setChartType] = useState({ label: 'Bar Chart', value: 'bar' });
 
-  const fetchCurrentFileCount = async () => {
+  const checkTestSetStatus = async () => {
     if (!results?.testSetId) return;
 
-    setLoadingFileCount(true);
     try {
-      // Get all test sets and find the matching one
       const testSetsResult = await client.graphql({
         query: GET_TEST_SETS,
       });
@@ -218,31 +216,19 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       const testSets = testSetsResult.data.getTestSets || [];
       const testSet = testSets.find((ts) => ts.id === results.testSetId);
 
-      if (!testSet?.filePattern) {
-        console.log('No test set found or no file pattern for testSetId:', results.testSetId);
-        setCurrentFileCount(0);
-        setFilePattern(null);
-        return;
+      if (testSet) {
+        setTestSetStatus(testSet.status);
+        setTestSetFileCount(testSet.fileCount);
+        setTestSetFilePattern(testSet.filePattern);
+      } else {
+        setTestSetStatus('NOT_FOUND');
+        setTestSetFileCount(0);
+        setTestSetFilePattern(null);
       }
-
-      console.log('Found file pattern:', testSet.filePattern);
-      setFilePattern(testSet.filePattern);
-
-      // Get current file count using the file pattern
-      const filesResult = await client.graphql({
-        query: LIST_INPUT_BUCKET_FILES,
-        variables: { filePattern: testSet.filePattern },
-      });
-
-      const files = filesResult.data.listInputBucketFiles || [];
-      console.log('Found files:', files.length);
-      setCurrentFileCount(files.length);
     } catch (err) {
-      console.error('Failed to fetch current file count:', err);
-      setCurrentFileCount(0);
-      setFilePattern(null);
-    } finally {
-      setLoadingFileCount(false);
+      console.error('Failed to check test set status:', err);
+      setTestSetStatus('ERROR');
+      setTestSetFileCount(0);
     }
   };
 
@@ -268,7 +254,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
   useEffect(() => {
     if (results?.testSetId) {
-      fetchCurrentFileCount();
+      checkTestSetStatus();
     }
   }, [results]);
 
@@ -391,7 +377,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         setShowReRunModal(true);
       }}
       iconName="arrow-right"
-      disabled={currentFileCount === 0}
+      disabled={!testSetFileCount || testSetFileCount === 0}
     >
       Re-Run
     </Button>
@@ -618,10 +604,10 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           <Box>
             <strong>Test Set:</strong> {results?.testSetName || 'N/A'}
             <br />
-            <strong>File Pattern:</strong> {filePattern || 'N/A'}
+            <strong>Pattern:</strong> {testSetStatus === 'NOT_FOUND' ? 'Test set not found' : testSetFilePattern || 'Uploaded files'}
             <br />
-            <strong>Current Files:</strong>{' '}
-            {loadingFileCount ? 'Loading...' : currentFileCount !== null ? `${currentFileCount} files` : 'N/A'}
+            <strong>Files:</strong>{' '}
+            {testSetStatus === 'NOT_FOUND' ? 'Test set deleted' : testSetFileCount !== null ? `${testSetFileCount} files` : 'Loading...'}
           </Box>
           <FormField label="Context" description="Optional context information for this test run">
             <Textarea

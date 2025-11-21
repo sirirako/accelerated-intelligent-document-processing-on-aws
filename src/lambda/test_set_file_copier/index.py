@@ -110,7 +110,7 @@ def _copy_files_to_test_set(source_bucket, dest_bucket, test_set_id, folder_type
         else:
             # For input files, copy individual file
             source_key = file_key
-            dest_key = f"{test_set_id}/{folder_type}/{file_key.split('/')[-1]}"
+            dest_key = f"{test_set_id}/{folder_type}/{file_key}"
             
             # Copy file
             s3.copy_object(

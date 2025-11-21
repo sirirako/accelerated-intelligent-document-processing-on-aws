@@ -86,13 +86,15 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
     }
   };
 
-  const testSetOptions = testSets.map((testSet) => ({
-    label: `${testSet.name}${testSet.filePattern ? ` (${testSet.filePattern})` : ''} - ${testSet.fileCount} ${
-      testSet.fileCount === 1 ? 'file' : 'files'
-    }`,
-    value: testSet.id,
-    description: testSet.filePattern ? `Pattern: ${testSet.filePattern}` : 'Uploaded test set',
-  }));
+  const testSetOptions = testSets
+    .filter((testSet) => testSet.status === 'COMPLETED')
+    .map((testSet) => ({
+      label: `${testSet.name}${testSet.filePattern ? ` (${testSet.filePattern})` : ''} - ${testSet.fileCount} ${
+        testSet.fileCount === 1 ? 'file' : 'files'
+      }`,
+      value: testSet.id,
+      description: testSet.filePattern ? `Pattern: ${testSet.filePattern}` : 'Uploaded test set',
+    }));
 
   return (
     <Container
