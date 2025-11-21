@@ -84,7 +84,7 @@ const TestSets = () => {
       const interval = setInterval(() => {
         console.log('Polling refresh...');
         loadTestSets();
-      }, 2000);
+      }, 3000);
       setPollingInterval(interval);
     }
 
@@ -389,8 +389,20 @@ const TestSets = () => {
       // Wait for all uploads to complete
       await Promise.all(uploadPromises);
 
+      // Add the new test set to the state immediately
+      const newTestSet = {
+        id: result.data.addTestSetFromUpload.testSetId,
+        name: newTestSetName.trim(),
+        status: 'QUEUED',
+        fileCount: inputFiles.length,
+        createdAt: new Date().toISOString(),
+        filePattern: null, // Upload-based test sets don't have patterns
+      };
+      setTestSets((prev) => [...prev, newTestSet]);
+
       setSuccessMessage(`Test set "${newTestSetName}" created successfully. Files are being processed.`);
       setTimeout(() => setSuccessMessage(''), 3000);
+      setError('');
       setShowAddUploadModal(false);
       setNewTestSetName('');
       setInputFiles([]);
