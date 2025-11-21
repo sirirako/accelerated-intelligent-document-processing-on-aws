@@ -4047,7 +4047,7 @@ Resources:
       TypeName: Query
       FieldName: listChatSessions
       DataSourceName: !GetAtt ListAgentChatSessionsDataSource.Name
-
+      
   GetChatMessagesResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
