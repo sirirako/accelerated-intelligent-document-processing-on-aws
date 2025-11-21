@@ -18,8 +18,15 @@ SPDX-License-Identifier: MIT-0
 - **Add support for prompt caching for Claude Haiku 4.5**
 - **Add support for prompt caching for for EU region models**
 
-
 ### Fixed
+
+- **Analytics Agent Schema Provider - Fixed Nested Attribute Column Display**
+  - Fixed `schema_provider.py` to correctly display leaf-level nested columns instead of showing group-level attributes
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.4.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.4.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.4.yaml`
 
 ## [0.4.3]
 
