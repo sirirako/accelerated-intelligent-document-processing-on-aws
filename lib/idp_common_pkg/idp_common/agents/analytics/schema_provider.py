@@ -273,6 +273,8 @@ def get_dynamic_document_sections_description(
             class_desc = schema.get("description", "No description available")
             table_name = f"document_sections_{_get_table_suffix(class_name)}"
             properties = schema.get(SCHEMA_PROPERTIES, {})
+            # Get $defs for resolving $ref references
+            defs = schema.get("$defs", {})
 
             description += f'**`{table_name}`** (Class: "{class_name}"):\n'
             description += f"- **Description**: {class_desc}\n"
@@ -307,7 +309,7 @@ def get_dynamic_document_sections_description(
                 column_count = 0  # Reset for each table
                 prop_list = list(properties.keys())
                 for prop_index, (prop_desc_text, columns_added) in enumerate(
-                    _walk_properties_for_columns(properties)
+                    _walk_properties_for_columns(properties, defs=defs)
                 ):
                     description += prop_desc_text
                     column_count += columns_added
@@ -319,8 +321,6 @@ def get_dynamic_document_sections_description(
                         break
             else:
                 description += "- **Configuration-Specific Columns**: None configured\n"
-
-            description += "\n"
 
         description += """### Column Naming Patterns:
 - **Simple attributes**: `inference_result.{attribute_name_lowercase}` (all strings)
@@ -433,6 +433,7 @@ def _walk_properties_for_columns(
     properties: Dict[str, Any],
     parent_path: str = "inference_result",
     indent: str = "  ",
+    defs: Optional[Dict[str, Any]] = None,
 ) -> Generator[tuple[str, int], None, None]:
     """
     Walk JSON Schema properties and yield (column_description, count) tuples.
@@ -441,24 +442,35 @@ def _walk_properties_for_columns(
         properties: JSON Schema properties dict
         parent_path: Parent column path
         indent: Indentation for formatting
+        defs: Schema definitions for resolving $ref references
 
     Yields:
         Tuples of (description_text, columns_added_count)
     """
     for prop_name, prop_schema in properties.items():
+        # Handle $ref by resolving to the actual definition
+        if "$ref" in prop_schema and defs:
+            ref_path = prop_schema["$ref"]
+            # Extract the definition name from the reference (e.g., "#/$defs/employer_info")
+            if ref_path.startswith("#/$defs/"):
+                def_name = ref_path.replace("#/$defs/", "")
+                if def_name in defs:
+                    # Merge the referenced definition with any override fields
+                    resolved_schema = {**defs[def_name], **prop_schema}
+                    # Remove $ref from the resolved schema
+                    resolved_schema.pop("$ref", None)
+                    prop_schema = resolved_schema
+
         prop_type = prop_schema.get(SCHEMA_TYPE)
         prop_desc = prop_schema.get(SCHEMA_DESCRIPTION, "")
         column_path = f"{parent_path}.{prop_name.lower()}"
 
         if prop_type == TYPE_OBJECT:
-            # Group - yield header and recurse
+            # Group - recurse to get leaf columns only (no group header)
+            # Groups don't become columns themselves - only leaf attributes do
             nested_props = prop_schema.get(SCHEMA_PROPERTIES, {})
-            yield (
-                f"{indent}- **{prop_name} Group** ({len(nested_props)} columns):\n",
-                0,
-            )
             yield from _walk_properties_for_columns(
-                nested_props, column_path, indent + "  "
+                nested_props, column_path, indent, defs
             )
 
         elif prop_type == TYPE_ARRAY:
@@ -657,6 +669,8 @@ def _get_specific_document_sections_table_info(
         class_name = matching_schema.get(X_AWS_IDP_DOCUMENT_TYPE, "Unknown")
         class_desc = matching_schema.get("description", "No description available")
         properties = matching_schema.get(SCHEMA_PROPERTIES, {})
+        # Get $defs for resolving $ref references
+        defs = matching_schema.get("$defs", {})
 
         info = f"""## Document Sections Table: {table_name}
 
@@ -678,7 +692,9 @@ def _get_specific_document_sections_table_info(
 """
 
         if properties:
-            for prop_desc_text, _ in _walk_properties_for_columns(properties):
+            for prop_desc_text, _ in _walk_properties_for_columns(
+                properties, defs=defs
+            ):
                 info += prop_desc_text
         else:
             info += "No configuration-specific columns defined.\n"
