@@ -153,7 +153,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
         status: 'Running',
         isActive: true,
         progress: Math.min(90, Math.floor(((Date.now() - run.startTime.getTime()) / 1000 / 60) * 10)), // Simulate progress
-        filesCount: 0,
+        filesCount: run.filesCount || 0,
         createdAt: run.startTime.toISOString(),
         completedAt: null,
         context: run.context || 'N/A',

@@ -28,8 +28,8 @@ const TestStudioLayout = () => {
     }
   }, [location.search]);
 
-  const handleTestStart = (testRunId, testSetName, context) => {
-    addTestRun(testRunId, testSetName, context);
+  const handleTestStart = (testRunId, testSetName, context, filesCount) => {
+    addTestRun(testRunId, testSetName, context, filesCount);
   };
 
   const handleTestComplete = (testRunId) => {

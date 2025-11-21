@@ -8,6 +8,7 @@ const GET_TEST_SETS = `
       name
       filePattern
       fileCount
+      status
       createdAt
     }
   }

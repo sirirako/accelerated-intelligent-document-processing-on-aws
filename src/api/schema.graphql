@@ -297,9 +297,35 @@ type ConfigSetting @aws_cognito_user_pools @aws_iam {
 type TestSet @aws_cognito_user_pools @aws_iam {
   id: String!
   name: String!
-  filePattern: String!
+  filePattern: String
   fileCount: Int!
+  status: String
   createdAt: AWSDateTime!
+}
+
+input TestSetUploadInput {
+  name: String!
+  inputFiles: [FileUploadInfo!]!
+  baselineFiles: [FileUploadInfo!]!
+}
+
+input FileUploadInfo {
+  fileName: String!
+  fileSize: Int!
+  contentType: String!
+}
+
+type TestSetUploadResponse @aws_cognito_user_pools @aws_iam {
+  testSetId: String!
+  inputUploadUrls: [PresignedUploadUrl!]!
+  baselineUploadUrls: [PresignedUploadUrl!]!
+}
+
+type PresignedUploadUrl @aws_cognito_user_pools @aws_iam {
+  fileName: String!
+  presignedUrl: String!
+  objectKey: String!
+  usePostMethod: String!
 }
 
 input TestRunInput {
@@ -387,6 +413,7 @@ type Mutation {
   startTestRun(input: TestRunInput!): TestRun @aws_cognito_user_pools
   deleteTests(testRunIds: [String!]!): Boolean! @aws_cognito_user_pools
   addTestSet(name: String!, filePattern: String!, fileCount: Int!): TestSet @aws_cognito_user_pools
+  addTestSetFromUpload(input: TestSetUploadInput!): TestSetUploadResponse @aws_cognito_user_pools
   deleteTestSets(testSetIds: [String!]!): Boolean! @aws_cognito_user_pools
 }
 

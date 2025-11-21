@@ -63,7 +63,7 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
       }
 
       logger.info('Test run started:', result.data.startTestRun);
-      onTestStart(result.data.startTestRun.testRunId, selectedTestSet.label.split(' (')[0], context);
+      onTestStart(result.data.startTestRun.testRunId, result.data.startTestRun.testSetName, context, result.data.startTestRun.filesCount);
       setError('');
     } catch (err) {
       logger.error('Failed to start test run:', err);
@@ -87,9 +87,11 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
   };
 
   const testSetOptions = testSets.map((testSet) => ({
-    label: `${testSet.name} (${testSet.filePattern}) - ${testSet.fileCount} ${testSet.fileCount === 1 ? 'file' : 'files'}`,
+    label: `${testSet.name}${testSet.filePattern ? ` (${testSet.filePattern})` : ''} - ${testSet.fileCount} ${
+      testSet.fileCount === 1 ? 'file' : 'files'
+    }`,
     value: testSet.id,
-    description: `Pattern: ${testSet.filePattern}`,
+    description: testSet.filePattern ? `Pattern: ${testSet.filePattern}` : 'Uploaded test set',
   }));
 
   return (

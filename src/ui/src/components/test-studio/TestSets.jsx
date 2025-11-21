@@ -1,9 +1,23 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
-import { Container, Header, SpaceBetween, Button, Table, Box, Modal, FormField, Input, Alert, Badge } from '@cloudscape-design/components';
+import {
+  Container,
+  Header,
+  SpaceBetween,
+  Button,
+  ButtonDropdown,
+  Table,
+  Box,
+  Modal,
+  FormField,
+  Input,
+  Alert,
+  Badge,
+} from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import ADD_TEST_SET from '../../graphql/queries/addTestSet';
+import ADD_TEST_SET_FROM_UPLOAD from '../../graphql/queries/addTestSetFromUpload';
 import DELETE_TEST_SETS from '../../graphql/queries/deleteTestSets';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
@@ -13,16 +27,21 @@ const client = generateClient();
 const TestSets = () => {
   const [testSets, setTestSets] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddPatternModal, setShowAddPatternModal] = useState(false);
+  const [showAddUploadModal, setShowAddUploadModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newTestSetName, setNewTestSetName] = useState('');
   const [filePattern, setFilePattern] = useState('');
+  const [inputFiles, setInputFiles] = useState([]);
+  const [baselineFiles, setBaselineFiles] = useState([]);
   const [matchingFiles, setMatchingFiles] = useState([]);
   const [fileCount, setFileCount] = useState(0);
   const [showFilesModal, setShowFilesModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [warningMessage, setWarningMessage] = useState('');
 
   const loadTestSets = async () => {
     try {
@@ -61,10 +80,71 @@ const TestSets = () => {
     }
   };
 
+  const validateFilePairing = () => {
+    if (inputFiles.length === 0 || baselineFiles.length === 0) {
+      return { isValid: false, errors: ['Both input files and baseline files are required'] };
+    }
+
+    if (inputFiles.length !== baselineFiles.length) {
+      return { isValid: false, errors: ['Number of input files must match number of baseline files'] };
+    }
+
+    const inputNames = inputFiles.map((f) => f.name);
+    const baselineNames = baselineFiles.map((f) => f.name);
+    const errors = [];
+
+    // Check each input file has corresponding baseline zip
+    const missingBaselines = inputNames.filter((name) => !baselineNames.includes(`${name}.zip`));
+
+    if (missingBaselines.length > 0) {
+      errors.push(`Missing baseline files: ${missingBaselines.map((name) => `${name}.zip`).join(', ')}`);
+    }
+
+    // Check for extra baseline files
+    const expectedBaselines = inputNames.map((name) => `${name}.zip`);
+    const extraBaselines = baselineNames.filter((name) => !expectedBaselines.includes(name));
+
+    if (extraBaselines.length > 0) {
+      errors.push(`Unexpected baseline files: ${extraBaselines.join(', ')}`);
+    }
+
+    // Check baseline files are zip files
+    const nonZipBaselines = baselineFiles.filter((f) => !f.name.endsWith('.zip'));
+    if (nonZipBaselines.length > 0) {
+      errors.push(`Baseline files must be zip files: ${nonZipBaselines.map((f) => f.name).join(', ')}`);
+    }
+
+    return { isValid: errors.length === 0, errors };
+  };
+
+  const validateTestSetName = (name) => {
+    const validPattern = /^[a-zA-Z0-9 _-]+$/;
+    return validPattern.test(name);
+  };
+
+  const checkTestSetNameToday = (name) => {
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD
+    const expectedId = `${name.replace(/ /g, '-')}_${today}`;
+    return testSets.some((testSet) => testSet.id === expectedId);
+  };
+
   const handleAddTestSet = async () => {
     if (!newTestSetName.trim() || !filePattern.trim()) {
       setError('Both test set name and file pattern are required');
+      setWarningMessage('');
       return;
+    }
+
+    if (!validateTestSetName(newTestSetName.trim())) {
+      setError('Test set name can only contain letters, numbers, spaces, underscores, and dashes');
+      setWarningMessage('');
+      return;
+    }
+
+    if (checkTestSetNameToday(newTestSetName.trim())) {
+      setWarningMessage(`Test set "${newTestSetName.trim()}" already exists for today and will be replaced.`);
+    } else {
+      setWarningMessage('');
     }
 
     setLoading(true);
@@ -90,8 +170,9 @@ const TestSets = () => {
         setNewTestSetName('');
         setFilePattern('');
         setFileCount(0);
-        setShowAddModal(false);
+        setShowAddPatternModal(false);
         setError('');
+        setWarningMessage('');
         setSuccessMessage(`Successfully created test set "${newTestSet.name}"`);
       } else {
         setError('Failed to create test set - no data returned');
@@ -100,6 +181,191 @@ const TestSets = () => {
       setError(`Failed to add test set: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddUploadTestSet = async () => {
+    if (!newTestSetName.trim()) {
+      setError('Test set name is required');
+      setWarningMessage('');
+      return;
+    }
+
+    if (!validateTestSetName(newTestSetName.trim())) {
+      setError('Test set name can only contain letters, numbers, spaces, underscores, and dashes');
+      setWarningMessage('');
+      return;
+    }
+
+    if (checkTestSetNameToday(newTestSetName.trim())) {
+      setWarningMessage(`Test set "${newTestSetName.trim()}" already exists for today and will be replaced.`);
+    } else {
+      setWarningMessage('');
+    }
+
+    // Validate file pairing
+    const validation = validateFilePairing();
+    if (!validation.isValid) {
+      setError(validation.errors.join('. '));
+      setWarningMessage('');
+      return;
+    }
+
+    // Check for .zip files in input files
+    const zipInputFiles = inputFiles.filter((file) => file.name.toLowerCase().endsWith('.zip'));
+    if (zipInputFiles.length > 0) {
+      setError(`Input files cannot be ZIP files: ${zipInputFiles.map((f) => f.name).join(', ')}`);
+      setWarningMessage('');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Prepare file info for GraphQL mutation
+      const inputFileInfos = inputFiles.map((file) => ({
+        fileName: file.name,
+        fileSize: file.size,
+        contentType: file.type,
+      }));
+
+      const baselineFileInfos = baselineFiles.map((file) => ({
+        fileName: file.name,
+        fileSize: file.size,
+        contentType: 'application/zip', // Force standard ZIP content type
+      }));
+
+      // Call GraphQL mutation to get presigned URLs
+      const result = await client.graphql({
+        query: ADD_TEST_SET_FROM_UPLOAD,
+        variables: {
+          input: {
+            name: newTestSetName.trim(),
+            inputFiles: inputFileInfos,
+            baselineFiles: baselineFileInfos,
+          },
+        },
+      });
+
+      const response = result.data.addTestSetFromUpload;
+
+      // Check if response is null (GraphQL error)
+      if (!response) {
+        console.error('GraphQL mutation returned null response:', result);
+        throw new Error('Failed to create test set - server returned null response');
+      }
+
+      // Check if required fields exist
+      if (!response.inputUploadUrls || !response.baselineUploadUrls) {
+        console.error('Missing upload URLs in response:', response);
+        throw new Error('Failed to get upload URLs from server');
+      }
+
+      // Upload files using presigned URLs
+      const uploadPromises = [];
+
+      // Upload input files
+      response.inputUploadUrls.forEach((urlInfo, index) => {
+        const file = inputFiles[index];
+
+        // Parse the presigned post data
+        const presignedPostData = JSON.parse(urlInfo.presignedUrl);
+
+        const formData = new FormData();
+
+        // Add all required fields from presigned URL
+        Object.entries(presignedPostData.fields).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+
+        // Add the file last
+        formData.append('file', file);
+
+        const uploadPromise = fetch(presignedPostData.url, {
+          method: 'POST',
+          body: formData,
+        })
+          .then(async (uploadResponse) => {
+            if (!uploadResponse.ok) {
+              const responseText = await uploadResponse.text();
+              console.error(`Upload response body:`, responseText);
+              throw new Error(`Upload failed for ${file.name}: ${uploadResponse.status} ${uploadResponse.statusText}`);
+            }
+            return uploadResponse;
+          })
+          .catch((uploadError) => {
+            console.error(`Error uploading input file ${file.name}:`, uploadError);
+            throw uploadError;
+          });
+
+        uploadPromises.push(uploadPromise);
+      });
+
+      // Upload baseline files
+      response.baselineUploadUrls.forEach((urlInfo, index) => {
+        const file = baselineFiles[index];
+
+        // Parse the presigned post data
+        const presignedPostData = JSON.parse(urlInfo.presignedUrl);
+
+        const formData = new FormData();
+
+        // Add all required fields from presigned URL
+        Object.entries(presignedPostData.fields).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+
+        // Add the file last
+        formData.append('file', file);
+
+        const uploadPromise = fetch(presignedPostData.url, {
+          method: 'POST',
+          body: formData,
+        })
+          .then(async (uploadResponse) => {
+            if (!uploadResponse.ok) {
+              const responseText = await uploadResponse.text();
+              console.error(`S3 Error for ${file.name} (${uploadResponse.status}):`, responseText);
+              throw new Error(`Upload failed for ${file.name}: ${uploadResponse.status} ${uploadResponse.statusText}`);
+            }
+            return uploadResponse;
+          })
+          .catch((uploadError) => {
+            console.error(`Error uploading baseline file ${file.name}:`, uploadError);
+            throw uploadError;
+          });
+
+        uploadPromises.push(uploadPromise);
+      });
+
+      // Wait for all uploads to complete
+      await Promise.all(uploadPromises);
+
+      setSuccessMessage(`Test set "${newTestSetName}" created successfully. Files are being processed.`);
+      setShowAddUploadModal(false);
+      setNewTestSetName('');
+      setInputFiles([]);
+      setBaselineFiles([]);
+
+      // Refresh test sets to show the new one
+      await loadTestSets();
+    } catch (err) {
+      setError(`Failed to create upload test set: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const result = await client.graphql({ query: GET_TEST_SETS });
+      setTestSets(result.data.getTestSets || []);
+      setSuccessMessage('Test sets refreshed');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      setError(`Failed to refresh test sets: ${err.message}`);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -135,6 +401,12 @@ const TestSets = () => {
       sortingField: 'name',
     },
     {
+      id: 'id',
+      header: 'Test Set ID',
+      cell: (item) => item.id,
+      sortingField: 'id',
+    },
+    {
       id: 'filePattern',
       header: 'File Pattern',
       cell: (item) => item.filePattern,
@@ -143,6 +415,11 @@ const TestSets = () => {
       id: 'fileCount',
       header: 'Files',
       cell: (item) => item.fileCount,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item) => item.status || '-',
     },
     {
       id: 'createdAt',
@@ -160,12 +437,28 @@ const TestSets = () => {
           description="Manage test sets for document processing"
           actions={
             <SpaceBetween direction="horizontal" size="xs">
+              <Button iconName="refresh" loading={refreshing} onClick={handleRefresh}>
+                Refresh
+              </Button>
               <Button disabled={selectedItems.length === 0 || loading} onClick={() => setShowDeleteModal(true)}>
                 Delete
               </Button>
-              <Button variant="primary" onClick={() => setShowAddModal(true)}>
+              <ButtonDropdown
+                variant="primary"
+                items={[
+                  { id: 'pattern', text: 'Existing Files' },
+                  { id: 'upload', text: 'New Upload' },
+                ]}
+                onItemClick={({ detail }) => {
+                  if (detail.id === 'pattern') {
+                    setShowAddPatternModal(true);
+                  } else if (detail.id === 'upload') {
+                    setShowAddUploadModal(true);
+                  }
+                }}
+              >
                 Add Test Set
-              </Button>
+              </ButtonDropdown>
             </SpaceBetween>
           }
         >
@@ -202,13 +495,13 @@ const TestSets = () => {
       />
 
       <Modal
-        visible={showAddModal}
-        onDismiss={() => setShowAddModal(false)}
-        header="Add New Test Set"
+        visible={showAddPatternModal}
+        onDismiss={() => setShowAddPatternModal(false)}
+        header="Add Test Set from Pattern"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowAddModal(false)}>
+              <Button variant="link" onClick={() => setShowAddPatternModal(false)}>
                 Cancel
               </Button>
               <Button variant="primary" loading={loading} onClick={handleAddTestSet} disabled={fileCount === 0}>
@@ -220,6 +513,7 @@ const TestSets = () => {
       >
         <SpaceBetween size="m">
           {error && <Alert type="error">{error}</Alert>}
+          {warningMessage && <Alert type="warning">{warningMessage}</Alert>}
 
           <FormField label="Test Set Name">
             <Input
@@ -250,6 +544,81 @@ const TestSets = () => {
               <Badge color="green">
                 {fileCount} {fileCount === 1 ? 'file' : 'files'} found
               </Badge>
+            </Box>
+          )}
+        </SpaceBetween>
+      </Modal>
+
+      <Modal
+        visible={showAddUploadModal}
+        onDismiss={() => setShowAddUploadModal(false)}
+        header="Add Test Set from Upload"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowAddUploadModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                loading={loading}
+                onClick={handleAddUploadTestSet}
+                disabled={inputFiles.length === 0 || baselineFiles.length === 0}
+              >
+                Upload and Create Test Set
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          {error && <Alert type="error">{error}</Alert>}
+          {warningMessage && <Alert type="warning">{warningMessage}</Alert>}
+
+          <FormField label="Test Set Name">
+            <Input
+              value={newTestSetName}
+              onChange={({ detail }) => setNewTestSetName(detail.value)}
+              placeholder="e.g., manual-upload-set-v1"
+            />
+          </FormField>
+
+          <FormField label="Input Files" description="Select multiple input files (PDF, images, etc.)">
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setInputFiles(Array.from(e.target.files))}
+              style={{ width: '100%', padding: '8px' }}
+            />
+            {inputFiles.length > 0 && (
+              <Box margin={{ top: 'xs' }}>
+                <Badge color="blue">{inputFiles.length} input files selected</Badge>
+              </Box>
+            )}
+          </FormField>
+
+          <FormField label="Baseline Files" description="Select corresponding baseline zip files (filename.ext.zip)">
+            <input
+              type="file"
+              multiple
+              accept=".zip"
+              onChange={(e) => setBaselineFiles(Array.from(e.target.files))}
+              style={{ width: '100%', padding: '8px' }}
+            />
+            {baselineFiles.length > 0 && (
+              <Box margin={{ top: 'xs' }}>
+                <Badge color="green">{baselineFiles.length} baseline files selected</Badge>
+              </Box>
+            )}
+          </FormField>
+
+          {inputFiles.length > 0 && baselineFiles.length > 0 && (
+            <Box>
+              <Alert type={inputFiles.length === baselineFiles.length ? 'success' : 'warning'}>
+                {inputFiles.length === baselineFiles.length
+                  ? `Ready to upload ${inputFiles.length} file pairs`
+                  : `File count mismatch: ${inputFiles.length} input files, ${baselineFiles.length} baseline files`}
+              </Alert>
             </Box>
           )}
         </SpaceBetween>
@@ -307,7 +676,8 @@ const TestSets = () => {
           <ul style={{ marginTop: '10px' }}>
             {selectedItems.map((item) => (
               <li key={item.id}>
-                <strong>{item.name}</strong> ({item.filePattern})
+                <strong>{item.name}</strong>
+                {item.filePattern && ` (${item.filePattern})`}
               </li>
             ))}
           </ul>

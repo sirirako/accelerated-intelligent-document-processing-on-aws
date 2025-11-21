@@ -364,7 +364,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         console.log('Success! Closing modal and redirecting...');
         const newTestRun = result.data.startTestRun;
         // Add to active test runs
-        addTestRun(newTestRun.testRunId, newTestRun.testSetName);
+        addTestRun(newTestRun.testRunId, newTestRun.testSetName, reRunContext, newTestRun.filesCount);
         setShowReRunModal(false);
         setReRunContext('');
         // Navigate to test executions tab

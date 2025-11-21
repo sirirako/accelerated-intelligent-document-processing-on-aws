@@ -117,31 +117,74 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
     // Add cost breakdown rows
     const costRows = [];
-    const allCostMetrics = new Set();
+    const allCostItems = new Set();
+
     Object.values(completeTestRuns).forEach((testRun) => {
       if (testRun.costBreakdown) {
-        Object.entries(testRun.costBreakdown).forEach(([category, data]) => {
-          if (data && typeof data === 'object') {
-            Object.keys(data).forEach((api) => {
-              allCostMetrics.add(`${category}_${api}`);
-            });
-          }
+        Object.entries(testRun.costBreakdown).forEach(([context, services]) => {
+          Object.keys(services).forEach((serviceUnit) => {
+            const parts = serviceUnit.split('_');
+            const service = parts[0];
+            const api = parts.slice(1, -1).join('/');
+            const unit = parts[parts.length - 1];
+            allCostItems.add(`${context}|${service}/${api}|${unit}`);
+          });
         });
       }
     });
 
-    allCostMetrics.forEach((metricKey) => {
-      const [category, api] = metricKey.split('_');
-      const row = [
-        `Cost: ${category} ${api}`,
-        ...Object.keys(completeTestRuns).map((testRunId) => {
-          const testRun = completeTestRuns[testRunId];
-          const cost = testRun.costBreakdown?.[category]?.[api] || 0;
-          return `$${cost.toFixed(4)}`;
-        }),
-      ];
-      costRows.push(row);
-    });
+    // Add cost breakdown header
+    costRows.push(['Context', 'Service/Api', 'Unit', ...Object.keys(completeTestRuns)]);
+
+    Array.from(allCostItems)
+      .sort()
+      .forEach((itemKey) => {
+        const [context, serviceApi, unit] = itemKey.split('|');
+        const row = [context, serviceApi, unit];
+
+        Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+          const services = testRun.costBreakdown?.[context] || {};
+          const serviceKey = Object.keys(services).find((key) => {
+            const parts = key.split('_');
+            const service = parts[0];
+            const api = parts.slice(1, -1).join('/');
+            return `${service}/${api}` === serviceApi;
+          });
+
+          const details = services[serviceKey] || {};
+          const estimatedCost = details.estimated_cost || 0;
+          row.push(estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : '$0.0000');
+        });
+
+        costRows.push(row);
+      });
+
+    // Add usage breakdown rows
+    const usageRows = [];
+    usageRows.push(['Context', 'Service/Api', 'Unit', ...Object.keys(completeTestRuns)]);
+
+    Array.from(allCostItems)
+      .sort()
+      .forEach((itemKey) => {
+        const [context, serviceApi, unit] = itemKey.split('|');
+        const row = [context, serviceApi, unit];
+
+        Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+          const services = testRun.costBreakdown?.[context] || {};
+          const serviceKey = Object.keys(services).find((key) => {
+            const parts = key.split('_');
+            const service = parts[0];
+            const api = parts.slice(1, -1).join('/');
+            return `${service}/${api}` === serviceApi;
+          });
+
+          const details = services[serviceKey] || {};
+          const value = details.value || 0;
+          row.push(value > 0 ? value.toLocaleString() : '0');
+        });
+
+        usageRows.push(row);
+      });
 
     // Add config comparison rows
     const configRows = [];
@@ -162,6 +205,9 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       ['=== COST BREAKDOWN ==='],
       ...costRows,
       [''],
+      ['=== USAGE BREAKDOWN ==='],
+      ...usageRows,
+      [''],
       ['=== CONFIGURATION DIFFERENCES ==='],
       ...configRows,
     ];
@@ -171,8 +217,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(
+      2,
+      '0',
+    )}-${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(
+      2,
+      '0',
+    )}`;
     link.setAttribute('href', url);
-    link.setAttribute('download', `test-comparison-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `test-comparison-${timestamp}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -228,8 +282,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     const blob = new Blob([jsonData], { type: 'application/json' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(
+      2,
+      '0',
+    )}-${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(
+      2,
+      '0',
+    )}`;
     link.setAttribute('href', url);
-    link.setAttribute('download', `test-comparison-${new Date().toISOString().split('T')[0]}.json`);
+    link.setAttribute('download', `test-comparison-${timestamp}.json`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();

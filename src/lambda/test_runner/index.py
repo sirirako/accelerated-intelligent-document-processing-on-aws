@@ -7,7 +7,6 @@ import os
 from datetime import datetime
 
 import boto3
-from idp_common.s3 import find_matching_files
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -24,8 +23,6 @@ def handler(event, context):
         test_set_id = input_data['testSetId']
         test_context = input_data.get('context', '')
         tracking_table = os.environ['TRACKING_TABLE']
-        input_bucket = os.environ['INPUT_BUCKET']
-        baseline_bucket = os.environ['BASELINE_BUCKET']
         config_table = os.environ['CONFIG_TABLE']
         
         # Get test set
@@ -37,16 +34,11 @@ def handler(event, context):
         timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
         test_run_id = f"{test_set['name']}-{timestamp}"
         
-        matching_files = find_matching_files(input_bucket, test_set['filePattern'])
-        
-        if not matching_files:
-            raise ValueError(f"No files found matching test set pattern: {test_set['filePattern']}")
-        
         # Capture current config
         config = _capture_config(config_table)
         
-        # Store initial test run metadata
-        _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set['name'], config, matching_files, test_context)
+        # Store initial test run metadata using test set file count
+        _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set['name'], config, [], test_context, test_set['fileCount'])
         
         # Send file copying job to SQS queue
         queue_url = os.environ['FILE_COPY_QUEUE_URL']
@@ -55,21 +47,19 @@ def handler(event, context):
             QueueUrl=queue_url,
             MessageBody=json.dumps({
                 'testRunId': test_run_id,
-                'filePattern': test_set['filePattern'],
-                'inputBucket': input_bucket,
-                'baselineBucket': baseline_bucket,
+                'testSetId': test_set_id,
                 'trackingTable': tracking_table
             })
         )
         
-        logger.info(f"Queued test run {test_run_id} with pattern '{test_set['filePattern']}' for copying")
+        logger.info(f"Queued test run {test_run_id} for test set {test_set_id}")
         
         # Return immediately
         return {
             'testRunId': test_run_id,
             'testSetName': test_set['name'],
             'status': 'QUEUED',
-            'filesCount': len(matching_files),
+            'filesCount': test_set['fileCount'],
             'completedFiles': 0,
             'createdAt': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         }
@@ -109,7 +99,7 @@ def _capture_config(config_table):
     
     return config
 
-def _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set_name, config, files, context=None):
+def _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set_name, config, files, context=None, file_count=0):
     """Store test run metadata in tracking table"""
     table = dynamodb.Table(tracking_table)  # type: ignore[attr-defined]
     
@@ -121,7 +111,7 @@ def _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set_
             'TestSetName': test_set_name,
             'TestRunId': test_run_id,
             'Status': 'QUEUED',
-            'FilesCount': len(files),
+            'FilesCount': file_count,
             'CompletedFiles': 0,
             'FailedFiles': 0,
             'Files': files,
