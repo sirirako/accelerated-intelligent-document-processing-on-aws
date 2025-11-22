@@ -326,14 +326,14 @@ def get_test_run_status(test_run_id):
             
         item = response['Item']
         files = item.get('Files', [])
-        files_count = len(files)
-        
-        logger.info(f"Test run {test_run_id}: Found {files_count} files: {files}")
+        files_count = item.get('FilesCount', 0)
+        logger.info(f"Test run {test_run_id}: Found {files_count} files")
         
         # Always check actual document status from tracking table
         completed_files = 0
         processing_failed_files = 0  # Only count processing failures found during scan
         evaluating_files = 0
+        queued_files = 0
         
         for file_key in files:
             logger.info(f"Checking file: {file_key} for test run: {test_run_id}")
@@ -372,16 +372,21 @@ def get_test_run_status(test_run_id):
                 elif doc_status == 'FAILED':
                     processing_failed_files += 1
                     logger.info(f"File {file_key}: counted as failed")
+                elif doc_status == 'QUEUED':
+                    queued_files += 1
+                    logger.info(f"File {file_key}: counted as queued")
                 else:
                     logger.info(f"File {file_key}: still processing (status: {doc_status})")
             else:
                 logger.warning(f"Document not found: doc#{test_run_id}/{file_key}")
+                # Count missing documents as queued (not yet created)
+                queued_files += 1
         
         # Calculate total failed files
         baseline_failed_files = item.get('BaselineFailedFiles', 0)  # Set by copier, never updated
         total_failed_files = baseline_failed_files + processing_failed_files  # Recalculated each call
         
-        logger.info(f"Test run {test_run_id} counts: completed={completed_files}, processing_failed={processing_failed_files}, baseline_failed={baseline_failed_files}, total_failed={total_failed_files}, evaluating={evaluating_files}, total={files_count}")
+        logger.info(f"Test run {test_run_id} counts: completed={completed_files}, processing_failed={processing_failed_files}, baseline_failed={baseline_failed_files}, total_failed={total_failed_files}, evaluating={evaluating_files}, queued={queued_files}, total={files_count}")
         
         # Determine overall test run status based on document and evaluation states
         if completed_files == files_count and files_count > 0 and total_failed_files == 0:
@@ -390,8 +395,10 @@ def get_test_run_status(test_run_id):
             overall_status = 'PARTIAL_COMPLETE'
         elif evaluating_files > 0:
             overall_status = 'EVALUATING'
-        elif completed_files + total_failed_files + evaluating_files < files_count:
-            overall_status = 'RUNNING'
+        elif queued_files == files_count:
+            overall_status = 'QUEUED'  # All files are still queued
+        elif completed_files + total_failed_files + evaluating_files + queued_files < files_count:
+            overall_status = 'RUNNING'  # Some files are actively processing
         else:
             overall_status = item.get('Status', 'RUNNING')
         

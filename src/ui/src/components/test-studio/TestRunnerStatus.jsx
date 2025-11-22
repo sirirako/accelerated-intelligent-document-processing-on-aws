@@ -36,7 +36,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [testRunId, onComplete]);
 
@@ -44,6 +44,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
 
   const getStatusColor = (status) => {
     const colors = {
+      QUEUED: 'grey',
       RUNNING: 'blue',
       EVALUATING: 'blue',
       COMPLETE: 'green',
@@ -53,34 +54,39 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
     return colors[status] || 'grey';
   };
 
-  const getStatusLabel = (status) => {
-    const labels = {
-      RUNNING: 'Processing Documents',
-      EVALUATING: 'Evaluating Results',
-      COMPLETE: 'Complete',
-      PARTIAL_COMPLETE: 'Partially Complete',
-      FAILED: 'Failed',
-    };
-    return labels[status] || status;
-  };
-
   const getProgressLabel = () => {
-    const { completedFiles, filesCount, evaluatingFiles, failedFiles } = testRunStatus;
+    const { completedFiles, filesCount, evaluatingFiles, failedFiles, status } = testRunStatus;
+    const completed = completedFiles || 0;
+    const total = filesCount || 0;
+    const evaluating = evaluatingFiles || 0;
+    const failed = failedFiles || 0;
+    const processing = Math.max(0, total - completed - evaluating - failed);
 
-    if (testRunStatus.status === 'EVALUATING') {
-      return `${completedFiles}/${filesCount} processed, ${evaluatingFiles} evaluating`;
+    if (status === 'QUEUED') {
+      return `${completed}/${total} files (queued)`;
     }
 
-    if (failedFiles > 0) {
-      return `${completedFiles}/${filesCount} completed, ${failedFiles} failed`;
+    if (status === 'RUNNING') {
+      if (processing > 0) {
+        return `${completed}/${total} completed, ${processing} processing`;
+      }
+      return `${completed}/${total} files processing`;
     }
 
-    return `${completedFiles}/${filesCount} files`;
+    if (status === 'EVALUATING') {
+      return `${completed}/${total} processed, ${evaluating} evaluating`;
+    }
+
+    if (failed > 0) {
+      return `${completed}/${total} completed, ${failed} failed`;
+    }
+
+    return `${completed}/${total} files`;
   };
 
   return (
     <Box>
-      <Badge color={getStatusColor(testRunStatus.status)}>{getStatusLabel(testRunStatus.status)}</Badge>
+      <Badge color={getStatusColor(testRunStatus.status)}>{testRunStatus.status}</Badge>
       <ProgressBar value={testRunStatus.progress} label={getProgressLabel()} />
     </Box>
   );

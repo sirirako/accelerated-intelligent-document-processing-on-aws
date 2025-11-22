@@ -485,9 +485,11 @@ const TestSets = () => {
               <Button iconName="refresh" loading={refreshing} onClick={handleRefresh}>
                 Refresh
               </Button>
-              <Button disabled={selectedItems.length === 0 || loading} onClick={() => setShowDeleteModal(true)}>
-                Delete
-              </Button>
+              <Button 
+                iconName="remove"
+                disabled={selectedItems.length === 0 || loading} 
+                onClick={() => setShowDeleteModal(true)}
+              />
               <ButtonDropdown
                 variant="primary"
                 items={[
