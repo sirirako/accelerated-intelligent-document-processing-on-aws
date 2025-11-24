@@ -44,14 +44,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 error.message?.includes('Request failed with status code 504') ||
                 error.name === 'TimeoutError' ||
                 error.code === 'NetworkError' ||
-                error.errors?.some(err => 
-                  err.errorType === 'Lambda:ExecutionTimeoutException' ||
-                  err.message?.toLowerCase().includes('timeout')
+                error.errors?.some(
+                  (err) => err.errorType === 'Lambda:ExecutionTimeoutException' || err.message?.toLowerCase().includes('timeout'),
                 );
               if (isTimeout && attempt < maxRetries) {
                 console.log(`COMPARE_TEST_RUNS attempt ${attempt} failed, retrying...`, error.message);
                 attempt++;
-                
+
                 // Animate progress during 5-second wait
                 const waitTime = 5000;
                 const intervalTime = 100;
@@ -59,19 +58,21 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 const startProgress = (attempt - 1) * 20;
                 const endProgress = attempt * 20;
                 const progressStep = (endProgress - startProgress) / steps;
-                
+
                 let currentProgress = startProgress;
                 const progressInterval = setInterval(() => {
                   currentProgress += progressStep;
                   setCurrentAttempt(Math.min(currentProgress / 20, 5));
                 }, intervalTime);
-                
-                await new Promise((resolve) => setTimeout(() => {
-                  clearInterval(progressInterval);
-                  setCurrentAttempt(attempt);
-                  resolve();
-                }, waitTime));
-                
+
+                await new Promise((resolve) =>
+                  setTimeout(() => {
+                    clearInterval(progressInterval);
+                    setCurrentAttempt(attempt);
+                    resolve();
+                  }, waitTime),
+                );
+
                 continue;
               }
               throw error;
@@ -359,9 +360,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             totalCost: testRun.totalCost,
             averageAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
-            averageWeightedOverallScore: testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0
-              ? testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length
-              : null,
+            averageWeightedOverallScore:
+              testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0
+                ? testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length
+                : null,
             duration:
               testRun.createdAt && testRun.completedAt
                 ? (() => {
@@ -380,7 +382,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           const breakdown = { ...(testRun.accuracyBreakdown || {}) };
           // Add weighted overall score to accuracy breakdown
           if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-            breakdown.weightedOverallScore = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+            breakdown.weightedOverallScore =
+              testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
           }
           return [testRunId, breakdown];
         }),
@@ -662,13 +665,14 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                       ...Object.fromEntries(
                         Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
                           if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-                            const avg = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+                            const avg =
+                              testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
                             return [testRunId, avg.toFixed(3)];
                           }
                           return [testRunId, 'N/A'];
                         }),
                       ),
-                    }
+                    },
                   ]}
                   columnDefinitions={[
                     { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },

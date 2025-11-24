@@ -14,6 +14,7 @@ import {
   Input,
   Alert,
   Badge,
+  ExpandableSection,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import ADD_TEST_SET from '../../graphql/queries/addTestSet';
@@ -21,8 +22,12 @@ import ADD_TEST_SET_FROM_UPLOAD from '../../graphql/queries/addTestSetFromUpload
 import DELETE_TEST_SETS from '../../graphql/queries/deleteTestSets';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
+import VALIDATE_TEST_FILE_NAME from '../../graphql/queries/checkTestSetFiles';
 
 const client = generateClient();
+
+// Constants
+const MAX_ZIP_SIZE_BYTES = 1073741824; // 1 GB
 
 const TestSets = () => {
   const [testSets, setTestSets] = useState([]);
@@ -32,8 +37,7 @@ const TestSets = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newTestSetName, setNewTestSetName] = useState('');
   const [filePattern, setFilePattern] = useState('');
-  const [inputFiles, setInputFiles] = useState([]);
-  const [baselineFiles, setBaselineFiles] = useState([]);
+  const [zipFile, setZipFile] = useState(null);
   const [matchingFiles, setMatchingFiles] = useState([]);
   const [fileCount, setFileCount] = useState(0);
   const [showFilesModal, setShowFilesModal] = useState(false);
@@ -81,6 +85,20 @@ const TestSets = () => {
     };
   }, [testSets]);
 
+  // Separate discovery polling for new test sets (less frequent)
+  React.useEffect(() => {
+    console.log('Starting discovery polling for new test sets');
+    const discoveryInterval = setInterval(() => {
+      console.log('Discovery polling...');
+      loadTestSets();
+    }, 30000); // Every 30 seconds
+
+    return () => {
+      console.log('Cleaning up discovery polling');
+      clearInterval(discoveryInterval);
+    };
+  }, []); // No dependencies - always runs
+
   // Cleanup polling on unmount
   const handleCheckFiles = async () => {
     if (!filePattern.trim()) return;
@@ -103,52 +121,9 @@ const TestSets = () => {
     }
   };
 
-  const validateFilePairing = () => {
-    if (inputFiles.length === 0 || baselineFiles.length === 0) {
-      return { isValid: false, errors: ['Both input files and baseline files are required'] };
-    }
-
-    if (inputFiles.length !== baselineFiles.length) {
-      return { isValid: false, errors: ['Number of input files must match number of baseline files'] };
-    }
-
-    const inputNames = inputFiles.map((f) => f.name);
-    const baselineNames = baselineFiles.map((f) => f.name);
-    const errors = [];
-
-    // Check each input file has corresponding baseline zip
-    const missingBaselines = inputNames.filter((name) => !baselineNames.includes(`${name}.zip`));
-
-    if (missingBaselines.length > 0) {
-      errors.push(`Missing baseline files: ${missingBaselines.map((name) => `${name}.zip`).join(', ')}`);
-    }
-
-    // Check for extra baseline files
-    const expectedBaselines = inputNames.map((name) => `${name}.zip`);
-    const extraBaselines = baselineNames.filter((name) => !expectedBaselines.includes(name));
-
-    if (extraBaselines.length > 0) {
-      errors.push(`Unexpected baseline files: ${extraBaselines.join(', ')}`);
-    }
-
-    // Check baseline files are zip files
-    const nonZipBaselines = baselineFiles.filter((f) => !f.name.endsWith('.zip'));
-    if (nonZipBaselines.length > 0) {
-      errors.push(`Baseline files must be zip files: ${nonZipBaselines.map((f) => f.name).join(', ')}`);
-    }
-
-    return { isValid: errors.length === 0, errors };
-  };
-
   const validateTestSetName = (name) => {
     const validPattern = /^[a-zA-Z0-9 _-]+$/;
     return validPattern.test(name);
-  };
-
-  const checkTestSetNameToday = (name) => {
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD
-    const expectedId = `${name.replace(/ /g, '-')}_${today}`;
-    return testSets.some((testSet) => testSet.id === expectedId);
   };
 
   const handleAddTestSet = async () => {
@@ -157,24 +132,36 @@ const TestSets = () => {
       return;
     }
 
+    // 1. UI validation using existing validateTestSetName
     if (!validateTestSetName(newTestSetName.trim())) {
       setError('Test set name can only contain letters, numbers, spaces, underscores, and dashes');
       return;
     }
 
-    if (checkTestSetNameToday(newTestSetName.trim())) {
-      if (!confirmReplacement) {
-        setWarningMessage(
-          `Test set "${newTestSetName.trim()}" already exists for today and will be replaced. Click "Add Test Set" again to confirm.`,
-        );
-        setConfirmReplacement(true);
-        return; // Stop here and let user confirm
+    // 2. Backend validation using VALIDATE_TEST_FILE_NAME
+    try {
+      const validationResult = await client.graphql({
+        query: VALIDATE_TEST_FILE_NAME,
+        variables: { fileName: newTestSetName.trim() },
+      });
+
+      const validation = validationResult.data.validateTestFileName;
+      if (validation && validation.exists) {
+        if (!confirmReplacement) {
+          setWarningMessage(
+            `Test set ID "${validation.testSetId}" already exists and will be replaced. Click "Add Test Set" again to confirm.`,
+          );
+          setConfirmReplacement(true);
+          return;
+        }
+        setWarningMessage('');
+      } else {
+        setWarningMessage('');
+        setConfirmReplacement(false);
       }
-      // User has confirmed, proceed with replacement
-      setWarningMessage('');
-    } else {
-      setWarningMessage('');
-      setConfirmReplacement(false);
+    } catch (err) {
+      setError(`Failed to validate test set name: ${err.message}`);
+      return;
     }
 
     setLoading(true);
@@ -225,175 +212,88 @@ const TestSets = () => {
       return;
     }
 
-    if (checkTestSetNameToday(newTestSetName.trim())) {
-      if (!confirmReplacement) {
-        setWarningMessage(
-          `Test set "${newTestSetName.trim()}" already exists for today and will be replaced. Click "Create Test Set" again to confirm.`,
-        );
-        setConfirmReplacement(true);
-        return; // Stop here and let user confirm
-      }
-      // User has confirmed, proceed with replacement
-      setWarningMessage('');
-    } else {
-      setWarningMessage('');
-      setConfirmReplacement(false);
-    }
+    try {
+      const validationResult = await client.graphql({
+        query: VALIDATE_TEST_FILE_NAME,
+        variables: { fileName: newTestSetName.trim() },
+      });
 
-    // Validate file pairing
-    const validation = validateFilePairing();
-    if (!validation.isValid) {
-      setError(validation.errors.join('. '));
+      const validation = validationResult.data.validateTestFileName;
+      if (validation && validation.exists) {
+        if (!confirmReplacement) {
+          setWarningMessage(
+            `Test set ID "${validation.testSetId}" already exists and will be replaced. Click "Create Test Set" again to confirm.`,
+          );
+          setConfirmReplacement(true);
+          return;
+        }
+        setWarningMessage('');
+      } else {
+        setWarningMessage('');
+        setConfirmReplacement(false);
+      }
+    } catch (err) {
+      setError(`Failed to validate test set name: ${err.message}`);
       return;
     }
 
-    // Check for .zip files in input files
-    const zipInputFiles = inputFiles.filter((file) => file.name.toLowerCase().endsWith('.zip'));
-    if (zipInputFiles.length > 0) {
-      setError(`Input files cannot be ZIP files: ${zipInputFiles.map((f) => f.name).join(', ')}`);
+    if (!zipFile) {
+      setError('Zip file is required');
       return;
     }
 
     setLoading(true);
     try {
-      // Prepare file info for GraphQL mutation
-      const inputFileInfos = inputFiles.map((file) => ({
-        fileName: file.name,
-        fileSize: file.size,
-        contentType: file.type,
-      }));
-
-      const baselineFileInfos = baselineFiles.map((file) => ({
-        fileName: file.name,
-        fileSize: file.size,
-        contentType: 'application/zip', // Force standard ZIP content type
-      }));
-
-      // Call GraphQL mutation to get presigned URLs
       const result = await client.graphql({
         query: ADD_TEST_SET_FROM_UPLOAD,
         variables: {
           input: {
-            name: newTestSetName.trim(),
-            inputFiles: inputFileInfos,
-            baselineFiles: baselineFileInfos,
+            fileName: zipFile.name,
+            fileSize: zipFile.size,
           },
         },
       });
 
       const response = result.data.addTestSetFromUpload;
 
-      // Check if response is null (GraphQL error)
-      if (!response) {
-        console.error('GraphQL mutation returned null response:', result);
-        throw new Error('Failed to create test set - server returned null response');
+      if (!response || !response.presignedUrl) {
+        throw new Error('Failed to get upload URL from server');
       }
 
-      // Check if required fields exist
-      if (!response.inputUploadUrls || !response.baselineUploadUrls) {
-        console.error('Missing upload URLs in response:', response);
-        throw new Error('Failed to get upload URLs from server');
+      const presignedPostData = JSON.parse(response.presignedUrl);
+      const formData = new FormData();
+
+      Object.entries(presignedPostData.fields).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+      formData.append('file', zipFile);
+
+      const uploadResponse = await fetch(presignedPostData.url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
       }
 
-      // Upload files using presigned URLs
-      const uploadPromises = [];
-
-      // Upload input files
-      response.inputUploadUrls.forEach((urlInfo, index) => {
-        const file = inputFiles[index];
-
-        // Parse the presigned post data
-        const presignedPostData = JSON.parse(urlInfo.presignedUrl);
-
-        const formData = new FormData();
-
-        // Add all required fields from presigned URL
-        Object.entries(presignedPostData.fields).forEach(([key, value]) => {
-          formData.append(key, value);
-        });
-
-        // Add the file last
-        formData.append('file', file);
-
-        const uploadPromise = fetch(presignedPostData.url, {
-          method: 'POST',
-          body: formData,
-        })
-          .then(async (uploadResponse) => {
-            if (!uploadResponse.ok) {
-              const responseText = await uploadResponse.text();
-              console.error(`Upload response body:`, responseText);
-              throw new Error(`Upload failed for ${file.name}: ${uploadResponse.status} ${uploadResponse.statusText}`);
-            }
-            return uploadResponse;
-          })
-          .catch((uploadError) => {
-            console.error(`Error uploading input file ${file.name}:`, uploadError);
-            throw uploadError;
-          });
-
-        uploadPromises.push(uploadPromise);
-      });
-
-      // Upload baseline files
-      response.baselineUploadUrls.forEach((urlInfo, index) => {
-        const file = baselineFiles[index];
-
-        // Parse the presigned post data
-        const presignedPostData = JSON.parse(urlInfo.presignedUrl);
-
-        const formData = new FormData();
-
-        // Add all required fields from presigned URL
-        Object.entries(presignedPostData.fields).forEach(([key, value]) => {
-          formData.append(key, value);
-        });
-
-        // Add the file last
-        formData.append('file', file);
-
-        const uploadPromise = fetch(presignedPostData.url, {
-          method: 'POST',
-          body: formData,
-        })
-          .then(async (uploadResponse) => {
-            if (!uploadResponse.ok) {
-              const responseText = await uploadResponse.text();
-              console.error(`S3 Error for ${file.name} (${uploadResponse.status}):`, responseText);
-              throw new Error(`Upload failed for ${file.name}: ${uploadResponse.status} ${uploadResponse.statusText}`);
-            }
-            return uploadResponse;
-          })
-          .catch((uploadError) => {
-            console.error(`Error uploading baseline file ${file.name}:`, uploadError);
-            throw uploadError;
-          });
-
-        uploadPromises.push(uploadPromise);
-      });
-
-      // Wait for all uploads to complete
-      await Promise.all(uploadPromises);
-
-      // Add the new test set to the state immediately
       const newTestSet = {
-        id: result.data.addTestSetFromUpload.testSetId,
+        id: response.testSetId,
         name: newTestSetName.trim(),
         status: 'QUEUED',
-        fileCount: inputFiles.length,
+        fileCount: null,
         createdAt: new Date().toISOString(),
-        filePattern: null, // Upload-based test sets don't have patterns
+        filePattern: null,
       };
       setTestSets((prev) => [...prev, newTestSet]);
 
-      setSuccessMessage(`Test set "${newTestSetName}" created successfully. Files are being processed.`);
+      setSuccessMessage(`Test set "${newTestSetName}" created successfully. Zip file is being processed.`);
       setError('');
       setShowAddUploadModal(false);
       setNewTestSetName('');
-      setInputFiles([]);
-      setBaselineFiles([]);
+      setZipFile(null);
     } catch (err) {
-      setError(`Failed to create upload test set: ${err.message}`);
+      setError(`Failed to create test set: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -464,7 +364,36 @@ const TestSets = () => {
     {
       id: 'status',
       header: 'Status',
-      cell: (item) => item.status || '-',
+      cell: (item) => {
+        const status = item.status || '-';
+
+        if (status === 'FAILED' && item.error) {
+          const truncatedError = item.error.length > 15 ? `${item.error.substring(0, 15)}...` : item.error;
+
+          return (
+            <div>
+              <div style={{ color: '#d13212', fontWeight: 'bold' }}>FAILED</div>
+              <div
+                style={{
+                  fontSize: '0.9em',
+                  color: '#666',
+                  marginTop: '2px',
+                  cursor: 'help',
+                  maxWidth: '200px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={item.error}
+              >
+                {truncatedError}
+              </div>
+            </div>
+          );
+        }
+
+        return status;
+      },
     },
     {
       id: 'createdAt',
@@ -485,11 +414,7 @@ const TestSets = () => {
               <Button iconName="refresh" loading={refreshing} onClick={handleRefresh}>
                 Refresh
               </Button>
-              <Button 
-                iconName="remove"
-                disabled={selectedItems.length === 0 || loading} 
-                onClick={() => setShowDeleteModal(true)}
-              />
+              <Button iconName="remove" disabled={selectedItems.length === 0 || loading} onClick={() => setShowDeleteModal(true)} />
               <ButtonDropdown
                 variant="primary"
                 items={[
@@ -618,8 +543,7 @@ const TestSets = () => {
           setConfirmReplacement(false);
           setWarningMessage('');
           setError('');
-          setInputFiles([]);
-          setBaselineFiles([]);
+          setZipFile(null);
         }}
         header="Add Test Set from Upload"
         footer={
@@ -632,18 +556,12 @@ const TestSets = () => {
                   setConfirmReplacement(false);
                   setWarningMessage('');
                   setError('');
-                  setInputFiles([]);
-                  setBaselineFiles([]);
+                  setZipFile(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                loading={loading}
-                onClick={handleAddUploadTestSet}
-                disabled={inputFiles.length === 0 || baselineFiles.length === 0}
-              >
+              <Button variant="primary" loading={loading} onClick={handleAddUploadTestSet} disabled={!zipFile}>
                 Upload and Create Test Set
               </Button>
             </SpaceBetween>
@@ -654,56 +572,94 @@ const TestSets = () => {
           {error && <Alert type="error">{error}</Alert>}
           {warningMessage && <Alert type="warning">{warningMessage}</Alert>}
 
-          <FormField label="Test Set Name">
-            <Input
-              value={newTestSetName}
-              onChange={({ detail }) => {
-                setNewTestSetName(detail.value);
-                setConfirmReplacement(false);
-                setWarningMessage('');
-              }}
-              placeholder="e.g., manual-upload-set-v1"
-            />
-          </FormField>
-
-          <FormField label="Input Files" description="Select multiple input files (PDF, images, etc.)">
-            <input
-              type="file"
-              multiple
-              onChange={(e) => setInputFiles(Array.from(e.target.files))}
-              style={{ width: '100%', padding: '8px' }}
-            />
-            {inputFiles.length > 0 && (
-              <Box margin={{ top: 'xs' }}>
-                <Badge color="blue">{inputFiles.length} input files selected</Badge>
+          <FormField label="Test Set Zip File" description="Select a zip file containing your test set structure">
+            <ExpandableSection headerText="View required file structure" variant="footer">
+              <Box margin={{ bottom: 's' }}>
+                <pre
+                  style={{
+                    backgroundColor: '#f8f9fa',
+                    padding: '12px',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    overflow: 'auto',
+                  }}
+                >
+                  {`my-test-set.zip
+└── my-test-set/
+    ├── input/
+    │   ├── document1.pdf
+    │   └── document2.pdf
+    └── baseline/
+        ├── document1.pdf/
+        │   └── [ground truth files]
+        └── document2.pdf/
+            └── [ground truth files]`}
+                </pre>
               </Box>
-            )}
-          </FormField>
-
-          <FormField label="Baseline Files" description="Select corresponding baseline zip files (filename.ext.zip)">
+              <Alert type="info">Each input file must have a corresponding baseline folder with the same name.</Alert>
+            </ExpandableSection>
             <input
               type="file"
-              multiple
               accept=".zip"
-              onChange={(e) => setBaselineFiles(Array.from(e.target.files))}
+              onChange={async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                  // Check file size
+                  if (file.size > MAX_ZIP_SIZE_BYTES) {
+                    setError(`Zip file size (${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB) exceeds maximum limit of 1 GB`);
+                    setZipFile(null);
+                    setNewTestSetName('');
+                    return;
+                  }
+
+                  // Extract test set name from zip filename (remove .zip extension)
+                  const fileName = file.name.replace(/\.zip$/i, '');
+
+                  // Validate the filename
+                  if (!validateTestSetName(fileName)) {
+                    setError('Zip filename can only contain letters, numbers, spaces, underscores, and dashes');
+                    setZipFile(null);
+                    setNewTestSetName('');
+                    return;
+                  }
+
+                  // Check if test set already exists
+                  try {
+                    const validationResult = await client.graphql({
+                      query: VALIDATE_TEST_FILE_NAME,
+                      variables: { fileName },
+                    });
+
+                    const validation = validationResult.data.validateTestFileName;
+                    if (validation && validation.exists) {
+                      setWarningMessage(`Test set ID "${validation.testSetId}" already exists and will be replaced.`);
+                    } else {
+                      setWarningMessage('');
+                    }
+                  } catch (err) {
+                    setError(`Failed to validate test set name: ${err.message}`);
+                    setZipFile(null);
+                    setNewTestSetName('');
+                    return;
+                  }
+
+                  setZipFile(file);
+                  setNewTestSetName(fileName);
+                  setError('');
+                } else {
+                  setZipFile(null);
+                  setNewTestSetName('');
+                  setWarningMessage('');
+                }
+              }}
               style={{ width: '100%', padding: '8px' }}
             />
-            {baselineFiles.length > 0 && (
+            {zipFile && (
               <Box margin={{ top: 'xs' }}>
-                <Badge color="green">{baselineFiles.length} baseline files selected</Badge>
+                <Badge color="blue">Test Set Name: {newTestSetName}</Badge>
               </Box>
             )}
           </FormField>
-
-          {inputFiles.length > 0 && baselineFiles.length > 0 && (
-            <Box>
-              <Alert type={inputFiles.length === baselineFiles.length ? 'success' : 'warning'}>
-                {inputFiles.length === baselineFiles.length
-                  ? `Ready to upload ${inputFiles.length} file pairs`
-                  : `File count mismatch: ${inputFiles.length} input files, ${baselineFiles.length} baseline files`}
-              </Alert>
-            </Box>
-          )}
         </SpaceBetween>
       </Modal>
 

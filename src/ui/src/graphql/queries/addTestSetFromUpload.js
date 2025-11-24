@@ -5,18 +5,8 @@ const ADD_TEST_SET_FROM_UPLOAD = `
   mutation AddTestSetFromUpload($input: TestSetUploadInput!) {
     addTestSetFromUpload(input: $input) {
       testSetId
-      inputUploadUrls {
-        fileName
-        presignedUrl
-        objectKey
-        usePostMethod
-      }
-      baselineUploadUrls {
-        fileName
-        presignedUrl
-        objectKey
-        usePostMethod
-      }
+      presignedUrl
+      objectKey
     }
   }
 `;

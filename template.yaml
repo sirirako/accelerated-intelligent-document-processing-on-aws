@@ -6683,6 +6683,15 @@ Resources:
       DataSourceName: !GetAtt TestSetDataSource.Name
       TypeName: Query
       FieldName: listInputBucketFiles
+
+  ValidateTestFileNameResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Query
+      FieldName: validateTestFileName
       
   TestRunnerFunction:
     Type: AWS::Serverless::Function
@@ -6936,10 +6945,10 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
-  # Lambda function to extract baseline ZIP files for upload-based test sets
+  # Lambda function to extract uploaded ZIP files for test sets
   ##########################################################################
 
-  TestSetBaselineExtractorFunction:
+  TestSetZipExtractorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -6949,25 +6958,27 @@ Resources:
           - id: W92
             reason: "Lambda function does not need reserved concurrency"
     Properties:
-      CodeUri: src/lambda/test_set_baseline_extractor/
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/test_set_zip_extractor/
       Handler: index.handler
       Runtime: python3.12
       Timeout: 300
       MemorySize: 1024
-      DeadLetterQueue:
-        Type: SQS
-        TargetArn: !GetAtt TestSetBaselineExtractorFunctionDLQ.Arn
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           TRACKING_TABLE: !Ref TrackingTable
+          TEST_SET_BUCKET: !Ref TestSetBucket
       LoggingConfig:
-        LogGroup: !Ref TestSetBaselineExtractorFunctionLogGroup
+        LogGroup: !Ref TestSetZipExtractorFunctionLogGroup
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
-        - S3CrudPolicy:
-            BucketName: !Ref TestSetBucket
         - Statement:
             - Effect: Allow
               Action:
@@ -6977,32 +6988,159 @@ Resources:
                 - kms:GenerateDataKey*
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-      Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt TestSetBaselineExtractorQueue.Arn
-            BatchSize: 1
 
-  TestSetBaselineExtractorFunctionDLQ:
-    Type: AWS::SQS::Queue
+  TestSetZipExtractorFunctionInvokePermission:
+    Type: AWS::Lambda::Permission
     Properties:
-      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      FunctionName: !Ref TestSetZipExtractorFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt TestSetBucket.Arn
 
-  TestSetBaselineExtractorQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
-      VisibilityTimeout: 120  # 2 minutes for faster retries
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt TestSetBaselineExtractorFunctionDLQ.Arn
-        maxReceiveCount: 3
-
-  TestSetBaselineExtractorFunctionLogGroup:
+  TestSetZipExtractorFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
+
+  # Separate policies to break circular dependency
+  TestSetZipExtractorS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: TestSetZipExtractorS3Access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "${TestSetBucket.Arn}/*"
+              - !GetAtt TestSetBucket.Arn
+      Roles:
+        - !Ref TestSetZipExtractorFunctionRole
+
+  # Custom resource to configure S3 bucket notification after both bucket and function exist
+  TestSetBucketNotificationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      InlineCode: |
+        import boto3
+        import cfnresponse
+        import json
+        import logging
+
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        def handler(event, context):
+            logger.info(json.dumps(event))
+            
+            try:
+                s3_client = boto3.client('s3')
+                bucket_name = event['ResourceProperties']['BucketName']
+                function_arn = event['ResourceProperties']['FunctionArn']
+                
+                if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                    # Configure bucket notification
+                    notification_config = {
+                        'LambdaFunctionConfigurations': [
+                            {
+                                'Id': 'TestSetZipExtractor',
+                                'LambdaFunctionArn': function_arn,
+                                'Events': ['s3:ObjectCreated:*'],
+                                'Filter': {
+                                    'Key': {
+                                        'FilterRules': [
+                                            {
+                                                'Name': 'suffix',
+                                                'Value': '.zip'
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                    
+                    s3_client.put_bucket_notification_configuration(
+                        Bucket=bucket_name,
+                        NotificationConfiguration=notification_config
+                    )
+                    
+                elif event['RequestType'] == 'Delete':
+                    # Remove bucket notification
+                    s3_client.put_bucket_notification_configuration(
+                        Bucket=bucket_name,
+                        NotificationConfiguration={}
+                    )
+                
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                
+            except Exception as e:
+                logger.error(f"Error: {str(e)}")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, 
+                               reason=f"Error configuring bucket notification: {str(e)}")
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutBucketNotification
+                - s3:GetBucketNotification
+              Resource: !GetAtt TestSetBucket.Arn
+
+  TestSetBucketNotificationConfiguration:
+    Type: Custom::S3BucketNotification
+    DependsOn:
+      - TestSetBucket
+      - TestSetZipExtractorFunction
+      - TestSetZipExtractorFunctionInvokePermission
+      - TestSetZipExtractorS3Policy
+    Properties:
+      ServiceToken: !GetAtt TestSetBucketNotificationFunction.Arn
+      BucketName: !Ref TestSetBucket
+      FunctionArn: !GetAtt TestSetZipExtractorFunction.Arn
+
+  TestSetResolverS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: TestSetResolverS3Access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "${TestSetBucket.Arn}/*"
+              - !GetAtt TestSetBucket.Arn
+      Roles:
+        - !Ref TestSetResolverFunctionRole
 
   ##########################################################################
   # Lambda function to copy test files
@@ -7163,7 +7301,6 @@ Resources:
           INPUT_BUCKET: !Ref InputBucket
           TEST_SET_BUCKET: !Ref TestSetBucket
           TEST_SET_COPY_QUEUE_URL: !Ref TestSetFileCopyQueue
-          BASELINE_EXTRACTOR_QUEUE_URL: !Ref TestSetBaselineExtractorQueue
           BASELINE_BUCKET: !If
             - ShouldCreateEvaluationBaselineBucket
             - !Ref EvaluationBaselineBucket
@@ -7180,12 +7317,8 @@ Resources:
               - ShouldCreateEvaluationBaselineBucket
               - !Ref EvaluationBaselineBucket
               - !Ref EvaluationBaselineBucketName
-        - S3CrudPolicy:
-            BucketName: !Ref TestSetBucket
         - SQSSendMessagePolicy:
             QueueName: !GetAtt TestSetFileCopyQueue.QueueName
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt TestSetBaselineExtractorQueue.QueueName
         - Statement:
             - Effect: Allow
               Action:

@@ -128,12 +128,12 @@ def _update_test_set_status(tracking_table, test_set_id, status, error=None):
     try:
         update_expression = 'SET #status = :status'
         expression_values = {':status': status}
-        expression_names = {'#status': 'Status'}
+        expression_names = {'#status': 'status'}
         
         if error:
             update_expression += ', #error = :error'
             expression_values[':error'] = error
-            expression_names['#error'] = 'Error'
+            expression_names['#error'] = 'error'
         
         table.update_item(
             Key={'PK': f'testset#{test_set_id}', 'SK': 'metadata'},

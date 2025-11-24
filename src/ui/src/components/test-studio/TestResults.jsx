@@ -41,15 +41,15 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
       {accuracyBreakdown && (
         <Container header={<Header variant="h3">Average Accuracy Breakdown</Header>}>
           <Table
-            items={[ 
+            items={[
               ...Object.entries(accuracyBreakdown).map(([key, value]) => ({
-              metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-              value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
-                })),
-                {
-                  metric: "Weighted Overall Score",
-                  value: averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : "0.000",
-                },
+                metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
+              })),
+              {
+                metric: 'Weighted Overall Score',
+                value: averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : '0.000',
+              },
             ]}
             columnDefinitions={[
               { id: 'metric', header: 'Metric', cell: (item) => item.metric },
@@ -263,7 +263,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
               message: retryError.message,
               code: retryError.code,
               name: retryError.name,
-              error: retryError
+              error: retryError,
             });
             const isTimeout =
               retryError.message?.toLowerCase().includes('timeout') ||
@@ -271,14 +271,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
               retryError.message?.includes('Request failed with status code 504') ||
               retryError.name === 'TimeoutError' ||
               retryError.code === 'NetworkError' ||
-              retryError.errors?.some(err => 
-                err.errorType === 'Lambda:ExecutionTimeoutException' ||
-                err.message?.toLowerCase().includes('timeout')
+              retryError.errors?.some(
+                (err) => err.errorType === 'Lambda:ExecutionTimeoutException' || err.message?.toLowerCase().includes('timeout'),
               );
             if (isTimeout && attempt < maxRetries) {
               console.log(`GET_TEST_RUN attempt ${attempt} failed, retrying...`, retryError.message);
               attempt++;
-              
+
               // Animate progress during 5-second wait
               const waitTime = 5000;
               const intervalTime = 100;
@@ -286,19 +285,21 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
               const startProgress = (attempt - 1) * 20;
               const endProgress = attempt * 20;
               const progressStep = (endProgress - startProgress) / steps;
-              
+
               let currentProgress = startProgress;
               const progressInterval = setInterval(() => {
                 currentProgress += progressStep;
                 setCurrentAttempt(Math.min(currentProgress / 20, 5));
               }, intervalTime);
-              
-              await new Promise((resolve) => setTimeout(() => {
-                clearInterval(progressInterval);
-                setCurrentAttempt(attempt);
-                resolve();
-              }, waitTime));
-              
+
+              await new Promise((resolve) =>
+                setTimeout(() => {
+                  clearInterval(progressInterval);
+                  setCurrentAttempt(attempt);
+                  resolve();
+                }, waitTime),
+              );
+
               continue;
             }
             throw retryError;
@@ -350,9 +351,10 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const hasAccuracyData = results.overallAccuracy !== null && results.overallAccuracy !== undefined;
 
   // Calculate average weighted overall score
-  const averageWeightedScore = results.weightedOverallScores && results.weightedOverallScores.length > 0
-    ? results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length
-    : null;
+  const averageWeightedScore =
+    results.weightedOverallScores && results.weightedOverallScores.length > 0
+      ? results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length
+      : null;
 
   let costBreakdown = null;
   let accuracyBreakdown = null;
@@ -526,16 +528,12 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           <Box>
             <Box variant="awsui-key-label">Average Accuracy</Box>
             <Box fontSize="heading-l">
-              {results.overallAccuracy !== null && results.overallAccuracy !== undefined
-                ? results.overallAccuracy.toFixed(3)
-                : 'N/A'}
+              {results.overallAccuracy !== null && results.overallAccuracy !== undefined ? results.overallAccuracy.toFixed(3) : 'N/A'}
             </Box>
           </Box>
           <Box>
             <Box variant="awsui-key-label">Average Weighted Overall Score</Box>
-            <Box fontSize="heading-l">
-              {averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : 'N/A'}
-            </Box>
+            <Box fontSize="heading-l">{averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : 'N/A'}</Box>
           </Box>
           <Box>
             <Box variant="awsui-key-label">Duration</Box>
@@ -638,7 +636,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
         {/* Breakdown Tables */}
         {(costBreakdown || accuracyBreakdown) && (
-          <ComprehensiveBreakdown costBreakdown={costBreakdown} accuracyBreakdown={accuracyBreakdown} averageWeightedScore={averageWeightedScore} />
+          <ComprehensiveBreakdown
+            costBreakdown={costBreakdown}
+            accuracyBreakdown={accuracyBreakdown}
+            averageWeightedScore={averageWeightedScore}
+          />
         )}
       </SpaceBetween>
 

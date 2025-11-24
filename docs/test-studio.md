@@ -1,163 +1,70 @@
 # Test Studio
 
-The Test Studio provides a comprehensive interface for managing test sets, running tests, and analyzing results directly from the web UI. This system enables users to create reusable test sets, execute document processing tests, and compare performance metrics across multiple test runs.
+The Test Studio provides a comprehensive interface for managing test sets, running tests, and analyzing results directly from the web UI.
 
 ## Overview
 
-The Test Studio consists of three main sections:
+The Test Studio consists of two main tabs:
 1. **Test Sets**: Create and manage reusable collections of test documents
-2. **Test Runner**: Execute tests with live status monitoring
-3. **Test Results**: View and compare test run outcomes
-
-The system supports real-time monitoring, prevents concurrent test execution, and maintains test state across navigation.
+2. **Test Executions**: Execute tests, view results, and compare test runs
 
 ## Architecture
 
 ### Backend Components
 
+#### TestSetResolver Lambda
+- **Location**: `src/lambda/test_set_resolver/index.py`
+- **Purpose**: Handles GraphQL operations for test set management
+- **Features**: Creates test sets, scans TestSetBucket for direct uploads, validates file matching, manages test set status
+
+#### TestSetZipExtractor Lambda
+- **Location**: `src/lambda/test_set_zip_extractor/index.py`
+- **Purpose**: Extracts and validates uploaded zip files
+- **Features**: S3 event triggered extraction, file validation, status updates
+
 #### TestRunner Lambda
-- **Purpose**: Initiates test runs and queues file processing jobs
 - **Location**: `src/lambda/test_runner/index.py`
-- **Functionality**:
-  - Validates test sets and finds matching files
-  - Stores initial test run metadata with QUEUED status
-  - Sends SQS message to trigger asynchronous file processing
-  - Returns immediately to prevent AppSync timeout issues
-  - Optimized for fast response (< 30 seconds)
+- **Purpose**: Initiates test runs and queues file processing jobs
+- **Features**: Test validation, SQS message queuing, fast response optimization
 
 #### TestFileCopier Lambda
-- **Purpose**: Handles asynchronous file copying and processing initiation
 - **Location**: `src/lambda/test_file_copier/index.py`
-- **Functionality**:
-  - Processes SQS messages from TestRunner
-  - Updates test run status to PROCESSING
-  - Copies baseline files for evaluation comparison
-  - Copies input files to trigger document processing pipeline
-  - Handles errors and updates status to FAILED if needed
-  - Uses high concurrency for fast file operations
-
-#### SQS Integration
-- **TestFileCopyQueue**: Main queue for file copying jobs
-- **TestFileCopyQueueDLQ**: Dead letter queue for failed operations
-- **Message Format**: Contains test run ID, file pattern, bucket names, and tracking table
-- **Benefits**: Reliable async processing, automatic retries, prevents AppSync timeouts
+- **Purpose**: Handles asynchronous file copying and processing initiation
+- **Features**: SQS message processing, file copying, status management
 
 #### TestResultsResolver Lambda
-- **Purpose**: Handles GraphQL queries for test results and comparisons
 - **Location**: `src/lambda/test_results_resolver/index.py`
-- **Functionality**:
-  - Retrieves test run data and status
-  - Performs configuration comparison logic
-  - Aggregates cost and usage metrics
-  - Provides service-level breakdowns
+- **Purpose**: Handles GraphQL queries for test results and comparisons
+- **Features**: Result retrieval, comparison logic, metrics aggregation
 
 ### GraphQL Schema
 - **Location**: `src/api/schema.graphql`
-- **Queries Added**:
-  - `getTestSets`: List available test sets
-  - `getTestRuns`: List test runs with filtering
-  - `getTestRun`: Get detailed test run data
-  - `compareTestRuns`: Compare multiple test runs
-  - `startTestRun`: Initiate new test execution
-  - `getTestRunStatus`: Real-time status monitoring
+- **Operations**: `getTestSets`, `addTestSet`, `addTestSetFromUpload`, `deleteTestSets`, `getTestRuns`, `startTestRun`, `compareTestRuns`
 
 ### Frontend Components
 
-The Test Studio is now consolidated into a single `test-studio` directory containing all related components:
-
-#### Test Studio Layout
+#### TestStudioLayout
 - **Location**: `src/ui/src/components/test-studio/TestStudioLayout.jsx`
-- **Purpose**: Main container with tab navigation and global test state management
-- **Features**:
-  - Three-tab interface (Sets, Runner, Results)
-  - Global test state persistence across navigation
-  - Live test status display when tests are running
-  - URL-based tab navigation
+- **Purpose**: Main container with two-tab navigation and global state management
 
-#### Test Sets
+#### TestSets
 - **Location**: `src/ui/src/components/test-studio/TestSets.jsx`
-- **Purpose**: Manage collections of test documents
-- **Features**:
-  - Create new test sets with file patterns
-  - View existing test sets with file counts
-  - Edit and delete test sets
-  - File pattern validation
+- **Purpose**: Manage test set collections
+- **Features**: Pattern-based creation, zip upload, direct upload detection, dual polling (3s active, 30s discovery)
 
-#### Test Runner
-- **Location**: `src/ui/src/components/test-studio/TestRunner.jsx`
-- **Purpose**: Execute tests with selected test sets
-- **Features**:
-  - Test set selection dropdown
-  - Single test execution (prevents concurrent runs)
-  - Disabled state when test is already running
-  - Warning alerts for concurrent test attempts
-  - Live status integration
+#### TestExecutions
+- **Location**: `src/ui/src/components/test-studio/TestExecutions.jsx`
+- **Purpose**: Unified interface combining TestRunner and TestResultsList
+- **Features**: Test execution, results viewing, comparison, export, delete operations
 
-#### Test Results List
-- **Location**: `src/ui/src/components/test-studio/TestResultsList.jsx`
-- **Purpose**: Unified interface for viewing, comparing, and managing test results
-- **Features**:
-  - Test run listing with filtering and pagination
-  - Multi-select for comparison
-  - Navigation to detailed test results view
-  - Delete functionality for test runs
-  - Export capabilities
-  - Integrated comparison modal
+## Component Structure
 
-#### Test Results Detail
-- **Location**: `src/ui/src/components/test-studio/TestResults.jsx`
-- **Purpose**: Detailed view of individual test run results
-- **Features**:
-  - Comprehensive metrics and cost analysis
-  - File-level breakdown
-  - Error analysis and reporting
-  - Performance metrics
-
-#### Test Comparison
-- **Location**: `src/ui/src/components/test-studio/TestComparison.jsx`
-- **Purpose**: Side-by-side comparison of multiple test runs
-- **Features**:
-  - Configuration comparison
-  - Performance metrics comparison
-  - Cost analysis comparison
-  - Visual difference highlighting
-
-#### Test Runner Status
-- **Location**: `src/ui/src/components/test-studio/TestRunnerStatus.jsx`
-- **Purpose**: Real-time test execution monitoring
-- **Features**:
-  - Live progress tracking
-  - Status updates across navigation
-  - Completion notifications
-  - Error state handling
-
-#### Delete Test Modal
-- **Location**: `src/ui/src/components/test-studio/DeleteTestModal.jsx`
-- **Purpose**: Reusable confirmation modal for test-related deletions
-- **Features**:
-  - Supports both test runs and test sets
-  - Displays item details for confirmation
-  - Loading states during deletion
-  - Proper error handling
-
-## Component Consolidation
-
-The Test Studio has been streamlined by consolidating related components:
-
-### Previous Structure
-```
-components/
-├── test-studio-layout/
-├── test-results/
-└── test-comparison/
-```
-
-### Current Structure
 ```
 components/
 └── test-studio/
     ├── TestStudioLayout.jsx
     ├── TestSets.jsx
+    ├── TestExecutions.jsx
     ├── TestRunner.jsx
     ├── TestResultsList.jsx
     ├── TestResults.jsx
@@ -167,229 +74,71 @@ components/
     └── index.js
 ```
 
-### Merged Components
-- **TestResultsAndComparison** → **TestResultsList**: The wrapper component was merged into TestResultsList since it provided duplicate functionality for navigation and comparison that TestResultsList already handled.
+## Test Sets
 
-## Test Studio Interface Guide
+### Creating Test Sets
+1. **Pattern-based**: Define file patterns (e.g., `*.pdf`)
+2. **Zip Upload**: Upload zip containing `input/` and `baseline/` folders
+3. **Direct Upload**: Files uploaded directly to TestSetBucket are auto-detected
 
-### Accessing Test Studio
-1. **Main Navigation**: Click "Test Studio" in the main navigation menu
-2. **Direct URL**: Navigate to `/#/test-studio` with optional `?tab=` parameter
+### File Structure Requirements
+```
+my-test-set/
+├── input/
+│   ├── document1.pdf
+│   └── document2.pdf
+└── baseline/
+    ├── document1.pdf/
+    │   └── [ground truth files]
+    └── document2.pdf/
+        └── [ground truth files]
+```
 
-### Test Sets Tab
+### Validation Rules
+- Each input file must have corresponding baseline folder
+- Baseline folder name must match input filename exactly
+- Status: COMPLETED (valid), FAILED (validation errors), PROCESSING (uploading)
 
-#### Creating Test Sets
-1. Click "Create Test Set" button
-2. Enter test set name and description
-3. Define file pattern (e.g., `*.pdf`, `invoice_*.pdf`)
-4. Save test set for reuse
+### Upload Methods
+1. **UI Zip Upload**: S3 event → Lambda extraction → Validation → Status update
+2. **Direct S3 Upload**: Detected via refresh button or automatic polling
 
-#### Managing Test Sets
-- **View**: List shows name, pattern, and file count
-- **Edit**: Modify existing test set properties
-- **Delete**: Remove test sets no longer needed using DeleteTestModal
-- **File Count**: Automatically calculated based on pattern
+## Test Executions
 
-### Test Runner Tab
+### Running Tests
+1. Select test set from dropdown
+2. Click "Run Test" (single test execution only)
+3. Monitor progress via TestRunnerStatus
+4. View results in integrated listing
 
-#### Running Tests
-1. **Select Test Set**: Choose from dropdown of available test sets
-2. **Run Test**: Click "Run Test" button to start execution
-3. **Monitor Progress**: Live status appears at top of Test Studio via TestRunnerStatus
-4. **Wait for Completion**: Button remains disabled until test finishes
+### Test States
+- **QUEUED**: File copying jobs queued in SQS
+- **RUNNING**: Files being copied and processed
+- **COMPLETED**: Test finished successfully
+- **FAILED**: Errors during processing
 
-#### Test Execution States
-- **Ready**: Button enabled, no test running
-- **QUEUED**: Test run created, file copying jobs queued in SQS
-- **RUNNING**: Files being copied and documents being processed
-- **COMPLETED**: Test finished successfully, button re-enabled
-- **FAILED**: Test encountered errors during processing
-
-#### Concurrent Test Prevention
-- **Single Test Limit**: Only one test can run at a time
-- **Disabled Button**: "Run Test" button disabled when test is active
-- **Warning Message**: Alert explains why button is disabled
-- **Global State**: Test state persists across tab navigation
-
-### Test Results Tab
-
-#### Unified Results Interface
-The Results tab now provides a single, integrated interface that handles:
-
-#### Viewing Results
-- **Test Run List**: Shows recent test executions with truncated IDs and hover tooltips
-- **Status Indicators**: Running, completed, failed states
-- **Detailed View**: Click test run for comprehensive metrics via TestResults component
-- **Time Filtering**: Filter by time periods
-- **Pagination**: Configurable page sizes for large result sets
-
-#### Comparing Results
-- **Multi-Select**: Choose multiple test runs for comparison
-- **Comparison Modal**: Integrated TestComparison component in modal
-- **Side-by-Side**: Compare metrics, costs, and configurations
-- **Export Options**: Download results for external analysis
-
-#### Managing Results
-- **Delete Functionality**: Remove test runs using DeleteTestModal
-- **Bulk Operations**: Select multiple test runs for deletion
-- **Confirmation**: Clear confirmation dialogs showing test run details
-
-### Live Status Monitoring
-
-#### Global Test State
-- **Persistent State**: Test status maintained across navigation via TestRunnerStatus
-- **Live Updates**: Real-time progress monitoring
-- **Status Display**: Shows current test run ID and progress
-- **Auto-Refresh**: Status updates without manual refresh
-
-#### Navigation Behavior
-- **State Persistence**: Test state survives tab switching
-- **Return to Studio**: Status visible when returning to Test Studio
-- **Cross-Tab Awareness**: All tabs aware of running test state
+### Results Management
+- Filter and paginate test runs
+- Multi-select for comparison
+- Navigate to detailed results view
+- Delete and export functionality
 
 ## Key Features
 
-### Consolidated Architecture
-- **Single Directory**: All test-related components in one location
-- **Reduced Complexity**: Eliminated duplicate wrapper components
-- **Improved Maintainability**: Cleaner import paths and dependencies
-- **Reusable Components**: Shared components like DeleteTestModal
-
-### Enhanced User Experience
-- **Truncated IDs**: Test run IDs displayed as shortened versions with full ID on hover
-- **Consistent Modals**: Unified delete confirmation across test sets and test runs
-- **Integrated Navigation**: Seamless flow between list, detail, and comparison views
-- **Responsive Design**: Proper text truncation and column sizing
-
 ### Test Set Management
-- **Reusable Collections**: Create test sets for repeated use
-- **Pattern-Based**: Use file patterns to define document sets
-- **Dynamic Counts**: Automatic file count calculation
-- **Validation**: Pattern validation and error handling
+- Reusable collections with file patterns
+- Zip upload with automatic extraction
+- Direct upload detection via dual polling
+- File structure validation with error reporting
 
-### Single Test Execution
-- **Concurrency Prevention**: Only one test runs at a time
-- **State Management**: Global test state across navigation
-- **User Feedback**: Clear indication of test status
-- **Button States**: Disabled/enabled based on test activity
+### Test Execution
+- Single test concurrency prevention
+- Real-time status monitoring
+- Global state persistence across navigation
+- SQS-based asynchronous processing
 
-### Live Status Monitoring
-- **Real-Time Updates**: Live progress tracking via TestRunnerStatus
-- **Persistent Display**: Status visible across tab navigation
-- **Automatic Cleanup**: Status cleared on test completion
-- **Error Handling**: Failed test state management
-
-## User Workflows
-
-### Creating and Running a Test
-1. **Navigate to Test Studio** → Sets tab
-2. **Create Test Set**: Define name, description, and file pattern
-3. **Switch to Runner Tab**: Select the new test set
-4. **Execute Test**: Click "Run Test" and monitor progress
-5. **View Results**: Switch to Results tab when complete
-
-### Managing Test Results
-1. **View Results List**: Browse recent test runs with truncated IDs
-2. **Select for Comparison**: Multi-select test runs for analysis
-3. **Compare Results**: Use integrated comparison modal
-4. **Delete Old Results**: Clean up using bulk delete functionality
-5. **Export Data**: Download results for external analysis
-
-### Monitoring Long-Running Tests
-1. **Start Test**: Begin execution in Runner tab
-2. **Navigate Away**: Switch to other parts of application
-3. **Return to Studio**: Test status still visible via TestRunnerStatus
-4. **Check Progress**: Live updates show current state
-
-## Technical Implementation
-
-### Component Architecture
-```
-TestStudioLayout (Container)
-├── TestSets (Tab 1)
-├── TestRunner (Tab 2) + TestRunnerStatus
-└── TestResultsList (Tab 3)
-    ├── TestResults (Detail View)
-    ├── TestComparison (Comparison Modal)
-    └── DeleteTestModal (Confirmation)
-```
-
-### State Management
-- **Global Context**: Test state in App.jsx context
-- **Persistence**: State survives component unmounting
-- **Synchronization**: All components use same state source
-- **Cleanup**: Automatic state reset on completion
-
-### Data Flow
-```
-User Action → TestRunner → SQS Message → TestFileCopier → File Operations → Status Updates → UI Refresh
-```
-
-### Status Flow
-```
-QUEUED (TestRunner) → RUNNING (TestFileCopier) → COMPLETED/FAILED (Document Processing)
-```
-
-### SQS Message Format
-```json
-{
-  "testRunId": "test-set-1-20231107-162647",
-  "filePattern": "lending*",
-  "inputBucket": "input-bucket-name",
-  "baselineBucket": "baseline-bucket-name", 
-  "trackingTable": "tracking-table-name"
-}
-```
-
-### Import Structure
-All components now use local imports within the test-studio directory:
-```javascript
-// Before consolidation
-import TestResults from '../test-results/TestResults';
-import TestComparison from '../test-comparison/TestComparison';
-
-// After consolidation
-import TestResults from './TestResults';
-import TestComparison from './TestComparison';
-```
-
-## Performance Considerations
-
-### Frontend Optimization
-- **Reduced Bundle Size**: Consolidated components reduce import overhead
-- **Component Cleanup**: Proper useEffect cleanup
-- **State Efficiency**: Minimal re-renders
-- **Memory Management**: Prevent memory leaks
-- **Responsive Updates**: Efficient status polling
-
-### UI Performance
-- **Text Truncation**: CSS-based truncation for long test run IDs
-- **Table Optimization**: Proper column sizing and wrapping prevention
-- **Modal Efficiency**: Lazy loading of comparison components
-- **Pagination**: Configurable page sizes for large datasets
-
-## Troubleshooting
-
-### Common Issues
-
-#### Component Import Errors
-- **Check Paths**: Verify import paths after consolidation
-- **Missing Components**: Ensure all components moved to test-studio directory
-- **Index Exports**: Verify index.js exports are updated
-
-#### Test Run Display Issues
-- **Truncated IDs**: Hover over shortened IDs to see full test run ID
-- **Wrapping Text**: Check table wrapLines={false} setting
-- **Column Width**: Adjust column widths for proper display
-
-#### Navigation Problems
-- **Tab Navigation**: Verify TestStudioLayout tab routing
-- **Modal State**: Check modal visibility state management
-- **Back Navigation**: Ensure proper state cleanup on navigation
-
-## Related Documentation
-
-- [Architecture](./architecture.md) - Overall system architecture
-- [Configuration](./configuration.md) - System configuration options
-- [Monitoring](./monitoring.md) - Monitoring and logging capabilities
-- [Evaluation Framework](./evaluation.md) - Accuracy assessment system
+### Results Analysis
+- Comprehensive metrics display
+- Side-by-side test comparison
+- Export capabilities
+- Integrated delete operations

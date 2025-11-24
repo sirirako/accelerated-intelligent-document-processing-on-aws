@@ -1,6 +1,6 @@
 import importlib.util
 import os
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -10,6 +10,8 @@ with patch.dict(
     {
         "TRACKING_TABLE": "test-table",
         "INPUT_BUCKET": "test-bucket",
+        "TEST_SET_BUCKET": "test-set-bucket",
+        "TEST_SET_COPY_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue",
         "AWS_REGION": "us-east-1",
     },
 ):
@@ -52,22 +54,37 @@ class TestTestSetResolver:
 
     @patch("uuid.uuid4")
     @patch("datetime.datetime")
-    def test_add_test_set_structure(self, mock_datetime, mock_uuid):
+    @patch("boto3.client")
+    @patch.dict(
+        os.environ,
+        {
+            "TEST_SET_COPY_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue",
+            "TRACKING_TABLE": "test-table",
+            "TEST_SET_BUCKET": "test-set-bucket",
+        },
+    )
+    def test_add_test_set_structure(self, mock_boto3, mock_datetime, mock_uuid):
         """Test add_test_set returns correct structure"""
         mock_uuid.return_value = "test-id"
         mock_datetime.utcnow.return_value.isoformat.return_value = "2025-10-17T16:00:00"
+
+        # Mock SQS client
+        mock_sqs = Mock()
+        mock_boto3.return_value = mock_sqs
 
         with patch.object(test_set_index.db_client, "put_item") as mock_put:
             args = {"name": "test", "filePattern": "*.pdf", "fileCount": 5}
             result = test_set_index.add_test_set(args)
 
             mock_put.assert_called_once()
-            assert result["id"] == "test-id"
+            assert result["id"] == "test"  # ID is generated from name
+            assert result["name"] == "test"
             assert result["name"] == "test"
             assert result["filePattern"] == "*.pdf"
             assert result["fileCount"] == 5
             assert "createdAt" in result
 
+    @patch.dict(os.environ, {"TEST_SET_BUCKET": "test-set-bucket"})
     def test_delete_test_sets_calls_client(self):
         """Test delete_test_sets uses DynamoDB client"""
         with patch.object(test_set_index.db_client, "delete_item") as mock_delete:

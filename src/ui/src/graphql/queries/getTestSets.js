@@ -10,6 +10,7 @@ const GET_TEST_SETS = `
       fileCount
       status
       createdAt
+      error
     }
   }
 `;

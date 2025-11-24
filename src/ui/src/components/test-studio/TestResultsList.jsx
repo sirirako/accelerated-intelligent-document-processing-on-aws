@@ -325,6 +325,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
             header: 'Status',
             cell: getStatusCell,
             sortingField: 'status',
+            width: 200,
           },
           {
             id: 'filesCount',

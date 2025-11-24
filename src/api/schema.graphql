@@ -294,6 +294,11 @@ type ConfigSetting @aws_cognito_user_pools @aws_iam {
   values: AWSJSON!
 }
 
+type TestSetValidationResponse @aws_cognito_user_pools @aws_iam {
+  exists: Boolean!
+  testSetId: String
+}
+
 type TestSet @aws_cognito_user_pools @aws_iam {
   id: String!
   name: String!
@@ -301,12 +306,12 @@ type TestSet @aws_cognito_user_pools @aws_iam {
   fileCount: Int!
   status: String
   createdAt: AWSDateTime!
+  error: String
 }
 
 input TestSetUploadInput {
-  name: String!
-  inputFiles: [FileUploadInfo!]!
-  baselineFiles: [FileUploadInfo!]!
+  fileName: String!
+  fileSize: Int!
 }
 
 input FileUploadInfo {
@@ -317,8 +322,8 @@ input FileUploadInfo {
 
 type TestSetUploadResponse @aws_cognito_user_pools @aws_iam {
   testSetId: String!
-  inputUploadUrls: [PresignedUploadUrl!]!
-  baselineUploadUrls: [PresignedUploadUrl!]!
+  presignedUrl: String!
+  objectKey: String!
 }
 
 type PresignedUploadUrl @aws_cognito_user_pools @aws_iam {
@@ -457,6 +462,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   compareTestRuns(testRunIds: [String!]!): TestRunComparison @aws_cognito_user_pools
   getTestSets: [TestSet] @aws_cognito_user_pools
   listInputBucketFiles(filePattern: String!): [String] @aws_cognito_user_pools
+  validateTestFileName(fileName: String!): TestSetValidationResponse @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {

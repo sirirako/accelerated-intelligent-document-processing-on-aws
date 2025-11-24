@@ -54,7 +54,7 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
     return colors[status] || 'grey';
   };
 
-  const getProgressLabel = () => {
+  const getProgressDetails = () => {
     const { completedFiles, filesCount, evaluatingFiles, failedFiles, status } = testRunStatus;
     const completed = completedFiles || 0;
     const total = filesCount || 0;
@@ -62,32 +62,40 @@ const TestRunnerStatus = ({ testRunId, onComplete }) => {
     const failed = failedFiles || 0;
     const processing = Math.max(0, total - completed - evaluating - failed);
 
+    const parts = [];
+
     if (status === 'QUEUED') {
-      return `${completed}/${total} files (queued)`;
-    }
-
-    if (status === 'RUNNING') {
+      parts.push(`${completed}/${total} files (queued)`);
+    } else if (status === 'RUNNING') {
+      parts.push(`${completed}/${total} completed`);
       if (processing > 0) {
-        return `${completed}/${total} completed, ${processing} processing`;
+        parts.push(`${processing} processing`);
       }
-      return `${completed}/${total} files processing`;
+    } else if (status === 'EVALUATING') {
+      parts.push(`${completed}/${total} processed`);
+      parts.push(`${evaluating} evaluating`);
+    } else {
+      if (failed > 0) {
+        parts.push(`${completed}/${total} completed`);
+        parts.push(`${failed} failed`);
+      } else {
+        parts.push(`${completed}/${total} files`);
+      }
     }
 
-    if (status === 'EVALUATING') {
-      return `${completed}/${total} processed, ${evaluating} evaluating`;
-    }
-
-    if (failed > 0) {
-      return `${completed}/${total} completed, ${failed} failed`;
-    }
-
-    return `${completed}/${total} files`;
+    return parts;
   };
 
   return (
     <Box>
       <Badge color={getStatusColor(testRunStatus.status)}>{testRunStatus.status}</Badge>
-      <ProgressBar value={testRunStatus.progress} label={getProgressLabel()} />
+      <div style={{ marginTop: '4px' }}>
+        {getProgressDetails().map((detail) => (
+          <div key={detail} style={{ fontSize: '0.9em', color: '#666' }}>
+            ▸ {detail}
+          </div>
+        ))}
+      </div>
     </Box>
   );
 };

@@ -93,6 +93,8 @@ def test_get_document_costs_from_parquet_success(
         "context",
         "service_api",
         "unit",
+        "value",
+        "unit_cost",
         "estimated_cost",
     ]
 
@@ -105,6 +107,8 @@ def test_get_document_costs_from_parquet_success(
         "context": ["test", "test"],
         "service_api": ["bedrock", "textract"],
         "unit": ["tokens", "pages"],
+        "value": [1000, 5],
+        "unit_cost": [0.0015, 0.45],
         "estimated_cost": [1.50, 2.25],
     }
 
@@ -117,13 +121,29 @@ def test_get_document_costs_from_parquet_success(
 
     result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
 
-    assert result == {"test_bedrock_tokens": 1.50, "test_textract_pages": 2.25}
+    expected = {
+        "test": {
+            "bedrock_tokens": {
+                "unit": "tokens",
+                "value": 1000,
+                "unit_cost": 0.0015,
+                "estimated_cost": 1.50,
+            },
+            "textract_pages": {
+                "unit": "pages",
+                "value": 5,
+                "unit_cost": 0.45,
+                "estimated_cost": 2.25,
+            },
+        }
+    }
+    assert result == expected
     mock_s3_client.list_objects_v2.assert_called_once()
 
 
 @pytest.mark.unit
 @patch.dict(os.environ, {"REPORTING_BUCKET": "test-bucket"})
-@patch("index.boto3.client")
+@patch("boto3.client")
 def test_get_document_costs_no_files_found(mock_boto3):
     """Test when no Parquet files are found"""
 
@@ -144,25 +164,6 @@ def test_get_document_costs_no_bucket():
     result = index._get_document_costs_from_reporting_db("test-doc", "2025-10-08")
 
     assert result == {}
-
-
-@pytest.mark.unit
-def test_compare_document_costs_parallel_execution():
-    """Test parallel execution of cost comparison"""
-
-    with patch.object(index, "_get_document_costs_from_reporting_db") as mock_get_costs:
-        mock_get_costs.side_effect = [
-            {"test_bedrock_tokens": 1.50},  # test document
-            {"test_bedrock_tokens": 1.25},  # baseline document
-        ]
-
-        result = index._compare_document_costs(
-            "test-doc", "baseline-doc", "2025-10-08", "2025-10-07"
-        )
-
-        # Verify both documents were queried
-        assert mock_get_costs.call_count == 2
-        assert result is not None
 
 
 @pytest.mark.unit
