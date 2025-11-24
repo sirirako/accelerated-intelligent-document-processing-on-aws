@@ -344,6 +344,18 @@ type AgentChatMessage @aws_cognito_user_pools @aws_iam {
   timestamp: String!
   isProcessing: Boolean
   sessionId: String
+  messageType: String
+  toolMetadata: ToolMetadata
+}
+
+type ToolMetadata @aws_cognito_user_pools @aws_iam {
+  toolName: String
+  toolUseId: String
+}
+
+input ToolMetadataInput {
+  toolName: String
+  toolUseId: String
 }
 
 type ChatSession @aws_cognito_user_pools @aws_iam {
@@ -407,7 +419,9 @@ type Mutation {
     sessionId: String
     method: String
     enableCodeIntelligence: Boolean
+    toolMetadata: ToolMetadataInput
   ): AgentChatMessage @aws_cognito_user_pools @aws_iam
+
   updateAgentChatMessage(sessionId: ID!, content: String!): AgentChatMessage
     @aws_cognito_user_pools
     @aws_iam

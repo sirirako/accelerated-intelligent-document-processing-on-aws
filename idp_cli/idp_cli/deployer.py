@@ -107,8 +107,8 @@ class StackDeployer:
                 operation = "UPDATE"
             else:
                 logger.info(f"Creating new stack: {stack_name}")
-                # Set OnFailure based on no_rollback flag
-                on_failure = "DO_NOTHING" if no_rollback else "ROLLBACK"
+                # Set DisableRollback based on no_rollback flag
+                disable_rollback = True if no_rollback else False
                 response = self.cfn.create_stack(
                     StackName=stack_name,
                     **template_param,
@@ -118,7 +118,7 @@ class StackDeployer:
                         "CAPABILITY_NAMED_IAM",
                         "CAPABILITY_AUTO_EXPAND",
                     ],
-                    OnFailure=on_failure,
+                    DisableRollback=disable_rollback,
                 )
                 operation = "CREATE"
 

@@ -3,7 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import { HelpPanel, SpaceBetween, Box, Button, StatusIndicator, Icon, ExpandableSection } from '@cloudscape-design/components';
+import {
+  HelpPanel,
+  SpaceBetween,
+  Box,
+  Button,
+  StatusIndicator,
+  Icon,
+  ExpandableSection,
+  Link,
+  Modal,
+  Header,
+} from '@cloudscape-design/components';
 import listAvailableAgents from '../../graphql/queries/listAvailableAgents';
 
 const client = generateClient();
@@ -14,6 +25,7 @@ const ToolsPanel = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedAgents, setExpandedAgents] = useState({});
+  const [showMcpInfoModal, setShowMcpInfoModal] = useState(false);
 
   useEffect(() => {
     const fetchAgents = async () => {
@@ -120,6 +132,10 @@ const ToolsPanel = () => {
           )}
         </Box>
 
+        <Button variant="inline-link" onClick={() => setShowMcpInfoModal(true)} fontSize="body-s">
+          🚀 NEW: Integrate your own systems with MCP!
+        </Button>
+
         <Box>
           <h3>
             Learn more <Icon name="external" />
@@ -137,6 +153,52 @@ const ToolsPanel = () => {
           </ul>
         </Box>
       </SpaceBetween>
+      <Modal
+        onDismiss={() => setShowMcpInfoModal(false)}
+        visible={showMcpInfoModal}
+        header={<Header>Custom MCP Agents</Header>}
+        footer={
+          <Box float="right">
+            <Button variant="primary" onClick={() => setShowMcpInfoModal(false)}>
+              Close
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Box>
+            <Box fontWeight="bold" fontSize="body-m">
+              What are MCP Agents?
+            </Box>
+            <Box>
+              Model Context Protocol (MCP) agents allow you to connect external tools and services to extend the capabilities of your
+              document analysis workflow.
+            </Box>
+          </Box>
+
+          <Box>
+            <Box fontWeight="bold" fontSize="body-m">
+              Adding Custom Agents
+            </Box>
+            <Box>
+              You can add your own MCP agents by configuring external MCP servers in AWS Secrets Manager. This allows you to integrate
+              custom tools, APIs, and services specific to your organization&apos;s needs without any code changes or redeployments.
+            </Box>
+          </Box>
+
+          <Box>
+            <Box fontWeight="bold" fontSize="body-m">
+              Learn More
+            </Box>
+            <Box>
+              For detailed setup instructions and examples, see the{' '}
+              <Link external href="https://github.com/aws-samples/genaiic-idp-accelerator/blob/main/docs/custom-MCP-agent.md">
+                Custom MCP Agent Documentation
+              </Link>
+            </Box>
+          </Box>
+        </SpaceBetween>
+      </Modal>
     </HelpPanel>
   );
 };
