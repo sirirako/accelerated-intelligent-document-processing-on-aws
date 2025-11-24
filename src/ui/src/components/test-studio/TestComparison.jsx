@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Table, Box, Button, ButtonDropdown } from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Table, Box, Button, ButtonDropdown, ProgressBar } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
 import TestStudioHeader from './TestStudioHeader';
@@ -12,6 +12,7 @@ const client = generateClient();
 const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   const [comparisonData, setComparisonData] = useState(null);
   const [comparing, setComparing] = useState(false);
+  const [currentAttempt, setCurrentAttempt] = useState(1);
 
   useEffect(() => {
     const fetchComparison = async () => {
@@ -22,10 +23,60 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
         try {
           console.log('Making GraphQL request...');
-          const result = await client.graphql({
-            query: COMPARE_TEST_RUNS,
-            variables: { testRunIds: preSelectedTestRunIds },
-          });
+          let result;
+          let attempt = 1;
+          const maxRetries = 5;
+
+          while (attempt <= maxRetries) {
+            try {
+              setCurrentAttempt(attempt);
+              result = await client.graphql({
+                query: COMPARE_TEST_RUNS,
+                variables: { testRunIds: preSelectedTestRunIds },
+              });
+              setCurrentAttempt(5); // Set to 100% before completing
+              await new Promise((resolve) => setTimeout(resolve, 500)); // Brief pause to show 100%
+              break;
+            } catch (error) {
+              const isTimeout =
+                error.message?.toLowerCase().includes('timeout') ||
+                error.code === 'TIMEOUT' ||
+                error.message?.includes('Request failed with status code 504') ||
+                error.name === 'TimeoutError' ||
+                error.code === 'NetworkError' ||
+                error.errors?.some(err => 
+                  err.errorType === 'Lambda:ExecutionTimeoutException' ||
+                  err.message?.toLowerCase().includes('timeout')
+                );
+              if (isTimeout && attempt < maxRetries) {
+                console.log(`COMPARE_TEST_RUNS attempt ${attempt} failed, retrying...`, error.message);
+                attempt++;
+                
+                // Animate progress during 5-second wait
+                const waitTime = 5000;
+                const intervalTime = 100;
+                const steps = waitTime / intervalTime;
+                const startProgress = (attempt - 1) * 20;
+                const endProgress = attempt * 20;
+                const progressStep = (endProgress - startProgress) / steps;
+                
+                let currentProgress = startProgress;
+                const progressInterval = setInterval(() => {
+                  currentProgress += progressStep;
+                  setCurrentAttempt(Math.min(currentProgress / 20, 5));
+                }, intervalTime);
+                
+                await new Promise((resolve) => setTimeout(() => {
+                  clearInterval(progressInterval);
+                  setCurrentAttempt(attempt);
+                  resolve();
+                }, waitTime));
+                
+                continue;
+              }
+              throw error;
+            }
+          }
 
           const compareData = result.data.compareTestRuns;
 
@@ -90,16 +141,26 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         ),
       ],
       [
-        'Overall Accuracy',
+        'Average Accuracy',
         ...Object.values(completeTestRuns).map((run) =>
-          run.overallAccuracy !== null && run.overallAccuracy !== undefined ? `${(run.overallAccuracy * 100).toFixed(1)}%` : 'N/A',
+          run.overallAccuracy !== null && run.overallAccuracy !== undefined ? run.overallAccuracy.toFixed(3) : 'N/A',
         ),
       ],
       [
-        'Overall Confidence',
+        'Average Confidence',
         ...Object.values(completeTestRuns).map((run) =>
           run.averageConfidence !== null && run.averageConfidence !== undefined ? `${(run.averageConfidence * 100).toFixed(1)}%` : 'N/A',
         ),
+      ],
+      [
+        'Average Weighted Overall Score',
+        ...Object.values(completeTestRuns).map((run) => {
+          if (run.weightedOverallScores && run.weightedOverallScores.length > 0) {
+            const avg = run.weightedOverallScores.reduce((sum, score) => sum + score, 0) / run.weightedOverallScores.length;
+            return avg.toFixed(3);
+          }
+          return 'N/A';
+        }),
       ],
       [
         'Duration',
@@ -186,6 +247,44 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         usageRows.push(row);
       });
 
+    // Add accuracy breakdown rows
+    const accuracyRows = [];
+    const allAccuracyMetrics = new Set();
+    Object.values(completeTestRuns).forEach((testRun) => {
+      if (testRun.accuracyBreakdown) {
+        Object.keys(testRun.accuracyBreakdown).forEach((metric) => {
+          allAccuracyMetrics.add(metric);
+        });
+      }
+    });
+
+    // Add accuracy breakdown header
+    accuracyRows.push(['Accuracy Metric', ...Object.keys(completeTestRuns)]);
+
+    // Add accuracy breakdown metrics
+    Array.from(allAccuracyMetrics).forEach((metricKey) => {
+      const row = [metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())];
+      Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+        const accuracyBreakdown = testRun.accuracyBreakdown || {};
+        const value = accuracyBreakdown[metricKey];
+        const displayValue = value !== null && value !== undefined ? value.toFixed(3) : '0.000';
+        row.push(displayValue);
+      });
+      accuracyRows.push(row);
+    });
+
+    // Add weighted overall score to accuracy breakdown
+    const weightedRow = ['Weighted Overall Score'];
+    Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
+      if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
+        const avg = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+        weightedRow.push(avg.toFixed(3));
+      } else {
+        weightedRow.push('N/A');
+      }
+    });
+    accuracyRows.push(weightedRow);
+
     // Add config comparison rows
     const configRows = [];
     if (comparisonData.configs && comparisonData.configs.length > 0) {
@@ -202,14 +301,17 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       ['=== PERFORMANCE METRICS ==='],
       ...performanceRows,
       [''],
+      ['=== CONFIGURATION COMPARISON ==='],
+      ...configRows,
+      [''],
+      ['=== AVERAGE ACCURACY BREAKDOWN ==='],
+      ...accuracyRows,
+      [''],
       ['=== COST BREAKDOWN ==='],
       ...costRows,
       [''],
       ['=== USAGE BREAKDOWN ==='],
       ...usageRows,
-      [''],
-      ['=== CONFIGURATION DIFFERENCES ==='],
-      ...configRows,
     ];
 
     const csvContent = csvData.map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -255,8 +357,11 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             completedFiles: testRun.completedFiles,
             failedFiles: testRun.failedFiles,
             totalCost: testRun.totalCost,
-            overallAccuracy: testRun.overallAccuracy,
+            averageAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
+            averageWeightedOverallScore: testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0
+              ? testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length
+              : null,
             duration:
               testRun.createdAt && testRun.completedAt
                 ? (() => {
@@ -269,13 +374,20 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           },
         ]),
       ),
+      configurationDifferences: comparisonData.configs || [],
+      accuracyBreakdown: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+          const breakdown = { ...(testRun.accuracyBreakdown || {}) };
+          // Add weighted overall score to accuracy breakdown
+          if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
+            breakdown.weightedOverallScore = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+          }
+          return [testRunId, breakdown];
+        }),
+      ),
       costBreakdown: Object.fromEntries(
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.costBreakdown || {}]),
       ),
-      accuracyBreakdown: Object.fromEntries(
-        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.accuracyBreakdown || {}]),
-      ),
-      configurationDifferences: comparisonData.configs || [],
     };
 
     const jsonData = JSON.stringify(filteredData, null, 2);
@@ -299,7 +411,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   };
 
   if (comparing) {
-    return <Box>Loading comparison...</Box>;
+    return <ProgressBar status="in-progress" label="Loading comparison..." value={currentAttempt * 20} />;
   }
 
   if (!comparisonData) {
@@ -415,31 +527,31 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   ),
                 },
                 {
-                  metric: 'Overall Accuracy',
+                  metric: 'Average Accuracy',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
                       testRunId,
                       testRun.overallAccuracy !== null && testRun.overallAccuracy !== undefined
-                        ? `${(testRun.overallAccuracy * 100).toFixed(1)}%`
+                        ? testRun.overallAccuracy.toFixed(3)
                         : 'N/A',
                     ]),
                   ),
                 },
                 {
-                  metric: 'Weighted Overall Score',
+                  metric: 'Average Weighted Overall Score',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
                       if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
                         const avg =
                           testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-                        return [testRunId, `${(avg * 100).toFixed(1)}%`];
+                        return [testRunId, avg.toFixed(3)];
                       }
                       return [testRunId, 'N/A'];
                     }),
                   ),
                 },
                 {
-                  metric: 'Overall Confidence',
+                  metric: 'Average Confidence',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
                       testRunId,
@@ -513,8 +625,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             })()}
           </Container>
 
-          {/* Accuracy Comparison */}
-          <Container header={<Header variant="h3">Accuracy Comparison</Header>}>
+          {/* Average Accuracy Comparison */}
+          <Container header={<Header variant="h3">Average Accuracy Comparison</Header>}>
             {(() => {
               const hasAccuracyData = Object.values(completeTestRuns).some((testRun) => testRun.accuracyBreakdown);
 
@@ -533,17 +645,31 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
               return (
                 <Table
-                  items={Array.from(allAccuracyMetrics).map((metricKey) => ({
-                    metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                    ...Object.fromEntries(
-                      Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                        const accuracyBreakdown = testRun.accuracyBreakdown || {};
-                        const value = accuracyBreakdown[metricKey];
-                        const displayValue = value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%';
-                        return [testRunId, displayValue];
-                      }),
-                    ),
-                  }))}
+                  items={[
+                    ...Array.from(allAccuracyMetrics).map((metricKey) => ({
+                      metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                      ...Object.fromEntries(
+                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                          const accuracyBreakdown = testRun.accuracyBreakdown || {};
+                          const value = accuracyBreakdown[metricKey];
+                          const displayValue = value !== null && value !== undefined ? value.toFixed(3) : '0.000';
+                          return [testRunId, displayValue];
+                        }),
+                      ),
+                    })),
+                    {
+                      metric: 'Weighted Overall Score',
+                      ...Object.fromEntries(
+                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                          if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
+                            const avg = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+                            return [testRunId, avg.toFixed(3)];
+                          }
+                          return [testRunId, 'N/A'];
+                        }),
+                      ),
+                    }
+                  ]}
                   columnDefinitions={[
                     { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({

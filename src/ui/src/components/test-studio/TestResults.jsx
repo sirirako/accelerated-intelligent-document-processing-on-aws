@@ -30,7 +30,7 @@ import useAppContext from '../../contexts/app';
 const client = generateClient();
 
 /* eslint-disable react/prop-types */
-const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown }) => {
+const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeightedScore }) => {
   if (!costBreakdown && !accuracyBreakdown) {
     return <Box>No breakdown data available</Box>;
   }
@@ -39,12 +39,18 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown }) => {
     <SpaceBetween direction="vertical" size="l">
       {/* Accuracy breakdown */}
       {accuracyBreakdown && (
-        <Container header={<Header variant="h3">Accuracy Breakdown</Header>}>
+        <Container header={<Header variant="h3">Average Accuracy Breakdown</Header>}>
           <Table
-            items={Object.entries(accuracyBreakdown).map(([key, value]) => ({
+            items={[ 
+              ...Object.entries(accuracyBreakdown).map(([key, value]) => ({
               metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-              value: value !== null && value !== undefined ? `${(value * 100).toFixed(1)}%` : '0.0%',
-            }))}
+              value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
+                })),
+                {
+                  metric: "Weighted Overall Score",
+                  value: averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : "0.000",
+                },
+            ]}
             columnDefinitions={[
               { id: 'metric', header: 'Metric', cell: (item) => item.metric },
               { id: 'value', header: 'Value', cell: (item) => item.value },
@@ -197,6 +203,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentAttempt, setCurrentAttempt] = useState(1);
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
@@ -235,10 +242,68 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   useEffect(() => {
     const fetchResults = async () => {
       try {
-        const result = await client.graphql({
-          query: GET_TEST_RUN,
-          variables: { testRunId },
-        });
+        let result;
+        let attempt = 1;
+        const maxRetries = 5;
+
+        while (attempt <= maxRetries) {
+          try {
+            console.log(`GET_TEST_RUN attempt ${attempt} starting...`);
+            setCurrentAttempt(attempt);
+            result = await client.graphql({
+              query: GET_TEST_RUN,
+              variables: { testRunId },
+            });
+            console.log('GET_TEST_RUN result:', result);
+            setCurrentAttempt(5); // Set to 100% before completing
+            await new Promise((resolve) => setTimeout(resolve, 500)); // Brief pause to show 100%
+            break;
+          } catch (retryError) {
+            console.log('GET_TEST_RUN error caught:', {
+              message: retryError.message,
+              code: retryError.code,
+              name: retryError.name,
+              error: retryError
+            });
+            const isTimeout =
+              retryError.message?.toLowerCase().includes('timeout') ||
+              retryError.code === 'TIMEOUT' ||
+              retryError.message?.includes('Request failed with status code 504') ||
+              retryError.name === 'TimeoutError' ||
+              retryError.code === 'NetworkError' ||
+              retryError.errors?.some(err => 
+                err.errorType === 'Lambda:ExecutionTimeoutException' ||
+                err.message?.toLowerCase().includes('timeout')
+              );
+            if (isTimeout && attempt < maxRetries) {
+              console.log(`GET_TEST_RUN attempt ${attempt} failed, retrying...`, retryError.message);
+              attempt++;
+              
+              // Animate progress during 5-second wait
+              const waitTime = 5000;
+              const intervalTime = 100;
+              const steps = waitTime / intervalTime;
+              const startProgress = (attempt - 1) * 20;
+              const endProgress = attempt * 20;
+              const progressStep = (endProgress - startProgress) / steps;
+              
+              let currentProgress = startProgress;
+              const progressInterval = setInterval(() => {
+                currentProgress += progressStep;
+                setCurrentAttempt(Math.min(currentProgress / 20, 5));
+              }, intervalTime);
+              
+              await new Promise((resolve) => setTimeout(() => {
+                clearInterval(progressInterval);
+                setCurrentAttempt(attempt);
+                resolve();
+              }, waitTime));
+              
+              continue;
+            }
+            throw retryError;
+          }
+        }
         const testRun = result.data.getTestRun;
         console.log('Test results:', testRun);
         setResults(testRun);
@@ -258,7 +323,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     }
   }, [results]);
 
-  if (loading) return <ProgressBar status="in-progress" label="Loading test results..." />;
+  if (loading) return <ProgressBar status="in-progress" label="Loading test results..." value={currentAttempt * 20} />;
   if (error) return <Box>Error loading test results: {error}</Box>;
   if (!results) {
     const handleBackClick = () => {
@@ -283,6 +348,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   };
 
   const hasAccuracyData = results.overallAccuracy !== null && results.overallAccuracy !== undefined;
+
+  // Calculate average weighted overall score
+  const averageWeightedScore = results.weightedOverallScores && results.weightedOverallScores.length > 0
+    ? results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length
+    : null;
 
   let costBreakdown = null;
   let accuracyBreakdown = null;
@@ -454,11 +524,17 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Overall Accuracy</Box>
+            <Box variant="awsui-key-label">Average Accuracy</Box>
             <Box fontSize="heading-l">
               {results.overallAccuracy !== null && results.overallAccuracy !== undefined
-                ? `${(results.overallAccuracy * 100).toFixed(1)}%`
+                ? results.overallAccuracy.toFixed(3)
                 : 'N/A'}
+            </Box>
+          </Box>
+          <Box>
+            <Box variant="awsui-key-label">Average Weighted Overall Score</Box>
+            <Box fontSize="heading-l">
+              {averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : 'N/A'}
             </Box>
           </Box>
           <Box>
@@ -471,14 +547,6 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                     const seconds = Math.floor((duration % 60000) / 1000);
                     return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
                   })()
-                : 'N/A'}
-            </Box>
-          </Box>
-          <Box>
-            <Box variant="awsui-key-label">Weighted Overall Scores</Box>
-            <Box fontSize="heading-l">
-              {results.weightedOverallScores && results.weightedOverallScores.length > 0
-                ? (results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length).toFixed(3)
                 : 'N/A'}
             </Box>
           </Box>
@@ -570,7 +638,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
         {/* Breakdown Tables */}
         {(costBreakdown || accuracyBreakdown) && (
-          <ComprehensiveBreakdown costBreakdown={costBreakdown} accuracyBreakdown={accuracyBreakdown} />
+          <ComprehensiveBreakdown costBreakdown={costBreakdown} accuracyBreakdown={accuracyBreakdown} averageWeightedScore={averageWeightedScore} />
         )}
       </SpaceBetween>
 
