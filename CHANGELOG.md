@@ -13,6 +13,10 @@ SPDX-License-Identifier: MIT-0
   - Fixed bug where `text_confidence_uri` was being set to null in evaluation output for all three patterns
   - Root cause: AppSync service `_appsync_to_document()` method incorrectly mapped page URIs, and evaluation functions overwrote correct documents with corrupted AppSync responses
 
+- **UI: Metering Data Not Displayed During Document Processing**
+  - Fixed UI subscription query missing `Metering` field, preventing real-time cost display
+  - Users can now see estimated costs accumulate in real-time without manual page refresh
+
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.5.yaml`
    - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.5.yaml`
