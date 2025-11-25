@@ -21,9 +21,13 @@ if TYPE_CHECKING:
 
 from idp_common import s3
 from idp_common.config.models import IDPConfig
+from idp_common.evaluation.doc_split_classification_metrics import (
+    DocSplitClassificationMetrics,
+)
 from idp_common.evaluation.metrics import calculate_metrics
 from idp_common.evaluation.models import (
     AttributeEvaluationResult,
+    DocSplitMetrics,
     DocumentEvaluationResult,
     SectionEvaluationResult,
 )
@@ -1392,7 +1396,53 @@ class EvaluationService:
             # Start timing
             start_time = time.time()
 
-            # Track overall metrics
+            # Calculate document split classification metrics FIRST
+            doc_split_metrics_obj = None
+            try:
+                logger.info("Calculating document split classification metrics...")
+                doc_split_calculator = DocSplitClassificationMetrics()
+                doc_split_calculator.load_sections(
+                    ground_truth_sections=expected_document.sections,
+                    predicted_sections=actual_document.sections,
+                )
+
+                # Calculate all metrics
+                doc_split_results = doc_split_calculator.calculate_all_metrics()
+
+                # Create DocSplitMetrics object
+                page_level = doc_split_results["page_level_accuracy"]
+                split_no_order = doc_split_results["split_accuracy_without_order"]
+                split_with_order = doc_split_results["split_accuracy_with_order"]
+
+                doc_split_metrics_obj = DocSplitMetrics(
+                    page_level_accuracy=page_level["accuracy"],
+                    split_accuracy_without_order=split_no_order["accuracy"],
+                    split_accuracy_with_order=split_with_order["accuracy"],
+                    total_pages=page_level["total_pages"],
+                    total_splits=split_no_order["total_sections"],
+                    correctly_classified_pages=page_level["correct_pages"],
+                    correctly_split_without_order=split_no_order["correct_sections"],
+                    correctly_split_with_order=split_with_order["correct_sections"],
+                    page_details=page_level["page_details"],
+                    section_details_without_order=split_no_order["section_details"],
+                    section_details_with_order=split_with_order["section_details"],
+                    predicted_sections=doc_split_calculator.sections_pred,  # Add predicted sections for unmatched display
+                    errors=doc_split_results.get("errors", []),
+                )
+
+                logger.info(
+                    f"Doc split metrics calculated - Page accuracy: {page_level['accuracy']:.3f}, "
+                    f"Split accuracy (no order): {split_no_order['accuracy']:.3f}, "
+                    f"Split accuracy (with order): {split_with_order['accuracy']:.3f}"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Error calculating doc split metrics: {str(e)}", exc_info=True
+                )
+                actual_document.errors.append(f"Doc split metrics error: {str(e)}")
+
+            # Track overall metrics for extraction evaluation
             total_tp = total_fp = total_fn = total_tn = total_fp1 = total_fp2 = 0
 
             # Create a list of section pairs to evaluate
@@ -1502,12 +1552,13 @@ class EvaluationService:
             if not actual_document.input_key:
                 raise ValueError("Input key is required for storing results")
 
-            # Create evaluation result
+            # Create evaluation result with doc split metrics
             evaluation_result = DocumentEvaluationResult(
                 document_id=actual_document.id,
                 section_results=section_results,
                 overall_metrics=overall_metrics,
                 execution_time=execution_time,
+                doc_split_metrics=doc_split_metrics_obj,
             )
 
             # Store results if requested

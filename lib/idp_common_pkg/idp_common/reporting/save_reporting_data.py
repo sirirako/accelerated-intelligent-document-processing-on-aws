@@ -56,7 +56,7 @@ class SaveReportingData:
         # Cache for pricing data to avoid repeated processing
         self._pricing_cache = None
 
-    def _serialize_value(self, value: Any) -> str:
+    def _serialize_value(self, value: Any) -> Optional[str]:
         """
         Serialize complex values for Parquet storage as strings.
 
@@ -494,9 +494,6 @@ class SaveReportingData:
                     f"Error checking Glue table {table_name}: {str(get_table_error)}"
                 )
                 return False
-        except Exception as e:
-            logger.error(f"Error checking/updating Glue table {table_name}: {str(e)}")
-            return False
 
     def save(self, document: Document, data_to_save: List[str]) -> List[Dict[str, Any]]:
         """
@@ -573,7 +570,7 @@ class SaveReportingData:
             logger.error(error_msg)
             return {"statusCode": 500, "body": error_msg}
 
-        # Define schemas specific to evaluation results
+        # Define schemas specific to evaluation results (including doc split metrics)
         document_schema = pa.schema(
             [
                 ("document_id", pa.string()),
@@ -587,6 +584,15 @@ class SaveReportingData:
                 ("false_discovery_rate", pa.float64()),
                 ("weighted_overall_score", pa.float64()),
                 ("execution_time", pa.float64()),
+                # Doc split classification metrics
+                ("page_level_accuracy", pa.float64()),
+                ("split_accuracy_without_order", pa.float64()),
+                ("split_accuracy_with_order", pa.float64()),
+                ("total_pages", pa.int32()),
+                ("total_splits", pa.int32()),
+                ("correctly_classified_pages", pa.int32()),
+                ("correctly_split_without_order", pa.int32()),
+                ("correctly_split_with_order", pa.int32()),
             ]
         )
 
@@ -651,7 +657,7 @@ class SaveReportingData:
             date_partition = evaluation_date.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
-        document_id = document.id
+        document_id = document.id or document.input_key or "unknown"
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
 
         # Create timestamp string for unique filenames (to avoid overwrites if same doc processed multiple times)
@@ -659,7 +665,10 @@ class SaveReportingData:
             :-3
         ]  # Include milliseconds
 
-        # 1. Document level metrics
+        # 1. Document level metrics (including doc split metrics)
+        # Extract doc split metrics if available
+        doc_split_metrics = eval_result.get("doc_split_metrics", {})
+
         document_record = {
             "document_id": document_id,
             "input_key": document.input_key,
@@ -678,6 +687,41 @@ class SaveReportingData:
                 "weighted_overall_score", 0.0
             ),
             "execution_time": eval_result.get("execution_time", 0.0),
+            # Doc split classification metrics (None if not available for backward compatibility)
+            "page_level_accuracy": doc_split_metrics.get("page_level_accuracy")
+            if doc_split_metrics
+            else None,
+            "split_accuracy_without_order": doc_split_metrics.get(
+                "split_accuracy_without_order"
+            )
+            if doc_split_metrics
+            else None,
+            "split_accuracy_with_order": doc_split_metrics.get(
+                "split_accuracy_with_order"
+            )
+            if doc_split_metrics
+            else None,
+            "total_pages": doc_split_metrics.get("total_pages")
+            if doc_split_metrics
+            else None,
+            "total_splits": doc_split_metrics.get("total_splits")
+            if doc_split_metrics
+            else None,
+            "correctly_classified_pages": doc_split_metrics.get(
+                "correctly_classified_pages"
+            )
+            if doc_split_metrics
+            else None,
+            "correctly_split_without_order": doc_split_metrics.get(
+                "correctly_split_without_order"
+            )
+            if doc_split_metrics
+            else None,
+            "correctly_split_with_order": doc_split_metrics.get(
+                "correctly_split_with_order"
+            )
+            if doc_split_metrics
+            else None,
         }
 
         # Save document metrics in Parquet format
@@ -1069,7 +1113,7 @@ class SaveReportingData:
             date_partition = timestamp.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
-        document_id = document.id
+        document_id = document.id or document.input_key or "unknown"
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
 
         # Create timestamp string for unique filenames (to avoid overwrites if same doc processed multiple times)
@@ -1183,7 +1227,7 @@ class SaveReportingData:
             date_partition = current_time.strftime("%Y-%m-%d")
 
         # Escape document ID by replacing slashes with underscores
-        document_id = document.id
+        document_id = document.id or document.input_key or "unknown"
         escaped_doc_id = re.sub(r"[/\\]", "_", document_id)
 
         sections_processed = 0

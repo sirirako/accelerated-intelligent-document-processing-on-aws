@@ -733,13 +733,9 @@ class ExtractionService:
         start_page = int(sorted_page_ids[0])
         end_page = int(sorted_page_ids[-1])
 
-        # Find minimum page ID across all sections in the document to determine offset
-        min_page_id = min(
-            int(page_id) for sec in document.sections for page_id in sec.page_ids
-        )
-
-        # Adjust page indices to be zero-based if document pages start at 1
-        page_indices = [int(page_id) - min_page_id for page_id in sorted_page_ids]
+        # Convert 1-based page IDs to 0-based indices for the original document packet
+        # This preserves the actual position of pages in the document (e.g., pages [5,6,7] -> indices [4,5,6])
+        page_indices = [int(page_id) - 1 for page_id in sorted_page_ids]
 
         logger.info(
             f"Processing {len(sorted_page_ids)} pages, class {class_label}: {start_page}-{end_page}"
