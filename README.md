@@ -121,7 +121,7 @@ idp-cli download-results \
     --output-dir ./results/
 ```
 
-**See [IDP CLI Documentation](./idp_cli/README.md)** for:
+**See [IDP CLI Documentation](./docs/idp-cli.md)** for:
 - CLI-based stack deployment and updates
 - Batch document processing
 - Complete evaluation workflows with baselines
@@ -162,7 +162,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 
 - [Architecture](./docs/architecture.md) - Detailed component architecture and data flow
 - [Deployment](./docs/deployment.md) - Build, publish, deploy, and test instructions
-- [IDP CLI](./idp_cli/README.md) - Command line interface for batch processing and evaluation workflows
+- [IDP CLI](./docs/idp-cli.md) - Command line interface for batch processing and evaluation workflows
 - [Web UI](./docs/web-ui.md) - Web interface features and usage
 - [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
 - [Custom MCP Agent](./docs/custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
