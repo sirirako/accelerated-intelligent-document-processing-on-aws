@@ -212,13 +212,6 @@ Parameters:
     AllowedValues: ['true', 'false']
     Description: Enable X-Ray tracing
 
-  # X-Ray Tracing
-  EnableXRayTracing:
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    Description: Enable X-Ray tracing
-
   # Optional Knowledge Base Configuration
   DocumentKnowledgeBase:
     Default: "BEDROCK_KNOWLEDGE_BASE (Create)"

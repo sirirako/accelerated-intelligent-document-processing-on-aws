@@ -19,8 +19,7 @@ Usage:
 """
 
 from typing import Any, Dict, List, Optional, Union, Literal, Annotated
-from typing_extensions import Self
-from pydantic import BaseModel, ConfigDict, Field, field_validator, Discriminator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, Discriminator
 
 
 class ImageConfig(BaseModel):
@@ -79,7 +78,6 @@ class AgenticConfig(BaseModel):
 
     enabled: bool = Field(default=False, description="Enable agentic extraction")
     review_agent: bool = Field(default=False, description="Enable review agent")
-    review_agent_model: str | None= Field(default=None, description="Model used for reviewing and correcting extraction work")
 
 
 class ExtractionConfig(BaseModel):
@@ -121,15 +119,6 @@ class ExtractionConfig(BaseModel):
         if isinstance(v, str):
             return int(v) if v else 0
         return int(v)
-    
-    @model_validator(mode="after")
-    def model_validator(self) -> Self:
-
-        if not self.agentic.review_agent_model:
-            self.agentic.review_agent_model = self.model
-
-        return self
-
 
 
 class ClassificationConfig(BaseModel):
