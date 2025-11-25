@@ -57,22 +57,14 @@ const TestSets = () => {
 
       // Upsert: merge backend data with existing UI state, deduplicating by id
       setTestSets((prevTestSets) => {
-        const merged = [...prevTestSets];
-
-        backendTestSets.forEach((backendTestSet) => {
-          const existingIndex = merged.findIndex((ts) => ts.id === backendTestSet.id);
-          if (existingIndex >= 0) {
-            // Update existing with fresh backend data
-            merged[existingIndex] = backendTestSet;
-          } else {
-            // Add new test set from backend
-            merged.push(backendTestSet);
-          }
-        });
-
-        // Keep active test sets even if missing from backend (during processing)
+        const backendTestSets = result.data.getTestSets || [];
         const backendIds = new Set(backendTestSets.map((ts) => ts.id));
-        return merged.filter((ts) => backendIds.has(ts.id) || (ts.status !== 'COMPLETED' && ts.status !== 'FAILED'));
+
+        // Keep UI test sets that don't exist in backend (active processing)
+        const uiOnlyTestSets = prevTestSets.filter((ts) => !backendIds.has(ts.id) && ts.status !== 'COMPLETED' && ts.status !== 'FAILED');
+
+        // Combine backend test sets (always win) with UI-only active test sets
+        return [...backendTestSets, ...uiOnlyTestSets];
       });
     } catch (err) {
       console.error('TestSets: Failed to load test sets:', err);
@@ -111,7 +103,7 @@ const TestSets = () => {
     const discoveryInterval = setInterval(() => {
       console.log('Discovery polling...');
       loadTestSets();
-    }, 30000); // Every 30 seconds
+    }, 60000); // Every 60 seconds (1 minute)
 
     return () => {
       console.log('Cleaning up discovery polling');
@@ -200,8 +192,19 @@ const TestSets = () => {
       console.log('New test set data:', newTestSet);
 
       if (newTestSet) {
-        // Immediate UI update for responsive feedback
-        setTestSets((prev) => [...prev, newTestSet]);
+        // Immediate UI update for responsive feedback - use upsert to prevent duplicates
+        setTestSets((prev) => {
+          const existingIndex = prev.findIndex((ts) => ts.id === newTestSet.id);
+          if (existingIndex >= 0) {
+            // Replace existing test set
+            const updated = [...prev];
+            updated[existingIndex] = newTestSet;
+            return updated;
+          } else {
+            // Add new test set
+            return [...prev, newTestSet];
+          }
+        });
         setNewTestSetName('');
         setFilePattern('');
         setFileCount(0);
@@ -304,8 +307,19 @@ const TestSets = () => {
         filePattern: null,
       };
 
-      // Immediate UI update for responsive feedback
-      setTestSets((prev) => [...prev, newTestSet]);
+      // Immediate UI update for responsive feedback - use upsert to prevent duplicates
+      setTestSets((prev) => {
+        const existingIndex = prev.findIndex((ts) => ts.id === newTestSet.id);
+        if (existingIndex >= 0) {
+          // Replace existing test set
+          const updated = [...prev];
+          updated[existingIndex] = newTestSet;
+          return updated;
+        } else {
+          // Add new test set
+          return [...prev, newTestSet];
+        }
+      });
 
       setSuccessMessage(`Test set "${newTestSetName}" created successfully. Zip file is being processed.`);
       setError('');
