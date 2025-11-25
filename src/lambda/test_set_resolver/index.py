@@ -279,10 +279,29 @@ def get_test_sets():
                     logger.info(f"Registered direct upload test set {prefix} with status {status}")
         
         # Check for deleted test sets (exist in DynamoDB but not in S3)
+        # Only delete old FAILED test sets or any COMPLETED test sets
+        from datetime import datetime, timedelta
+        
         deleted_test_sets = []
+        cutoff_time = datetime.utcnow() - timedelta(hours=1)  # Only delete FAILED if older than 1 hour
+        
         for test_set_id in existing_test_sets:
-            # Check if S3 folder still exists
-            if test_set_id not in s3_test_sets:
+            test_set_item = existing_test_sets[test_set_id]
+            test_set_status = test_set_item.get('status')
+            created_at_str = test_set_item.get('createdAt', '')
+            
+            # Parse creation time
+            try:
+                created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            except:
+                continue  # Skip if can't parse date
+            
+            # Only delete if S3 folder missing AND:
+            # - Status is COMPLETED (any time), OR
+            # - Status is FAILED and older than cutoff time
+            if (test_set_id not in s3_test_sets and 
+                (test_set_status == 'COMPLETED' or 
+                 (test_set_status == 'FAILED' and created_at < cutoff_time))):
                 deleted_test_sets.append(test_set_id)
         
         # Delete orphaned test sets from DynamoDB

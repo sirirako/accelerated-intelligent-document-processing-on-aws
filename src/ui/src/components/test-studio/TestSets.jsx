@@ -53,7 +53,27 @@ const TestSets = () => {
       console.log('TestSets: Loading test sets...');
       const result = await client.graphql({ query: GET_TEST_SETS });
       console.log('TestSets: GraphQL result:', result);
-      setTestSets(result.data.getTestSets || []);
+      const backendTestSets = result.data.getTestSets || [];
+
+      // Upsert: merge backend data with existing UI state, deduplicating by id
+      setTestSets((prevTestSets) => {
+        const merged = [...prevTestSets];
+
+        backendTestSets.forEach((backendTestSet) => {
+          const existingIndex = merged.findIndex((ts) => ts.id === backendTestSet.id);
+          if (existingIndex >= 0) {
+            // Update existing with fresh backend data
+            merged[existingIndex] = backendTestSet;
+          } else {
+            // Add new test set from backend
+            merged.push(backendTestSet);
+          }
+        });
+
+        // Keep active test sets even if missing from backend (during processing)
+        const backendIds = new Set(backendTestSets.map((ts) => ts.id));
+        return merged.filter((ts) => backendIds.has(ts.id) || (ts.status !== 'COMPLETED' && ts.status !== 'FAILED'));
+      });
     } catch (err) {
       console.error('TestSets: Failed to load test sets:', err);
       setError(`Failed to load test sets: ${err.message || 'Unknown error'}`);
@@ -180,10 +200,8 @@ const TestSets = () => {
       console.log('New test set data:', newTestSet);
 
       if (newTestSet) {
-        const updatedTestSets = [...testSets, newTestSet];
-        console.log('Updating testSets from', testSets.length, 'to', updatedTestSets.length);
-        console.log('New test set added:', newTestSet);
-        setTestSets(updatedTestSets);
+        // Immediate UI update for responsive feedback
+        setTestSets((prev) => [...prev, newTestSet]);
         setNewTestSetName('');
         setFilePattern('');
         setFileCount(0);
@@ -285,6 +303,8 @@ const TestSets = () => {
         createdAt: new Date().toISOString(),
         filePattern: null,
       };
+
+      // Immediate UI update for responsive feedback
       setTestSets((prev) => [...prev, newTestSet]);
 
       setSuccessMessage(`Test set "${newTestSetName}" created successfully. Zip file is being processed.`);
