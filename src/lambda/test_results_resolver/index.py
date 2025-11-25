@@ -637,7 +637,7 @@ def _get_document_costs_from_reporting_db(document_id, completion_date):
                 
                 # Filter by document_id if column exists
                 if 'document_id' in table_data.column_names:
-                    mask = pc.equal(table_data['document_id'], document_id)
+                    mask = pc.equal(table_data['document_id'], document_id)  # type: ignore
                     table_data = table_data.filter(mask)
                 
                 if table_data.num_rows == 0:

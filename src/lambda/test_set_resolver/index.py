@@ -5,8 +5,8 @@ from datetime import datetime
 import os
 import boto3
 from botocore.config import Config
-from idp_common.s3 import find_matching_files
-from idp_common.dynamodb import DynamoDBClient
+from idp_common.s3 import find_matching_files  # type: ignore
+from idp_common.dynamodb import DynamoDBClient  # type: ignore
 
 # Constants
 MAX_ZIP_SIZE_BYTES = 1073741824  # 1 GB

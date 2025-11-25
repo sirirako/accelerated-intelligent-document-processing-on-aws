@@ -6,7 +6,7 @@ import logging
 import os
 
 import boto3
-from idp_common.s3 import find_matching_files
+from idp_common.s3 import find_matching_files  # type: ignore
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -123,7 +123,7 @@ def _copy_files_to_test_set(source_bucket, dest_bucket, test_set_id, folder_type
 
 def _update_test_set_status(tracking_table, test_set_id, status, error=None):
     """Update test set status in tracking table"""
-    table = dynamodb.Table(tracking_table)
+    table = dynamodb.Table(tracking_table)  # type: ignore
     
     try:
         update_expression = 'SET #status = :status'

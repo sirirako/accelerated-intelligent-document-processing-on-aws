@@ -156,7 +156,7 @@ def _extract_uploaded_zip(bucket, test_set_id, zip_key):
 
 def _update_test_set_status(test_set_id, status, error=None, file_count=None):
     """Update test set status and optionally file count in tracking table"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore
     
     try:
         update_expression = 'SET #status = :status'

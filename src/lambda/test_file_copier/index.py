@@ -133,7 +133,7 @@ def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix
 
 def _update_tracking_in_progress(tracking_table, test_run_id, files):
     """Update test run with file list and set status to RUNNING"""
-    table = dynamodb.Table(tracking_table)
+    table = dynamodb.Table(tracking_table)  # type: ignore
     try:
         table.update_item(
             Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'},
