@@ -7,6 +7,15 @@ SPDX-License-Identifier: MIT-0
 
 ## [0.4.5]
 
+### Added
+
+- **Document Split Classification Metrics for Evaluating Page-Level Classification and Document Segmentation**
+  - Added `DocSplitClassificationMetrics` class for comprehensive evaluation of document splitting and classification accuracy
+  - **Three Accuracy Types**: Page-level classification accuracy, split accuracy without order consideration, and split accuracy with exact page order matching
+  - **Visual Reporting**: Generates markdown reports with color-coded indicators (🟢 Excellent, 🟡 Good, 🟠 Fair, 🔴 Poor), progress bars, and detailed section analysis tables
+  - **Automatic Integration**: Integrates with evaluation service when ground truth and predicted sections are available
+  - **Documentation**: Guide in `lib/idp_common_pkg/idp_common/evaluation/README.md` with usage examples, metric explanations, and best practices
+
 ### Fixed
 
 - **Evaluation Output URI Fields Lost Across All Patterns - causing (a) missing Page Text Confidence content in UI, (2) failed Assessment step when reprocessing document after editing classes (No module named 'fitz')**
