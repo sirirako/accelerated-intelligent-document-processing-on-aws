@@ -17,6 +17,9 @@ SPDX-License-Identifier: MIT-0
   - Fixed UI subscription query missing `Metering` field, preventing real-time cost display
   - Users can now see estimated costs accumulate in real-time without manual page refresh
 
+- **UI: Estimated Cost Panel Arrow Misalignment**
+  - Fixed expand/contract arrow displaying above "Estimated Cost" heading
+
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.5.yaml`
    - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.5.yaml`
