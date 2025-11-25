@@ -303,7 +303,7 @@ type TestSet @aws_cognito_user_pools @aws_iam {
   id: String!
   name: String!
   filePattern: String
-  fileCount: Int!
+  fileCount: Int
   status: String
   createdAt: AWSDateTime!
   error: String
