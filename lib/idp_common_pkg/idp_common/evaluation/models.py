@@ -74,6 +74,45 @@ class SectionEvaluationResult:
 
 
 @dataclass
+class DocSplitMetrics:
+    """Document split classification accuracy metrics."""
+
+    page_level_accuracy: float
+    split_accuracy_without_order: float
+    split_accuracy_with_order: float
+    total_pages: int
+    total_splits: int
+    correctly_classified_pages: int
+    correctly_split_without_order: int
+    correctly_split_with_order: int
+    page_details: List[Dict[str, Any]] = field(default_factory=list)
+    section_details_without_order: List[Dict[str, Any]] = field(default_factory=list)
+    section_details_with_order: List[Dict[str, Any]] = field(default_factory=list)
+    predicted_sections: List[Dict[str, Any]] = field(
+        default_factory=list
+    )  # All predicted sections for unmatched display
+    errors: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary representation."""
+        return {
+            "page_level_accuracy": self.page_level_accuracy,
+            "split_accuracy_without_order": self.split_accuracy_without_order,
+            "split_accuracy_with_order": self.split_accuracy_with_order,
+            "total_pages": self.total_pages,
+            "total_splits": self.total_splits,
+            "correctly_classified_pages": self.correctly_classified_pages,
+            "correctly_split_without_order": self.correctly_split_without_order,
+            "correctly_split_with_order": self.correctly_split_with_order,
+            "page_details": self.page_details,
+            "section_details_without_order": self.section_details_without_order,
+            "section_details_with_order": self.section_details_with_order,
+            "predicted_sections": self.predicted_sections,
+            "errors": self.errors,
+        }
+
+
+@dataclass
 class DocumentEvaluationResult:
     """Comprehensive evaluation result for a document."""
 
@@ -82,10 +121,11 @@ class DocumentEvaluationResult:
     overall_metrics: Dict[str, float] = field(default_factory=dict)
     execution_time: float = 0.0
     output_uri: Optional[str] = None
+    doc_split_metrics: Optional[DocSplitMetrics] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
-        return {
+        result = {
             "document_id": self.document_id,
             "overall_metrics": self.overall_metrics,
             "execution_time": self.execution_time,
@@ -118,12 +158,18 @@ class DocumentEvaluationResult:
             ],
         }
 
+        # Add doc_split_metrics if available
+        if self.doc_split_metrics:
+            result["doc_split_metrics"] = self.doc_split_metrics.to_dict()
+
+        return result
+
     def to_markdown(self) -> str:
         """Convert evaluation results to markdown format."""
         sections = []
 
-        # Add document overview with visual summary
-        sections.append(f"# Document Evaluation: {self.document_id}")
+        # Add main title at the very beginning
+        sections.append("# Evaluation Report")
         sections.append("")
 
         # Get overall stats for visual summary
@@ -142,8 +188,57 @@ class DocumentEvaluationResult:
         recall = self.overall_metrics.get("recall", 0)
         f1_score = self.overall_metrics.get("f1_score", 0)
 
-        # Create visual summary with emojis
+        # Create unified summary with both extraction and doc split metrics
         sections.append("## Summary")
+        sections.append("")
+
+        # Add doc split metrics FIRST if available
+        if self.doc_split_metrics:
+
+            def get_indicator(accuracy: float) -> str:
+                if accuracy >= 0.9:
+                    return "🟢"
+                elif accuracy >= 0.7:
+                    return "🟡"
+                elif accuracy >= 0.5:
+                    return "🟠"
+                else:
+                    return "🔴"
+
+            page_acc = self.doc_split_metrics.page_level_accuracy
+            split_no_ord_acc = self.doc_split_metrics.split_accuracy_without_order
+            split_ord_acc = self.doc_split_metrics.split_accuracy_with_order
+
+            # Create progress bars
+            page_percent = int(page_acc * 100)
+            page_progress = f"[{'█' * (page_percent // 5)}{'░' * (20 - page_percent // 5)}] {page_percent}%"
+
+            split_no_ord_percent = int(split_no_ord_acc * 100)
+            split_no_ord_progress = f"[{'█' * (split_no_ord_percent // 5)}{'░' * (20 - split_no_ord_percent // 5)}] {split_no_ord_percent}%"
+
+            split_ord_percent = int(split_ord_acc * 100)
+            split_ord_progress = f"[{'█' * (split_ord_percent // 5)}{'░' * (20 - split_ord_percent // 5)}] {split_ord_percent}%"
+
+            sections.append("**Document Split Classification:**")
+            sections.append(
+                f"- **Page Level Accuracy**: {get_indicator(page_acc)} "
+                f"{self.doc_split_metrics.correctly_classified_pages}/{self.doc_split_metrics.total_pages} pages "
+                f"{page_progress}"
+            )
+            sections.append(
+                f"- **Split Accuracy (Without Order)**: {get_indicator(split_no_ord_acc)} "
+                f"{self.doc_split_metrics.correctly_split_without_order}/{self.doc_split_metrics.total_splits} sections "
+                f"{split_no_ord_progress}"
+            )
+            sections.append(
+                f"- **Split Accuracy (With Order)**: {get_indicator(split_ord_acc)} "
+                f"{self.doc_split_metrics.correctly_split_with_order}/{self.doc_split_metrics.total_splits} sections "
+                f"{split_ord_progress}"
+            )
+            sections.append("")
+
+        # Then add extraction metrics
+        sections.append("**Document Extraction:**")
 
         # Match rate indicator
         if match_rate >= 0.9:
@@ -190,48 +285,167 @@ class DocumentEvaluationResult:
         sections.append(
             f"- **Weighted Overall Score**: {weighted_indicator} {weighted_score:.4f} (Stickler's field-weighted aggregate)"
         )
+
         sections.append("")
 
-        # Add overall metrics with enhanced formatting
+        # Add overall metrics with two separate tables
         sections.append("## Overall Metrics")
-        metrics_table = "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
-        for metric, value in self.overall_metrics.items():
-            # Add a visual indicator based on metric value
-            if metric in [
+        sections.append("")
+
+        # Helper function for rating
+        def get_rating_for_metric(metric_name: str, value: float) -> str:
+            if metric_name in [
                 "precision",
                 "recall",
                 "f1_score",
                 "accuracy",
                 "weighted_overall_score",
+                "page_level_accuracy",
+                "split_accuracy_without_order",
+                "split_accuracy_with_order",
             ]:
                 if value >= 0.9:
-                    indicator = "🟢 Excellent"
+                    return "🟢 Excellent"
                 elif value >= 0.7:
-                    indicator = "🟡 Good"
+                    return "🟡 Good"
                 elif value >= 0.5:
-                    indicator = "🟠 Fair"
+                    return "🟠 Fair"
                 else:
-                    indicator = "🔴 Poor"
-            elif metric in ["false_alarm_rate", "false_discovery_rate"]:
+                    return "🔴 Poor"
+            elif metric_name in ["false_alarm_rate", "false_discovery_rate"]:
                 # For error metrics, lower is better
                 if value <= 0.1:
-                    indicator = "🟢 Excellent"
+                    return "🟢 Excellent"
                 elif value <= 0.3:
-                    indicator = "🟡 Good"
+                    return "🟡 Good"
                 elif value <= 0.5:
-                    indicator = "🟠 Fair"
+                    return "🟠 Fair"
                 else:
-                    indicator = "🔴 Poor"
+                    return "🔴 Poor"
             else:
-                indicator = ""  # No rating for other metrics
+                return ""  # No rating for other metrics
 
-            metrics_table += f"| {metric} | {value:.4f} | {indicator} |\n"
-        sections.append(metrics_table)
+        # Add doc split metrics table first if available
+        if self.doc_split_metrics:
+            sections.append("### Document Split Classification Metrics")
+            doc_split_table = (
+                "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
+            )
+            doc_split_table += f"| page_level_accuracy | {self.doc_split_metrics.page_level_accuracy:.4f} | {get_rating_for_metric('page_level_accuracy', self.doc_split_metrics.page_level_accuracy)} |\n"
+            doc_split_table += f"| split_accuracy_without_order | {self.doc_split_metrics.split_accuracy_without_order:.4f} | {get_rating_for_metric('split_accuracy_without_order', self.doc_split_metrics.split_accuracy_without_order)} |\n"
+            doc_split_table += f"| split_accuracy_with_order | {self.doc_split_metrics.split_accuracy_with_order:.4f} | {get_rating_for_metric('split_accuracy_with_order', self.doc_split_metrics.split_accuracy_with_order)} |\n"
+            sections.append(doc_split_table)
+            sections.append("")
+
+        # Add extraction metrics table
+        sections.append("### Document Extraction Metrics")
+        extraction_table = "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
+        for metric, value in self.overall_metrics.items():
+            indicator = get_rating_for_metric(metric, value)
+            extraction_table += f"| {metric} | {value:.4f} | {indicator} |\n"
+        sections.append(extraction_table)
+        sections.append("")
+
+        # Add doc split analysis tables if available (right after Overall Metrics)
+        if self.doc_split_metrics:
+            # Combined Section split analysis
+            sections.append("## 📑 Section Split Analysis")
+            sections.append("")
+
+            if (
+                self.doc_split_metrics.section_details_without_order
+                or self.doc_split_metrics.section_details_with_order
+            ):
+                sections.append(
+                    "| Section Match | Page Order Match | Section ID | Expected Class | Expected Pages | Pred Class | Pred Pages | Matched Section |"
+                )
+                sections.append(
+                    "| :-----------: | :--------------: | ---------- | -------------- | -------------- | ---------- | ---------- | --------------- |"
+                )
+
+                # Track matched predicted section IDs
+                matched_pred_section_ids = set()
+
+                # Get list of all predicted sections from service.py
+                # We need to identify unmatched predicted sections
+                # We'll collect matched IDs first, then show unmatched ones at the end
+
+                # Combine data from both metrics for ground truth sections
+                for idx, section_with_order in enumerate(
+                    self.doc_split_metrics.section_details_with_order
+                ):
+                    # Get corresponding section from split_no_order
+                    section_no_order = (
+                        self.doc_split_metrics.section_details_without_order[idx]
+                        if idx
+                        < len(self.doc_split_metrics.section_details_without_order)
+                        else None
+                    )
+
+                    # Section Match status (from split_no_order)
+                    section_match = (
+                        "✅"
+                        if section_no_order and section_no_order["matched"]
+                        else "❌"
+                    )
+
+                    # Page Order Match status (from split_with_order)
+                    page_order_match = (
+                        "✅" if section_with_order.get("order_matched", False) else "❌"
+                    )
+
+                    gt_pages = str(section_with_order["ground_truth_pages"])
+                    pred_pages = (
+                        str(section_with_order["predicted_pages"])
+                        if section_with_order["predicted_pages"]
+                        else "N/A"
+                    )
+                    matched_id = (
+                        section_with_order["matched_section_id"]
+                        if section_with_order["matched_section_id"]
+                        else "N/A"
+                    )
+
+                    # Track matched predicted section IDs
+                    if section_with_order["matched_section_id"]:
+                        matched_pred_section_ids.add(
+                            section_with_order["matched_section_id"]
+                        )
+
+                    sections.append(
+                        f"| {section_match} | {page_order_match} | {section_with_order['section_id']} | "
+                        f"{section_with_order['ground_truth_class']} | {gt_pages} | {section_with_order['predicted_class']} | "
+                        f"{pred_pages} | {matched_id} |"
+                    )
+
+                # Add unmatched predicted sections
+                for pred_section in self.doc_split_metrics.predicted_sections:
+                    if pred_section["section_id"] not in matched_pred_section_ids:
+                        pred_pages = str(pred_section["page_indices"])
+                        sections.append(
+                            f"| ❌ | ❌ | N/A | No Match | N/A | "
+                            f"{pred_section['document_class']} | {pred_pages} | {pred_section['section_id']} |"
+                        )
+            else:
+                sections.append("*No section data available*")
+
+            sections.append("")
+
+            # Add errors if any
+            if self.doc_split_metrics.errors:
+                sections.append("### ⚠️ Doc Split Errors")
+                sections.append("")
+                for error in self.doc_split_metrics.errors:
+                    sections.append(f"- {error}")
+                sections.append("")
+
+        # Add header for extraction attribute evaluation section
+        sections.append("## Extraction Attribute Evaluation")
         sections.append("")
 
         # Add section results
         for sr in self.section_results:
-            sections.append(f"## Section: {sr.section_id} ({sr.document_class})")
+            sections.append(f"### Section: {sr.section_id} ({sr.document_class})")
 
             # Check if this section had an evaluation failure
             if sr.metrics.get("evaluation_failed", False):
@@ -290,7 +504,7 @@ class DocumentEvaluationResult:
                 continue  # Skip attribute display for failed sections
 
             # Section metrics with enhanced formatting (normal case)
-            sections.append("### Metrics")
+            sections.append("#### Metrics")
             metrics_table = (
                 "| Metric | Value | Rating |\n| ------ | :----: | :----: |\n"
             )
@@ -333,7 +547,7 @@ class DocumentEvaluationResult:
             sections.append("")
 
             # Attribute results
-            sections.append("### Attributes")
+            sections.append("#### Attributes")
             attr_table = "| Status | Attribute | Expected | Actual | Confidence | Confidence Threshold | Score | Weight | Method | Reason |\n"
             attr_table += "| :----: | --------- | -------- | ------ | :---------------: | :---------------: | ----- | :----: | ------ | ------ |\n"
             for ar in sr.attributes:
@@ -492,5 +706,40 @@ class DocumentEvaluationResult:
         sections.append(
             "**Note**: Each attribute specifies its evaluation method via `x-aws-idp-evaluation-method` in the schema."
         )
+
+        # Add Metrics Explanation at the very end
+        if self.doc_split_metrics:
+            sections.append("")
+            sections.append("## 📖 Metrics Explanation")
+            sections.append("")
+            sections.append("### Page Level Accuracy")
+            sections.append(
+                "- Evaluates classification accuracy for **individual pages**"
+            )
+            sections.append(
+                "- Each page index is checked: does its predicted `document_class` match expected?"
+            )
+            sections.append("- Does not consider page grouping into sections")
+            sections.append("")
+            sections.append("### Document Split Accuracy (Without Page Order)")
+            sections.append(
+                "- Evaluates whether pages are **correctly grouped into sections**"
+            )
+            sections.append(
+                "- For each expected section, checks if predicted sections contain:"
+            )
+            sections.append("  - Same set of page indices (order doesn't matter)")
+            sections.append("  - Same `document_class`")
+            sections.append(
+                "- Both conditions must be met for a section to be marked correct"
+            )
+            sections.append("")
+            sections.append("### Document Split Accuracy (With Page Order)")
+            sections.append("- Same as above but **page order must match exactly**")
+            sections.append(
+                "- The `page_indices` list must be identical (same pages, same order)"
+            )
+            sections.append("- Most strict evaluation metric")
+            sections.append("")
 
         return "\n".join(sections)

@@ -1654,6 +1654,22 @@ Resources:
               Type: double
             - Name: execution_time
               Type: double
+            - Name: page_level_accuracy
+              Type: double
+            - Name: split_accuracy_without_order
+              Type: double
+            - Name: split_accuracy_with_order
+              Type: double
+            - Name: total_pages
+              Type: int
+            - Name: total_splits
+              Type: int
+            - Name: correctly_classified_pages
+              Type: int
+            - Name: correctly_split_without_order
+              Type: int
+            - Name: correctly_split_with_order
+              Type: int
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -2919,6 +2935,9 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${GetLowercase.Lowercase}-reporting-db"
                 - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_sections_*"
                 - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/metering"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/document_evaluations"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/section_evaluations"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GetLowercase.Lowercase}-reporting-db/attribute_evaluations"
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
