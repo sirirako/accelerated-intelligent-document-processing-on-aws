@@ -46,6 +46,7 @@ mutation UpdateDocument($input: UpdateDocumentInput!) {
             Class
             ImageUri
             TextUri
+            TextConfidenceUri
         }
         Metering
         EvaluationReportUri
