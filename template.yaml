@@ -907,6 +907,7 @@ Resources:
                 Action:
                   - s3:ListBucket
                   - s3:GetBucketLocation
+                  - s3:GetBucketVersioning
                 Resource: !If
                   - ShouldCreateReportingBucket
                   - !GetAtt ReportingBucket.Arn
@@ -945,6 +946,19 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+        - PolicyName: DynamoDBReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt ConfigurationTable.Arn
+                  - !GetAtt TrackingTable.Arn
+                  - !GetAtt AgentTable.Arn
 
   AgentCoreAnalyticsLambdaLogGroup:
     Type: AWS::Logs::LogGroup
@@ -5193,9 +5207,11 @@ Resources:
         - email
         - profile
       CallbackURLs:
-        - !Sub "https://${CloudFrontDistribution.DomainName}/"
+        - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
         - "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback"
+        - !Sub "https://${CloudFrontDistribution.DomainName}/"
       LogoutURLs:
+        - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
         - !Sub "https://${CloudFrontDistribution.DomainName}/"
 
   ##########################################################################
