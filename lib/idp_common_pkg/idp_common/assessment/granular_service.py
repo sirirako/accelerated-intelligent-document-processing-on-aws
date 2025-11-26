@@ -1288,23 +1288,12 @@ class GranularAssessmentService:
                 )
                 raise
 
-        # Fallback: use raw OCR data if text confidence is not available (for backward compatibility)
-        if page.raw_text_uri:
-            try:
-                from idp_common.ocr.service import OcrService
-
-                ocr_service = OcrService()
-                raw_ocr_data = s3.get_json_content(page.raw_text_uri)
-                text_confidence_data = ocr_service._generate_text_confidence_data(
-                    raw_ocr_data
-                )
-                return json.dumps(text_confidence_data, indent=2)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to generate text confidence data for page {page.page_id}: {str(e)}"
-                )
-                raise
-        return ""
+        # Text confidence URI not available
+        logger.error(
+            f"Text confidence data unavailable for page {page.page_id}. "
+            f"The text_confidence_uri field is missing or empty."
+        )
+        return "Text Confidence Data Unavailable"
 
     def _convert_bbox_to_geometry(
         self, bbox_coords: List[float], page_num: int

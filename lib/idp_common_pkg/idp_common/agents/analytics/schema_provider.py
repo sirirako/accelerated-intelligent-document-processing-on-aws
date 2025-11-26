@@ -131,6 +131,14 @@ def get_evaluation_tables_description() -> str:
 - `false_discovery_rate` (double): False discovery rate (0-1)
 - `weighted_overall_score` (double): Weighted overall score (0-1)
 - `execution_time` (double): Time taken to evaluate (seconds)
+- `page_level_accuracy` (double): Page-level classification accuracy (0-1)
+- `split_accuracy_without_order` (double): Document split accuracy without considering order (0-1)
+- `split_accuracy_with_order` (double): Document split accuracy with order considered (0-1)
+- `total_pages` (int): Total number of pages in the document
+- `total_splits` (int): Total number of document splits/sections
+- `correctly_classified_pages` (int): Number of pages correctly classified
+- `correctly_split_without_order` (int): Number of correctly split sections (unordered)
+- `correctly_split_with_order` (int): Number of correctly split sections (ordered)
 
 **Partitioned by**: date (YYYY-MM-DD format)
 

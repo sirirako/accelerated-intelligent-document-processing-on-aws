@@ -649,6 +649,132 @@ This multi-level analysis helps identify specific areas for improvement, such as
 - Performance degradation with larger transaction lists
 - Specific list item attributes that frequently fail evaluation
 
+## Document Split Classification Metrics
+
+In addition to extraction accuracy evaluation, the framework now includes document split classification metrics to assess how accurately documents are classified and split into sections. This provides a comprehensive evaluation of both **what** was extracted and **how** documents were classified and organized.
+
+### Overview
+
+Document split classification metrics evaluate three key aspects:
+
+1. **Page-Level Classification**: Accuracy of classifying individual pages
+2. **Document Split Grouping**: Accuracy of grouping pages into sections
+3. **Page Order Preservation**: Accuracy of maintaining correct page order within sections
+
+These metrics are calculated by comparing the `document_class` and `split_document.page_indices` fields in each section's result JSON.
+
+### Three Types of Accuracy
+
+#### 1. Page Level Accuracy
+**Purpose**: Measures how accurately individual pages are classified, regardless of how they're grouped into sections.
+
+**Calculation**: For each page index across all sections, compare the expected `document_class` with the predicted `document_class`.
+
+**Use Case**: Identify if pages are being assigned to the correct document types.
+
+**Example**:
+```
+Expected: Page 0 → Invoice, Page 1 → Invoice, Page 2 → Receipt
+Predicted: Page 0 → Invoice, Page 1 → Receipt, Page 2 → Receipt
+Result: 2/3 pages correct = 66.7% accuracy
+```
+
+#### 2. Split Accuracy (Without Page Order)
+**Purpose**: Measures whether pages are correctly grouped into sections with the right classification, regardless of page order.
+
+**Calculation**: For each expected section, check if any predicted section has:
+- The same set of page indices (as a set, order doesn't matter)
+- The same `document_class`
+
+Both conditions must be met for a section to be marked as correct.
+
+**Use Case**: Verify that pages belonging together are kept together, even if their order might vary.
+
+**Example**:
+```
+Expected Section A: Class=Invoice, Pages={0, 1, 2}
+Predicted Section X: Class=Invoice, Pages={2, 0, 1}  ✅ Match (same set)
+
+Expected Section B: Class=Receipt, Pages={3, 4}
+Predicted Section Y: Class=Receipt, Pages={3, 4}  ✅ Match
+
+Expected Section C: Class=Payslip, Pages={5}
+Predicted Section Z: Class=Invoice, Pages={5}  ❌ No match (wrong class)
+
+Result: 2/3 sections correct = 66.7% accuracy
+```
+
+#### 3. Split Accuracy (With Page Order)
+**Purpose**: Most strict evaluation - measures correct grouping with exact page order preservation.
+
+**Calculation**: Same as "Without Order" but the page indices list must match exactly (same pages, same order).
+
+**Use Case**: Verify that multi-page documents maintain correct page sequence.
+
+**Example**:
+```
+Expected Section A: Class=Invoice, Pages=[0, 1, 2]
+Predicted Section X: Class=Invoice, Pages=[0, 1, 2]  ✅ Match (exact order)
+
+Expected Section B: Class=Receipt, Pages=[3, 4]
+Predicted Section Y: Class=Receipt, Pages=[4, 3]  ❌ No match (wrong order)
+
+Result: 1/2 sections correct = 50% accuracy
+```
+
+### Report Structure
+
+Document split metrics are integrated into the unified evaluation report:
+
+```markdown
+# Evaluation Report
+
+## Summary
+**Document Split Classification:**
+- Page Level Accuracy: 🟢 85/100 pages [████████████████░░░░] 85%
+- Split Accuracy (Without Order): 🟡 15/20 sections [███████████████░░░░░] 75%
+- Split Accuracy (With Order): 🟠 12/20 sections [████████████░░░░░░░░] 60%
+
+**Document Extraction:**
+- Match Rate: 🟢 145/150 attributes matched [███████████████████░] 97%
+- Precision: 0.97 | Recall: 0.95 | F1 Score: 🟢 0.96
+
+## Overall Metrics
+
+### Document Split Classification Metrics
+| Metric | Value | Rating |
+| page_level_accuracy | 0.8500 | 🟡 Good |
+| split_accuracy_without_order | 0.7500 | 🟡 Good |
+| split_accuracy_with_order | 0.6000 | 🟠 Fair |
+
+### Document Extraction Metrics
+| Metric | Value | Rating |
+| precision | 0.9700 | 🟢 Excellent |
+| recall | 0.9500 | 🟢 Excellent |
+| f1_score | 0.9600 | 🟢 Excellent |
+```
+
+### Data Structure Requirements
+
+For doc split metrics to be calculated, each section's result JSON must include:
+
+```json
+{
+  "document_class": {
+    "type": "Invoice"
+  },
+  "split_document": {
+    "page_indices": [0, 1]
+  },
+  "inference_result": {
+    // Extracted attributes
+  }
+}
+```
+
+- Page indices are **0-based** and **may be non-sequential**
+- Missing or null fields are handled gracefully (treated as "Unknown" class or empty page list)
+
 ## Setup and Usage
 
 ### Step 1: Creating Baseline Data
@@ -840,12 +966,23 @@ The evaluation framework includes comprehensive monitoring through CloudWatch me
 
 The framework calculates the following detailed metrics for each document and section:
 
+**Extraction Accuracy Metrics:**
 - **Precision**: Accuracy of positive predictions (TP / (TP + FP))
 - **Recall**: Coverage of actual positive cases (TP / (TP + FN))
 - **F1 Score**: Harmonic mean of precision and recall
 - **Accuracy**: Overall correctness (TP + TN) / (TP + TN + FP + FN)
 - **False Alarm Rate**: Rate of false positives among negatives (FP / (FP + TN))
 - **False Discovery Rate**: Rate of false positives among positive predictions (FP / (FP + TP))
+- **Weighted Overall Score**: Field-importance-weighted aggregate score
+
+**Document Split Classification Metrics:**
+- **Page Level Accuracy**: Classification accuracy for individual pages
+- **Split Accuracy (Without Order)**: Correct page grouping regardless of order
+- **Split Accuracy (With Order)**: Correct page grouping with exact order
+- **Total Pages**: Total number of pages evaluated
+- **Total Splits**: Total number of document sections/splits evaluated
+- **Correctly Classified Pages**: Count of pages with correct classification
+- **Correctly Split Sections**: Count of sections with correct page grouping
 
 The evaluation also tracks different evaluation statuses:
 - **RUNNING**: Evaluation is in progress
@@ -866,10 +1003,23 @@ The evaluation framework automatically saves detailed metrics to an AWS Glue dat
 
 #### 1. document_evaluations
 Stores document-level metrics including:
+
+**Extraction Metrics:**
 - Document ID, input key, evaluation date
 - Overall accuracy, precision, recall, F1 score
 - False alarm rate, false discovery rate
+- Weighted overall score
 - Execution time performance metrics
+
+**Document Split Classification Metrics:**
+- Page level accuracy (double)
+- Split accuracy without order (double)
+- Split accuracy with order (double)
+- Total pages (int)
+- Total splits (int)
+- Correctly classified pages (int)
+- Correctly split without order (int)
+- Correctly split with order (int)
 
 #### 2. section_evaluations  
 Stores section-level metrics including:
@@ -932,6 +1082,49 @@ SELECT section_type,
 FROM "your-database-name".section_evaluations
 GROUP BY section_type
 ORDER BY avg_accuracy DESC;
+
+-- Example: Query doc split classification performance
+SELECT document_id,
+       page_level_accuracy,
+       split_accuracy_without_order,
+       split_accuracy_with_order,
+       total_pages,
+       total_splits,
+       evaluation_date
+FROM "your-database-name".document_evaluations
+WHERE page_level_accuracy < 0.9
+ORDER BY page_level_accuracy ASC;
+
+-- Example: Compare doc split vs extraction accuracy
+SELECT 
+  AVG(page_level_accuracy) as avg_page_classification_accuracy,
+  AVG(split_accuracy_without_order) as avg_split_grouping_accuracy,
+  AVG(precision) as avg_extraction_precision,
+  AVG(recall) as avg_extraction_recall,
+  AVG(f1_score) as avg_extraction_f1
+FROM "your-database-name".document_evaluations
+WHERE evaluation_date >= current_date - interval '7' day;
+
+-- Example: Identify documents with page classification issues
+SELECT document_id,
+       total_pages,
+       correctly_classified_pages,
+       page_level_accuracy,
+       ROUND((total_pages - correctly_classified_pages), 0) as misclassified_pages
+FROM "your-database-name".document_evaluations
+WHERE page_level_accuracy < 1.0
+ORDER BY misclassified_pages DESC;
+
+-- Example: Analyze split accuracy trends over time
+SELECT 
+  DATE_TRUNC('day', evaluation_date) as eval_day,
+  COUNT(*) as documents_evaluated,
+  AVG(split_accuracy_without_order) as avg_split_accuracy_unordered,
+  AVG(split_accuracy_with_order) as avg_split_accuracy_ordered
+FROM "your-database-name".document_evaluations
+WHERE evaluation_date >= current_date - interval '30' day
+GROUP BY DATE_TRUNC('day', evaluation_date)
+ORDER BY eval_day DESC;
 ```
 
 ### Analytics Notebook

@@ -185,7 +185,8 @@ def handler(event, context):
         
         # If no baseline document is found, update status and exit
         if not expected_document:
-            actual_document = update_document_evaluation_status(actual_document, EvaluationStatus.NO_BASELINE)
+            # Update status in AppSync but keep using actual_document (don't overwrite)
+            update_document_evaluation_status(actual_document, EvaluationStatus.NO_BASELINE)
             logger.info("Evaluation skipped - no baseline data available")
             return {'document': actual_document.serialize_document(working_bucket, 'evaluation')}
         
@@ -204,7 +205,8 @@ def handler(event, context):
         if evaluated_document.errors:
             error_msg = f"Evaluation encountered errors: {evaluated_document.errors}"
             logger.error(error_msg)
-            evaluated_document = update_document_evaluation_status(evaluated_document, EvaluationStatus.FAILED)
+            # Update status in AppSync but keep using evaluated_document (don't overwrite)
+            update_document_evaluation_status(evaluated_document, EvaluationStatus.FAILED)
             return {'document': evaluated_document.serialize_document(working_bucket, 'evaluation')}
        
         # Save evaluation results to reporting bucket for analytics using the SaveReportingData Lambda
@@ -232,7 +234,8 @@ def handler(event, context):
             # Continue execution - don't fail the entire function if reporting fails
         
         # Update document evaluation status to COMPLETED
-        evaluated_document = update_document_evaluation_status(evaluated_document, EvaluationStatus.COMPLETED)
+        # Note: We discard the return value to keep using evaluated_document with correct URIs
+        update_document_evaluation_status(evaluated_document, EvaluationStatus.COMPLETED)
         logger.info(f"Evaluation process completed successfully in {time.time() - start_time:.2f} seconds")
         
         # Return document in state machine format
@@ -245,7 +248,8 @@ def handler(event, context):
         # Update document status to FAILED if we have the document
         if actual_document:
             try:
-                actual_document = update_document_evaluation_status(actual_document, EvaluationStatus.FAILED)
+                # Update status in AppSync but keep using actual_document (don't overwrite)
+                update_document_evaluation_status(actual_document, EvaluationStatus.FAILED)
                 return {'document': actual_document.serialize_document(working_bucket, 'evaluation')}
             except Exception as update_error:
                 logger.error(f"Failed to update evaluation status: {str(update_error)}")

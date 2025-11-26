@@ -335,11 +335,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
     <Box margin={{ top: 'l', bottom: 'm' }}>
       <ExpandableSection
         variant="container"
-        headerText={
-          <Header variant="h3" description={`Estimated cost per page: $${costPerPage.toFixed(4)}`}>
-            Estimated Cost
-          </Header>
-        }
+        headerText={`Estimated Cost (per page: $${costPerPage.toFixed(4)})`}
         expanded={expanded}
         onChange={({ detail }) => setExpanded(detail.expanded)}
       >

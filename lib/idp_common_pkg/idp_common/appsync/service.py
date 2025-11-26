@@ -306,11 +306,19 @@ class DocumentAppSyncService:
         if pages_data is not None:  # Ensure pages_data is not None before iterating
             for page_data in pages_data:
                 page_id = str(page_data.get("Id"))
+
+                # Get URI values and handle empty strings
+                # Note: TextUri in AppSync schema contains the parsed text URI
+                text_uri = page_data.get("TextUri") or None
+                text_conf_uri = page_data.get("TextConfidenceUri") or None
+                image_uri = page_data.get("ImageUri") or None
+
                 doc.pages[page_id] = Page(
                     page_id=page_id,
-                    image_uri=page_data.get("ImageUri"),
-                    raw_text_uri=page_data.get("TextUri"),
-                    text_confidence_uri=page_data.get("TextConfidenceUri"),
+                    image_uri=image_uri,
+                    raw_text_uri=text_uri,  # TextUri maps to both for backward compatibility
+                    parsed_text_uri=text_uri,  # Fix: TextUri contains parsed text URI
+                    text_confidence_uri=text_conf_uri,  # Fix: Convert empty strings to None
                     classification=page_data.get("Class"),
                 )
 
