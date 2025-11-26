@@ -653,6 +653,9 @@ This multi-level analysis helps identify specific areas for improvement, such as
 
 In addition to extraction accuracy evaluation, the framework now includes document split classification metrics to assess how accurately documents are classified and split into sections. This provides a comprehensive evaluation of both **what** was extracted and **how** documents were classified and organized.
 
+https://github.com/user-attachments/assets/289cc6a7-3d83-488b-a4b1-4b749858cd9e
+
+
 ### Overview
 
 Document split classification metrics evaluate three key aspects:
