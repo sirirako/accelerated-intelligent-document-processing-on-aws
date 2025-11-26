@@ -897,6 +897,8 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:DeleteObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListMultipartUploadParts
                 Resource: !Sub
                   - "${BucketArn}/*"
                   - BucketArn: !If
@@ -933,6 +935,9 @@ Resources:
               - Effect: Allow
                 Action:
                   - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
                   - kms:DescribeKey
                 Resource: !GetAtt CustomerManagedEncryptionKey.Arn
         - PolicyName: BedrockInvokePolicy
