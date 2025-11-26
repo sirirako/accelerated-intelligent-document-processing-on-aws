@@ -1983,10 +1983,10 @@ except Exception as e:
             ".yml",
             ".json",
             ".txt",
-            ".md",
             ".toml",
             ".cfg",
             ".ini",
+            ".graphql",
         }
         exclude_dirs = {
             "__pycache__",
