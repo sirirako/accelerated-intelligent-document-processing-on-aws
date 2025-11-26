@@ -2,12 +2,41 @@
 
 ## Current Task Status
 
-**ProcessChanges Resolver Fix & Agent Analytics Optimization**: ✅ **COMPLETED** - 2-Phase Schema Knowledge Optimization
+**Test Suite Dependency Fix**: ✅ **COMPLETED** - Fixed Missing Type Stubs Dependency
 
 **Previous Tasks**: 
+- ✅ **COMPLETED** - ProcessChanges Resolver Fix & Agent Analytics Optimization
 - ✅ **COMPLETED** - Section Edit Mode Performance Optimization  
 - ✅ **COMPLETED** - IDP CLI Dependency Security Updates
 - ✅ **COMPLETED** - Service Principal GovCloud Compatibility Updates
+
+## Test Suite Dependency Fix
+
+Successfully resolved test collection failure caused by missing type stubs dependency for Bedrock Runtime client.
+
+### Issue Identified
+- **Error**: `ModuleNotFoundError: No module named 'mypy_boto3_bedrock_runtime'` during test collection
+- **Location**: `lib/idp_common_pkg/idp_common/utils/bedrock_utils.py`
+- **Root Cause**: Type stubs dependency was only in `agentic-extraction` optional dependencies, not in `test` dependencies
+
+### Solution Implemented
+- **Added Dependency**: `mypy-boto3-bedrock-runtime>=1.39.0` to test dependencies in `pyproject.toml`
+- **File Modified**: `lib/idp_common_pkg/pyproject.toml`
+- **Rationale**: The `bedrock_utils.py` module imports `mypy_boto3_bedrock_runtime` for type hints on BedrockRuntimeClient, and these type stubs are required for the `test_bedrock_utils.py` unit tests to import and run
+
+### Test Results
+- **idp_common_pkg**: ✅ 428 passed, 20 skipped
+- **idp_cli**: ✅ 61 passed
+- **Total Time**: ~8.44 seconds
+- **Status**: All tests passing successfully
+
+### Technical Details
+The type stubs package `mypy-boto3-bedrock-runtime` provides type information for boto3's bedrock-runtime client, enabling:
+1. Better IDE autocomplete and type checking
+2. Type-safe wrapper class implementation in `BedrockClientWrapper`
+3. Proper type hints for invoke_model, converse, and converse_stream methods
+
+This dependency was already present in `agentic-extraction` dependencies but was missing from the `test` group, causing test collection to fail when importing the module.
 
 ## ProcessChanges Resolver Fix & Agent Analytics Optimization Overview
 
