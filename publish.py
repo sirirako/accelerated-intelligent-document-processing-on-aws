@@ -2097,7 +2097,10 @@ except Exception as e:
 
         # Include deployment context in checksum calculation
         combined = (
-            "".join(checksums) + (self.bucket or "") + (self.prefix_and_version or "") + (self.region or "")
+            "".join(checksums)
+            + (self.bucket or "")
+            + (self.prefix_and_version or "")
+            + (self.region or "")
         )
         result = hashlib.sha256(combined.encode()).hexdigest()
 
