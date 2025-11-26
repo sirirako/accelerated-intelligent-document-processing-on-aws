@@ -212,12 +212,12 @@ Parameters:
     AllowedValues: [ 'true', 'false' ]
     Description: Enable X-Ray tracing
 
-  # External App Authentication
-  EnableAgentCore:
+  # MCP Integration
+  EnableMCP:
     Type: String
     Default: 'true'
     AllowedValues: [ 'true', 'false' ]
-    Description: Enable AgentCore integration
+    Description: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway
 
   # Optional Knowledge Base Configuration
   DocumentKnowledgeBase:
@@ -469,8 +469,8 @@ Conditions:
   HasPermissionsBoundary: !Not [ !Equals [ !Ref PermissionsBoundaryArn, "" ] ]
   HasCustomConfigPath: !Not [ !Equals [ !Ref CustomConfigPath, "" ] ]
   IsS3VectorsVectorStore: !Equals [ !Ref KnowledgeBaseVectorStore, "S3_VECTORS" ]
-  CreateAgentCoreLambda: !Equals [ !Ref EnableAgentCore, "true" ]
-  CreateExternalAppClient: !Equals [ !Ref EnableAgentCore, "true" ]
+  CreateAgentCoreLambda: !Equals [ !Ref EnableMCP, "true" ]
+  CreateExternalAppClient: !Equals [ !Ref EnableMCP, "true" ]
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -539,9 +539,9 @@ Metadata:
           - PermissionsBoundaryArn
           - WAFAllowedIPv4Ranges
       - Label:
-          default: "AgentCore Configuration"
+          default: "MCP Integration"
         Parameters:
-          - EnableAgentCore
+          - EnableMCP
       - Label:
           default: "General Configuration"
         Parameters:
@@ -617,8 +617,8 @@ Metadata:
         default: "CloudFront Allowed Geos"
       WAFAllowedIPv4Ranges:
         default: "WAF Allowed IPv4 Ranges"
-      EnableAgentCore:
-        default: "Enable AgentCore"
+      EnableMCP:
+        default: "Enable MCP Integration"
 
 Resources:
   # Custom resource to enforce max length of StackName - prevent downstream failures
