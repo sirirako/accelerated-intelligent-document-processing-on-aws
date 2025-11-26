@@ -16,6 +16,19 @@ SPDX-License-Identifier: MIT-0
   - **Automatic Integration**: Integrates with evaluation service when ground truth and predicted sections are available
   - **Documentation**: Guide in `lib/idp_common_pkg/idp_common/evaluation/README.md` with usage examples, metric explanations, and best practices
 
+- **Caching improvements to Agentic Extraction Service**
+  - Optimized prompt caching by caching document context (text/images) on first LLM call, reducing token costs and quota consumption
+
+- **Enhanced Bedrock Retry Logic for Agentic Extraction**
+  - New `bedrock_utils.py` module with exponential backoff and comprehensive error handling
+  - Improves agentic extraction reliability for transient failures and rate limiting
+
+- **Review Agent Model Configuration**
+  - Added `review_agent_model` parameter to enable separate model for reviewing extraction work
+  - Defaults to main extraction model if not specified
+  - Configurable through Web UI extraction settings
+
+
 ### Fixed
 
 - **Evaluation Output URI Fields Lost Across All Patterns - causing (a) missing Page Text Confidence content in UI, (2) failed Assessment step when reprocessing document after editing classes (No module named 'fitz')**
@@ -28,6 +41,10 @@ SPDX-License-Identifier: MIT-0
 
 - **UI: Estimated Cost Panel Arrow Misalignment**
   - Fixed expand/contract arrow displaying above "Estimated Cost" heading
+
+- **Agentic Extraction Reliability Improvements**
+  - Updated Pydantic model serialization to use `model_dump(mode="json")` for proper JSON handling
+  - Resolved linting issues and improved code quality across extraction modules
 
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.5.yaml`
