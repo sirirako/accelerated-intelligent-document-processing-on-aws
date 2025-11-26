@@ -61,7 +61,6 @@ def create_or_update_gateway(props, gateway_name):
     authorizer_config = {
         "customJWTAuthorizer": {
             "discoveryUrl": f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration",
-            "allowedAudience": [client_id],
             "allowedClients": [client_id]
         }
     }
