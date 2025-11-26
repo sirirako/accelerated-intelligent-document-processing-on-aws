@@ -969,9 +969,8 @@ Resources:
     Type: AWS::Logs::LogGroup
     Condition: CreateAgentCoreLambda
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-agentcore-analytics"
-      RetentionInDays: !Ref LogRetentionDays
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
 
   AgentCoreAnalyticsLambdaFunction:
     Type: AWS::Serverless::Function
@@ -1241,9 +1240,8 @@ Resources:
     Type: AWS::Logs::LogGroup
     Condition: CreateAgentCoreLambda
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-agentcore-gateway-manager"
-      RetentionInDays: !Ref LogRetentionDays
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
 
   AgentCoreGateway:
     Type: Custom::AgentCoreGateway

@@ -66,7 +66,8 @@ def create_or_update_gateway(props, gateway_name):
     }
 
     # Create log group for gateway
-    create_log_group(gateway_name, region)
+    stack_name = props.get('StackName', 'UNKNOWN')
+    create_log_group(gateway_name, region, stack_name)
 
     # Create gateway
     gateway = client.create_mcp_gateway(
@@ -157,16 +158,17 @@ def delete_gateway(props, gateway_name):
             # Continue to try log group cleanup
 
         # Clean up log group
-        delete_log_group(gateway_name, region)
+        stack_name = props.get('StackName', 'UNKNOWN')
+        delete_log_group(gateway_name, region, stack_name)
 
     except Exception as e:
         logger.warning(f"Error deleting gateway: {e}")
         # Don't fail the stack deletion for cleanup issues
 
 
-def create_log_group(gateway_name, region):
+def create_log_group(gateway_name, region, stack_name):
     """Create CloudWatch log group for AgentCore Gateway"""
-    log_group_name = f"/aws/bedrock/agentcore/gateway/{gateway_name}"
+    log_group_name = f"{stack_name}-AgentCoreAnalyticsGateway"
 
     logs_client = boto3.client('logs', region_name=region)
     try:
@@ -178,9 +180,9 @@ def create_log_group(gateway_name, region):
         logger.warning(f"Failed to create log group: {e}")
 
 
-def delete_log_group(gateway_name, region):
+def delete_log_group(gateway_name, region, stack_name):
     """Delete CloudWatch log group for AgentCore Gateway"""
-    log_group_name = f"/aws/bedrock/agentcore/gateway/{gateway_name}"
+    log_group_name = f"{stack_name}-AgentCoreAnalyticsGateway"
     logs_client = boto3.client('logs', region_name=region)
     try:
         logs_client.delete_log_group(logGroupName=log_group_name)
