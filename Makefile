@@ -103,7 +103,7 @@ typecheck-stats:
 	basedpyright --stats
 
 # Type check only files changed in current PR/branch
-# Usage: make typecheck-pr [TARGET_BRANCH=branch_name]u
+# Usage: make typecheck-pr [TARGET_BRANCH=branch_name]
 TARGET_BRANCH ?= main
 typecheck-pr:
 	@echo "Type checking changed files against $(TARGET_BRANCH)..."
