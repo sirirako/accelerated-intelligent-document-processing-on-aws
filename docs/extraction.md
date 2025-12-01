@@ -334,7 +334,7 @@ extraction:
 For documents with multiple pages, the system provides robust image management:
 
 - **Automatic Pagination**: Images are processed in page order
-- **Bedrock Compliance**: Maximum 20 images per request (automatically enforced)
+- **Bedrock Compliance**: Maximum 100 images per request (automatically enforced)
 - **Smart Truncation**: Excess images are dropped with warning logs
 - **Performance Optimization**: Large image sets are efficiently handled
 
@@ -346,7 +346,7 @@ extraction:
 
     {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
 
-    Document pages (up to 20 images):
+    Document pages (up to 100 images):
     {DOCUMENT_IMAGE}
 
     Combined text from all pages:
