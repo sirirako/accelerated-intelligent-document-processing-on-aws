@@ -145,6 +145,11 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
         run_command(cmd)
         print(f"[{pattern_name}] ✅ Inference completed")
 
+        # Wait for results to propagate to S3
+        print(f"[{pattern_name}] Waiting 10 seconds for results to propagate...")
+        import time
+        time.sleep(10)
+
         # Step 4: Download and verify results
         print(f"[{pattern_name}] Step 4: Downloading results...")
         results_dir = f"/tmp/results-{pattern_suffix}"
@@ -239,6 +244,10 @@ def get_codebuild_logs():
         if not build_id:
             return "CodeBuild logs not available (not running in CodeBuild)"
         
+        # Wait for logs to propagate to CloudWatch
+        import time
+        time.sleep(10)
+        
         # Extract log group and stream from build ID
         log_group = f"/aws/codebuild/{build_id.split(':')[0]}"
         log_stream = build_id.split(':')[-1]
@@ -275,7 +284,15 @@ def generate_publish_failure_summary(publish_error):
         Build Logs:
         {get_codebuild_logs()}
 
-        ANALYZE THE LOGS FOR: npm ci errors, package-lock.json sync issues, missing @esbuild packages, UI build failures
+        ANALYZE THE LOGS FOR ALL ERROR TYPES:
+        - Python linting/formatting errors (ruff check failed, code formatting check failed)
+        - Python syntax errors (py_compile failures, SyntaxError, IndentationError)
+        - UI build failures (npm ci errors, package-lock.json sync issues, missing @esbuild packages)
+        - AWS/Infrastructure errors (S3 access denied, CloudFormation validation failed, SAM build/package failures)
+        - Missing prerequisites (aws/sam not found, version requirements not met)
+        - File system errors (missing files, permission denied, disk space issues)
+        - Dependency issues (pip install failures, missing Python packages, Docker build errors)
+        - Lambda validation failures (missing idp_common in builds, import test failures)
 
         Create a summary focused on BUILD/PUBLISH issues with bullet points:
 
@@ -287,16 +304,17 @@ def generate_publish_failure_summary(publish_error):
         • Template Publish: FAILED - S3 access denied
 
         🔍 Technical Root Cause:
-        • Extract exact npm/pip error messages from logs
-        • Identify specific missing packages or version conflicts
+        • Extract exact error messages from logs (ruff, npm, pip, aws, sam errors)
+        • Identify specific missing packages, version conflicts, or permission issues
         • Focus on build-time errors, not deployment errors
-        • Check AWS credentials and S3 bucket permissions
+        • Check AWS credentials, S3 bucket permissions, and file access issues
 
         💡 Fix Commands:
-        • Run: cd src/ui && rm package-lock.json && npm install
-        • Check AWS profile: aws configure list --profile <name>
-        • Verify S3 access: aws s3 ls s3://bucket-name --profile <name>
-        • Update package-lock.json and commit changes
+        • Provide specific commands based on actual error found
+        • For linting: run ruff format . && ruff check --fix .
+        • For npm: cd src/ui && rm package-lock.json && npm install
+        • For AWS S3: aws s3 ls s3://bucket-name to test access
+        • For permissions: chmod +x script.sh or check IAM policies
 
         Keep each bullet point under 75 characters. Use sub-bullets for details.
         
@@ -426,42 +444,56 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
         # Initialize Bedrock client
         bedrock = boto3.client('bedrock-runtime')
         
-        # Create prompt for Bedrock with CodeBuild logs first
+        # Create prompt for Bedrock with structured analysis
         prompt = dedent(f"""
-        You are an AWS deployment analyst. Analyze deployment failures and determine root cause.
+        You are an AWS deployment analyst. Analyze deployment results and determine appropriate response.
 
         Deployment Information:
         - Stack Prefix: {stack_prefix}
         - Template URL: {template_url}
         - Total Patterns: {len(deployment_results)}
 
-        Pattern Results:
+        Pattern Results (ANALYZE THIS FIRST):
         {json.dumps(deployment_results, indent=2)}
 
-        CodeBuild Logs:
+        CodeBuild Logs (may be interleaved due to parallel execution):
         {deployment_logs}
 
-        FIRST: Analyze CodeBuild logs for clear error messages. If root cause is unclear from CodeBuild logs, respond with "NEED_CF_LOGS" and list the failed stack names.
+        STEP 1: Check Pattern Results for failure classification:
+        - If ALL patterns have "success": true → SUCCESS CASE
+        - If error contains "No result file found" or "verification failed" → SMOKE TEST FAILURE
+        - If error contains "deployment failed" or "CREATE_FAILED" or "timeout" → INFRASTRUCTURE FAILURE
 
-        IF root cause is clear from CodeBuild logs, create summary:
+        STEP 2: Respond based on classification:
 
+        FOR SUCCESS CASE (all patterns successful):
         🚀 DEPLOYMENT RESULTS
 
         📋 Pattern Status:
-        • Pattern 1 - BDA: FAILED - Stack deployment timeout (300s)
-        • Pattern 2 - OCR: SUCCESS - Stack deployed successfully (120s)
+        • Pattern 1 - BDA: SUCCESS - Stack deployed and tested successfully
+        • Pattern 2 - OCR: SUCCESS - Stack deployed and tested successfully
+
+        FOR INFRASTRUCTURE FAILURE:
+        Respond ONLY with: "NEED_CF_LOGS: stack1,stack2" (list failed stack names)
+
+        FOR SMOKE TEST FAILURE:
+        🚀 DEPLOYMENT RESULTS
+
+        📋 Pattern Status:
+        • [Pattern Name]: FAILED - [specific failure reason from Pattern Results]
+        • [Pattern Name]: SUCCESS - Stack deployed and tested successfully
 
         🔍 Root Cause Analysis:
-        • Extract specific error messages from CodeBuild logs
-        • Focus on deployment failures, timeout errors, permission issues
-        • Check for CLI command failures and their error messages
+        • Extract specific error from Pattern Results
+        • Focus on post-deployment verification issues
+        • Identify timing, file path, or result validation problems
 
         💡 Fix Commands:
-        • Provide specific commands to resolve identified issues
+        • Provide specific commands to resolve verification issues
 
         Keep each bullet point under 75 characters.
         
-        IMPORTANT: If CodeBuild logs don't show clear root cause, respond ONLY with "NEED_CF_LOGS: stack1,stack2"
+        IMPORTANT: Only use NEED_CF_LOGS for actual infrastructure/deployment failures, NOT for smoke test failures.
         """)
         
         # Call Bedrock API

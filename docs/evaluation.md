@@ -3,6 +3,16 @@ SPDX-License-Identifier: MIT-0
 
 # Evaluation Framework
 
+The GenAIIDP solution includes a built-in evaluation framework to assess the accuracy of document processing outputs. This allows you to:
+
+- Compare processing outputs against baseline (ground truth) data
+- Generate detailed evaluation reports using configurable methods and thresholds
+- Track and improve processing accuracy over time
+
+
+https://github.com/user-attachments/assets/0ff17f3e-1eb5-4883-9d6f-3d4e4e84cbea
+
+
 ## Table of Contents
 
 - [Evaluation Framework](#evaluation-framework)
@@ -78,15 +88,6 @@ SPDX-License-Identifier: MIT-0
     - [Migration Checklist](#migration-checklist)
     - [Stickler Version Information](#stickler-version-information)
   - [Troubleshooting Evaluation Issues](#troubleshooting-evaluation-issues)
-
-The GenAIIDP solution includes a built-in evaluation framework to assess the accuracy of document processing outputs. This allows you to:
-
-- Compare processing outputs against baseline (ground truth) data
-- Generate detailed evaluation reports using configurable methods and thresholds
-- Track and improve processing accuracy over time
-
-
-https://github.com/user-attachments/assets/0ff17f3e-1eb5-4883-9d6f-3d4e4e84cbea
 
 
 
