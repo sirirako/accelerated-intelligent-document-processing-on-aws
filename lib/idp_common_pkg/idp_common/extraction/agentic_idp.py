@@ -735,12 +735,12 @@ def _prepare_prompt_content(
     else:
         prompt_content = [ContentBlock(text=str(prompt))]
 
-    # Add page images if provided (limit to 20 as per Bedrock constraints)
+    # Add page images if provided (limit to 100 as per Bedrock constraints)
     if page_images:
-        if len(page_images) > 20:
+        if len(page_images) > 100:
             prompt_content.append(
                 ContentBlock(
-                    text=f"There are {len(page_images)} images, initially you'll see 20 of them, use the view_image tool to see the rest."
+                    text=f"There are {len(page_images)} images, initially you'll see 100 of them, use the view_image tool to see the rest."
                 )
             )
 
@@ -748,7 +748,7 @@ def _prepare_prompt_content(
             ContentBlock(
                 image=ImageContent(format="png", source=ImageSource(bytes=img_bytes))
             )
-            for img_bytes in page_images[:20]
+            for img_bytes in page_images[:100]
         ]
 
     # Add existing data context if provided

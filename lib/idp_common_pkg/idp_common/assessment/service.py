@@ -428,13 +428,13 @@ class AssessmentService:
         # Add the image if available
         if image_content:
             if isinstance(image_content, list):
-                # Multiple images (limit to 20 as per Bedrock constraints)
-                if len(image_content) > 20:
+                # Multiple images (limit to 100 as per Bedrock constraints)
+                if len(image_content) > 100:
                     logger.warning(
-                        f"Found {len(image_content)} images, truncating to 20 due to Bedrock constraints. "
-                        f"{len(image_content) - 20} images will be dropped."
+                        f"Found {len(image_content)} images, truncating to 100 due to Bedrock constraints. "
+                        f"{len(image_content) - 100} images will be dropped."
                     )
-                for img in image_content[:20]:
+                for img in image_content[:100]:
                     content.append(image.prepare_bedrock_image_attachment(img))
             else:
                 # Single image
