@@ -180,7 +180,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
 - [Monitoring](./docs/monitoring.md) - Monitoring and logging capabilities
 - [IDP Accelerator Help Chat Bot](./docs/code-intelligence.md) - Chat bot for asking question about the IDP code base and features
-- [AgentCore Gateway Analytics](./options/agentcore/README.md) - Natural language analytics with AWS Bedrock AgentCore Gateway
+- [MCP Integration](./docs/agentcore-integration.md) - Model Context Protocol integration for external applications like Amazon QuickSight
 - [Reporting Database](./docs/reporting-database.md) - Analytics database for evaluation metrics and metering data
 - [Troubleshooting](./docs/troubleshooting.md) - Troubleshooting and performance guides
 
