@@ -403,7 +403,7 @@ classification:
 
 For documents with multiple pages, the system automatically handles image limits:
 
-- **Bedrock Limit**: Maximum 20 images per request (automatically enforced)
+- **Bedrock Limit**: Maximum 100 images per request (automatically enforced)
 - **Warning Logging**: System logs warnings when images are truncated due to limits
 - **Smart Handling**: Images are processed in page order, with excess images automatically dropped
 

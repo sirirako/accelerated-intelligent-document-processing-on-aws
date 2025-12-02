@@ -111,8 +111,17 @@ typecheck-pr:
 
 
 ui-lint:
-	@echo "Checking UI lint"
-	cd src/ui && npm ci --prefer-offline --no-audit && npm run lint
+	@echo "Checking if UI lint is needed..."
+	@CURRENT_HASH=$$(python3 -c "from publish import IDPPublisher; p = IDPPublisher(); print(p.get_directory_checksum('src/ui'))"); \
+	STORED_HASH=$$(test -f src/ui/.checksum && cat src/ui/.checksum || echo ""); \
+	if [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
+		echo "UI code checksum changed - running lint..."; \
+		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint && \
+		echo "$$CURRENT_HASH" > .checksum; \
+		echo -e "$(GREEN)✅ UI lint completed and checksum updated$(NC)"; \
+	else \
+		echo -e "$(GREEN)✅ UI code checksum unchanged - skipping lint$(NC)"; \
+	fi
 
 ui-build:
 	@echo "Checking UI build"

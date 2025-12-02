@@ -200,7 +200,7 @@ class TestDynamicSchemaGeneration:
 
         # Verify auto-generation annotation in reason field
         for attr in result.attributes:
-            assert "Note: Document schema not specified" in attr.reason
+            assert "Note: Schema inferred (no config)" in attr.reason
 
     def test_auto_generation_caching(self, evaluation_service):
         """Test that auto-generated schemas are cached for reuse."""

@@ -5,9 +5,86 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+- Increased page image limit from 20 to 100 across all IDP services (classification, extraction, assessment) to support processing of longer document sections with large context models following recent Amazon Bedrock API limit increases
+  - Resolves #147
+
+## [0.4.5]
+
 ### Added
 
+- **Document Split Classification Metrics for Evaluating Page-Level Classification and Document Segmentation**
+  - Added `DocSplitClassificationMetrics` class for comprehensive evaluation of document splitting and classification accuracy
+  - **Three Accuracy Types**: Page-level classification accuracy, split accuracy without order consideration, and split accuracy with exact page order matching
+  - **Visual Reporting**: Generates markdown reports with color-coded indicators (🟢 Excellent, 🟡 Good, 🟠 Fair, 🔴 Poor), progress bars, and detailed section analysis tables
+  - **Automatic Integration**: Integrates with evaluation service when ground truth and predicted sections are available
+  - **Documentation**: Guide in `lib/idp_common_pkg/idp_common/evaluation/README.md` with usage examples, metric explanations, and best practices
+
+- **Caching improvements to Agentic Extraction Service**
+  - Optimized prompt caching by caching document context (text/images) on first LLM call, reducing token costs and quota consumption
+
+- **Enhanced Bedrock Retry Logic for Agentic Extraction**
+  - New `bedrock_utils.py` module with exponential backoff and comprehensive error handling
+  - Improves agentic extraction reliability for transient failures and rate limiting
+
+- **Review Agent Model Configuration**
+  - Added `review_agent_model` parameter to enable separate model for reviewing extraction work
+  - Defaults to main extraction model if not specified
+  - Configurable through Web UI extraction settings
+
+
 ### Fixed
+
+- **Evaluation Output URI Fields Lost Across All Patterns - causing (a) missing Page Text Confidence content in UI, (2) failed Assessment step when reprocessing document after editing classes (No module named 'fitz')**
+  - Fixed bug where `text_confidence_uri` was being set to null in evaluation output for all three patterns
+  - Root cause: AppSync service `_appsync_to_document()` method incorrectly mapped page URIs, and evaluation functions overwrote correct documents with corrupted AppSync responses
+
+- **UI: Metering Data Not Displayed During Document Processing**
+  - Fixed UI subscription query missing `Metering` field, preventing real-time cost display
+  - Users can now see estimated costs accumulate in real-time without manual page refresh
+
+- **UI: Estimated Cost Panel Arrow Misalignment**
+  - Fixed expand/contract arrow displaying above "Estimated Cost" heading
+
+- **Agentic Extraction Reliability Improvements**
+  - Updated Pydantic model serialization to use `model_dump(mode="json")` for proper JSON handling
+  - Resolved linting issues and improved code quality across extraction modules
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.5.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.5.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.5.yaml`
+
+
+## [0.4.4]
+
+### Added
+
+- **IDP CLI --from-code Flag for Local Development Deployment**
+  - Added `--from-code` flag to `idp-cli deploy` command enabling deployment directly from local source code
+  - Automatically builds project using `publish.py` script with streaming output for real-time build progress
+- **IDP CLI --no-rollback Flag for Stack Deployment Troubleshooting**
+  - Added `--no-rollback` flag to `idp-cli deploy` command to disable automatic rollback on CloudFormation stack creation failure
+  - When enabled, failed stacks remain in `CREATE_FAILED` state instead of rolling back, allowing inspection of failed resources for troubleshooting
+
+- **Add support for prompt caching for Claude Haiku 4.5**
+
+- **Add support for prompt caching for for EU region models**
+
+### Fixed
+
+- **Analytics Agent Schema Provider - Fixed Nested Attribute Column Display**
+  - Fixed `schema_provider.py` to correctly display leaf-level nested columns instead of showing group-level attributes
+
+- **IDP Agent Companion Chat UX improvements**
+  - Improved speed of rendering chat response by buffering the agent tool responses.
+  - Displaying agent tool queries and results in a modal with formatted results.
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.4.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.4.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.4.yaml`
 
 ## [0.4.3]
 
