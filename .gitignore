@@ -37,3 +37,6 @@ pyrightconfig.temp.json
 .venv/
 .venv-*/
 venv/
+# DSR generated files
+LICENSE
+NOTICE
