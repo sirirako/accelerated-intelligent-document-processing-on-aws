@@ -1,13 +1,13 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# AgentCore Integration
+# MCP Integration
 
-The GenAI IDP solution provides AgentCore integration that enables external applications to access IDP functionality through AWS Bedrock AgentCore Gateway using the Model Context Protocol (MCP). This allows third-party applications to query processed document data and perform analytics operations through natural language interfaces.
+The GenAI IDP solution provides MCP (Model Context Protocol) integration that enables external applications like Amazon Quick Suite to access IDP functionality through AWS Bedrock AgentCore Gateway. This allows third-party applications to query processed document data and perform analytics operations through natural language interfaces.
 
 ## Overview
 
-The AgentCore integration exposes IDP capabilities to external applications by:
+The MCP integration exposes IDP capabilities to external applications by:
 
 - **Analytics Gateway**: Provides natural language access to processed document analytics data
 - **Secure Authentication**: Uses AWS Cognito OAuth 2.0 for secure external application access
@@ -34,16 +34,16 @@ External App → Cognito Auth → AgentCore Gateway → Analytics Lambda → IDP
 
 ### During Stack Deployment
 
-The AgentCore integration is controlled by the `EnableAgentCore` parameter:
+The MCP integration is controlled by the `EnableMCP` parameter:
 
-**Enable AgentCore Integration:**
+**Enable MCP Integration:**
 ```yaml
-EnableAgentCore: 'true'  # Default value
+EnableMCP: 'true'  # Default value
 ```
 
-**Disable AgentCore Integration:**
+**Disable MCP Integration:**
 ```yaml
-EnableAgentCore: 'false'
+EnableMCP: 'false'
 ```
 
 When enabled, the stack automatically creates:
@@ -128,7 +128,7 @@ The IDP solution creates a Cognito User Pool with:
 
 ### External App Client
 
-When AgentCore is enabled, an additional Cognito User Pool Client is created:
+When MCP is enabled, an additional Cognito User Pool Client is created:
 
 **Client Configuration:**
 - **Client Name**: "External-App-Client"
@@ -169,7 +169,7 @@ curl -X POST <ExternalAppTokenURL> \
 
 ## Output Parameters
 
-When AgentCore integration is enabled, the CloudFormation stack provides the following outputs required for external application integration:
+When MCP integration is enabled, the CloudFormation stack provides the following outputs required for external application integration:
 
 ### AgentCore Gateway Outputs
 
@@ -238,7 +238,7 @@ query_request = {
     "params": {
         "name": "search_genaiidp",
         "arguments": {
-            "query": "How many documents have been processed in total?"
+            "query": "How many documents were processed this week?"
         }
     }
 }
@@ -253,90 +253,9 @@ response = requests.post(
 )
 
 result = response.json()
-print(f"Analytics result: {result}")
+print(f"Query result: {result}")
 ```
 
-### Additional Query Examples
+### Amazon Quick Suite Integration
 
-External applications can send various natural language queries:
-
-```python
-# Document processing trends
-trend_query = {
-    "method": "tools/call",
-    "params": {
-        "name": "search_genaiidp",
-        "arguments": {
-            "query": "Show me document processing trends by month for the last 6 months"
-        }
-    }
-}
-
-# Document type analysis
-type_query = {
-    "method": "tools/call",
-    "params": {
-        "name": "search_genaiidp",
-        "arguments": {
-            "query": "What are the top 5 most common document types and their processing success rates?"
-        }
-    }
-}
-
-for query in [trend_query, type_query]:
-    response = requests.post(GATEWAY_URL, headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}, json=query)
-    print(response.json())al language
-query_request = {
-    "method": "tools/call",
-    "params": {
-        "name": "search_genaiidp",
-        "arguments": {
-            "query": "How many documents have been processed in total?"
-        }
-    }
-}
-
-response = requests.post(
-    GATEWAY_URL,
-    headers={
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    },
-    json=query_request
-)
-
-result = response.json()
-print(f"Analytics result: {result}")
-```
-
-### Additional Query Examples
-
-External applications can send various natural language queries:
-
-```python
-# Document processing trends
-trend_query = {
-    "method": "tools/call",
-    "params": {
-        "name": "search_genaiidp",
-        "arguments": {
-            "query": "Show me document processing trends by month for the last 6 months"
-        }
-    }
-}
-
-# Document type analysis
-type_query = {
-    "method": "tools/call",
-    "params": {
-        "name": "search_genaiidp",
-        "arguments": {
-            "query": "What are the top 5 most common document types and their processing success rates?"
-        }
-    }
-}
-
-for query in [trend_query, type_query]:
-    response = requests.post(GATEWAY_URL, headers=headers, json=query)
-    print(response.json())
-```
+For Amazon Quick Suite integration, use the provided OAuth callback URLs and configure QuickSight to authenticate against the Cognito User Pool using the External App Client credentials.
