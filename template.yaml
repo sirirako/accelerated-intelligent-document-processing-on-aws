@@ -1168,7 +1168,7 @@ Resources:
       UserPoolId: !Ref UserPool
       ClientId: !Ref ExternalAppClient
       ClientSecret: !GetAtt ExternalAppClient.ClientSecret
-      SourceCodeHash: <HASH_TOKEN>
+      SourceCodeHash: <LAMBDA_HASH_TOKEN>
 
   ##########################################################################
   # Nested stack for selected pattern

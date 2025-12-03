@@ -1856,6 +1856,9 @@ except Exception as e:
                     "<PATTERN2_IMAGE_VERSION>": pattern2_image_version,
                     "<PATTERN3_IMAGE_VERSION>": pattern3_image_version,
                     "<HASH_TOKEN>": self.get_directory_checksum("./lib")[:16],
+                    "<LAMBDA_HASH_TOKEN>": self.get_directory_checksum("./src/lambda")[
+                        :16
+                    ],
                     "<CONFIG_LIBRARY_HASH_TOKEN>": self.get_directory_checksum(
                         "config_library"
                     )[:16],
