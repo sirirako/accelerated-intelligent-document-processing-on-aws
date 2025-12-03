@@ -77,7 +77,7 @@ def handle_cache_update_request(event, context):
                 'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
             }
             
-            table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+            table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
             table.update_item(
                 Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'},
                 UpdateExpression='SET testRunResult = :metrics',
