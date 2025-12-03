@@ -232,8 +232,8 @@ discovery:
           ]
       }
   with_ground_truth:
-    top_p: '0.1'
-    temperature: '1.0'
+    top_p: "0.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                        
       <GROUND_TRUTH_REFERENCE>
@@ -260,8 +260,8 @@ discovery:
       field definitions.
     max_tokens: '10000'
   without_ground_truth:
-    top_p: '0.1'
-    temperature: '1.0'
+    top_p: "0.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains forms data. Analyze the form line by line.
       Image may contains multiple pages, process all the pages. 

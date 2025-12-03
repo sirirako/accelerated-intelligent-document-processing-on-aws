@@ -345,9 +345,10 @@ class BedrockClient:
         # Initialize inference config with temperature
         inference_config = {"temperature": temperature}
 
-        # Handle top_p parameter - only use if temperature is 0 or not specified
+        # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
         # Some models don't allow both temperature and top_p to be specified
-        if top_p is not None and temperature == 0.0:
+        # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
+        if top_p is not None:
             # Convert top_p to float if it's a string
             if isinstance(top_p, str):
                 try:
@@ -358,10 +359,18 @@ class BedrockClient:
                     )
                     top_p = None
 
-            if top_p is not None:
+            # Only use top_p if it's positive (greater than 0)
+            if top_p is not None and top_p > 0:
                 inference_config["topP"] = top_p
                 # Remove temperature when using top_p to avoid conflicts
                 del inference_config["temperature"]
+                logger.debug(
+                    f"Using top_p={top_p} for inference (temperature ignored)"
+                )
+            else:
+                logger.debug(
+                    f"Using temperature={temperature} for inference (top_p is 0 or None)"
+                )
 
         # Handle max_tokens parameter
         if max_tokens is not None:
