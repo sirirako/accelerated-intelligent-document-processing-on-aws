@@ -1219,8 +1219,10 @@ Resources:
               Action:
                 - bedrock-agent:*
                 - bedrock-agentcore:*
+                - bedrock-agentcore-control:*
                 - logs:CreateLogGroup
                 - logs:PutLogEvents
+                - logs:DeleteLogGroup
                 - iam:PassRole
                 - iam:CreateRole
                 - iam:AttachRolePolicy

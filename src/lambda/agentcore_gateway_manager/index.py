@@ -7,12 +7,11 @@ import cfnresponse
 import time
 import logging
 import os
-from botocore.exceptions import ClientError
+from typing import Any, Dict
 from bedrock_agentcore_starter_toolkit.operations.gateway.client import GatewayClient
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
-
 
 def handler(event, context):
     """CloudFormation custom resource handler for AgentCore Gateway"""
@@ -40,9 +39,18 @@ def handler(event, context):
 
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
-        cfnresponse.send(event, context, cfnresponse.FAILED, {},
-                         physicalResourceId=gateway_name,
-                         reason=str(e))
+        # Check if this is a bedrock-agentcore access issue
+        if 'bedrock-agentcore' in str(e).lower() and ('access' in str(e).lower() or 'unauthorized' in str(e).lower()):
+            logger.warning("bedrock-agentcore service appears unavailable - continuing without MCP gateway")
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                'GatewayUrl': 'N/A - Service not available',
+                'GatewayId': 'N/A',
+                'GatewayArn': 'N/A'
+            }, physicalResourceId=gateway_name)
+        else:
+            cfnresponse.send(event, context, cfnresponse.FAILED, {},
+                             physicalResourceId=gateway_name,
+                             reason=str(e))
 
 
 def create_or_update_gateway(props, gateway_name):
@@ -125,45 +133,65 @@ def create_or_update_gateway(props, gateway_name):
 
 
 def delete_gateway(props, gateway_name):
-    """Delete AgentCore Gateway"""
+    """Delete AgentCore Gateway using toolkit"""
     try:
         region = props['Region']
-        logger.info(f"Deleting gateway: {gateway_name}")
+        client = boto3.client(
+            "bedrock-agentcore-control",
+            region_name=region
+        )
+        name: str = gateway_name
+        gateway_id = None
+        kwargs: Dict[str, Any] = {"maxResults": 10}
+        resp = client.list_gateways(**kwargs)
+        items = [g for g in resp.get("items", []) if g.get("name") == name]
 
-        # Use direct boto3 bedrock-agent client
-        bedrock_client = boto3.client('bedrock-agent', region_name=region)
+        if len(items) > 0:
+            gateway_id = items[0].get("gatewayId")
 
-        # Try to find and delete the gateway by name
-        try:
-            # List agent gateways to find the one with our name
-            response = bedrock_client.list_agent_gateways()
-            target_gateway_id = None
+        if gateway_id:
+            logger.info(f"Attempting to delete gateway by ID: {gateway_id}")
+            # Step 1: List and delete all targets
+            logger.info("Finding targets for gateway: %s", gateway_id)
+            try:
+                response = client.list_gateway_targets(gatewayIdentifier=gateway_id)
+                # API returns targets in 'items' field
+                targets = response.get("items", [])
+                logger.info("Found %s targets to delete", len(targets))
+                for target in targets:
+                    target_id = target["targetId"]
+                    logger.info("Deleting target: %s", target_id)
+                    try:
+                        client.delete_gateway_target(gatewayIdentifier=gateway_id, targetId=target_id)
+                        logger.info("Target deletion initiated: %s", target_id)
+                        # Wait for deletion to complete
+                        time.sleep(5)
+                    except Exception as e:
+                        logger.warning("Error deleting target %s: %s", target_id, str(e))
 
-            for gateway in response.get('agentGateways', []):
-                if gateway.get('agentGatewayName') == gateway_name:
-                    target_gateway_id = gateway.get('agentGatewayId')
-                    break
+                # Verify all targets are deleted
+                logger.info("Verifying targets deletion...")
+                time.sleep(5)  # Additional wait
+                verify_response = client.list_gateway_targets(gatewayIdentifier=gateway_id)
+                remaining_targets = verify_response.get("items", [])
+                if remaining_targets:
+                    logger.warning("%s targets still remain", len(remaining_targets))
+                else:
+                    logger.info("All targets deleted")
+            except Exception as e:
+                logger.warning("Error managing targets: %s", str(e))
 
-            if target_gateway_id:
-                logger.info(f"Found gateway to delete: {target_gateway_id}")
+            client.delete_gateway(gatewayIdentifier=gateway_id)
+            logger.info("Gateway deleted successfully using ID")
 
-                # Delete the gateway
-                bedrock_client.delete_agent_gateway(agentGatewayId=target_gateway_id)
-                logger.info(f"Successfully deleted gateway: {gateway_name}")
-            else:
-                logger.info(f"Gateway {gateway_name} not found - may already be deleted")
-
-        except Exception as delete_error:
-            logger.warning(f"Error during gateway deletion: {delete_error}")
-            # Continue to try log group cleanup
+        else:
+            logger.info("Gateway not found")
 
         # Clean up log group
         stack_name = props.get('StackName', 'UNKNOWN')
         delete_log_group(gateway_name, region, stack_name)
-
     except Exception as e:
-        logger.warning(f"Error deleting gateway: {e}")
-        # Don't fail the stack deletion for cleanup issues
+        logger.error(f"Gateway deletion failed: {e}")
 
 
 def create_log_group(gateway_name, region, stack_name):
