@@ -13,6 +13,7 @@ The following table shows all US to EU model mappings currently configured in th
 | `us.amazon.nova-lite-v1:0` | `eu.amazon.nova-lite-v1:0` | Direct mapping |
 | `us.amazon.nova-pro-v1:0` | `eu.amazon.nova-pro-v1:0` | Direct mapping |
 | `us.amazon.nova-premier-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | **Fallback mapping** |
+| `us.amazon.nova-2-lite-v1:0` | `eu.amazon.nova-2-lite-v1:0` | Direct mapping |
 | `us.anthropic.claude-3-haiku-20240307-v1:0` | `eu.anthropic.claude-3-haiku-20240307-v1:0` | Direct mapping |
 | `us.anthropic.claude-3-5-haiku-20241022-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | **Fallback mapping** |
 | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `eu.anthropic.claude-haiku-4-5-20251001-v1:0` | Direct mapping |
@@ -24,6 +25,7 @@ The following table shows all US to EU model mappings currently configured in th
 | `us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m` | Direct mapping |
 | `us.anthropic.claude-opus-4-20250514-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | **Fallback mapping** |
 | `us.anthropic.claude-opus-4-1-20250805-v1:0` | `eu.anthropic.claude-sonnet-4-5-20250929-v1:0` | **Fallback mapping** |
+| `us.anthropic.claude-opus-4-5-20251101-v1:0` | `eu.anthropic.claude-opus-4-5-20251101-v1:0` | Direct mapping |
 
 ### Mapping Types
 
