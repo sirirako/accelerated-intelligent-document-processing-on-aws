@@ -861,110 +861,6 @@ Resources:
   # AgentCore Analytics Lambda Function
   ##########################################################################
 
-  AgentCoreAnalyticsLambdaRole:
-    Type: AWS::IAM::Role
-    Condition: CreateAgentCoreLambda
-    Properties:
-      RoleName: !Sub "${AWS::StackName}-AgentCore-Analytics-Role"
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: !Sub "lambda.${AWS::URLSuffix}"
-            Action: sts:AssumeRole
-      PermissionsBoundary: !If [ HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue" ]
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      Policies:
-        - PolicyName: AthenaQueryPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - athena:StartQueryExecution
-                  - athena:GetQueryExecution
-                  - athena:GetQueryResults
-                  - athena:StopQueryExecution
-                Resource: !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
-        - PolicyName: S3AccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:AbortMultipartUpload
-                  - s3:ListMultipartUploadParts
-                Resource: !Sub
-                  - "${BucketArn}/*"
-                  - BucketArn: !If
-                      - ShouldCreateReportingBucket
-                      - !GetAtt ReportingBucket.Arn
-                      - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
-              - Effect: Allow
-                Action:
-                  - s3:ListBucket
-                  - s3:GetBucketLocation
-                  - s3:GetBucketVersioning
-                Resource: !If
-                  - ShouldCreateReportingBucket
-                  - !GetAtt ReportingBucket.Arn
-                  - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
-        - PolicyName: GlueReadPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - glue:GetDatabase
-                  - glue:GetTable
-                  - glue:GetTables
-                  - glue:GetPartitions
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
-                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
-        - PolicyName: KMSDecryptPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - kms:Decrypt
-                  - kms:Encrypt
-                  - kms:ReEncrypt*
-                  - kms:GenerateDataKey*
-                  - kms:DescribeKey
-                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-        - PolicyName: BedrockInvokePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - bedrock:InvokeModelWithResponseStream
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-        - PolicyName: DynamoDBReadPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:Query
-                  - dynamodb:Scan
-                Resource:
-                  - !GetAtt ConfigurationTable.Arn
-                  - !GetAtt TrackingTable.Arn
-                  - !GetAtt AgentTable.Arn
-
   AgentCoreAnalyticsLambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Condition: CreateAgentCoreLambda
@@ -8252,43 +8148,27 @@ Outputs:
   ExternalMCPAgentsSecretConsoleURL:
     Description: External MCP Agents secret console URL - configure MCP server credentials here (JSON array format)
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/secretsmanager/secret?name=${AWS::StackName}/external-mcp-agents/credentials&region=${AWS::Region}"
-  ExternalAppTokenURL:
-    Condition: CreateExternalAppClient
-    Description: "OAuth2 Token URL for external app authentication"
-    Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
-  ExternalAppAuthorizationURL:
-    Condition: CreateExternalAppClient
-    Description: "OAuth2 Authorization URL for external app authentication"
-    Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
-  ExternalAppClientId:
-    Condition: CreateExternalAppClient
-    Description: "Cognito Client ID for external applications (e.g., QuickSuite)"
-    Value: !Ref ExternalAppClient
-  ExternalAppClientSecret:
-    Condition: CreateExternalAppClient
-    Description: "Cognito Client Secret for external applications (e.g., QuickSuite)"
-    Value: !GetAtt ExternalAppClient.ClientSecret
-  ExternalAppUserPoolId:
-    Condition: CreateExternalAppClient
-    Description: "User Pool ID for external applications"
-    Value: !Ref UserPool
-  AgentCoreAnalyticsLambdaArn:
+  MCPServerEndpoint:
     Condition: CreateAgentCoreLambda
-    Description: "ARN of the AgentCore Analytics Lambda function"
-    Value: !GetAtt AgentCoreAnalyticsLambdaFunction.Arn
-  AgentCoreAnalyticsLambdaName:
-    Condition: CreateAgentCoreLambda
-    Description: "Name of the AgentCore Analytics Lambda function"
-    Value: !Ref AgentCoreAnalyticsLambdaFunction
-  AgentCoreGatewayUrl:
-    Condition: CreateAgentCoreLambda
-    Description: "URL of the AgentCore Gateway for analytics"
+    Description: MCP Server Endpoint
     Value: !GetAtt AgentCoreGateway.GatewayUrl
-  AgentCoreGatewayId:
+  MCPClientId:
     Condition: CreateAgentCoreLambda
-    Description: "ID of the AgentCore Gateway"
-    Value: !GetAtt AgentCoreGateway.GatewayId
-  AgentCoreGatewayArn:
+    Description: MCP Client ID
+    Value: !Ref ExternalAppClient
+  MCPClientSecret:
     Condition: CreateAgentCoreLambda
-    Description: "ARN of the AgentCore Gateway"
-    Value: !GetAtt AgentCoreGateway.GatewayArn
+    Description: MCP Client Secret
+    Value: !GetAtt ExternalAppClient.ClientSecret
+  MCPUserPool:
+    Condition: CreateAgentCoreLambda
+    Description: MCP User Pool ID
+    Value: !Ref UserPool
+  MCPTokenURL:
+    Condition: CreateAgentCoreLambda
+    Description: MCP Token URL
+    Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
+  MCPAuthorizationURL:
+    Condition: CreateAgentCoreLambda
+    Description: MCP Authorization URL
+    Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
