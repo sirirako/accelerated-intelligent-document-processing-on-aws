@@ -1002,7 +1002,11 @@ async def structured_output_async(
     # Track token usage
     token_usage = _initialize_token_usage()
     agent = Agent(
-        model=BedrockModel(**model_config),  # pyright: ignore[reportArgumentType]
+        model=BedrockModel(
+            **model_config,
+            temperature=config.extraction.temperature,
+            top_p=config.extraction.top_p,
+        ),  # pyright: ignore[reportArgumentType]
         tools=tools,
         system_prompt=final_system_prompt,
         state={
@@ -1092,7 +1096,7 @@ async def structured_output_async(
         )
 
         review_response = await invoke_agent_with_retry(
-            agent=agent, input=review_prompt
+            agent=agent, input=[review_prompt]
         )
         logger.debug("Review response received", extra={"review_completed": True})
 
