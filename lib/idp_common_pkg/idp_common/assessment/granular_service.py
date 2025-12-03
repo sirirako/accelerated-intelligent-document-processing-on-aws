@@ -152,7 +152,7 @@ class GranularAssessmentService:
             import boto3
 
             dynamodb = boto3.resource("dynamodb", region_name=self.region)
-            self.cache_table = dynamodb.Table(self.cache_table_name)
+            self.cache_table = dynamodb.Table(self.cache_table_name)  # type: ignore[attr-defined]
             logger.info(
                 f"Granular assessment caching enabled using table: {self.cache_table_name}"
             )
@@ -472,13 +472,11 @@ class GranularAssessmentService:
             # Add the images if available
             if page_images:
                 if isinstance(page_images, list):
-                    # Multiple images (limit to 100 as per Bedrock constraints)
-                    if len(page_images) > 100:
-                        logger.warning(
-                            f"Found {len(page_images)} images, truncating to 100 due to Bedrock constraints. "
-                            f"{len(page_images) - 100} images will be dropped."
-                        )
-                    for img in page_images[:100]:
+                    # Multiple images - no limit with latest Bedrock API
+                    logger.info(
+                        f"Attaching {len(page_images)} images to granular assessment prompt"
+                    )
+                    for img in page_images:
                         content.append(image.prepare_bedrock_image_attachment(img))
                 else:
                     # Single image
@@ -1134,8 +1132,8 @@ class GranularAssessmentService:
         Returns:
             True if exception indicates throttling, False otherwise
         """
-        if hasattr(exception, "response") and "Error" in exception.response:
-            error_code = exception.response["Error"]["Code"]
+        if hasattr(exception, "response") and "Error" in exception.response:  # type: ignore[attr-defined]
+            error_code = exception.response["Error"]["Code"]  # type: ignore[attr-defined]
             return error_code in self.throttling_exceptions
 
         # Check exception class name and message for throttling indicators

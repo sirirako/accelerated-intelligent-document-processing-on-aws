@@ -1253,12 +1253,12 @@ classification:
 
 ### Multi-Page Document Handling
 
-For documents with multiple pages, the system provides robust image management:
+For documents with multiple pages, the system provides comprehensive image support:
 
 - **Automatic Pagination**: Images are processed in page order
-- **Bedrock Compliance**: Maximum 100 images per request (automatically enforced)
-- **Smart Truncation**: Excess images are dropped with warning logs
-- **Performance Optimization**: Large image sets are efficiently handled
+- **No Image Limits**: All document pages are processed following Bedrock API removal of image count restrictions
+- **Info Logging**: System logs image counts for monitoring purposes
+- **Comprehensive Processing**: Documents of any length are fully processed
 
 ### Best Practices for Image Processing
 

@@ -691,6 +691,37 @@ def _build_model_config(
     return model_config
 
 
+def _get_inference_params(temperature: float, top_p: float | None) -> dict[str, float]:
+    """
+    Get inference parameters ensuring temperature and top_p are mutually exclusive.
+
+    Some Bedrock models don't allow both temperature and top_p to be specified.
+    This follows the same logic as bedrock/client.py lines 348-364.
+
+    Args:
+        temperature: Temperature value from config
+        top_p: Top_p value from config (may be None)
+
+    Returns:
+        Dict with only one of temperature or top_p
+    """
+    params = {}
+
+    # Only use top_p if temperature is 0.0
+    if top_p is not None and temperature == 0.0:
+        params["top_p"] = top_p
+        logger.debug(
+            "Using top_p for inference (temperature is 0.0)", extra={"top_p": top_p}
+        )
+    else:
+        params["temperature"] = temperature
+        logger.debug(
+            "Using temperature for inference", extra={"temperature": temperature}
+        )
+
+    return params
+
+
 def _prepare_prompt_content(
     prompt: str | Message | Image.Image,
     page_images: list[bytes] | None,
@@ -735,20 +766,18 @@ def _prepare_prompt_content(
     else:
         prompt_content = [ContentBlock(text=str(prompt))]
 
-    # Add page images if provided (limit to 100 as per Bedrock constraints)
+    # Add page images if provided - no limit with latest Bedrock API
     if page_images:
-        if len(page_images) > 100:
-            prompt_content.append(
-                ContentBlock(
-                    text=f"There are {len(page_images)} images, initially you'll see 100 of them, use the view_image tool to see the rest."
-                )
-            )
+        logger.info(
+            "Attaching images to agentic extraction prompt",
+            extra={"image_count": len(page_images)},
+        )
 
         prompt_content += [
             ContentBlock(
                 image=ImageContent(format="png", source=ImageSource(bytes=img_bytes))
             )
-            for img_bytes in page_images[:100]
+            for img_bytes in page_images
         ]
 
     # Add existing data context if provided
@@ -1003,8 +1032,17 @@ async def structured_output_async(
 
     # Track token usage
     token_usage = _initialize_token_usage()
+
+    # Get inference params ensuring temperature and top_p are mutually exclusive
+    inference_params = _get_inference_params(
+        temperature=config.extraction.temperature, top_p=config.extraction.top_p
+    )
+
     agent = Agent(
-        model=BedrockModel(**model_config),  # pyright: ignore[reportArgumentType]
+        model=BedrockModel(
+            **model_config,
+            **inference_params,
+        ),  # pyright: ignore[reportArgumentType]
         tools=tools,
         system_prompt=final_system_prompt,
         state={
@@ -1076,8 +1114,17 @@ async def structured_output_async(
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
         )
+
+        # Get inference params for review agent ensuring temperature and top_p are mutually exclusive
+        review_inference_params = _get_inference_params(
+            temperature=config.extraction.temperature, top_p=config.extraction.top_p
+        )
+
         agent = Agent(
-            model=BedrockModel(**review_model_config),  # pyright: ignore[reportArgumentType]
+            model=BedrockModel(
+                **review_model_config,
+                **review_inference_params,
+            ),  # pyright: ignore[reportArgumentType]
             tools=tools,
             system_prompt=f"{final_system_prompt}",
             state={
@@ -1094,7 +1141,7 @@ async def structured_output_async(
         )
 
         review_response = await invoke_agent_with_retry(
-            agent=agent, input=review_prompt
+            agent=agent, input=[review_prompt]
         )
         logger.debug("Review response received", extra={"review_completed": True})
 
