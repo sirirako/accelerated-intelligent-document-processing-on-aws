@@ -152,7 +152,7 @@ class GranularAssessmentService:
             import boto3
 
             dynamodb = boto3.resource("dynamodb", region_name=self.region)
-            self.cache_table = dynamodb.Table(self.cache_table_name)
+            self.cache_table = dynamodb.Table(self.cache_table_name)  # type: ignore[attr-defined]
             logger.info(
                 f"Granular assessment caching enabled using table: {self.cache_table_name}"
             )
@@ -1132,8 +1132,8 @@ class GranularAssessmentService:
         Returns:
             True if exception indicates throttling, False otherwise
         """
-        if hasattr(exception, "response") and "Error" in exception.response:
-            error_code = exception.response["Error"]["Code"]
+        if hasattr(exception, "response") and "Error" in exception.response:  # type: ignore[attr-defined]
+            error_code = exception.response["Error"]["Code"]  # type: ignore[attr-defined]
             return error_code in self.throttling_exceptions
 
         # Check exception class name and message for throttling indicators
