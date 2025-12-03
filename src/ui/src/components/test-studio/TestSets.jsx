@@ -15,19 +15,25 @@ import {
   Alert,
   Badge,
   ExpandableSection,
+  Select,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import ADD_TEST_SET from '../../graphql/queries/addTestSet';
 import ADD_TEST_SET_FROM_UPLOAD from '../../graphql/queries/addTestSetFromUpload';
 import DELETE_TEST_SETS from '../../graphql/queries/deleteTestSets';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
-import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
+import LIST_BUCKET_FILES from '../../graphql/queries/listBucketFiles';
 import VALIDATE_TEST_FILE_NAME from '../../graphql/queries/checkTestSetFiles';
 
 const client = generateClient();
 
 // Constants
 const MAX_ZIP_SIZE_BYTES = 1073741824; // 1 GB
+
+const BUCKET_OPTIONS = [
+  { label: 'Input Bucket', value: 'input' },
+  { label: 'Test Set Bucket', value: 'testset' },
+];
 
 const TestSets = () => {
   const [testSets, setTestSets] = useState([]);
@@ -37,6 +43,7 @@ const TestSets = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newTestSetName, setNewTestSetName] = useState('');
   const [filePattern, setFilePattern] = useState('');
+  const [selectedBucket, setSelectedBucket] = useState(BUCKET_OPTIONS[0]);
   const [zipFile, setZipFile] = useState(null);
   const [matchingFiles, setMatchingFiles] = useState([]);
   const [fileCount, setFileCount] = useState(0);
@@ -47,6 +54,9 @@ const TestSets = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [warningMessage, setWarningMessage] = useState('');
   const [confirmReplacement, setConfirmReplacement] = useState(false);
+  const [showFileStructure, setShowFileStructure] = useState(() => {
+    return localStorage.getItem('testset-show-file-structure') !== 'false';
+  });
 
   const loadTestSets = async () => {
     try {
@@ -57,7 +67,6 @@ const TestSets = () => {
 
       // Upsert: merge backend data with existing UI state, deduplicating by id
       setTestSets((prevTestSets) => {
-        const backendTestSets = result.data.getTestSets || [];
         const backendIds = new Set(backendTestSets.map((ts) => ts.id));
 
         // Keep UI test sets that don't exist in backend (active processing)
@@ -118,16 +127,20 @@ const TestSets = () => {
     setLoading(true);
     try {
       const result = await client.graphql({
-        query: LIST_INPUT_BUCKET_FILES,
-        variables: { filePattern: filePattern.trim() },
+        query: LIST_BUCKET_FILES,
+        variables: {
+          bucketType: selectedBucket.value,
+          filePattern: filePattern.trim(),
+        },
       });
 
-      const files = result.data.listInputBucketFiles || [];
+      const files = result.data.listBucketFiles || [];
       setMatchingFiles(files);
       setFileCount(files.length);
       setShowFilesModal(true);
     } catch (err) {
-      setError(`Failed to check files: ${err.message}`);
+      const errorMessage = err.message || err.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to check files: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -183,6 +196,7 @@ const TestSets = () => {
         variables: {
           name: newTestSetName.trim(),
           filePattern: filePattern.trim(),
+          bucketType: selectedBucket.value,
           fileCount,
         },
       });
@@ -207,6 +221,7 @@ const TestSets = () => {
         });
         setNewTestSetName('');
         setFilePattern('');
+        setSelectedBucket(BUCKET_OPTIONS[0]);
         setFileCount(0);
         setShowAddPatternModal(false);
         setError('');
@@ -506,6 +521,7 @@ const TestSets = () => {
           setShowAddPatternModal(false);
           setConfirmReplacement(false);
           setWarningMessage('');
+          setSelectedBucket(BUCKET_OPTIONS[0]);
         }}
         header="Add Test Set from Pattern"
         footer={
@@ -517,6 +533,7 @@ const TestSets = () => {
                   setShowAddPatternModal(false);
                   setConfirmReplacement(false);
                   setWarningMessage('');
+                  setSelectedBucket(BUCKET_OPTIONS[0]);
                 }}
               >
                 Cancel
@@ -544,7 +561,25 @@ const TestSets = () => {
             />
           </FormField>
 
-          <FormField label="File Pattern" description="Pattern to match files (use * for wildcards)">
+          <FormField label="Source Bucket" description="Select the bucket to search for files">
+            <Select
+              selectedOption={selectedBucket}
+              onChange={({ detail }) => {
+                setSelectedBucket(detail.selectedOption);
+                setFileCount(0);
+              }}
+              options={BUCKET_OPTIONS}
+            />
+          </FormField>
+
+          <FormField
+            label="File Pattern"
+            description={
+              selectedBucket.value === 'testset'
+                ? 'Use * for wildcards. Examples: test-set-name/input/*, test-set-prefix*/input/file-prefix*'
+                : 'Use * for wildcards. Examples: prefix*, folder-name/*, folder-name/prefix*, folder-prefix*/file-prefix*'
+            }
+          >
             <SpaceBetween direction="horizontal" size="xs">
               <Input
                 value={filePattern}
@@ -552,7 +587,7 @@ const TestSets = () => {
                   setFilePattern(detail.value);
                   setFileCount(0);
                 }}
-                placeholder="prefix/*"
+                placeholder={selectedBucket.value === 'testset' ? 'test-set-prefix*/input/*' : 'prefix*/*'}
               />
               <Button disabled={!filePattern.trim()} loading={loading} onClick={handleCheckFiles}>
                 Check Files
@@ -607,7 +642,15 @@ const TestSets = () => {
           {warningMessage && <Alert type="warning">{warningMessage}</Alert>}
 
           <FormField label="Test Set Zip File" description="Select a zip file containing your test set structure">
-            <ExpandableSection headerText="View required file structure" variant="footer">
+            <ExpandableSection
+              headerText="View required file structure"
+              variant="footer"
+              expanded={showFileStructure}
+              onChange={({ detail }) => {
+                setShowFileStructure(detail.expanded);
+                localStorage.setItem('testset-show-file-structure', detail.expanded.toString());
+              }}
+            >
               <Box margin={{ bottom: 's' }}>
                 <pre
                   style={{
@@ -625,9 +668,17 @@ const TestSets = () => {
     │   └── document2.pdf
     └── baseline/
         ├── document1.pdf/
-        │   └── [ground truth files]
+        │   └── sections/
+        │       ├── 1/
+        │       │   └── result.json
+        │       └── 2/
+        │           └── result.json
         └── document2.pdf/
-            └── [ground truth files]`}
+            └── sections/
+                ├── 1/
+                │   └── result.json
+                └── 2/
+                    └── result.json`}
                 </pre>
               </Box>
               <Alert type="info">Each input file must have a corresponding baseline folder with the same name.</Alert>

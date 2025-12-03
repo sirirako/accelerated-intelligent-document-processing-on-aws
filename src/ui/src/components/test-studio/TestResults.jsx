@@ -22,7 +22,6 @@ import {
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
-import LIST_INPUT_BUCKET_FILES from '../../graphql/queries/listInputBucketFiles';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 import TestStudioHeader from './TestStudioHeader';
 import useAppContext from '../../contexts/app';
@@ -74,11 +73,11 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
                 let contextSubtotal = 0;
 
                 Object.entries(services).forEach(([serviceUnit, details]) => {
-                  // Parse service_api_unit format
-                  const parts = serviceUnit.split('_');
-                  const service = parts[0];
-                  const api = parts.slice(1, -1).join('/');
-                  const unit = parts[parts.length - 1];
+                  // Parse service/api_unit format: find last underscore to separate unit
+                  const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
+                  const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
+                  const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
+                  const [service, api] = serviceApi.split('/');
 
                   const cost = details.estimated_cost || 0;
                   contextSubtotal += cost;
@@ -211,6 +210,15 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [testSetStatus, setTestSetStatus] = useState(null);
   const [testSetFilePattern, setTestSetFilePattern] = useState(null);
   const [chartType, setChartType] = useState({ label: 'Bar Chart', value: 'bar' });
+  const [retryMessage, setRetryMessage] = useState('');
+
+  const getProgressMessage = (progressLevel) => {
+    if (progressLevel <= 1) return 'Initializing test results...';
+    if (progressLevel <= 2) return 'Processing evaluation data...';
+    if (progressLevel <= 3) return 'Calculating accuracy metrics...';
+    if (progressLevel <= 4) return 'Generating cost analysis...';
+    return 'Finalizing results...';
+  };
 
   const checkTestSetStatus = async () => {
     if (!results?.testSetId) return;
@@ -240,25 +248,76 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   };
 
   useEffect(() => {
+    let isCancelled = false;
+    const timeouts = []; // Track all timeouts to clear them
+
     const fetchResults = async () => {
+      if (isCancelled) return;
+
+      // Clear any existing timeouts
+      const clearAllTimeouts = () => {
+        timeouts.forEach(clearTimeout);
+        timeouts.length = 0;
+      };
+
       try {
         let result;
         let attempt = 1;
         const maxRetries = 5;
 
-        while (attempt <= maxRetries) {
+        while (attempt <= maxRetries && !isCancelled) {
           try {
             console.log(`GET_TEST_RUN attempt ${attempt} starting...`);
-            setCurrentAttempt(attempt);
+            if (attempt === 1) {
+              setCurrentAttempt(1);
+              setRetryMessage('Getting results from cache...');
+
+              // Show cache miss progression after 1 second for first attempt
+              timeouts.push(
+                setTimeout(() => {
+                  if (!isCancelled) {
+                    setRetryMessage('No cache found, generating results...');
+                    setCurrentAttempt(2);
+                  }
+                }, 1000),
+              );
+
+              timeouts.push(
+                setTimeout(() => {
+                  if (!isCancelled) {
+                    setRetryMessage(getProgressMessage(2));
+                    setCurrentAttempt(3);
+                  }
+                }, 2000),
+              );
+
+              timeouts.push(
+                setTimeout(() => {
+                  if (!isCancelled) {
+                    setRetryMessage(getProgressMessage(3));
+                    setCurrentAttempt(4);
+                  }
+                }, 4000),
+              );
+            }
+
+            if (isCancelled) return;
+
             result = await client.graphql({
               query: GET_TEST_RUN,
               variables: { testRunId },
             });
+
+            if (isCancelled) return;
+
             console.log('GET_TEST_RUN result:', result);
-            setCurrentAttempt(5); // Set to 100% before completing
+            clearAllTimeouts(); // Clear timeouts on success
+            setCurrentAttempt(10); // Set to 100% before completing
             await new Promise((resolve) => setTimeout(resolve, 500)); // Brief pause to show 100%
             break;
           } catch (retryError) {
+            if (isCancelled) return;
+
             console.log('GET_TEST_RUN error caught:', {
               message: retryError.message,
               code: retryError.code,
@@ -276,46 +335,50 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
               );
             if (isTimeout && attempt < maxRetries) {
               console.log(`GET_TEST_RUN attempt ${attempt} failed, retrying...`, retryError.message);
+
+              clearAllTimeouts(); // Clear any running timeouts
+
+              // Always move progress forward, never backwards
+              setCurrentAttempt((currentProgress) => {
+                const targetProgress = Math.min(currentProgress + 1, 9); // Move forward by 1 step, cap at 90%
+                return Math.max(currentProgress, targetProgress);
+              });
+
               attempt++;
+              const waitTime = Math.max(2000, 5000 - attempt * 1000); // 5s, 4s, 3s, 2s min
 
-              // Animate progress during 5-second wait
-              const waitTime = 5000;
-              const intervalTime = 100;
-              const steps = waitTime / intervalTime;
-              const startProgress = (attempt - 1) * 20;
-              const endProgress = attempt * 20;
-              const progressStep = (endProgress - startProgress) / steps;
+              setRetryMessage(getProgressMessage(Math.min(attempt + 1, 5)));
 
-              let currentProgress = startProgress;
-              const progressInterval = setInterval(() => {
-                currentProgress += progressStep;
-                setCurrentAttempt(Math.min(currentProgress / 20, 5));
-              }, intervalTime);
-
-              await new Promise((resolve) =>
-                setTimeout(() => {
-                  clearInterval(progressInterval);
-                  setCurrentAttempt(attempt);
-                  resolve();
-                }, waitTime),
-              );
-
+              await new Promise((resolve) => setTimeout(resolve, waitTime));
               continue;
             }
             throw retryError;
           }
         }
-        const testRun = result.data.getTestRun;
-        console.log('Test results:', testRun);
-        setResults(testRun);
+
+        if (!isCancelled) {
+          const testRun = result.data.getTestRun;
+          console.log('Test results:', testRun);
+          setResults(testRun);
+        }
       } catch (err) {
-        setError(err.message);
+        if (!isCancelled) {
+          setError(err.message);
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchResults();
+
+    // Cleanup function
+    return () => {
+      isCancelled = true;
+      timeouts.forEach(clearTimeout);
+    };
   }, [testRunId]);
 
   useEffect(() => {
@@ -324,7 +387,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     }
   }, [results]);
 
-  if (loading) return <ProgressBar status="in-progress" label="Loading test results..." value={currentAttempt * 20} />;
+  if (loading) return <ProgressBar status="in-progress" label={retryMessage || 'Loading test results...'} value={currentAttempt * 10} />;
   if (error) return <Box>Error loading test results: {error}</Box>;
   if (!results) {
     const handleBackClick = () => {

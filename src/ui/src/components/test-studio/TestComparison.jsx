@@ -185,10 +185,11 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       if (testRun.costBreakdown) {
         Object.entries(testRun.costBreakdown).forEach(([context, services]) => {
           Object.keys(services).forEach((serviceUnit) => {
-            const parts = serviceUnit.split('_');
-            const service = parts[0];
-            const api = parts.slice(1, -1).join('/');
-            const unit = parts[parts.length - 1];
+            // Parse service/api_unit format: find last underscore to separate unit
+            const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
+            const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
+            const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
+            const [service, api] = serviceApi.split('/');
             allCostItems.add(`${context}|${service}/${api}|${unit}`);
           });
         });
@@ -207,10 +208,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
           const services = testRun.costBreakdown?.[context] || {};
           const serviceKey = Object.keys(services).find((key) => {
-            const parts = key.split('_');
-            const service = parts[0];
-            const api = parts.slice(1, -1).join('/');
-            return `${service}/${api}` === serviceApi;
+            const lastUnderscoreIndex = key.lastIndexOf('_');
+            const keyServiceApi = key.substring(0, lastUnderscoreIndex);
+            const [keyService, keyApi] = keyServiceApi.split('/');
+            return `${keyService}/${keyApi}` === serviceApi;
           });
 
           const details = services[serviceKey] || {};
@@ -234,10 +235,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
           const services = testRun.costBreakdown?.[context] || {};
           const serviceKey = Object.keys(services).find((key) => {
-            const parts = key.split('_');
-            const service = parts[0];
-            const api = parts.slice(1, -1).join('/');
-            return `${service}/${api}` === serviceApi;
+            const lastUnderscoreIndex = key.lastIndexOf('_');
+            const keyServiceApi = key.substring(0, lastUnderscoreIndex);
+            const [keyService, keyApi] = keyServiceApi.split('/');
+            return `${keyService}/${keyApi}` === serviceApi;
           });
 
           const details = services[serviceKey] || {};
@@ -698,10 +699,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 if (testRun.costBreakdown) {
                   Object.entries(testRun.costBreakdown).forEach(([context, services]) => {
                     Object.keys(services).forEach((serviceUnit) => {
-                      const parts = serviceUnit.split('_');
-                      const service = parts[0];
-                      const api = parts.slice(1, -1).join('/');
-                      const unit = parts[parts.length - 1];
+                      const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
+                      const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
+                      const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
+                      const [service, api] = serviceApi.split('/');
                       allCostItems.add(`${context}|${service}/${api}|${unit}`);
                     });
                   });
@@ -720,10 +721,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
                   const services = testRun.costBreakdown?.[context] || {};
                   const serviceKey = Object.keys(services).find((key) => {
-                    const parts = key.split('_');
-                    const service = parts[0];
-                    const api = parts.slice(1, -1).join('/');
-                    return `${service}/${api}` === serviceApi;
+                    const lastUnderscoreIndex = key.lastIndexOf('_');
+                    const keyServiceApi = key.substring(0, lastUnderscoreIndex);
+                    const [keyService, keyApi] = keyServiceApi.split('/');
+                    return `${keyService}/${keyApi}` === serviceApi;
                   });
 
                   const details = services[serviceKey] || {};
@@ -787,10 +788,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 if (testRun.costBreakdown) {
                   Object.entries(testRun.costBreakdown).forEach(([context, services]) => {
                     Object.keys(services).forEach((serviceUnit) => {
-                      const parts = serviceUnit.split('_');
-                      const service = parts[0];
-                      const api = parts.slice(1, -1).join('/');
-                      const unit = parts[parts.length - 1];
+                      const lastUnderscoreIndex = serviceUnit.lastIndexOf('_');
+                      const serviceApi = serviceUnit.substring(0, lastUnderscoreIndex);
+                      const unit = serviceUnit.substring(lastUnderscoreIndex + 1);
+                      const [service, api] = serviceApi.split('/');
                       allUsageItems.add(`${context}|${service}/${api}|${unit}`);
                     });
                   });
@@ -809,10 +810,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
                   const services = testRun.costBreakdown?.[context] || {};
                   const serviceKey = Object.keys(services).find((key) => {
-                    const parts = key.split('_');
-                    const service = parts[0];
-                    const api = parts.slice(1, -1).join('/');
-                    return `${service}/${api}` === serviceApi;
+                    const lastUnderscoreIndex = key.lastIndexOf('_');
+                    const keyServiceApi = key.substring(0, lastUnderscoreIndex);
+                    const [keyService, keyApi] = keyServiceApi.split('/');
+                    return `${keyService}/${keyApi}` === serviceApi;
                   });
 
                   const details = services[serviceKey] || {};

@@ -10,6 +10,8 @@ from decimal import Decimal
 
 import boto3
 
+sqs = boto3.client('sqs')
+
 
 # Custom JSON encoder to handle Decimal objects from DynamoDB
 class DecimalEncoder(json.JSONEncoder):
@@ -24,7 +26,13 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 dynamodb = boto3.resource('dynamodb')
 
 def handler(event, context):
-    """GraphQL resolver for test results queries"""
+    """Handle both GraphQL resolver and SQS events"""
+    
+    # Check if this is an SQS event
+    if 'Records' in event:
+        return handle_cache_update_request(event, context)
+    
+    # Otherwise handle as GraphQL resolver
     field_name = event['info']['fieldName']
     
     if field_name == 'getTestRuns':
@@ -45,6 +53,52 @@ def handler(event, context):
         return compare_test_runs(test_run_ids)
     
     raise ValueError(f"Unknown field: {field_name}")
+
+def handle_cache_update_request(event, context):
+    """Process SQS messages to calculate and cache test result metrics"""
+    
+    for record in event['Records']:
+        try:
+            message = json.loads(record['body'])
+            test_run_id = message['testRunId']
+            
+            logger.info(f"Processing cache update for test run: {test_run_id}")
+            
+            # Calculate metrics
+            aggregated_metrics = _aggregate_test_run_metrics(test_run_id)
+            
+            # Cache the metrics
+            metrics_to_cache = {
+                'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
+                'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', []),
+                'averageConfidence': aggregated_metrics.get('average_confidence'),
+                'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+                'totalCost': aggregated_metrics.get('total_cost', 0),
+                'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
+            }
+            
+            table = dynamodb.Table(os.environ['TRACKING_TABLE'])
+            table.update_item(
+                Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'},
+                UpdateExpression='SET testRunResult = :metrics',
+                ExpressionAttributeValues={':metrics': float_to_decimal(metrics_to_cache)}
+            )
+            
+            logger.info(f"Successfully cached metrics for test run: {test_run_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to process cache update for {record.get('body', 'unknown')}: {e}")
+            # Don't raise - let other messages in batch continue processing
+
+def float_to_decimal(obj):
+    """Convert float values to Decimal for DynamoDB storage"""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: float_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [float_to_decimal(v) for v in obj]
+    return obj
 
 def compare_test_runs(test_run_ids):
     """Compare multiple test runs"""
@@ -180,15 +234,6 @@ def get_test_results(test_run_id):
     # Cache only the static metrics (not status/counts)
     try:
         logger.info(f"Caching metrics for test run: {test_run_id}")
-        
-        def float_to_decimal(obj):
-            if isinstance(obj, float):
-                return Decimal(str(obj))
-            elif isinstance(obj, dict):
-                return {k: float_to_decimal(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [float_to_decimal(v) for v in obj]
-            return obj
         
         # Cache only static metrics
         metrics_to_cache = {
@@ -424,6 +469,20 @@ def get_test_run_status(test_run_id):
                     }
                 )
                 logger.info(f"Successfully updated test run {test_run_id} status to {overall_status}")
+                
+                # Queue metric calculation for completed test runs
+                if overall_status in ['COMPLETE', 'PARTIAL_COMPLETE'] and not item.get('testRunResult'):
+                    try:
+                        queue_url = os.environ.get('TEST_RESULT_CACHE_UPDATE_QUEUE_URL')
+                        if queue_url:
+                            sqs.send_message(
+                                QueueUrl=queue_url,
+                                MessageBody=json.dumps({'testRunId': test_run_id})
+                            )
+                            logger.info(f"Queued cache update for test run: {test_run_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to queue cache update for {test_run_id}: {e}")
+                        
             except Exception as e:
                 logger.error(f"Failed to auto-update test run {test_run_id} status: {e}")
         

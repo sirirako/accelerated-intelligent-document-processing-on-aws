@@ -73,7 +73,12 @@ class TestTestSetResolver:
         mock_boto3.return_value = mock_sqs
 
         with patch.object(test_set_index.db_client, "put_item") as mock_put:
-            args = {"name": "test", "filePattern": "*.pdf", "fileCount": 5}
+            args = {
+                "name": "test",
+                "filePattern": "*.pdf",
+                "fileCount": 5,
+                "bucketType": "input",
+            }
             result = test_set_index.add_test_set(args)
 
             mock_put.assert_called_once()
@@ -126,8 +131,8 @@ class TestTestSetResolver:
         with patch.object(test_set_index, "find_matching_files") as mock_find:
             mock_find.return_value = ["file1.pdf", "file2.pdf"]
 
-            args = {"filePattern": "*.pdf"}
-            result = test_set_index.list_input_bucket_files(args)
+            args = {"filePattern": "*.pdf", "bucketType": "input"}
+            result = test_set_index.list_bucket_files(args)
 
             mock_find.assert_called_once_with("test-bucket", "*.pdf")
             assert result == ["file1.pdf", "file2.pdf"]

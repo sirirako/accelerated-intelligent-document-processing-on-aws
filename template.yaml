@@ -6687,14 +6687,14 @@ Resources:
       TypeName: Query
       FieldName: getTestSets
 
-  ListInputBucketFilesResolver:
+  ListBucketFilesResolver:
     Type: AWS::AppSync::Resolver
     DependsOn: GraphQLSchema
     Properties:
       ApiId: !GetAtt GraphQLApi.ApiId
       DataSourceName: !GetAtt TestSetDataSource.Name
       TypeName: Query
-      FieldName: listInputBucketFiles
+      FieldName: listBucketFiles
 
   ValidateTestFileNameResolver:
     Type: AWS::AppSync::Resolver
@@ -7234,6 +7234,14 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+  TestResultCacheUpdateQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-test-result-cache-update"
+      VisibilityTimeout: 900
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+
   TestResultsResolverFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -7260,6 +7268,13 @@ Resources:
           BASELINE_BUCKET: !Ref EvaluationBaselineBucket
           OUTPUT_BUCKET: !Ref OutputBucket
           REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
+          TEST_RESULT_CACHE_UPDATE_QUEUE_URL: !Ref TestResultCacheUpdateQueue
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TestResultCacheUpdateQueue.Arn
+            BatchSize: 1
       LoggingConfig:
         LogGroup: !Ref TestResultsResolverFunctionLogGroup
       Policies:
@@ -7271,6 +7286,11 @@ Resources:
             BucketName: !Ref OutputBucket
         - S3ReadPolicy:
             BucketName: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt TestResultCacheUpdateQueue.Arn
         - Statement:
             - Effect: Allow
               Action:

@@ -24,6 +24,7 @@ def handler(event, context):
             
             test_set_id = message['testSetId']
             file_pattern = message['filePattern']
+            bucket_type = message['bucketType']
             tracking_table = message['trackingTable']
             
             # Get environment variables
@@ -31,10 +32,18 @@ def handler(event, context):
             test_set_bucket = os.environ['TEST_SET_BUCKET']
             baseline_bucket = os.environ['BASELINE_BUCKET']
             
-            logger.info(f"Processing test set {test_set_id} with pattern '{file_pattern}'")
+            # Determine source bucket based on bucket type
+            if bucket_type == 'input':
+                source_bucket = input_bucket
+            elif bucket_type == 'testset':
+                source_bucket = test_set_bucket
+            else:
+                raise ValueError(f"Invalid bucket type: {bucket_type}")
             
-            # Find matching files in input bucket
-            matching_files = find_matching_files(input_bucket, file_pattern)
+            logger.info(f"Processing test set {test_set_id} with pattern '{file_pattern}' from {bucket_type} bucket")
+            
+            # Find matching files in source bucket
+            matching_files = find_matching_files(source_bucket, file_pattern)
             
             if not matching_files:
                 raise ValueError(f"No files found matching pattern: {file_pattern}")
@@ -45,9 +54,25 @@ def handler(event, context):
             missing_baselines = []
             for file_key in matching_files:
                 try:
+                    if bucket_type == 'testset':
+                        # For testset bucket, baseline is in the same bucket under baseline/ path
+                        # Extract test set name from file path (assuming format: test_set_name/input/file)
+                        path_parts = file_key.split('/')
+                        if len(path_parts) >= 3 and path_parts[1] == 'input':
+                            test_set_name = path_parts[0]
+                            file_name = path_parts[2]
+                            baseline_prefix = f"{test_set_name}/baseline/{file_name}/"
+                            baseline_check_bucket = source_bucket
+                        else:
+                            missing_baselines.append(file_key)
+                            continue
+                    else:
+                        # For input bucket, baseline is in separate baseline bucket
+                        baseline_prefix = f"{file_key}/"
+                        baseline_check_bucket = baseline_bucket
+                    
                     # Check if baseline folder exists by listing objects with prefix
-                    baseline_prefix = f"{file_key}/"
-                    response = s3.list_objects_v2(Bucket=baseline_bucket, Prefix=baseline_prefix, MaxKeys=1)
+                    response = s3.list_objects_v2(Bucket=baseline_check_bucket, Prefix=baseline_prefix, MaxKeys=1)
                     
                     if 'Contents' not in response or len(response['Contents']) == 0:
                         missing_baselines.append(file_key)
@@ -60,10 +85,13 @@ def handler(event, context):
                 raise ValueError(f"Missing baseline folders for: {', '.join(missing_baselines)}")
             
             # Copy input files to test set bucket
-            _copy_files_to_test_set(input_bucket, test_set_bucket, test_set_id, 'input', matching_files)
+            _copy_files_to_test_set(source_bucket, test_set_bucket, test_set_id, 'input', matching_files)
             
             # Copy baseline folders to test set bucket
-            _copy_files_to_test_set(baseline_bucket, test_set_bucket, test_set_id, 'baseline', matching_files)
+            if bucket_type == 'testset':
+                _copy_baseline_from_testset(source_bucket, test_set_bucket, test_set_id, matching_files)
+            else:
+                _copy_files_to_test_set(baseline_bucket, test_set_bucket, test_set_id, 'baseline', matching_files)
             
             logger.info(f"Copied {len(matching_files)} input files and {len(matching_files)} baseline folders")
             
@@ -120,6 +148,43 @@ def _copy_files_to_test_set(source_bucket, dest_bucket, test_set_id, folder_type
             )
             
             logger.info(f"Copied {folder_type} file: {source_key} -> {dest_bucket}/{dest_key}")
+
+def _copy_baseline_from_testset(source_bucket, dest_bucket, test_set_id, files):
+    """Copy baseline files from testset bucket where baselines are in test_set/baseline/ path"""
+    
+    for file_key in files:
+        # Extract test set name and file name from path (format: test_set_name/input/file_name)
+        path_parts = file_key.split('/')
+        if len(path_parts) >= 3 and path_parts[1] == 'input':
+            source_test_set_name = path_parts[0]
+            file_name = path_parts[2]
+            
+            # Source baseline path in testset bucket
+            source_baseline_prefix = f"{source_test_set_name}/baseline/{file_name}/"
+            # Destination baseline path
+            dest_baseline_prefix = f"{test_set_id}/baseline/{file_name}/"
+            
+            # List all objects in the source baseline folder
+            paginator = s3.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=source_bucket, Prefix=source_baseline_prefix)
+            
+            for page in pages:
+                if 'Contents' in page:
+                    for obj in page['Contents']:
+                        source_key = obj['Key']
+                        # Replace the source baseline prefix with dest baseline prefix
+                        dest_key = source_key.replace(source_baseline_prefix, dest_baseline_prefix, 1)
+                        
+                        # Copy file
+                        s3.copy_object(
+                            CopySource={'Bucket': source_bucket, 'Key': source_key},
+                            Bucket=dest_bucket,
+                            Key=dest_key
+                        )
+                        
+                        logger.info(f"Copied testset baseline file: {source_key} -> {dest_bucket}/{dest_key}")
+        else:
+            logger.warning(f"Unexpected file path format for testset baseline: {file_key}")
 
 def _update_test_set_status(tracking_table, test_set_id, status, error=None):
     """Update test set status in tracking table"""

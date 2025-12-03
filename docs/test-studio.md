@@ -34,8 +34,21 @@ The Test Studio consists of two main tabs:
 
 #### TestResultsResolver Lambda
 - **Location**: `src/lambda/test_results_resolver/index.py`
-- **Purpose**: Handles GraphQL queries for test results and comparisons
-- **Features**: Result retrieval, comparison logic, metrics aggregation
+- **Purpose**: Handles GraphQL queries for test results and comparisons, plus asynchronous cache updates
+- **Features**: 
+  - Result retrieval with cached metrics
+  - Comparison logic and metrics aggregation
+  - Dual event handling (GraphQL + SQS)
+  - Asynchronous cache update processing
+  - Progress-aware status updates
+
+#### TestResultCacheUpdateQueue
+- **Type**: AWS SQS Queue
+- **Purpose**: Decouples heavy metric calculations from synchronous API calls
+- **Features**: 
+  - Encrypted message storage
+  - 15-minute visibility timeout for long-running calculations
+  - Automatic retry handling
 
 ### GraphQL Schema
 - **Location**: `src/api/schema.graphql`
@@ -77,7 +90,9 @@ components/
 ## Test Sets
 
 ### Creating Test Sets
-1. **Pattern-based**: Define file patterns (e.g., `*.pdf`)
+1. **Pattern-based**: Define file patterns (e.g., `*.pdf`) with bucket type selection
+   - **Input Bucket**: Scan main processing bucket for matching files
+   - **Test Set Bucket**: Scan dedicated test set bucket for matching files
 2. **Zip Upload**: Upload zip containing `input/` and `baseline/` folders
 3. **Direct Upload**: Files uploaded directly to TestSetBucket are auto-detected
 
@@ -126,7 +141,8 @@ my-test-set/
 ## Key Features
 
 ### Test Set Management
-- Reusable collections with file patterns
+- Reusable collections with file patterns across multiple buckets
+- Dual bucket support (Input Bucket and Test Set Bucket)
 - Zip upload with automatic extraction
 - Direct upload detection via dual polling
 - File structure validation with error reporting

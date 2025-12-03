@@ -34,8 +34,8 @@ def handler(event, context):
         return delete_test_sets(event['arguments'])
     elif field_name == 'getTestSets':
         return get_test_sets()
-    elif field_name == 'listInputBucketFiles':
-        return list_input_bucket_files(event['arguments'])
+    elif field_name == 'listBucketFiles':
+        return list_bucket_files(event['arguments'])
     elif field_name == 'validateTestFileName':
         return validate_test_file_name(event['arguments'])
     else:
@@ -137,6 +137,7 @@ def add_test_set(args):
         MessageBody=json.dumps({
             'testSetId': test_set_id,
             'filePattern': args['filePattern'],
+            'bucketType': args['bucketType'],
             'trackingTable': os.environ['TRACKING_TABLE']
         })
     )
@@ -451,14 +452,22 @@ def _create_test_set_tracking_entry(test_set_id, name, file_count, status, error
         logger.error(f"Error creating tracking entry for {test_set_id}: {str(e)}")
 
 
-def list_input_bucket_files(args):
-    logger.info(f"Listing files with pattern: {args['filePattern']}")
+def list_bucket_files(args):
+    logger.info(f"Listing files with pattern: {args['filePattern']} from bucket type: {args['bucketType']}")
     
     file_pattern = args['filePattern']
-    input_bucket = os.environ['INPUT_BUCKET']
+    bucket_type = args['bucketType']
     
-    files = find_matching_files(input_bucket, file_pattern)
-    logger.info(f"Found {len(files)} matching files")
+    # Determine which bucket to use based on bucket type
+    if bucket_type == 'input':
+        bucket = os.environ['INPUT_BUCKET']
+    elif bucket_type == 'testset':
+        bucket = os.environ['TEST_SET_BUCKET']
+    else:
+        raise Exception(f"Invalid bucket type: {bucket_type}")
+    
+    files = find_matching_files(bucket, file_pattern)
+    logger.info(f"Found {len(files)} matching files in {bucket_type} bucket")
     
     return files
 
