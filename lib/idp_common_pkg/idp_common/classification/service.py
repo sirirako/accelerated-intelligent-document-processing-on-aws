@@ -509,65 +509,10 @@ class ClassificationService:
                     f"All {len(cached_page_classifications)} page classifications found in cache"
                 )
 
-            # Group pages into sections only if we have results
-            document.sections = []
-            sorted_results = self._sort_page_results(all_page_results)
-
-            if sorted_results:
-                current_group = 1
-                current_type = sorted_results[0].classification.doc_type
-                current_pages = [sorted_results[0]]
-
-                for result in sorted_results[1:]:
-                    boundary = result.classification.metadata.get(
-                        "document_boundary", "continue"
-                    ).lower()
-                    if (
-                        result.classification.doc_type == current_type
-                        and boundary != "start"
-                    ):
-                        current_pages.append(result)
-                    else:
-                        # Create a new section with the current group of pages
-                        section = self._create_section(
-                            section_id=str(current_group),
-                            doc_type=current_type,
-                            pages=[p.page_id for p in current_pages],
-                        )
-
-                        if isinstance(section, Section):
-                            document.sections.append(section)
-                        else:
-                            document.sections.append(
-                                Section(
-                                    section_id=section.section_id,
-                                    classification=section.classification.doc_type,
-                                    page_ids=[page.page_id for page in section.pages],
-                                )
-                            )
-
-                        # Start a new group
-                        current_group += 1
-                        current_type = result.classification.doc_type
-                        current_pages = [result]
-
-                # Add the final section
-                section = self._create_section(
-                    section_id=str(current_group),
-                    doc_type=current_type,
-                    pages=[p.page_id for p in current_pages],
-                )
-
-                if isinstance(section, Section):
-                    document.sections.append(section)
-                else:
-                    document.sections.append(
-                        Section(
-                            section_id=section.section_id,
-                            classification=section.classification.doc_type,
-                            page_ids=[page.page_id for page in section.pages],
-                        )
-                    )
+            # Apply configured section splitting strategy
+            document = self._apply_section_splitting_strategy(
+                document, all_page_results
+            )
 
             # Update document status and metering
             document = self._update_document_status(document)
@@ -1687,6 +1632,186 @@ class ClassificationService:
         # Create and return classification result
         return ClassificationResult(metadata={"metering": metering}, sections=sections)
 
+    def _apply_section_splitting_strategy(
+        self, document: Document, page_results: List[PageClassification]
+    ) -> Document:
+        """
+        Apply configured section splitting strategy.
+
+        Args:
+            document: Document with classified pages
+            page_results: List of page classification results
+
+        Returns:
+            Document with sections created according to splitting strategy
+        """
+        strategy = self.config.classification.sectionSplitting.lower()
+
+        if strategy == "disabled":
+            return self._create_single_section(document, page_results)
+        elif strategy == "page":
+            return self._create_per_page_sections(document, page_results)
+        else:  # llm_determined (default)
+            return self._create_llm_determined_sections(document, page_results)
+
+    def _create_single_section(
+        self, document: Document, page_results: List[PageClassification]
+    ) -> Document:
+        """
+        Create single section containing all pages with first detected class.
+
+        Args:
+            document: Document to update
+            page_results: List of page classification results
+
+        Returns:
+            Document with single section containing all pages
+        """
+        if not page_results:
+            return document
+
+        # Use first page's classification for entire document
+        first_classification = page_results[0].classification.doc_type
+
+        # Set all pages to this classification
+        for page_id in document.pages:
+            document.pages[page_id].classification = first_classification
+            document.pages[page_id].confidence = 1.0
+
+        # Create single section with all pages
+        section = Section(
+            section_id="1",
+            classification=first_classification,
+            confidence=1.0,
+            page_ids=list(document.pages.keys()),
+        )
+        document.sections = [section]
+
+        logger.info(
+            f"Created single section with {len(document.pages)} pages, class='{first_classification}' (sectionSplitting=disabled)"
+        )
+        return document
+
+    def _create_per_page_sections(
+        self, document: Document, page_results: List[PageClassification]
+    ) -> Document:
+        """
+        Create one section per page, preventing any joining of same-type documents.
+
+        Args:
+            document: Document to update
+            page_results: List of page classification results
+
+        Returns:
+            Document with one section per page
+        """
+        document.sections = []
+
+        sorted_results = self._sort_page_results(page_results)
+
+        for idx, page_result in enumerate(sorted_results, start=1):
+            page_id = page_result.page_id
+            doc_type = page_result.classification.doc_type
+
+            # Update page classification
+            if page_id in document.pages:
+                document.pages[page_id].classification = doc_type
+                document.pages[
+                    page_id
+                ].confidence = page_result.classification.confidence
+
+            # Create individual section for this page
+            section = Section(
+                section_id=str(idx),
+                classification=doc_type,
+                confidence=page_result.classification.confidence,
+                page_ids=[page_id],
+            )
+            document.sections.append(section)
+
+        logger.info(
+            f"Created {len(document.sections)} sections (one per page) with sectionSplitting=page"
+        )
+        return document
+
+    def _create_llm_determined_sections(
+        self, document: Document, page_results: List[PageClassification]
+    ) -> Document:
+        """
+        Create sections using LLM boundary detection (current default behavior).
+
+        Uses document_boundary metadata ("start" or "continue") to determine
+        section boundaries. This is the BIO-like tagging approach.
+
+        Args:
+            document: Document to update
+            page_results: List of page classification results
+
+        Returns:
+            Document with sections created using LLM boundary detection
+        """
+        document.sections = []
+        sorted_results = self._sort_page_results(page_results)
+
+        if not sorted_results:
+            return document
+
+        current_group = 1
+        current_type = sorted_results[0].classification.doc_type
+        current_pages = [sorted_results[0]]
+
+        for result in sorted_results[1:]:
+            boundary = result.classification.metadata.get(
+                "document_boundary", "continue"
+            ).lower()
+
+            if result.classification.doc_type == current_type and boundary != "start":
+                current_pages.append(result)
+            else:
+                # Create section with current group
+                section = self._create_section(
+                    section_id=str(current_group),
+                    doc_type=current_type,
+                    pages=[p.page_id for p in current_pages],
+                )
+                if isinstance(section, Section):
+                    document.sections.append(section)
+                else:
+                    document.sections.append(
+                        Section(
+                            section_id=section.section_id,
+                            classification=section.classification.doc_type,
+                            page_ids=[page.page_id for page in section.pages],
+                        )
+                    )
+
+                # Start new group
+                current_group += 1
+                current_type = result.classification.doc_type
+                current_pages = [result]
+
+        # Add final section
+        section = self._create_section(
+            section_id=str(current_group),
+            doc_type=current_type,
+            pages=[p.page_id for p in current_pages],
+        )
+        if isinstance(section, Section):
+            document.sections.append(section)
+        else:
+            document.sections.append(
+                Section(
+                    section_id=section.section_id,
+                    classification=section.classification.doc_type,
+                    page_ids=[page.page_id for page in section.pages],
+                )
+            )
+
+        logger.info(
+            f"Created {len(document.sections)} sections using LLM boundary detection (sectionSplitting=llm_determined)"
+        )
+        return document
+
     def _sort_page_results(
         self, results: List[PageClassification]
     ) -> List[PageClassification]:
@@ -1996,8 +2121,7 @@ class ClassificationService:
                 if not segments:
                     raise ValueError("No segments found in the classification result")
 
-                # Update the document with sections based on the segments
-                document.sections = []
+                # Update page classifications based on segments
                 for i, segment in enumerate(segments):
                     # Validate segment data
                     if not all(
@@ -2018,13 +2142,11 @@ class ClassificationService:
                             f"Unknown document type '{doc_type}', using anyway"
                         )
 
-                    # Find corresponding page IDs
-                    page_ids = []
+                    # Update page classifications
                     try:
                         for page_idx in range(start_page, end_page + 1):
                             page_id = str(page_idx)
                             if page_id in document.pages:
-                                page_ids.append(page_id)
                                 # Update page classification
                                 document.pages[page_id].classification = doc_type
                                 document.pages[page_id].confidence = 1.0
@@ -2032,18 +2154,85 @@ class ClassificationService:
                         logger.error(f"Error processing segment {i}: {e}")
                         continue
 
-                    if not page_ids:
-                        logger.warning(f"No valid pages found for segment {i}")
-                        continue
+                # Apply section splitting strategy based on configuration
+                strategy = self.config.classification.sectionSplitting.lower()
 
-                    # Create and add the section
-                    section = Section(
-                        section_id=str(i + 1),
-                        classification=doc_type,
-                        confidence=1.0,
-                        page_ids=page_ids,
+                if strategy == "disabled":
+                    # Create single section with all pages using first segment's classification
+                    if segments:
+                        first_classification = segments[0]["type"]
+                        document.sections = [
+                            Section(
+                                section_id="1",
+                                classification=first_classification,
+                                confidence=1.0,
+                                page_ids=list(document.pages.keys()),
+                            )
+                        ]
+                        logger.info(
+                            f"Created single section with all pages, class='{first_classification}' (sectionSplitting=disabled)"
+                        )
+                elif strategy == "page":
+                    # Create one section per page with its assigned classification
+                    document.sections = []
+                    sorted_page_ids = sorted(
+                        document.pages.keys(),
+                        key=lambda x: int(x) if x.isdigit() else float("inf"),
                     )
-                    document.sections.append(section)
+                    for idx, page_id in enumerate(sorted_page_ids, start=1):
+                        page = document.pages[page_id]
+                        document.sections.append(
+                            Section(
+                                section_id=str(idx),
+                                classification=page.classification,
+                                confidence=page.confidence,
+                                page_ids=[page_id],
+                            )
+                        )
+                    logger.info(
+                        f"Created {len(document.sections)} sections (one per page) with sectionSplitting=page"
+                    )
+                else:  # llm_determined (default)
+                    # Use LLM-determined segments as sections
+                    document.sections = []
+                    for i, segment in enumerate(segments):
+                        if not all(
+                            k in segment
+                            for k in ["ordinal_start_page", "ordinal_end_page", "type"]
+                        ):
+                            continue
+
+                        start_page = segment["ordinal_start_page"]
+                        end_page = segment["ordinal_end_page"]
+                        doc_type = segment["type"]
+
+                        # Find corresponding page IDs
+                        page_ids = []
+                        try:
+                            for page_idx in range(start_page, end_page + 1):
+                                page_id = str(page_idx)
+                                if page_id in document.pages:
+                                    page_ids.append(page_id)
+                        except Exception as e:
+                            logger.error(f"Error processing segment {i}: {e}")
+                            continue
+
+                        if not page_ids:
+                            logger.warning(f"No valid pages found for segment {i}")
+                            continue
+
+                        # Create and add the section
+                        document.sections.append(
+                            Section(
+                                section_id=str(i + 1),
+                                classification=doc_type,
+                                confidence=1.0,
+                                page_ids=page_ids,
+                            )
+                        )
+                    logger.info(
+                        f"Created {len(document.sections)} sections using LLM-determined segments (sectionSplitting=llm_determined)"
+                    )
 
                 # Update document metering and status
                 document.metering = utils.merge_metering_data(

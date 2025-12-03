@@ -1,6 +1,7 @@
 # Classification Service Configuration
 classification:
   classificationMethod: multimodalPageLevelClassification
+  sectionSplitting: llm_determined
   image:
     target_height: ''
     target_width: ''

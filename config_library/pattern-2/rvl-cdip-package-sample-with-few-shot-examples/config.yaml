@@ -813,6 +813,7 @@ classification:
     target_height: ""
     target_width: ""
   classificationMethod: multimodalPageLevelClassification
+  sectionSplitting: llm_determined
   model: us.amazon.nova-pro-v1:0
   temperature: "0.0"
   top_p: "0.1"
