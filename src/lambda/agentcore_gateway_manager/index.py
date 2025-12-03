@@ -56,14 +56,38 @@ def handler(event, context):
 def create_or_update_gateway(props, gateway_name):
     """Create or update AgentCore Gateway using existing Cognito resources"""
     region = props['Region']
+    
+    # Initialize gateway client
+    client = GatewayClient(region_name=region)
+    
+    # Check if gateway already exists
+    try:
+        control_client = boto3.client("bedrock-agentcore-control", region_name=region)
+        resp = control_client.list_gateways(maxResults=10)
+        existing_gateways = [g for g in resp.get("items", []) if g.get("name") == gateway_name]
+        
+        if existing_gateways:
+            existing_gateway = existing_gateways[0]
+            logger.info(f"Gateway {gateway_name} already exists, returning existing configuration")
+            return {
+                'gateway_url': existing_gateway.get('gatewayUrl'),
+                'gateway_id': existing_gateway.get('gatewayId'),
+                'gateway_arn': existing_gateway.get('gatewayArn')
+            }
+    except Exception as e:
+        logger.info(f"Error checking for existing gateway: {e}")
+    
+    # Gateway doesn't exist, create it
+    logger.info(f"Gateway {gateway_name} does not exist, creating new one")
+    return create_gateway(props, gateway_name, client)
+
+
+def create_gateway(props, gateway_name, client):
+    """Create new AgentCore Gateway"""
+    region = props['Region']
     lambda_arn = props['LambdaArn']
     user_pool_id = props['UserPoolId']
     client_id = props['ClientId']
-
-    logger.info(f"Creating gateway: {gateway_name}")
-
-    # Initialize gateway client
-    client = GatewayClient(region_name=region)
 
     # Create JWT authorizer config using existing Cognito resources
     authorizer_config = {
