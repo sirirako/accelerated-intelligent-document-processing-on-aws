@@ -1188,6 +1188,7 @@ classes:
 classification:
   classificationMethod: multimodalPageLevelClassification
   maxPagesForClassification: "ALL"
+  sectionSplitting: llm_determined
   image:
     target_height: ""
     target_width: ""

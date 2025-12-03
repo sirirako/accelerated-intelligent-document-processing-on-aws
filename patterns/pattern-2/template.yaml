@@ -867,6 +867,12 @@ Resources:
                 description: "Number of pages to use for classification [When set to a number, forces the entire document to be assigned a single class]"
                 enum: ["ALL", "1", "2", "3", "5", "10"]
                 order: 3
+              sectionSplitting:
+                type: string
+                description: "Section splitting strategy: 'disabled' (entire doc as one section), 'page' (one section per page - prevents joining same-type documents), 'llm_determined' (use LLM boundary detection - default)"
+                enum: ["disabled", "page", "llm_determined"]
+                default: "llm_determined"
+                order: 3.5
               temperature:
                 type: number
                 minimum: 0

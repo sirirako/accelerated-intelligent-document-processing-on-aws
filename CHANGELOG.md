@@ -5,6 +5,17 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable Section Splitting Strategies for Enhanced Document Segmentation Control**
+  - Added new `sectionSplitting` configuration option to control how classified pages are grouped into document sections
+  - **Three Strategies Available**:
+    - `disabled`: Entire document treated as single section with first detected class (simplest case)
+    - `page`: One section per page preventing automatic joining of same-type documents (deterministic, solves Issue #146)
+    - `llm_determined`: Uses LLM boundary detection with "Start"/"Continue" indicators (default, maintains existing behavior)
+  - **Key Benefits**: Deterministic splitting for long documents with multiple same-type forms (e.g., multiple W-2s, multiple invoices), eliminates LLM boundary detection failures for critical government form processing, provides flexibility across simple to complex document scenarios
+  - Resolves #146
+
 ### Changed
 - Removed page image limit entirely across all IDP services (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
   - Resolves #147
