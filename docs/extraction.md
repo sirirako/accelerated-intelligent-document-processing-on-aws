@@ -334,9 +334,9 @@ extraction:
 For documents with multiple pages, the system provides robust image management:
 
 - **Automatic Pagination**: Images are processed in page order
-- **Bedrock Compliance**: Maximum 100 images per request (automatically enforced)
-- **Smart Truncation**: Excess images are dropped with warning logs
-- **Performance Optimization**: Large image sets are efficiently handled
+- **No Image Limits**: All document pages are included following Bedrock API removal of image count restrictions
+- **Comprehensive Processing**: The system processes documents of any length without truncation
+- **Performance Optimization**: Efficient handling of large image sets with info logging
 
 ```yaml
 # Example configuration for multi-page invoices
@@ -346,7 +346,7 @@ extraction:
 
     {ATTRIBUTE_NAMES_AND_DESCRIPTIONS}
 
-    Document pages (up to 100 images):
+    Document pages (all pages included):
     {DOCUMENT_IMAGE}
 
     Combined text from all pages:

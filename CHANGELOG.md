@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT-0
 ## [Unreleased]
 
 ### Changed
-- Increased page image limit from 20 to 100 across all IDP services (classification, extraction, assessment) to support processing of longer document sections with large context models following recent Amazon Bedrock API limit increases
+- Removed page image limit entirely across all IDP services (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
   - Resolves #147
 
 ## [0.4.5]

@@ -472,13 +472,11 @@ class GranularAssessmentService:
             # Add the images if available
             if page_images:
                 if isinstance(page_images, list):
-                    # Multiple images (limit to 100 as per Bedrock constraints)
-                    if len(page_images) > 100:
-                        logger.warning(
-                            f"Found {len(page_images)} images, truncating to 100 due to Bedrock constraints. "
-                            f"{len(page_images) - 100} images will be dropped."
-                        )
-                    for img in page_images[:100]:
+                    # Multiple images - no limit with latest Bedrock API
+                    logger.info(
+                        f"Attaching {len(page_images)} images to granular assessment prompt"
+                    )
+                    for img in page_images:
                         content.append(image.prepare_bedrock_image_attachment(img))
                 else:
                     # Single image
