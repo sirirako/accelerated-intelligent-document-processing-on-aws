@@ -24,7 +24,7 @@ SPDX-License-Identifier: MIT-0
   - **Previous Logic**: Used `top_p` whenever `temperature=0.0`, preventing proper deterministic configuration
   - **Key Benefits**: Enables proper deterministic output with `temperature=0.0`, more intuitive parameter behavior, aligns with model provider best practices (Anthropic recommends `temperature=0` for consistent outputs)
   - **Affected Components**: Bedrock client (`lib/idp_common_pkg/idp_common/bedrock/client.py`), Agentic extraction service (`lib/idp_common_pkg/idp_common/extraction/agentic_idp.py`)
-  - **Configuration Guidance**: Set `top_p: 0` or omit `top_p` to use `temperature` parameter; set `top_p` to positive value to override temperature
+  - **Configuration Guidance**: Set `top_p: 0` to use `temperature` parameter; set `top_p` to positive value to override temperature
   - **Backward Compatibility**: Existing configs continue to work; users can now properly configure deterministic output
 
 - Removed page image limit entirely across all IDP services (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
