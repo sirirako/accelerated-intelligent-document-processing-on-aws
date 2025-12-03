@@ -185,7 +185,9 @@ const TestSets = () => {
         setConfirmReplacement(false);
       }
     } catch (err) {
-      setError(`Failed to validate test set name: ${err.message}`);
+      console.error('Error validating test set name:', err);
+      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to validate test set name: ${errorMessage}`);
       return;
     }
 
@@ -231,7 +233,9 @@ const TestSets = () => {
         setError('Failed to create test set - no data returned');
       }
     } catch (err) {
-      setError(`Failed to add test set: ${err.message}`);
+      console.error('Error adding test set:', err);
+      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to add test set: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -269,7 +273,9 @@ const TestSets = () => {
         setConfirmReplacement(false);
       }
     } catch (err) {
-      setError(`Failed to validate test set name: ${err.message}`);
+      console.error('Error validating test set name:', err);
+      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to validate test set name: ${errorMessage}`);
       return;
     }
 
@@ -342,7 +348,9 @@ const TestSets = () => {
       setNewTestSetName('');
       setZipFile(null);
     } catch (err) {
-      setError(`Failed to create test set: ${err.message}`);
+      console.error('Error creating test set:', err);
+      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to create test set: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -357,7 +365,9 @@ const TestSets = () => {
       const result = await client.graphql({ query: GET_TEST_SETS });
       setTestSets(result.data.getTestSets || []);
     } catch (err) {
-      setError(`Failed to refresh test sets: ${err.message}`);
+      console.error('Error refreshing test sets:', err);
+      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to refresh test sets: ${errorMessage}`);
     } finally {
       setRefreshing(false);
     }
@@ -378,7 +388,9 @@ const TestSets = () => {
       setSuccessMessage(`Successfully deleted ${deleteCount} test set${deleteCount > 1 ? 's' : ''}`);
       setError('');
     } catch (err) {
-      setError(`Failed to delete test sets: ${err.message}`);
+      console.error('Error deleting test sets:', err);
+      const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+      setError(`Failed to delete test sets: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -722,7 +734,9 @@ const TestSets = () => {
                       setWarningMessage('');
                     }
                   } catch (err) {
-                    setError(`Failed to validate test set name: ${err.message}`);
+                    console.error('Error validating test set name:', err);
+                    const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
+                    setError(`Failed to validate test set name: ${errorMessage}`);
                     setZipFile(null);
                     setNewTestSetName('');
                     return;
