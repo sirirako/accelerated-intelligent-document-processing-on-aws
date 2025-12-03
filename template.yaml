@@ -236,6 +236,7 @@ Parameters:
       - "us.amazon.nova-lite-v1:0"
       - "us.amazon.nova-pro-v1:0"
       - "us.amazon.nova-premier-v1:0"
+      - "us.amazon.nova-2-lite-v1:0"
       - "us.anthropic.claude-3-haiku-20240307-v1:0"
       - "us.anthropic.claude-3-5-haiku-20241022-v1:0"
       - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
@@ -244,11 +245,13 @@ Parameters:
       - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
       - "eu.amazon.nova-lite-v1:0"
       - "eu.amazon.nova-pro-v1:0"
+      - "eu.amazon.nova-2-lite-v1:0"
       - "eu.anthropic.claude-3-haiku-20240307-v1:0"
       - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
       - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
       - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
       - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      - "qwen.qwen3-vl-235b-a22b"
     Description: Model to use for optional Document Knowledge Base. Model access MUST be enabled in Amazon Bedrock. Note - Nova Premier may not be available in all EU regions.
 
   # Optional - Post processing Lambda hook
