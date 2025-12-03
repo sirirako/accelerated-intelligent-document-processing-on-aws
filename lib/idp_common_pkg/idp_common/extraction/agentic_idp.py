@@ -707,16 +707,18 @@ def _get_inference_params(temperature: float, top_p: float | None) -> dict[str, 
     """
     params = {}
 
-    # Only use top_p if temperature is 0.0
-    if top_p is not None and temperature == 0.0:
+    # Only use top_p if it's positive (greater than 0)
+    # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
+    if top_p is not None and top_p > 0:
         params["top_p"] = top_p
         logger.debug(
-            "Using top_p for inference (temperature is 0.0)", extra={"top_p": top_p}
+            "Using top_p for inference (temperature ignored)", extra={"top_p": top_p}
         )
     else:
         params["temperature"] = temperature
         logger.debug(
-            "Using temperature for inference", extra={"temperature": temperature}
+            "Using temperature for inference (top_p is 0 or None)",
+            extra={"temperature": temperature},
         )
 
     return params
