@@ -7,6 +7,20 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Amazon Nova 2 Lite Model Support**
+  - Added support for Amazon Nova 2 Lite model (`us.amazon.nova-2-lite-v1:0`, `eu.amazon.nova-2-lite-v1:0`)
+  - Available for configuration across all document processing steps
+  - Added to prompt caching supported models list
+
+- **Anthropic Claude Opus 4.5 Model Support**
+  - Added support for Claude Opus 4.5 model (`us.anthropic.claude-opus-4-5-20251101-v1:0`, `eu.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - Available for configuration across all document processing steps
+  - Added to prompt caching supported models list
+
+- **Qwen Model Support**
+  - Added support for Qwen 3 VL model (`qwen.qwen3-vl-235b-a22b`)
+  - Available for configuration in document processing workflows
+
 - **Configurable Section Splitting Strategies for Enhanced Document Segmentation Control**
   - Added new `sectionSplitting` configuration option to control how classified pages are grouped into document sections
   - **Three Strategies Available**:
