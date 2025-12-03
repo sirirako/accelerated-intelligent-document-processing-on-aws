@@ -412,7 +412,7 @@ Resources:
                     order: 1
                   temperature:
                     type: number
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0 or not set. Set temperature=0.0 for consistent, deterministic outputs."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                     order: 2
                   top_k:
                     type: number
@@ -464,7 +464,7 @@ Resources:
                 order: 1
               temperature:
                 type: number
-                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0 or not set. Set temperature=0.0 for consistent, deterministic outputs."
+                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                 order: 2
               top_k:
                 type: number
@@ -508,7 +508,7 @@ Resources:
                     order: 0
                   temperature:
                     type: number
-                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0 or not set. Set temperature=0.0 for consistent, deterministic outputs."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
