@@ -871,11 +871,11 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
       PermissionsBoundary: !If [ HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue" ]
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       Policies:
         - PolicyName: AthenaQueryPolicy
           PolicyDocument:
@@ -887,7 +887,7 @@ Resources:
                   - athena:GetQueryExecution
                   - athena:GetQueryResults
                   - athena:StopQueryExecution
-                Resource: !Sub "arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                Resource: !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
         - PolicyName: S3AccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -925,9 +925,9 @@ Resources:
                   - glue:GetTables
                   - glue:GetPartitions
                 Resource:
-                  - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                  - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
-                  - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
         - PolicyName: KMSDecryptPolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -993,7 +993,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 1024
       Timeout: 900
-      Role: !GetAtt AgentCoreAnalyticsLambdaRole.Arn
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -1064,9 +1063,26 @@ Resources:
                 - athena:StartQueryExecution
                 - athena:GetQueryExecution
                 - athena:GetQueryResults
+                - athena:StopQueryExecution
               Resource:
                 - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
                 - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:GetBucketLocation
+                - s3:GetBucketVersioning
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:AbortMultipartUpload
+                - s3:ListMultipartUploadParts
+              Resource: !Sub
+                - "${BucketArn}/*"
+                - BucketArn: !If
+                    - ShouldCreateReportingBucket
+                    - !GetAtt ReportingBucket.Arn
+                    - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
             - Effect: Allow
               Action:
                 - glue:GetTable
@@ -1154,6 +1170,8 @@ Resources:
                 - dynamodb:Query
               Resource:
                 - !GetAtt TrackingTable.Arn
+                - !GetAtt ConfigurationTable.Arn
+                - !GetAtt AgentTable.Arn
             - Effect: Allow
               Action:
                 - cloudformation:DescribeStackResources
@@ -1171,12 +1189,6 @@ Resources:
                 - states:GetExecutionHistory
               Resource:
                 - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}*"
-            - Effect: Allow
-              Action:
-                - xray:GetTraceSummaries
-                - xray:BatchGetTraces
-                - xray:GetServiceGraph
-              Resource: "*"
 
   ##########################################################################
   # AgentCore Gateway Manager Lambda Function
@@ -1260,6 +1272,7 @@ Resources:
       UserPoolId: !Ref UserPool
       ClientId: !Ref ExternalAppClient
       ClientSecret: !GetAtt ExternalAppClient.ClientSecret
+      SourceCodeHash: <HASH_TOKEN>
 
   ##########################################################################
   # Nested stack for selected pattern

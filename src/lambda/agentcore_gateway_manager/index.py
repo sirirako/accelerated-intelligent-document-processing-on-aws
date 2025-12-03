@@ -73,10 +73,6 @@ def create_or_update_gateway(props, gateway_name):
         }
     }
 
-    # Create log group for gateway
-    stack_name = props.get('StackName', 'UNKNOWN')
-    create_log_group(gateway_name, region, stack_name)
-
     # Create gateway
     gateway = client.create_mcp_gateway(
         name=gateway_name,
@@ -187,35 +183,6 @@ def delete_gateway(props, gateway_name):
         else:
             logger.info("Gateway not found")
 
-        # Clean up log group
-        stack_name = props.get('StackName', 'UNKNOWN')
-        delete_log_group(gateway_name, region, stack_name)
     except Exception as e:
         logger.error(f"Gateway deletion failed: {e}")
 
-
-def create_log_group(gateway_name, region, stack_name):
-    """Create CloudWatch log group for AgentCore Gateway"""
-    log_group_name = f"{stack_name}-AgentCoreAnalyticsGateway"
-
-    logs_client = boto3.client('logs', region_name=region)
-    try:
-        logs_client.create_log_group(logGroupName=log_group_name)
-        logger.info(f"Created log group: {log_group_name}")
-    except logs_client.exceptions.ResourceAlreadyExistsException:
-        logger.info(f"Log group already exists: {log_group_name}")
-    except Exception as e:
-        logger.warning(f"Failed to create log group: {e}")
-
-
-def delete_log_group(gateway_name, region, stack_name):
-    """Delete CloudWatch log group for AgentCore Gateway"""
-    log_group_name = f"{stack_name}-AgentCoreAnalyticsGateway"
-    logs_client = boto3.client('logs', region_name=region)
-    try:
-        logs_client.delete_log_group(logGroupName=log_group_name)
-        logger.info(f"Deleted log group: {log_group_name}")
-    except logs_client.exceptions.ResourceNotFoundException:
-        logger.info(f"Log group already deleted: {log_group_name}")
-    except Exception as e:
-        logger.warning(f"Failed to delete log group: {e}")
