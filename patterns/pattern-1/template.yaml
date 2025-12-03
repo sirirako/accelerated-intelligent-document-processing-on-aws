@@ -508,14 +508,14 @@ Resources:
                     order: 0
                   temperature:
                     type: number
-                    description: "Temperature parameter for model creativity (0.0-1.0). When > 0.0, this parameter is used and top_p is ignored. Set to 0.0 to use top_p instead."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0 or not set. Anthropic recommends temperature=0.0 for consistent, deterministic outputs. (0.0-1.0). When > 0.0, this parameter is used and top_p is ignored. Set to 0.0 to use top_p instead."
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
                     order: 1
                   top_p:
                     type: number
-                    description: "Top-p parameter for nucleus sampling (0.0-1.0). Only used when temperature is 0.0. Ignored otherwise."
+                    description: "Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 or omit to use temperature instead.. Only used when temperature is 0.0. Ignored otherwise."
                     minimum: 0.0
                     maximum: 1.0
                     default: 0.1
@@ -553,14 +553,14 @@ Resources:
                     order: 0
                   temperature:
                     type: number
-                    description: Temperature parameter for model creativity (0.0-1.0)
+                    description: Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0 or not set. Anthropic recommends temperature=0.0 for consistent, deterministic outputs. (0.0-1.0)
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
                     order: 1
                   top_p:
                     type: number
-                    description: Top-p parameter for nucleus sampling (0.0-1.0)
+                    description: Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 or omit to use temperature instead.
                     minimum: 0.0
                     maximum: 1.0
                     default: 0.1
