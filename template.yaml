@@ -1341,6 +1341,70 @@ Resources:
               Bool:
                 "aws:SecureTransport": false
 
+  TestSetBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: RetainExceptOnCreate
+    Properties:
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "Content-Type"
+              - "x-amz-content-sha256"
+              - "x-amz-date"
+              - "Authorization"
+              - "x-amz-security-token"
+            AllowedMethods:
+              - PUT
+              - POST
+            AllowedOrigins:
+              - !Sub "https://${CloudFrontDistribution.DomainName}"
+              # For local development only
+              - "http://localhost:3000"
+            ExposedHeaders:
+              - "ETag"
+              - "x-amz-server-side-encryption"
+            MaxAge: 3000
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref CustomerManagedEncryptionKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: test-set-bucket-logs/
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfterNDays
+            Status: Enabled
+            ExpirationInDays: !Ref DataRetentionInDays
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  TestSetBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TestSetBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnforceSSLOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "${TestSetBucket.Arn}/*"
+              - !Sub "${TestSetBucket.Arn}"
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
+
   ConfigurationBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -5795,6 +5859,7 @@ Resources:
                   - !GetAtt CopyToBaselineResolverFunction.Arn
                   - !GetAtt CreateDocumentResolverFunction.Arn
                   - !GetAtt DeleteDocumentResolverFunction.Arn
+                  - !GetAtt DeleteTestsResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
                   - !GetAtt ProcessChangesResolverFunction.Arn
@@ -5802,6 +5867,9 @@ Resources:
                   - !GetAtt ListAvailableAgentsFunction.Arn
                   - !GetAtt ChatWithDocumentResolverFunction.Arn
                   - !GetAtt DiscoveryUploadResolverFunction.Arn
+                  - !GetAtt TestRunnerFunction.Arn
+                  - !GetAtt TestResultsResolverFunction.Arn
+                  - !GetAtt TestSetResolverFunction.Arn
                   - !GetAtt AgentRequestHandlerFunction.Arn  # <-- Backward Compatibility for error analyzer agent
                   - !GetAtt ListAgentChatSessionsFunction.Arn
                   - !GetAtt GetAgentChatMessagesFunction.Arn  
@@ -6487,6 +6555,65 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+  DeleteTestsResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/delete_tests
+      Description: Lambda function to delete test runs via GraphQL API
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE_NAME: !Ref TrackingTable
+          DELETE_DOCUMENT_FUNCTION_NAME: !Ref DeleteDocumentResolverFunction
+          BASELINE_BUCKET: !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
+      LoggingConfig:
+        LogGroup: !Ref DeleteTestsResolverFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateEvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt DeleteDocumentResolverFunction.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  DeleteTestsResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
   DeleteDocumentDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
@@ -6506,6 +6633,820 @@ Resources:
       DataSourceName: !GetAtt DeleteDocumentDataSource.Name
       TypeName: Mutation
       FieldName: deleteDocument
+
+  DeleteTestsDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: DeleteTestsDataSource
+      Description: Lambda function for deleting test runs
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt DeleteTestsResolverFunction.Arn
+
+  DeleteTestsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt DeleteTestsDataSource.Name
+      TypeName: Mutation
+      FieldName: deleteTests
+
+  AddTestSetResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Mutation
+      FieldName: addTestSet
+
+  AddTestSetFromUploadResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Mutation
+      FieldName: addTestSetFromUpload
+
+  DeleteTestSetsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Mutation
+      FieldName: deleteTestSets
+
+  GetTestSetsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Query
+      FieldName: getTestSets
+
+  ListBucketFilesResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Query
+      FieldName: listBucketFiles
+
+  ValidateTestFileNameResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Query
+      FieldName: validateTestFileName
+      
+  TestRunnerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/test_runner
+      Description: Lambda function to run test sets via GraphQL API
+      MemorySize: 256
+      Timeout: 300
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          INPUT_BUCKET: !Ref InputBucket
+          BASELINE_BUCKET: !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
+          CONFIG_TABLE: !Ref ConfigurationTable
+          TRACKING_TABLE: !Ref TrackingTable
+          FILE_COPY_QUEUE_URL: !Ref TestFileCopyQueue
+      LoggingConfig:
+        LogGroup: !Ref TestRunnerFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3CrudPolicy:
+            BucketName: !Ref InputBucket
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateEvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucketName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TestFileCopyQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestRunnerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # SQS Queue for test file copying jobs
+  ##########################################################################
+
+  TestFileCopyQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      MessageRetentionPeriod: 1209600 # 14 days
+      VisibilityTimeout: 900
+
+  TestFileCopyQueueDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TestFileCopyQueueDLQ
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt TestFileCopyQueueDLQ.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  TestFileCopyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      VisibilityTimeout: 900
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TestFileCopyQueueDLQ.Arn
+        maxReceiveCount: 3
+
+  TestFileCopyQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TestFileCopyQueue
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt TestFileCopyQueue.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  ##########################################################################
+  # SQS Queue for test set file copying jobs
+  ##########################################################################
+
+  TestSetFileCopyQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      MessageRetentionPeriod: 1209600 # 14 days
+      VisibilityTimeout: 900
+
+  TestSetFileCopyQueueDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TestSetFileCopyQueueDLQ
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt TestSetFileCopyQueueDLQ.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  TestSetFileCopyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      VisibilityTimeout: 900
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TestSetFileCopyQueueDLQ.Arn
+        maxReceiveCount: 3
+
+  TestSetFileCopyQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TestSetFileCopyQueue
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt TestSetFileCopyQueue.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  ##########################################################################
+  # Lambda function to copy test set files
+  ##########################################################################
+
+  TestSetFileCopierFunctionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  TestSetFileCopierFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for SQS triggered function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/test_set_file_copier
+      Description: Lambda function to copy test set files from SQS queue
+      MemorySize: 1024
+      Timeout: 900
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt TestSetFileCopierFunctionDLQ.Arn
+      LoggingConfig:
+        LogGroup: !Ref TestSetFileCopierFunctionLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          INPUT_BUCKET: !Ref InputBucket
+          TEST_SET_BUCKET: !Ref TestSetBucket
+          BASELINE_BUCKET: !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
+        - S3ReadPolicy:
+            BucketName: !If
+              - ShouldCreateEvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucketName
+        - S3CrudPolicy:
+            BucketName: !Ref TestSetBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TestSetFileCopyQueue.Arn
+            BatchSize: 1
+
+  TestSetFileCopierFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ##########################################################################
+  # Lambda function to extract uploaded ZIP files for test sets
+  ##########################################################################
+
+  TestSetZipExtractorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Lambda function does not need to be in VPC"
+          - id: W92
+            reason: "Lambda function does not need reserved concurrency"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/test_set_zip_extractor/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE: !Ref TrackingTable
+          TEST_SET_BUCKET: !Ref TestSetBucket
+      LoggingConfig:
+        LogGroup: !Ref TestSetZipExtractorFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestSetZipExtractorFunctionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TestSetZipExtractorFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt TestSetBucket.Arn
+
+  TestSetZipExtractorFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Separate policies to break circular dependency
+  TestSetZipExtractorS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: TestSetZipExtractorS3Access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "${TestSetBucket.Arn}/*"
+              - !GetAtt TestSetBucket.Arn
+      Roles:
+        - !Ref TestSetZipExtractorFunctionRole
+
+  # Custom resource to configure S3 bucket notification after both bucket and function exist
+  TestSetBucketNotificationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 60
+      InlineCode: |
+        import boto3
+        import cfnresponse
+        import json
+        import logging
+
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        def handler(event, context):
+            logger.info(json.dumps(event))
+            
+            try:
+                s3_client = boto3.client('s3')
+                bucket_name = event['ResourceProperties']['BucketName']
+                function_arn = event['ResourceProperties']['FunctionArn']
+                
+                if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                    # Configure bucket notification
+                    notification_config = {
+                        'LambdaFunctionConfigurations': [
+                            {
+                                'Id': 'TestSetZipExtractor',
+                                'LambdaFunctionArn': function_arn,
+                                'Events': ['s3:ObjectCreated:*'],
+                                'Filter': {
+                                    'Key': {
+                                        'FilterRules': [
+                                            {
+                                                'Name': 'suffix',
+                                                'Value': '.zip'
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                    
+                    s3_client.put_bucket_notification_configuration(
+                        Bucket=bucket_name,
+                        NotificationConfiguration=notification_config
+                    )
+                    
+                elif event['RequestType'] == 'Delete':
+                    # Remove bucket notification
+                    s3_client.put_bucket_notification_configuration(
+                        Bucket=bucket_name,
+                        NotificationConfiguration={}
+                    )
+                
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                
+            except Exception as e:
+                logger.error(f"Error: {str(e)}")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, 
+                               reason=f"Error configuring bucket notification: {str(e)}")
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutBucketNotification
+                - s3:GetBucketNotification
+              Resource: !GetAtt TestSetBucket.Arn
+
+  TestSetBucketNotificationConfiguration:
+    Type: Custom::S3BucketNotification
+    DependsOn:
+      - TestSetBucket
+      - TestSetZipExtractorFunction
+      - TestSetZipExtractorFunctionInvokePermission
+      - TestSetZipExtractorS3Policy
+    Properties:
+      ServiceToken: !GetAtt TestSetBucketNotificationFunction.Arn
+      BucketName: !Ref TestSetBucket
+      FunctionArn: !GetAtt TestSetZipExtractorFunction.Arn
+
+  TestSetResolverS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: TestSetResolverS3Access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "${TestSetBucket.Arn}/*"
+              - !GetAtt TestSetBucket.Arn
+      Roles:
+        - !Ref TestSetResolverFunctionRole
+
+  ##########################################################################
+  # Lambda function to copy test files
+  ##########################################################################
+
+  TestFileCopierFunctionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  TestFileCopierFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ configured for SQS triggered function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/test_file_copier
+      Description: Lambda function to copy test files from SQS queue
+      MemorySize: 1024
+      Timeout: 900
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt TestFileCopierFunctionDLQ.Arn
+      LoggingConfig:
+        LogGroup: !Ref TestFileCopierFunctionLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          INPUT_BUCKET: !Ref InputBucket
+          TEST_SET_BUCKET: !Ref TestSetBucket
+          BASELINE_BUCKET: !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - S3ReadPolicy:
+            BucketName: !Ref TestSetBucket
+        - S3CrudPolicy:
+            BucketName: !Ref InputBucket
+        - S3CrudPolicy:
+            BucketName: !If
+              - ShouldCreateEvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TestFileCopyQueue.Arn
+            BatchSize: 1
+
+  TestFileCopierFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  TestResultCacheUpdateQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-test-result-cache-update"
+      VisibilityTimeout: 900
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+
+  TestResultsResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/test_results_resolver
+      Description: GraphQL resolver for test results queries
+      MemorySize: 512
+      Timeout: 300
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE: !Ref TrackingTable
+          BASELINE_BUCKET: !Ref EvaluationBaselineBucket
+          OUTPUT_BUCKET: !Ref OutputBucket
+          REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
+          TEST_RESULT_CACHE_UPDATE_QUEUE_URL: !Ref TestResultCacheUpdateQueue
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TestResultCacheUpdateQueue.Arn
+            BatchSize: 1
+      LoggingConfig:
+        LogGroup: !Ref TestResultsResolverFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - S3ReadPolicy:
+            BucketName: !Ref EvaluationBaselineBucket
+        - S3ReadPolicy:
+            BucketName: !Ref OutputBucket
+        - S3ReadPolicy:
+            BucketName: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt TestResultCacheUpdateQueue.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestResultsResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  TestSetResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/test_set_resolver
+      Description: GraphQL resolver for test set mutations
+      MemorySize: 256
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE: !Ref TrackingTable
+          INPUT_BUCKET: !Ref InputBucket
+          TEST_SET_BUCKET: !Ref TestSetBucket
+          TEST_SET_COPY_QUEUE_URL: !Ref TestSetFileCopyQueue
+          BASELINE_BUCKET: !If
+            - ShouldCreateEvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucket
+            - !Ref EvaluationBaselineBucketName
+      LoggingConfig:
+        LogGroup: !Ref TestSetResolverFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
+        - S3ReadPolicy:
+            BucketName: !If
+              - ShouldCreateEvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucket
+              - !Ref EvaluationBaselineBucketName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TestSetFileCopyQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestSetResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  TestResultsDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: TestResultsDataSource
+      Description: Lambda function for test results queries
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt TestResultsResolverFunction.Arn
+
+  TestSetDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: TestSetDataSource
+      Description: Lambda function for test set mutations
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt TestSetResolverFunction.Arn
+
+  GetTestRunsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestResultsDataSource.Name
+      TypeName: Query
+      FieldName: getTestRuns
+
+  CompareTestRunsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestResultsDataSource.Name
+      TypeName: Query
+      FieldName: compareTestRuns
+
+  GetTestRunResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestResultsDataSource.Name
+      TypeName: Query
+      FieldName: getTestRun
+
+  GetTestRunStatusResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestResultsDataSource.Name
+      TypeName: Query
+      FieldName: getTestRunStatus
+
+  TestRunnerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: TestRunnerDataSource
+      Description: Lambda function for running test sets
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt TestRunnerFunction.Arn
+
+  TestRunnerResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt TestRunnerDataSource.Name
+      TypeName: Mutation
+      FieldName: startTestRun
 
   ReprocessDocumentResolverFunction:
     Type: AWS::Serverless::Function

@@ -14,6 +14,7 @@ import useAppContext from '../contexts/app';
 import DocumentsRoutes from './DocumentsRoutes';
 import DocumentsQueryRoutes from './DocumentsQueryRoutes';
 import DocumentsAnalyticsRoutes from './DocumentsAnalyticsRoutes';
+import TestStudioRoutes from './TestStudioRoutes';
 import AgentChatRoutes from './AgentChatRoutes';
 
 import {
@@ -23,6 +24,7 @@ import {
   LOGOUT_PATH,
   DOCUMENTS_KB_QUERY_PATH,
   DOCUMENTS_ANALYTICS_PATH,
+  TEST_STUDIO_PATH,
   AGENT_CHAT_PATH,
 } from './constants';
 
@@ -45,6 +47,7 @@ const AuthRoutes = ({ redirectParam }) => {
         <Route path={`${AGENT_CHAT_PATH}/*`} element={<AgentChatRoutes />} />
         <Route path={`${DOCUMENTS_KB_QUERY_PATH}/*`} element={<DocumentsQueryRoutes />} />
         <Route path={`${DOCUMENTS_ANALYTICS_PATH}/*`} element={<DocumentsAnalyticsRoutes />} />
+        <Route path={`${TEST_STUDIO_PATH}/*`} element={<TestStudioRoutes />} />
         <Route path={`${DOCUMENTS_PATH}/*`} element={<DocumentsRoutes />} />
         <Route
           path={LOGIN_PATH}
