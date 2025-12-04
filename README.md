@@ -55,7 +55,7 @@ White-glove customization, deployment, and integration support for production us
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
 - **IDP Accelerator Help Chat Bot**: Ask questions about the IDP code base or features
-- **AgentCore Gateway Analytics**: Natural language analytics queries with AWS Bedrock AgentCore Gateway integration
+- **MCP Integration**: Model Context Protocol integration enabling external applications like Amazon Quick Suite to access IDP data and analytics through AWS Bedrock AgentCore Gateway
 
 ## Architecture Overview
 
