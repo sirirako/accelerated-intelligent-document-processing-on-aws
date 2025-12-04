@@ -103,15 +103,39 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   }, [preSelectedTestRunIds]);
 
   // Helper function to create clickable test run ID headers
-  const createTestRunHeader = (testRunId) => {
+  const createTestRunHeader = (testRunId, truncate = false) => {
+    const displayId = truncate ? `T${Object.keys(completeTestRuns).indexOf(testRunId) + 1}` : testRunId;
+
+    if (truncate) {
+      return (
+        <span
+          title={testRunId}
+          style={{ cursor: 'pointer', color: '#0073bb' }}
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            window.location.hash = `#/test-studio?tab=results&testRunId=${testRunId}`;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              window.location.hash = `#/test-studio?tab=results&testRunId=${testRunId}`;
+            }
+          }}
+        >
+          {displayId}
+        </span>
+      );
+    }
+
     return (
       <Button
         variant="link"
         onClick={() => {
           window.location.hash = `#/test-studio?tab=results&testRunId=${testRunId}`;
         }}
+        title={testRunId}
       >
-        {testRunId}
+        {displayId}
       </Button>
     );
   };
@@ -199,28 +223,74 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     // Add cost breakdown header
     costRows.push(['Context', 'Service/Api', 'Unit', ...Object.keys(completeTestRuns)]);
 
-    Array.from(allCostItems)
-      .sort()
-      .forEach((itemKey) => {
-        const [context, serviceApi, unit] = itemKey.split('|');
-        const row = [context, serviceApi, unit];
+    const sortedCostItems = Array.from(allCostItems).sort();
+    const contexts = [...new Set(sortedCostItems.map((item) => item.split('|')[0]))];
+
+    contexts.forEach((context) => {
+      const contextItems = sortedCostItems.filter((item) => item.startsWith(`${context}|`));
+
+      // Add context items
+      contextItems.forEach((itemKey) => {
+        const [ctx, serviceApi, unit] = itemKey.split('|');
+        const row = [ctx, serviceApi, unit];
 
         Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
-          const services = testRun.costBreakdown?.[context] || {};
+          const services = testRun.costBreakdown?.[ctx] || {};
           const serviceKey = Object.keys(services).find((key) => {
             const lastUnderscoreIndex = key.lastIndexOf('_');
             const keyServiceApi = key.substring(0, lastUnderscoreIndex);
-            const [keyService, keyApi] = keyServiceApi.split('/');
-            return `${keyService}/${keyApi}` === serviceApi;
+            const keyUnit = key.substring(lastUnderscoreIndex + 1);
+            return keyServiceApi === serviceApi && keyUnit === unit;
           });
 
           const details = services[serviceKey] || {};
           const estimatedCost = details.estimated_cost || 0;
-          row.push(estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : '$0.0000');
+          row.push(estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : 'N/A');
         });
 
         costRows.push(row);
       });
+
+      // Add subtotal row
+      const subtotalRow = ['', `${context} Subtotal`, ''];
+      Object.keys(completeTestRuns).forEach((testRunId) => {
+        const contextTotal = contextItems.reduce((sum, itemKey) => {
+          const [ctx, serviceApi, unit] = itemKey.split('|');
+          const services = completeTestRuns[testRunId].costBreakdown?.[ctx] || {};
+          const serviceKey = Object.keys(services).find((key) => {
+            const lastUnderscoreIndex = key.lastIndexOf('_');
+            const keyServiceApi = key.substring(0, lastUnderscoreIndex);
+            const keyUnit = key.substring(lastUnderscoreIndex + 1);
+            return keyServiceApi === serviceApi && keyUnit === unit;
+          });
+          const details = services[serviceKey] || {};
+          const estimatedCost = details.estimated_cost || 0;
+          return sum + estimatedCost;
+        }, 0);
+        subtotalRow.push(`$${contextTotal.toFixed(4)}`);
+      });
+      costRows.push(subtotalRow);
+    });
+
+    // Add total row
+    const totalRow = ['', 'Total', ''];
+    Object.keys(completeTestRuns).forEach((testRunId) => {
+      const grandTotal = sortedCostItems.reduce((sum, itemKey) => {
+        const [context, serviceApi, unit] = itemKey.split('|');
+        const services = completeTestRuns[testRunId].costBreakdown?.[context] || {};
+        const serviceKey = Object.keys(services).find((key) => {
+          const lastUnderscoreIndex = key.lastIndexOf('_');
+          const keyServiceApi = key.substring(0, lastUnderscoreIndex);
+          const keyUnit = key.substring(lastUnderscoreIndex + 1);
+          return keyServiceApi === serviceApi && keyUnit === unit;
+        });
+        const details = services[serviceKey] || {};
+        const estimatedCost = details.estimated_cost || 0;
+        return sum + estimatedCost;
+      }, 0);
+      totalRow.push(`$${grandTotal.toFixed(4)}`);
+    });
+    costRows.push(totalRow);
 
     // Add usage breakdown rows
     const usageRows = [];
@@ -237,13 +307,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           const serviceKey = Object.keys(services).find((key) => {
             const lastUnderscoreIndex = key.lastIndexOf('_');
             const keyServiceApi = key.substring(0, lastUnderscoreIndex);
-            const [keyService, keyApi] = keyServiceApi.split('/');
-            return `${keyService}/${keyApi}` === serviceApi;
+            const keyUnit = key.substring(lastUnderscoreIndex + 1);
+            return keyServiceApi === serviceApi && keyUnit === unit;
           });
 
           const details = services[serviceKey] || {};
           const value = details.value || 0;
-          row.push(value > 0 ? value.toLocaleString() : '0');
+          row.push(value > 0 ? value.toLocaleString() : 'N/A');
         });
 
         usageRows.push(row);
@@ -584,7 +654,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 { id: 'metric', header: 'Metric', cell: (item) => item.metric },
                 ...Object.keys(completeTestRuns).map((testRunId) => ({
                   id: testRunId,
-                  header: createTestRunHeader(testRunId),
+                  header: createTestRunHeader(testRunId, true),
                   cell: (item) => {
                     return item[testRunId];
                   },
@@ -619,7 +689,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                     { id: 'setting', header: 'Config', cell: (item) => item.setting },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
-                      header: createTestRunHeader(testRunId),
+                      header: createTestRunHeader(testRunId, true),
                       cell: (item) => item[testRunId] || 'N/A',
                     })),
                   ]}
@@ -679,7 +749,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                     { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
-                      header: createTestRunHeader(testRunId),
+                      header: createTestRunHeader(testRunId, true),
                       cell: (item) => item[testRunId],
                     })),
                   ]}
@@ -723,13 +793,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   const serviceKey = Object.keys(services).find((key) => {
                     const lastUnderscoreIndex = key.lastIndexOf('_');
                     const keyServiceApi = key.substring(0, lastUnderscoreIndex);
-                    const [keyService, keyApi] = keyServiceApi.split('/');
-                    return `${keyService}/${keyApi}` === serviceApi;
+                    const keyUnit = key.substring(lastUnderscoreIndex + 1);
+                    return keyServiceApi === serviceApi && keyUnit === unit;
                   });
 
                   const details = services[serviceKey] || {};
                   const estimatedCost = details.estimated_cost || 0;
-                  row[testRunId] = estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : '$0.0000';
+                  row[testRunId] = estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : 'N/A';
                 });
 
                 return row;
@@ -741,33 +811,104 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 return a.serviceApi.localeCompare(b.serviceApi);
               });
 
-              return tableItems.length > 0 ? (
+              // Add context subtotals
+              const finalItems = [];
+              tableItems.forEach((item, index) => {
+                finalItems.push(item);
+
+                // Check if this is the last item for this context
+                const nextItem = tableItems[index + 1];
+                const isLastInContext = !nextItem || nextItem.context !== item.context;
+
+                if (isLastInContext) {
+                  // Calculate subtotal for this context
+                  const contextItems = tableItems.filter((i) => i.context === item.context);
+                  const subtotalRow = {
+                    context: '',
+                    serviceApi: `${item.context} Subtotal`,
+                    unit: '',
+                    isSubtotal: true,
+                  };
+
+                  Object.keys(completeTestRuns).forEach((testRunId) => {
+                    const contextTotal = contextItems.reduce((sum, contextItem) => {
+                      const value = contextItem[testRunId];
+                      if (value === 'N/A' || !value) return sum;
+                      const numValue = parseFloat(value.replace('$', ''));
+                      return sum + (isNaN(numValue) ? 0 : numValue);
+                    }, 0);
+                    subtotalRow[testRunId] = `$${contextTotal.toFixed(4)}`;
+                  });
+
+                  finalItems.push(subtotalRow);
+                }
+              });
+
+              // Add total row
+              const totalRow = {
+                context: '',
+                serviceApi: 'Total',
+                unit: '',
+                isTotal: true,
+              };
+
+              Object.keys(completeTestRuns).forEach((testRunId) => {
+                const grandTotal = tableItems.reduce((sum, item) => {
+                  const value = item[testRunId];
+                  if (value === 'N/A' || !value) return sum;
+                  const numValue = parseFloat(value.replace('$', ''));
+                  return sum + (isNaN(numValue) ? 0 : numValue);
+                }, 0);
+                totalRow[testRunId] = `$${grandTotal.toFixed(4)}`;
+              });
+
+              finalItems.push(totalRow);
+
+              return finalItems.length > 0 ? (
                 <Table
-                  items={tableItems}
+                  items={finalItems}
                   columnDefinitions={[
                     {
                       id: 'context',
                       header: 'Context',
-                      cell: (item) => item.context,
-                      width: 150,
+                      cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.context),
+                      width: 120,
                     },
                     {
                       id: 'serviceApi',
                       header: 'Service/Api',
-                      cell: (item) => item.serviceApi,
-                      width: 250,
+                      cell: (item) => (
+                        <span
+                          style={{
+                            fontWeight: item.isSubtotal || item.isTotal ? 'bold' : 'normal',
+                            color: item.isTotal ? '#0073bb' : 'inherit',
+                          }}
+                        >
+                          {item.serviceApi}
+                        </span>
+                      ),
+                      width: 200,
                     },
                     {
                       id: 'unit',
                       header: 'Unit',
-                      cell: (item) => item.unit,
-                      width: 120,
+                      cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.unit),
+                      width: 100,
                     },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
-                      header: createTestRunHeader(testRunId),
-                      cell: (item) => item[testRunId] || '$0.0000',
-                      width: 120,
+                      header: createTestRunHeader(testRunId, true),
+                      cell: (item) => (
+                        <span
+                          style={{
+                            fontWeight: item.isSubtotal || item.isTotal ? 'bold' : 'normal',
+                            color: item.isTotal ? '#0073bb' : 'inherit',
+                          }}
+                        >
+                          {item[testRunId] || '$0.0000'}
+                        </span>
+                      ),
+                      width: 80,
                     })),
                   ]}
                   variant="embedded"
@@ -812,13 +953,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   const serviceKey = Object.keys(services).find((key) => {
                     const lastUnderscoreIndex = key.lastIndexOf('_');
                     const keyServiceApi = key.substring(0, lastUnderscoreIndex);
-                    const [keyService, keyApi] = keyServiceApi.split('/');
-                    return `${keyService}/${keyApi}` === serviceApi;
+                    const keyUnit = key.substring(lastUnderscoreIndex + 1);
+                    return keyServiceApi === serviceApi && keyUnit === unit;
                   });
 
                   const details = services[serviceKey] || {};
                   const value = details.value || 0;
-                  row[testRunId] = value > 0 ? value.toLocaleString() : '0';
+                  row[testRunId] = value > 0 ? value.toLocaleString() : 'N/A';
                 });
 
                 return row;
@@ -838,25 +979,25 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                       id: 'context',
                       header: 'Context',
                       cell: (item) => item.context,
-                      width: 150,
+                      width: 120,
                     },
                     {
                       id: 'serviceApi',
                       header: 'Service/Api',
                       cell: (item) => item.serviceApi,
-                      width: 250,
+                      width: 200,
                     },
                     {
                       id: 'unit',
                       header: 'Unit',
                       cell: (item) => item.unit,
-                      width: 120,
+                      width: 100,
                     },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
-                      header: createTestRunHeader(testRunId),
+                      header: createTestRunHeader(testRunId, true),
                       cell: (item) => item[testRunId] || '0',
-                      width: 120,
+                      width: 60,
                     })),
                   ]}
                   variant="embedded"

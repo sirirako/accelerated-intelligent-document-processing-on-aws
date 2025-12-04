@@ -49,6 +49,7 @@ const TestSets = () => {
   const [fileCount, setFileCount] = useState(0);
   const [showFilesModal, setShowFilesModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showBucketHelp, setShowBucketHelp] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -574,14 +575,76 @@ const TestSets = () => {
           </FormField>
 
           <FormField label="Source Bucket" description="Select the bucket to search for files">
-            <Select
-              selectedOption={selectedBucket}
-              onChange={({ detail }) => {
-                setSelectedBucket(detail.selectedOption);
-                setFileCount(0);
-              }}
-              options={BUCKET_OPTIONS}
-            />
+            <SpaceBetween direction="vertical" size="xs">
+              <Select
+                selectedOption={selectedBucket}
+                onChange={({ detail }) => {
+                  setSelectedBucket(detail.selectedOption);
+                  setFileCount(0);
+                }}
+                options={BUCKET_OPTIONS}
+              />
+              <ExpandableSection
+                headerText="Bucket Structure Help"
+                variant="footer"
+                expanded={showBucketHelp}
+                onChange={({ detail }) => setShowBucketHelp(detail.expanded)}
+              >
+                {selectedBucket.value === 'input' ? (
+                  <Box>
+                    <strong>Input Bucket Structure:</strong>
+                    <Box variant="code" padding="xs" margin={{ top: 'xs' }}>
+                      bucket/
+                      <br />
+                      ├── document1.pdf
+                      <br />
+                      ├── document2.pdf
+                      <br />
+                      ├── folder1/
+                      <br />
+                      │&nbsp;&nbsp;&nbsp;├── document1.pdf
+                      <br />
+                      │&nbsp;&nbsp;&nbsp;└── document2.pdf
+                      <br />
+                      └── folder2/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;└── document1.pdf
+                    </Box>
+                  </Box>
+                ) : (
+                  <Box>
+                    <strong>Test Set Bucket Structure:</strong>
+                    <Box variant="code" padding="xs" margin={{ top: 'xs' }}>
+                      bucket/
+                      <br />
+                      └── my-test-set/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── input/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── document1.pdf
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── baseline/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── document1.pdf/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── sections/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├──{' '}
+                      1/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└──{' '}
+                      result.json
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──{' '}
+                      2/
+                      <br />
+                      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──{' '}
+                      result.json
+                    </Box>
+                  </Box>
+                )}
+              </ExpandableSection>
+            </SpaceBetween>
           </FormField>
 
           <FormField
