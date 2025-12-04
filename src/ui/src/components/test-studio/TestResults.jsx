@@ -121,11 +121,11 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
                   // Add subtotal row for every context
                   finalItems.push({
                     context: '',
-                    serviceApi: `${item.context} Subtotal: $${contextTotals[item.context].toFixed(4)}`,
+                    serviceApi: `${item.context} Subtotal`,
                     unit: '',
                     value: '',
                     unitCost: '',
-                    estimatedCost: '',
+                    estimatedCost: `$${contextTotals[item.context].toFixed(4)}`,
                     isSubtotal: true,
                     sortOrder: 1, // Subtotal items
                   });
@@ -136,11 +136,11 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
               if (totalCost > 0) {
                 finalItems.push({
                   context: '',
-                  serviceApi: `Total: $${totalCost.toFixed(4)}`,
+                  serviceApi: 'Total',
                   unit: '',
                   value: '',
                   unitCost: '',
-                  estimatedCost: '',
+                  estimatedCost: `$${totalCost.toFixed(4)}`,
                   isTotal: true,
                   sortOrder: 2, // Total item
                 });
@@ -176,7 +176,13 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
               {
                 id: 'value',
                 header: 'Value',
-                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.value),
+                cell: (item) => {
+                  if (item.isSubtotal || item.isTotal) return '';
+                  const value = item.value;
+                  if (value === 'N/A' || !value) return 'N/A';
+                  const numValue = parseFloat(value.toString().replace(/,/g, ''));
+                  return isNaN(numValue) ? value : numValue.toLocaleString();
+                },
               },
               {
                 id: 'unitCost',
@@ -186,7 +192,15 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
               {
                 id: 'estimatedCost',
                 header: 'Estimated Cost',
-                cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.estimatedCost),
+                cell: (item) => {
+                  if (item.isSubtotal || item.isTotal) {
+                    return <span style={{ fontWeight: 'bold', color: item.isTotal ? '#0073bb' : 'inherit' }}>{item.estimatedCost}</span>;
+                  }
+                  const cost = item.estimatedCost;
+                  if (cost === 'N/A' || !cost) return 'N/A';
+                  const numValue = parseFloat(cost.toString().replace('$', ''));
+                  return isNaN(numValue) ? cost : `$${numValue.toFixed(4)}`;
+                },
               },
             ]}
             variant="embedded"
