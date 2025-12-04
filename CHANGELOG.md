@@ -55,6 +55,12 @@ SPDX-License-Identifier: MIT-0
   - removed image limits from multimodal inference steps (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
   - Resolves #147
 
+- **Knowledge Base Vector Store Default Changed to S3 Vectors**
+  - Changed default `KnowledgeBaseVectorStore` from `OPENSEARCH_SERVERLESS` to `S3_VECTORS` for cost-optimized deployments
+  - S3 Vectors provides 40-60% lower storage costs with sub-second latency suitable for most use cases
+  - OpenSearch Serverless remains available for applications requiring sub-millisecond query performance
+  - No action required for existing deployments - only affects new stack deployments
+
 ### Fixed
 
 - **Document Schema Builder Enum Support** - Fixed enum value handling in schema builder to properly support enumeration constraints for attribute definitions

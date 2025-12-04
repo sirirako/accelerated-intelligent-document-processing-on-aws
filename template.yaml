@@ -230,11 +230,11 @@ Parameters:
 
   KnowledgeBaseVectorStore:
     Type: String
-    Default: "OPENSEARCH_SERVERLESS"
+    Default: "S3_VECTORS"
     AllowedValues:
       - "OPENSEARCH_SERVERLESS"
       - "S3_VECTORS"
-    Description: Choose vector store type for Bedrock Knowledge Base. OpenSearch Serverless (default) for sub-millisecond queries, S3 Vectors for cost-effective storage with sub-second latency.
+    Description: Choose vector store type for Bedrock Knowledge Base. S3 Vectors (default) for cost-effective storage with sub-second latency, OpenSearch Serverless for sub-millisecond queries.
 
   KnowledgeBaseModelId:
     Type: String
