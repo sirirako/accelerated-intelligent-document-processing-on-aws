@@ -7371,7 +7371,7 @@ Resources:
     Properties:
       FunctionName: !Ref TestSetZipExtractorFunction
       Action: lambda:InvokeFunction
-      Principal: s3.${AWS::URLSuffix}
+      Principal: !Sub "s3.${AWS::URLSuffix}"
       SourceArn: !GetAtt TestSetBucket.Arn
 
   TestSetZipExtractorFunctionLogGroup:
