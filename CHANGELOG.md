@@ -5,7 +5,43 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Amazon Nova 2 Lite Model Support**
+  - Added support for Amazon Nova 2 Lite model (`us.amazon.nova-2-lite-v1:0`, `eu.amazon.nova-2-lite-v1:0`)
+  - Available for configuration across all document processing steps
+  - Added to prompt caching supported models list
+
+- **Anthropic Claude Opus 4.5 Model Support**
+  - Added support for Claude Opus 4.5 model (`us.anthropic.claude-opus-4-5-20251101-v1:0`, `eu.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - Available for configuration across all document processing steps
+  - Added to prompt caching supported models list
+
+- **Qwen Model Support**
+  - Added support for Qwen 3 VL model (`qwen.qwen3-vl-235b-a22b`)
+  - Available for configuration in document processing workflows
+
+- **Configurable Section Splitting Strategies for Enhanced Document Segmentation Control**
+  - Added new `sectionSplitting` configuration option to control how classified pages are grouped into document sections
+  - **Three Strategies Available**:
+    - `disabled`: Entire document treated as single section with first detected class (simplest case)
+    - `page`: One section per page preventing automatic joining of same-type documents (deterministic, solves Issue #146)
+    - `llm_determined`: Uses LLM boundary detection with "Start"/"Continue" indicators (default, maintains existing behavior)
+  - **Key Benefits**: Deterministic splitting for long documents with multiple same-type forms (e.g., multiple W-2s, multiple invoices), eliminates LLM boundary detection failures for critical government form processing, provides flexibility across simple to complex document scenarios
+  - Resolves #146
+
 ### Changed
+
+- **Improved Temperature and Top_P Parameter Logic for Deterministic Output**
+  - Changed inference parameter selection logic to allow `temperature=0.0` for deterministic output (recommended by Anthropic and other model providers)
+  - **New Logic**: Uses `top_p` only when it has a positive value (> 0); otherwise uses `temperature` including `temperature=0.0`
+  - **Previous Logic**: Used `top_p` whenever `temperature=0.0`, preventing proper deterministic configuration
+  - **Key Benefits**: Enables proper deterministic output with `temperature=0.0`, more intuitive parameter behavior, aligns with model provider best practices (Anthropic recommends `temperature=0` for consistent outputs)
+  - **Affected Components**: Bedrock client (`lib/idp_common_pkg/idp_common/bedrock/client.py`), Agentic extraction service (`lib/idp_common_pkg/idp_common/extraction/agentic_idp.py`)
+  - **Configuration Guidance**: Set `top_p: 0` to use `temperature` parameter; set `top_p` to positive value to override temperature
+  - Set temperature to 0.0 in discovery config for deterministic discovery output (was previously set to 1.0)
+  - Set top_p to 0.0 in all repo config files to force use of temperature setting by default.
+
 - Removed page image limit entirely across all IDP services (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
   - Resolves #147
 
