@@ -147,62 +147,55 @@ External applications can obtain tokens using:
 
 **Client Credentials Flow:**
 ```bash
-curl -X POST <ExternalAppTokenURL> \
+curl -X POST <MCPTokenURL> \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=<ExternalAppClientId>&client_secret=<ExternalAppClientSecret>"
+  -d "grant_type=client_credentials&client_id=<MCPClientId>&client_secret=<MCPClientSecret>"
 ```
 
 **User Authentication Flow:**
 ```bash
 # Step 1: Get authorization code
-<ExternalAppAuthorizationURL>?
+<MCPAuthorizationURL>?
   response_type=code&
-  client_id=<ExternalAppClientId>&
+  client_id=<MCPClientId>&
   redirect_uri=CALLBACK_URL&
   scope=openid+email+profile
 
 # Step 2: Exchange code for tokens
-curl -X POST <ExternalAppTokenURL> \
+curl -X POST <MCPTokenURL> \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&client_id=<ExternalAppClientId>&client_secret=<ExternalAppClientSecret>&code=AUTH_CODE&redirect_uri=CALLBACK_URL"
+  -d "grant_type=authorization_code&client_id=<MCPClientId>&client_secret=<MCPClientSecret>&code=AUTH_CODE&redirect_uri=CALLBACK_URL"
 ```
 
 ## Output Parameters
 
 When MCP integration is enabled, the CloudFormation stack provides the following outputs required for external application integration:
 
-### AgentCore Gateway Outputs
+### MCP Server Endpoint
 
-- **`AgentCoreGatewayUrl`**: The HTTPS endpoint for the AgentCore Gateway
-  - Format: `https://gateway-id.gateway.bedrock-agentcore.region.amazonaws.com/mcp`
-  - Example: `https://analyticagentcoregateway-0kxp69ljko.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp`
+- **`MCPServerEndpoint`**: The HTTPS endpoint for the MCP Server
+  - The AgentCore Gateway URL for MCP protocol communication
   - Required for external applications to connect to the gateway via MCP protocol
 
-- **`AgentCoreGatewayId`**: Unique identifier for the AgentCore Gateway
-  - Used for management and monitoring operations
+### Authentication Outputs
 
-- **`AgentCoreGatewayArn`**: Full ARN of the AgentCore Gateway resource
-  - Used for IAM policies and cross-account access
-
-### Cognito Outputs
-
-- **`ExternalAppClientId`**: Cognito User Pool Client ID for external applications
+- **`MCPClientId`**: Cognito User Pool Client ID for MCP authentication
   - Required for OAuth authentication flows
   - Used in token requests and API calls
 
-- **`ExternalAppClientSecret`**: Cognito User Pool Client Secret
+- **`MCPClientSecret`**: Cognito User Pool Client Secret for MCP authentication
   - Required for client authentication in OAuth flows
   - Should be securely stored and rotated regularly
 
-- **`ExternalAppUserPoolId`**: Cognito User Pool ID for external application authentication
+- **`MCPUserPool`**: Cognito User Pool ID for MCP authentication
   - Required for token validation and user management
   - Used by external applications for authentication setup
 
-- **`ExternalAppTokenURL`**: OAuth token endpoint URL
+- **`MCPTokenURL`**: OAuth token endpoint URL
   - Format: `https://domain-name.auth.region.amazoncognito.com/oauth2/token`
   - Used for obtaining access tokens via OAuth flows
 
-- **`ExternalAppAuthorizationURL`**: OAuth authorization endpoint URL
+- **`MCPAuthorizationURL`**: OAuth authorization endpoint URL
   - Format: `https://domain-name.auth.region.amazoncognito.com/oauth2/authorize`
   - Used for initiating OAuth authorization code flows
 
@@ -215,10 +208,10 @@ import requests
 import json
 
 # Configuration from CloudFormation outputs
-GATEWAY_URL = "<AgentCoreGatewayUrl>"  # From stack outputs
-CLIENT_ID = "<ExternalAppClientId>"  # From stack outputs
-CLIENT_SECRET = "<ExternalAppClientSecret>"  # From stack outputs
-TOKEN_URL = "<ExternalAppTokenURL>"  # From stack outputs
+GATEWAY_URL = "<MCPServerEndpoint>"  # From stack outputs
+CLIENT_ID = "<MCPClientId>"  # From stack outputs
+CLIENT_SECRET = "<MCPClientSecret>"  # From stack outputs
+TOKEN_URL = "<MCPTokenURL>"  # From stack outputs
 
 # Get access token
 token_response = requests.post(
