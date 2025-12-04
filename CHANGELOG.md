@@ -7,19 +7,28 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Amazon Nova 2 Lite Model Support**
+- **New State-Of-The-Art LLM Model Support**
   - Added support for Amazon Nova 2 Lite model (`us.amazon.nova-2-lite-v1:0`, `eu.amazon.nova-2-lite-v1:0`)
-  - Available for configuration across all document processing steps
-  - Added to prompt caching supported models list
-
-- **Anthropic Claude Opus 4.5 Model Support**
   - Added support for Claude Opus 4.5 model (`us.anthropic.claude-opus-4-5-20251101-v1:0`, `eu.anthropic.claude-opus-4-5-20251101-v1:0`)
-  - Available for configuration across all document processing steps
-  - Added to prompt caching supported models list
-
-- **Qwen Model Support**
   - Added support for Qwen 3 VL model (`qwen.qwen3-vl-235b-a22b`)
-  - Available for configuration in document processing workflows
+  - Available for configuration across all document processing steps
+
+- **Test Studio for Comprehensive Test Management and Analysis**
+  - Added unified web interface for managing test sets, running tests, and analyzing results directly from the UI
+  - **Test Sets Tab**: Create and manage reusable test collections with three creation methods:
+    - Pattern-based creation with file patterns to match existing data sets (Input Bucket and Test Set Bucket)
+    - Zip upload with automatic extraction of `input/` and `baseline/` folder structure
+  - **Test Executions Tab**: Unified interface combining test execution and results management:
+    - Real-time status monitoring
+    - Multi-select comparison for side-by-side test analysis
+    - Integrated export and delete operations
+  - **Key Features**: File structure validation, progress-aware status updates, cached metrics for improved performance, dual bucket support for flexible test organization
+  - **Documentation**: Guide in `docs/test-studio.md` with architecture details and workflow examples
+
+- **MCP Integration for External Application Access**
+  - Added MCP (Model Context Protocol) integration enabling external applications (like Amazon Quick Suite) to access IDP analytics through AWS Bedrock AgentCore Gateway with secure OAuth 2.0 authentication
+  - Implemented Analytics Agent with `search_genaiidp` tool for natural language queries of processed document data (statistics, trends, confidence scores, processing status)
+  - Controlled by `EnableMCP` parameter (default: true); provides MCPServerEndpoint and authentication outputs for external application integration; documentation in `docs/mcp-integration.md`
 
 - **Configurable Section Splitting Strategies for Enhanced Document Segmentation Control**
   - Added new `sectionSplitting` configuration option to control how classified pages are grouped into document sections
@@ -42,7 +51,8 @@ SPDX-License-Identifier: MIT-0
   - Set temperature to 0.0 in discovery config for deterministic discovery output (was previously set to 1.0)
   - Set top_p to 0.0 in all repo config files to force use of temperature setting by default.
 
-- Removed page image limit entirely across all IDP services (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
+- **Removed page image limit entirely across all IDP services**
+  - removed image limits from multimodal inference steps (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
   - Resolves #147
 
 ### Fixed
