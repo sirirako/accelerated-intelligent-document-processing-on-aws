@@ -68,14 +68,22 @@ def create_or_update_gateway(props, gateway_name):
         
         if existing_gateways:
             existing_gateway = existing_gateways[0]
-            logger.info(f"Gateway {gateway_name} already exists, returning existing configuration")
-            return {
-                'gateway_url': existing_gateway.get('gatewayUrl'),
-                'gateway_id': existing_gateway.get('gatewayId'),
-                'gateway_arn': existing_gateway.get('gatewayArn')
-            }
+            gateway_id = existing_gateway.get('gatewayId')
+            
+            if gateway_id:
+                try:
+                    gateway_details = control_client.get_gateway(gatewayIdentifier=gateway_id)
+                    if gateway_details and gateway_details.get('gatewayUrl'):
+                        return {
+                            'gateway_url': gateway_details.get('gatewayUrl'),
+                            'gateway_id': gateway_details.get('gatewayId'),
+                            'gateway_arn': gateway_details.get('gatewayArn')
+                        }
+                except Exception as e:
+                    logger.warning(f"Error getting gateway details: {e}")
+
     except Exception as e:
-        logger.info(f"Error checking for existing gateway: {e}")
+        logger.warning(f"Error checking for existing gateway: {e}")
     
     # Gateway doesn't exist, create it
     logger.info(f"Gateway {gateway_name} does not exist, creating new one")

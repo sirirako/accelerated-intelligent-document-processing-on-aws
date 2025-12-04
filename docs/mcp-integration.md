@@ -138,7 +138,7 @@ When MCP is enabled, an additional Cognito User Pool Client is created:
 - **OAuth Scopes**: openid, email, profile
 - **Callback URLs**: 
   - CloudFront distribution URL
-  - QuickSight OAuth callback
+  - Quick Suite OAuth callback
   - Cognito User Pool domain
 
 ### Token Management
@@ -251,4 +251,10 @@ print(f"Query result: {result}")
 
 ### Amazon Quick Suite Integration
 
-For Amazon Quick Suite integration, use the provided OAuth callback URLs and configure QuickSight to authenticate against the Cognito User Pool using the External App Client credentials.
+For Amazon Quick Suite integration, configure the MCP connection using the CloudFormation stack outputs detailed in the [Output Parameters](#output-parameters) section.
+
+- **MCP Server**: Use `MCPServerEndpoint` output value
+- **Client ID**: Use `MCPClientId` output value
+- **Client Secret**: Use `MCPClientSecret` output value
+- **Token URL**: Use `MCPTokenURL` output value
+- **Authorization URL**: Use `MCPAuthorizationURL` output value
