@@ -82,6 +82,17 @@ const TestSets = () => {
     }
   };
 
+  // Preserve selections when testSets array changes
+  React.useEffect(() => {
+    if (selectedItems.length > 0) {
+      const selectedIds = new Set(selectedItems.map((item) => item.id));
+      const updatedSelections = testSets.filter((ts) => selectedIds.has(ts.id));
+      if (updatedSelections.length !== selectedItems.length || !updatedSelections.every((item, index) => item === selectedItems[index])) {
+        setSelectedItems(updatedSelections);
+      }
+    }
+  }, [testSets]);
+
   React.useEffect(() => {
     loadTestSets();
   }, []);
@@ -518,6 +529,7 @@ const TestSets = () => {
         selectedItems={selectedItems}
         onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
         selectionType="multi"
+        isItemDisabled={(item) => item.status !== 'COMPLETED' && item.status !== 'FAILED'}
         empty={
           <Box textAlign="center" color="inherit">
             <b>No test sets</b>
@@ -837,7 +849,7 @@ const TestSets = () => {
       >
         <Box>
           {matchingFiles.length > 0 ? (
-            <ul>
+            <ul style={{ fontSize: '12px' }}>
               {matchingFiles.map((file) => (
                 <li key={file}>{file}</li>
               ))}

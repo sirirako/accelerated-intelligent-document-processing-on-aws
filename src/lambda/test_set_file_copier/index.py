@@ -60,7 +60,7 @@ def handler(event, context):
                         path_parts = file_key.split('/')
                         if len(path_parts) >= 3 and path_parts[1] == 'input':
                             test_set_name = path_parts[0]
-                            file_name = path_parts[2]
+                            file_name = '/'.join(path_parts[2:])  # Get full path after 'input/'
                             baseline_prefix = f"{test_set_name}/baseline/{file_name}/"
                             baseline_check_bucket = source_bucket
                         else:
@@ -84,14 +84,20 @@ def handler(event, context):
             if missing_baselines:
                 raise ValueError(f"Missing baseline folders for: {', '.join(missing_baselines)}")
             
+            # Update status to COPYING before starting file operations
+            _update_test_set_status(tracking_table, test_set_id, 'COPYING')
+            
             # Copy input files to test set bucket
-            _copy_files_to_test_set(source_bucket, test_set_bucket, test_set_id, 'input', matching_files)
+            if bucket_type == 'testset':
+                _copy_input_files_from_test_set_bucket(test_set_id, matching_files)
+            else:
+                _copy_input_files_from_input_bucket(test_set_id, matching_files)
             
             # Copy baseline folders to test set bucket
             if bucket_type == 'testset':
-                _copy_baseline_from_testset(source_bucket, test_set_bucket, test_set_id, matching_files)
+                _copy_baseline_from_testset(test_set_id, matching_files)
             else:
-                _copy_files_to_test_set(baseline_bucket, test_set_bucket, test_set_id, 'baseline', matching_files)
+                _copy_baseline_from_baseline_bucket(test_set_id, matching_files)
             
             logger.info(f"Copied {len(matching_files)} input files and {len(matching_files)} baseline folders")
             
@@ -107,57 +113,79 @@ def handler(event, context):
     
     return {'statusCode': 200}
 
-def _copy_files_to_test_set(source_bucket, dest_bucket, test_set_id, folder_type, files):
-    """Copy files from source bucket to test set bucket folder"""
+def _copy_input_files_from_input_bucket(test_set_id, files):
+    """Copy input files from input bucket to test set bucket"""
+    input_bucket = os.environ['INPUT_BUCKET']
+    test_set_bucket = os.environ['TEST_SET_BUCKET']
     
     for file_key in files:
-        if folder_type == 'baseline':
-            # For baseline, copy entire folder structure
-            baseline_prefix = f"{file_key}/"
-            dest_prefix = f"{test_set_id}/baseline/{file_key}/"
-            
-            # List all objects in the baseline folder
-            paginator = s3.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=source_bucket, Prefix=baseline_prefix)
-            
-            for page in pages:
-                if 'Contents' in page:
-                    for obj in page['Contents']:
-                        source_key = obj['Key']
-                        # Replace the baseline prefix with the test set prefix
-                        dest_key = source_key.replace(baseline_prefix, dest_prefix, 1)
-                        
-                        # Copy file
-                        s3.copy_object(
-                            CopySource={'Bucket': source_bucket, 'Key': source_key},
-                            Bucket=dest_bucket,
-                            Key=dest_key
-                        )
-                        
-                        logger.info(f"Copied baseline file: {source_key} -> {dest_bucket}/{dest_key}")
-        else:
-            # For input files, copy individual file
-            source_key = file_key
-            dest_key = f"{test_set_id}/{folder_type}/{file_key}"
-            
-            # Copy file
-            s3.copy_object(
-                CopySource={'Bucket': source_bucket, 'Key': source_key},
-                Bucket=dest_bucket,
-                Key=dest_key
-            )
-            
-            logger.info(f"Copied {folder_type} file: {source_key} -> {dest_bucket}/{dest_key}")
+        dest_key = f"{test_set_id}/input/{file_key}"
+        
+        s3.copy_object(
+            CopySource={'Bucket': input_bucket, 'Key': file_key},
+            Bucket=test_set_bucket,
+            Key=dest_key
+        )
+        
+        logger.info(f"Copied input file: {file_key} -> {test_set_bucket}/{dest_key}")
 
-def _copy_baseline_from_testset(source_bucket, dest_bucket, test_set_id, files):
+def _copy_input_files_from_test_set_bucket(test_set_id, files):
+    """Copy input files from test set bucket to new test set folder"""
+    test_set_bucket = os.environ['TEST_SET_BUCKET']
+    
+    for file_key in files:
+        # Extract actual file path from test_set/input/file_path
+        path_parts = file_key.split('/')
+        if len(path_parts) >= 3 and path_parts[1] == 'input':
+            actual_file_path = '/'.join(path_parts[2:])
+            dest_key = f"{test_set_id}/input/{actual_file_path}"
+        else:
+            dest_key = f"{test_set_id}/input/{file_key}"
+        
+        s3.copy_object(
+            CopySource={'Bucket': test_set_bucket, 'Key': file_key},
+            Bucket=test_set_bucket,
+            Key=dest_key
+        )
+        
+        logger.info(f"Copied input file: {file_key} -> {test_set_bucket}/{dest_key}")
+
+def _copy_baseline_from_baseline_bucket(test_set_id, files):
+    """Copy baseline folders from baseline bucket to test set bucket"""
+    baseline_bucket = os.environ['BASELINE_BUCKET']
+    test_set_bucket = os.environ['TEST_SET_BUCKET']
+    
+    for file_key in files:
+        baseline_prefix = f"{file_key}/"
+        dest_prefix = f"{test_set_id}/baseline/{file_key}/"
+        
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=baseline_bucket, Prefix=baseline_prefix)
+        
+        for page in pages:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    source_key = obj['Key']
+                    dest_key = source_key.replace(baseline_prefix, dest_prefix, 1)
+                    
+                    s3.copy_object(
+                        CopySource={'Bucket': baseline_bucket, 'Key': source_key},
+                        Bucket=test_set_bucket,
+                        Key=dest_key
+                    )
+                    
+                    logger.info(f"Copied baseline file: {source_key} -> {test_set_bucket}/{dest_key}")
+
+def _copy_baseline_from_testset(test_set_id, files):
     """Copy baseline files from testset bucket where baselines are in test_set/baseline/ path"""
+    test_set_bucket = os.environ['TEST_SET_BUCKET']
     
     for file_key in files:
         # Extract test set name and file name from path (format: test_set_name/input/file_name)
         path_parts = file_key.split('/')
         if len(path_parts) >= 3 and path_parts[1] == 'input':
             source_test_set_name = path_parts[0]
-            file_name = path_parts[2]
+            file_name = '/'.join(path_parts[2:])  # Get full path after 'input/'
             
             # Source baseline path in testset bucket
             source_baseline_prefix = f"{source_test_set_name}/baseline/{file_name}/"
@@ -166,7 +194,7 @@ def _copy_baseline_from_testset(source_bucket, dest_bucket, test_set_id, files):
             
             # List all objects in the source baseline folder
             paginator = s3.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=source_bucket, Prefix=source_baseline_prefix)
+            pages = paginator.paginate(Bucket=test_set_bucket, Prefix=source_baseline_prefix)
             
             for page in pages:
                 if 'Contents' in page:
@@ -177,12 +205,12 @@ def _copy_baseline_from_testset(source_bucket, dest_bucket, test_set_id, files):
                         
                         # Copy file
                         s3.copy_object(
-                            CopySource={'Bucket': source_bucket, 'Key': source_key},
-                            Bucket=dest_bucket,
+                            CopySource={'Bucket': test_set_bucket, 'Key': source_key},
+                            Bucket=test_set_bucket,
                             Key=dest_key
                         )
                         
-                        logger.info(f"Copied testset baseline file: {source_key} -> {dest_bucket}/{dest_key}")
+                        logger.info(f"Copied testset baseline file: {source_key} -> {test_set_bucket}/{dest_key}")
         else:
             logger.warning(f"Unexpected file path format for testset baseline: {file_key}")
 
