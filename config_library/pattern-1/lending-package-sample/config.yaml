@@ -6,7 +6,7 @@ assessment:
   default_confidence_threshold: '0.8'
 summarization:
   enabled: true
-  top_p: '0.1'
+  top_p: "0.0"
   max_tokens: '4096'
   top_k: '5'
   task_prompt: >-
@@ -62,14 +62,14 @@ summarization:
 
     Do not include any text, explanations, or notes outside of this JSON
     structure. The JSON must be properly formatted and parseable.
-  temperature: '0.0'
+  temperature: "0.0"
   model: us.amazon.nova-premier-v1:0
   system_prompt: >-
     You are a document summarization expert who can analyze and summarize documents from various domains including medical, financial, legal, and general business documents. Your task is to create a summary that captures the key information, main points, and important details from the document. Your output must be in valid JSON format. \nSummarization Style: Balanced\\nCreate a balanced summary that provides a moderate level of detail. Include the main points and key supporting information, while maintaining the document's overall structure. Aim for a comprehensive yet concise summary.\n Your output MUST be in valid JSON format with markdown content. You MUST strictly adhere to the output format specified in the instructions.
 evaluation:
   enabled: true
   llm_method:
-    top_p: '0.1'
+    top_p: "0.0"
     max_tokens: '4096'
     top_k: '5'
     task_prompt: >-
@@ -101,7 +101,7 @@ evaluation:
         "score": 0.0 to 1.0,
         "reason": "Your explanation here"
       }
-    temperature: '0.0'
+    temperature: "0.0"
     model: us.anthropic.claude-3-haiku-20240307-v1:0
     system_prompt: >-
       You are an evaluator that helps determine if the predicted and expected values match for document attribute extraction. You will consider the context and meaning rather than just exact string matching.
@@ -151,8 +151,8 @@ discovery:
           ]
       }
   with_ground_truth:
-    top_p: '0.1'
-    temperature: '1.0'
+    top_p: "0.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                        
       <GROUND_TRUTH_REFERENCE>
@@ -179,8 +179,8 @@ discovery:
       field definitions.
     max_tokens: '10000'
   without_ground_truth:
-    top_p: '0.1'
-    temperature: '1.0'
+    top_p: "0.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains forms data. Analyze the form line by line.
       Image may contains multiple pages, process all the pages. 
@@ -300,7 +300,7 @@ agents:
       time_range_hours_default: 24
       
   chat_companion:
-    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
+    model_id: us.anthropic.claude-haiku-4-5-20251001-v1:0
 pricing:
   - name: bda/documents-custom
     units:
@@ -336,6 +336,16 @@ pricing:
         price: '2.5E-6'
       - name: outputTokens
         price: '1.25E-5'
+  - name: bedrock/us.amazon.nova-2-lite-v1:0
+    units:
+      - name: inputTokens
+        price: '3.0E-7'
+      - name: outputTokens
+        price: '2.5E-6'
+      - name: cacheReadInputTokens
+        price: '7.5E-8'
+      - name: cacheWriteInputTokens
+        price: '3.0E-7'
   - name: bedrock/us.anthropic.claude-3-haiku-20240307-v1:0
     units:
       - name: inputTokens
@@ -442,6 +452,16 @@ pricing:
         price: '1.5E-6'
       - name: cacheWriteInputTokens
         price: '1.875E-5'
+  - name: bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0
+    units:
+      - name: inputTokens
+        price: '5.0E-06'
+      - name: outputTokens
+        price: '2.5E-05'
+      - name: cacheReadInputTokens
+        price: '5.0E-07'
+      - name: cacheWriteInputTokens
+        price: '6.25E-06'
   # EU model pricing
   - name: bedrock/eu.amazon.nova-lite-v1:0
     units:
@@ -463,6 +483,16 @@ pricing:
         price: '2.6E-7'
       - name: cacheWriteInputTokens
         price: '1.0E-6'
+  - name: bedrock/eu.amazon.nova-2-lite-v1:0
+    units:
+      - name: inputTokens
+        price: '3.9E-7'
+      - name: outputTokens
+        price: '3.27E-6'
+      - name: cacheReadInputTokens
+        price: '9.75E-8'
+      - name: cacheWriteInputTokens
+        price: '3.9E-7'
   - name: bedrock/eu.anthropic.claude-3-haiku-20240307-v1:0
     units:
       - name: inputTokens
@@ -529,6 +559,22 @@ pricing:
         price: '6.6E-7'
       - name: cacheWriteInputTokens
         price: '8.25E-6'
+  - name: bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0
+    units:
+      - name: inputTokens
+        price: '5.0E-6'
+      - name: outputTokens
+        price: '2.5E-5'
+      - name: cacheReadInputTokens
+        price: '5.0E-7'
+      - name: cacheWriteInputTokens
+        price: '6.25E-6'
+  - name: bedrock/qwen.qwen3-vl-235b-a22b
+    units:
+      - name: inputTokens
+        price: '5.3E-7'
+      - name: outputTokens
+        price: '2.66E-6'
   # AWS Lambda pricing (US East - N. Virginia)
   - name: lambda/requests
     units:

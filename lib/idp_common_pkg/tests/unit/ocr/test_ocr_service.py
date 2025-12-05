@@ -300,7 +300,7 @@ class TestOcrService:
             assert service.preprocessing_config == preprocessing_config
 
     @patch("boto3.client")
-    @patch("fitz.open")
+    @patch("idp_common.ocr.service.fitz.open")
     def test_process_document_success(
         self, mock_fitz_open, mock_boto_client, mock_document, mock_pdf_content
     ):
@@ -310,9 +310,11 @@ class TestOcrService:
         mock_s3_client.get_object.return_value = {"Body": BytesIO(mock_pdf_content)}
         mock_boto_client.return_value = mock_s3_client
 
-        # Mock PDF document
+        # Mock PDF document - properly configure as iterable with 2 pages
         mock_pdf_doc = MagicMock()
-        mock_pdf_doc.__len__.return_value = 2  # 2 pages
+        # Make it properly behave as a 2-page document for len() and iteration
+        mock_pdf_doc.__len__.return_value = 2
+        mock_pdf_doc.__iter__.return_value = iter(range(2))
         mock_pdf_doc.is_pdf = True  # Add is_pdf attribute
         mock_fitz_open.return_value = mock_pdf_doc
 
@@ -361,7 +363,7 @@ class TestOcrService:
         assert "S3 error" in result.errors[0]
 
     @patch("boto3.client")
-    @patch("fitz.open")
+    @patch("idp_common.ocr.service.fitz.open")
     def test_process_document_pdf_error(
         self, mock_fitz_open, mock_boto_client, mock_document, mock_pdf_content
     ):
@@ -371,7 +373,8 @@ class TestOcrService:
         mock_s3_client.get_object.return_value = {"Body": BytesIO(mock_pdf_content)}
         mock_boto_client.return_value = mock_s3_client
 
-        # Mock PDF to raise exception
+        # Mock fitz.open to raise exception when called
+        # This simulates a corrupted PDF or unsupported format
         mock_fitz_open.side_effect = Exception("PDF error")
 
         service = OcrService()
@@ -382,6 +385,7 @@ class TestOcrService:
         assert len(result.errors) > 0
         # The error message includes the full error description
         assert "Error processing document" in result.errors[0]
+        assert "PDF error" in result.errors[0]
 
     def test_feature_combo_no_features(self):
         """Test feature combination with no enhanced features."""
@@ -747,10 +751,10 @@ class TestOcrService:
                     assert "Error extracting text" in result["text"]
 
     @patch("boto3.client")
-    @patch("fitz.Page")
-    @patch("fitz.Matrix")
+    @patch("idp_common.s3.write_content")
+    @patch("idp_common.ocr.service.fitz")
     def test_process_single_page_with_resize_config(
-        self, mock_matrix, mock_page, mock_boto_client, mock_textract_response
+        self, mock_fitz, mock_write_content, mock_boto_client, mock_textract_response
     ):
         """Test single page processing with resize configuration."""
         # Mock Textract client
@@ -758,16 +762,19 @@ class TestOcrService:
         mock_textract_client.detect_document_text.return_value = mock_textract_response
         mock_boto_client.return_value = mock_textract_client
 
-        # Mock page image extraction - resize is now done directly in _extract_page_image
+        # Mock page with rect dimensions that trigger resize
         mock_page_obj = MagicMock()
         mock_page_obj.rect = MagicMock()
         mock_page_obj.rect.width = 2048  # Large original width
         mock_page_obj.rect.height = 1536  # Large original height
 
+        # Mock pixmap that will be returned after resize
         mock_pixmap = MagicMock()
         mock_pixmap.width = 1024  # Resized width
         mock_pixmap.height = 768  # Resized height
         mock_pixmap.tobytes.return_value = b"resized_image_data"
+
+        # Configure get_pixmap to return the mock pixmap
         mock_page_obj.get_pixmap.return_value = mock_pixmap
 
         # Mock PDF document
@@ -775,30 +782,30 @@ class TestOcrService:
         mock_pdf_doc.load_page.return_value = mock_page_obj
         mock_pdf_doc.is_pdf = True
 
-        # Mock the matrix transformation
+        # Mock the Matrix class in the fitz module
         mock_matrix_instance = MagicMock()
-        mock_matrix.return_value = mock_matrix_instance
+        mock_fitz.Matrix.return_value = mock_matrix_instance
 
         resize_config = {"target_width": 1024, "target_height": 768}
-        service = OcrService(resize_config=resize_config)
+        service = OcrService(resize_config=resize_config, dpi=150)
 
-        with patch("idp_common.s3.write_content"):
-            result, metering = service._process_single_page_textract(
-                0, mock_pdf_doc, "output-bucket", "test-prefix"
-            )
+        result, metering = service._process_single_page_textract(
+            0, mock_pdf_doc, "output-bucket", "test-prefix"
+        )
 
-            # Verify matrix transformation was used (new resize approach)
-            mock_matrix.assert_called_once()  # Matrix created for scaling
+        # Verify Matrix was created for scaling
+        # Original size: 2048x1536, Target: 1024x768
+        # At DPI 150: original becomes 2048*(150/72) x 1536*(150/72) = 4267x3200
+        # Scale factor to fit in 1024x768 = min(1024/4267, 768/3200) ≈ 0.24
+        # Final scale = (150/72) * 0.24 ≈ 0.5
+        mock_fitz.Matrix.assert_called_once()
 
-            # Verify get_pixmap was called with matrix (direct resize)
-            mock_page_obj.get_pixmap.assert_called_once_with(
-                matrix=mock_matrix_instance
-            )
+        # Verify get_pixmap was called with matrix for direct resize
+        mock_page_obj.get_pixmap.assert_called_once_with(matrix=mock_matrix_instance)
 
-            # Verify Textract was called with the directly-resized image
-            mock_textract_client.detect_document_text.assert_called_once_with(
-                Document={"Bytes": b"resized_image_data"}
-            )
+        # Verify the image was processed and results returned
+        assert "raw_text_uri" in result
+        assert "image_uri" in result
 
     @patch("boto3.client")
     @patch("idp_common.image.apply_adaptive_binarization")

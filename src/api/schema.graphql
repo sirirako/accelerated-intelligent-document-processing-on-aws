@@ -254,12 +254,108 @@ type AgentJobConnection @aws_cognito_user_pools @aws_iam {
   nextToken: String
 }
 
+type TestRunStatus @aws_cognito_user_pools @aws_iam {
+  testRunId: String!
+  status: String!
+  filesCount: Int!
+  completedFiles: Int!
+  failedFiles: Int!
+  evaluatingFiles: Int!
+  progress: Float!
+}
+
+type TestRun @aws_cognito_user_pools @aws_iam {
+  testRunId: String!
+  testSetId: String
+  testSetName: String
+  status: String!
+  filesCount: Int!
+  completedFiles: Int
+  failedFiles: Int
+  overallAccuracy: Float
+  weightedOverallScores: [Float]
+  averageConfidence: Float
+  accuracyBreakdown: AWSJSON
+  totalCost: Float
+  costBreakdown: AWSJSON
+  createdAt: AWSDateTime
+  completedAt: AWSDateTime
+  context: String
+  config: AWSJSON
+}
+
+type TestRunComparison @aws_cognito_user_pools @aws_iam {
+  metrics: AWSJSON!
+  configs: [ConfigSetting]
+}
+
+type ConfigSetting @aws_cognito_user_pools @aws_iam {
+  setting: String!
+  values: AWSJSON!
+}
+
+type TestSetValidationResponse @aws_cognito_user_pools @aws_iam {
+  exists: Boolean!
+  testSetId: String
+}
+
+type TestSet @aws_cognito_user_pools @aws_iam {
+  id: String!
+  name: String!
+  filePattern: String
+  fileCount: Int
+  status: String
+  createdAt: AWSDateTime!
+  error: String
+}
+
+input TestSetUploadInput {
+  fileName: String!
+  fileSize: Int!
+}
+
+input FileUploadInfo {
+  fileName: String!
+  fileSize: Int!
+  contentType: String!
+}
+
+type TestSetUploadResponse @aws_cognito_user_pools @aws_iam {
+  testSetId: String!
+  presignedUrl: String!
+  objectKey: String!
+}
+
+type PresignedUploadUrl @aws_cognito_user_pools @aws_iam {
+  fileName: String!
+  presignedUrl: String!
+  objectKey: String!
+  usePostMethod: String!
+}
+
+input TestRunInput {
+  testSetId: String!
+  context: String
+}
+
 type AgentChatMessage @aws_cognito_user_pools @aws_iam {
   role: String!
   content: String!
   timestamp: String!
   isProcessing: Boolean
   sessionId: String
+  messageType: String
+  toolMetadata: ToolMetadata
+}
+
+type ToolMetadata @aws_cognito_user_pools @aws_iam {
+  toolName: String
+  toolUseId: String
+}
+
+input ToolMetadataInput {
+  toolName: String
+  toolUseId: String
 }
 
 type ChatSession @aws_cognito_user_pools @aws_iam {
@@ -323,7 +419,9 @@ type Mutation {
     sessionId: String
     method: String
     enableCodeIntelligence: Boolean
+    toolMetadata: ToolMetadataInput
   ): AgentChatMessage @aws_cognito_user_pools @aws_iam
+
   updateAgentChatMessage(sessionId: ID!, content: String!): AgentChatMessage
     @aws_cognito_user_pools
     @aws_iam
@@ -331,6 +429,11 @@ type Mutation {
   updateChatSessionTitle(sessionId: ID!, title: String!): ChatSession
     @aws_cognito_user_pools
     @aws_iam
+  startTestRun(input: TestRunInput!): TestRun @aws_cognito_user_pools
+  deleteTests(testRunIds: [String!]!): Boolean! @aws_cognito_user_pools
+  addTestSet(name: String!, filePattern: String!, bucketType: String!, fileCount: Int!): TestSet @aws_cognito_user_pools
+  addTestSetFromUpload(input: TestSetUploadInput!): TestSetUploadResponse @aws_cognito_user_pools
+  deleteTestSets(testSetIds: [String!]!): Boolean! @aws_cognito_user_pools
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -367,6 +470,13 @@ type Query @aws_cognito_user_pools @aws_iam {
   getChatMessages(sessionId: ID!): [AgentChatMessage]
     @aws_cognito_user_pools
     @aws_iam
+  getTestRun(testRunId: String!): TestRun @aws_cognito_user_pools
+  getTestRuns(timePeriodHours: Int): [TestRun] @aws_cognito_user_pools
+  getTestRunStatus(testRunId: String!): TestRunStatus @aws_cognito_user_pools
+  compareTestRuns(testRunIds: [String!]!): TestRunComparison @aws_cognito_user_pools
+  getTestSets: [TestSet] @aws_cognito_user_pools
+  listBucketFiles(bucketType: String!, filePattern: String!): [String] @aws_cognito_user_pools
+  validateTestFileName(fileName: String!): TestSetValidationResponse @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {

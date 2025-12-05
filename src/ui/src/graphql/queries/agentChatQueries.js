@@ -10,6 +10,11 @@ export const SEND_AGENT_MESSAGE = /* GraphQL */ `
       timestamp
       isProcessing
       sessionId
+      messageType
+      toolMetadata {
+        toolName
+        toolUseId
+      }
     }
   }
 `;
@@ -22,6 +27,11 @@ export const ON_AGENT_MESSAGE_UPDATE = /* GraphQL */ `
       timestamp
       isProcessing
       sessionId
+      messageType
+      toolMetadata {
+        toolName
+        toolUseId
+      }
     }
   }
 `;

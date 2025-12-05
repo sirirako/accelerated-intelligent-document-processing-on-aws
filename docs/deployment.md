@@ -98,7 +98,7 @@ idp-cli deploy \
 - Integration with CI/CD pipelines
 - No manual console clicking required
 
-**For complete CLI documentation**, see [IDP CLI Documentation](../idp_cli/README.md).
+**For complete CLI documentation**, see [IDP CLI Documentation](./idp-cli.md).
 
 ---
 
@@ -416,7 +416,7 @@ idp-cli download-results \
 cat ./eval-results/eval-test/invoice.pdf/evaluation/report.md
 ```
 
-**For complete evaluation workflow documentation**, see [IDP CLI - Complete Evaluation Workflow](../idp_cli/README.md#complete-evaluation-workflow).
+**For complete evaluation workflow documentation**, see [IDP CLI - Complete Evaluation Workflow](./idp-cli.md#complete-evaluation-workflow).
 
 ---
 

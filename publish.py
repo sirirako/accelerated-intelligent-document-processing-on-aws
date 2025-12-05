@@ -1856,6 +1856,9 @@ except Exception as e:
                     "<PATTERN2_IMAGE_VERSION>": pattern2_image_version,
                     "<PATTERN3_IMAGE_VERSION>": pattern3_image_version,
                     "<HASH_TOKEN>": self.get_directory_checksum("./lib")[:16],
+                    "<LAMBDA_HASH_TOKEN>": self.get_directory_checksum(
+                        "./src/lambda/agentcore_gateway_manager"
+                    )[:16],
                     "<CONFIG_LIBRARY_HASH_TOKEN>": self.get_directory_checksum(
                         "config_library"
                     )[:16],
@@ -1983,10 +1986,10 @@ except Exception as e:
             ".yml",
             ".json",
             ".txt",
-            ".md",
             ".toml",
             ".cfg",
             ".ini",
+            ".graphql",
         }
         exclude_dirs = {
             "__pycache__",
@@ -2097,7 +2100,10 @@ except Exception as e:
 
         # Include deployment context in checksum calculation
         combined = (
-            "".join(checksums) + self.bucket + self.prefix_and_version + self.region
+            "".join(checksums)
+            + (self.bucket or "")
+            + (self.prefix_and_version or "")
+            + (self.region or "")
         )
         result = hashlib.sha256(combined.encode()).hexdigest()
 

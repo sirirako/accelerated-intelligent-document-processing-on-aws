@@ -1,6 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { produce } from 'immer';
-import { X_AWS_IDP_DOCUMENT_TYPE, X_AWS_IDP_EXAMPLES } from '../constants/schemaConstants';
+import {
+  X_AWS_IDP_DOCUMENT_TYPE,
+  X_AWS_IDP_EXAMPLES,
+  X_AWS_IDP_DOCUMENT_NAME_REGEX,
+  X_AWS_IDP_PAGE_CONTENT_REGEX,
+} from '../constants/schemaConstants';
 
 const extractInlineObjectsToClasses = (properties, extractedClasses, timestamp) => {
   const updatedProperties = {};
@@ -129,6 +134,9 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
         },
         // Preserve examples if they exist in the schema
         ...(schema[X_AWS_IDP_EXAMPLES] ? { [X_AWS_IDP_EXAMPLES]: schema[X_AWS_IDP_EXAMPLES] } : {}),
+        // Preserve regex fields if they exist in the schema
+        ...(schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: schema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
+        ...(schema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: schema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
       };
       allClasses.push(docTypeClass);
 
@@ -192,6 +200,9 @@ const convertJsonSchemaToClasses = (jsonSchema) => {
     },
     // Preserve examples if they exist in the schema
     ...(jsonSchema[X_AWS_IDP_EXAMPLES] ? { [X_AWS_IDP_EXAMPLES]: jsonSchema[X_AWS_IDP_EXAMPLES] } : {}),
+    // Preserve regex fields if they exist in the schema
+    ...(jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: jsonSchema[X_AWS_IDP_DOCUMENT_NAME_REGEX] } : {}),
+    ...(jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: jsonSchema[X_AWS_IDP_PAGE_CONTENT_REGEX] } : {}),
   };
   classes.push(mainClass);
 
@@ -619,6 +630,12 @@ export const useSchemaDesigner = (initialSchema = []) => {
         ...(docTypeClass.attributes.required?.length > 0 ? { required: docTypeClass.attributes.required } : {}),
         ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
         ...(docTypeClass[X_AWS_IDP_EXAMPLES]?.length > 0 ? { [X_AWS_IDP_EXAMPLES]: docTypeClass[X_AWS_IDP_EXAMPLES] } : {}),
+        ...(docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX]
+          ? { [X_AWS_IDP_DOCUMENT_NAME_REGEX]: docTypeClass[X_AWS_IDP_DOCUMENT_NAME_REGEX] }
+          : {}),
+        ...(docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX]
+          ? { [X_AWS_IDP_PAGE_CONTENT_REGEX]: docTypeClass[X_AWS_IDP_PAGE_CONTENT_REGEX] }
+          : {}),
       };
 
       console.log('Final schema has $defs?', '$defs' in result);

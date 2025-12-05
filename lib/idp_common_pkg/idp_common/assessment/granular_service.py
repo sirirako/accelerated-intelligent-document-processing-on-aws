@@ -152,7 +152,7 @@ class GranularAssessmentService:
             import boto3
 
             dynamodb = boto3.resource("dynamodb", region_name=self.region)
-            self.cache_table = dynamodb.Table(self.cache_table_name)
+            self.cache_table = dynamodb.Table(self.cache_table_name)  # type: ignore[attr-defined]
             logger.info(
                 f"Granular assessment caching enabled using table: {self.cache_table_name}"
             )
@@ -472,13 +472,11 @@ class GranularAssessmentService:
             # Add the images if available
             if page_images:
                 if isinstance(page_images, list):
-                    # Multiple images (limit to 20 as per Bedrock constraints)
-                    if len(page_images) > 20:
-                        logger.warning(
-                            f"Found {len(page_images)} images, truncating to 20 due to Bedrock constraints. "
-                            f"{len(page_images) - 20} images will be dropped."
-                        )
-                    for img in page_images[:20]:
+                    # Multiple images - no limit with latest Bedrock API
+                    logger.info(
+                        f"Attaching {len(page_images)} images to granular assessment prompt"
+                    )
+                    for img in page_images:
                         content.append(image.prepare_bedrock_image_attachment(img))
                 else:
                     # Single image
@@ -1134,8 +1132,8 @@ class GranularAssessmentService:
         Returns:
             True if exception indicates throttling, False otherwise
         """
-        if hasattr(exception, "response") and "Error" in exception.response:
-            error_code = exception.response["Error"]["Code"]
+        if hasattr(exception, "response") and "Error" in exception.response:  # type: ignore[attr-defined]
+            error_code = exception.response["Error"]["Code"]  # type: ignore[attr-defined]
             return error_code in self.throttling_exceptions
 
         # Check exception class name and message for throttling indicators
@@ -1288,23 +1286,12 @@ class GranularAssessmentService:
                 )
                 raise
 
-        # Fallback: use raw OCR data if text confidence is not available (for backward compatibility)
-        if page.raw_text_uri:
-            try:
-                from idp_common.ocr.service import OcrService
-
-                ocr_service = OcrService()
-                raw_ocr_data = s3.get_json_content(page.raw_text_uri)
-                text_confidence_data = ocr_service._generate_text_confidence_data(
-                    raw_ocr_data
-                )
-                return json.dumps(text_confidence_data, indent=2)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to generate text confidence data for page {page.page_id}: {str(e)}"
-                )
-                raise
-        return ""
+        # Text confidence URI not available
+        logger.error(
+            f"Text confidence data unavailable for page {page.page_id}. "
+            f"The text_confidence_uri field is missing or empty."
+        )
+        return "Text Confidence Data Unavailable"
 
     def _convert_bbox_to_geometry(
         self, bbox_coords: List[float], page_num: int

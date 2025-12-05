@@ -8,10 +8,13 @@ Command-line tool for batch document processing with the IDP Accelerator.
 """
 
 import logging
+import os
+import subprocess
 import sys
 import time
 from typing import Optional
 
+import boto3
 import click
 from rich.console import Console
 from rich.live import Live
@@ -31,6 +34,105 @@ logger = logging.getLogger(__name__)
 
 console = Console()
 
+
+def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> tuple:
+    """
+    Build project from local code using publish.py
+
+    Args:
+        from_code_dir: Path to project root directory
+        region: AWS region
+        stack_name: CloudFormation stack name (unused but kept for signature compatibility)
+
+    Returns:
+        Tuple of (template_path, None) on success
+
+    Raises:
+        SystemExit: On build failure
+    """
+    # Verify publish.py exists
+    publish_script = os.path.join(from_code_dir, "publish.py")
+    if not os.path.isfile(publish_script):
+        console.print(f"[red]✗ Error: publish.py not found in {from_code_dir}[/red]")
+        console.print(
+            "[yellow]Tip: --from-code should point to the project root directory[/yellow]"
+        )
+        sys.exit(1)
+
+    # Get AWS account ID
+    try:
+        sts = boto3.client("sts", region_name=region)
+        account_id = sts.get_caller_identity()["Account"]
+    except Exception as e:
+        console.print(f"[red]✗ Error: Failed to get AWS account ID: {e}[/red]")
+        sys.exit(1)
+
+    # Set parameters for publish.py
+    cfn_bucket_basename = f"idp-accelerator-artifacts-{account_id}"
+    cfn_prefix = "idp-cli"
+
+    console.print("[bold cyan]Building project from source...[/bold cyan]")
+    console.print(f"[dim]Bucket: {cfn_bucket_basename}[/dim]")
+    console.print(f"[dim]Prefix: {cfn_prefix}[/dim]")
+    console.print(f"[dim]Region: {region}[/dim]")
+    console.print()
+
+    # Build command
+    cmd = [
+        sys.executable,  # Use same Python interpreter
+        publish_script,
+        cfn_bucket_basename,
+        cfn_prefix,
+        region,
+    ]
+
+    console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
+    console.print()
+
+    # Run with streaming output
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=from_code_dir,
+        )
+
+        # Stream output line by line
+        for line in process.stdout:
+            # Print each line immediately (preserve formatting from publish.py)
+            print(line, end="")
+
+        process.wait()
+
+        if process.returncode != 0:
+            console.print("[red]✗ Build failed. See output above for details.[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]✗ Error running publish.py: {e}[/red]")
+        sys.exit(1)
+
+    # Verify template was created
+    template_path = os.path.join(from_code_dir, ".aws-sam", "idp-main.yaml")
+    if not os.path.isfile(template_path):
+        console.print(
+            f"[red]✗ Error: Built template not found at {template_path}[/red]"
+        )
+        console.print(
+            "[yellow]The build may have failed or the template was not generated.[/yellow]"
+        )
+        sys.exit(1)
+
+    console.print()
+    console.print(f"[green]✓ Build complete. Using template: {template_path}[/green]")
+    console.print()
+
+    return template_path, None
+
+
 # Region-specific template URLs
 TEMPLATE_URLS = {
     "us-west-2": "https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml",
@@ -40,7 +142,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.4.2")
+@click.version_option(version="0.4.5")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -63,6 +165,11 @@ def cli():
 )
 @click.option(
     "--admin-email", help="Admin user email address (required for new stacks)"
+)
+@click.option(
+    "--from-code",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Deploy from local code by building with publish.py (path to project root)",
 )
 @click.option(
     "--template-url",
@@ -93,11 +200,15 @@ def cli():
 )
 @click.option("--parameters", help="Additional parameters as key=value,key2=value2")
 @click.option("--wait", is_flag=True, help="Wait for stack creation to complete")
+@click.option(
+    "--no-rollback", is_flag=True, help="Disable rollback on stack creation failure"
+)
 @click.option("--region", help="AWS region (optional)")
 def deploy(
     stack_name: str,
     pattern: str,
     admin_email: str,
+    from_code: Optional[str],
     template_url: str,
     max_concurrent: int,
     log_level: str,
@@ -106,6 +217,7 @@ def deploy(
     custom_config: Optional[str],
     parameters: Optional[str],
     wait: bool,
+    no_rollback: bool,
     region: Optional[str],
 ):
     """
@@ -119,8 +231,14 @@ def deploy(
       # Create new stack with Pattern 2
       idp-cli deploy --stack-name my-idp --pattern pattern-2 --admin-email user@example.com
       
-      # Update existing stack with local config file (NEW!)
+      # Deploy from local code (NEW!)
+      idp-cli deploy --stack-name my-idp --from-code . --pattern pattern-2 --admin-email user@example.com --wait
+      
+      # Update existing stack with local config file
       idp-cli deploy --stack-name my-idp --custom-config ./my-config.yaml
+      
+      # Update existing stack from local code
+      idp-cli deploy --stack-name my-idp --from-code . --wait
       
       # Update existing stack with custom settings
       idp-cli deploy --stack-name my-idp --max-concurrent 200 --wait
@@ -131,6 +249,13 @@ def deploy(
           --parameters "DataRetentionInDays=90,ErrorThreshold=5"
     """
     try:
+        # Validate mutually exclusive options
+        if from_code and template_url:
+            console.print(
+                "[red]✗ Error: Cannot specify both --from-code and --template-url[/red]"
+            )
+            sys.exit(1)
+
         # Auto-detect region if not provided
         if not region:
             import boto3
@@ -142,8 +267,15 @@ def deploy(
                     "Region could not be determined. Please specify --region or configure AWS_DEFAULT_REGION"
                 )
 
+        # Handle deployment from local code
+        template_path = None
+        if from_code:
+            template_path, template_url = _build_from_local_code(
+                from_code, region, stack_name
+            )
+
         # Determine template URL (user-provided takes precedence)
-        if not template_url:
+        elif not template_url:
             if region in TEMPLATE_URLS:
                 template_url = TEMPLATE_URLS[region]
                 console.print(f"[bold]Using template for region: {region}[/bold]")
@@ -224,12 +356,24 @@ def deploy(
 
         # Deploy stack
         with console.status("[bold green]Deploying stack..."):
-            result = deployer.deploy_stack(
-                stack_name=stack_name,
-                template_url=template_url,
-                parameters=cfn_parameters,
-                wait=wait,
-            )
+            if template_path:
+                # Deploy from local template (built from code)
+                result = deployer.deploy_stack(
+                    stack_name=stack_name,
+                    template_path=template_path,
+                    parameters=cfn_parameters,
+                    wait=wait,
+                    no_rollback=no_rollback,
+                )
+            else:
+                # Deploy from template URL
+                result = deployer.deploy_stack(
+                    stack_name=stack_name,
+                    template_url=template_url,
+                    parameters=cfn_parameters,
+                    wait=wait,
+                    no_rollback=no_rollback,
+                )
 
         # Show results
         # Success if operation completed successfully OR was successfully initiated

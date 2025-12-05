@@ -16,12 +16,12 @@ exclude = [
 
 [project]
 name = "idp_common"
-version = "0.4.2"
+version = "0.4.6"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [{ name = "AWS", email = "noreply@amazon.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
-  "boto3==1.39.7",      # Core dependency for AWS services
+  "boto3==1.42.0",      # Core dependency for AWS services
   "jsonschema>=4.25.1",
   "pydantic>=2.12.0",
   "deepdiff>=6.0.0",
@@ -71,12 +71,13 @@ extraction = [
 
 # Assessment module dependencies
 assessment = [
-  "Pillow==11.2.1", # For image handling
+  "Pillow==11.2.1",               # For image handling
+  "aws-lambda-powertools>=3.2.0", # Structured logging and observability
 ]
 
 # Evaluation module dependencies
 evaluation = [
-  "stickler-eval==0.1.2",
+  "stickler-eval==0.1.3",
   "genson==1.3.0",  # For automatic JSON Schema generation from data
   "munkres>=1.1.4", # For Hungarian algorithm (legacy, may be removed)
   "numpy==1.26.4",  # For numeric operations
@@ -141,11 +142,17 @@ test = [
   "ruff>=0.14.0",
   "deepdiff>=6.0.0",                    # Required for BDA blueprint service tests
   "datamodel-code-generator>=0.25.0",   # Required for schema/pydantic generator tests
+  "mypy-boto3-bedrock-runtime>=1.39.0", # Required for bedrock_utils tests
+  # Evaluation module dependencies (from evaluation group)
+  "stickler-eval==0.1.3",
+  "genson==1.3.0",
+  "munkres>=1.1.4",
+  "numpy==1.26.4",
 ]
 
 # Full package with all dependencies
 all = [
-  "stickler-eval==0.1.2",
+  "stickler-eval==0.1.3",
   "genson==1.3.0",
   "Pillow==11.2.1",
   "PyMuPDF==1.25.5",
@@ -171,6 +178,7 @@ agentic-extraction = [
   "tabulate>=0.9.0",
   "aws-lambda-powertools>=3.2.0",                          # Structured logging and observability
   "datamodel-code-generator>=0.25.0",                      # Generate Pydantic models from JSON Schema
+  "mypy-boto3-bedrock-runtime>=1.39.0",                    # Type stubs for bedrock_utils.py
 ]
 
 [project.urls]

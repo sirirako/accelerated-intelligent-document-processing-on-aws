@@ -5,9 +5,155 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.6]
+
 ### Added
 
+- **New State-Of-The-Art LLM Model Support**
+  - Added support for Amazon Nova 2 Lite model (`us.amazon.nova-2-lite-v1:0`, `eu.amazon.nova-2-lite-v1:0`)
+  - Added support for Claude Opus 4.5 model (`us.anthropic.claude-opus-4-5-20251101-v1:0`, `eu.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - Added support for Qwen 3 VL model (`qwen.qwen3-vl-235b-a22b`)
+  - Available for configuration across all document processing steps
+
+- **Test Studio for Comprehensive Test Management and Analysis**
+  - Added unified web interface for managing test sets, running tests, and analyzing results directly from the UI
+  - **Test Sets Tab**: Create and manage reusable test collections with three creation methods:
+    - Pattern-based creation with file patterns to match existing data sets (Input Bucket and Test Set Bucket)
+    - Zip upload with automatic extraction of `input/` and `baseline/` folder structure
+  - **Test Executions Tab**: Unified interface combining test execution and results management:
+    - Real-time status monitoring
+    - Multi-select comparison for side-by-side test analysis
+    - Integrated export and delete operations
+  - **Key Features**: File structure validation, progress-aware status updates, cached metrics for improved performance, dual bucket support for flexible test organization
+  - **Documentation**: Guide in `docs/test-studio.md` with architecture details and workflow examples
+
+- **MCP Integration for External Application Access**
+  - Added MCP (Model Context Protocol) integration enabling external applications (like Amazon Quick Suite) to access IDP analytics through AWS Bedrock AgentCore Gateway with secure OAuth 2.0 authentication
+  - Implemented Analytics Agent with `search_genaiidp` tool for natural language queries of processed document data (statistics, trends, confidence scores, processing status)
+  - Controlled by `EnableMCP` parameter (default: true); provides MCPServerEndpoint and authentication outputs for external application integration; documentation in `docs/mcp-integration.md`
+
+- **Configurable Section Splitting Strategies for Enhanced Document Segmentation Control**
+  - Added new `sectionSplitting` configuration option to control how classified pages are grouped into document sections
+  - **Three Strategies Available**:
+    - `disabled`: Entire document treated as single section with first detected class (simplest case)
+    - `page`: One section per page preventing automatic joining of same-type documents (deterministic, solves Issue #146)
+    - `llm_determined`: Uses LLM boundary detection with "Start"/"Continue" indicators (default, maintains existing behavior)
+  - **Key Benefits**: Deterministic splitting for long documents with multiple same-type forms (e.g., multiple W-2s, multiple invoices), eliminates LLM boundary detection failures for critical government form processing, provides flexibility across simple to complex document scenarios
+  - Resolves #146
+
+### Changed
+
+- **Improved Temperature and Top_P Parameter Logic for Deterministic Output**
+  - Changed inference parameter selection logic to allow `temperature=0.0` for deterministic output (recommended by Anthropic and other model providers)
+  - **New Logic**: Uses `top_p` only when it has a positive value (> 0); otherwise uses `temperature` including `temperature=0.0`
+  - **Previous Logic**: Used `top_p` whenever `temperature=0.0`, preventing proper deterministic configuration
+  - **Key Benefits**: Enables proper deterministic output with `temperature=0.0`, more intuitive parameter behavior, aligns with model provider best practices (Anthropic recommends `temperature=0` for consistent outputs)
+  - **Affected Components**: Bedrock client (`lib/idp_common_pkg/idp_common/bedrock/client.py`), Agentic extraction service (`lib/idp_common_pkg/idp_common/extraction/agentic_idp.py`)
+  - **Configuration Guidance**: Set `top_p: 0` to use `temperature` parameter; set `top_p` to positive value to override temperature
+  - Set temperature to 0.0 in discovery config for deterministic discovery output (was previously set to 1.0)
+  - Set top_p to 0.0 in all repo config files to force use of temperature setting by default.
+
+- **Removed page image limit entirely across all IDP services**
+  - removed image limits from multimodal inference steps (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
+  - Resolves #147
+
+- **Knowledge Base Vector Store Default Changed to S3 Vectors**
+  - Changed default `KnowledgeBaseVectorStore` from `OPENSEARCH_SERVERLESS` to `S3_VECTORS` for cost-optimized deployments
+  - S3 Vectors provides 40-60% lower storage costs with sub-second latency suitable for most use cases
+  - OpenSearch Serverless remains available for applications requiring sub-millisecond query performance
+  - No action required for existing deployments - only affects new stack deployments
+
 ### Fixed
+
+- **UI: Document Schema Editor Regex Fields Not Persisting** - Fixed issue where Document Name Regex and Page Content Regex fields were not being saved in configuration or restored after page refresh. Fixes #151
+- **Document Schema Builder Enum Support** - Fixed enum value handling in schema builder to properly support enumeration constraints for attribute definitions
+- **Agentic Extraction Parameter Passing** - Fixed temperature and top_p parameters now correctly passed to agentic extraction service, enabling proper model behavior control
+- **Document Schema Builder UI Labels** - Enhanced field labels and formats in document schema builder for improved clarity and user experience
+- **Retry Mechanism Improvements** - Enhanced retry logic for more reliable error handling and recovery across document processing workflows
+- **Type Safety Enhancements** - Improved type annotations and fixed undefined items handling to prevent runtime errors
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.6.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.6.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.6.yaml`
+
+
+## [0.4.5]
+
+### Added
+
+- **Document Split Classification Metrics for Evaluating Page-Level Classification and Document Segmentation**
+  - Added `DocSplitClassificationMetrics` class for comprehensive evaluation of document splitting and classification accuracy
+  - **Three Accuracy Types**: Page-level classification accuracy, split accuracy without order consideration, and split accuracy with exact page order matching
+  - **Visual Reporting**: Generates markdown reports with color-coded indicators (🟢 Excellent, 🟡 Good, 🟠 Fair, 🔴 Poor), progress bars, and detailed section analysis tables
+  - **Automatic Integration**: Integrates with evaluation service when ground truth and predicted sections are available
+  - **Documentation**: Guide in `lib/idp_common_pkg/idp_common/evaluation/README.md` with usage examples, metric explanations, and best practices
+
+- **Caching improvements to Agentic Extraction Service**
+  - Optimized prompt caching by caching document context (text/images) on first LLM call, reducing token costs and quota consumption
+
+- **Enhanced Bedrock Retry Logic for Agentic Extraction**
+  - New `bedrock_utils.py` module with exponential backoff and comprehensive error handling
+  - Improves agentic extraction reliability for transient failures and rate limiting
+
+- **Review Agent Model Configuration**
+  - Added `review_agent_model` parameter to enable separate model for reviewing extraction work
+  - Defaults to main extraction model if not specified
+  - Configurable through Web UI extraction settings
+
+
+### Fixed
+
+- **Evaluation Output URI Fields Lost Across All Patterns - causing (a) missing Page Text Confidence content in UI, (2) failed Assessment step when reprocessing document after editing classes (No module named 'fitz')**
+  - Fixed bug where `text_confidence_uri` was being set to null in evaluation output for all three patterns
+  - Root cause: AppSync service `_appsync_to_document()` method incorrectly mapped page URIs, and evaluation functions overwrote correct documents with corrupted AppSync responses
+
+- **UI: Metering Data Not Displayed During Document Processing**
+  - Fixed UI subscription query missing `Metering` field, preventing real-time cost display
+  - Users can now see estimated costs accumulate in real-time without manual page refresh
+
+- **UI: Estimated Cost Panel Arrow Misalignment**
+  - Fixed expand/contract arrow displaying above "Estimated Cost" heading
+
+- **Agentic Extraction Reliability Improvements**
+  - Updated Pydantic model serialization to use `model_dump(mode="json")` for proper JSON handling
+  - Resolved linting issues and improved code quality across extraction modules
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.5.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.5.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.5.yaml`
+
+
+## [0.4.4]
+
+### Added
+
+- **IDP CLI --from-code Flag for Local Development Deployment**
+  - Added `--from-code` flag to `idp-cli deploy` command enabling deployment directly from local source code
+  - Automatically builds project using `publish.py` script with streaming output for real-time build progress
+- **IDP CLI --no-rollback Flag for Stack Deployment Troubleshooting**
+  - Added `--no-rollback` flag to `idp-cli deploy` command to disable automatic rollback on CloudFormation stack creation failure
+  - When enabled, failed stacks remain in `CREATE_FAILED` state instead of rolling back, allowing inspection of failed resources for troubleshooting
+
+- **Add support for prompt caching for Claude Haiku 4.5**
+
+- **Add support for prompt caching for for EU region models**
+
+### Fixed
+
+- **Analytics Agent Schema Provider - Fixed Nested Attribute Column Display**
+  - Fixed `schema_provider.py` to correctly display leaf-level nested columns instead of showing group-level attributes
+
+- **IDP Agent Companion Chat UX improvements**
+  - Improved speed of rendering chat response by buffering the agent tool responses.
+  - Displaying agent tool queries and results in a modal with formatted results.
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.4.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.4.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.4.yaml`
 
 ## [0.4.3]
 

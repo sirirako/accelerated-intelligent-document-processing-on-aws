@@ -316,12 +316,12 @@ const ConfigurationLayout = () => {
                             // Only check constraints if it's a valid number
                             if (isValidNumber && itemProp.minimum !== undefined && numValue < itemProp.minimum) {
                               errors.push({
-                                message: `Field '${itemKey}' in item ${index} of '${key}' must be at least ${itemProp.minimum}`,
+                                message: `Field '${itemKey}' in item ${index} of '${key}' must be ` + `at least ${itemProp.minimum}`,
                               });
                             }
                             if (isValidNumber && itemProp.maximum !== undefined && numValue > itemProp.maximum) {
                               errors.push({
-                                message: `Field '${itemKey}' in item ${index} of '${key}' must be at most ${itemProp.maximum}`,
+                                message: `Field '${itemKey}' in item ${index} of '${key}' must be ` + `at most ${itemProp.maximum}`,
                               });
                             }
                           }

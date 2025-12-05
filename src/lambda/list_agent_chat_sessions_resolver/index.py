@@ -39,6 +39,7 @@ def handler(event, context):
         ChatSessionConnection with items and nextToken
     """
     logger.info(f"Received list chat sessions event: {json.dumps(event)}")
+    logger.info(f"DEBUG - CHAT_SESSIONS_TABLE env var: {CHAT_SESSIONS_TABLE}")
     
     try:
         # Extract arguments from the event
@@ -48,9 +49,18 @@ def handler(event, context):
         
         # Get user identity from context
         identity = event.get("identity", {})
+        logger.info(f"DEBUG - Full identity context: {json.dumps(identity)}")
         user_id = identity.get("username") or identity.get("sub") or "anonymous"
         
         logger.info(f"Listing chat sessions for user: {user_id}")
+        
+        # Check if table name is configured
+        if not CHAT_SESSIONS_TABLE:
+            logger.error("CHAT_SESSIONS_TABLE environment variable not set")
+            return {
+                "items": [],
+                "nextToken": None
+            }
         
         # Query the ChatSessionsTable for this user's sessions
         table = dynamodb.Table(CHAT_SESSIONS_TABLE)

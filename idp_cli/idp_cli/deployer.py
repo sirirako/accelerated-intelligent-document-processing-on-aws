@@ -41,6 +41,7 @@ class StackDeployer:
         template_url: Optional[str] = None,
         parameters: Dict[str, str] = None,
         wait: bool = False,
+        no_rollback: bool = False,
     ) -> Dict:
         """
         Deploy CloudFormation stack
@@ -51,6 +52,7 @@ class StackDeployer:
             template_url: URL to CloudFormation template in S3 (optional)
             parameters: Stack parameters
             wait: Whether to wait for stack creation to complete
+            no_rollback: If True, disable rollback on failure (DO_NOTHING)
 
         Returns:
             Dictionary with deployment result
@@ -67,7 +69,18 @@ class StackDeployer:
         else:
             # Read template from local file
             template_body = self._read_template(template_path)
-            template_param = {"TemplateBody": template_body}
+
+            # Check template size - CloudFormation has a 51,200 byte limit for direct upload
+            template_size = len(template_body.encode("utf-8"))
+            if template_size > 51200:  # 50KB limit
+                logger.info(
+                    f"Template size ({template_size} bytes) exceeds limit, uploading to S3"
+                )
+                template_url = self._upload_template_to_s3(template_body, stack_name)
+                template_param = {"TemplateURL": template_url}
+                logger.info(f"Template uploaded to: {template_url}")
+            else:
+                template_param = {"TemplateBody": template_body}
 
         # Convert parameters dict to CloudFormation format
         cfn_parameters = [
@@ -94,6 +107,8 @@ class StackDeployer:
                 operation = "UPDATE"
             else:
                 logger.info(f"Creating new stack: {stack_name}")
+                # Set DisableRollback based on no_rollback flag
+                disable_rollback = True if no_rollback else False
                 response = self.cfn.create_stack(
                     StackName=stack_name,
                     **template_param,
@@ -103,7 +118,7 @@ class StackDeployer:
                         "CAPABILITY_NAMED_IAM",
                         "CAPABILITY_AUTO_EXPAND",
                     ],
-                    OnFailure="ROLLBACK",
+                    DisableRollback=disable_rollback,
                 )
                 operation = "CREATE"
 
@@ -135,6 +150,31 @@ class StackDeployer:
             raise FileNotFoundError(f"Template not found: {template_path}")
 
         return template_file.read_text()
+
+    def _upload_template_to_s3(self, template_body: str, stack_name: str) -> str:
+        """Upload template to S3 and return URL"""
+        from datetime import datetime
+
+        import boto3
+
+        # Get or create bucket for templates
+        bucket_name = get_or_create_config_bucket(self.region)
+
+        # Generate unique key
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        s3_key = f"idp-cli/templates/{stack_name}_{timestamp}.yaml"
+
+        # Upload template
+        s3 = boto3.client("s3", region_name=self.region)
+        s3.put_object(
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=template_body.encode("utf-8"),
+            ServerSideEncryption="AES256",
+        )
+
+        # Return S3 URL
+        return f"https://s3.{self.region}.amazonaws.com/{bucket_name}/{s3_key}"
 
     def _stack_exists(self, stack_name: str) -> bool:
         """Check if stack exists"""

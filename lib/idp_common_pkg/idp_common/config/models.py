@@ -18,8 +18,17 @@ Usage:
         model = config.extraction.model
 """
 
-from typing import Any, Dict, List, Optional, Union, Literal, Annotated
-from pydantic import BaseModel, ConfigDict, Field, field_validator, Discriminator
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    field_validator,
+    model_validator,
+)
+from typing_extensions import Self
 
 
 class ImageConfig(BaseModel):
@@ -78,6 +87,10 @@ class AgenticConfig(BaseModel):
 
     enabled: bool = Field(default=False, description="Enable agentic extraction")
     review_agent: bool = Field(default=False, description="Enable review agent")
+    review_agent_model: str | None = Field(
+        default=None,
+        description="Model used for reviewing and correcting extraction work",
+    )
 
 
 class ExtractionConfig(BaseModel):
@@ -120,6 +133,14 @@ class ExtractionConfig(BaseModel):
             return int(v) if v else 0
         return int(v)
 
+    @model_validator(mode="after")
+    def set_default_review_agent_model(self) -> Self:
+        """Set review_agent_model to extraction model if not specified."""
+        if not self.agentic.review_agent_model:
+            self.agentic.review_agent_model = self.model
+
+        return self
+
 
 class ClassificationConfig(BaseModel):
     """Document classification configuration"""
@@ -143,6 +164,10 @@ class ClassificationConfig(BaseModel):
         description="Max pages to use for classification. 0 or negative = ALL pages, positive = limit to N pages",
     )
     classificationMethod: str = Field(default="multimodalPageLevelClassification")
+    sectionSplitting: str = Field(
+        default="llm_determined",
+        description="Section splitting strategy: 'disabled' (entire doc as one section), 'page' (one section per page), 'llm_determined' (use LLM boundary detection)",
+    )
     image: ImageConfig = Field(default_factory=ImageConfig)
 
     @field_validator("temperature", "top_p", "top_k", mode="before")
@@ -170,6 +195,26 @@ class ClassificationConfig(BaseModel):
                 return 0  # 0 means ALL pages
             return int(v) if v else 0
         return int(v)
+
+    @field_validator("sectionSplitting", mode="before")
+    @classmethod
+    def validate_section_splitting(cls, v: Any) -> str:
+        """Validate and normalize section splitting value"""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        if isinstance(v, str):
+            v = v.lower().strip()
+
+        valid_values = ["disabled", "page", "llm_determined"]
+        if v not in valid_values:
+            logger.warning(
+                f"Invalid sectionSplitting value '{v}', using default 'llm_determined'. "
+                f"Valid values: {', '.join(valid_values)}"
+            )
+            return "llm_determined"
+        return v
 
 
 class GranularAssessmentConfig(BaseModel):
@@ -423,7 +468,7 @@ class ErrorAnalyzerConfig(BaseModel):
             "AccessDenied",
             "ThrottlingException",
         ],
-        description="Error patterns to search for in logs"
+        description="Error patterns to search for in logs",
     )
     system_prompt: str = Field(
         default="""
@@ -511,11 +556,10 @@ class ErrorAnalyzerConfig(BaseModel):
                       - No time specified: 24 hours (default)
               
               IMPORTANT: Do not include any search quality reflections, search quality scores, or meta-analysis sections in your response. Only provide the three required sections: Root Cause, Recommendations, and Evidence.""",
-        description="System prompt for error analyzer"
+        description="System prompt for error analyzer",
     )
     parameters: ErrorAnalyzerParameters = Field(
-        default_factory=ErrorAnalyzerParameters,
-        description="Error analyzer parameters"
+        default_factory=ErrorAnalyzerParameters, description="Error analyzer parameters"
     )
 
 
@@ -635,12 +679,10 @@ class AgentsConfig(BaseModel):
     """Agents configuration"""
 
     error_analyzer: Optional[ErrorAnalyzerConfig] = Field(
-        default_factory=ErrorAnalyzerConfig,
-        description="Error analyzer configuration"
+        default_factory=ErrorAnalyzerConfig, description="Error analyzer configuration"
     )
     chat_companion: Optional[ChatCompanionConfig] = Field(
-        default_factory=ChatCompanionConfig,
-        description="Chat companion configuration"
+        default_factory=ChatCompanionConfig, description="Chat companion configuration"
     )
 
 

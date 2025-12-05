@@ -34,6 +34,8 @@ White-glove customization, deployment, and integration support for production us
 
 **Prefer AWS CDK?** This solution is also available as [GenAI IDP Accelerator for AWS CDK](https://github.com/cdklabs/genai-idp), providing the same functional capabilities through AWS CDK constructs for customers who prefer Infrastructure-as-Code with CDK.
 
+**Prefer Terraform?** This solution is also available as [GenAI IDP Terraform](https://github.com/awslabs/genai-idp-terraform), providing the same functional capabilities as a Terraform module that integrates with existing infrastructure and supports customization through module variables.
+
 ## Key Features
 
 - **Serverless Architecture**: Built entirely on AWS serverless technologies including Lambda, Step Functions, SQS, and DynamoDB
@@ -53,6 +55,7 @@ White-glove customization, deployment, and integration support for production us
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
 - **IDP Accelerator Help Chat Bot**: Ask questions about the IDP code base or features
+- **MCP Integration**: Model Context Protocol integration enabling external applications like Amazon Quick Suite to access IDP data and analytics through AWS Bedrock AgentCore Gateway
 
 ## Architecture Overview
 
@@ -121,7 +124,7 @@ idp-cli download-results \
     --output-dir ./results/
 ```
 
-**See [IDP CLI Documentation](./idp_cli/README.md)** for:
+**See [IDP CLI Documentation](./docs/idp-cli.md)** for:
 - CLI-based stack deployment and updates
 - Batch document processing
 - Complete evaluation workflows with baselines
@@ -162,7 +165,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 
 - [Architecture](./docs/architecture.md) - Detailed component architecture and data flow
 - [Deployment](./docs/deployment.md) - Build, publish, deploy, and test instructions
-- [IDP CLI](./idp_cli/README.md) - Command line interface for batch processing and evaluation workflows
+- [IDP CLI](./docs/idp-cli.md) - Command line interface for batch processing and evaluation workflows
 - [Web UI](./docs/web-ui.md) - Web interface features and usage
 - [Agent Analysis](./docs/agent-analysis.md) - Natural language analytics and data visualization feature
 - [Custom MCP Agent](./docs/custom-MCP-agent.md) - Integrating external MCP servers for custom tools and capabilities
@@ -177,6 +180,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
 - [Monitoring](./docs/monitoring.md) - Monitoring and logging capabilities
 - [IDP Accelerator Help Chat Bot](./docs/code-intelligence.md) - Chat bot for asking question about the IDP code base and features
+- [MCP Integration](./docs/mcp-integration.md) - Model Context Protocol integration for external applications like Amazon Quick Suite
 - [Reporting Database](./docs/reporting-database.md) - Analytics database for evaluation metrics and metering data
 - [Troubleshooting](./docs/troubleshooting.md) - Troubleshooting and performance guides
 
