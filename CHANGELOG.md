@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.6]
+
 ### Added
 
 - **New State-Of-The-Art LLM Model Support**
@@ -69,6 +71,12 @@ SPDX-License-Identifier: MIT-0
 - **Document Schema Builder UI Labels** - Enhanced field labels and formats in document schema builder for improved clarity and user experience
 - **Retry Mechanism Improvements** - Enhanced retry logic for more reliable error handling and recovery across document processing workflows
 - **Type Safety Enhancements** - Improved type annotations and fixed undefined items handling to prevent runtime errors
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.6.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.6.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.6.yaml`
+
 
 ## [0.4.5]
 
