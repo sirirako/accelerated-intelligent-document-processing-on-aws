@@ -9020,6 +9020,12 @@ Outputs:
   S3ConfigurationBucketConsoleURL:
     Description: Configuration S3 bucket console URL
     Value: !Sub https://s3.console.aws.amazon.com/s3/buckets/${ConfigurationBucket}
+  S3TestSetBucketName:
+    Description: Test Set S3 bucket name
+    Value: !Ref TestSetBucket
+  S3TestSetBucketConsoleURL:
+    Description: Test Set S3 bucket console URL
+    Value: !Sub https://s3.console.aws.amazon.com/s3/buckets/${TestSetBucket}
   StateMachineArn:
     Description: Step Functions State machine ARN
     Value: !If
