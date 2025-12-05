@@ -60,7 +60,7 @@ def handler(event, context):
                         path_parts = file_key.split('/')
                         if len(path_parts) >= 3 and path_parts[1] == 'input':
                             test_set_name = path_parts[0]
-                            file_name = path_parts[2]
+                            file_name = '/'.join(path_parts[2:])  # Get full path after 'input/'
                             baseline_prefix = f"{test_set_name}/baseline/{file_name}/"
                             baseline_check_bucket = source_bucket
                         else:
@@ -185,7 +185,7 @@ def _copy_baseline_from_testset(test_set_id, files):
         path_parts = file_key.split('/')
         if len(path_parts) >= 3 and path_parts[1] == 'input':
             source_test_set_name = path_parts[0]
-            file_name = path_parts[2]
+            file_name = '/'.join(path_parts[2:])  # Get full path after 'input/'
             
             # Source baseline path in testset bucket
             source_baseline_prefix = f"{source_test_set_name}/baseline/{file_name}/"
