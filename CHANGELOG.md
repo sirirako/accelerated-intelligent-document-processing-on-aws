@@ -63,6 +63,7 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **UI: Document Schema Editor Regex Fields Not Persisting** - Fixed issue where Document Name Regex and Page Content Regex fields were not being saved in configuration or restored after page refresh. Fixes #151
 - **Document Schema Builder Enum Support** - Fixed enum value handling in schema builder to properly support enumeration constraints for attribute definitions
 - **Agentic Extraction Parameter Passing** - Fixed temperature and top_p parameters now correctly passed to agentic extraction service, enabling proper model behavior control
 - **Document Schema Builder UI Labels** - Enhanced field labels and formats in document schema builder for improved clarity and user experience
