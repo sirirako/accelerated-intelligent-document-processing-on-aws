@@ -16,6 +16,7 @@ import re
 import uuid
 
 import boto3
+import botocore.exceptions
 
 from idp_common.agents.analytics import get_analytics_config
 from idp_common.agents.common.config import configure_logging
@@ -24,24 +25,11 @@ from idp_common.appsync.client import AppSyncClient
 
 # Import Bedrock error handling
 try:
-    from idp_common.utils.bedrock_utils import BedrockRetryExhaustedException
     from idp_common.agents.common.bedrock_error_messages import BedrockErrorMessageHandler
     _BEDROCK_ERROR_HANDLING_AVAILABLE = True
 except ImportError:
     _BEDROCK_ERROR_HANDLING_AVAILABLE = False
-    # Create placeholder classes
-    class BedrockRetryExhaustedException(Exception):
-        def get_error_info_for_frontend(self):
-            return {
-                "errorType": "unknown_error",
-                "message": str(self),
-                "technicalDetails": str(self),
-                "retryRecommended": False,
-                "retryDelaySeconds": None,
-                "actionRecommendations": ["Contact support if the problem persists"],
-                "isTransient": True,
-                "retryAttempts": 0
-            }
+    BedrockErrorMessageHandler = None
 
 # Configure logging for both application and Strands framework
 configure_logging()
@@ -551,16 +539,36 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         
         return displayed_text
         
-    except BedrockRetryExhaustedException as e:
-        logger.error(f"Bedrock retry exhausted in stream_agent_response: {e}")
+    except (botocore.exceptions.ClientError, botocore.exceptions.EventStreamError) as e:
+        # Handle Bedrock-specific errors (raised after boto3 Config retries are exhausted)
+        logger.error(f"Bedrock error in stream_agent_response: {e}")
         
-        # Get user-friendly error information
-        if _BEDROCK_ERROR_HANDLING_AVAILABLE:
-            error_info = e.get_error_info_for_frontend()
-            error_content = json.dumps({
-                "type": "bedrock_error",
-                "errorInfo": error_info
-            })
+        # Get user-friendly error information using BedrockErrorMessageHandler
+        if _BEDROCK_ERROR_HANDLING_AVAILABLE and BedrockErrorMessageHandler:
+            try:
+                error_info = BedrockErrorMessageHandler.format_error_for_frontend(e)
+                error_content = json.dumps({
+                    "type": "bedrock_error",
+                    "errorInfo": error_info
+                })
+            except Exception as format_error:
+                logger.warning(f"Failed to format Bedrock error: {format_error}")
+                error_content = json.dumps({
+                    "type": "bedrock_error",
+                    "errorInfo": {
+                        "errorType": "service_error",
+                        "message": "The AI service encountered an error. Please try again.",
+                        "technicalDetails": str(e),
+                        "retryRecommended": True,
+                        "retryDelaySeconds": 30,
+                        "actionRecommendations": [
+                            "Wait a moment and try your request again",
+                            "Check if the issue persists after a few minutes"
+                        ],
+                        "isTransient": True,
+                        "retryAttempts": 0
+                    }
+                })
         else:
             error_content = f"Service temporarily unavailable: {str(e)}"
         
@@ -582,9 +590,9 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         logger.error(f"Error in stream_agent_response: {e}")
         
         # Check if this is a Bedrock-related error we can handle
-        if _BEDROCK_ERROR_HANDLING_AVAILABLE:
+        if _BEDROCK_ERROR_HANDLING_AVAILABLE and BedrockErrorMessageHandler:
             try:
-                # Try to format as Bedrock error
+                # Try to format as Bedrock error (handles various error types)
                 error_info = BedrockErrorMessageHandler.format_error_for_frontend(e)
                 error_content = json.dumps({
                     "type": "bedrock_error", 

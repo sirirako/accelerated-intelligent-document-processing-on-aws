@@ -447,7 +447,7 @@ const useAgentChat = (config = {}) => {
       updateMessages((prevMessages) => {
         // Check if this is a Bedrock error message
         const bedrockErrorInfo = parseBedrockerrorInfo(newMessage.content);
-        
+
         // Parse the final message content for responseType (tables, charts, etc.)
         const parsedData = parseResponseData(newMessage.content);
 
@@ -487,7 +487,11 @@ const useAgentChat = (config = {}) => {
 
         // Check if we already have a final message with the same timestamp to prevent duplicates
         const existingFinalIndex = updatedMessages.findIndex(
-          (msg) => msg.role === 'assistant' && !msg.isProcessing && msg.sessionId === newMessage.sessionId && msg.timestamp === newMessage.timestamp
+          (msg) =>
+            msg.role === 'assistant' &&
+            !msg.isProcessing &&
+            msg.sessionId === newMessage.sessionId &&
+            msg.timestamp === newMessage.timestamp,
         );
 
         if (existingFinalIndex >= 0) {
@@ -498,7 +502,7 @@ const useAgentChat = (config = {}) => {
 
         // Find any processing messages to update instead of adding new message
         const processingMessageIndex = updatedMessages.findIndex(
-          (msg) => msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId
+          (msg) => msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId,
         );
 
         if (processingMessageIndex >= 0) {
