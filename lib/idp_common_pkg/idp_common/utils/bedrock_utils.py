@@ -20,6 +20,52 @@ from mypy_boto3_bedrock_runtime.type_defs import (
     InvokeModelResponseTypeDef,
 )
 
+# Import our error message handler
+try:
+    from ..agents.common.bedrock_error_messages import BedrockErrorMessageHandler
+    _ERROR_HANDLER_AVAILABLE = True
+except ImportError:
+    _ERROR_HANDLER_AVAILABLE = False
+
+
+class BedrockRetryExhaustedException(Exception):
+    """
+    Exception raised when Bedrock retry attempts are exhausted.
+    
+    This exception includes user-friendly error information that can be
+    displayed to end users, along with technical details for debugging.
+    """
+    
+    def __init__(self, original_exception: Exception, retry_attempts: int, error_info: dict = None):
+        self.original_exception = original_exception
+        self.retry_attempts = retry_attempts
+        self.error_info = error_info or {}
+        
+        # Create a user-friendly message
+        if _ERROR_HANDLER_AVAILABLE and error_info:
+            message = error_info.get("message", str(original_exception))
+        else:
+            message = f"Request failed after {retry_attempts} retry attempts: {str(original_exception)}"
+            
+        super().__init__(message)
+    
+    def get_error_info_for_frontend(self) -> dict:
+        """Get error information formatted for frontend display."""
+        if self.error_info:
+            return self.error_info
+        else:
+            # Fallback error info if handler not available
+            return {
+                "errorType": "unknown_error",
+                "message": f"Request failed after {self.retry_attempts} retry attempts",
+                "technicalDetails": str(self.original_exception),
+                "retryRecommended": False,
+                "retryDelaySeconds": None,
+                "actionRecommendations": ["Contact support if the problem persists"],
+                "isTransient": True,
+                "retryAttempts": self.retry_attempts
+            }
+
 # Optional import for strands-agents (may not be installed in all environments)
 try:
     from strands.types.exceptions import ModelThrottledException
@@ -115,6 +161,10 @@ def async_exponential_backoff_retry[T, **P](
                     ):
                         raise
                     if error_code not in retryable_errors or attempt == max_retries - 1:
+                        # If this is the final attempt, raise with user-friendly error info
+                        if attempt == max_retries - 1 and _ERROR_HANDLER_AVAILABLE:
+                            error_info = BedrockErrorMessageHandler.format_error_for_frontend(e, max_retries)
+                            raise BedrockRetryExhaustedException(e, max_retries, error_info)
                         raise
 
                     jitter_value = random.uniform(-jitter, jitter)
@@ -155,6 +205,11 @@ def async_exponential_backoff_retry[T, **P](
 
                     # Log bedrock invocation details for non-retryable exceptions
                     log_bedrock_invocation_error(e, attempt + 1)
+                    
+                    # Raise with user-friendly error info if available
+                    if _ERROR_HANDLER_AVAILABLE:
+                        error_info = BedrockErrorMessageHandler.format_error_for_frontend(e, attempt + 1)
+                        raise BedrockRetryExhaustedException(e, attempt + 1, error_info)
                     raise
 
             return await func(*args, **kwargs)

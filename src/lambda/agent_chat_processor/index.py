@@ -22,6 +22,27 @@ from idp_common.agents.common.config import configure_logging
 from idp_common.agents.factory import agent_factory
 from idp_common.appsync.client import AppSyncClient
 
+# Import Bedrock error handling
+try:
+    from idp_common.utils.bedrock_utils import BedrockRetryExhaustedException
+    from idp_common.agents.common.bedrock_error_messages import BedrockErrorMessageHandler
+    _BEDROCK_ERROR_HANDLING_AVAILABLE = True
+except ImportError:
+    _BEDROCK_ERROR_HANDLING_AVAILABLE = False
+    # Create placeholder classes
+    class BedrockRetryExhaustedException(Exception):
+        def get_error_info_for_frontend(self):
+            return {
+                "errorType": "unknown_error",
+                "message": str(self),
+                "technicalDetails": str(self),
+                "retryRecommended": False,
+                "retryDelaySeconds": None,
+                "actionRecommendations": ["Contact support if the problem persists"],
+                "isTransient": True,
+                "retryAttempts": 0
+            }
+
 # Configure logging for both application and Strands framework
 configure_logging()
 
@@ -530,14 +551,57 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         
         return displayed_text
         
+    except BedrockRetryExhaustedException as e:
+        logger.error(f"Bedrock retry exhausted in stream_agent_response: {e}")
+        
+        # Get user-friendly error information
+        if _BEDROCK_ERROR_HANDLING_AVAILABLE:
+            error_info = e.get_error_info_for_frontend()
+            error_content = json.dumps({
+                "type": "bedrock_error",
+                "errorInfo": error_info
+            })
+        else:
+            error_content = f"Service temporarily unavailable: {str(e)}"
+        
+        # Publish structured error message
+        try:
+            await publish_stream_update(
+                appsync_client,
+                session_id, 
+                error_content, 
+                "assistant_error", 
+                message_id, 
+                False
+            )
+        except Exception as publish_error:
+            logger.error(f"Failed to publish Bedrock error message: {publish_error}")
+        raise
+        
     except Exception as e:
         logger.error(f"Error in stream_agent_response: {e}")
+        
+        # Check if this is a Bedrock-related error we can handle
+        if _BEDROCK_ERROR_HANDLING_AVAILABLE:
+            try:
+                # Try to format as Bedrock error
+                error_info = BedrockErrorMessageHandler.format_error_for_frontend(e)
+                error_content = json.dumps({
+                    "type": "bedrock_error", 
+                    "errorInfo": error_info
+                })
+            except Exception:
+                # Fall back to generic error
+                error_content = f"Error: {str(e)}"
+        else:
+            error_content = f"Error: {str(e)}"
+        
         # Publish error message
         try:
             await publish_stream_update(
                 appsync_client,
                 session_id, 
-                f"Error: {str(e)}", 
+                error_content, 
                 "assistant_error", 
                 message_id, 
                 False
