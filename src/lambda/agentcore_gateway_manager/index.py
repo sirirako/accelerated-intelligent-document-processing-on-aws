@@ -121,6 +121,38 @@ def create_gateway(props, gateway_name, client):
     logger.info("Waiting for IAM propagation...")
     time.sleep(30)
 
+    # Override trust policy to support all regions
+    gateway_role_arn = gateway.get('executionRoleArn')
+    if gateway_role_arn:
+        role_name = gateway_role_arn.split('/')[-1]
+        logger.info(f"Updating trust policy for role: {role_name}")
+        
+        iam_client = boto3.client('iam')
+        sts_client = boto3.client('sts')
+        account_id = sts_client.get_caller_identity()['Account']
+        
+        try:
+            iam_client.update_assume_role_policy(
+                RoleName=role_name,
+                PolicyDocument=json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                        "Condition": {
+                            "StringEquals": {"aws:SourceAccount": account_id},
+                            "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:*:{account_id}:*"}
+                        }
+                    }]
+                })
+            )
+            logger.info("Trust policy updated successfully to support all regions")
+        except Exception as e:
+            logger.warning(f"Failed to update trust policy: {e}")
+    else:
+        logger.warning("Gateway executionRoleArn not found, skipping trust policy update")
+
     # Add analytics Lambda target
     logger.info("Adding analytics Lambda target...")
     client.create_mcp_gateway_target(

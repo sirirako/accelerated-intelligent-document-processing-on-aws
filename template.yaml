@@ -1134,6 +1134,12 @@ Resources:
                 - logs:CreateLogGroup
                 - logs:PutLogEvents
                 - logs:DeleteLogGroup
+                - logs:PutDeliverySource
+                - logs:DeleteDeliverySource
+                - logs:PutDeliveryDestination
+                - logs:DeleteDeliveryDestination
+                - logs:DescribeDeliveryDestinations
+                - logs:DescribeDeliverySources
                 - iam:PassRole
                 - iam:CreateRole
                 - iam:AttachRolePolicy
@@ -1172,6 +1178,18 @@ Resources:
       ClientId: !Ref ExternalAppClient
       ClientSecret: !GetAtt ExternalAppClient.ClientSecret
       SourceCodeHash: <LAMBDA_HASH_TOKEN>
+
+  AgentCoreAnalyticsLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: CreateAgentCoreLambda
+    DependsOn:
+      - AgentCoreGateway
+      - AgentCoreAnalyticsLambdaFunction
+    Properties:
+      FunctionName: !Ref AgentCoreAnalyticsLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: !Sub "bedrock-agentcore.${AWS::URLSuffix}"
+      SourceArn: !GetAtt AgentCoreGateway.GatewayArn
 
   ##########################################################################
   # Nested stack for selected pattern
@@ -5208,7 +5226,7 @@ Resources:
         - profile
       CallbackURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
-        - "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback"
+        - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
         - !Sub "https://${CloudFrontDistribution.DomainName}/"
       LogoutURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
