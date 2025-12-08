@@ -1,3 +1,21 @@
+Slack: #aws-gitlab-users | Docs: Gitlab Documentation | Instance owned by ProServe Products and Solutions
+genaiic-assets
+engagement-artifacts
+genaiic-idp-accelerator
+Repository
+You pushed to 
+fix/cf-iam-role-update
+  9 minutes ago
+genaiic-idp-accelerator
+iam-roles
+cloudformation-management
+IDP-Cloudformation-Service-Role.yaml
+Joe King's avatar
+updating cloudformation iam role policy. Adding placeholder for 'snack size'...
+Joe King authored 1 hour ago
+379b5af3
+IDP-Cloudformation-Service-Role.yaml
+7.26 KiB
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   This template creates a CloudFormation Service Role for the IDP Accelerator solution. 
@@ -8,7 +26,6 @@ Description: >
   service role to CloudFormation. The iam:PassRole policy must be attached to
   the user or role that will be using the CloudFormation Service Role in order
   to successfully pass the role.
-
 Resources:
   CloudFormationServiceRole:
     Type: AWS::IAM::Role
@@ -55,28 +72,34 @@ Resources:
                   - iam:DeleteRole
                   - iam:UpdateRole
                   - iam:GetRole
+                  - iam:GetRolePolicy
                   - iam:ListRoles
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRoleTags
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PassRole
+                  - iam:CreateServiceLinkedRole
+                  - iam:DeleteServiceLinkedRole
+                Resource: '*'
+              - Effect: Allow
+                Action:
                   - iam:CreatePolicy
                   - iam:DeletePolicy
                   - iam:GetPolicy
+                  - iam:GetPolicyVersion
                   - iam:ListPolicies
                   - iam:ListPolicyVersions
                   - iam:CreatePolicyVersion
                   - iam:DeletePolicyVersion
                   - iam:SetDefaultPolicyVersion
-                  - iam:AttachRolePolicy
-                  - iam:DetachRolePolicy
-                  - iam:PutRolePolicy
-                  - iam:DeleteRolePolicy
-                  - iam:GetRolePolicy
-                  - iam:ListRolePolicies
-                  - iam:ListAttachedRolePolicies
-                  - iam:CreateServiceLinkedRole
-                  - iam:DeleteServiceLinkedRole
-                  - iam:TagRole
-                  - iam:UntagRole
-                  - iam:ListRoleTags
-                  - iam:PassRole
+                  - iam:TagPolicy
+                  - iam:UntagPolicy
                 Resource: '*'
         - PolicyName: IDPAcceleratorPermissions
           PolicyDocument:
@@ -129,7 +152,6 @@ Resources:
                   - ec2:DescribeAvailabilityZones
                   - ecr:*
                 Resource: '*'
-
   PassRolePolicy:
     Type: AWS::IAM::ManagedPolicy
     Metadata:
