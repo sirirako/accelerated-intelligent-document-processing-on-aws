@@ -1,21 +1,3 @@
-Slack: #aws-gitlab-users | Docs: Gitlab Documentation | Instance owned by ProServe Products and Solutions
-genaiic-assets
-engagement-artifacts
-genaiic-idp-accelerator
-Repository
-You pushed to 
-fix/cf-iam-role-update
-  9 minutes ago
-genaiic-idp-accelerator
-iam-roles
-cloudformation-management
-IDP-Cloudformation-Service-Role.yaml
-Joe King's avatar
-updating cloudformation iam role policy. Adding placeholder for 'snack size'...
-Joe King authored 1 hour ago
-379b5af3
-IDP-Cloudformation-Service-Role.yaml
-7.26 KiB
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   This template creates a CloudFormation Service Role for the IDP Accelerator solution. 
