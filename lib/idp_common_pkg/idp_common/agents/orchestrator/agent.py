@@ -153,7 +153,33 @@ def create_orchestrator_agent(
 
                 except Exception as e:
                     logger.error(f"Error in sub-agent {aid}: {e}", exc_info=True)
-                    yield f"Error processing query with {aid}: {str(e)}"
+
+                    # Check if this is a Bedrock-related error
+                    error_str = str(e)
+                    is_bedrock_error = any(
+                        pattern in error_str
+                        for pattern in [
+                            "serviceUnavailableException",
+                            "ServiceUnavailableException",
+                            "ThrottlingException",
+                            "throttlingException",
+                            "ModelErrorException",
+                            "TooManyRequestsException",
+                            "EventStreamError",
+                            "Bedrock is unable to process",
+                        ]
+                    )
+
+                    if is_bedrock_error:
+                        # Yield a structured error event that agent_chat_processor can detect
+                        yield {
+                            "bedrock_error": True,
+                            "error_message": error_str,
+                            "agent_id": aid,
+                        }
+
+                    # Also yield the text error for the orchestrator to handle
+                    yield f"Error processing query with {aid}: {error_str}"
 
             # Rename the function to match the desired tool name
             tool_func.__name__ = fname

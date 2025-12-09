@@ -3,9 +3,9 @@
 
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Alert, Box, Button, ExpandableSection, SpaceBetween, StatusIndicator } from '@cloudscape-design/components';
+import { Alert, Box, ExpandableSection, SpaceBetween } from '@cloudscape-design/components';
 
-const BedrockErrorMessage = ({ errorInfo, onRetry, className = '' }) => {
+const BedrockErrorMessage = ({ errorInfo, className = '' }) => {
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   // Map error types to appropriate alert types and status indicators
@@ -74,45 +74,19 @@ const BedrockErrorMessage = ({ errorInfo, onRetry, className = '' }) => {
 
   const displayInfo = getErrorDisplayInfo(errorInfo.errorType);
 
-  // Format retry delay for display
-  const formatRetryDelay = (seconds) => {
-    if (!seconds) return null;
-
-    if (seconds < 60) {
-      return `${seconds} seconds`;
-    } else if (seconds < 3600) {
-      const minutes = Math.floor(seconds / 60);
-      return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      return `${hours} hour${hours > 1 ? 's' : ''}`;
-    }
-  };
-
-  const retryDelayText = formatRetryDelay(errorInfo.retryDelaySeconds);
-
   return (
     <div className={`bedrock-error-message ${className}`}>
       <Alert
         type={displayInfo.alertType}
         header={
           <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-            <StatusIndicator type={displayInfo.statusType}>{displayInfo.title}</StatusIndicator>
+            <span>{displayInfo.title}</span>
             {errorInfo.retryAttempts > 0 && (
               <Box fontSize="body-s" color="text-status-inactive">
                 (After {errorInfo.retryAttempts} retry attempt{errorInfo.retryAttempts > 1 ? 's' : ''})
               </Box>
             )}
           </SpaceBetween>
-        }
-        action={
-          errorInfo.retryRecommended &&
-          onRetry && (
-            <Button variant="primary" onClick={onRetry} iconName="refresh">
-              Try Again
-              {retryDelayText && ` (wait ${retryDelayText})`}
-            </Button>
-          )
         }
       >
         <SpaceBetween size="m">
@@ -132,13 +106,6 @@ const BedrockErrorMessage = ({ errorInfo, onRetry, className = '' }) => {
                   </li>
                 ))}
               </ul>
-            </Box>
-          )}
-
-          {/* Retry information */}
-          {errorInfo.retryRecommended && retryDelayText && (
-            <Box>
-              <StatusIndicator type="info">Recommended wait time: {retryDelayText}</StatusIndicator>
             </Box>
           )}
 
@@ -174,13 +141,9 @@ BedrockErrorMessage.propTypes = {
     errorType: PropTypes.string.isRequired,
     message: PropTypes.string.isRequired,
     technicalDetails: PropTypes.string,
-    retryRecommended: PropTypes.bool,
-    retryDelaySeconds: PropTypes.number,
     actionRecommendations: PropTypes.arrayOf(PropTypes.string),
-    isTransient: PropTypes.bool,
     retryAttempts: PropTypes.number,
   }).isRequired,
-  onRetry: PropTypes.func,
   className: PropTypes.string,
 };
 
