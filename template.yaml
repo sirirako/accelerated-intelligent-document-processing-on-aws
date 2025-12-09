@@ -5248,11 +5248,20 @@ Resources:
         - profile
       CallbackURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
-        - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
         - !Sub "https://${CloudFrontDistribution.DomainName}/"
+        - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
+        - https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback
+        - https://us-west-2.quicksight.aws.amazon.com/sn/oauthcallback
+        - https://eu-west-1.quicksight.aws.amazon.com/sn/oauthcallback
+        - https://ap-southeast-2.quicksight.aws.amazon.com/sn/oauthcallback
       LogoutURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
         - !Sub "https://${CloudFrontDistribution.DomainName}/"
+        - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
+        - https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback
+        - https://us-west-2.quicksight.aws.amazon.com/sn/oauthcallback
+        - https://eu-west-1.quicksight.aws.amazon.com/sn/oauthcallback
+        - https://ap-southeast-2.quicksight.aws.amazon.com/sn/oauthcallback
 
   ##########################################################################
   # Cognoito user authentication for AppSync API and WebUI
