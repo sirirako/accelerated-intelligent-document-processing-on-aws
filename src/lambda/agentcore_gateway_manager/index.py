@@ -96,6 +96,7 @@ def create_gateway(props, gateway_name, client):
     lambda_arn = props['LambdaArn']
     user_pool_id = props['UserPoolId']
     client_id = props['ClientId']
+    execution_role_arn = props.get('ExecutionRoleArn')
 
     # Create JWT authorizer config using existing Cognito resources
     authorizer_config = {
@@ -108,7 +109,7 @@ def create_gateway(props, gateway_name, client):
     # Create gateway
     gateway = client.create_mcp_gateway(
         name=gateway_name,
-        role_arn=None,
+        role_arn=execution_role_arn,
         authorizer_config=authorizer_config,
         enable_semantic_search=True,
     )

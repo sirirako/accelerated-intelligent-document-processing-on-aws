@@ -1134,6 +1134,12 @@ Resources:
                 - logs:CreateLogGroup
                 - logs:PutLogEvents
                 - logs:DeleteLogGroup
+                - logs:PutDeliverySource
+                - logs:DeleteDeliverySource
+                - logs:PutDeliveryDestination
+                - logs:DeleteDeliveryDestination
+                - logs:DescribeDeliveryDestinations
+                - logs:DescribeDeliverySources
                 - iam:PassRole
                 - iam:CreateRole
                 - iam:AttachRolePolicy
@@ -1156,6 +1162,38 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+  AgentCoreGatewayExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: CreateAgentCoreLambda
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-AgentCoreGatewayExecutionRole"
+      Description: Execution role for AgentCore Gateway
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "bedrock-agentcore.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
+      Policies:
+        - PolicyName: InvokeLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt AgentCoreAnalyticsLambdaFunction.Arn
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/CloudWatchLogsFullAccess"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-AgentCoreGatewayExecutionRole"
+
   AgentCoreGateway:
     Type: Custom::AgentCoreGateway
     Condition: CreateAgentCoreLambda
@@ -1163,6 +1201,7 @@ Resources:
       - AgentCoreAnalyticsLambdaFunction
       - ExternalAppClient
       - UserPool
+      - AgentCoreGatewayExecutionRole
     Properties:
       ServiceToken: !GetAtt AgentCoreGatewayManagerFunction.Arn
       StackName: !Ref AWS::StackName
@@ -1171,6 +1210,7 @@ Resources:
       UserPoolId: !Ref UserPool
       ClientId: !Ref ExternalAppClient
       ClientSecret: !GetAtt ExternalAppClient.ClientSecret
+      ExecutionRoleArn: !GetAtt AgentCoreGatewayExecutionRole.Arn
       SourceCodeHash: <LAMBDA_HASH_TOKEN>
 
   ##########################################################################
@@ -5208,7 +5248,7 @@ Resources:
         - profile
       CallbackURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
-        - "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback"
+        - !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/oauthcallback"
         - !Sub "https://${CloudFrontDistribution.DomainName}/"
       LogoutURLs:
         - !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com"
