@@ -1162,6 +1162,38 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
+  AgentCoreGatewayExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: CreateAgentCoreLambda
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-AgentCoreGatewayExecutionRole"
+      Description: Execution role for AgentCore Gateway
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "bedrock-agentcore.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
+      Policies:
+        - PolicyName: InvokeLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt AgentCoreAnalyticsLambdaFunction.Arn
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/CloudWatchLogsFullAccess"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-AgentCoreGatewayExecutionRole"
+
   AgentCoreGateway:
     Type: Custom::AgentCoreGateway
     Condition: CreateAgentCoreLambda
@@ -1169,6 +1201,7 @@ Resources:
       - AgentCoreAnalyticsLambdaFunction
       - ExternalAppClient
       - UserPool
+      - AgentCoreGatewayExecutionRole
     Properties:
       ServiceToken: !GetAtt AgentCoreGatewayManagerFunction.Arn
       StackName: !Ref AWS::StackName
@@ -1177,19 +1210,8 @@ Resources:
       UserPoolId: !Ref UserPool
       ClientId: !Ref ExternalAppClient
       ClientSecret: !GetAtt ExternalAppClient.ClientSecret
+      ExecutionRoleArn: !GetAtt AgentCoreGatewayExecutionRole.Arn
       SourceCodeHash: <LAMBDA_HASH_TOKEN>
-
-  AgentCoreAnalyticsLambdaInvokePermission:
-    Type: AWS::Lambda::Permission
-    Condition: CreateAgentCoreLambda
-    DependsOn:
-      - AgentCoreGateway
-      - AgentCoreAnalyticsLambdaFunction
-    Properties:
-      FunctionName: !Ref AgentCoreAnalyticsLambdaFunction
-      Action: lambda:InvokeFunction
-      Principal: !Sub "bedrock-agentcore.${AWS::URLSuffix}"
-      SourceArn: !GetAtt AgentCoreGateway.GatewayArn
 
   ##########################################################################
   # Nested stack for selected pattern
