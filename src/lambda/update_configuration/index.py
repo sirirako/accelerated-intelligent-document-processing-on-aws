@@ -74,6 +74,7 @@ MODEL_MAPPINGS = {
     "us.amazon.nova-lite-v1:0": "eu.amazon.nova-lite-v1:0",
     "us.amazon.nova-pro-v1:0": "eu.amazon.nova-pro-v1:0",
     "us.amazon.nova-premier-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.amazon.nova-2-lite-v1:0": "eu.amazon.nova-2-lite-v1:0",
     "us.anthropic.claude-3-haiku-20240307-v1:0": "eu.anthropic.claude-3-haiku-20240307-v1:0",
     "us.anthropic.claude-3-5-haiku-20241022-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -85,6 +86,7 @@ MODEL_MAPPINGS = {
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "us.anthropic.claude-opus-4-20250514-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "us.anthropic.claude-opus-4-1-20250805-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "us.anthropic.claude-opus-4-5-20251101-v1:0": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
 }
 
 def get_current_region() -> str:

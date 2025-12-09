@@ -24,6 +24,15 @@ const AppContent = () => {
   const { currentSession, currentCredentials } = useCurrentSessionCreds({ authState });
   const [errorMessage, setErrorMessage] = useState();
   const [navigationOpen, setNavigationOpen] = useState(true);
+  const [activeTestRuns, setActiveTestRuns] = useState([]);
+
+  const addTestRun = (testRunId, testSetName, context, filesCount) => {
+    setActiveTestRuns((prev) => [...prev, { testRunId, testSetName, context, filesCount, startTime: new Date() }]);
+  };
+
+  const removeTestRun = (testRunId) => {
+    setActiveTestRuns((prev) => prev.filter((run) => run.testRunId !== testRunId));
+  };
 
   // eslint-disable-next-line react/jsx-no-constructed-context-values
   const appContextValue = {
@@ -36,6 +45,9 @@ const AppContent = () => {
     user,
     navigationOpen,
     setNavigationOpen,
+    activeTestRuns,
+    addTestRun,
+    removeTestRun,
   };
   logger.debug('appContextValue', appContextValue);
   // TODO: Remove the AnalyticsProvider once we migrate full to Agent Chat

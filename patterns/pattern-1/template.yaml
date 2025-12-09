@@ -408,11 +408,11 @@ Resources:
                   model:
                     type: string
                     description: Bedrock model ID
-                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"]
+                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.amazon.nova-2-lite-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "us.anthropic.claude-opus-4-5-20251101-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.amazon.nova-2-lite-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m","eu.anthropic.claude-opus-4-5-20251101-v1:0", "qwen.qwen3-vl-235b-a22b"]
                     order: 1
                   temperature:
                     type: number
-                    description: "Sampling temperature (0.0-1.0). When > 0.0, this parameter is used and top_p is ignored. Set to 0.0 to use top_p instead."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                     order: 2
                   top_k:
                     type: number
@@ -420,7 +420,7 @@ Resources:
                     order: 3
                   top_p:
                     type: number
-                    description: "Sampling Top P (nucleus sampling). Only used when temperature is 0.0. Ignored otherwise."
+                    description: "Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 to use temperature instead."
                     order: 4
                   max_tokens:
                     type: number
@@ -460,11 +460,11 @@ Resources:
               model:
                 type: string
                 description: Bedrock model ID
-                enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"]
+                enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.amazon.nova-2-lite-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "us.anthropic.claude-opus-4-5-20251101-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.amazon.nova-2-lite-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "eu.anthropic.claude-opus-4-5-20251101-v1:0", "qwen.qwen3-vl-235b-a22b"]
                 order: 1
               temperature:
                 type: number
-                description: "Sampling temperature (0.0-1.0). When > 0.0, this parameter is used and top_p is ignored. Set to 0.0 to use top_p instead."
+                description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                 order: 2
               top_k:
                 type: number
@@ -472,7 +472,7 @@ Resources:
                 order: 3
               top_p:
                 type: number
-                description: "Sampling Top P (nucleus sampling). Only used when temperature is 0.0. Ignored otherwise."
+                description: "Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 to use temperature instead."
                 order: 4
               max_tokens:
                 type: number
@@ -503,19 +503,19 @@ Resources:
                   model_id:
                     type: string
                     description: Bedrock model ID for discovery without ground truth
-                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"]
+                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.amazon.nova-2-lite-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "us.anthropic.claude-opus-4-5-20251101-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.amazon.nova-2-lite-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "eu.anthropic.claude-opus-4-5-20251101-v1:0", "qwen.qwen3-vl-235b-a22b"]
                     default: "us.amazon.nova-pro-v1:0"
                     order: 0
                   temperature:
                     type: number
-                    description: "Temperature parameter for model creativity (0.0-1.0). When > 0.0, this parameter is used and top_p is ignored. Set to 0.0 to use top_p instead."
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
                     order: 1
                   top_p:
                     type: number
-                    description: "Top-p parameter for nucleus sampling (0.0-1.0). Only used when temperature is 0.0. Ignored otherwise."
+                    description: "Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 to use temperature instead."
                     minimum: 0.0
                     maximum: 1.0
                     default: 0.1
@@ -548,19 +548,19 @@ Resources:
                   model_id:
                     type: string
                     description: Bedrock model ID for discovery with ground truth
-                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"]
+                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.amazon.nova-2-lite-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0:1m", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "us.anthropic.claude-opus-4-5-20251101-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.amazon.nova-2-lite-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m", "eu.anthropic.claude-opus-4-5-20251101-v1:0", "qwen.qwen3-vl-235b-a22b"]
                     default: "us.amazon.nova-pro-v1:0"
                     order: 0
                   temperature:
                     type: number
-                    description: Temperature parameter for model creativity (0.0-1.0)
+                    description: "Sampling temperature: Controls randomness in model output (0.0 = deterministic, higher = more random). Used when top_p is 0. Set temperature=0.0 for consistent, deterministic outputs."
                     minimum: 0.0
                     maximum: 1.0
                     default: 1.0
                     order: 1
                   top_p:
                     type: number
-                    description: Top-p parameter for nucleus sampling (0.0-1.0)
+                    description: "Sampling Top P: Nucleus sampling threshold (0.0-1.0). When set to a positive value (> 0), overrides temperature parameter. Set to 0 to use temperature instead."
                     minimum: 0.0
                     maximum: 1.0
                     default: 0.1
@@ -610,7 +610,7 @@ Resources:
                   model_id:
                     type: string
                     description: Model ID for the chat companion agents
-                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"]
+                    enum: ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0", "us.amazon.nova-premier-v1:0", "us.amazon.nova-2-lite-v1:0", "us.anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0", "us.anthropic.claude-3-7-sonnet-20250219-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "us.anthropic.claude-opus-4-20250514-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0", "us.anthropic.claude-opus-4-5-20251101-v1:0", "eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0", "eu.amazon.nova-2-lite-v1:0", "eu.anthropic.claude-3-haiku-20240307-v1:0", "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", "eu.anthropic.claude-sonnet-4-20250514-v1:0",  "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-opus-4-5-20251101-v1:0", "qwen.qwen3-vl-235b-a22b"]
                     default: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                     order: 0
               error_analyzer:

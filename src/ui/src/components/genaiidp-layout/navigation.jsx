@@ -8,6 +8,7 @@ import useSettingsContext from '../../contexts/settings';
 import {
   DOCUMENTS_PATH,
   DOCUMENTS_KB_QUERY_PATH,
+  TEST_STUDIO_PATH,
   DEFAULT_PATH,
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
@@ -23,6 +24,14 @@ export const documentsNavItems = [
   { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
   { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
   { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
+  {
+    type: 'section',
+    text: 'Test Studio',
+    items: [
+      { type: 'link', text: 'Test Sets', href: `#${TEST_STUDIO_PATH}?tab=sets` },
+      { type: 'link', text: 'Test Executions', href: `#${TEST_STUDIO_PATH}?tab=executions` },
+    ],
+  },
   {
     type: 'section',
     text: 'Resources',
@@ -66,6 +75,15 @@ const Navigation = ({ header = documentsNavHeader, items = documentsNavItems, on
     activeHref = `#${CONFIGURATION_PATH}`;
   } else if (path.includes(DOCUMENTS_KB_QUERY_PATH)) {
     activeHref = `#${DOCUMENTS_KB_QUERY_PATH}`;
+  } else if (path.includes(TEST_STUDIO_PATH)) {
+    // Handle Test Studio sub-navigation
+    const urlParams = new URLSearchParams(location.search);
+    const tab = urlParams.get('tab');
+    if (tab) {
+      activeHref = `#${TEST_STUDIO_PATH}?tab=${tab}`;
+    } else {
+      activeHref = `#${TEST_STUDIO_PATH}?tab=sets`;
+    }
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
   } else if (path.includes(DISCOVERY_PATH)) {

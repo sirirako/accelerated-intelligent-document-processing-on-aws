@@ -96,7 +96,7 @@ classes:
               "cc": null,
               "reference_number": "TNJB 0008497"
         imagePath: >-
-          config_library/pattern-2/few_shot_example_with_multimodal_page_classification/example-images/letter1.jpg
+          config_library/pattern-2/rvl-cdip-package-sample-with-few-shot-examples/example-images/letter1.jpg
       - classPrompt: This is an example of the class 'letter'
         name: Letter2
         attributesPrompt: |-
@@ -112,7 +112,7 @@ classes:
               "cc": null,
               "reference_number": null
         imagePath: >-
-          config_library/pattern-2/few_shot_example_with_multimodal_page_classification/example-images/letter2.png
+          config_library/pattern-2/rvl-cdip-package-sample-with-few-shot-examples/example-images/letter2.png
   - $schema: https://json-schema.org/draft/2020-12/schema
     $id: form
     x-aws-idp-document-type: form
@@ -587,7 +587,7 @@ classes:
               "thread_id": null,
               "message_id": null
         imagePath: >-
-          config_library/pattern-2/few_shot_example_with_multimodal_page_classification/example-images/email1.jpg
+          config_library/pattern-2/rvl-cdip-package-sample-with-few-shot-examples/example-images/email1.jpg
   - $schema: https://json-schema.org/draft/2020-12/schema
     $id: questionnaire
     x-aws-idp-document-type: questionnaire
@@ -805,7 +805,7 @@ classes:
               "account_number": ["003525801543","352580154336"],
               "transactions": [{"Date": "2/6/2020", "Description": "Food Purchase - AnyCompany Restaurant - 1194989245", "Amount": "-171"}]
         imagePath: >-
-          config_library/pattern-2/few_shot_example_with_multimodal_page_classification/example-images/bank-statement-pages/
+          config_library/pattern-2/rvl-cdip-package-sample-with-few-shot-examples/example-images/bank-statement-pages/
 
 classification:
   maxPagesForClassification: "ALL"
@@ -813,18 +813,19 @@ classification:
     target_height: ""
     target_width: ""
   classificationMethod: multimodalPageLevelClassification
+  sectionSplitting: llm_determined
   model: us.amazon.nova-pro-v1:0
   temperature: "0.0"
-  top_p: "0.1"
+  top_p: "0.0"
   top_k: "5"
   max_tokens: "4096"
   system_prompt: >-
     You are a multimodal document classification expert that analyzes business documents using both visual layout and textual content. Your task is to classify single-page documents into predefined categories based on their structural patterns, visual features, and text content. Your output must be valid JSON according to the requested format.
 
     <variables>
-    DOCUMENT_TEXT: OCR-extracted text content from the document page that provides textual information for classification
-    DOCUMENT_IMAGE: Visual representation of the document page that provides layout, formatting, and visual structure information
-    CLASS_NAMES_AND_DESCRIPTIONS: List of valid document types with their descriptions that the document must be classified into
+    <document-ocr-data>: OCR-extracted text content from the document page that provides textual information for classification
+    <document-image>: Visual representation of the document page that provides layout, formatting, and visual structure information
+    <document-types>: List of valid document types with their descriptions that the document must be classified into
     </variables>
   task_prompt: >-
     <reasoning-guidelines>
@@ -835,6 +836,10 @@ classification:
     - Consider the document's intended audience and use case
     - Provide specific evidence from both visual and textual analysis
     </reasoning-guidelines>
+
+    <document-types>
+    {CLASS_NAMES_AND_DESCRIPTIONS}
+    </document-types>
 
     <output-format>
     Return your classification as valid JSON following this exact structure:
@@ -868,7 +873,7 @@ extraction:
     target_width: ""
   model: us.amazon.nova-pro-v1:0
   temperature: "0.0"
-  top_p: "0.1"
+  top_p: "0.0"
   top_k: "5"
   max_tokens: "4096"
   system_prompt: >
@@ -892,6 +897,11 @@ extraction:
 
     </task>
 
+    <few-shot-examples>
+
+    {FEW_SHOT_EXAMPLES}
+
+    </few-shot-examples>
 
     <extraction-guidelines>
 
@@ -972,7 +982,7 @@ assessment:
     simple_batch_size: "3"
     list_batch_size: "1"
   default_confidence_threshold: "0.8"
-  top_p: "0.1"
+  top_p: "0.0"
   max_tokens: "10000"
   top_k: "5"
   temperature: "0.0"
@@ -1120,7 +1130,7 @@ assessment:
 evaluation:
   enabled: true
   llm_method:
-    top_p: "0.1"
+    top_p: "0.0"
     max_tokens: "4096"
     top_k: "5"
     task_prompt: >
@@ -1164,7 +1174,7 @@ evaluation:
       context and meaning rather than just exact string matching.
 summarization:
   enabled: true
-  top_p: "0.1"
+  top_p: "0.0"
   max_tokens: "4096"
   top_k: "5"
   task_prompt: >
@@ -1286,8 +1296,8 @@ discovery:
           ]
       }
   with_ground_truth:
-    top_p: "0.1"
-    temperature: "1.0"
+    top_p: "0.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains unstructured data. Analyze the data line by line using the provided ground truth as reference.                        
       <GROUND_TRUTH_REFERENCE>
@@ -1314,8 +1324,8 @@ discovery:
       field definitions.
     max_tokens: "10000"
   without_ground_truth:
-    top_p: "0.1"
-    temperature: "1.0"
+    top_p: "0.0"
+    temperature: "0.0"
     user_prompt: >-
       This image contains forms data. Analyze the form line by line.
       Image may contains multiple pages, process all the pages. 
@@ -1487,6 +1497,16 @@ pricing:
         price: "2.5E-6"
       - name: outputTokens
         price: "1.25E-5"
+  - name: bedrock/us.amazon.nova-2-lite-v1:0
+    units:
+      - name: inputTokens
+        price: '3.0E-7'
+      - name: outputTokens
+        price: '2.5E-6'
+      - name: cacheReadInputTokens
+        price: '7.5E-8'
+      - name: cacheWriteInputTokens
+        price: '3.0E-7'
   - name: bedrock/us.anthropic.claude-3-haiku-20240307-v1:0
     units:
       - name: inputTokens
@@ -1593,6 +1613,16 @@ pricing:
         price: "1.5E-6"
       - name: cacheWriteInputTokens
         price: "1.875E-5"
+  - name: bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0
+    units:
+      - name: inputTokens
+        price: '5.0E-06'
+      - name: outputTokens
+        price: '2.5E-05'
+      - name: cacheReadInputTokens
+        price: '5.0E-07'
+      - name: cacheWriteInputTokens
+        price: '6.25E-06'
   # EU model pricing
   - name: bedrock/eu.amazon.nova-lite-v1:0
     units:
@@ -1614,6 +1644,16 @@ pricing:
         price: "2.6E-7"
       - name: cacheWriteInputTokens
         price: "1.0E-6"
+  - name: bedrock/eu.amazon.nova-2-lite-v1:0
+    units:
+      - name: inputTokens
+        price: '3.9E-7'
+      - name: outputTokens
+        price: '3.27E-6'
+      - name: cacheReadInputTokens
+        price: '9.75E-8'
+      - name: cacheWriteInputTokens
+        price: '3.9E-7'
   - name: bedrock/eu.anthropic.claude-3-haiku-20240307-v1:0
     units:
       - name: inputTokens
@@ -1680,6 +1720,22 @@ pricing:
         price: "6.6E-7"
       - name: cacheWriteInputTokens
         price: "8.25E-6"
+  - name: bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0
+    units:
+      - name: inputTokens
+        price: '5.0E-6'
+      - name: outputTokens
+        price: '2.5E-5'
+      - name: cacheReadInputTokens
+        price: '5.0E-7'
+      - name: cacheWriteInputTokens
+        price: '6.25E-6'
+  - name: bedrock/qwen.qwen3-vl-235b-a22b
+    units:
+      - name: inputTokens
+        price: '5.3E-7'
+      - name: outputTokens
+        price: '2.66E-6'
   # AWS Lambda pricing (US East - N. Virginia)
   - name: lambda/requests
     units:

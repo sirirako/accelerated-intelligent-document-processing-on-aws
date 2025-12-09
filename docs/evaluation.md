@@ -488,7 +488,7 @@ evaluation:
   llm_method:
     model: "us.anthropic.claude-3-haiku-20240307-v1:0"  # Model for evaluation reports
     temperature: "0.0"
-    top_p: "0.1"
+    top_p: "0.0"
     max_tokens: "4096"
     # Additional model parameters...
 ```

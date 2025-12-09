@@ -47,6 +47,33 @@ from idp_common.utils.strands_agent_tools.todo_list import (
     view_todo_list,
 )
 
+# Supported image formats for Bedrock API
+SUPPORTED_IMAGE_FORMATS = {"jpeg", "png", "gif", "webp"}
+
+
+def detect_image_format(image_bytes: bytes) -> str:
+    """
+    Detect the image format from raw bytes.
+
+    Args:
+        image_bytes: Raw image bytes
+
+    Returns:
+        Image format string suitable for Bedrock API ('jpeg', 'png', 'gif', 'webp')
+
+    Raises:
+        ValueError: If the image format is unsupported or cannot be detected
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+
+    if not img.format or img.format.lower() not in SUPPORTED_IMAGE_FORMATS:
+        raise ValueError(
+            f"Unsupported image format: {img.format}. "
+            f"Supported formats: {', '.join(SUPPORTED_IMAGE_FORMATS)}"
+        )
+    return img.format.lower()
+
+
 # Use AWS Lambda Powertools Logger for structured logging
 # Automatically logs as JSON with Lambda context, request_id, timestamp, etc.
 # In Lambda: Full JSON structured logs
@@ -207,11 +234,15 @@ def create_view_image_tool(page_images: list[bytes]) -> Any:
         # Get the base image (already has grid overlay)
         img_bytes = page_images[image_index]
 
+        # Detect actual image format from bytes
+        img_format = detect_image_format(img_bytes)
+
         logger.info(
             "Returning image to agent",
             extra={
                 "image_index": image_index,
                 "image_size_bytes": len(img_bytes),
+                "image_format": img_format,
             },
         )
 
@@ -220,7 +251,7 @@ def create_view_image_tool(page_images: list[bytes]) -> Any:
             "content": [
                 {
                     "image": {
-                        "format": "png",
+                        "format": img_format,
                         "source": {
                             "bytes": img_bytes,
                         },
@@ -691,6 +722,39 @@ def _build_model_config(
     return model_config
 
 
+def _get_inference_params(temperature: float, top_p: float | None) -> dict[str, float]:
+    """
+    Get inference parameters ensuring temperature and top_p are mutually exclusive.
+
+    Some Bedrock models don't allow both temperature and top_p to be specified.
+    This follows the same logic as bedrock/client.py lines 348-364.
+
+    Args:
+        temperature: Temperature value from config
+        top_p: Top_p value from config (may be None)
+
+    Returns:
+        Dict with only one of temperature or top_p
+    """
+    params = {}
+
+    # Only use top_p if it's positive (greater than 0)
+    # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
+    if top_p is not None and top_p > 0:
+        params["top_p"] = top_p
+        logger.debug(
+            "Using top_p for inference (temperature ignored)", extra={"top_p": top_p}
+        )
+    else:
+        params["temperature"] = temperature
+        logger.debug(
+            "Using temperature for inference (top_p is 0 or None)",
+            extra={"temperature": temperature},
+        )
+
+    return params
+
+
 def _prepare_prompt_content(
     prompt: str | Message | Image.Image,
     page_images: list[bytes] | None,
@@ -735,21 +799,24 @@ def _prepare_prompt_content(
     else:
         prompt_content = [ContentBlock(text=str(prompt))]
 
-    # Add page images if provided (limit to 100 as per Bedrock constraints)
+    # Add page images if provided - no limit with latest Bedrock API
     if page_images:
-        if len(page_images) > 100:
+        logger.info(
+            "Attaching images to agentic extraction prompt",
+            extra={"image_count": len(page_images)},
+        )
+
+        for img_bytes in page_images:
+            # Detect actual image format from bytes
+            img_format = detect_image_format(img_bytes)
             prompt_content.append(
                 ContentBlock(
-                    text=f"There are {len(page_images)} images, initially you'll see 100 of them, use the view_image tool to see the rest."
+                    image=ImageContent(
+                        format=img_format,  # pyright: ignore[reportArgumentType]
+                        source=ImageSource(bytes=img_bytes),
+                    )
                 )
             )
-
-        prompt_content += [
-            ContentBlock(
-                image=ImageContent(format="png", source=ImageSource(bytes=img_bytes))
-            )
-            for img_bytes in page_images[:100]
-        ]
 
     # Add existing data context if provided
     if existing_data:
@@ -1003,8 +1070,17 @@ async def structured_output_async(
 
     # Track token usage
     token_usage = _initialize_token_usage()
+
+    # Get inference params ensuring temperature and top_p are mutually exclusive
+    inference_params = _get_inference_params(
+        temperature=config.extraction.temperature, top_p=config.extraction.top_p
+    )
+
     agent = Agent(
-        model=BedrockModel(**model_config),  # pyright: ignore[reportArgumentType]
+        model=BedrockModel(
+            **model_config,
+            **inference_params,
+        ),  # pyright: ignore[reportArgumentType]
         tools=tools,
         system_prompt=final_system_prompt,
         state={
@@ -1076,8 +1152,17 @@ async def structured_output_async(
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
         )
+
+        # Get inference params for review agent ensuring temperature and top_p are mutually exclusive
+        review_inference_params = _get_inference_params(
+            temperature=config.extraction.temperature, top_p=config.extraction.top_p
+        )
+
         agent = Agent(
-            model=BedrockModel(**review_model_config),  # pyright: ignore[reportArgumentType]
+            model=BedrockModel(
+                **review_model_config,
+                **review_inference_params,
+            ),  # pyright: ignore[reportArgumentType]
             tools=tools,
             system_prompt=f"{final_system_prompt}",
             state={
@@ -1094,7 +1179,7 @@ async def structured_output_async(
         )
 
         review_response = await invoke_agent_with_retry(
-            agent=agent, input=review_prompt
+            agent=agent, input=[review_prompt]
         )
         logger.debug("Review response received", extra={"review_completed": True})
 

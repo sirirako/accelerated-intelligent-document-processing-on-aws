@@ -148,13 +148,12 @@ class ExtractionService:
         """
         content = [{"text": task_prompt}]
 
-        # Add image attachments to the content (limit to 100 images as per Bedrock constraints)
+        # Add image attachments to the content - no limit with latest Bedrock API
         if self._page_images:
             logger.info(
-                f"Attaching images to default prompt, for {len(self._page_images)} pages."
+                f"Attaching {len(self._page_images)} images to default extraction prompt"
             )
-            # Limit to 100 images as per Bedrock constraints
-            for img in self._page_images[:100]:
+            for img in self._page_images:
                 content.append(image.prepare_bedrock_image_attachment(img))
 
         return content
@@ -354,7 +353,7 @@ class ExtractionService:
 
     def _prepare_image_attachments(self, image_content: Any) -> list[dict[str, Any]]:
         """
-        Prepare image attachments for Bedrock, limiting to 100 images.
+        Prepare image attachments for Bedrock - no image limit.
 
         Args:
             image_content: Single image or list of images
@@ -365,13 +364,9 @@ class ExtractionService:
         attachments: list[dict[str, Any]] = []
 
         if isinstance(image_content, list):
-            # Multiple images (limit to 100 as per Bedrock constraints)
-            if len(image_content) > 100:
-                logger.warning(
-                    f"Found {len(image_content)} images, truncating to 100 due to Bedrock constraints. "
-                    f"{len(image_content) - 100} images will be dropped."
-                )
-            for img in image_content[:100]:
+            # Multiple images - no limit with latest Bedrock API
+            logger.info(f"Attaching {len(image_content)} images to extraction prompt")
+            for img in image_content:
                 attachments.append(image.prepare_bedrock_image_attachment(img))
         else:
             # Single image
