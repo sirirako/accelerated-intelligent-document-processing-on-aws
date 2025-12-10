@@ -16,11 +16,20 @@ import re
 import uuid
 
 import boto3
+import botocore.exceptions
 
 from idp_common.agents.analytics import get_analytics_config
 from idp_common.agents.common.config import configure_logging
 from idp_common.agents.factory import agent_factory
 from idp_common.appsync.client import AppSyncClient
+
+# Import Bedrock error handling
+try:
+    from idp_common.agents.common.bedrock_error_messages import BedrockErrorMessageHandler
+    _BEDROCK_ERROR_HANDLING_AVAILABLE = True
+except ImportError:
+    _BEDROCK_ERROR_HANDLING_AVAILABLE = False
+    BedrockErrorMessageHandler = None
 
 # Configure logging for both application and Strands framework
 configure_logging()
@@ -191,6 +200,87 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         # Stream the agent's response asynchronously
         async for event in orchestrator.stream_async(prompt):
             
+            # Handle force_stop events (Strands internal error handling)
+            # This happens when a sub-agent encounters an error like serviceUnavailableException
+            if "force_stop" in event or "force_stop_reason" in event:
+                force_stop_reason = event.get("force_stop_reason", "Unknown error")
+                logger.error(f"Force stop event received: {force_stop_reason}")
+                
+                # Check if this is a Bedrock-related error
+                error_str = str(force_stop_reason)
+                is_bedrock_error = any(err in error_str for err in [
+                    "serviceUnavailableException",
+                    "ServiceUnavailableException", 
+                    "ThrottlingException",
+                    "throttlingException",
+                    "ModelErrorException",
+                    "EventStreamError",
+                    "Bedrock is unable to process"
+                ])
+                
+                if is_bedrock_error and _BEDROCK_ERROR_HANDLING_AVAILABLE and BedrockErrorMessageHandler:
+                    # Create a mock exception to pass to the error handler
+                    try:
+                        error_info = BedrockErrorMessageHandler.format_error_for_frontend(
+                            Exception(error_str)
+                        )
+                        error_content = json.dumps({
+                            "type": "bedrock_error",
+                            "errorInfo": error_info
+                        })
+                    except Exception as format_error:
+                        logger.warning(f"Failed to format force_stop error: {format_error}")
+                        error_content = json.dumps({
+                            "type": "bedrock_error",
+                            "errorInfo": {
+                                "errorType": "service_unavailable",
+                                "message": "The AI service is temporarily unavailable. Please try again in a moment.",
+                                "technicalDetails": error_str,
+                                "retryRecommended": True,
+                                "retryDelaySeconds": 30,
+                                "actionRecommendations": [
+                                    "Wait a moment and try your request again",
+                                    "The service may be experiencing high demand"
+                                ],
+                                "isTransient": True,
+                                "retryAttempts": 0
+                            }
+                        })
+                else:
+                    error_content = json.dumps({
+                        "type": "bedrock_error",
+                        "errorInfo": {
+                            "errorType": "agent_error",
+                            "message": "An error occurred while processing your request.",
+                            "technicalDetails": error_str,
+                            "retryRecommended": True,
+                            "retryDelaySeconds": 10,
+                            "actionRecommendations": [
+                                "Try your request again",
+                                "If the problem persists, try a simpler query"
+                            ],
+                            "isTransient": True,
+                            "retryAttempts": 0
+                        }
+                    })
+                
+                # Publish the error to the frontend
+                try:
+                    await publish_stream_update(
+                        appsync_client,
+                        session_id,
+                        error_content,
+                        "assistant_error",
+                        message_id,
+                        False
+                    )
+                    logger.info(f"Published force_stop error to frontend")
+                except Exception as publish_error:
+                    logger.error(f"Failed to publish force_stop error: {publish_error}")
+                
+                # Continue processing - the orchestrator may recover or provide a graceful response
+                continue
+            
             if "data" in event:
                 # Handle streaming chunk
                 chunk_text = event["data"]
@@ -267,8 +357,71 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
                 # Log what we received for debugging
                 logger.debug(f"Received tool_stream_event: data type={type(tool_data)}, data={str(tool_data)[:200]}")
                 
+                # Check if this is a Bedrock error event from sub-agent
+                if isinstance(tool_data, dict) and tool_data.get("bedrock_error"):
+                    error_message = tool_data.get("error_message", "Unknown error")
+                    agent_id = tool_data.get("agent_id", "unknown")
+                    logger.error(f"Bedrock error from sub-agent {agent_id}: {error_message}")
+                    
+                    # Format and publish the error to frontend
+                    if _BEDROCK_ERROR_HANDLING_AVAILABLE and BedrockErrorMessageHandler:
+                        try:
+                            error_info = BedrockErrorMessageHandler.format_error_for_frontend(
+                                Exception(error_message)
+                            )
+                            error_content = json.dumps({
+                                "type": "bedrock_error",
+                                "errorInfo": error_info
+                            })
+                        except Exception as format_error:
+                            logger.warning(f"Failed to format sub-agent Bedrock error: {format_error}")
+                            error_content = json.dumps({
+                                "type": "bedrock_error",
+                                "errorInfo": {
+                                    "errorType": "service_unavailable",
+                                    "message": "The AI service is temporarily unavailable. Please try again in a moment.",
+                                    "technicalDetails": error_message,
+                                    "actionRecommendations": [
+                                        "Wait a moment and try your request again",
+                                        "The service may be experiencing high demand"
+                                    ],
+                                    "retryAttempts": 0
+                                }
+                            })
+                    else:
+                        error_content = json.dumps({
+                            "type": "bedrock_error",
+                            "errorInfo": {
+                                "errorType": "service_unavailable",
+                                "message": "The AI service is temporarily unavailable. Please try again in a moment.",
+                                "technicalDetails": error_message,
+                                "actionRecommendations": [
+                                    "Wait a moment and try your request again",
+                                    "The service may be experiencing high demand"
+                                ],
+                                "retryAttempts": 0
+                            }
+                        })
+                    
+                    # Publish the error to the frontend
+                    try:
+                        await publish_stream_update(
+                            appsync_client,
+                            session_id,
+                            error_content,
+                            "assistant_error",
+                            message_id,
+                            False
+                        )
+                        logger.info(f"Published sub-agent Bedrock error to frontend")
+                    except Exception as publish_error:
+                        logger.error(f"Failed to publish sub-agent Bedrock error: {publish_error}")
+                    
+                    # Continue processing - the orchestrator will handle the error gracefully
+                    continue
+                
                 # Check if this is a structured data detection event (special case - not streamed to FE)
-                if isinstance(tool_data, dict) and "structured_data_detected" in tool_data:
+                elif isinstance(tool_data, dict) and "structured_data_detected" in tool_data:
                     response_type = tool_data.get("responseType")
                     logger.info(f"Detected structured data response from tool stream: {response_type}")
                     
@@ -530,14 +683,77 @@ async def stream_agent_response(appsync_client, orchestrator, prompt, session_id
         
         return displayed_text
         
+    except (botocore.exceptions.ClientError, botocore.exceptions.EventStreamError) as e:
+        # Handle Bedrock-specific errors (raised after boto3 Config retries are exhausted)
+        logger.error(f"Bedrock error in stream_agent_response: {e}")
+        
+        # Get user-friendly error information using BedrockErrorMessageHandler
+        if _BEDROCK_ERROR_HANDLING_AVAILABLE and BedrockErrorMessageHandler:
+            try:
+                error_info = BedrockErrorMessageHandler.format_error_for_frontend(e)
+                error_content = json.dumps({
+                    "type": "bedrock_error",
+                    "errorInfo": error_info
+                })
+            except Exception as format_error:
+                logger.warning(f"Failed to format Bedrock error: {format_error}")
+                error_content = json.dumps({
+                    "type": "bedrock_error",
+                    "errorInfo": {
+                        "errorType": "service_error",
+                        "message": "The AI service encountered an error. Please try again.",
+                        "technicalDetails": str(e),
+                        "retryRecommended": True,
+                        "retryDelaySeconds": 30,
+                        "actionRecommendations": [
+                            "Wait a moment and try your request again",
+                            "Check if the issue persists after a few minutes"
+                        ],
+                        "isTransient": True,
+                        "retryAttempts": 0
+                    }
+                })
+        else:
+            error_content = f"Service temporarily unavailable: {str(e)}"
+        
+        # Publish structured error message
+        try:
+            await publish_stream_update(
+                appsync_client,
+                session_id, 
+                error_content, 
+                "assistant_error", 
+                message_id, 
+                False
+            )
+        except Exception as publish_error:
+            logger.error(f"Failed to publish Bedrock error message: {publish_error}")
+        raise
+        
     except Exception as e:
         logger.error(f"Error in stream_agent_response: {e}")
+        
+        # Check if this is a Bedrock-related error we can handle
+        if _BEDROCK_ERROR_HANDLING_AVAILABLE and BedrockErrorMessageHandler:
+            try:
+                # Try to format as Bedrock error (handles various error types)
+                error_info = BedrockErrorMessageHandler.format_error_for_frontend(e)
+                error_content = json.dumps({
+                    "type": "bedrock_error", 
+                    "errorInfo": error_info
+                })
+            except Exception:
+                # Fall back to generic error
+                error_content = f"Error: {str(e)}"
+        else:
+            error_content = f"Error: {str(e)}"
+        
         # Publish error message
         try:
             await publish_stream_update(
                 appsync_client,
                 session_id, 
-                f"Error: {str(e)}", 
+                error_content, 
                 "assistant_error", 
                 message_id, 
                 False
