@@ -5,6 +5,13 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.7]
+
+### Added
+
+- **MCP Integration Cross-Region Support for QuickSuite Integration**
+  - Added cross-region support for QuickSuite integration enabling MCP connectivity across multiple AWS regions: us-east-1, us-west-2, eu-west-1, ap-southeast-2
+
 ### Fixed
 
 - **Post-Processing Lambda Hook Compression Handling - [GitHub Issue #155](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/155)**
@@ -12,6 +19,21 @@ SPDX-License-Identifier: MIT-0
   - **Root Cause**: After introducing document compression, the post-processing lambda hook was receiving compressed documents in the EventBridge payload, forcing external lambdas to import `idp_common` package and handle decompression manually
   - **Solution**: New `PostProcessingDecompressor` lambda function intercepts EventBridge events, decompresses documents using `Document.load_document()`, and invokes custom post-processors with decompressed payload
   - **Benefits**: Maintains backward compatibility, eliminates external dependencies (no `idp_common` import needed), keeps compression/decompression logic encapsulated within IDP stack, minimal performance impact (<1s latency)
+
+- **Enhanced Bedrock Error Handling for Agent Companion Chat**
+  - Implemented robust error handling system for Bedrock API errors in Agent Companion Chat feature with automatic retry and graceful degradation
+  - **Automatic Retry with Exponential Backoff**: Configured boto3 with adaptive retry mode (3 attempts) and exponential back-off to prevent service overload
+  - **User-Friendly Error Messages**: Created `BedrockErrorMessageHandler` to convert technical errors into clear, actionable messages for service unavailable (503), throttling (429), access denied (403), validation errors (400), timeouts (408), and quota exceeded scenarios
+  - **Sub-Agent Error Handling**: When sub-agents (Analytics, Error Analyzer, Code Intelligence) encounter Bedrock errors, the orchestrator continues gracefully without crashing, only displaying the first error to avoid duplicates while allowing other sub-agents to complete
+
+- **MCP Integration IAM Permissions - [GitHub Issue #154](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/154)**
+  - Fixed missing permissions in AgentCoreGatewayManagerFunctionRole by creating the AgentCoreGateway execution role explicitly in the CloudFormation template instead of dynamically in the Lambda function
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.7.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
+
 
 ## [0.4.6]
 
