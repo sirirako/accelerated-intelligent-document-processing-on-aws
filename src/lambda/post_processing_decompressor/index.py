@@ -19,7 +19,7 @@ WORKING_BUCKET = os.environ['WORKING_BUCKET']
 
 def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
-    Decompresses the document from StepFunction output and invokes custom post-processor lambda.
+    Decompresses documents from StepFunction input and output, then invokes custom post-processor lambda.
     
     This lambda acts as an intermediary between EventBridge and the custom post-processing lambda,
     handling document decompression so external lambdas don't need to import idp_common.
@@ -34,7 +34,29 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     logger.info(f"Processing event for custom post-processor invocation")
     
     try:
-        # Extract output data from event
+        input_decompressed = False
+        output_decompressed = False
+        
+        # Decompress input document if present and compressed
+        if event.get('detail', {}).get('input'):
+            input_data = json.loads(event['detail']['input'])
+            
+            # Extract document from input
+            input_doc_data = input_data.get('document')
+            if input_doc_data and isinstance(input_doc_data, dict) and input_doc_data.get('compressed', False):
+                logger.info(f"Input document is compressed, decompressing from S3 URI: {input_doc_data.get('s3_uri', 'N/A')}")
+                
+                # Decompress document using idp_common
+                processed_doc = Document.load_document(input_doc_data, WORKING_BUCKET, logger)
+                
+                logger.info(f"Decompressed input document: {processed_doc.num_pages} pages")
+                
+                # Update input_data with decompressed document
+                input_data['document'] = processed_doc.to_dict()
+                event['detail']['input'] = json.dumps(input_data)
+                input_decompressed = True
+        
+        # Decompress output document if present and compressed
         output_data = None
         if event.get('detail', {}).get('output'):
             output_data = json.loads(event['detail']['output'])
@@ -61,12 +83,12 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         is_compressed = isinstance(document_data, dict) and document_data.get('compressed', False)
         
         if is_compressed:
-            logger.info(f"Document is compressed, decompressing from S3 URI: {document_data.get('s3_uri', 'N/A')}")
+            logger.info(f"Output document is compressed, decompressing from S3 URI: {document_data.get('s3_uri', 'N/A')}")
             
             # Decompress document using idp_common
             processed_doc = Document.load_document(document_data, WORKING_BUCKET, logger)
             
-            logger.info(f"Decompressed document: {processed_doc.num_pages} pages, "
+            logger.info(f"Decompressed output document: {processed_doc.num_pages} pages, "
                        f"{len(processed_doc.sections)} sections")
             
             # Reconstruct output_data with decompressed document
@@ -79,10 +101,11 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             
             # Update event with decompressed payload
             event['detail']['output'] = json.dumps(output_data)
+            output_decompressed = True
             
-            logger.info("Document decompressed successfully")
+            logger.info("Output document decompressed successfully")
         else:
-            logger.info("Document is not compressed, passing through as-is")
+            logger.info("Output document is not compressed, passing through as-is")
         
         # Invoke custom post-processor lambda with decompressed payload
         logger.info(f"Invoking custom post-processor: {CUSTOM_POST_PROCESSOR_ARN}")
@@ -100,7 +123,8 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             'body': json.dumps({
                 'message': 'Successfully invoked custom post-processor',
                 'customProcessorArn': CUSTOM_POST_PROCESSOR_ARN,
-                'documentCompressed': is_compressed
+                'inputDecompressed': input_decompressed,
+                'outputDecompressed': output_decompressed
             })
         }
         
