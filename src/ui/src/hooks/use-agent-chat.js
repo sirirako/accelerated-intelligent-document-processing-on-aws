@@ -388,6 +388,19 @@ const useAgentChat = (config = {}) => {
   // Add a ref to track when we're in structured data mode (suppressing intermediate messages)
   const structuredDataModeRef = useRef(false);
 
+  // Parse Bedrock error information from message content
+  const parseBedrockerrorInfo = (content) => {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.type === 'bedrock_error' && parsed.errorInfo) {
+        return parsed.errorInfo;
+      }
+    } catch (e) {
+      // Not JSON or not a Bedrock error
+    }
+    return null;
+  };
+
   // Handle streaming messages with proper phase management
   const handleStreamingMessage = (newMessage) => {
     // Handle new tool message types using the messageType field from GraphQL
@@ -428,10 +441,13 @@ const useAgentChat = (config = {}) => {
     }
 
     // Handle final response - exit suppression mode and show final message
-    if (newMessage.messageType === 'assistant_final_response') {
+    if (newMessage.messageType === 'assistant_final_response' || (!newMessage.isProcessing && newMessage.role === 'assistant')) {
       structuredDataModeRef.current = false;
 
       updateMessages((prevMessages) => {
+        // Check if this is a Bedrock error message
+        const bedrockErrorInfo = parseBedrockerrorInfo(newMessage.content);
+
         // Parse the final message content for responseType (tables, charts, etc.)
         const parsedData = parseResponseData(newMessage.content);
 
@@ -439,7 +455,7 @@ const useAgentChat = (config = {}) => {
         const finalMessage = {
           role: 'assistant',
           content: newMessage.content,
-          messageType: 'text',
+          messageType: bedrockErrorInfo ? 'bedrock_error' : 'text',
           toolUseData: null,
           isProcessing: false,
           sessionId: newMessage.sessionId,
@@ -447,13 +463,17 @@ const useAgentChat = (config = {}) => {
           id: newMessage.timestamp,
         };
 
+        // Add Bedrock error info if available
+        if (bedrockErrorInfo) {
+          finalMessage.bedrockErrorInfo = bedrockErrorInfo;
+          finalMessage.content = bedrockErrorInfo.message; // Use user-friendly message
+        }
         // Add parsed data if available
-        if (parsedData) {
+        else if (parsedData) {
           finalMessage.parsedData = parsedData;
           finalMessage.content = parsedData.textContent || newMessage.content;
         }
 
-        // Find and replace the "Generating final result..." placeholder message
         const updatedMessages = [...prevMessages];
         const placeholderIndex = updatedMessages.findIndex(
           (msg) => msg.content === 'Generating final result...' && msg.sessionId === newMessage.sessionId && msg.isProcessing,
@@ -463,88 +483,46 @@ const useAgentChat = (config = {}) => {
           // Replace the placeholder with the final message
           updatedMessages[placeholderIndex] = finalMessage;
           return updatedMessages;
-        } else {
-          // Fallback: ensure any processing messages are marked complete, then add final message
-          const finalizedMessages = updatedMessages.map((msg) => {
-            if (msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId) {
-              return { ...msg, isProcessing: false };
-            }
-            return msg;
-          });
-          return [...finalizedMessages, finalMessage];
         }
+
+        // Check if we already have a final message with the same timestamp to prevent duplicates
+        const existingFinalIndex = updatedMessages.findIndex(
+          (msg) =>
+            msg.role === 'assistant' &&
+            !msg.isProcessing &&
+            msg.sessionId === newMessage.sessionId &&
+            msg.timestamp === newMessage.timestamp,
+        );
+
+        if (existingFinalIndex >= 0) {
+          // Update existing final message instead of creating duplicate
+          updatedMessages[existingFinalIndex] = finalMessage;
+          return updatedMessages;
+        }
+
+        // Find any processing messages to update instead of adding new message
+        const processingMessageIndex = updatedMessages.findIndex(
+          (msg) => msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId,
+        );
+
+        if (processingMessageIndex >= 0) {
+          // Update the existing processing message to final state
+          updatedMessages[processingMessageIndex] = {
+            ...updatedMessages[processingMessageIndex],
+            ...finalMessage,
+            id: updatedMessages[processingMessageIndex].id, // Keep original ID
+          };
+          return updatedMessages;
+        }
+
+        // Only add as new message if no existing processing message found
+        return [...updatedMessages, finalMessage];
       });
 
       // Mark processing as complete and remove loading indicators
       updateAgentChatState({
         waitingForResponse: false,
         isLoading: false,
-      });
-      return;
-    }
-
-    // General fallback: handle any message with isProcessing: false (stream end detection)
-    if (!newMessage.isProcessing) {
-      updateMessages((prevMessages) => {
-        updateAgentChatState({
-          waitingForResponse: false,
-          isLoading: false,
-        });
-
-        // Parse the final message content for responseType (tables, charts, etc.)
-        const parsedData = parseResponseData(newMessage.content);
-
-        // Create the final message
-        const finalMessage = {
-          role: 'assistant',
-          content: newMessage.content,
-          messageType: 'text',
-          toolUseData: null,
-          isProcessing: false,
-          sessionId: newMessage.sessionId,
-          timestamp: newMessage.timestamp,
-          id: newMessage.timestamp,
-        };
-
-        // Add parsed data if available
-        if (parsedData) {
-          finalMessage.parsedData = parsedData;
-          finalMessage.content = parsedData.textContent || newMessage.content;
-        }
-
-        // If we're in structured data mode, replace placeholder
-        if (structuredDataModeRef.current) {
-          structuredDataModeRef.current = false; // Exit suppression mode
-
-          const updatedMessages = [...prevMessages];
-          const placeholderIndex = updatedMessages.findIndex(
-            (msg) => msg.content === 'Generating final result...' && msg.sessionId === newMessage.sessionId && msg.isProcessing,
-          );
-
-          if (placeholderIndex >= 0) {
-            // Replace the placeholder with the final message
-            updatedMessages[placeholderIndex] = finalMessage;
-            return updatedMessages;
-          }
-        }
-
-        // Standard final message handling - update existing processing messages
-        return prevMessages.map((msg) => {
-          if (msg.role === 'assistant' && msg.isProcessing && msg.sessionId === newMessage.sessionId) {
-            const updatedMsg = { ...msg, isProcessing: false };
-
-            // If we have parsed data, update the message with structured data
-            if (parsedData) {
-              updatedMsg.parsedData = parsedData;
-              updatedMsg.content = parsedData.textContent || msg.content;
-            } else {
-              updatedMsg.content = newMessage.content;
-            }
-
-            return updatedMsg;
-          }
-          return msg;
-        });
       });
       return;
     }
