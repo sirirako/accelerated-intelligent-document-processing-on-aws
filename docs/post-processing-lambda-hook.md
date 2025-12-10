@@ -15,17 +15,57 @@ The GenAIIDP solution supports an optional post-processing Lambda hook that enab
 2. **EventBridge Integration**
    - The solution automatically publishes a custom event to EventBridge
    - Event contains complete document processing details and output locations
-   - EventBridge rule matches the event pattern and triggers your Lambda function
+   - EventBridge rule matches the event pattern and triggers the decompression lambda
 
-3. **Custom Processing**
-   - Your Lambda function receives the document processing event
-   - Function can access extraction results, confidence scores, and metadata
+3. **Document Decompression** (New as of compression feature)
+   - An intermediate lambda function in the IDP stack receives the event
+   - If the document is compressed, it decompresses it using `idp_common.models.Document.load_document()`
+   - The decompressed document is reconstructed into the original payload format
+   - The decompression lambda then invokes your custom post-processing lambda
+
+4. **Custom Processing**
+   - Your Lambda function receives the document processing event with a **decompressed** document
+   - No need to import `idp_common` or handle decompression logic
+   - Function can directly access extraction results, confidence scores, and metadata
    - Implement custom logic for notifications, data transformation, or system integration
 
-4. **Error Handling**
+5. **Error Handling**
    - Built-in retry logic for transient failures
    - Dead letter queue for failed invocations
    - CloudWatch monitoring and alerting
+
+## Architecture
+
+```mermaid
+flowchart LR
+    SF[Step Function<br/>Workflow<br/>SUCCEEDED] --> EB[EventBridge<br/>Rule]
+    EB --> DL[Decompression<br/>Lambda<br/>in Stack]
+    DL --> |Check if<br/>compressed| DL
+    DL --> |If compressed:<br/>decompress from<br/>WorkingBucket| S3[(S3<br/>Working<br/>Bucket)]
+    DL --> |Invoke with<br/>decompressed<br/>payload| CPL[Your Custom<br/>Post-Processing<br/>Lambda]
+    DL --> |Handle<br/>errors| DLQ[Dead Letter<br/>Queue]
+    
+    style DL fill:#90EE90
+    style CPL fill:#87CEEB
+    style S3 fill:#FFE4B5
+```
+
+**Key Components:**
+- **EventBridge Rule**: Triggers on StepFunction SUCCEEDED status
+- **Decompression Lambda** (in IDP stack): Handles document decompression transparently
+- **Your Custom Lambda** (external): Receives decompressed payload, no `idp_common` dependency needed
+- **S3 Working Bucket**: Temporary storage for compressed documents
+- **Dead Letter Queue**: Captures failed invocations for retry/analysis
+
+## Important Notes
+
+> **Backward Compatibility**: The decompression lambda was introduced to handle document compression feature added in a previous release. Your custom post-processing lambda receives the document in its **original uncompressed format**, maintaining backward compatibility.
+
+> **No External Dependencies**: Your custom post-processing lambda does **not** need to import the `idp_common` package. The IDP stack's decompression lambda handles all compression/decompression internally.
+
+> **Payload Format**: The event payload structure remains unchanged from the original implementation. All document data, including sections, pages, and attributes, is provided in the standard format documented below.
+
+> **Performance**: The decompression step adds minimal latency (typically < 1 second) and is transparent to your custom lambda function.
 
 ## Configuration
 

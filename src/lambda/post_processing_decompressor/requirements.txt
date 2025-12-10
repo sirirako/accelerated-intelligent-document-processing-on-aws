@@ -1,0 +1,2 @@
+# Post-processing decompressor lambda dependencies
+# Uses idp_common for document decompression
