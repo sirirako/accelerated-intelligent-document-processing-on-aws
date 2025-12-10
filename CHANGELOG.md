@@ -29,6 +29,15 @@ SPDX-License-Identifier: MIT-0
   - **User-Friendly Error Messages**: Created `BedrockErrorMessageHandler` to convert technical errors into clear, actionable messages for service unavailable (503), throttling (429), access denied (403), validation errors (400), timeouts (408), and quota exceeded scenarios
   - **Sub-Agent Error Handling**: When sub-agents (Analytics, Error Analyzer, Code Intelligence) encounter Bedrock errors, the orchestrator continues gracefully without crashing, only displaying the first error to avoid duplicates while allowing other sub-agents to complete
 
+- **GovCloud Template Generation - Missing AppSync and MCP Resource Removal**
+  - Fixed CloudFormation deployment error "Unresolved resource dependencies [DeleteDocumentResolverFunction]" when deploying GovCloud templates
+  - **Test Studio Resources Added (36 resources)**: Added all Test Studio Lambda functions, AppSync resolvers, data sources, and supporting infrastructure to removal list (DeleteTestsResolver, TestRunnerResolver, TestResultsResolver, TestSetResolver, and all related functions, queues, and policies)
+  - **MCP/AgentCore Gateway Resources Added (7 resources)**: Added MCP integration resources that depend on Cognito UserPool to removal list (AgentCoreAnalyticsLambdaFunction, AgentCoreGatewayManagerFunction, AgentCoreGatewayExecutionRole, AgentCoreGateway, ExternalAppClient)
+  - **MCP Outputs Removed (8 outputs)**: Removed MCP-related outputs that reference deleted resources (MCPServerEndpoint, MCPClientId, MCPClientSecret, MCPUserPool, MCPTokenURL, MCPAuthorizationURL, DynamoDBAgentTableName, DynamoDBAgentTableConsoleURL)
+  - **EnableMCP Default Changed**: Set `EnableMCP` parameter default to 'false' for GovCloud since MCP integration requires Cognito authentication infrastructure
+  - **Impact**: GovCloud templates now deploy successfully without dependency errors, maintaining core document processing functionality in headless mode
+
+
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.7.yaml`
    - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
