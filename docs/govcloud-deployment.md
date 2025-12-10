@@ -76,21 +76,24 @@ aws cloudformation deploy \
 
 The following services are automatically removed from the GovCloud template:
 
-### Web UI Components (22 resources removed)
+### Web UI Components (11 resources removed)
 
 - CloudFront distribution and origin access identity
 - WebUI S3 bucket and build pipeline
 - CodeBuild project for UI deployment
 - Security headers policy
 
-### API Layer (20+ resources removed)
+### API Layer (136 resources removed)
 
 - AppSync GraphQL API and schema
-- All GraphQL resolvers and data sources
-- 10+ Lambda resolver functions
+- All GraphQL resolvers and data sources (50+ resolvers)
+- Lambda resolver functions (20+ functions)
+- **Test Studio Resources (36 resources)**: All test management Lambda functions, AppSync resolvers, data sources, SQS queues, and supporting infrastructure added in v0.4.6
 - API authentication and authorization
+- Chat infrastructure (ChatMessagesTable, ChatSessionsTable)
+- Agent chat processors and resolvers
 
-### Authentication (8 resources removed)
+### Authentication (14 resources removed)
 
 - Cognito User Pool and Identity Pool
 - User pool client and domain
@@ -103,18 +106,23 @@ The following services are automatically removed from the GovCloud template:
 - IP set updater functions
 - CloudFront protection rules
 
-### Analytics Features (8 resources removed)
+### Agent & Analytics Features (14 resources removed)
 
-- Analytics processing functions
+- AgentTable and agent job tracking
+- Agent request handler and processor functions
+- **MCP/AgentCore Gateway Resources (7 resources)**: MCP integration components that depend on Cognito authentication (AgentCoreAnalyticsLambdaFunction, AgentCoreGatewayManagerFunction, AgentCoreGatewayExecutionRole, AgentCoreGateway, ExternalAppClient, and log groups)
+- External MCP agent credentials secret
 - Knowledge base query functions
 - Chat with document features
 - Text-to-SQL query capabilities
 
-### HITL Support
+### HITL Support (11 resources removed)
 
 - SageMaker A2I Human-in-the-Loop
 - Private workforce configuration
 - Human review workflows
+- A2I flow definition and human task UI
+- Cognito client for A2I integration
 
 ## Core Services Retained
 
