@@ -3268,6 +3268,94 @@ Resources:
   ##########################################################################
   # Optional Post Processing Lambda Hook
   ##########################################################################
+  
+  # Decompression Lambda - handles document decompression before invoking custom post-processor
+  PostProcessingDecompressorDLQ:
+    Type: AWS::SQS::Queue
+    Condition: ShouldEnablePostProcessingLambdaHook
+    Properties:
+      KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
+      VisibilityTimeout: 30
+      MessageRetentionPeriod: 345600 # 4 days
+
+  PostProcessingDecompressorDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Condition: ShouldEnablePostProcessingLambdaHook
+    Properties:
+      Queues:
+        - !Ref PostProcessingDecompressorDLQ
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnforceSSLOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: !GetAtt PostProcessingDecompressorDLQ.Arn
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
+
+  PostProcessingDecompressor:
+    Type: AWS::Serverless::Function
+    Condition: ShouldEnablePostProcessingLambdaHook
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: src/lambda/post_processing_decompressor/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 512
+      Tracing: Active
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt PostProcessingDecompressorDLQ.Arn
+      LoggingConfig:
+        LogGroup: !Ref PostProcessingDecompressorLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          CUSTOM_POST_PROCESSOR_ARN: !Ref PostProcessingLambdaHookFunctionArn
+          WORKING_BUCKET: !Ref WorkingBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !Ref PostProcessingLambdaHookFunctionArn
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  PostProcessingDecompressorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: ShouldEnablePostProcessingLambdaHook
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
   PostProcessingLambdaHookRule:
     Type: AWS::Events::Rule
     Condition: ShouldEnablePostProcessingLambdaHook
@@ -3290,17 +3378,17 @@ Resources:
             - SUCCEEDED
       State: ENABLED
       Targets:
-        - Arn: !Ref PostProcessingLambdaHookFunctionArn
-          Id: PostProcessingLambdaHookFunction
+        - Arn: !GetAtt PostProcessingDecompressor.Arn
+          Id: PostProcessingDecompressor
           RetryPolicy:
             MaximumRetryAttempts: 3
 
-  PostProcessingLambdaHookPermission:
+  PostProcessingDecompressorPermission:
     Type: AWS::Lambda::Permission
     Condition: ShouldEnablePostProcessingLambdaHook
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref PostProcessingLambdaHookFunctionArn
+      FunctionName: !Ref PostProcessingDecompressor
       Principal: !Sub "events.${AWS::URLSuffix}"
       SourceArn: !GetAtt PostProcessingLambdaHookRule.Arn
 
