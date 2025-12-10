@@ -148,7 +148,54 @@ class GovCloudTemplateGenerator:
             'AgentChatProcessorFunction',
             'AgentChatProcessorLogGroup',
             'AgentChatResolverFunction',
-            'AgentChatResolverLogGroup'
+            'AgentChatResolverLogGroup',
+            # Test Studio Resources (added for GovCloud compatibility)
+            'DeleteTestsResolverFunction',
+            'DeleteTestsResolverFunctionLogGroup',
+            'DeleteTestsDataSource',
+            'DeleteTestsResolver',
+            'TestRunnerFunction',
+            'TestRunnerFunctionLogGroup',
+            'TestRunnerDataSource',
+            'TestRunnerResolver',
+            'TestResultsResolverFunction',
+            'TestResultsResolverFunctionLogGroup',
+            'TestResultsDataSource',
+            'GetTestRunsResolver',
+            'CompareTestRunsResolver',
+            'GetTestRunResolver',
+            'GetTestRunStatusResolver',
+            'TestSetResolverFunction',
+            'TestSetResolverFunctionLogGroup',
+            'TestSetDataSource',
+            'AddTestSetResolver',
+            'AddTestSetFromUploadResolver',
+            'DeleteTestSetsResolver',
+            'GetTestSetsResolver',
+            'ListBucketFilesResolver',
+            'ValidateTestFileNameResolver',
+            'TestResultCacheUpdateQueue',
+            'TestFileCopierFunction',
+            'TestFileCopierFunctionLogGroup',
+            'TestFileCopierFunctionDLQ',
+            'TestFileCopyQueue',
+            'TestFileCopyQueueDLQ',
+            'TestFileCopyQueuePolicy',
+            'TestFileCopyQueueDLQPolicy',
+            'TestSetFileCopierFunction',
+            'TestSetFileCopierFunctionLogGroup',
+            'TestSetFileCopierFunctionDLQ',
+            'TestSetFileCopyQueue',
+            'TestSetFileCopyQueueDLQ',
+            'TestSetFileCopyQueuePolicy',
+            'TestSetFileCopyQueueDLQPolicy',
+            'TestSetZipExtractorFunction',
+            'TestSetZipExtractorFunctionLogGroup',
+            'TestSetZipExtractorFunctionInvokePermission',
+            'TestSetZipExtractorS3Policy',
+            'TestSetBucketNotificationFunction',
+            'TestSetBucketNotificationConfiguration',
+            'TestSetResolverS3Policy'
         }
         
         self.auth_resources = {
@@ -185,7 +232,15 @@ class GovCloudTemplateGenerator:
             'AgentProcessorLogGroup',
             'ExternalMCPAgentsSecret',
             'ListAvailableAgentsFunction',
-            'ListAvailableAgentsLogGroup'
+            'ListAvailableAgentsLogGroup',
+            # MCP/AgentCore Gateway Resources (depend on Cognito UserPool)
+            'AgentCoreAnalyticsLambdaFunction',
+            'AgentCoreAnalyticsLambdaLogGroup',
+            'AgentCoreGatewayManagerFunction',
+            'AgentCoreGatewayManagerLogGroup',
+            'AgentCoreGatewayExecutionRole',
+            'AgentCoreGateway',
+            'ExternalAppClient'
         }
         
         self.hitl_resources = {
@@ -233,7 +288,16 @@ class GovCloudTemplateGenerator:
             'SageMakerA2IReviewPortalURL',
             'LabelingConsoleURL',
             'ExternalMCPAgentsSecretName',
-            'PrivateWorkteamArn'
+            'PrivateWorkteamArn',
+            # MCP/AgentCore Gateway Outputs (depend on Cognito UserPool)
+            'MCPServerEndpoint',
+            'MCPClientId',
+            'MCPClientSecret',
+            'MCPUserPool',
+            'MCPTokenURL',
+            'MCPAuthorizationURL',
+            'DynamoDBAgentTableName',
+            'DynamoDBAgentTableConsoleURL'
         }
 
     def setup_logging(self):
@@ -439,6 +503,11 @@ class GovCloudTemplateGenerator:
                 ]
             }
             self.logger.info("Modified IDPPattern parameter to only support Pattern-2")
+        
+        # Set EnableMCP default to false for GovCloud (MCP integration depends on Cognito/AgentCore)
+        if 'EnableMCP' in parameters:
+            parameters['EnableMCP']['Default'] = 'false'
+            self.logger.info("Modified EnableMCP parameter default to 'false' for GovCloud")
         
         self.logger.info(f"Removed {len(removed_parameters)} UI-related parameters")
         self.logger.debug(f"Removed parameters: {', '.join(removed_parameters)}")
