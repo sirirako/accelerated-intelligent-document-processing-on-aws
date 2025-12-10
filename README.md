@@ -28,7 +28,7 @@ A scalable, serverless solution for automated document processing and informatio
 
 https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
 
-White-glove customization, deployment, and integration support for production use cases is also available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
+Concierge support for customization, deployment, and integration of production use cases is available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
 
 ## Alternative Implementations
 
