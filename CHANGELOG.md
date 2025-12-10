@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Post-Processing Lambda Hook Compression Handling - [GitHub Issue #155](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/155)**
+  - Added intermediate decompression lambda to handle document decompression before invoking custom post-processing lambdas
+  - **Root Cause**: After introducing document compression, the post-processing lambda hook was receiving compressed documents in the EventBridge payload, forcing external lambdas to import `idp_common` package and handle decompression manually
+  - **Solution**: New `PostProcessingDecompressor` lambda function intercepts EventBridge events, decompresses documents using `Document.load_document()`, and invokes custom post-processors with decompressed payload
+  - **Benefits**: Maintains backward compatibility, eliminates external dependencies (no `idp_common` import needed), keeps compression/decompression logic encapsulated within IDP stack, minimal performance impact (<1s latency)
+
 ## [0.4.6]
 
 ### Added
