@@ -54,6 +54,7 @@
     "react-markdown": "^8.0.7",
     "react-router-dom": "^6.28.0",
     "react-syntax-highlighter": "^16.1.0",
+    "recharts": "^3.5.1",
     "rehype-raw": "^6.1.1",
     "remark-gfm": "^3.0.1",
     "serialize-javascript": "^6.0.2",
@@ -65,7 +66,7 @@
   "scripts": {
     "dev": "vite",
     "start": "vite",
-    "build": "npm run lint && vite build",
+    "build": "npm run lint && node --max-old-space-size=4096 ./node_modules/.bin/vite build",
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint \"src/**/*.{js,jsx}\""

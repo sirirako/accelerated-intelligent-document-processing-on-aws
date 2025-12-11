@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Table, Box, Button, ButtonDropdown, ProgressBar } from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Table, Box, Button, ButtonDropdown, ProgressBar, Select } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
 import TestStudioHeader from './TestStudioHeader';
@@ -13,6 +13,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   const [comparisonData, setComparisonData] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [currentAttempt, setCurrentAttempt] = useState(1);
+  const [lowestScoreCount, setLowestScoreCount] = useState({ label: '5', value: 5 });
 
   useEffect(() => {
     const fetchComparison = async () => {
@@ -180,9 +181,14 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       [
         'Average Weighted Overall Score',
         ...Object.values(completeTestRuns).map((run) => {
-          if (run.weightedOverallScores && run.weightedOverallScores.length > 0) {
-            const avg = run.weightedOverallScores.reduce((sum, score) => sum + score, 0) / run.weightedOverallScores.length;
-            return avg.toFixed(3);
+          if (run.weightedOverallScores) {
+            const scores =
+              typeof run.weightedOverallScores === 'string' ? JSON.parse(run.weightedOverallScores) : run.weightedOverallScores;
+            const values = Object.values(scores);
+            if (values.length > 0) {
+              const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+              return avg.toFixed(3);
+            }
           }
           return 'N/A';
         }),
@@ -348,9 +354,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     // Add weighted overall score to accuracy breakdown
     const weightedRow = ['Weighted Overall Score'];
     Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
-      if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-        const avg = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-        weightedRow.push(avg.toFixed(3));
+      if (testRun.weightedOverallScores) {
+        const scores =
+          typeof testRun.weightedOverallScores === 'string' ? JSON.parse(testRun.weightedOverallScores) : testRun.weightedOverallScores;
+        const values = Object.values(scores);
+        if (values.length > 0) {
+          const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+          weightedRow.push(avg.toFixed(3));
+        } else {
+          weightedRow.push('N/A');
+        }
       } else {
         weightedRow.push('N/A');
       }
@@ -431,10 +444,17 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             totalCost: testRun.totalCost,
             averageAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
-            averageWeightedOverallScore:
-              testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0
-                ? testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length
-                : null,
+            averageWeightedOverallScore: (() => {
+              if (testRun.weightedOverallScores) {
+                const scores =
+                  typeof testRun.weightedOverallScores === 'string'
+                    ? JSON.parse(testRun.weightedOverallScores)
+                    : testRun.weightedOverallScores;
+                const values = Object.values(scores);
+                return values.length > 0 ? values.reduce((sum, score) => sum + score, 0) / values.length : null;
+              }
+              return null;
+            })(),
             duration:
               testRun.createdAt && testRun.completedAt
                 ? (() => {
@@ -452,9 +472,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
           const breakdown = { ...(testRun.accuracyBreakdown || {}) };
           // Add weighted overall score to accuracy breakdown
-          if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-            breakdown.weightedOverallScore =
-              testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+          if (testRun.weightedOverallScores) {
+            const scores =
+              typeof testRun.weightedOverallScores === 'string' ? JSON.parse(testRun.weightedOverallScores) : testRun.weightedOverallScores;
+            const values = Object.values(scores);
+            if (values.length > 0) {
+              breakdown.weightedOverallScore = values.reduce((sum, score) => sum + score, 0) / values.length;
+            }
           }
           return [testRunId, breakdown];
         }),
@@ -615,10 +639,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   metric: 'Average Weighted Overall Score',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                      if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-                        const avg =
-                          testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-                        return [testRunId, avg.toFixed(3)];
+                      if (testRun.weightedOverallScores) {
+                        const scores =
+                          typeof testRun.weightedOverallScores === 'string'
+                            ? JSON.parse(testRun.weightedOverallScores)
+                            : testRun.weightedOverallScores;
+                        const values = Object.values(scores);
+                        if (values.length > 0) {
+                          const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+                          return [testRunId, avg.toFixed(3)];
+                        }
                       }
                       return [testRunId, 'N/A'];
                     }),
@@ -666,6 +696,115 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             <Box>No completed test runs available</Box>
           )}
         </Box>
+
+        {/* Lowest Scoring Documents Across Tests */}
+        <Container
+          header={
+            <Header
+              actions={
+                <Select
+                  selectedOption={lowestScoreCount}
+                  onChange={({ detail }) => setLowestScoreCount(detail.selectedOption)}
+                  options={[
+                    { label: '5', value: 5 },
+                    { label: '10', value: 10 },
+                    { label: '20', value: 20 },
+                    { label: '50', value: 50 },
+                  ]}
+                  placeholder="Select count"
+                />
+              }
+            >
+              Documents with Lowest Weighted Overall Scores Across Tests
+            </Header>
+          }
+        >
+          {(() => {
+            const testRunIds = Object.keys(completeTestRuns);
+            const testRun1 = completeTestRuns[testRunIds[0]];
+            const testRun2 = completeTestRuns[testRunIds[1]];
+
+            // Get lowest scoring documents from each test run
+            const getLowestDocs = (testRun) => {
+              if (!testRun?.weightedOverallScores) return [];
+
+              const scores =
+                typeof testRun.weightedOverallScores === 'string'
+                  ? JSON.parse(testRun.weightedOverallScores)
+                  : testRun.weightedOverallScores;
+
+              return Object.entries(scores)
+                .map(([docId, score]) => ({ docId, score }))
+                .sort((a, b) => a.score - b.score)
+                .slice(0, lowestScoreCount.value);
+            };
+
+            const t1Docs = getLowestDocs(testRun1);
+            const t2Docs = getLowestDocs(testRun2);
+            const maxRows = Math.max(t1Docs.length, t2Docs.length);
+
+            // Create table items with T1 and T2 columns
+            const tableItems = Array.from({ length: maxRows }, (_, index) => ({
+              index,
+              t1Doc: t1Docs[index],
+              t2Doc: t2Docs[index],
+            }));
+
+            return tableItems.length > 0 ? (
+              <Table
+                items={tableItems}
+                columnDefinitions={[
+                  {
+                    id: 't1',
+                    header: `T1 (${testRunIds[0] || 'N/A'})`,
+                    cell: (item) =>
+                      item.t1Doc ? (
+                        <div style={{ textAlign: 'left' }}>
+                          <Button
+                            variant="link"
+                            onClick={() => {
+                              const urlPath = item.t1Doc.docId.replace(/\//g, '%252F');
+                              window.open(`#/documents/${urlPath}`, '_blank');
+                            }}
+                          >
+                            {item.t1Doc.docId}
+                          </Button>
+                          <div style={{ fontSize: '12px', color: '#666' }}>Score: {item.t1Doc.score.toFixed(3)}</div>
+                        </div>
+                      ) : (
+                        ''
+                      ),
+                  },
+                  {
+                    id: 't2',
+                    header: `T2 (${testRunIds[1] || 'N/A'})`,
+                    cell: (item) =>
+                      item.t2Doc ? (
+                        <div style={{ textAlign: 'left' }}>
+                          <Button
+                            variant="link"
+                            onClick={() => {
+                              const urlPath = item.t2Doc.docId.replace(/\//g, '%252F');
+                              window.open(`#/documents/${urlPath}`, '_blank');
+                            }}
+                          >
+                            {item.t2Doc.docId}
+                          </Button>
+                          <div style={{ fontSize: '12px', color: '#666' }}>Score: {item.t2Doc.score.toFixed(3)}</div>
+                        </div>
+                      ) : (
+                        ''
+                      ),
+                  },
+                ]}
+                variant="embedded"
+                contentDensity="compact"
+              />
+            ) : (
+              <Box>No documents with weighted overall scores found</Box>
+            );
+          })()}
+        </Container>
 
         {/* Breakdown Tables */}
         <SpaceBetween direction="vertical" size="l">
@@ -735,10 +874,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                       metric: 'Weighted Overall Score',
                       ...Object.fromEntries(
                         Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                          if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-                            const avg =
-                              testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-                            return [testRunId, avg.toFixed(3)];
+                          if (testRun.weightedOverallScores) {
+                            const scores =
+                              typeof testRun.weightedOverallScores === 'string'
+                                ? JSON.parse(testRun.weightedOverallScores)
+                                : testRun.weightedOverallScores;
+                            const values = Object.values(scores);
+                            if (values.length > 0) {
+                              const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+                              return [testRunId, avg.toFixed(3)];
+                            }
                           }
                           return [testRunId, 'N/A'];
                         }),
