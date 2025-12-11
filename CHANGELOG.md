@@ -7,10 +7,23 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Test Studio Interactive Charts and Document Analysis Enhancements**
+  - **Interactive Score Distribution Charts**: Replaced CloudScape chart with native Recharts implementation featuring dual chart support (Bar Chart and Line Chart options with dropdown selector), native interactivity with built-in click events that open document details modal, and optimized layout with improved margins, labels, and space utilization
+  - **Lowest Scoring Documents Analysis**: Enhanced TestResults with table showing documents with lowest weighted overall scores, TestComparison with cross-test comparison of problematic documents, user-configurable count dropdown (5, 10, 20, or 50 documents), side-by-side T1 vs T2 comparison format for easy analysis, and clickable document links for direct navigation to document viewer
+  - **UI/UX Improvements**: Compact table styling with reduced spacing and improved readability, left-aligned content for better text alignment of document IDs, consistent design matching existing CloudScape design system, and responsive layout where charts adapt to container width
+
 - **RealKIE-FCC-Verified Dataset Auto-Deployment for Test Studio**
   - Automatically deploys 75 FCC invoice documents from HuggingFace public dataset during stack deployment - zero manual steps required
   - Test set immediately available in Test Studio UI with complete ground truth for benchmarking extraction accuracy
   - Version controlled via CloudFormation property - skips re-download on stack updates unless version changes
+
+### Fixed
+
+- **Test Studio Bug Fixes**
+  - Fixed TestSets manual upload issues
+
+- **Agentic Extraction Prompt Caching** - [GitHub PR #156](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/156)
+  - Removed additional cachepoints to prevent prompt caching conflicts in agentic extraction
 
 ## [0.4.7]
 
