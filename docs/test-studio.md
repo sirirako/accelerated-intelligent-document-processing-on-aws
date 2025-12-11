@@ -8,6 +8,55 @@ The Test Studio consists of two main tabs:
 1. **Test Sets**: Create and manage reusable collections of test documents
 2. **Test Executions**: Execute tests, view results, and compare test runs
 
+## Pre-Deployed Test Set: RealKIE-FCC-Verified
+
+The accelerator automatically deploys the **RealKIE-FCC-Verified** dataset from HuggingFace (https://huggingface.co/datasets/amazon-agi/RealKIE-FCC-Verified) as a ready-to-use test set during stack deployment. This public dataset contains 75 invoice documents sourced from the Federal Communications Commission (FCC).
+
+### Fully Automatic Deployment
+
+During stack deployment, the system automatically:
+
+1. **Downloads Dataset** from HuggingFace (75 documents)
+2. **Reconstructs PDFs** from PNG page images using lossless img2pdf conversion
+3. **Uploads PDFs** to `s3://TestSetBucket/realkie-fcc-verified/input/`
+4. **Extracts Ground Truth** from `json_response` field (already in accelerator format!)
+5. **Uploads Baselines** to `s3://TestSetBucket/realkie-fcc-verified/baseline/`
+6. **Registers Test Set** in DynamoDB with metadata
+
+**Zero Manual Steps Required** - Everything is sourced from the public HuggingFace dataset and deployed automatically.
+
+### Key Features
+
+- **Fully Automatic**: Complete deployment during stack creation with zero user effort
+- **PDF Reconstruction**: Converts PNG page images to PDF documents using img2pdf for lossless quality
+- **Complete Ground Truth**: Structured invoice attributes (Agency, Advertiser, GrossTotal, PaymentTerms, AgencyCommission, NetAmountDue, LineItems)
+- **Version Control**: Dataset version pinned in CloudFormation (DatasetVersion: "1.0"), updateable via parameter
+- **Smart Updates**: Skips re-download on stack updates unless version changes
+- **Single Public Source**: Everything from HuggingFace - fully reproducible anywhere
+- **Benchmark Ready**: 75 FCC invoice documents ideal for extraction evaluation
+
+### Deployment Time
+
+- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads dataset + converts images)
+- **Stack Updates**: Near-instant (skips if version unchanged)
+- **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
+
+### Usage
+
+The RealKIE-FCC-Verified test set is immediately available after stack deployment:
+
+1. Navigate to **Test Executions** tab
+2. Select "RealKIE-FCC-Verified" from the **Select Test Set** dropdown
+3. Enter a description in the **Context** field
+4. Click **Run Test** to start processing
+5. Monitor progress and view results when complete
+
+This dataset provides an excellent benchmark for:
+- Evaluating extraction accuracy on invoice documents
+- Comparing different model configurations
+- Testing prompt engineering improvements
+- Training and demonstration purposes
+
 
 https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
 
