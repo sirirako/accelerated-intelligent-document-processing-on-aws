@@ -11,9 +11,13 @@ from datetime import datetime
 from typing import Dict, Any
 import cfnresponse
 
-# HuggingFace datasets library - will fail fast if not available
-from datasets import load_dataset
+# Set HuggingFace cache to /tmp (Lambda's writable directory)
+os.environ['HF_HOME'] = '/tmp/huggingface'
+os.environ['HUGGINGFACE_HUB_CACHE'] = '/tmp/huggingface/hub'
+
+# Lightweight HuggingFace access
 from huggingface_hub import hf_hub_download
+import pyarrow.parquet as pq
 
 # Configure logging
 logger = logging.getLogger()
@@ -43,8 +47,7 @@ def handler(event, context):
         request_type = event['RequestType']
         
         if request_type == 'Delete':
-            # On stack deletion, we optionally clean up
-            # For now, we'll leave the data in place
+            # On stack deletion, we leave the data in place
             logger.info("Delete request - keeping dataset in place")
             cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
             return
@@ -118,26 +121,42 @@ def check_existing_version(version: str) -> bool:
 def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
     """
     Deploy the dataset by downloading PDFs and ground truth from HuggingFace
-    and uploading to S3.
+    using lightweight hf_hub_download and pyarrow.
     """
     try:
+        # Ensure cache directory exists in /tmp (Lambda's writable directory)
+        cache_dir = '/tmp/huggingface/hub'
+        os.makedirs(cache_dir, exist_ok=True)
+        logger.info(f"Using cache directory: {cache_dir}")
+        
         logger.info(f"Downloading dataset from HuggingFace: amazon-agi/RealKIE-FCC-Verified")
         
-        # Download the dataset metadata (for ground truth)
-        dataset = load_dataset("amazon-agi/RealKIE-FCC-Verified", split='test')
+        # Download the parquet file with metadata using hf_hub_download
+        parquet_path = hf_hub_download(
+            repo_id="amazon-agi/RealKIE-FCC-Verified",
+            filename="data/test-00000-of-00001.parquet",
+            repo_type="dataset",
+            cache_dir=cache_dir
+        )
         
-        logger.info(f"Dataset loaded with {len(dataset)} documents")
+        logger.info(f"Downloaded parquet metadata file")
+        
+        # Read parquet file with pyarrow
+        table = pq.read_table(parquet_path)
+        data_dict = table.to_pydict()
+        
+        num_documents = len(data_dict['id'])
+        logger.info(f"Loaded {num_documents} documents from parquet")
         
         # Process and upload each document
         file_count = 0
         skipped_count = 0
         
-        for idx, item in enumerate(dataset):
+        for idx in range(num_documents):
             try:
-                document_id = item.get('id', f'doc_{idx}')
+                document_id = data_dict['id'][idx]
+                json_response = data_dict['json_response'][idx]
                 
-                # Get ground truth from json_response field
-                json_response = item.get('json_response', {})
                 if not json_response:
                     logger.warning(f"Skipping {document_id}: no json_response")
                     skipped_count += 1
@@ -145,13 +164,13 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                 
                 logger.info(f"Processing {document_id}")
                 
-                # Download PDF file from HuggingFace repository
-                # PDFs are stored in the /pdfs directory of the dataset repo
+                # Download PDF file from HuggingFace repository using hf_hub_download
                 try:
                     pdf_path = hf_hub_download(
                         repo_id="amazon-agi/RealKIE-FCC-Verified",
                         filename=f"pdfs/{document_id}",
-                        repo_type="dataset"
+                        repo_type="dataset",
+                        cache_dir=cache_dir
                     )
                     
                     # Read the downloaded PDF
@@ -174,7 +193,7 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                     skipped_count += 1
                     continue
                 
-                # Upload ground truth baseline (already in correct format!)
+                # Upload ground truth baseline (wrap in inference_result)
                 result_json = {"inference_result": json_response}
                 result_key = f'{DATASET_PREFIX}baseline/{document_id}/sections/1/result.json'
                 s3_client.put_object(
@@ -187,7 +206,7 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                 file_count += 1
                 
                 if file_count % 10 == 0:
-                    logger.info(f"Processed {file_count}/{len(dataset)} documents...")
+                    logger.info(f"Processed {file_count}/{num_documents} documents...")
                     
             except Exception as e:
                 logger.error(f"Error processing document {idx} ({document_id}): {e}")
@@ -233,8 +252,7 @@ def create_testset_record(version: str, description: str, file_count: int):
         'datasetVersion': version,
         'createdAt': timestamp,
         'updatedAt': timestamp,
-        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified',
-        'ExpiresAfter': int((datetime.utcnow().timestamp() + (365 * 24 * 60 * 60)))  # 1 year TTL
+        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified'
     }
     
     table.put_item(Item=item)
