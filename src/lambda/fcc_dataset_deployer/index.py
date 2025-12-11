@@ -240,18 +240,13 @@ def create_testset_record(version: str, description: str, file_count: int):
     item = {
         'PK': f'testset#{TEST_SET_ID}',
         'SK': 'metadata',
-        'testSetId': TEST_SET_ID,
+        'id': TEST_SET_ID,
         'name': DATASET_NAME,
-        'description': description,
-        'bucketType': 'testset',
-        'bucketName': TESTSET_BUCKET,
-        'inputPrefix': f'{DATASET_PREFIX}input/',
-        'baselinePrefix': f'{DATASET_PREFIX}baseline/',
+        'filePattern': '',
         'fileCount': file_count,
         'status': 'COMPLETED',
-        'datasetVersion': version,
         'createdAt': timestamp,
-        'updatedAt': timestamp,
+        'datasetVersion': version,
         'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified'
     }
     
