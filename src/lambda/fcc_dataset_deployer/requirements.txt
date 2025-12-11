@@ -1,0 +1,9 @@
+# HuggingFace datasets library for downloading the RealKIE-FCC-Verified dataset
+datasets>=2.14.0
+huggingface-hub>=0.20.0
+
+# AWS SDK (boto3 is already available in Lambda runtime, but specified for local testing)
+boto3>=1.34.0
+
+# For CloudFormation custom resource responses
+crhelper>=2.0.11

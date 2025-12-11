@@ -5,6 +5,22 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **RealKIE-FCC-Verified Dataset Auto-Deployment for Test Studio**
+  - Added fully automatic deployment of the public RealKIE-FCC-Verified dataset from HuggingFace during stack deployment with zero manual steps
+  - **Direct PDF Download**: Downloads original PDF files from HuggingFace repository's `/pdfs` directory using `hf_hub_download` API
+  - **Complete Dataset Deployment**: 75 FCC invoice documents (PDFs + ground truth) automatically deployed to TestSetBucket and registered in Test Studio
+  - **Zero User Effort**: Test set immediately available in Test Studio UI post-deployment - no manual downloads, no local files, no additional scripts
+  - **Version Control**: Dataset version pinned to CloudFormation CustomResource property enabling controlled updates when new dataset versions are released
+  - **Efficient Updates**: Skips re-download on stack updates unless dataset version changes, preventing unnecessary deployment time
+  - **Ground Truth Included**: Complete baseline data extracted from HuggingFace `json_response` field in accelerator format (Agency, Advertiser, GrossTotal, PaymentTerms, AgencyCommission, NetAmountDue, LineItems)
+  - **S3 Structure**: Organized in TestSetBucket with proper `input/{doc_id}.pdf` and `baseline/{doc_id}.pdf/sections/1/result.json` structure
+  - **Lambda Implementation**: Custom Resource Lambda function (900s timeout, 2GB memory) with HuggingFace datasets library and Hub API for direct PDF access
+  - **Single Data Source**: Everything sourced from the public HuggingFace dataset - fully reproducible and deployable anywhere
+  - **Use Cases**: Immediate testing capability after deployment, benchmark dataset for evaluating extraction performance, training and demonstration purposes
+  - **Configuration**: Controlled by `FccDatasetDeployment` CustomResource with configurable `DatasetVersion` property (default: "1.0")
+
 ## [0.4.7]
 
 ### Added
