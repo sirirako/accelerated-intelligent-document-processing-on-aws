@@ -7,6 +7,12 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Configuration Library Import Feature for Enhanced Configuration Management**
+  - Added Configuration Library browser enabling users to import pre-configured document processing workflows directly from the solution's configuration library
+  - **Dual Import Options**: Users can now choose between importing from local files (existing) or from the Configuration Library (new)
+  - **Pattern-Aware Filtering**: Automatically displays only configurations compatible with the currently deployed pattern (Pattern 1, 2, or 3)
+  - **README Preview**: When available, displays markdown-formatted README documentation before importing to help users understand configuration purpose and features
+
 - **Test Studio Interactive Charts and Document Analysis Enhancements**
   - **Interactive Score Distribution Charts**: Replaced CloudScape chart with native Recharts implementation featuring dual chart support (Bar Chart and Line Chart options with dropdown selector), native interactivity with built-in click events that open document details modal, and optimized layout with improved margins, labels, and space utilization
   - **Lowest Scoring Documents Analysis**: Enhanced TestResults with table showing documents with lowest weighted overall scores, TestComparison with cross-test comparison of problematic documents, user-configurable count dropdown (5, 10, 20, or 50 documents), side-by-side T1 vs T2 comparison format for easy analysis, and clickable document links for direct navigation to document viewer

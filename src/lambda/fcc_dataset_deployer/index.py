@@ -84,7 +84,7 @@ def check_existing_version(version: str) -> bool:
     Check if the dataset with the specified version already exists.
     """
     try:
-        table = dynamodb.Table(TRACKING_TABLE)
+        table = dynamodb.Table(TRACKING_TABLE)  # type: ignore[attr-defined]
         response = table.get_item(
             Key={
                 'PK': f'testset#{TEST_SET_ID}',
@@ -118,6 +118,88 @@ def check_existing_version(version: str) -> bool:
         return False
 
 
+def get_page_count(data_dict: dict, idx: int) -> int:
+    """
+    Get the number of pages for a document by counting image files.
+    
+    The RealKIE-FCC-Verified dataset contains an 'image_files' column 
+    with a list of image filenames, one per page.
+    
+    Args:
+        data_dict: Parquet data dictionary
+        idx: Document index
+        
+    Returns:
+        Number of pages (image file count)
+    """
+    image_files = data_dict['image_files'][idx]
+    if image_files and isinstance(image_files, list):
+        return len(image_files)
+    
+    logger.warning(f"Could not determine page count for document index {idx}")
+    return 0
+
+
+def transform_line_item_days(days_string: str) -> list:
+    """
+    Transform LineItemDays from string format to array format.
+    
+    The HuggingFace dataset stores days as a string like "M T W T F . ."
+    where letters represent days the ad ran and dots represent days it didn't.
+    
+    Args:
+        days_string: Space-separated string with day abbreviations and dots
+                    (e.g., "M T W T F . .", ". . . T . . .")
+    
+    Returns:
+        List of day abbreviations (e.g., ["M", "T", "W", "T", "F"])
+    
+    Examples:
+        "M T W T F . ." -> ["M", "T", "W", "T", "F"]
+        ". . . T . . ." -> ["T"]
+        ". . . . . S ." -> ["S"]
+    """
+    if not days_string or not isinstance(days_string, str):
+        return []
+    
+    # Split by whitespace and filter out dots
+    tokens = days_string.split()
+    return [token for token in tokens if token != '.']
+
+
+def transform_json_response(json_response: dict) -> dict:
+    """
+    Transform the json_response from HuggingFace format to match IDP schema.
+    
+    Specifically handles:
+    - LineItemDays: string -> array transformation
+    
+    Args:
+        json_response: Original json_response from HuggingFace
+    
+    Returns:
+        Transformed json_response matching IDP schema expectations
+    """
+    if not json_response or not isinstance(json_response, dict):
+        return json_response
+    
+    # Deep copy to avoid modifying original
+    import copy
+    transformed = copy.deepcopy(json_response)
+    
+    # Transform LineItems if present
+    if 'LineItems' in transformed and isinstance(transformed['LineItems'], list):
+        for item in transformed['LineItems']:
+            if isinstance(item, dict) and 'LineItemDays' in item:
+                # Transform string to array
+                days_string = item['LineItemDays']
+                if isinstance(days_string, str):
+                    item['LineItemDays'] = transform_line_item_days(days_string)
+                    logger.debug(f"Transformed LineItemDays: '{days_string}' -> {item['LineItemDays']}")
+    
+    return transformed
+
+
 def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
     """
     Deploy the dataset by downloading PDFs and ground truth from HuggingFace
@@ -148,9 +230,27 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
         num_documents = len(data_dict['id'])
         logger.info(f"Loaded {num_documents} documents from parquet")
         
+        # TEMPORARY: Log parquet schema for debugging
+        logger.info(f"Parquet schema: {table.schema}")
+        logger.info(f"Available columns: {list(data_dict.keys())}")
+        
+        # Sample first document to see structure (if exists)
+        if num_documents > 0:
+            sample_keys = list(data_dict.keys())
+            logger.info(f"Sample document column names: {sample_keys}")
+            # Log a few sample values (avoiding large data)
+            for key in sample_keys[:5]:
+                value = data_dict[key][0]
+                if isinstance(value, (list, dict)):
+                    logger.info(f"  {key}: {type(value).__name__} with {len(value) if hasattr(value, '__len__') else 'N/A'} items")
+                else:
+                    logger.info(f"  {key}: {type(value).__name__}")
+        
         # Process and upload each document
         file_count = 0
         skipped_count = 0
+        total_pages = 0
+        page_count_distribution = {}
         
         for idx in range(num_documents):
             try:
@@ -162,7 +262,23 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                     skipped_count += 1
                     continue
                 
-                logger.info(f"Processing {document_id}")
+                # Get page count from images
+                page_count = get_page_count(data_dict, idx)
+                
+                # Validate page count
+                if page_count == 0:
+                    logger.warning(f"Skipping {document_id}: no pages found (page_count=0)")
+                    skipped_count += 1
+                    continue
+                
+                # Transform json_response to match IDP schema
+                transformed_json = transform_json_response(json_response)
+                
+                # Track statistics
+                total_pages += page_count
+                page_count_distribution[page_count] = page_count_distribution.get(page_count, 0) + 1
+                
+                logger.info(f"Processing {document_id} ({page_count} pages)")
                 
                 # Download PDF file from HuggingFace repository using hf_hub_download
                 try:
@@ -193,8 +309,21 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                     skipped_count += 1
                     continue
                 
-                # Upload ground truth baseline (wrap in inference_result)
-                result_json = {"inference_result": json_response}
+                # Generate zero-indexed page_indices array
+                page_indices = list(range(page_count))
+                
+                # Create enhanced baseline with document split classification fields
+                result_json = {
+                    "document_class": {
+                        "type": "Invoice"
+                    },
+                    "split_document": {
+                        "page_indices": page_indices
+                    },
+                    "inference_result": transformed_json
+                }
+                
+                # Upload ground truth baseline
                 result_key = f'{DATASET_PREFIX}baseline/{document_id}/sections/1/result.json'
                 s3_client.put_object(
                     Bucket=TESTSET_BUCKET,
@@ -213,7 +342,11 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
                 skipped_count += 1
                 continue
         
+        # Log comprehensive statistics
         logger.info(f"Successfully deployed {file_count} documents (skipped {skipped_count})")
+        logger.info(f"Total pages across all documents: {total_pages}")
+        logger.info(f"Average pages per document: {total_pages / file_count if file_count > 0 else 0:.2f}")
+        logger.info(f"Page count distribution: {dict(sorted(page_count_distribution.items()))}")
         
         # Create test set record in DynamoDB
         create_testset_record(version, description, file_count)
@@ -222,7 +355,9 @@ def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
             'DatasetVersion': version,
             'FileCount': file_count,
             'SkippedCount': skipped_count,
-            'Message': f'Successfully deployed {file_count} documents with PDFs and baseline files'
+            'TotalPages': total_pages,
+            'PageCountDistribution': page_count_distribution,
+            'Message': f'Successfully deployed {file_count} documents with enhanced baseline files (doc split fields included)'
         }
         
     except Exception as e:
@@ -234,7 +369,7 @@ def create_testset_record(version: str, description: str, file_count: int):
     """
     Create or update the test set record in DynamoDB.
     """
-    table = dynamodb.Table(TRACKING_TABLE)
+    table = dynamodb.Table(TRACKING_TABLE)  # type: ignore[attr-defined]
     timestamp = datetime.utcnow().isoformat() + 'Z'
     
     item = {
