@@ -58,6 +58,7 @@ const TestSets = () => {
   const [showFileStructure, setShowFileStructure] = useState(() => {
     return localStorage.getItem('testset-show-file-structure') !== 'false';
   });
+  const fileInputRef = React.useRef(null);
 
   const loadTestSets = async () => {
     try {
@@ -359,6 +360,9 @@ const TestSets = () => {
       setShowAddUploadModal(false);
       setNewTestSetName('');
       setZipFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (err) {
       console.error('Error creating test set:', err);
       const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
@@ -700,6 +704,10 @@ const TestSets = () => {
           setWarningMessage('');
           setError('');
           setZipFile(null);
+          setNewTestSetName('');
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
         }}
         header="Add Test Set from Upload"
         footer={
@@ -713,6 +721,10 @@ const TestSets = () => {
                   setWarningMessage('');
                   setError('');
                   setZipFile(null);
+                  setNewTestSetName('');
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
                 }}
               >
                 Cancel
@@ -771,26 +783,27 @@ const TestSets = () => {
               <Alert type="info">Each input file must have a corresponding baseline folder with the same name.</Alert>
             </ExpandableSection>
             <input
+              ref={fileInputRef}
               type="file"
               accept=".zip"
               onChange={async (e) => {
                 const file = e.target.files[0];
                 if (file) {
+                  setZipFile(file);
+
                   // Check file size
                   if (file.size > MAX_ZIP_SIZE_BYTES) {
                     setError(`Zip file size (${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB) exceeds maximum limit of 1 GB`);
-                    setZipFile(null);
                     setNewTestSetName('');
                     return;
                   }
 
-                  // Extract test set name from zip filename (remove .zip extension)
-                  const fileName = file.name.replace(/\.zip$/i, '');
+                  // Extract test set name from zip filename (remove all extensions)
+                  const fileName = file.name.replace(/\.[^.]*$/g, '').replace(/\.[^.]*$/g, '');
 
                   // Validate the filename
                   if (!validateTestSetName(fileName)) {
                     setError('Zip filename can only contain letters, numbers, spaces, underscores, and dashes');
-                    setZipFile(null);
                     setNewTestSetName('');
                     return;
                   }
@@ -812,12 +825,10 @@ const TestSets = () => {
                     console.error('Error validating test set name:', err);
                     const errorMessage = err?.message || err?.errors?.[0]?.message || JSON.stringify(err) || 'Unknown error';
                     setError(`Failed to validate test set name: ${errorMessage}`);
-                    setZipFile(null);
                     setNewTestSetName('');
                     return;
                   }
 
-                  setZipFile(file);
                   setNewTestSetName(fileName);
                   setError('');
                 } else {
@@ -830,7 +841,7 @@ const TestSets = () => {
             />
             {zipFile && (
               <Box margin={{ top: 'xs' }}>
-                <Badge color="blue">Test Set Name: {newTestSetName}</Badge>
+                <Badge color="blue">Test Set Name: {zipFile.name.replace(/\.[^.]*$/g, '').replace(/\.[^.]*$/g, '')}</Badge>
               </Box>
             )}
           </FormField>

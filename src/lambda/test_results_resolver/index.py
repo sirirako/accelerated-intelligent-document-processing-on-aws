@@ -70,7 +70,7 @@ def handle_cache_update_request(event, context):
             # Cache the metrics
             metrics_to_cache = {
                 'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
-                'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', []),
+                'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
                 'averageConfidence': aggregated_metrics.get('average_confidence'),
                 'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
                 'totalCost': aggregated_metrics.get('total_cost', 0),
@@ -187,26 +187,33 @@ def get_test_results(test_run_id):
     cached_metrics = metadata.get('testRunResult')
     if cached_metrics is not None:
         logger.info(f"Retrieved cached metrics for test run: {test_run_id}")
-        # Use cached metrics but get dynamic fields from current metadata
-        return {
-            'testRunId': test_run_id,
-            'testSetId': metadata.get('TestSetId'),
-            'testSetName': metadata.get('TestSetName'),
-            'status': current_status,
-            'filesCount': metadata.get('FilesCount', 0),
-            'completedFiles': metadata.get('CompletedFiles', 0),
-            'failedFiles': metadata.get('FailedFiles', 0),
-            'overallAccuracy': cached_metrics.get('overallAccuracy'),
-            'weightedOverallScores': cached_metrics.get('weightedOverallScores', []),
-            'averageConfidence': cached_metrics.get('averageConfidence'),
-            'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
-            'totalCost': cached_metrics.get('totalCost', 0),
-            'costBreakdown': cached_metrics.get('costBreakdown', {}),
-            'createdAt': _format_datetime(metadata.get('CreatedAt')),
-            'completedAt': _format_datetime(metadata.get('CompletedAt')),
-            'context': metadata.get('Context'),
-            'config': _get_test_run_config(test_run_id)
-        }
+        
+        # Check if cached weightedOverallScores is old array format - if so, recalculate
+        cached_scores = cached_metrics.get('weightedOverallScores')
+        if isinstance(cached_scores, list):
+            logger.info(f"Found old array format for weightedOverallScores, recalculating for test run: {test_run_id}")
+            # Force recalculation by falling through to aggregation logic
+        else:
+            # Use cached metrics but get dynamic fields from current metadata
+            return {
+                'testRunId': test_run_id,
+                'testSetId': metadata.get('TestSetId'),
+                'testSetName': metadata.get('TestSetName'),
+                'status': current_status,
+                'filesCount': metadata.get('FilesCount', 0),
+                'completedFiles': metadata.get('CompletedFiles', 0),
+                'failedFiles': metadata.get('FailedFiles', 0),
+                'overallAccuracy': cached_metrics.get('overallAccuracy'),
+                'weightedOverallScores': cached_metrics.get('weightedOverallScores', {}),
+                'averageConfidence': cached_metrics.get('averageConfidence'),
+                'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
+                'totalCost': cached_metrics.get('totalCost', 0),
+                'costBreakdown': cached_metrics.get('costBreakdown', {}),
+                'createdAt': _format_datetime(metadata.get('CreatedAt')),
+                'completedAt': _format_datetime(metadata.get('CompletedAt')),
+                'context': metadata.get('Context'),
+                'config': _get_test_run_config(test_run_id)
+            }
     
     # Calculate aggregated metrics
     aggregated_metrics = _aggregate_test_run_metrics(test_run_id)
@@ -220,7 +227,7 @@ def get_test_results(test_run_id):
         'completedFiles': metadata.get('CompletedFiles', 0),
         'failedFiles': metadata.get('FailedFiles', 0),
         'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
-        'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', []),
+        'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
         'averageConfidence': aggregated_metrics.get('average_confidence'),
         'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
         'totalCost': aggregated_metrics.get('total_cost', 0),
@@ -238,7 +245,7 @@ def get_test_results(test_run_id):
         # Cache only static metrics
         metrics_to_cache = {
             'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
-            'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', []),
+            'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
             'averageConfidence': aggregated_metrics.get('average_confidence'),
             'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
             'totalCost': aggregated_metrics.get('total_cost', 0),
@@ -544,7 +551,7 @@ def _aggregate_test_run_metrics(test_run_id):
     total_cost = 0
     accuracy_count = 0
     confidence_count = 0
-    weighted_overall_scores = []  # List to collect individual weighted overall scores
+    weighted_overall_scores = {}  # Dict to collect document ID -> score mapping
     cost_breakdown = {}
     
     # Accuracy metrics aggregation
@@ -582,7 +589,9 @@ def _aggregate_test_run_metrics(test_run_id):
                 
                 # Extract weighted overall score
                 if overall_metrics.get('weighted_overall_score') is not None:
-                    weighted_overall_scores.append(overall_metrics['weighted_overall_score'])
+                    # Extract document ID from the item PK (format: doc#{test_run_id}/{file_key})
+                    document_id = item['PK'].replace('doc#', '', 1)
+                    weighted_overall_scores[document_id] = overall_metrics['weighted_overall_score']
                 
                 # Extract additional accuracy metrics
                 if overall_metrics.get('precision'):
@@ -642,7 +651,7 @@ def _aggregate_test_run_metrics(test_run_id):
     
     return {
         'overall_accuracy': total_accuracy / accuracy_count if accuracy_count > 0 else None,
-        'weighted_overall_scores': weighted_overall_scores if weighted_overall_scores else [],
+        'weighted_overall_scores': weighted_overall_scores if weighted_overall_scores else {},
         'average_confidence': total_confidence / confidence_count if confidence_count > 0 else None,
         'accuracy_breakdown': {
             'precision': total_precision / precision_count if precision_count > 0 else None,

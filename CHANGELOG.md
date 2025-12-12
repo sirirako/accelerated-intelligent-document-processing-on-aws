@@ -5,6 +5,54 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.8]
+
+### Added
+
+- **Section Data Download Feature for Document Results Export**
+  - Added compact "Download" dropdown button in Document Sections panel for exporting section processing results
+  - **Two Download Options**: 
+    - "Download Data" - Downloads prediction results from OutputBucket (always available)
+    - "Download Baseline" - Downloads baseline/ground truth data from EvaluationBaselineBucket (only shown when baseline exists)
+
+- **Configuration Library Import Feature for Enhanced Configuration Management**
+  - Added Configuration Library browser enabling users to import pre-configured document processing workflows directly from the solution's configuration library
+  - **Dual Import Options**: Users can now choose between importing from local files (existing) or from the Configuration Library (new)
+  - **Pattern-Aware Filtering**: Automatically displays only configurations compatible with the currently deployed pattern (Pattern 1, 2, or 3)
+  - **README Preview**: When available, displays markdown-formatted README documentation before importing to help users understand configuration purpose and features
+
+- **Test Studio Interactive Charts and Document Analysis Enhancements**
+  - **Interactive Score Distribution Charts**: Replaced CloudScape chart with native Recharts implementation featuring dual chart support (Bar Chart and Line Chart options with dropdown selector), native interactivity with built-in click events that open document details modal, and optimized layout with improved margins, labels, and space utilization
+  - **Lowest Scoring Documents Analysis**: Enhanced TestResults with table showing documents with lowest weighted overall scores, TestComparison with cross-test comparison of problematic documents, user-configurable count dropdown (5, 10, 20, or 50 documents), side-by-side T1 vs T2 comparison format for easy analysis, and clickable document links for direct navigation to document viewer
+  - **UI/UX Improvements**: Compact table styling with reduced spacing and improved readability, left-aligned content for better text alignment of document IDs, consistent design matching existing CloudScape design system, and responsive layout where charts adapt to container width
+
+- **RealKIE-FCC-Verified Dataset Auto-Deployment for Test Studio**
+  - Automatically deploys 75 FCC invoice documents from HuggingFace public dataset during stack deployment - zero manual steps required
+  - Test set immediately available in Test Studio UI with complete ground truth for benchmarking extraction accuracy
+  - Version controlled via CloudFormation property - skips re-download on stack updates unless version changes
+
+### Fixed
+
+- **Bedrock OCR Image Resizing Regression - Partial Dimension Configuration Support**
+  - Fixed critical regression where configuring only `target_width` (without `target_height`) disabled all image resizing, causing Bedrock OCR to fail with "length limit exceeded" errors
+  - **Root Cause**: OCR service used `and` condition requiring both dimensions, rejecting partial configs and sending full-resolution images that exceeded model input limits
+  - **Solution**: Implemented aspect-ratio-preserving single-dimension resizing that calculates missing dimension from actual image aspect ratio
+
+- **Test Studio Bug Fixes**
+  - Fixed TestSets manual upload issues
+
+- **Agentic Extraction Prompt Caching** - [GitHub PR #156](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/156)
+  - Removed additional cachepoints to prevent prompt caching conflicts in agentic extraction
+
+- **GovCloud S3 Vectors Service Principal Deployment Failure** - [GitHub Issue #159](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/159)
+  - Fixed CloudFormation deployment failure in GovCloud regions caused by S3 Vectors service not being available
+  - **Root Cause**: KMS key policy referenced `indexing.s3vectors.${AWS::URLSuffix}` service principal which doesn't exist in GovCloud (us-gov-west-1, us-gov-east-1)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+
 ## [0.4.7]
 
 ### Added

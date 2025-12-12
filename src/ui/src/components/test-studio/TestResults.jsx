@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Container,
   Header,
@@ -16,7 +17,6 @@ import {
   Modal,
   Textarea,
   FormField,
-  BarChart,
   Select,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
@@ -225,6 +225,9 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [testSetFilePattern, setTestSetFilePattern] = useState(null);
   const [chartType, setChartType] = useState({ label: 'Bar Chart', value: 'bar' });
   const [retryMessage, setRetryMessage] = useState('');
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [selectedRangeData, setSelectedRangeData] = useState(null);
+  const [lowestScoreCount, setLowestScoreCount] = useState({ label: '5', value: 5 });
 
   const getProgressMessage = (progressLevel) => {
     if (progressLevel <= 1) return 'Initializing test results...';
@@ -428,10 +431,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const hasAccuracyData = results.overallAccuracy !== null && results.overallAccuracy !== undefined;
 
   // Calculate average weighted overall score
-  const averageWeightedScore =
-    results.weightedOverallScores && results.weightedOverallScores.length > 0
-      ? results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length
-      : null;
+  const averageWeightedScore = (() => {
+    if (!results.weightedOverallScores) return null;
+    const scores =
+      typeof results.weightedOverallScores === 'string' ? JSON.parse(results.weightedOverallScores) : results.weightedOverallScores;
+    const values = Object.values(scores);
+    return values.length > 0 ? values.reduce((sum, score) => sum + score, 0) / values.length : null;
+  })();
 
   let costBreakdown = null;
   let accuracyBreakdown = null;
@@ -628,7 +634,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         </ColumnLayout>
 
         {/* Weighted Overall Scores Distribution Chart */}
-        {results.weightedOverallScores && results.weightedOverallScores.length > 1 && (
+        {results.weightedOverallScores && Object.keys(results.weightedOverallScores).length > 1 && (
           <Container
             header={
               <Header
@@ -649,65 +655,226 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
               </Header>
             }
           >
-            <BarChart
-              title={`Distribution of Weighted Overall Scores (${results.testRunId})`}
-              series={[
-                {
-                  title: 'Number of Documents',
-                  type: chartType.value,
-                  data: (() => {
-                    // Create score range buckets
-                    const buckets = {
-                      '0.0-0.1': 0,
-                      '0.1-0.2': 0,
-                      '0.2-0.3': 0,
-                      '0.3-0.4': 0,
-                      '0.4-0.5': 0,
-                      '0.5-0.6': 0,
-                      '0.6-0.7': 0,
-                      '0.7-0.8': 0,
-                      '0.8-0.9': 0,
-                      '0.9-1.0': 0,
-                    };
+            {(() => {
+              const generateChartData = () => {
+                const scores =
+                  typeof results.weightedOverallScores === 'string'
+                    ? JSON.parse(results.weightedOverallScores)
+                    : results.weightedOverallScores;
 
-                    // Count documents in each bucket
-                    results.weightedOverallScores.forEach((score) => {
-                      if (score < 0.1) buckets['0.0-0.1']++;
-                      else if (score < 0.2) buckets['0.1-0.2']++;
-                      else if (score < 0.3) buckets['0.2-0.3']++;
-                      else if (score < 0.4) buckets['0.3-0.4']++;
-                      else if (score < 0.5) buckets['0.4-0.5']++;
-                      else if (score < 0.6) buckets['0.5-0.6']++;
-                      else if (score < 0.7) buckets['0.6-0.7']++;
-                      else if (score < 0.8) buckets['0.7-0.8']++;
-                      else if (score < 0.9) buckets['0.8-0.9']++;
-                      else buckets['0.9-1.0']++;
-                    });
+                // Create score range buckets
+                const buckets = {
+                  '0.0-0.1': { count: 0, docs: [] },
+                  '0.1-0.2': { count: 0, docs: [] },
+                  '0.2-0.3': { count: 0, docs: [] },
+                  '0.3-0.4': { count: 0, docs: [] },
+                  '0.4-0.5': { count: 0, docs: [] },
+                  '0.5-0.6': { count: 0, docs: [] },
+                  '0.6-0.7': { count: 0, docs: [] },
+                  '0.7-0.8': { count: 0, docs: [] },
+                  '0.8-0.9': { count: 0, docs: [] },
+                  '0.9-1.0': { count: 0, docs: [] },
+                };
 
-                    return Object.entries(buckets).map(([range, count]) => ({
-                      x: range,
-                      y: count,
-                    }));
-                  })(),
-                },
-              ]}
-              xDomain={['0.0-0.1', '0.1-0.2', '0.2-0.3', '0.3-0.4', '0.4-0.5', '0.5-0.6', '0.6-0.7', '0.7-0.8', '0.8-0.9', '0.9-1.0']}
-              yDomain={[0, Math.max(...results.weightedOverallScores.map(() => 1)) * results.weightedOverallScores.length]}
-              xTitle="Weighted Overall Score Range"
-              yTitle="Number of Documents"
-              height={300}
-              hideFilter
-              hideLegend
-              i18nStrings={{
-                filterLabel: 'Filter displayed data',
-                filterPlaceholder: 'Filter data',
-                filterSelectedAriaLabel: 'selected',
-                legendAriaLabel: 'Legend',
-                chartAriaRoleDescription: 'bar chart',
-                xTickFormatter: (value) => value,
-                yTickFormatter: (value) => value.toString(),
-              }}
-            />
+                // Count documents and collect IDs in each bucket
+                Object.entries(scores).forEach(([docId, score]) => {
+                  let bucket;
+                  if (score < 0.1) bucket = '0.0-0.1';
+                  else if (score < 0.2) bucket = '0.1-0.2';
+                  else if (score < 0.3) bucket = '0.2-0.3';
+                  else if (score < 0.4) bucket = '0.3-0.4';
+                  else if (score < 0.5) bucket = '0.4-0.5';
+                  else if (score < 0.6) bucket = '0.5-0.6';
+                  else if (score < 0.7) bucket = '0.6-0.7';
+                  else if (score < 0.8) bucket = '0.7-0.8';
+                  else if (score < 0.9) bucket = '0.8-0.9';
+                  else bucket = '0.9-1.0';
+
+                  buckets[bucket].count++;
+                  buckets[bucket].docs.push({ docId, score });
+                });
+
+                let maxCount = 0;
+                const mappedData = Object.entries(buckets).map(([range, data]) => {
+                  if (data.count > maxCount) {
+                    maxCount = data.count;
+                  }
+
+                  const sortedDocs = data.docs.sort((a, b) => b.score - a.score);
+                  const topDocs = sortedDocs.slice(0, 3);
+
+                  let tooltip = `${data.count} documents in range ${range}\n\n`;
+                  topDocs.forEach((doc) => {
+                    tooltip += `• ${doc.docId} (${doc.score?.toFixed(3)})\n`;
+                  });
+                  if (data.docs.length > 3) {
+                    tooltip += `\n...and ${data.docs.length - 3} more documents`;
+                  }
+
+                  return {
+                    x: range,
+                    y: data.count,
+                    tooltip: tooltip,
+                  };
+                });
+
+                return { mappedData, maxCount, buckets };
+              };
+
+              const { mappedData, maxCount, buckets } = generateChartData();
+
+              const chartData = mappedData.map((item) => ({
+                range: item.x,
+                count: item.y,
+                tooltip: item.tooltip,
+              }));
+
+              return (
+                <ResponsiveContainer width="100%" height={320}>
+                  {chartType.value === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="range"
+                        angle={-45}
+                        textAnchor="end"
+                        height={55}
+                        interval={0}
+                        label={{ value: 'Weighted Overall Score Range', position: 'insideBottom', offset: -8 }}
+                      />
+                      <YAxis
+                        label={{ value: 'Number of Documents', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [value, 'Number of Documents']}
+                        labelFormatter={(label) => `Score Range: ${label}`}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="#0073bb"
+                        onClick={(data) => {
+                          const range = data.range;
+                          if (range && buckets[range] && buckets[range].docs.length > 0) {
+                            const docs = buckets[range].docs.sort((a, b) => b.score - a.score);
+                            setSelectedRangeData({ range, docs });
+                            setTimeout(() => {
+                              setShowDocumentsModal(true);
+                            }, 0);
+                          }
+                        }}
+                      />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="range"
+                        angle={-45}
+                        textAnchor="end"
+                        height={55}
+                        interval={0}
+                        label={{ value: 'Weighted Overall Score Range', position: 'insideBottom', offset: -8 }}
+                      />
+                      <YAxis
+                        label={{ value: 'Number of Documents', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [value, 'Number of Documents']}
+                        labelFormatter={(label) => `Score Range: ${label}`}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke="#0073bb"
+                        strokeWidth={2}
+                        dot={{ fill: '#0073bb', strokeWidth: 2, r: 4, cursor: 'pointer' }}
+                        activeDot={{
+                          r: 6,
+                          cursor: 'pointer',
+                          onClick: (data) => {
+                            const range = data.payload.range;
+                            if (range && buckets[range] && buckets[range].docs.length > 0) {
+                              const docs = buckets[range].docs.sort((a, b) => b.score - a.score);
+                              setSelectedRangeData({ range, docs });
+                              setTimeout(() => {
+                                setShowDocumentsModal(true);
+                              }, 0);
+                            }
+                          },
+                        }}
+                      />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              );
+            })()}
+          </Container>
+        )}
+
+        {/* Lowest Scoring Documents Table */}
+        {results?.weightedOverallScores && (
+          <Container
+            header={
+              <Header
+                actions={
+                  <Select
+                    selectedOption={lowestScoreCount}
+                    onChange={({ detail }) => setLowestScoreCount(detail.selectedOption)}
+                    options={[
+                      { label: '5', value: 5 },
+                      { label: '10', value: 10 },
+                      { label: '20', value: 20 },
+                      { label: '50', value: 50 },
+                    ]}
+                    placeholder="Select count"
+                  />
+                }
+              >
+                Documents with Lowest Weighted Overall Scores
+              </Header>
+            }
+          >
+            {(() => {
+              const scores =
+                typeof results.weightedOverallScores === 'string'
+                  ? JSON.parse(results.weightedOverallScores)
+                  : results.weightedOverallScores;
+
+              const sortedDocs = Object.entries(scores)
+                .map(([docId, score]) => ({ docId, score }))
+                .sort((a, b) => a.score - b.score)
+                .slice(0, lowestScoreCount.value);
+
+              return (
+                <Table
+                  items={sortedDocs}
+                  columnDefinitions={[
+                    {
+                      id: 'docId',
+                      header: 'Document ID',
+                      cell: (item) => (
+                        <Button
+                          variant="link"
+                          onClick={() => {
+                            const urlPath = item.docId.replace(/\//g, '%252F');
+                            window.open(`#/documents/${urlPath}`, '_blank');
+                          }}
+                        >
+                          {item.docId}
+                        </Button>
+                      ),
+                    },
+                    {
+                      id: 'score',
+                      header: 'Weighted Overall Score',
+                      cell: (item) => item.score.toFixed(3),
+                    },
+                  ]}
+                  variant="embedded"
+                  contentDensity="compact"
+                />
+              );
+            })()}
           </Container>
         )}
 
@@ -765,6 +932,47 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             />
           </FormField>
         </SpaceBetween>
+      </Modal>
+
+      <Modal
+        visible={showDocumentsModal}
+        onDismiss={() => setShowDocumentsModal(false)}
+        header={`Documents in Range ${selectedRangeData?.range || ''}`}
+        size="medium"
+      >
+        <Box>
+          {selectedRangeData?.docs?.length > 0 ? (
+            <Table
+              items={selectedRangeData.docs}
+              columnDefinitions={[
+                {
+                  id: 'docId',
+                  header: 'Document ID',
+                  cell: (item) => (
+                    <Button
+                      variant="link"
+                      onClick={() => {
+                        const urlPath = item.docId.replace(/\//g, '%252F');
+                        window.open(`#/documents/${urlPath}`, '_blank');
+                      }}
+                    >
+                      {item.docId}
+                    </Button>
+                  ),
+                },
+                {
+                  id: 'score',
+                  header: 'Score',
+                  cell: (item) => item.score.toFixed(3),
+                },
+              ]}
+              variant="embedded"
+              contentDensity="compact"
+            />
+          ) : (
+            <Box>No documents found in this range</Box>
+          )}
+        </Box>
       </Modal>
     </Container>
   );

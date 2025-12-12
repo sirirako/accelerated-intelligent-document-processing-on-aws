@@ -523,7 +523,7 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
   );
 };
 
-const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sectionData }) => {
+const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sectionData, onOpen, onClose }) => {
   const [fileContent, setFileContent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -553,6 +553,11 @@ const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sect
       logger.debug('Received content:', `${fetchedContent.substring(0, 100)}...`);
       setFileContent(fetchedContent);
       setEditedContent(fetchedContent); // Initialize edited content for always-on edit mode
+
+      // Notify parent that viewer is now open
+      if (onOpen) {
+        onOpen();
+      }
     } catch (err) {
       logger.error('Error fetching content:', err);
       setError(`Failed to load ${fileType} content. Please try again.`);
@@ -640,6 +645,11 @@ const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sect
   const closeViewer = () => {
     setFileContent(null);
     setEditedContent(null);
+
+    // Notify parent that viewer is now closed
+    if (onClose) {
+      onClose();
+    }
   };
 
   if (!fileUri) {

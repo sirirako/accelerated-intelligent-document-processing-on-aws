@@ -91,6 +91,26 @@ type UpdateConfigurationResponse @aws_cognito_user_pools @aws_iam {
   error: ConfigurationError
 }
 
+type ConfigurationLibraryItem @aws_cognito_user_pools @aws_iam {
+  name: String!
+  hasReadme: Boolean!
+  path: String!
+  configFileType: String
+}
+
+type ConfigurationLibraryResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  items: [ConfigurationLibraryItem]
+  error: String
+}
+
+type ConfigurationLibraryFileResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  content: String!
+  contentType: String!
+  error: String
+}
+
 type DiscoveryJobList @aws_cognito_user_pools @aws_iam {
   DiscoveryJobs: [DiscoveryJobListItem]
   nextToken: String
@@ -273,7 +293,7 @@ type TestRun @aws_cognito_user_pools @aws_iam {
   completedFiles: Int
   failedFiles: Int
   overallAccuracy: Float
-  weightedOverallScores: [Float]
+  weightedOverallScores: AWSJSON
   averageConfidence: Float
   accuracyBreakdown: AWSJSON
   totalCost: Float
@@ -477,6 +497,12 @@ type Query @aws_cognito_user_pools @aws_iam {
   getTestSets: [TestSet] @aws_cognito_user_pools
   listBucketFiles(bucketType: String!, filePattern: String!): [String] @aws_cognito_user_pools
   validateTestFileName(fileName: String!): TestSetValidationResponse @aws_cognito_user_pools
+  listConfigurationLibrary(pattern: String!): ConfigurationLibraryResponse @aws_cognito_user_pools
+  getConfigurationLibraryFile(
+    pattern: String!
+    configName: String!
+    fileName: String!
+  ): ConfigurationLibraryFileResponse @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
