@@ -74,6 +74,8 @@ class GovCloudTemplateGenerator:
             'ConfigurationDataSource',
             'GetConfigurationResolver',
             'UpdateConfigurationResolver',
+            'ListConfigurationLibraryResolver',
+            'GetConfigurationLibraryFileResolver',
             'CopyToBaselineResolverFunction',
             'CopyToBaselineResolverFunctionLogGroup',
             'CopyToBaselineDataSource',
@@ -274,6 +276,7 @@ class GovCloudTemplateGenerator:
             'CloudFrontAllowedGeos',
             'WAFAllowedIPv4Ranges',
             'DocumentKnowledgeBase',
+            'KnowledgeBaseVectorStore',
             'KnowledgeBaseModelId',
             'ChatCompanionModelId',
             'EnableHITL',
@@ -537,9 +540,15 @@ class GovCloudTemplateGenerator:
         return template
 
     def remove_conditions(self, template: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove conditions related to unsupported services"""
+        """Remove conditions related to unsupported services and force S3 Vectors to False"""
         conditions = template.get('Conditions', {})
         original_count = len(conditions)
+        
+        # Force IsS3VectorsVectorStore to always evaluate to false for GovCloud (S3 Vectors service not available)
+        # Use CloudFormation intrinsic function that always evaluates to false
+        if 'IsS3VectorsVectorStore' in conditions:
+            conditions['IsS3VectorsVectorStore'] = {'Fn::Equals': ['false', 'true']}
+            self.logger.info("Forced IsS3VectorsVectorStore condition to always evaluate to False for GovCloud")
         
         ui_conditions = {
             'ShouldAllowSignUpEmailDomain',
@@ -1030,7 +1039,7 @@ class GovCloudTemplateGenerator:
             # 1-Click Launch for GovCloud template
             encoded_govcloud_url = quote(govcloud_url, safe=":/?#[]@!$&'()*+,;=")
             if "us-gov" in region:
-                domain="aws.amazonaws-us-gov.com"
+                domain="amazonaws-us-gov.com"
             else:
                 domain="aws.amazon.com"
             govcloud_launch_url = f"https://{region}.console.{domain}/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"
