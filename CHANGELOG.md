@@ -7,6 +7,12 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Section Data Download Feature for Document Results Export**
+  - Added compact "Download" dropdown button in Document Sections panel for exporting section processing results
+  - **Two Download Options**: 
+    - "Download Data" - Downloads prediction results from OutputBucket (always available)
+    - "Download Baseline" - Downloads baseline/ground truth data from EvaluationBaselineBucket (only shown when baseline exists)
+
 - **Configuration Library Import Feature for Enhanced Configuration Management**
   - Added Configuration Library browser enabling users to import pre-configured document processing workflows directly from the solution's configuration library
   - **Dual Import Options**: Users can now choose between importing from local files (existing) or from the Configuration Library (new)
