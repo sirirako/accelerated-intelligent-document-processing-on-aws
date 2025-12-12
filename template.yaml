@@ -1782,7 +1782,6 @@ Resources:
   FccDatasetDeployerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-FccDatasetDeployer"
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
@@ -1842,7 +1841,7 @@ Resources:
       - FccDatasetDeployerFunction
     Properties:
       ServiceToken: !GetAtt FccDatasetDeployerFunction.Arn
-      DatasetVersion: "0.1"
+      DatasetVersion: "1.0"
       DatasetName: "RealKIE-FCC-Verified"
       DatasetDescription: "Test set with single and multi-page invoices sourced from the Federal Communications Commission (FCC) to evaluate extraction performance."
       SourceCodeHash: <FCC_DATASET_DEPLOYER_HASH_TOKEN>
@@ -6914,6 +6913,7 @@ Resources:
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
           CONFIGURATION_QUEUE_URL: !Ref ConfigurationQueue
           STACK_NAME: !Ref AWS::StackName
+          CONFIGURATION_BUCKET: !Ref ConfigurationBucket
       LoggingConfig:
         LogGroup: !Ref ConfigurationResolverFunctionLogGroup
       Policies:
@@ -6921,6 +6921,8 @@ Resources:
             TableName: !Ref ConfigurationTable
         - SQSSendMessagePolicy:
             QueueName: !GetAtt ConfigurationQueue.QueueName
+        - S3ReadPolicy:
+            BucketName: !Ref ConfigurationBucket
         - Statement:
             - Effect: Allow
               Action:
@@ -6970,6 +6972,24 @@ Resources:
       DataSourceName: !GetAtt ConfigurationDataSource.Name
       TypeName: Mutation
       FieldName: updateConfiguration
+
+  ListConfigurationLibraryResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt ConfigurationDataSource.Name
+      TypeName: Query
+      FieldName: listConfigurationLibrary
+
+  GetConfigurationLibraryFileResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt ConfigurationDataSource.Name
+      TypeName: Query
+      FieldName: getConfigurationLibraryFile
 
   CopyToBaselineResolverFunction:
     Type: AWS::Serverless::Function
