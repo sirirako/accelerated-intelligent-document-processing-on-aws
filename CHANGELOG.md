@@ -36,6 +36,11 @@ SPDX-License-Identifier: MIT-0
 - **Agentic Extraction Prompt Caching** - [GitHub PR #156](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/156)
   - Removed additional cachepoints to prevent prompt caching conflicts in agentic extraction
 
+- **GovCloud S3 Vectors Service Principal Deployment Failure** - [GitHub Issue #159](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/159)
+  - Fixed CloudFormation deployment failure in GovCloud regions caused by S3 Vectors service not being available
+  - **Root Cause**: KMS key policy referenced `indexing.s3vectors.${AWS::URLSuffix}` service principal which doesn't exist in GovCloud (us-gov-west-1, us-gov-east-1)
+
+
 ## [0.4.7]
 
 ### Added
