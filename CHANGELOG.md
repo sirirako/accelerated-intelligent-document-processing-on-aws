@@ -19,6 +19,11 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Bedrock OCR Image Resizing Regression - Partial Dimension Configuration Support**
+  - Fixed critical regression where configuring only `target_width` (without `target_height`) disabled all image resizing, causing Bedrock OCR to fail with "length limit exceeded" errors
+  - **Root Cause**: OCR service used `and` condition requiring both dimensions, rejecting partial configs and sending full-resolution images that exceeded model input limits
+  - **Solution**: Implemented aspect-ratio-preserving single-dimension resizing that calculates missing dimension from actual image aspect ratio
+
 - **Test Studio Bug Fixes**
   - Fixed TestSets manual upload issues
 
