@@ -31,6 +31,8 @@ Mappings:
   Pattern1ConfigurationMap:
     lending-package-sample:
       ConfigPath: "lending-package-sample"
+    realkie-fcc-verified:
+      ConfigPath: "realkie-fcc-verified"
     default:
       ConfigPath: "lending-package-sample"
 
@@ -43,6 +45,8 @@ Mappings:
       ConfigPath: "rvl-cdip-package-sample-with-few-shot-examples"
     bank-statement-sample:
       ConfigPath: "bank-statement-sample"
+    realkie-fcc-verified:
+      ConfigPath: "realkie-fcc-verified"
     default:
       ConfigPath: "rvl-cdip-package-sample"
 
@@ -108,6 +112,7 @@ Parameters:
     Default: "lending-package-sample"
     AllowedValues:
       - "lending-package-sample"
+      - "realkie-fcc-verified"
       - "default"
     Description: >-
       Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
@@ -122,6 +127,7 @@ Parameters:
       - "rvl-cdip-package-sample"
       - "rvl-cdip-package-sample-with-few-shot-examples"
       - "bank-statement-sample"
+      - "realkie-fcc-verified"
       - "default"
     Description: >-
       Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
