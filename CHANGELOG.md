@@ -5,7 +5,15 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.8]
+
 ### Added
+
+- **Section Data Download Feature for Document Results Export**
+  - Added compact "Download" dropdown button in Document Sections panel for exporting section processing results
+  - **Two Download Options**: 
+    - "Download Data" - Downloads prediction results from OutputBucket (always available)
+    - "Download Baseline" - Downloads baseline/ground truth data from EvaluationBaselineBucket (only shown when baseline exists)
 
 - **Configuration Library Import Feature for Enhanced Configuration Management**
   - Added Configuration Library browser enabling users to import pre-configured document processing workflows directly from the solution's configuration library
@@ -35,6 +43,15 @@ SPDX-License-Identifier: MIT-0
 
 - **Agentic Extraction Prompt Caching** - [GitHub PR #156](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/156)
   - Removed additional cachepoints to prevent prompt caching conflicts in agentic extraction
+
+- **GovCloud S3 Vectors Service Principal Deployment Failure** - [GitHub Issue #159](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/159)
+  - Fixed CloudFormation deployment failure in GovCloud regions caused by S3 Vectors service not being available
+  - **Root Cause**: KMS key policy referenced `indexing.s3vectors.${AWS::URLSuffix}` service principal which doesn't exist in GovCloud (us-gov-west-1, us-gov-east-1)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
 
 ## [0.4.7]
 
