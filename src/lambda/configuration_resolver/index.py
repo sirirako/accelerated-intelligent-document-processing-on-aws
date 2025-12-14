@@ -65,6 +65,10 @@ def handler(event, context):
                 if success
                 else "Configuration update failed",
             }
+        elif operation == "listConfigurationLibrary":
+            return handle_list_config_library(event["arguments"])
+        elif operation == "getConfigurationLibraryFile":
+            return handle_get_config_library_file(event["arguments"])
         else:
             raise Exception(f"Unsupported operation: {operation}")
     except ValidationError as e:
@@ -174,3 +178,177 @@ def handle_get_configuration(manager):
     except Exception as e:
         logger.error(f"Error in getConfiguration: {str(e)}")
         raise e
+
+
+def handle_list_config_library(args):
+    """
+    List available configurations from S3 config_library for a specific pattern
+    Returns: { success: bool, items: [...], error: str }
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+
+    pattern = args.get("pattern")
+    if not pattern:
+        return {"success": False, "items": [], "error": "Pattern parameter is required"}
+
+    try:
+        s3_client = boto3.client("s3")
+        bucket_name = os.environ.get("CONFIGURATION_BUCKET")
+        prefix = f"config_library/{pattern}/"
+
+        logger.info(
+            f"Listing config library for pattern: {pattern} in bucket: {bucket_name}"
+        )
+
+        # List "directories" under the pattern folder
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name, Prefix=prefix, Delimiter="/"
+        )
+
+        items = []
+
+        # CommonPrefixes are the "directories" (config folders)
+        for common_prefix in response.get("CommonPrefixes", []):
+            config_dir = common_prefix["Prefix"]
+            config_name = config_dir.rstrip("/").split("/")[-1]
+
+            # Check if README.md exists in this config directory
+            readme_key = f"{config_dir}README.md"
+            has_readme = False
+
+            try:
+                s3_client.head_object(Bucket=bucket_name, Key=readme_key)
+                has_readme = True
+            except ClientError as e:
+                if e.response["Error"]["Code"] != "404":
+                    logger.warning(f"Error checking README for {config_name}: {e}")
+
+            # Detect which config file type exists (prefer YAML, fallback to JSON)
+            config_file_type = None
+            yaml_key = f"{config_dir}config.yaml"
+            json_key = f"{config_dir}config.json"
+
+            try:
+                s3_client.head_object(Bucket=bucket_name, Key=yaml_key)
+                config_file_type = "yaml"
+            except ClientError:
+                # YAML doesn't exist, try JSON
+                try:
+                    s3_client.head_object(Bucket=bucket_name, Key=json_key)
+                    config_file_type = "json"
+                except ClientError:
+                    logger.warning(
+                        f"No config file found for {config_name} (checked yaml and json)"
+                    )
+                    # Skip this config if no config file exists
+                    continue
+
+            items.append({
+                "name": config_name,
+                "hasReadme": has_readme,
+                "path": config_dir,
+                "configFileType": config_file_type
+            })
+
+        if not items:
+            logger.info(f"No configurations found for pattern: {pattern}")
+
+        logger.info(f"Found {len(items)} configurations for pattern: {pattern}")
+        return {"success": True, "items": items, "error": None}
+
+    except ClientError as e:
+        logger.error(f"S3 error listing config library: {e}")
+        return {
+            "success": False,
+            "items": [],
+            "error": f"Failed to list configurations: {str(e)}",
+        }
+    except Exception as e:
+        logger.error(f"Error listing config library: {e}")
+        return {
+            "success": False,
+            "items": [],
+            "error": f"Unexpected error: {str(e)}",
+        }
+
+
+def handle_get_config_library_file(args):
+    """
+    Get a specific file (config.yaml or README.md) from config library
+    Returns: { success: bool, content: str, contentType: str, error: str }
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+
+    pattern = args.get("pattern")
+    config_name = args.get("configName")
+    file_name = args.get("fileName")
+
+    if not all([pattern, config_name, file_name]):
+        return {
+            "success": False,
+            "content": "",
+            "contentType": "",
+            "error": "Missing required parameters",
+        }
+
+    # Security: Only allow specific file names
+    if file_name not in ["config.yaml", "config.json", "README.md"]:
+        return {
+            "success": False,
+            "content": "",
+            "contentType": "",
+            "error": f"Invalid file name: {file_name}",
+        }
+
+    try:
+        s3_client = boto3.client("s3")
+        bucket_name = os.environ.get("CONFIGURATION_BUCKET")
+        key = f"config_library/{pattern}/{config_name}/{file_name}"
+
+        logger.info(f"Getting file from S3: {bucket_name}/{key}")
+
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+        content = response["Body"].read().decode("utf-8")
+
+        # Set appropriate content type based on file extension
+        if file_name == "README.md":
+            content_type = "text/markdown"
+        elif file_name == "config.json":
+            content_type = "application/json"
+        else:
+            content_type = "text/yaml"
+
+        logger.info(
+            f"Successfully retrieved {file_name} for {pattern}/{config_name} "
+            f"({len(content)} bytes)"
+        )
+        return {
+            "success": True,
+            "content": content,
+            "contentType": content_type,
+            "error": None,
+        }
+
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            error_msg = f"File not found: {file_name}"
+        else:
+            error_msg = f"S3 error: {str(e)}"
+
+        logger.error(f"Error getting config library file: {error_msg}")
+        return {
+            "success": False,
+            "content": "",
+            "contentType": "",
+            "error": error_msg,
+        }
+    except Exception as e:
+        logger.error(f"Error getting config library file: {e}")
+        return {
+            "success": False,
+            "content": "",
+            "contentType": "",
+            "error": f"Unexpected error: {str(e)}",
+        }

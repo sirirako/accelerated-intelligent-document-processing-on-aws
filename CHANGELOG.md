@@ -5,6 +5,166 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.8]
+
+### Added
+
+- **Section Data Download Feature for Document Results Export**
+  - Added compact "Download" dropdown button in Document Sections panel for exporting section processing results
+  - **Two Download Options**: 
+    - "Download Data" - Downloads prediction results from OutputBucket (always available)
+    - "Download Baseline" - Downloads baseline/ground truth data from EvaluationBaselineBucket (only shown when baseline exists)
+
+- **Configuration Library Import Feature for Enhanced Configuration Management**
+  - Added Configuration Library browser enabling users to import pre-configured document processing workflows directly from the solution's configuration library
+  - **Dual Import Options**: Users can now choose between importing from local files (existing) or from the Configuration Library (new)
+  - **Pattern-Aware Filtering**: Automatically displays only configurations compatible with the currently deployed pattern (Pattern 1, 2, or 3)
+  - **README Preview**: When available, displays markdown-formatted README documentation before importing to help users understand configuration purpose and features
+
+- **Test Studio Interactive Charts and Document Analysis Enhancements**
+  - **Interactive Score Distribution Charts**: Replaced CloudScape chart with native Recharts implementation featuring dual chart support (Bar Chart and Line Chart options with dropdown selector), native interactivity with built-in click events that open document details modal, and optimized layout with improved margins, labels, and space utilization
+  - **Lowest Scoring Documents Analysis**: Enhanced TestResults with table showing documents with lowest weighted overall scores, TestComparison with cross-test comparison of problematic documents, user-configurable count dropdown (5, 10, 20, or 50 documents), side-by-side T1 vs T2 comparison format for easy analysis, and clickable document links for direct navigation to document viewer
+  - **UI/UX Improvements**: Compact table styling with reduced spacing and improved readability, left-aligned content for better text alignment of document IDs, consistent design matching existing CloudScape design system, and responsive layout where charts adapt to container width
+
+- **RealKIE-FCC-Verified Dataset Auto-Deployment for Test Studio**
+  - Automatically deploys 75 FCC invoice documents from HuggingFace public dataset during stack deployment - zero manual steps required
+  - Test set immediately available in Test Studio UI with complete ground truth for benchmarking extraction accuracy
+  - Version controlled via CloudFormation property - skips re-download on stack updates unless version changes
+
+### Fixed
+
+- **Bedrock OCR Image Resizing Regression - Partial Dimension Configuration Support**
+  - Fixed critical regression where configuring only `target_width` (without `target_height`) disabled all image resizing, causing Bedrock OCR to fail with "length limit exceeded" errors
+  - **Root Cause**: OCR service used `and` condition requiring both dimensions, rejecting partial configs and sending full-resolution images that exceeded model input limits
+  - **Solution**: Implemented aspect-ratio-preserving single-dimension resizing that calculates missing dimension from actual image aspect ratio
+
+- **Test Studio Bug Fixes**
+  - Fixed TestSets manual upload issues
+
+- **Agentic Extraction Prompt Caching** - [GitHub PR #156](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/156)
+  - Removed additional cachepoints to prevent prompt caching conflicts in agentic extraction
+
+- **GovCloud S3 Vectors Service Principal Deployment Failure** - [GitHub Issue #159](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/159)
+  - Fixed CloudFormation deployment failure in GovCloud regions caused by S3 Vectors service not being available
+  - **Root Cause**: KMS key policy referenced `indexing.s3vectors.${AWS::URLSuffix}` service principal which doesn't exist in GovCloud (us-gov-west-1, us-gov-east-1)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+
+## [0.4.7]
+
+### Added
+
+- **MCP Integration Cross-Region Support for QuickSuite Integration**
+  - Added cross-region support for QuickSuite integration enabling MCP connectivity across multiple AWS regions: us-east-1, us-west-2, eu-west-1, ap-southeast-2
+
+### Fixed
+
+- **Stack deployment failure due to MCP Integration IAM Permissions - [GitHub Issue #154](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/154)**
+  - Fixed missing permissions in AgentCoreGatewayManagerFunctionRole by creating the AgentCoreGateway execution role explicitly in the CloudFormation template instead of dynamically in the Lambda function
+
+- **Post-Processing Lambda Hook Compression Handling - [GitHub Issue #155](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/155)**
+  - Added intermediate decompression lambda to handle document decompression before invoking custom post-processing lambdas
+  - **Root Cause**: After introducing document compression, the post-processing lambda hook was receiving compressed documents in the EventBridge payload, forcing external lambdas to import `idp_common` package and handle decompression manually
+  - **Solution**: New `PostProcessingDecompressor` lambda function intercepts EventBridge events, decompresses documents using `Document.load_document()`, and invokes custom post-processors with decompressed payload
+  - **Benefits**: Maintains backward compatibility, eliminates external dependencies (no `idp_common` import needed), keeps compression/decompression logic encapsulated within IDP stack, minimal performance impact (<1s latency)
+
+- **Enhanced Bedrock Error Handling for Agent Companion Chat**
+  - Implemented robust error handling system for Bedrock API errors in Agent Companion Chat feature with automatic retry and graceful degradation
+  - **Automatic Retry with Exponential Backoff**: Configured boto3 with adaptive retry mode (3 attempts) and exponential back-off to prevent service overload
+  - **User-Friendly Error Messages**: Created `BedrockErrorMessageHandler` to convert technical errors into clear, actionable messages for service unavailable (503), throttling (429), access denied (403), validation errors (400), timeouts (408), and quota exceeded scenarios
+  - **Sub-Agent Error Handling**: When sub-agents (Analytics, Error Analyzer, Code Intelligence) encounter Bedrock errors, the orchestrator continues gracefully without crashing, only displaying the first error to avoid duplicates while allowing other sub-agents to complete
+
+- **GovCloud Template Generation - Missing AppSync and MCP Resource Removal**
+  - Fixed CloudFormation deployment error "Unresolved resource dependencies [DeleteDocumentResolverFunction]" when deploying GovCloud templates
+  - **Test Studio Resources Added (36 resources)**: Added all Test Studio Lambda functions, AppSync resolvers, data sources, and supporting infrastructure to removal list (DeleteTestsResolver, TestRunnerResolver, TestResultsResolver, TestSetResolver, and all related functions, queues, and policies)
+  - **MCP/AgentCore Gateway Resources Added (7 resources)**: Added MCP integration resources that depend on Cognito UserPool to removal list (AgentCoreAnalyticsLambdaFunction, AgentCoreGatewayManagerFunction, AgentCoreGatewayExecutionRole, AgentCoreGateway, ExternalAppClient)
+  - **MCP Outputs Removed (8 outputs)**: Removed MCP-related outputs that reference deleted resources (MCPServerEndpoint, MCPClientId, MCPClientSecret, MCPUserPool, MCPTokenURL, MCPAuthorizationURL, DynamoDBAgentTableName, DynamoDBAgentTableConsoleURL)
+  - **EnableMCP Default Changed**: Set `EnableMCP` parameter default to 'false' for GovCloud since MCP integration requires Cognito authentication infrastructure
+  - **Impact**: GovCloud templates now deploy successfully without dependency errors, maintaining core document processing functionality in headless mode
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.7.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
+
+
+## [0.4.6]
+
+### Added
+
+- **New State-Of-The-Art LLM Model Support**
+  - Added support for Amazon Nova 2 Lite model (`us.amazon.nova-2-lite-v1:0`, `eu.amazon.nova-2-lite-v1:0`)
+  - Added support for Claude Opus 4.5 model (`us.anthropic.claude-opus-4-5-20251101-v1:0`, `eu.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - Added support for Qwen 3 VL model (`qwen.qwen3-vl-235b-a22b`)
+  - Available for configuration across all document processing steps
+
+- **Test Studio for Comprehensive Test Management and Analysis**
+  - Added unified web interface for managing test sets, running tests, and analyzing results directly from the UI
+  - **Test Sets Tab**: Create and manage reusable test collections with three creation methods:
+    - Pattern-based creation with file patterns to match existing data sets (Input Bucket and Test Set Bucket)
+    - Zip upload with automatic extraction of `input/` and `baseline/` folder structure
+  - **Test Executions Tab**: Unified interface combining test execution and results management:
+    - Real-time status monitoring
+    - Multi-select comparison for side-by-side test analysis
+    - Integrated export and delete operations
+  - **Key Features**: File structure validation, progress-aware status updates, cached metrics for improved performance, dual bucket support for flexible test organization
+  - **Documentation**: Guide in `docs/test-studio.md` with architecture details and workflow examples
+
+- **MCP Integration for External Application Access**
+  - Added MCP (Model Context Protocol) integration enabling external applications (like Amazon Quick Suite) to access IDP analytics through AWS Bedrock AgentCore Gateway with secure OAuth 2.0 authentication
+  - Implemented Analytics Agent with `search_genaiidp` tool for natural language queries of processed document data (statistics, trends, confidence scores, processing status)
+  - Controlled by `EnableMCP` parameter (default: true); provides MCPServerEndpoint and authentication outputs for external application integration; documentation in `docs/mcp-integration.md`
+
+- **Configurable Section Splitting Strategies for Enhanced Document Segmentation Control**
+  - Added new `sectionSplitting` configuration option to control how classified pages are grouped into document sections
+  - **Three Strategies Available**:
+    - `disabled`: Entire document treated as single section with first detected class (simplest case)
+    - `page`: One section per page preventing automatic joining of same-type documents (deterministic, solves Issue #146)
+    - `llm_determined`: Uses LLM boundary detection with "Start"/"Continue" indicators (default, maintains existing behavior)
+  - **Key Benefits**: Deterministic splitting for long documents with multiple same-type forms (e.g., multiple W-2s, multiple invoices), eliminates LLM boundary detection failures for critical government form processing, provides flexibility across simple to complex document scenarios
+  - Resolves #146
+
+### Changed
+
+- **Improved Temperature and Top_P Parameter Logic for Deterministic Output**
+  - Changed inference parameter selection logic to allow `temperature=0.0` for deterministic output (recommended by Anthropic and other model providers)
+  - **New Logic**: Uses `top_p` only when it has a positive value (> 0); otherwise uses `temperature` including `temperature=0.0`
+  - **Previous Logic**: Used `top_p` whenever `temperature=0.0`, preventing proper deterministic configuration
+  - **Key Benefits**: Enables proper deterministic output with `temperature=0.0`, more intuitive parameter behavior, aligns with model provider best practices (Anthropic recommends `temperature=0` for consistent outputs)
+  - **Affected Components**: Bedrock client (`lib/idp_common_pkg/idp_common/bedrock/client.py`), Agentic extraction service (`lib/idp_common_pkg/idp_common/extraction/agentic_idp.py`)
+  - **Configuration Guidance**: Set `top_p: 0` to use `temperature` parameter; set `top_p` to positive value to override temperature
+  - Set temperature to 0.0 in discovery config for deterministic discovery output (was previously set to 1.0)
+  - Set top_p to 0.0 in all repo config files to force use of temperature setting by default.
+
+- **Removed page image limit entirely across all IDP services**
+  - removed image limits from multimodal inference steps (classification, extraction, assessment) following Amazon Bedrock API removal of image count restrictions. The system now processes all document pages without artificial truncation, with info logging to track image counts for monitoring purposes.
+  - Resolves #147
+
+- **Knowledge Base Vector Store Default Changed to S3 Vectors**
+  - Changed default `KnowledgeBaseVectorStore` from `OPENSEARCH_SERVERLESS` to `S3_VECTORS` for cost-optimized deployments
+  - S3 Vectors provides 40-60% lower storage costs with sub-second latency suitable for most use cases
+  - OpenSearch Serverless remains available for applications requiring sub-millisecond query performance
+  - No action required for existing deployments - only affects new stack deployments
+
+### Fixed
+
+- **UI: Document Schema Editor Regex Fields Not Persisting** - Fixed issue where Document Name Regex and Page Content Regex fields were not being saved in configuration or restored after page refresh. Fixes #151
+- **Document Schema Builder Enum Support** - Fixed enum value handling in schema builder to properly support enumeration constraints for attribute definitions
+- **Agentic Extraction Parameter Passing** - Fixed temperature and top_p parameters now correctly passed to agentic extraction service, enabling proper model behavior control
+- **Document Schema Builder UI Labels** - Enhanced field labels and formats in document schema builder for improved clarity and user experience
+- **Retry Mechanism Improvements** - Enhanced retry logic for more reliable error handling and recovery across document processing workflows
+- **Type Safety Enhancements** - Improved type annotations and fixed undefined items handling to prevent runtime errors
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.6.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.6.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.6.yaml`
+
+
 ## [0.4.5]
 
 ### Added

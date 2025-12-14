@@ -1238,22 +1238,61 @@ class EvaluationService:
 
             return section_result
 
+        except ValueError as ve:
+            # Schema configuration missing - this is a configuration issue
+            logger.error(
+                f"Configuration error for section {section.section_id}: {str(ve)}",
+                exc_info=True,
+            )
+            failure_reason = (
+                f"No schema configuration found for document class: {class_name}. "
+                f"Cannot evaluate without configuration or baseline data. "
+                f"Please add configuration for this document class or provide baseline data."
+            )
+
+            return SectionEvaluationResult(
+                section_id=section.section_id,
+                document_class=class_name,
+                attributes=[
+                    AttributeEvaluationResult(
+                        name="__EVALUATION_FAILURE__",
+                        expected=None,
+                        actual=None,
+                        matched=False,
+                        score=0.0,
+                        reason=failure_reason,
+                        evaluation_method="N/A",
+                    )
+                ],
+                metrics={
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1_score": 0.0,
+                    "accuracy": 0.0,
+                    "false_alarm_rate": 0.0,
+                    "false_discovery_rate": 0.0,
+                    "weighted_overall_score": 0.0,
+                    "evaluation_failed": True,
+                },
+            )
+
         except Exception as e:
+            # Data validation error or other issues
             logger.error(
                 f"Error evaluating section {section.section_id}: {str(e)}",
                 exc_info=True,
             )
-            # Return failure result with zero metrics to indicate complete evaluation failure
-            # This ensures the failure is reflected in section and document-level metrics
-            failure_reason = str(e)
 
-            # Check if this is a missing configuration error
-            if "No schema configuration found" in failure_reason:
+            # Check if it's a Pydantic validation error
+            error_type = type(e).__name__
+            if "ValidationError" in error_type:
                 failure_reason = (
-                    f"No schema configuration found for document class: {class_name}. "
-                    f"Cannot evaluate without configuration or baseline data. "
-                    f"Please add configuration for this document class or provide baseline data."
+                    f"Data validation error: The baseline data format doesn't match the schema for document class '{class_name}'. "
+                    f"This typically means the baseline data has different types than expected. "
+                    f"Details: {str(e)}"
                 )
+            else:
+                failure_reason = f"Unexpected error during evaluation: {str(e)}"
 
             return SectionEvaluationResult(
                 section_id=section.section_id,

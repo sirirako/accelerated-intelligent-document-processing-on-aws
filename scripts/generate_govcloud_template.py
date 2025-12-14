@@ -74,6 +74,8 @@ class GovCloudTemplateGenerator:
             'ConfigurationDataSource',
             'GetConfigurationResolver',
             'UpdateConfigurationResolver',
+            'ListConfigurationLibraryResolver',
+            'GetConfigurationLibraryFileResolver',
             'CopyToBaselineResolverFunction',
             'CopyToBaselineResolverFunctionLogGroup',
             'CopyToBaselineDataSource',
@@ -148,7 +150,54 @@ class GovCloudTemplateGenerator:
             'AgentChatProcessorFunction',
             'AgentChatProcessorLogGroup',
             'AgentChatResolverFunction',
-            'AgentChatResolverLogGroup'
+            'AgentChatResolverLogGroup',
+            # Test Studio Resources (added for GovCloud compatibility)
+            'DeleteTestsResolverFunction',
+            'DeleteTestsResolverFunctionLogGroup',
+            'DeleteTestsDataSource',
+            'DeleteTestsResolver',
+            'TestRunnerFunction',
+            'TestRunnerFunctionLogGroup',
+            'TestRunnerDataSource',
+            'TestRunnerResolver',
+            'TestResultsResolverFunction',
+            'TestResultsResolverFunctionLogGroup',
+            'TestResultsDataSource',
+            'GetTestRunsResolver',
+            'CompareTestRunsResolver',
+            'GetTestRunResolver',
+            'GetTestRunStatusResolver',
+            'TestSetResolverFunction',
+            'TestSetResolverFunctionLogGroup',
+            'TestSetDataSource',
+            'AddTestSetResolver',
+            'AddTestSetFromUploadResolver',
+            'DeleteTestSetsResolver',
+            'GetTestSetsResolver',
+            'ListBucketFilesResolver',
+            'ValidateTestFileNameResolver',
+            'TestResultCacheUpdateQueue',
+            'TestFileCopierFunction',
+            'TestFileCopierFunctionLogGroup',
+            'TestFileCopierFunctionDLQ',
+            'TestFileCopyQueue',
+            'TestFileCopyQueueDLQ',
+            'TestFileCopyQueuePolicy',
+            'TestFileCopyQueueDLQPolicy',
+            'TestSetFileCopierFunction',
+            'TestSetFileCopierFunctionLogGroup',
+            'TestSetFileCopierFunctionDLQ',
+            'TestSetFileCopyQueue',
+            'TestSetFileCopyQueueDLQ',
+            'TestSetFileCopyQueuePolicy',
+            'TestSetFileCopyQueueDLQPolicy',
+            'TestSetZipExtractorFunction',
+            'TestSetZipExtractorFunctionLogGroup',
+            'TestSetZipExtractorFunctionInvokePermission',
+            'TestSetZipExtractorS3Policy',
+            'TestSetBucketNotificationFunction',
+            'TestSetBucketNotificationConfiguration',
+            'TestSetResolverS3Policy'
         }
         
         self.auth_resources = {
@@ -185,7 +234,15 @@ class GovCloudTemplateGenerator:
             'AgentProcessorLogGroup',
             'ExternalMCPAgentsSecret',
             'ListAvailableAgentsFunction',
-            'ListAvailableAgentsLogGroup'
+            'ListAvailableAgentsLogGroup',
+            # MCP/AgentCore Gateway Resources (depend on Cognito UserPool)
+            'AgentCoreAnalyticsLambdaFunction',
+            'AgentCoreAnalyticsLambdaLogGroup',
+            'AgentCoreGatewayManagerFunction',
+            'AgentCoreGatewayManagerLogGroup',
+            'AgentCoreGatewayExecutionRole',
+            'AgentCoreGateway',
+            'ExternalAppClient'
         }
         
         self.hitl_resources = {
@@ -219,6 +276,7 @@ class GovCloudTemplateGenerator:
             'CloudFrontAllowedGeos',
             'WAFAllowedIPv4Ranges',
             'DocumentKnowledgeBase',
+            'KnowledgeBaseVectorStore',
             'KnowledgeBaseModelId',
             'ChatCompanionModelId',
             'EnableHITL',
@@ -233,7 +291,16 @@ class GovCloudTemplateGenerator:
             'SageMakerA2IReviewPortalURL',
             'LabelingConsoleURL',
             'ExternalMCPAgentsSecretName',
-            'PrivateWorkteamArn'
+            'PrivateWorkteamArn',
+            # MCP/AgentCore Gateway Outputs (depend on Cognito UserPool)
+            'MCPServerEndpoint',
+            'MCPClientId',
+            'MCPClientSecret',
+            'MCPUserPool',
+            'MCPTokenURL',
+            'MCPAuthorizationURL',
+            'DynamoDBAgentTableName',
+            'DynamoDBAgentTableConsoleURL'
         }
 
     def setup_logging(self):
@@ -440,6 +507,11 @@ class GovCloudTemplateGenerator:
             }
             self.logger.info("Modified IDPPattern parameter to only support Pattern-2")
         
+        # Set EnableMCP default to false for GovCloud (MCP integration depends on Cognito/AgentCore)
+        if 'EnableMCP' in parameters:
+            parameters['EnableMCP']['Default'] = 'false'
+            self.logger.info("Modified EnableMCP parameter default to 'false' for GovCloud")
+        
         self.logger.info(f"Removed {len(removed_parameters)} UI-related parameters")
         self.logger.debug(f"Removed parameters: {', '.join(removed_parameters)}")
         
@@ -468,9 +540,15 @@ class GovCloudTemplateGenerator:
         return template
 
     def remove_conditions(self, template: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove conditions related to unsupported services"""
+        """Remove conditions related to unsupported services and force S3 Vectors to False"""
         conditions = template.get('Conditions', {})
         original_count = len(conditions)
+        
+        # Force IsS3VectorsVectorStore to always evaluate to false for GovCloud (S3 Vectors service not available)
+        # Use CloudFormation intrinsic function that always evaluates to false
+        if 'IsS3VectorsVectorStore' in conditions:
+            conditions['IsS3VectorsVectorStore'] = {'Fn::Equals': ['false', 'true']}
+            self.logger.info("Forced IsS3VectorsVectorStore condition to always evaluate to False for GovCloud")
         
         ui_conditions = {
             'ShouldAllowSignUpEmailDomain',
@@ -961,7 +1039,7 @@ class GovCloudTemplateGenerator:
             # 1-Click Launch for GovCloud template
             encoded_govcloud_url = quote(govcloud_url, safe=":/?#[]@!$&'()*+,;=")
             if "us-gov" in region:
-                domain="aws.amazonaws-us-gov.com"
+                domain="amazonaws-us-gov.com"
             else:
                 domain="aws.amazon.com"
             govcloud_launch_url = f"https://{region}.console.{domain}/cloudformation/home?region={region}#/stacks/create/review?templateURL={encoded_govcloud_url}&stackName=IDP-GovCloud"

@@ -25,6 +25,7 @@ import PlotDisplay from '../document-agents-layout/PlotDisplay';
 import TableDisplay from '../document-agents-layout/TableDisplay';
 import AgentChatHistoryDropdown from './AgentChatHistoryDropdown';
 import AgentToolComponent from './AgentToolComponent';
+import BedrockErrorMessage from './BedrockErrorMessage';
 import './AgentChatLayout.css';
 
 const AgentChatLayout = ({
@@ -303,6 +304,25 @@ const AgentChatLayout = ({
                       resultDetails={message.resultDetails}
                       timestamp={message.timestamp}
                       parentProcessing={message.isProcessing}
+                    />
+                  );
+                }
+
+                // Handle Bedrock error messages with user-friendly display
+                if (message.messageType === 'bedrock_error' && message.bedrockErrorInfo) {
+                  return (
+                    <BedrockErrorMessage
+                      errorInfo={message.bedrockErrorInfo}
+                      onRetry={() => {
+                        // Retry the last user message
+                        const lastUserMessage = messages
+                          .slice()
+                          .reverse()
+                          .find((msg) => msg.role === 'user');
+                        if (lastUserMessage) {
+                          handlePromptSubmit();
+                        }
+                      }}
                     />
                   );
                 }

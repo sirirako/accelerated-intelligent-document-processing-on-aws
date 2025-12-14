@@ -28,7 +28,7 @@ A scalable, serverless solution for automated document processing and informatio
 
 https://github.com/user-attachments/assets/272b543b-e506-48ce-acc1-361422d22322
 
-White-glove customization, deployment, and integration support for production use cases is also available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
+Concierge support for customization, deployment, and integration of production use cases is available through [AWS Professional Services](https://aws.amazon.com/professional-services/).
 
 ## Alternative Implementations
 
@@ -55,6 +55,7 @@ White-glove customization, deployment, and integration support for production us
 - **Extraction Confidence Assessment**: LLM-powered assessment of extraction confidence with multimodal document analysis
 - **Document Knowledge Base Query**: Ask questions about your processed documents
 - **IDP Accelerator Help Chat Bot**: Ask questions about the IDP code base or features
+- **MCP Integration**: Model Context Protocol integration enabling external applications like Amazon Quick Suite to access IDP data and analytics through AWS Bedrock AgentCore Gateway
 
 ## Architecture Overview
 
@@ -179,6 +180,7 @@ For detailed deployment and testing instructions, see the [Deployment Guide](./d
 - [Knowledge Base](./docs/knowledge-base.md) - Document knowledge base query feature
 - [Monitoring](./docs/monitoring.md) - Monitoring and logging capabilities
 - [IDP Accelerator Help Chat Bot](./docs/code-intelligence.md) - Chat bot for asking question about the IDP code base and features
+- [MCP Integration](./docs/mcp-integration.md) - Model Context Protocol integration for external applications like Amazon Quick Suite
 - [Reporting Database](./docs/reporting-database.md) - Analytics database for evaluation metrics and metering data
 - [Troubleshooting](./docs/troubleshooting.md) - Troubleshooting and performance guides
 

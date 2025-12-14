@@ -12,6 +12,7 @@ import { DocumentsContext } from '../../contexts/documents';
 import useNotifications from '../../hooks/use-notifications';
 import useSplitPanel from '../../hooks/use-split-panel';
 import useGraphQlApi from '../../hooks/use-graphql-api';
+import useAppContext from '../../contexts/app';
 
 import DocumentList from '../document-list';
 import DocumentDetails from '../document-details';
@@ -28,8 +29,6 @@ import SplitPanel from './documents-split-panel';
 import ConfigurationLayout from '../configuration-layout';
 
 import { DOCUMENT_LIST_SHARDS_PER_DAY, PERIODS_TO_LOAD_STORAGE_KEY } from '../document-list/documents-table-config';
-
-import useAppContext from '../../contexts/app';
 
 const logger = new ConsoleLogger('GenAIIDPLayout');
 

@@ -104,6 +104,9 @@ idp-cli deploy \
 
 ## Option 3: Build Deployment Assets from Source Code
 
+Demo Video (5 minutes)
+
+
 ### Dependencies
 
 You need to have the following packages installed on your computer:

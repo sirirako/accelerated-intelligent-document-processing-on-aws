@@ -111,8 +111,17 @@ typecheck-pr:
 
 
 ui-lint:
-	@echo "Checking UI lint"
-	cd src/ui && npm ci --prefer-offline --no-audit && npm run lint
+	@echo "Checking if UI lint is needed..."
+	@CURRENT_HASH=$$(python3 -c "from publish import IDPPublisher; p = IDPPublisher(); print(p.get_directory_checksum('src/ui'))"); \
+	STORED_HASH=$$(test -f src/ui/.checksum && cat src/ui/.checksum || echo ""); \
+	if [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
+		echo "UI code checksum changed - running lint..."; \
+		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint && \
+		echo "$$CURRENT_HASH" > .checksum; \
+		echo -e "$(GREEN)✅ UI lint completed and checksum updated$(NC)"; \
+	else \
+		echo -e "$(GREEN)✅ UI code checksum unchanged - skipping lint$(NC)"; \
+	fi
 
 ui-build:
 	@echo "Checking UI build"
@@ -120,14 +129,14 @@ ui-build:
 
 commit: lint test
 	$(info Generating commit message...)
-	export COMMIT_MESSAGE="$(shell q chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
+	export COMMIT_MESSAGE="$(shell kiro-cli chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only on a single line." | grep ">" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
 	git add . && \
 	git commit -am "$${COMMIT_MESSAGE}" && \
 	git push
 
 fastcommit: fastlint
 	$(info Generating commit message...)
-	export COMMIT_MESSAGE="$(shell q chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
+	export COMMIT_MESSAGE="$(shell kiro-cli chat --no-interactive --trust-all-tools "Understand pending local git change and changes to be committed, then infer a commit message. Return this commit message only on a single line." | grep ">" | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g')" && \
 	git add . && \
 	git commit -am "$${COMMIT_MESSAGE}" && \
 	git push

@@ -7,7 +7,7 @@ from setuptools import find_packages, setup
 
 # Core dependencies required for all installations
 install_requires = [
-    "boto3==1.39.4",  # Core dependency for AWS services
+    "boto3==1.42.0",  # Core dependency for AWS services
 ]
 
 # Optional dependencies by component
@@ -117,7 +117,7 @@ extras_require = {
 
 setup(
     name="idp_common",
-    version="0.4.2",
+    version="0.4.6",
     packages=find_packages(
         exclude=[
             "build",

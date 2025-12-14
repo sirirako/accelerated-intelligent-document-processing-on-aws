@@ -18,16 +18,17 @@ Usage:
         model = config.extraction.model
 """
 
-from typing import Any, Dict, List, Optional, Union, Literal, Annotated
-from typing_extensions import Self
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
     field_validator,
-    Discriminator,
     model_validator,
 )
+from typing_extensions import Self
 
 
 class ImageConfig(BaseModel):
@@ -163,6 +164,10 @@ class ClassificationConfig(BaseModel):
         description="Max pages to use for classification. 0 or negative = ALL pages, positive = limit to N pages",
     )
     classificationMethod: str = Field(default="multimodalPageLevelClassification")
+    sectionSplitting: str = Field(
+        default="llm_determined",
+        description="Section splitting strategy: 'disabled' (entire doc as one section), 'page' (one section per page), 'llm_determined' (use LLM boundary detection)",
+    )
     image: ImageConfig = Field(default_factory=ImageConfig)
 
     @field_validator("temperature", "top_p", "top_k", mode="before")
@@ -190,6 +195,26 @@ class ClassificationConfig(BaseModel):
                 return 0  # 0 means ALL pages
             return int(v) if v else 0
         return int(v)
+
+    @field_validator("sectionSplitting", mode="before")
+    @classmethod
+    def validate_section_splitting(cls, v: Any) -> str:
+        """Validate and normalize section splitting value"""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        if isinstance(v, str):
+            v = v.lower().strip()
+
+        valid_values = ["disabled", "page", "llm_determined"]
+        if v not in valid_values:
+            logger.warning(
+                f"Invalid sectionSplitting value '{v}', using default 'llm_determined'. "
+                f"Valid values: {', '.join(valid_values)}"
+            )
+            return "llm_determined"
+        return v
 
 
 class GranularAssessmentConfig(BaseModel):

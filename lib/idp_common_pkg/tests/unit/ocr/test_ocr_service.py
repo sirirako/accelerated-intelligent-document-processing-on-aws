@@ -250,13 +250,13 @@ class TestOcrService:
             assert service.dpi == 150
 
     def test_init_config_pattern_partial_sizing(self):
-        """Test initialization with partial sizing configuration preserves existing behavior."""
+        """Test initialization with partial sizing configuration enables single-dimension resizing."""
         config = {
             "ocr": {
                 "image": {
                     "dpi": 150,
                     "target_width": 800,
-                    # target_height missing - should disable defaults
+                    # target_height missing - should pass through with None to enable aspect-ratio calculation
                 }
             }
         }
@@ -264,8 +264,11 @@ class TestOcrService:
         with patch("boto3.client"):
             service = OcrService(config=config)
 
-            # Verify partial config disables defaults
-            assert service.resize_config is None
+            # Verify partial config is preserved (enables aspect-ratio calculation)
+            assert service.resize_config == {
+                "target_width": 800,
+                "target_height": None,
+            }
             assert service.dpi == 150
 
     def test_init_config_pattern_invalid_sizing_fallback(self):

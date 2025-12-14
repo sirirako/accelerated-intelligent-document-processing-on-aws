@@ -141,7 +141,7 @@ class OcrService:
                     f"No image sizing configured, applying default limits: "
                     f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} to optimize resource usage and token consumption"
                 )
-            elif target_width is not None and target_height is not None:
+            else:
                 # Handle empty strings by converting to None for validation
                 if isinstance(target_width, str) and not target_width.strip():
                     target_width = None
@@ -149,12 +149,16 @@ class OcrService:
                     target_height = None
 
                 # If after handling empty strings we still have values, use them
-                if target_width is not None and target_height is not None:
+                if target_width is not None or target_height is not None:
                     # Explicit configuration provided - validate and use it
                     try:
                         self.resize_config = {
-                            "target_width": int(target_width),
-                            "target_height": int(target_height),
+                            "target_width": int(target_width)
+                            if target_width is not None
+                            else None,
+                            "target_height": int(target_height)
+                            if target_height is not None
+                            else None,
                         }
                         logger.info(
                             f"Using configured image sizing: {target_width}x{target_height}"
@@ -178,13 +182,6 @@ class OcrService:
                         f"Invalid image sizing configuration provided, applying default limits: "
                         f"{DEFAULT_TARGET_WIDTH}x{DEFAULT_TARGET_HEIGHT} to optimize resource usage and token consumption"
                     )
-            else:
-                # Partial configuration (only width or height) - no defaults applied
-                # This preserves the existing behavior for partial configs
-                self.resize_config = None
-                logger.info(
-                    "Partial image sizing configuration detected, no defaults applied"
-                )
 
             # Extract preprocessing configuration (type-safe)
             preprocessing_value = self.config.ocr.image.preprocessing
@@ -637,20 +634,28 @@ class OcrService:
                 target_height = self.resize_config.get("target_height")
 
                 if target_width or target_height:
-                    # Check if image already fits within target dimensions
-                    if (
-                        original_width <= target_width
-                        and original_height <= target_height
-                    ):
-                        logger.debug(
-                            f"Image {original_width}x{original_height} already fits within "
-                            f"{target_width}x{target_height}, using original"
-                        )
-                        needs_resize = False
+                    # Only check fit if both dimensions are provided (type-safe comparison)
+                    if target_width is not None and target_height is not None:
+                        # Check if image already fits within target dimensions
+                        if (
+                            original_width <= target_width
+                            and original_height <= target_height
+                        ):
+                            logger.debug(
+                                f"Image {original_width}x{original_height} already fits within "
+                                f"{target_width}x{target_height}, using original"
+                            )
+                            needs_resize = False
+                        else:
+                            logger.debug(
+                                f"Image {original_width}x{original_height} needs resizing to fit "
+                                f"{target_width}x{target_height}"
+                            )
+                            needs_resize = True
                     else:
+                        # Partial config - always resize to calculate missing dimension
                         logger.debug(
-                            f"Image {original_width}x{original_height} needs resizing to fit "
-                            f"{target_width}x{target_height}"
+                            "Partial dimension config detected, will resize to calculate missing dimension"
                         )
                         needs_resize = True
 
@@ -687,7 +692,7 @@ class OcrService:
 
                 # Get original format info
                 img_data = pix.tobytes()
-                img_ext = pix.extension  # Get original extension (png, jpg, etc.)
+                img_ext = pix.extension  # type: ignore[attr-defined]  # Get original extension (png, jpg, etc.)
 
                 # Determine content type
                 content_type_map = {
@@ -743,7 +748,7 @@ class OcrService:
             else:
                 # Fallback: extract as rendered image
                 # This path should rarely be used since we pass original_file_content for images
-                pix = page.get_pixmap()
+                pix = page.get_pixmap()  # type: ignore[attr-defined]
                 logger.debug(
                     f"Using PyMuPDF fallback for image extraction: {pix.width}x{pix.height}"
                 )
@@ -1191,7 +1196,7 @@ class OcrService:
                             # For images, just apply the scale factor
                             matrix = fitz.Matrix(scale_factor, scale_factor)
 
-                        pix = page.get_pixmap(matrix=matrix)
+                        pix = page.get_pixmap(matrix=matrix)  # type: ignore[attr-defined]
 
                         actual_width, actual_height = pix.width, pix.height
                         logger.info(
@@ -1202,9 +1207,9 @@ class OcrService:
                         # No resize needed - image is already smaller than targets
                         if is_pdf:
                             dpi = self.dpi or 150
-                            pix = page.get_pixmap(dpi=dpi)
+                            pix = page.get_pixmap(dpi=dpi)  # type: ignore[attr-defined]
                         else:
-                            pix = page.get_pixmap()
+                            pix = page.get_pixmap()  # type: ignore[attr-defined]
 
                         # Log actual extracted dimensions
                         actual_width, actual_height = pix.width, pix.height
@@ -1215,9 +1220,9 @@ class OcrService:
                     # No valid target dimensions - use original extraction
                     if is_pdf:
                         dpi = self.dpi or 150
-                        pix = page.get_pixmap(dpi=dpi)
+                        pix = page.get_pixmap(dpi=dpi)  # type: ignore[attr-defined]
                     else:
-                        pix = page.get_pixmap()
+                        pix = page.get_pixmap()  # type: ignore[attr-defined]
 
                     # Log actual extracted dimensions
                     actual_width, actual_height = pix.width, pix.height
@@ -1228,9 +1233,9 @@ class OcrService:
                 # No resize config - extract at original size
                 if is_pdf:
                     dpi = self.dpi or 150
-                    pix = page.get_pixmap(dpi=dpi)
+                    pix = page.get_pixmap(dpi=dpi)  # type: ignore[attr-defined]
                 else:
-                    pix = page.get_pixmap()
+                    pix = page.get_pixmap()  # type: ignore[attr-defined]
 
                 # Log actual extracted dimensions
                 actual_width, actual_height = pix.width, pix.height
@@ -1562,7 +1567,7 @@ class OcrService:
         Returns:
             Dictionary with 'text' key containing extracted text
         """
-        from textractor.parsers import response_parser
+        from textractor.parsers import response_parser  # type: ignore[import-untyped]
 
         # Create page identifier for logging
         page_info = f" for page {page_id}" if page_id else ""
