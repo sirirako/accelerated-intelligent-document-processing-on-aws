@@ -8,9 +8,16 @@ The Test Studio consists of two main tabs:
 1. **Test Sets**: Create and manage reusable collections of test documents
 2. **Test Executions**: Execute tests, view results, and compare test runs
 
+https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
+
+
 ## Pre-Deployed Test Set: RealKIE-FCC-Verified
 
 The accelerator automatically deploys the **RealKIE-FCC-Verified** dataset from HuggingFace (https://huggingface.co/datasets/amazon-agi/RealKIE-FCC-Verified) as a ready-to-use test set during stack deployment. This public dataset contains 75 invoice documents sourced from the Federal Communications Commission (FCC).
+
+
+https://github.com/user-attachments/assets/d952fd37-1bd0-437f-8f67-5a634e9422e0
+
 
 ### Fully Automatic Deployment
 
@@ -56,10 +63,6 @@ This dataset provides an excellent benchmark for:
 - Comparing different model configurations
 - Testing prompt engineering improvements
 - Training and demonstration purposes
-
-
-https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
-
 
 ## Architecture
 
