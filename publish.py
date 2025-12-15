@@ -1774,20 +1774,46 @@ except Exception as e:
                 if not self._validate_python_syntax("src"):
                     raise Exception("Python syntax validation failed")
 
-                # Build main template
+                # Build main template with progress indicator
                 """run sam build"""
                 cmd = [
                     "sam",
                     "build",
+                    "--parallel",
                     "--template-file",
                     "template.yaml",
                 ]
                 if self.use_container_flag and self.use_container_flag.strip():
                     cmd.append(self.use_container_flag)
 
-                success, result = self.run_subprocess_with_logging(
-                    cmd, "Main template SAM build"
-                )
+                # Use spinner progress indicator for SAM build
+                sam_build_start = time.time()
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=self.console,
+                    transient=False,
+                ) as progress:
+                    task = progress.add_task(
+                        "[cyan]Building main template (SAM build --parallel)...",
+                        total=None,
+                    )
+                    success, result = self.run_subprocess_with_logging(
+                        cmd, "Main template SAM build"
+                    )
+                    sam_build_elapsed = time.time() - sam_build_start
+                    if success:
+                        progress.update(
+                            task,
+                            description=f"[green]✓ SAM build completed in {sam_build_elapsed:.1f}s",
+                        )
+                    else:
+                        progress.update(
+                            task,
+                            description=f"[red]✗ SAM build failed after {sam_build_elapsed:.1f}s",
+                        )
+
                 if not success:
                     # Delete main template checksum on build failure
                     raise Exception("SAM build failed")
@@ -1880,7 +1906,7 @@ except Exception as e:
                 with open(build_packaged_template_path, "w") as f:
                     f.write(template_content)
 
-                # Package the template from the build directory
+                # Package the template from the build directory with progress indicator
                 original_cwd = os.getcwd()
                 os.chdir(".aws-sam/build")
                 cmd = [
@@ -1898,12 +1924,43 @@ except Exception as e:
                 self.log_verbose(
                     f"Running main template SAM package command: {' '.join(cmd)}"
                 )
-                success, result = self.run_subprocess_with_logging(
-                    cmd, "Main template SAM package"
-                )
+
+                # Use spinner progress indicator for SAM package
+                sam_package_start = time.time()
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=self.console,
+                    transient=False,
+                ) as progress:
+                    task = progress.add_task(
+                        "[cyan]Packaging main template (SAM package)...", total=None
+                    )
+                    success, result = self.run_subprocess_with_logging(
+                        cmd, "Main template SAM package"
+                    )
+                    sam_package_elapsed = time.time() - sam_package_start
+                    if success:
+                        progress.update(
+                            task,
+                            description=f"[green]✓ SAM package completed in {sam_package_elapsed:.1f}s",
+                        )
+                    else:
+                        progress.update(
+                            task,
+                            description=f"[red]✗ SAM package failed after {sam_package_elapsed:.1f}s",
+                        )
+
                 os.chdir(original_cwd)
                 if not success:
                     raise Exception("SAM package failed")
+
+                # Print main template build summary
+                total_main_build_time = sam_build_elapsed + sam_package_elapsed
+                self.console.print(
+                    f"[dim]Main template: build={sam_build_elapsed:.1f}s, package={sam_package_elapsed:.1f}s, total={total_main_build_time:.1f}s[/dim]"
+                )
             else:
                 self.console.print("[green]✅ Main template is up to date[/green]")
 
