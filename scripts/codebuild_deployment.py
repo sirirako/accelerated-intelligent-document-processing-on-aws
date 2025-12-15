@@ -101,7 +101,125 @@ def publish_templates():
         raise Exception("Failed to extract template URL from publish output")
 
 
-def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url):
+def create_iam_resources(stack_name):
+    """Create IAM role and permission boundary using CloudFormation template"""
+    print(f"[{stack_name}] Creating IAM resources...")
+    
+    try:
+        cf_client = boto3.client('cloudformation')
+        iam_stack_name = f"{stack_name}-iam"
+        
+        # Deploy IAM CloudFormation stack
+        with open('iam-roles/cloudformation-management/IDP-Cloudformation-Service-Role.yaml', 'r') as f:
+            template_body = f.read()
+        
+        try:
+            cf_client.create_stack(
+                StackName=iam_stack_name,
+                TemplateBody=template_body,
+                Capabilities=['CAPABILITY_NAMED_IAM']
+            )
+            
+            # Wait for stack creation to complete
+            waiter = cf_client.get_waiter('stack_create_complete')
+            waiter.wait(StackName=iam_stack_name, WaiterConfig={'MaxAttempts': 30, 'Delay': 10})
+            
+            print(f"[{stack_name}] ✅ Created IAM stack: {iam_stack_name}")
+            
+        except cf_client.exceptions.AlreadyExistsException:
+            print(f"[{stack_name}] ℹ️ IAM stack already exists: {iam_stack_name}")
+        
+        # Get outputs from the stack
+        response = cf_client.describe_stacks(StackName=iam_stack_name)
+        outputs = response['Stacks'][0].get('Outputs', [])
+        
+        role_arn = None
+        for output in outputs:
+            if output['OutputKey'] == 'ServiceRoleArn':
+                role_arn = output['OutputValue']
+                break
+        
+        if not role_arn:
+            raise Exception("Could not find ServiceRoleArn in stack outputs")
+        
+        # Create permission boundary policy
+        iam_client = boto3.client('iam')
+        boundary_name = f"{stack_name}-PermissionsBoundary"
+        boundary_policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "*",
+                    "Resource": "*"
+                }
+            ]
+        }
+        
+        try:
+            iam_client.create_policy(
+                PolicyName=boundary_name,
+                PolicyDocument=json.dumps(boundary_policy),
+                Description=f"Permissions boundary for {stack_name} IDP deployment"
+            )
+            print(f"[{stack_name}] ✅ Created permissions boundary: {boundary_name}")
+        except iam_client.exceptions.EntityAlreadyExistsException:
+            print(f"[{stack_name}] ℹ️ Permissions boundary already exists: {boundary_name}")
+        
+        # Get account ID for boundary ARN
+        sts_client = boto3.client('sts')
+        account_id = sts_client.get_caller_identity()['Account']
+        boundary_arn = f"arn:aws:iam::{account_id}:policy/{boundary_name}"
+        
+        return role_arn, boundary_arn
+        
+    except Exception as e:
+        print(f"[{stack_name}] ❌ Failed to create IAM resources: {e}")
+        return None, None
+
+
+def cleanup_iam_resources(stack_name):
+    """Clean up IAM role and permission boundary"""
+    print(f"[{stack_name}] Cleaning up IAM resources...")
+    
+    try:
+        # Clean up permission boundary
+        iam_client = boto3.client('iam')
+        boundary_name = f"{stack_name}-PermissionsBoundary"
+        try:
+            sts_client = boto3.client('sts')
+            account_id = sts_client.get_caller_identity()['Account']
+            iam_client.delete_policy(
+                PolicyArn=f"arn:aws:iam::{account_id}:policy/{boundary_name}"
+            )
+            print(f"[{stack_name}] ✅ Deleted permissions boundary: {boundary_name}")
+        except iam_client.exceptions.NoSuchEntityException:
+            print(f"[{stack_name}] ℹ️ Permissions boundary not found: {boundary_name}")
+        except Exception as e:
+            print(f"[{stack_name}] ⚠️ Failed to delete permissions boundary: {e}")
+        
+        # Clean up IAM CloudFormation stack
+        cf_client = boto3.client('cloudformation')
+        iam_stack_name = f"{stack_name}-iam"
+        try:
+            cf_client.delete_stack(StackName=iam_stack_name)
+            
+            # Wait for stack deletion to complete
+            waiter = cf_client.get_waiter('stack_delete_complete')
+            waiter.wait(StackName=iam_stack_name, WaiterConfig={'MaxAttempts': 30, 'Delay': 10})
+            
+            print(f"[{stack_name}] ✅ Deleted IAM stack: {iam_stack_name}")
+        except cf_client.exceptions.ClientError as e:
+            if 'does not exist' in str(e):
+                print(f"[{stack_name}] ℹ️ IAM stack not found: {iam_stack_name}")
+            else:
+                print(f"[{stack_name}] ⚠️ Failed to delete IAM stack: {e}")
+            
+    except Exception as e:
+        print(f"[{stack_name}] ❌ Failed to cleanup IAM resources: {e}")
+
+
+def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url, role_arn=None, permissions_boundary_arn=None):
     """Deploy and test a specific IDP pattern"""
     pattern_name = pattern_config["name"]
     pattern_id = pattern_config["id"]
@@ -117,9 +235,29 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
     print(f"[{pattern_name}] Starting deployment: {stack_name}")
 
     try:
+        # Step 0: Create IAM resources
+        print(f"[{pattern_name}] Step 0: Creating IAM resources...")
+        role_arn, permissions_boundary_arn = create_iam_resources(stack_name)
+        
+        if not role_arn or not permissions_boundary_arn:
+            raise Exception("Failed to create required IAM resources")
+        
         # Step 1: Deploy using template URL
         print(f"[{pattern_name}] Step 1: Deploying stack...")
         cmd = f"idp-cli deploy --stack-name {stack_name} --template-url {template_url} --pattern {pattern_id} --admin-email {admin_email} --wait"
+        
+        # Add role-arn and permissions boundary
+        cmd += f" --role-arn {role_arn}"
+        cmd += f" --parameters PermissionsBoundaryArn={permissions_boundary_arn}"
+        
+        # Add role-arn if provided
+        if role_arn:
+            cmd += f" --role-arn {role_arn}"
+        
+        # Add permissions boundary if provided
+        if permissions_boundary_arn:
+            cmd += f" --parameters PermissionsBoundaryArn={permissions_boundary_arn}"
+        
         run_command(cmd)
         print(f"[{pattern_name}] ✅ Deployment completed")
 
@@ -146,9 +284,9 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
         print(f"[{pattern_name}] ✅ Inference completed")
 
         # Wait for results to propagate to S3
-        print(f"[{pattern_name}] Waiting 10 seconds for results to propagate...")
+        print(f"[{pattern_name}] Waiting 20 seconds for results to propagate...")
         import time
-        time.sleep(10)
+        time.sleep(20)
 
         # Step 4: Download and verify results
         print(f"[{pattern_name}] Step 4: Downloading results...")
@@ -662,6 +800,10 @@ def cleanup_single_stack(stack_name, pattern_name):
                 run_command(f"aws logs delete-resource-policy --policy-name '{policy_name}'", check=False)
         
         print(f"[{pattern_name}] ✅ Cleanup completed")
+        
+        # Clean up IAM resources
+        cleanup_iam_resources(stack_name)
+        
     except Exception as e:
         print(f"[{pattern_name}] ⚠️ Cleanup failed: {e}")
 
