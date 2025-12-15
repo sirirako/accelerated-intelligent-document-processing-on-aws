@@ -6438,6 +6438,7 @@ Resources:
                   - !GetAtt DeleteTestsResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
+                  - !GetAtt AbortWorkflowResolverFunction.Arn
                   - !GetAtt ProcessChangesResolverFunction.Arn
                   - !GetAtt AgentChatResolverFunction.Arn
                   - !GetAtt ListAvailableAgentsFunction.Arn
