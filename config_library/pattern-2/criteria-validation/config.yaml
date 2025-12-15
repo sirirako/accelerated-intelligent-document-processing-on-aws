@@ -542,6 +542,57 @@ pricing:
         price: '5.3E-7'
       - name: outputTokens
         price: '2.66E-6'
+  # Global cross-region model pricing
+  - name: bedrock/global.amazon.nova-2-lite-v1:0
+    units:
+    - name: inputTokens
+      price: '3.0E-7'
+    - name: outputTokens
+      price: '2.5E-6'
+    - name: cacheReadInputTokens
+      price: '7.5E-8'
+    - name: cacheWriteInputTokens
+      price: '3.0E-7'
+  - name: bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0
+    units:
+    - name: inputTokens
+      price: '1.0E-6'
+    - name: outputTokens
+      price: '5.0E-6'
+    - name: cacheReadInputTokens
+      price: '1.0E-7'
+    - name: cacheWriteInputTokens
+      price: '1.25E-6'
+  - name: bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0
+    units:
+    - name: inputTokens
+      price: '3.0E-6'
+    - name: outputTokens
+      price: '1.5E-5'
+    - name: cacheReadInputTokens
+      price: '3.0E-7'
+    - name: cacheWriteInputTokens
+      price: '3.75E-6'
+  - name: bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m
+    units:
+    - name: inputTokens
+      price: '6.0E-6'
+    - name: outputTokens
+      price: '2.25E-5'
+    - name: cacheReadInputTokens
+      price: '6.0E-7'
+    - name: cacheWriteInputTokens
+      price: '7.5E-6'
+  - name: bedrock/global.anthropic.claude-opus-4-5-20251101-v1:0
+    units:
+    - name: inputTokens
+      price: '5.0E-6'
+    - name: outputTokens
+      price: '2.5E-5'
+    - name: cacheReadInputTokens
+      price: '5.0E-7'
+    - name: cacheWriteInputTokens
+      price: '6.25E-6'
   # AWS Lambda pricing (US East - N. Virginia)
   - name: lambda/requests
     units:
