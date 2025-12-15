@@ -445,7 +445,21 @@ const DocumentAttributes = ({ item }) => {
   );
 };
 
-export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess }) => {
+// Statuses that can be aborted
+const ABORTABLE_STATUSES = [
+  'QUEUED',
+  'RUNNING',
+  'OCR',
+  'CLASSIFYING',
+  'EXTRACTING',
+  'ASSESSING',
+  'POSTPROCESSING',
+  'HITL_IN_PROGRESS',
+  'SUMMARIZING',
+  'EVALUATING',
+];
+
+export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess, onAbort }) => {
   logger.debug('DocumentPanel item', item);
 
   // State for Step Function flow viewer
@@ -457,6 +471,9 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
 
   // Fetch configuration for dynamic confidence threshold
   const { mergedConfig } = useConfiguration();
+
+  // Check if document can be aborted
+  const canAbort = ABORTABLE_STATUSES.includes(item?.objectStatus);
 
   // Create enhanced item with configuration
   const enhancedItem = {
@@ -493,6 +510,11 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
                     }}
                   >
                     View Processing Flow
+                  </Button>
+                )}
+                {onAbort && canAbort && (
+                  <Button iconName="status-stopped" variant="normal" onClick={onAbort}>
+                    Abort
                   </Button>
                 )}
                 {onReprocess && (

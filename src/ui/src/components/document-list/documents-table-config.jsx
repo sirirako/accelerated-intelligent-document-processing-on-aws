@@ -171,7 +171,21 @@ const TIME_PERIOD_DROPDOWN_ITEMS = Object.keys(TIME_PERIOD_DROPDOWN_CONFIG).map(
 // local storage key to persist the last periods to load
 export const PERIODS_TO_LOAD_STORAGE_KEY = 'periodsToLoad';
 
-export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItems = [], onDelete, onReprocess, ...props }) => {
+// Statuses that can be aborted
+const ABORTABLE_STATUSES = [
+  'QUEUED',
+  'RUNNING',
+  'OCR',
+  'CLASSIFYING',
+  'EXTRACTING',
+  'ASSESSING',
+  'POSTPROCESSING',
+  'HITL_IN_PROGRESS',
+  'SUMMARIZING',
+  'EVALUATING',
+];
+
+export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItems = [], onDelete, onReprocess, onAbort, ...props }) => {
   const onPeriodToLoadChange = ({ detail }) => {
     const { id } = detail;
     const shardCount = TIME_PERIOD_DROPDOWN_CONFIG[id].count;
@@ -183,6 +197,8 @@ export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItem
   const periodText = TIME_PERIOD_DROPDOWN_ITEMS.filter((i) => i.count === props.periodsToLoad)[0]?.text || '';
 
   const hasSelectedItems = selectedItems.length > 0;
+  // Check if any selected items can be aborted
+  const hasAbortableItems = selectedItems.some((item) => ABORTABLE_STATUSES.includes(item.objectStatus));
 
   return (
     <TableHeader
@@ -194,6 +210,11 @@ export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItem
           </ButtonDropdown>
           <Button iconName="refresh" variant="normal" loading={props.loading} onClick={() => props.setIsLoading(true)} />
           <Button iconName="download" variant="normal" loading={props.loading} onClick={() => props.downloadToExcel()} />
+          {onAbort && (
+            <Button iconName="status-stopped" variant="normal" disabled={!hasAbortableItems} onClick={onAbort}>
+              Abort
+            </Button>
+          )}
           {onReprocess && (
             <Button iconName="arrow-right" variant="normal" disabled={!hasSelectedItems} onClick={onReprocess}>
               Reprocess

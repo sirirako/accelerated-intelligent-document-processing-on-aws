@@ -72,6 +72,7 @@ const GenAIIDPLayout = ({ children }) => {
     setPeriodsToLoad,
     deleteDocuments,
     reprocessDocuments,
+    abortWorkflows,
   } = useGraphQlApi({ initialPeriodsToLoad });
 
   // eslint-disable-next-line prettier/prettier
@@ -91,6 +92,7 @@ const GenAIIDPLayout = ({ children }) => {
     toolsOpen,
     deleteDocuments,
     reprocessDocuments,
+    abortWorkflows,
   };
 
   return (

@@ -10,6 +10,7 @@ import useSettingsContext from '../../contexts/settings';
 import mapDocumentsAttributes from '../common/map-document-attributes';
 import DeleteDocumentModal from '../common/DeleteDocumentModal';
 import ReprocessDocumentModal from '../common/ReprocessDocumentModal';
+import AbortWorkflowModal from '../common/AbortWorkflowModal';
 import { DOCUMENTS_PATH } from '../../routes/constants';
 
 import '@cloudscape-design/global-styles/index.css';
@@ -31,12 +32,13 @@ const DocumentDetails = () => {
     logger.debug('Error decoding objectKey, using as is', e);
   }
 
-  const { documents, getDocumentDetailsFromIds, setToolsOpen, deleteDocuments, reprocessDocuments } = useDocumentsContext();
+  const { documents, getDocumentDetailsFromIds, setToolsOpen, deleteDocuments, reprocessDocuments, abortWorkflows } = useDocumentsContext();
   const { settings } = useSettingsContext();
 
   const [document, setDocument] = useState(null);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isReprocessModalVisible, setIsReprocessModalVisible] = useState(false);
+  const [isAbortModalVisible, setIsAbortModalVisible] = useState(false);
 
   const sendInitDocumentRequests = async () => {
     const response = await getDocumentDetailsFromIds([objectKey]);
@@ -110,6 +112,21 @@ const DocumentDetails = () => {
     setIsReprocessModalVisible(false);
   };
 
+  // Function to show abort modal
+  const handleAbortClick = () => {
+    setIsAbortModalVisible(true);
+  };
+
+  // Function to handle abort confirmation
+  const handleAbortConfirm = async (abortableItems) => {
+    const keys = abortableItems.map((item) => item.objectKey);
+    logger.debug('Aborting workflow', keys);
+    const result = await abortWorkflows(keys);
+    logger.debug('Abort result', result);
+    // Close the modal
+    setIsAbortModalVisible(false);
+  };
+
   return (
     <>
       {document && (
@@ -119,6 +136,7 @@ const DocumentDetails = () => {
           getDocumentDetailsFromIds={getDocumentDetailsFromIds}
           onDelete={handleDeleteClick}
           onReprocess={handleReprocessClick}
+          onAbort={handleAbortClick}
         />
       )}
 
@@ -133,6 +151,13 @@ const DocumentDetails = () => {
         visible={isReprocessModalVisible}
         onDismiss={() => setIsReprocessModalVisible(false)}
         onConfirm={handleReprocessConfirm}
+        selectedItems={document ? [document] : []}
+      />
+
+      <AbortWorkflowModal
+        visible={isAbortModalVisible}
+        onDismiss={() => setIsAbortModalVisible(false)}
+        onConfirm={handleAbortConfirm}
         selectedItems={document ? [document] : []}
       />
     </>
