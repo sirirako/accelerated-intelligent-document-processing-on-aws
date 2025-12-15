@@ -106,7 +106,7 @@ class StackDeployer:
 
         # Add RoleArn if provided
         if role_arn:
-            common_params["RoleArn"] = role_arn
+            common_params["RoleARN"] = role_arn
 
         try:
             if stack_exists:
