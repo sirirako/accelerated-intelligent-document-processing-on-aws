@@ -85,6 +85,11 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "eu.amazon.nova-lite-v1:0",
     "eu.amazon.nova-pro-v1:0",
     "eu.amazon.nova-2-lite-v1:0",
+    "amazon.nova-2-lite-v1:0",
+    "anthropic.claude-haiku-4-5-v1:0",
+    "anthropic.claude-sonnet-4-5-v1:0",
+    "anthropic.claude-sonnet-4-5-v1:0:1m",
+    "anthropic.claude-opus-4-5-v1:0"
 ]
 
 class BedrockClient:
