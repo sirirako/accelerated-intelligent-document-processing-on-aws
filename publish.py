@@ -38,6 +38,7 @@ from rich.progress import (
 )
 
 LIB_DEPENDENCY = "./lib/idp_common_pkg/idp_common"
+LIB_PKG_PATH = "./lib/idp_common_pkg"
 
 
 class IDPPublisher:
@@ -65,6 +66,8 @@ class IDPPublisher:
         self.skip_validation = False
         self.lint_enabled = True
         self.account_id = None
+        self._lib_wheel_path = None  # Path to pre-built wheel for parallel builds
+        self._modified_requirements_files = []  # Track modified requirements.txt files
 
     def clean_checksums(self):
         """Delete all .checksum files in main, patterns, options, and lib directories"""
@@ -1775,11 +1778,21 @@ except Exception as e:
                     raise Exception("Python syntax validation failed")
 
                 # Build main template with progress indicator
+                # Pre-built wheel enables --parallel flag without race conditions
+                # (multiple Lambda functions can install from wheel simultaneously)
                 """run sam build"""
+
+                # Modify requirements.txt files to use pre-built wheel for parallel-safe builds
+                if self._lib_wheel_path:
+                    self.console.print(
+                        "[cyan]🔧 Configuring requirements.txt to use pre-built wheel for parallel builds...[/cyan]"
+                    )
+                    self._modify_requirements_for_wheel()
+
                 cmd = [
                     "sam",
                     "build",
-                    "--parallel",
+                    "--parallel",  # Safe with pre-built wheel
                     "--template-file",
                     "template.yaml",
                 ]
@@ -1788,31 +1801,37 @@ except Exception as e:
 
                 # Use spinner progress indicator for SAM build
                 sam_build_start = time.time()
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    TimeElapsedColumn(),
-                    console=self.console,
-                    transient=False,
-                ) as progress:
-                    task = progress.add_task(
-                        "[cyan]Building main template (SAM build --parallel)...",
-                        total=None,
-                    )
-                    success, result = self.run_subprocess_with_logging(
-                        cmd, "Main template SAM build"
-                    )
-                    sam_build_elapsed = time.time() - sam_build_start
-                    if success:
-                        progress.update(
-                            task,
-                            description=f"[green]✓ SAM build completed in {sam_build_elapsed:.1f}s",
+                success = False
+                try:
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        TimeElapsedColumn(),
+                        console=self.console,
+                        transient=False,
+                    ) as progress:
+                        task = progress.add_task(
+                            "[cyan]Building main template (SAM build --parallel)...",
+                            total=None,
                         )
-                    else:
-                        progress.update(
-                            task,
-                            description=f"[red]✗ SAM build failed after {sam_build_elapsed:.1f}s",
+                        success, result = self.run_subprocess_with_logging(
+                            cmd, "Main template SAM build"
                         )
+                        sam_build_elapsed = time.time() - sam_build_start
+                        if success:
+                            progress.update(
+                                task,
+                                description=f"[green]✓ SAM build completed in {sam_build_elapsed:.1f}s",
+                            )
+                        else:
+                            progress.update(
+                                task,
+                                description=f"[red]✗ SAM build failed after {sam_build_elapsed:.1f}s",
+                            )
+                finally:
+                    # Always restore requirements.txt files after build
+                    if self._modified_requirements_files:
+                        self._restore_requirements_files()
 
                 if not success:
                     # Delete main template checksum on build failure
@@ -2313,30 +2332,123 @@ except Exception as e:
         return True
 
     def build_lib_package(self):
-        """Build lib package with syntax validation"""
+        """Build lib package as wheel for parallel-safe SAM builds"""
         try:
-            self.console.print("[bold yellow]📚 Building lib package[/bold yellow]")
+            self.console.print(
+                "[bold yellow]📚 Building lib package as wheel[/bold yellow]"
+            )
             lib_dir = "lib/idp_common_pkg"
 
             # Validate Python syntax in lib source code before building
             if not self._validate_python_syntax("lib/idp_common_pkg/idp_common"):
                 raise Exception("Python syntax validation failed")
 
+            # Clean old dist directory
+            dist_dir = os.path.join(lib_dir, "dist")
+            if os.path.exists(dist_dir):
+                shutil.rmtree(dist_dir)
+
+            # Build wheel using python -m build
             result = subprocess.run(
-                [sys.executable, "setup.py", "build"],
+                [sys.executable, "-m", "build", "--wheel"],
                 cwd=lib_dir,
                 capture_output=True,
                 text=True,
             )
             if result.returncode != 0:
-                raise Exception(f"Build failed: {result.stderr}")
-            self.console.print("[green]✅ Lib package built successfully[/green]")
+                raise Exception(f"Wheel build failed: {result.stderr}")
+
+            # Find the built wheel
+            wheel_files = [f for f in os.listdir(dist_dir) if f.endswith(".whl")]
+            if not wheel_files:
+                raise Exception("No wheel file found after build")
+
+            self._lib_wheel_path = os.path.join(lib_dir, "dist", wheel_files[0])
+            self.console.print(f"[green]✅ Lib wheel built: {wheel_files[0]}[/green]")
 
         except Exception as e:
             self._delete_checksum_file("lib/.checksum")
-            self.console.print("[red]❌ Failed to build lib package:[/red]")
+            self.console.print("[red]❌ Failed to build lib wheel:[/red]")
             self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
+
+    def _modify_requirements_for_wheel(self, base_dir="."):
+        """Modify all requirements.txt files to use pre-built wheel instead of source path.
+
+        This enables parallel SAM builds without race conditions when multiple Lambda
+        functions try to build ./lib/idp_common_pkg simultaneously.
+        """
+        if not self._lib_wheel_path:
+            self.log_verbose("No wheel path set, skipping requirements modification")
+            return
+
+        self._modified_requirements_files = []
+
+        # Convert wheel path to relative path from project root
+        wheel_relative = os.path.relpath(self._lib_wheel_path, base_dir)
+
+        # Find all requirements.txt files in src/lambda
+        src_lambda_dir = os.path.join(base_dir, "src", "lambda")
+        if not os.path.exists(src_lambda_dir):
+            return
+
+        for func_dir in os.listdir(src_lambda_dir):
+            req_path = os.path.join(src_lambda_dir, func_dir, "requirements.txt")
+            if os.path.isfile(req_path):
+                self._modify_single_requirements_file(req_path, wheel_relative)
+
+    def _modify_single_requirements_file(self, req_path, wheel_relative):
+        """Modify a single requirements.txt to use wheel path."""
+        try:
+            with open(req_path, "r") as f:
+                original_content = f.read()
+
+            # Check if this file references idp_common_pkg
+            if "./lib/idp_common_pkg" not in original_content:
+                return
+
+            # Replace source path with wheel path, preserving extras
+            # Pattern: ./lib/idp_common_pkg[extras]  -> ./lib/idp_common_pkg/dist/wheel.whl[extras]
+            import re
+
+            def replace_path(match):
+                extras = match.group(1) if match.group(1) else ""
+                return f"./{wheel_relative}{extras}"
+
+            modified_content = re.sub(
+                r"\./lib/idp_common_pkg(\[[^\]]+\])?", replace_path, original_content
+            )
+
+            if modified_content != original_content:
+                # Save original for restoration
+                self._modified_requirements_files.append(
+                    {"path": req_path, "original": original_content}
+                )
+
+                # Write modified content
+                with open(req_path, "w") as f:
+                    f.write(modified_content)
+
+                self.log_verbose(f"Modified {req_path} to use wheel")
+
+        except Exception as e:
+            self.console.print(
+                f"[yellow]Warning: Could not modify {req_path}: {e}[/yellow]"
+            )
+
+    def _restore_requirements_files(self):
+        """Restore all modified requirements.txt files to original content."""
+        for file_info in self._modified_requirements_files:
+            try:
+                with open(file_info["path"], "w") as f:
+                    f.write(file_info["original"])
+                self.log_verbose(f"Restored {file_info['path']}")
+            except Exception as e:
+                self.console.print(
+                    f"[yellow]Warning: Could not restore {file_info['path']}: {e}[/yellow]"
+                )
+
+        self._modified_requirements_files = []
 
     def _delete_checksum_file(self, checksum_path):
         """Delete checksum file - handles both component paths and direct file paths"""
