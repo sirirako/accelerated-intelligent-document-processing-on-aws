@@ -101,7 +101,7 @@ def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> 
         )
 
         # Stream output line by line
-        for line in process.stdout:
+        for line in process.stdout or []:  # type: ignore
             # Print each line immediately (preserve formatting from publish.py)
             print(line, end="")
 
@@ -262,7 +262,7 @@ def deploy(
         if not region:
             import boto3
 
-            session = boto3.session.Session()
+            session = boto3.session.Session()  # type: ignore
             region = session.region_name
             if not region:
                 raise ValueError(
