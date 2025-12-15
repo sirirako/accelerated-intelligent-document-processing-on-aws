@@ -204,6 +204,7 @@ def cli():
     "--no-rollback", is_flag=True, help="Disable rollback on stack creation failure"
 )
 @click.option("--region", help="AWS region (optional)")
+@click.option("--role-arn", help="CloudFormation service role ARN")
 def deploy(
     stack_name: str,
     pattern: str,
@@ -219,6 +220,7 @@ def deploy(
     wait: bool,
     no_rollback: bool,
     region: Optional[str],
+    role_arn: Optional[str],
 ):
     """
     Deploy or update IDP stack from command line
@@ -364,6 +366,7 @@ def deploy(
                     parameters=cfn_parameters,
                     wait=wait,
                     no_rollback=no_rollback,
+                    role_arn=role_arn,
                 )
             else:
                 # Deploy from template URL
@@ -373,6 +376,7 @@ def deploy(
                     parameters=cfn_parameters,
                     wait=wait,
                     no_rollback=no_rollback,
+                    role_arn=role_arn,
                 )
 
         # Show results

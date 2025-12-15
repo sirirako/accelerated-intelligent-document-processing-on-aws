@@ -8977,6 +8977,9 @@ Resources:
         Web UI build for GenAIIDP stack - ${AWS::StackName}
       ServiceRole: !Ref UICodeBuildServiceRole
       EncryptionKey: alias/aws/s3
+      Environment:
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Type: LINUX_CONTAINER
       Artifacts:
         Type: NO_ARTIFACTS
       Source:

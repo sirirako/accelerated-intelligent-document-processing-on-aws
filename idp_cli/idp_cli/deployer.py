@@ -42,6 +42,7 @@ class StackDeployer:
         parameters: Dict[str, str] = None,
         wait: bool = False,
         no_rollback: bool = False,
+        role_arn: Optional[str] = None,
     ) -> Dict:
         """
         Deploy CloudFormation stack
@@ -91,35 +92,33 @@ class StackDeployer:
         # Check if stack exists
         stack_exists = self._stack_exists(stack_name)
 
+        # Prepare common parameters
+        common_params = {
+            "StackName": stack_name,
+            **template_param,
+            "Parameters": cfn_parameters,
+            "Capabilities": [
+                "CAPABILITY_IAM",
+                "CAPABILITY_NAMED_IAM",
+                "CAPABILITY_AUTO_EXPAND",
+            ],
+        }
+        
+        # Add RoleArn if provided
+        if role_arn:
+            common_params["RoleArn"] = role_arn
+
         try:
             if stack_exists:
                 logger.info(f"Stack {stack_name} exists - updating")
-                response = self.cfn.update_stack(
-                    StackName=stack_name,
-                    **template_param,
-                    Parameters=cfn_parameters,
-                    Capabilities=[
-                        "CAPABILITY_IAM",
-                        "CAPABILITY_NAMED_IAM",
-                        "CAPABILITY_AUTO_EXPAND",
-                    ],
-                )
+                response = self.cfn.update_stack(**common_params)
                 operation = "UPDATE"
             else:
                 logger.info(f"Creating new stack: {stack_name}")
                 # Set DisableRollback based on no_rollback flag
                 disable_rollback = True if no_rollback else False
-                response = self.cfn.create_stack(
-                    StackName=stack_name,
-                    **template_param,
-                    Parameters=cfn_parameters,
-                    Capabilities=[
-                        "CAPABILITY_IAM",
-                        "CAPABILITY_NAMED_IAM",
-                        "CAPABILITY_AUTO_EXPAND",
-                    ],
-                    DisableRollback=disable_rollback,
-                )
+                common_params["DisableRollback"] = disable_rollback
+                response = self.cfn.create_stack(**common_params)
                 operation = "CREATE"
 
             result = {
