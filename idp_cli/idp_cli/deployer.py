@@ -103,7 +103,7 @@ class StackDeployer:
                 "CAPABILITY_AUTO_EXPAND",
             ],
         }
-        
+
         # Add RoleArn if provided
         if role_arn:
             common_params["RoleArn"] = role_arn
