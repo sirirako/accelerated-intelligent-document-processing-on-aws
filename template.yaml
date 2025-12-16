@@ -8189,6 +8189,17 @@ Resources:
                 - appsync:GraphQL
               Resource:
                 - !Sub "${GraphQLApi.Arn}/types/Query/*"
+            - Effect: Allow
+              Action:
+                - states:StopExecution
+              Resource:
+                - !If
+                  - IsPattern3
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN3STACK.Outputs.StateMachineName}:*"
+                  - !If
+                    - IsPattern2
+                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN2STACK.Outputs.StateMachineName}:*"
+                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN1STACK.Outputs.StateMachineName}:*"
                 - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
             - Effect: Allow
               Action:

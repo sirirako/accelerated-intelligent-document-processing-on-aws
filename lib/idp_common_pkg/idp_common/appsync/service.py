@@ -225,7 +225,7 @@ class DocumentAppSyncService:
         doc = Document(
             id=appsync_data.get("ObjectKey"),
             input_key=appsync_data.get("ObjectKey"),
-            num_pages=appsync_data.get("PageCount", 0),
+            num_pages=appsync_data.get("PageCount") or 0,
             queued_time=appsync_data.get("QueuedTime"),
             start_time=appsync_data.get("WorkflowStartTime"),
             completion_time=appsync_data.get("CompletionTime"),
