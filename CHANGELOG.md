@@ -5,6 +5,23 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Abort Workflow Feature for Stopping In-Progress Document Processing**
+  - Added ability to abort document processing workflows directly from the Web UI
+  - New "Abort" button available for documents with in-progress status, with confirmation modal to prevent accidental aborts
+  - GraphQL mutation `abortWorkflow` enables programmatic workflow cancellation
+  - Documents aborted mid-processing are marked with ABORTED status for clear tracking and reporting
+
+### Changed
+
+- **Improved Publish Script User Experience**
+  - Added spinner progress indicators for SAM build and SAM package operations showing real-time elapsed time
+  - Added timing metrics summary showing build/package/total duration for main template builds
+  - Output now provides visual feedback during long-running operations instead of appearing silent
+  - Enabled parallel SAM builds (`sam build --parallel`) for significantly faster build times (~73s vs 4+ minutes)
+  - Pre-built wheel approach for idp_common package eliminates race conditions during parallel Lambda builds
+
 ## [0.4.8]
 
 ### Added

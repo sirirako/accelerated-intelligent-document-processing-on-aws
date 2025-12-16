@@ -205,6 +205,14 @@ type ProcessChangesResponse @aws_cognito_user_pools {
   processingJobId: String
 }
 
+type AbortWorkflowResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  message: String
+  abortedCount: Int
+  failedCount: Int
+  errors: [String]
+}
+
 input ModifiedSectionInput {
   sectionId: String!
   classification: String!
@@ -418,6 +426,7 @@ type Mutation {
   copyToBaseline(objectKey: String!): CopyToBaselineResponse!
     @aws_cognito_user_pools
   reprocessDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
+  abortWorkflow(objectKeys: [String!]!): AbortWorkflowResponse! @aws_cognito_user_pools
   processChanges(
     objectKey: String!
     modifiedSections: [ModifiedSectionInput!]!

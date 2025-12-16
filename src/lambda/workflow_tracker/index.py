@@ -35,17 +35,26 @@ def update_document_completion(object_key: str, workflow_status: str, output_dat
     
     Args:
         object_key: The document object key (ID)
-        workflow_status: The final workflow status (SUCCEEDED or FAILED)
+        workflow_status: The final workflow status (SUCCEEDED, FAILED, ABORTED, TIMED_OUT)
         output_data: The output data from the workflow execution
         
     Returns:
         The updated Document object
     """
+    # Map workflow status to document status
+    # ABORTED workflows should keep ABORTED status (set by abort_workflow_resolver)
+    if workflow_status == 'SUCCEEDED':
+        doc_status = Status.COMPLETED
+    elif workflow_status == 'ABORTED':
+        doc_status = Status.ABORTED
+    else:
+        doc_status = Status.FAILED
+    
     # Create a document with basic properties (fallback for failed workflows)
     document = Document(
         id=object_key,
         input_key=object_key,
-        status=Status.COMPLETED if workflow_status == 'SUCCEEDED' else Status.FAILED,
+        status=doc_status,
         completion_time=datetime.now(timezone.utc).isoformat()
     )
     
