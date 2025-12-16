@@ -483,6 +483,9 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           return [testRunId, breakdown];
         }),
       ),
+      splitClassificationMetrics: Object.fromEntries(
+        Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.splitClassificationMetrics || {}]),
+      ),
       costBreakdown: Object.fromEntries(
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.costBreakdown || {}]),
       ),
@@ -756,7 +759,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 columnDefinitions={[
                   {
                     id: 't1',
-                    header: `T1 (${testRunIds[0] || 'N/A'})`,
+                    header: createTestRunHeader(testRunIds[0], true),
                     cell: (item) =>
                       item.t1Doc ? (
                         <div style={{ textAlign: 'left' }}>
@@ -777,7 +780,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   },
                   {
                     id: 't2',
-                    header: `T2 (${testRunIds[1] || 'N/A'})`,
+                    header: createTestRunHeader(testRunIds[1], true),
                     cell: (item) =>
                       item.t2Doc ? (
                         <div style={{ textAlign: 'left' }}>
@@ -892,6 +895,62 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   ]}
                   columnDefinitions={[
                     { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
+                    ...Object.keys(completeTestRuns).map((testRunId) => ({
+                      id: testRunId,
+                      header: createTestRunHeader(testRunId, true),
+                      cell: (item) => item[testRunId],
+                    })),
+                  ]}
+                  variant="embedded"
+                />
+              );
+            })()}
+          </Container>
+
+          {/* Split Classification Metrics Comparison */}
+          <Container header={<Header variant="h3">Average Split Classification Metrics Comparison</Header>}>
+            {(() => {
+              const hasSplitData = Object.values(completeTestRuns).some((testRun) => testRun.splitClassificationMetrics);
+
+              if (!hasSplitData) {
+                return <Box>No split classification metrics available for comparison</Box>;
+              }
+
+              const allSplitMetrics = new Set();
+              Object.values(completeTestRuns).forEach((testRun) => {
+                if (testRun.splitClassificationMetrics) {
+                  Object.keys(testRun.splitClassificationMetrics).forEach((metric) => {
+                    allSplitMetrics.add(metric);
+                  });
+                }
+              });
+
+              const splitMetricsItems = Array.from(allSplitMetrics).map((metricKey) => ({
+                metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                ...Object.fromEntries(
+                  Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                    const splitMetrics = testRun.splitClassificationMetrics || {};
+                    const value = splitMetrics[metricKey];
+                    const displayValue =
+                      typeof value === 'number' && metricKey.includes('accuracy')
+                        ? value.toFixed(3)
+                        : value !== null && value !== undefined
+                        ? value.toString()
+                        : '0';
+                    return [testRunId, displayValue];
+                  }),
+                ),
+              }));
+
+              return (
+                <Table
+                  items={splitMetricsItems}
+                  columnDefinitions={[
+                    {
+                      id: 'metric',
+                      header: 'Metric',
+                      cell: (item) => item.metric,
+                    },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
                       header: createTestRunHeader(testRunId, true),
