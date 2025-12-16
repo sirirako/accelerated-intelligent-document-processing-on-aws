@@ -7,7 +7,7 @@ Analytics agent logger utility for monitoring tool execution and context flow.
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 class AnalyticsLogger:
@@ -16,6 +16,7 @@ class AnalyticsLogger:
     def __init__(self):
         self._events: Dict[str, str] = {}  # event -> time_string mapping
         self._event_counters: Dict[str, int] = {}  # track multiple calls
+        self._queries: List[str] = []  # capture all queries for debugging
         self._logger = logging.getLogger(__name__)
 
     def log_event(self, event: str, duration: float) -> None:
@@ -81,6 +82,24 @@ class AnalyticsLogger:
         except Exception as e:
             self._logger.error(f"[{event}] Error logging content: {e}")
 
+    def log_query(self, query: str) -> None:
+        """
+        Log and capture SQL queries for troubleshooting.
+
+        Args:
+            query: SQL query string
+        """
+        # Sanitize query for logging
+        sanitized_query = query.replace("\n", " ").replace("\t", " ")
+        while "  " in sanitized_query:
+            sanitized_query = sanitized_query.replace("  ", " ")
+
+        # Add to queries list for debugging
+        self._queries.append(sanitized_query)
+
+        # Log complete query
+        self._logger.info(f"{sanitized_query}")
+
     def get_events(self) -> Dict[str, str]:
         """
         Return copy of events map.
@@ -90,12 +109,22 @@ class AnalyticsLogger:
         """
         return self._events.copy()
 
-    def clear_events(self) -> None:
+    def get_queries(self) -> List[str]:
         """
-        Clear all stored events and reset counters.
+        Return copy of all captured queries.
+
+        Returns:
+            List of all queries with their types
+        """
+        return self._queries.copy()
+
+    def clear(self) -> None:
+        """
+        Clear all stored events, counters, and queries.
         """
         self._events.clear()
         self._event_counters.clear()
+        self._queries.clear()
 
     def display_summary(self) -> None:
         """

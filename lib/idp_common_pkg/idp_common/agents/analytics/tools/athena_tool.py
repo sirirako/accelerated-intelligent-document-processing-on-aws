@@ -53,7 +53,7 @@ def run_athena_query(
         athena_client = boto3.client("athena", region_name=config.get("aws_region"))
 
         # Start query execution
-        logger.info(f"Executing Athena query: {query}")
+        analytics_logger.log_query(query)
         response = athena_client.start_query_execution(
             QueryString=query,
             QueryExecutionContext={"Database": config["athena_database"]},

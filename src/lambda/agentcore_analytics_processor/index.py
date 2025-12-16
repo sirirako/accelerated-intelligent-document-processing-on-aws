@@ -33,18 +33,30 @@ def log_analytics_events(context_msg: str = ""):
     try:
         from idp_common.agents.analytics.analytics_logger import analytics_logger
         events = analytics_logger.get_events()
+        queries = analytics_logger.get_queries()
+        
+        if queries:
+            logger.info(f"Queries Executed:")
+            for i, query in enumerate(queries, 1):
+                logger.info(f"Query #{i}: {query}")
+
         if events:
-            logger.info(f"Analytics Events {context_msg}:")
+            logger.info(f"Analytics Events:")
             logger.info(f"{'TOOL':<40} {'TIME':<8}")
             logger.info("-" * 48)
             total_time = 0.0
             for event, duration_str in events.items():
                 logger.info(f"{event:<40} {duration_str}s")
-                total_time += float(duration_str)
+                try:
+                    total_time += float(duration_str)
+                except ValueError:
+                    logger.warning(f"Invalid duration format: {duration_str}")
             logger.info("-" * 48)
             logger.info(f"{'TOTAL':<40} {total_time:.2f}s")
         else:
             logger.info(f"No analytics events recorded {context_msg}")
+        
+
     except Exception as e:
         logger.warning(f"Failed to log analytics events: {e}")
 
@@ -75,7 +87,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = agent(query)
         elapsed = time.time() - start_time
         # Log events
-        log_analytics_events("[SUCCESS]")
+        log_analytics_events("")
         logger.info(f"Process completed in {elapsed:.2f}s")
         return {
             'statusCode': 200,
@@ -83,7 +95,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     except Exception as e:
         # Log events
-        log_analytics_events("[ERROR]")
+        log_analytics_events("")
         
         # Determine message
         error_str = str(e).lower()

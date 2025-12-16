@@ -45,7 +45,7 @@ def create_analytics_agent(
     """
 
     # Clear analytics events for this request
-    analytics_logger.clear_events()
+    analytics_logger.clear()
 
     # Load the output format description
     final_result_format = load_result_format_description()
