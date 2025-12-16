@@ -89,8 +89,8 @@ class ProgressMonitor:
             for status in statuses:
                 self._categorize_document(status, status_summary)
 
-                # Cache finished documents
-                if status["status"] in ["COMPLETED", "FAILED"]:
+                # Cache finished documents (terminal states)
+                if status["status"] in ["COMPLETED", "FAILED", "ABORTED"]:
                     self.finished_docs[status["document_id"]] = status
 
         except Exception as e:
@@ -101,7 +101,7 @@ class ProgressMonitor:
                     status = self.get_document_status(doc_id)
                     self._categorize_document(status, status_summary)
 
-                    if status["status"] in ["COMPLETED", "FAILED"]:
+                    if status["status"] in ["COMPLETED", "FAILED", "ABORTED"]:
                         self.finished_docs[status["document_id"]] = status
                 except Exception as e:
                     logger.error(f"Error getting status for {doc_id}: {e}")
@@ -182,7 +182,7 @@ class ProgressMonitor:
 
         if status_value == "COMPLETED":
             status_summary["completed"].append(status)
-        elif status_value == "FAILED":
+        elif status_value in ["FAILED", "ABORTED"]:
             status_summary["failed"].append(status)
         elif status_value in [
             "RUNNING",
@@ -244,7 +244,7 @@ class ProgressMonitor:
             # Add status-specific fields
             if status == "RUNNING":
                 doc_status["current_step"] = result.get("CurrentStep", "Unknown")
-            elif status == "FAILED":
+            elif status in ["FAILED", "ABORTED"]:
                 doc_status["error"] = result.get("Error", "Unknown error")
                 doc_status["failed_step"] = result.get("FailedStep", "Unknown")
             elif status == "COMPLETED":

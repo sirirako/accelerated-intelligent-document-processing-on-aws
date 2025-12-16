@@ -424,6 +424,9 @@ def get_test_run_status(test_run_id):
                 elif doc_status == 'FAILED':
                     processing_failed_files += 1
                     logger.info(f"File {file_key}: counted as failed")
+                elif doc_status == 'ABORTED':
+                    processing_failed_files += 1
+                    logger.info(f"File {file_key}: counted as failed (aborted)")
                 elif doc_status == 'QUEUED':
                     queued_files += 1
                     logger.info(f"File {file_key}: counted as queued")

@@ -101,6 +101,8 @@ class DocumentAppSyncService:
             input_data["WorkflowStatus"] = "FAILED"
         elif document.status == Status.COMPLETED:
             input_data["WorkflowStatus"] = "SUCCEEDED"
+        elif document.status == Status.ABORTED:
+            input_data["WorkflowStatus"] = "ABORTED"
         else:
             input_data["WorkflowStatus"] = "RUNNING"
 
