@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Abort Workflow Feature for Stopping In-Progress Document Processing**
+  - Added ability to abort document processing workflows directly from the Web UI
+  - New "Abort" button available for documents with in-progress status, with confirmation modal to prevent accidental aborts
+  - GraphQL mutation `abortWorkflow` enables programmatic workflow cancellation
+  - Documents aborted mid-processing are marked with ABORTED status for clear tracking and reporting
+
 ### Changed
 
 - **Improved Publish Script User Experience**
