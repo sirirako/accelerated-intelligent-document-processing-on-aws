@@ -126,6 +126,7 @@ idp-cli deploy [OPTIONS]
 - `--parameters`: Additional parameters as `key=value,key2=value2`
 - `--wait`: Wait for stack operation to complete
 - `--region`: AWS region (optional, auto-detected)
+- `--role-arn`: CloudFormation service role ARN (optional)
 
 **Examples:**
 
@@ -157,6 +158,15 @@ idp-cli deploy \
     --admin-email user@example.com \
     --template-url https://s3.eu-west-1.amazonaws.com/my-bucket/idp-main.yaml \
     --region eu-west-1 \
+    --wait
+
+# Deploy with CloudFormation service role and permissions boundary
+idp-cli deploy \
+    --stack-name my-idp \
+    --pattern pattern-2 \
+    --admin-email user@example.com \
+    --role-arn arn:aws:iam::123456789012:role/IDP-Cloudformation-Service-Role \
+    --parameters "PermissionsBoundaryArn=arn:aws:iam::123456789012:policy/MyPermissionsBoundary" \
     --wait
 ```
 

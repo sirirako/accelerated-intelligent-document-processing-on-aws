@@ -42,6 +42,7 @@ class StackDeployer:
         parameters: Dict[str, str] = None,
         wait: bool = False,
         no_rollback: bool = False,
+        role_arn: Optional[str] = None,
     ) -> Dict:
         """
         Deploy CloudFormation stack
@@ -91,35 +92,33 @@ class StackDeployer:
         # Check if stack exists
         stack_exists = self._stack_exists(stack_name)
 
+        # Prepare common parameters
+        common_params = {
+            "StackName": stack_name,
+            **template_param,
+            "Parameters": cfn_parameters,
+            "Capabilities": [
+                "CAPABILITY_IAM",
+                "CAPABILITY_NAMED_IAM",
+                "CAPABILITY_AUTO_EXPAND",
+            ],
+        }
+
+        # Add RoleArn if provided
+        if role_arn:
+            common_params["RoleARN"] = role_arn
+
         try:
             if stack_exists:
                 logger.info(f"Stack {stack_name} exists - updating")
-                response = self.cfn.update_stack(
-                    StackName=stack_name,
-                    **template_param,
-                    Parameters=cfn_parameters,
-                    Capabilities=[
-                        "CAPABILITY_IAM",
-                        "CAPABILITY_NAMED_IAM",
-                        "CAPABILITY_AUTO_EXPAND",
-                    ],
-                )
+                response = self.cfn.update_stack(**common_params)
                 operation = "UPDATE"
             else:
                 logger.info(f"Creating new stack: {stack_name}")
                 # Set DisableRollback based on no_rollback flag
                 disable_rollback = True if no_rollback else False
-                response = self.cfn.create_stack(
-                    StackName=stack_name,
-                    **template_param,
-                    Parameters=cfn_parameters,
-                    Capabilities=[
-                        "CAPABILITY_IAM",
-                        "CAPABILITY_NAMED_IAM",
-                        "CAPABILITY_AUTO_EXPAND",
-                    ],
-                    DisableRollback=disable_rollback,
-                )
+                common_params["DisableRollback"] = disable_rollback
+                response = self.cfn.create_stack(**common_params)
                 operation = "CREATE"
 
             result = {
@@ -450,10 +449,10 @@ class StackDeployer:
 
             try:
                 logger.info(f"Emptying bucket {logical_id}: {bucket_name}")
-                bucket = s3.Bucket(bucket_name)
+                bucket = s3.Bucket(bucket_name)  # type: ignore
 
                 # Delete all objects and versions
-                bucket.object_versions.all().delete()
+                bucket.object_versions.all().delete()  # type: ignore
                 logger.info(f"Emptied bucket: {bucket_name}")
 
             except Exception as e:
@@ -1196,7 +1195,7 @@ class StackDeployer:
         s3 = boto3.resource("s3", region_name=self.region)
 
         try:
-            bucket = s3.Bucket(bucket_name)
+            bucket = s3.Bucket(bucket_name)  # type: ignore
 
             # Delete all objects and versions
             bucket.object_versions.all().delete()
@@ -1241,7 +1240,7 @@ def validate_s3_uri(uri: str) -> bool:
     parts = path.split("/", 1)
 
     # Must have bucket and key
-    return len(parts) == 2 and parts[0] and parts[1]
+    return len(parts) == 2 and bool(parts[0] and parts[1])
 
 
 def get_or_create_config_bucket(region: str) -> str:
@@ -1467,7 +1466,7 @@ def build_parameters(
                 # Auto-detect region from boto3 session
                 import boto3
 
-                session = boto3.session.Session()
+                session = boto3.session.Session()  # type: ignore
                 region = session.region_name
                 if not region:
                     raise ValueError(
