@@ -13,6 +13,17 @@ SPDX-License-Identifier: MIT-0
   - GraphQL mutation `abortWorkflow` enables programmatic workflow cancellation
   - Documents aborted mid-processing are marked with ABORTED status for clear tracking and reporting
 
+- **Global Cross-Region Inference Profile Model Support**
+  - Added support for Bedrock global inference profile models enabling cross-region model access
+  - **Supported Global Models**:
+    - Amazon Nova 2 Lite (`global.amazon.nova-2-lite-v1:0`)
+    - Claude Haiku 4.5 (`global.anthropic.claude-haiku-4-5-20251001-v1:0`)
+    - Claude Sonnet 4.5 (`global.anthropic.claude-sonnet-4-5-20250929-v1:0`)
+    - Claude Sonnet 4.5 - Long Context (`global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`)
+    - Claude Opus 4.5 (`global.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - All global models support prompt caching functionality
+  - Enables seamless cross-region model invocation without specifying regional endpoints
+
 ### Changed
 
 - **Improved Publish Script User Experience**
