@@ -130,24 +130,25 @@ class AnalyticsLogger:
         """
         Display formatted table of all events.
         """
-        if not self._events:
-            self._logger.info("No events recorded")
-            return
 
-        self._logger.info("\n" + "=" * 50)
-        self._logger.info("EVENT EXECUTION SUMMARY")
-        self._logger.info("=" * 50)
-        self._logger.info(f"{'EVENT':<30} {'TIME':<10}")
-        self._logger.info("-" * 50)
+        if self._queries:
+            self._logger.info("Queries Executed:")
+            for i, query in enumerate(self._queries, 1):
+                self._logger.info(f"[Query #{i}] {query}")
 
-        total_time = 0.0
-        for event, duration_str in self._events.items():
-            self._logger.info(f"{event:<30} {duration_str}s")
-            total_time += float(duration_str)
-
-        self._logger.info("-" * 50)
-        self._logger.info(f"{'TOTAL':<30} {total_time:.2f}s")
-        self._logger.info("=" * 50)
+        if self._events:
+            self._logger.info("Analytics Events:")
+            self._logger.info(f"{'TOOL':<40} [{'TIME':<0}]")
+            self._logger.info("-" * 48)
+            total_time = 0.0
+            for event, duration_str in self._events.items():
+                self._logger.info(f"{event:<40} [{duration_str}s]")
+                try:
+                    total_time += float(duration_str)
+                except ValueError:
+                    self._logger.warning(f"Invalid duration format: {duration_str}")
+            self._logger.info("-" * 48)
+            self._logger.info(f"{'TOTAL':<40} [{total_time:.2f}s]")
 
 
 # Singleton instance

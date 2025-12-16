@@ -32,31 +32,7 @@ def log_analytics_events(context_msg: str = ""):
     """Helper to log analytics events safely."""
     try:
         from idp_common.agents.analytics.analytics_logger import analytics_logger
-        events = analytics_logger.get_events()
-        queries = analytics_logger.get_queries()
-        
-        if queries:
-            logger.info(f"Queries Executed:")
-            for i, query in enumerate(queries, 1):
-                logger.info(f"Query #{i}: {query}")
-
-        if events:
-            logger.info(f"Analytics Events:")
-            logger.info(f"{'TOOL':<40} {'TIME':<8}")
-            logger.info("-" * 48)
-            total_time = 0.0
-            for event, duration_str in events.items():
-                logger.info(f"{event:<40} {duration_str}s")
-                try:
-                    total_time += float(duration_str)
-                except ValueError:
-                    logger.warning(f"Invalid duration format: {duration_str}")
-            logger.info("-" * 48)
-            logger.info(f"{'TOTAL':<40} {total_time:.2f}s")
-        else:
-            logger.info(f"No analytics events recorded {context_msg}")
-        
-
+        analytics_logger.display_summary()
     except Exception as e:
         logger.warning(f"Failed to log analytics events: {e}")
 
