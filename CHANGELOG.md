@@ -5,6 +5,34 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Abort Workflow Feature for Stopping In-Progress Document Processing**
+  - Added ability to abort document processing workflows directly from the Web UI
+  - New "Abort" button available for documents with in-progress status, with confirmation modal to prevent accidental aborts
+  - GraphQL mutation `abortWorkflow` enables programmatic workflow cancellation
+  - Documents aborted mid-processing are marked with ABORTED status for clear tracking and reporting
+
+- **Global Cross-Region Inference Profile Model Support**
+  - Added support for Bedrock global inference profile models enabling cross-region model access
+  - **Supported Global Models**:
+    - Amazon Nova 2 Lite (`global.amazon.nova-2-lite-v1:0`)
+    - Claude Haiku 4.5 (`global.anthropic.claude-haiku-4-5-20251001-v1:0`)
+    - Claude Sonnet 4.5 (`global.anthropic.claude-sonnet-4-5-20250929-v1:0`)
+    - Claude Sonnet 4.5 - Long Context (`global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`)
+    - Claude Opus 4.5 (`global.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - All global models support prompt caching functionality
+  - Enables seamless cross-region model invocation without specifying regional endpoints
+
+### Changed
+
+- **Improved Publish Script User Experience**
+  - Added spinner progress indicators for SAM build and SAM package operations showing real-time elapsed time
+  - Added timing metrics summary showing build/package/total duration for main template builds
+  - Output now provides visual feedback during long-running operations instead of appearing silent
+  - Enabled parallel SAM builds (`sam build --parallel`) for significantly faster build times (~73s vs 4+ minutes)
+  - Pre-built wheel approach for idp_common package eliminates race conditions during parallel Lambda builds
+
 ## [0.4.8]
 
 ### Added

@@ -10,6 +10,7 @@ import listDocumentsDateHour from '../graphql/queries/listDocumentsDateHour';
 import getDocument from '../graphql/queries/getDocument';
 import deleteDocument from '../graphql/queries/deleteDocument';
 import reprocessDocument from '../graphql/queries/reprocessDocument';
+import abortWorkflow from '../graphql/queries/abortWorkflow';
 import onCreateDocument from '../graphql/queries/onCreateDocument';
 import onUpdateDocument from '../graphql/queries/onUpdateDocument';
 import { DOCUMENT_LIST_SHARDS_PER_DAY } from '../components/document-list/documents-table-config';
@@ -373,6 +374,31 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     }
   };
 
+  const abortWorkflows = async (objectKeys) => {
+    try {
+      logger.debug('Aborting workflows for documents', objectKeys);
+      const result = await client.graphql({ query: abortWorkflow, variables: { objectKeys } });
+      logger.debug('Abort workflows result', result);
+      const response = result.data.abortWorkflow;
+
+      // Refresh the document list after aborting
+      setIsDocumentsListLoading(true);
+
+      // Show error message if some aborts failed but not all
+      if (response.failedCount > 0 && response.abortedCount > 0) {
+        setErrorMessage(`Aborted ${response.abortedCount} document(s), but ${response.failedCount} failed`);
+      } else if (response.failedCount > 0 && response.abortedCount === 0) {
+        setErrorMessage(`Failed to abort document(s): ${response.errors?.join(', ') || 'Unknown error'}`);
+      }
+
+      return response;
+    } catch (error) {
+      setErrorMessage('Failed to abort workflow(s) - please try again later');
+      logger.error('Error aborting workflows', error);
+      return { success: false, abortedCount: 0, failedCount: objectKeys.length, errors: [error.message] };
+    }
+  };
+
   return {
     documents,
     isDocumentsListLoading,
@@ -382,6 +408,7 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
     periodsToLoad,
     deleteDocuments,
     reprocessDocuments,
+    abortWorkflows,
   };
 };
 

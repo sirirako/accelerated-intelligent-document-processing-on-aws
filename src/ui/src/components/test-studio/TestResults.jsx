@@ -29,8 +29,8 @@ import useAppContext from '../../contexts/app';
 const client = generateClient();
 
 /* eslint-disable react/prop-types */
-const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeightedScore }) => {
-  if (!costBreakdown && !accuracyBreakdown) {
+const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, splitClassificationMetrics, averageWeightedScore }) => {
+  if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics) {
     return <Box>No breakdown data available</Box>;
   }
 
@@ -53,6 +53,38 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
             columnDefinitions={[
               { id: 'metric', header: 'Metric', cell: (item) => item.metric },
               { id: 'value', header: 'Value', cell: (item) => item.value },
+            ]}
+            variant="embedded"
+          />
+        </Container>
+      )}
+
+      {/* Split Classification Metrics */}
+      {splitClassificationMetrics && (
+        <Container header={<Header variant="h3">Average Document Split Classification Metrics</Header>}>
+          <Table
+            items={[
+              ...Object.entries(splitClassificationMetrics).map(([key, value]) => ({
+                metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                value:
+                  typeof value === 'number' && key.includes('accuracy')
+                    ? value.toFixed(3)
+                    : value !== null && value !== undefined
+                    ? value.toString()
+                    : '0',
+              })),
+            ]}
+            columnDefinitions={[
+              {
+                id: 'metric',
+                header: 'Metric',
+                cell: (item) => item.metric,
+              },
+              {
+                id: 'value',
+                header: 'Value',
+                cell: (item) => item.value,
+              },
             ]}
             variant="embedded"
           />
@@ -441,6 +473,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
   let costBreakdown = null;
   let accuracyBreakdown = null;
+  let splitClassificationMetrics = null;
 
   try {
     if (results.costBreakdown) {
@@ -448,6 +481,12 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     }
     if (results.accuracyBreakdown) {
       accuracyBreakdown = typeof results.accuracyBreakdown === 'string' ? JSON.parse(results.accuracyBreakdown) : results.accuracyBreakdown;
+    }
+    if (results.splitClassificationMetrics) {
+      splitClassificationMetrics =
+        typeof results.splitClassificationMetrics === 'string'
+          ? JSON.parse(results.splitClassificationMetrics)
+          : results.splitClassificationMetrics;
     }
   } catch (e) {
     console.error('Error parsing breakdown data:', e);
@@ -879,10 +918,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         )}
 
         {/* Breakdown Tables */}
-        {(costBreakdown || accuracyBreakdown) && (
+        {(costBreakdown || accuracyBreakdown || splitClassificationMetrics) && (
           <ComprehensiveBreakdown
             costBreakdown={costBreakdown}
             accuracyBreakdown={accuracyBreakdown}
+            splitClassificationMetrics={splitClassificationMetrics}
             averageWeightedScore={averageWeightedScore}
           />
         )}

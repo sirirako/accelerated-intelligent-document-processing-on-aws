@@ -30,6 +30,7 @@ class Status(Enum):
     EVALUATING = "EVALUATING"  # Document evaluation
     COMPLETED = "COMPLETED"  # All processing completed
     FAILED = "FAILED"  # Processing failed
+    ABORTED = "ABORTED"  # User cancelled workflow
 
 
 @dataclass
