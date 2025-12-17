@@ -54,6 +54,7 @@ def run_athena_query(
 
         # Start query execution
         analytics_logger.log_query(query)
+        logger.info(f"return_full_query_results: [{return_full_query_results}]")
         response = athena_client.start_query_execution(
             QueryString=query,
             QueryExecutionContext={"Database": config["athena_database"]},
@@ -127,6 +128,7 @@ def run_athena_query(
                     "rows_returned": total_rows,
                 }
                 analytics_logger.log_content("run_athena_query", result)
+                logger.info(f"return_full_query_results: [{return_full_query_results}]")
                 return result
 
             result_dict = {
@@ -174,6 +176,7 @@ def run_athena_query(
                     )
 
             analytics_logger.log_content("run_athena_query", result_dict)
+            logger.info(f"return_full_query_results: [{return_full_query_results}]")
             return result_dict
 
         elif state == "RUNNING":
@@ -189,6 +192,7 @@ def run_athena_query(
                 "state": "RUNNING",
             }
             analytics_logger.log_content("run_athena_query", result)
+            logger.info(f"return_full_query_results: [{return_full_query_results}]")
             return result
         else:
             # Query failed
@@ -206,12 +210,14 @@ def run_athena_query(
                 "query": query,
             }
             analytics_logger.log_content("run_athena_query", result)
+            logger.info(f"return_full_query_results: [{return_full_query_results}]")
             return result
 
     except Exception as e:
         logger.exception("Error executing Athena query")
         result = {"success": False, "error": str(e), "query": query}
         analytics_logger.log_content("run_athena_query", result)
+        logger.info(f"return_full_query_results: [{return_full_query_results}]")
         return result
     finally:
         analytics_logger.log_event("run_athena_query", time.time() - start_time)
