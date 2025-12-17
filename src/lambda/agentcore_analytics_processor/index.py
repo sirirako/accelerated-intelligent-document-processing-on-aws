@@ -59,10 +59,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         agent = create_analytics_agent(config=_config, session=_session)
 
         start_time = time.time()
-        logger.info(f"Query:[{query}]")
+        logger.info(f"Query: [{query}]")
         result = agent(query)
         elapsed = time.time() - start_time
         # Log events
+        logger.info(f"Prompt: [{query}]")
         log_analytics_events("")
         logger.info(f"Process completed in {elapsed:.2f}s")
         return {
@@ -71,6 +72,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     except Exception as e:
         # Log events
+        logger.info(f"Prompt: [{query}]")
         log_analytics_events("")
         
         # Determine message

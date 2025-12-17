@@ -134,7 +134,7 @@ class AnalyticsLogger:
         if self._queries:
             self._logger.info("Queries Executed:")
             for i, query in enumerate(self._queries, 1):
-                self._logger.info(f"[Query #{i}] {query}")
+                self._logger.info("[Query #" + str(i) + "] " + query)
 
         if self._events:
             self._logger.info("Analytics Events:")
@@ -148,7 +148,7 @@ class AnalyticsLogger:
                 except ValueError:
                     self._logger.warning(f"Invalid duration format: {duration_str}")
             self._logger.info("-" * 48)
-            self._logger.info(f"{'TOTAL':<40} [{total_time:.2f}s]")
+            self._logger.info(f"{'Total Tool Runtime':<40} [{total_time:.2f}s]")
 
 
 # Singleton instance
