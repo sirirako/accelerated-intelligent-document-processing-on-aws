@@ -47,6 +47,7 @@ class CodeInterpreterTools:
         response = client.invoke(tool_name, arguments)
         for event in response["stream"]:
             return json.loads(json.dumps(event["result"], indent=2))
+        return {}
 
     def cleanup(self):
         """Clean up the code interpreter session."""
