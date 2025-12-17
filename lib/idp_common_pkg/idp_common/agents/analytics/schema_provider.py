@@ -586,7 +586,7 @@ Table name: `attribute_evaluations` - Detailed attribute-level comparisons
 ### Next Steps:
 Use `get_table_info(['table1', 'table2'])` to get detailed schemas for specific tables you need to query.
 """
-        logger.info(f"Database Overview: {overview}")
+        logger.debug(f"Database Overview: {overview}")
         return overview
 
     except Exception as e:
@@ -637,7 +637,7 @@ def get_table_info(table_names: list[str], config: Optional[IDPConfig] = None) -
             detailed_info += f"## Unknown Table: {table_name}\n\n"
             detailed_info += "**Error**: Table name not recognized.\n"
 
-    logger.info(f"Table Info: {detailed_info}")
+    logger.debug(f"Table Info: {detailed_info}")
     return detailed_info
 
 

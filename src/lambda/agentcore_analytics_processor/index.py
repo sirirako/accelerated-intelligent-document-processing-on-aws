@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 _session = None
 _config = None
 
+def log_analytics_events(context_msg: str = ""):
+    """Helper to log analytics events safely."""
+    try:
+        from idp_common.agents.analytics.analytics_logger import analytics_logger
+        analytics_logger.display_summary()
+    except Exception as e:
+        logger.warning(f"Failed to log analytics events: {e}")
+
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Process analytics queries through agent."""
@@ -49,38 +57,39 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Create analytics agent directly
         agent = create_analytics_agent(config=_config, session=_session)
+
+        start_time = time.time()
+        logger.info(f"Query: [{query}]")
+        result = agent(query)
+        elapsed = time.time() - start_time
+        # Log events
+        logger.info(f"Prompt: [{query}]")
+        log_analytics_events("")
+        logger.info(f"Process completed in {elapsed:.2f}s")
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'query': query, 'result': str(result)})
+        }
+    except Exception as e:
+        # Log events
+        logger.info(f"Prompt: [{query}]")
+        log_analytics_events("")
         
-        try:
-            start_time = time.time()
-            logger.info(f"Query: {query}")
-            result = agent(query)
-            elapsed = time.time() - start_time
-            logger.info(f"Query completed in {elapsed:.2f}s")
-            return {
-                'statusCode': 200,
-                'body': json.dumps({'query': query, 'result': str(result)})
-            }
-        finally:
-            if hasattr(agent, '__exit__'):
-                agent.__exit__(None, None, None)
-    
-    except (EventStreamError, ClientError) as e:
+        # Determine message
         error_str = str(e).lower()
-        error_code = getattr(e, 'response', {}).get('Error', {}).get('Code', '')
+        error_code = getattr(e, 'response', {}).get('Error', {}).get('Code', '') if isinstance(e, (EventStreamError, ClientError)) else ''
         
         if 'unavailable' in error_str or error_code in ['ThrottlingException', 'ServiceUnavailable']:
             message = 'Service temporarily unavailable due to high demand. Please retry in a moment.'
-        else:
-            logger.error(f"AWS error: {e}")
+        elif isinstance(e, (EventStreamError, ClientError)):
             message = f'Error: {str(e)}'
+        else:
+            message = 'An error occurred processing your request. Please try again.'
+        
+        # Single logging point
+        logger.error(f"Query failed: {e}")
         
         return {
             'statusCode': 200,
             'body': json.dumps({'query': query, 'result': message})
-        }
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'query': query, 'result': 'An error occurred processing your request. Please try again.'})
         }
