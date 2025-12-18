@@ -476,7 +476,7 @@ class TestBdaBlueprintService:
             blueprint["properties"]["invoiceNumber"]["instruction"]
             == "Unique invoice identifier"
         )
-        assert blueprint["properties"]["invoiceNumber"]["inferenceType"] == "inferred"
+        assert blueprint["properties"]["invoiceNumber"]["inferenceType"] == "explicit"
 
     def test_transform_converts_defs_to_definitions(self, service):
         """Ensure that $defs is converted to definitions for BDA draft-07 compatibility.
@@ -520,6 +520,9 @@ class TestBdaBlueprintService:
         # Verify $ref path was updated
         address_prop = blueprint["properties"]["address"]
         assert address_prop["$ref"] == "#/definitions/Address"
+        assert (
+            address_prop["instruction"] == "-"
+        )  # $ref properties should have instruction: "-"
 
         # Verify definition has proper structure (object should NOT have inferenceType/instruction)
         address_def = blueprint["definitions"]["Address"]
