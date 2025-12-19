@@ -1502,7 +1502,7 @@ pricing:
         price: "2.0E-7"
       - name: cacheWriteInputTokens
         price: "8.0E-7"
-  - name: bedrock/us.amazon.nova-premier-v1:0
+  - name: bedrock/us.amazon.nova-2-lite-v1:0
     units:
       - name: inputTokens
         price: "2.5E-6"
