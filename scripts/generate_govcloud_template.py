@@ -197,7 +197,12 @@ class GovCloudTemplateGenerator:
             'TestSetZipExtractorS3Policy',
             'TestSetBucketNotificationFunction',
             'TestSetBucketNotificationConfiguration',
-            'TestSetResolverS3Policy'
+            'TestSetResolverS3Policy',
+            # Abort Workflow Resources (added for GovCloud compatibility - depends on AppSync)
+            'AbortWorkflowResolverFunction',
+            'AbortWorkflowResolverFunctionLogGroup',
+            'AbortWorkflowDataSource',
+            'AbortWorkflowResolver'
         }
         
         self.auth_resources = {
@@ -941,6 +946,63 @@ class GovCloudTemplateGenerator:
         
         return template
 
+    def update_configuration_maps_for_govcloud(self, template: Dict[str, Any]) -> Dict[str, Any]:
+        """Update configuration maps and parameters to use GovCloud configs as default"""
+        self.logger.info("Updating configuration maps for GovCloud deployment")
+        
+        mappings = template.get('Mappings', {})
+        parameters = template.get('Parameters', {})
+        
+        # Add GovCloud entries to Pattern1ConfigurationMap
+        if 'Pattern1ConfigurationMap' in mappings:
+            mappings['Pattern1ConfigurationMap']['lending-package-sample-govcloud'] = {
+                'ConfigPath': 'lending-package-sample-govcloud'
+            }
+            # Update default to use GovCloud config
+            mappings['Pattern1ConfigurationMap']['default'] = {
+                'ConfigPath': 'lending-package-sample-govcloud'
+            }
+            self.logger.debug("Added lending-package-sample-govcloud to Pattern1ConfigurationMap")
+        
+        # Add GovCloud entries to Pattern2ConfigurationMap  
+        if 'Pattern2ConfigurationMap' in mappings:
+            mappings['Pattern2ConfigurationMap']['lending-package-sample-govcloud'] = {
+                'ConfigPath': 'lending-package-sample-govcloud'
+            }
+            # Update default to use GovCloud config
+            mappings['Pattern2ConfigurationMap']['default'] = {
+                'ConfigPath': 'lending-package-sample-govcloud'
+            }
+            self.logger.debug("Added lending-package-sample-govcloud to Pattern2ConfigurationMap")
+        
+        # Update Pattern1Configuration parameter
+        if 'Pattern1Configuration' in parameters:
+            # Change default to GovCloud config
+            parameters['Pattern1Configuration']['Default'] = 'lending-package-sample-govcloud'
+            
+            # Add GovCloud config to allowed values if not present
+            allowed_values = parameters['Pattern1Configuration'].get('AllowedValues', [])
+            if 'lending-package-sample-govcloud' not in allowed_values:
+                allowed_values.insert(0, 'lending-package-sample-govcloud')
+                parameters['Pattern1Configuration']['AllowedValues'] = allowed_values
+            
+            self.logger.info("Updated Pattern1Configuration default to 'lending-package-sample-govcloud'")
+        
+        # Update Pattern2Configuration parameter
+        if 'Pattern2Configuration' in parameters:
+            # Change default to GovCloud config
+            parameters['Pattern2Configuration']['Default'] = 'lending-package-sample-govcloud'
+            
+            # Add GovCloud config to allowed values if not present
+            allowed_values = parameters['Pattern2Configuration'].get('AllowedValues', [])
+            if 'lending-package-sample-govcloud' not in allowed_values:
+                allowed_values.insert(0, 'lending-package-sample-govcloud')
+                parameters['Pattern2Configuration']['AllowedValues'] = allowed_values
+            
+            self.logger.info("Updated Pattern2Configuration default to 'lending-package-sample-govcloud'")
+        
+        return template
+
     def validate_template_basic(self, template: Dict[str, Any]) -> bool:
         """Perform basic template validation"""
         self.logger.info("Validating generated template")
@@ -999,6 +1061,7 @@ class GovCloudTemplateGenerator:
             template = self.remove_rules(template)
             template = self.clean_template_for_headless_deployment(template)
             template = self.clean_parameter_groups(template)
+            template = self.update_configuration_maps_for_govcloud(template)
             template = self.update_arn_partitions(template)
             template = self.update_description(template)
             
