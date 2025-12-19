@@ -15,6 +15,15 @@ SPDX-License-Identifier: MIT-0
   - Test set available in Test Studio UI alongside existing RealKIE-FCC-Verified dataset
   - Corresponding config: `config_library/pattern-2/ocr-benchmark/config.yaml` with all 9 document classes
   - Ideal for testing classification across diverse document types and extraction on complex nested schemas
+  
+- **GovCloud Configuration Library for Pattern-1 and Pattern-2** - [GitHub Issue #162](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/162)
+  - Added `lending-package-sample-govcloud` configurations for both Pattern-1 and Pattern-2 with GovCloud-compatible model IDs
+  - **Model ID Mappings for GovCloud**:
+    - `us.amazon.nova-pro-v1:0` → `amazon.nova-pro-v1:0`
+    - `us.amazon.nova-lite-v1:0` → `amazon.nova-lite-v1:0`
+    - All other models (Claude, Nova Premier) → `anthropic.claude-3-7-sonnet-20250219-v1:0`
+  - Enhanced `generate_govcloud_template.py` to automatically set GovCloud configurations as default when generating GovCloud templates
+  - **Automatic Integration**: GovCloud templates now default to `lending-package-sample-govcloud` configuration ensuring proper model IDs without manual configuration
 
 - **Abort Workflow Feature for Stopping In-Progress Document Processing**
   - Added ability to abort document processing workflows directly from the Web UI
