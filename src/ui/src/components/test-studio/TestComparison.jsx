@@ -56,7 +56,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       b = 0; // Stay at 0
     }
 
-    return { backgroundColor: `rgb(${r}, ${g}, ${b})`, color: 'white' };
+    // Use black text for light backgrounds (yellow range)
+    const textColor = ratio > 0.3 && ratio < 0.7 ? 'black' : 'white';
+
+    return { backgroundColor: `rgb(${r}, ${g}, ${b})`, color: textColor };
   };
 
   const getScoreColorGrade = (score, allScores) => {
@@ -85,7 +88,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       b = 0; // Stay at 0
     }
 
-    return { backgroundColor: `rgb(${r}, ${g}, ${b})`, color: 'white' };
+    // Use black text for light backgrounds (yellow range)
+    const textColor = ratio > 0.3 && ratio < 0.7 ? 'black' : 'white';
+
+    return { backgroundColor: `rgb(${r}, ${g}, ${b})`, color: textColor };
   };
 
   // Preferences component
