@@ -23,8 +23,8 @@ https://github.com/user-attachments/assets/d952fd37-1bd0-437f-8f67-5a634e9422e0
 
 During stack deployment, the system automatically:
 
-1. **Downloads Dataset** from HuggingFace (75 documents)
-2. **Reconstructs PDFs** from PNG page images using lossless img2pdf conversion
+1. **Downloads Dataset Metadata** from HuggingFace parquet file (75 documents)
+2. **Downloads PDFs** directly from HuggingFace's `pdfs/` directory
 3. **Uploads PDFs** to `s3://TestSetBucket/realkie-fcc-verified/input/`
 4. **Extracts Ground Truth** from `json_response` field (already in accelerator format!)
 5. **Uploads Baselines** to `s3://TestSetBucket/realkie-fcc-verified/baseline/`
@@ -35,7 +35,7 @@ During stack deployment, the system automatically:
 ### Key Features
 
 - **Fully Automatic**: Complete deployment during stack creation with zero user effort
-- **PDF Reconstruction**: Converts PNG page images to PDF documents using img2pdf for lossless quality
+- **Direct PDF Downloads**: PDFs are downloaded directly from HuggingFace's repository (no image conversion needed)
 - **Complete Ground Truth**: Structured invoice attributes (Agency, Advertiser, GrossTotal, PaymentTerms, AgencyCommission, NetAmountDue, LineItems)
 - **Version Control**: Dataset version pinned in CloudFormation (DatasetVersion: "1.0"), updateable via parameter
 - **Smart Updates**: Skips re-download on stack updates unless version changes
@@ -44,7 +44,7 @@ During stack deployment, the system automatically:
 
 ### Deployment Time
 
-- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads dataset + converts images)
+- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads PDFs and metadata)
 - **Stack Updates**: Near-instant (skips if version unchanged)
 - **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
 
