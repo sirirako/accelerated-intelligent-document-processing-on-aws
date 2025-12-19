@@ -42,6 +42,13 @@ SPDX-License-Identifier: MIT-0
   - Enabled parallel SAM builds (`sam build --parallel`) for significantly faster build times (~73s vs 4+ minutes)
   - Pre-built wheel approach for idp_common package eliminates race conditions during parallel Lambda builds
 
+- **RealKIE-FCC-Verified Dataset Schema Alignment with HuggingFace**
+  - Updated `config_library/pattern-2/realkie-fcc-verified/config.yaml` to match the HuggingFace json_schema exactly
+  - Changed `LineItemDays` from array type with enum values to simple string type (matching raw HuggingFace data format)
+  - Updated field descriptions to match HuggingFace schema (e.g., "The agency the invoice is addressed to")
+  - Added `required` arrays at both root level and LineItem level
+  - Added "Output null if not shown" guidance in descriptions for optional fields
+
 ## [0.4.8]
 
 ### Added
