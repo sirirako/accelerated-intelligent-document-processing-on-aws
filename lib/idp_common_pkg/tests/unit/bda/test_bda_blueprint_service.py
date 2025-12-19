@@ -171,13 +171,14 @@ class TestBdaBlueprintService:
             )
 
             # Store mocks for access in tests
-            service._mock_table = mock_table
+            # Note: Using setattr to avoid type checker issues with dynamic attributes
+            setattr(service, "_mock_table", mock_table)
             service.config_manager = mock_manager_instance
 
             # Replace the blueprint_creator with a mock
             mock_blueprint_creator = MagicMock()
             service.blueprint_creator = mock_blueprint_creator
-            service._mock_blueprint_creator = mock_blueprint_creator
+            setattr(service, "_mock_blueprint_creator", mock_blueprint_creator)
 
             return service
 
@@ -352,12 +353,16 @@ class TestBdaBlueprintService:
         existing_blueprint = {"schema": json.dumps(blueprint_schema)}
 
         updated_schema = deepcopy(base_schema)
-        updated_schema["properties"]["bar"] = {
+        # Type annotation to help type checker understand this is a dict
+        updated_schema_dict = updated_schema  # type: dict
+        updated_schema_dict["properties"]["bar"] = {
             "type": "string",
             "description": "New field",
         }
 
-        assert service._check_for_updates(updated_schema, existing_blueprint) is True
+        assert (
+            service._check_for_updates(updated_schema_dict, existing_blueprint) is True
+        )
 
     def test_check_for_updates_nested_description_changed(self, service):
         """Test _check_for_updates when a nested description changes."""
@@ -381,11 +386,15 @@ class TestBdaBlueprintService:
         existing_blueprint = {"schema": json.dumps(blueprint_schema)}
 
         updated_schema = deepcopy(base_schema)
-        updated_schema["properties"]["personalInformation"]["properties"]["firstName"][
-            "description"
-        ] = "Updated first name description"
+        # Type annotation to help type checker understand this is a dict
+        updated_schema_dict = updated_schema  # type: dict
+        updated_schema_dict["properties"]["personalInformation"]["properties"][
+            "firstName"
+        ]["description"] = "Updated first name description"
 
-        assert service._check_for_updates(updated_schema, existing_blueprint) is True
+        assert (
+            service._check_for_updates(updated_schema_dict, existing_blueprint) is True
+        )
 
     def test_check_for_updates_nested_property_added(self, service):
         """Test _check_for_updates when a nested property is added."""
@@ -409,14 +418,18 @@ class TestBdaBlueprintService:
         existing_blueprint = {"schema": json.dumps(blueprint_schema)}
 
         updated_schema = deepcopy(base_schema)
-        updated_schema["properties"]["personalInformation"]["properties"][
+        # Type annotation to help type checker understand this is a dict
+        updated_schema_dict = updated_schema  # type: dict
+        updated_schema_dict["properties"]["personalInformation"]["properties"][
             "middleName"
         ] = {
             "type": "string",
             "description": "Middle Name of Employee",
         }
 
-        assert service._check_for_updates(updated_schema, existing_blueprint) is True
+        assert (
+            service._check_for_updates(updated_schema_dict, existing_blueprint) is True
+        )
 
     def test_check_for_updates_blueprint_retrieval_error(self, service):
         """Test _check_for_updates when blueprint has invalid schema."""
