@@ -443,7 +443,7 @@ class BdaBlueprintService:
             if not config_item:
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
-            
+
             # Use getattr to safely access classes attribute
             classes = getattr(config_item, "classes", None)
             if not classes:
