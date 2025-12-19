@@ -93,6 +93,10 @@ class BdaBlueprintService:
         """
         Transform JSON Schema (draft 2020-12) to BDA blueprint format (draft-07).
 
+        Handles two input patterns:
+        1. Schemas with $defs (from migration.py)
+        2. Flat nested schemas (from classes_discovery.py)
+
         BDA requirements based on working schemas:
         - Uses "definitions" (not "$defs") - JSON Schema draft-07
         - References use "#/definitions/" (not "#/$defs/")
@@ -105,11 +109,21 @@ class BdaBlueprintService:
         Returns:
             Blueprint schema in BDA-compatible draft-07 format
         """
-        # Extract $defs and convert to definitions
-        defs = json_schema.get(DEFS_FIELD, {})
+        blueprint = self._create_base_blueprint_structure(json_schema)
 
-        # Start with BDA-expected structure
-        blueprint = {
+        defs = json_schema.get(DEFS_FIELD, {})
+        properties = json_schema.get(SCHEMA_PROPERTIES, {})
+
+        if defs:
+            blueprint.update(self._process_schema_with_defs(defs, properties))
+        else:
+            blueprint.update(self._process_flat_schema(properties))
+
+        return blueprint
+
+    def _create_base_blueprint_structure(self, json_schema: dict) -> dict:
+        """Create the base blueprint structure."""
+        return {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "class": json_schema.get(
                 ID_FIELD, json_schema.get(X_AWS_IDP_DOCUMENT_TYPE, "Document")
@@ -120,33 +134,226 @@ class BdaBlueprintService:
             "type": TYPE_OBJECT,
         }
 
-        # Convert definitions and add BDA fields to leaf properties only
-        if defs:
-            blueprint["definitions"] = {}
-            for def_name, def_value in defs.items():
-                blueprint["definitions"][def_name] = self._add_bda_fields_to_schema(
+    def _process_schema_with_defs(self, defs: dict, properties: dict) -> dict:
+        """Process schema that has $defs (Pattern 1: from migration.py)."""
+        result = {"definitions": {}, "properties": {}}
+
+        # Process definitions
+        for def_name, def_value in defs.items():
+            result["definitions"][def_name] = self._add_bda_fields_to_schema(def_value)
+
+        # Process properties and update $ref paths
+        for prop_name, prop_value in properties.items():
+            if REF_FIELD in prop_value:
+                # $ref properties should have instruction: "-" based on correct_format.json
+                result["properties"][prop_name] = {
+                    REF_FIELD: self._normalize_ref_path(prop_value[REF_FIELD]),
+                    "instruction": "-",
+                }
+            else:
+                result["properties"][prop_name] = self._add_bda_fields_to_schema(
+                    prop_value
+                )
+
+        return result
+
+    def _process_flat_schema(self, properties: dict) -> dict:
+        """Process flat nested schema (Pattern 2: from classes_discovery.py)."""
+        simple_properties, extracted_definitions = self._extract_complex_objects(
+            properties
+        )
+
+        result = {"properties": {}}
+
+        # Add definitions if any were extracted
+        if extracted_definitions:
+            result["definitions"] = {}
+            for def_name, def_value in extracted_definitions.items():
+                result["definitions"][def_name] = self._add_bda_fields_to_schema(
                     def_value
                 )
 
-        # Transform properties and update $ref paths
-        blueprint["properties"] = {}
-        for prop_name, prop_value in json_schema.get(SCHEMA_PROPERTIES, {}).items():
-            transformed = self._add_bda_fields_to_schema(prop_value)
-            # Update $ref paths from #/$defs/ to #/definitions/
-            if REF_FIELD in transformed:
-                transformed[REF_FIELD] = transformed[REF_FIELD].replace(
-                    "/$defs/", "/definitions/"
-                )
-            blueprint["properties"][prop_name] = transformed
+        # Transform simple properties
+        for prop_name, prop_value in simple_properties.items():
+            if REF_FIELD in prop_value:
+                # This is a $ref to an extracted definition
+                result["properties"][prop_name] = {REF_FIELD: prop_value[REF_FIELD]}
+            else:
+                # Handle arrays and simple properties
+                prop_type = prop_value.get(SCHEMA_TYPE, "string")
+                if prop_type == TYPE_ARRAY and SCHEMA_ITEMS in prop_value:
+                    result["properties"][prop_name] = (
+                        self._process_array_property_simple(prop_value)
+                    )
+                else:
+                    result["properties"][prop_name] = self._add_bda_fields_to_schema(
+                        prop_value
+                    )
 
-        return blueprint
+        return result
+
+    def _normalize_ref_path(self, ref_path: str) -> str:
+        """Convert $defs references to definitions references."""
+        return ref_path.replace("/$defs/", "/definitions/")
+
+    def _add_bda_fields_to_leaf_property(
+        self, prop_schema: dict, original_description: str = None
+    ) -> dict:
+        """Add BDA fields (inferenceType, instruction) to a leaf property."""
+        result = {
+            "type": prop_schema.get(SCHEMA_TYPE, "string"),
+            "inferenceType": prop_schema.get("inferenceType", "explicit"),
+        }
+
+        if "instruction" in prop_schema:
+            result["instruction"] = prop_schema["instruction"]
+        elif original_description:
+            result["instruction"] = original_description
+        else:
+            result["instruction"] = "Extract this field from the document"
+
+        return result
+
+    def _process_object_properties(self, properties: dict) -> dict:
+        """Process object properties, adding BDA fields to leaf properties only."""
+        processed_properties = {}
+
+        for name, value in properties.items():
+            # Skip $ref properties
+            if REF_FIELD in value:
+                continue
+
+            # Skip nested objects - BDA doesn't support them
+            if value.get(SCHEMA_TYPE) == TYPE_OBJECT:
+                continue
+
+            # Process leaf property
+            processed_properties[name] = self._add_bda_fields_to_leaf_property(
+                value, value.get(SCHEMA_DESCRIPTION)
+            )
+
+        return processed_properties
+
+    def _process_array_property_simple(self, prop_value: dict) -> dict:
+        """Process array properties for simple cases."""
+        items = prop_value[SCHEMA_ITEMS]
+        if isinstance(items, dict) and REF_FIELD in items:
+            # Array with $ref items - preserve array description as instruction
+            array_property = {
+                SCHEMA_TYPE: TYPE_ARRAY,
+                SCHEMA_ITEMS: {REF_FIELD: items[REF_FIELD]},
+            }
+            if SCHEMA_DESCRIPTION in prop_value:
+                array_property["instruction"] = prop_value[SCHEMA_DESCRIPTION]
+            return array_property
+        else:
+            # Array with simple items
+            return self._add_bda_fields_to_schema(prop_value)
+
+    def _process_array_property(
+        self, prop_name: str, prop_value: dict, extracted_definitions: dict
+    ) -> dict:
+        """Process array properties, extracting complex item types to definitions."""
+        items = prop_value.get(SCHEMA_ITEMS, {})
+
+        if (
+            isinstance(items, dict)
+            and items.get(SCHEMA_TYPE) == TYPE_OBJECT
+            and SCHEMA_PROPERTIES in items
+        ):
+            # Array of complex objects - extract to definition
+            item_def_name = f"{prop_name}Item"
+
+            item_definition = {
+                SCHEMA_TYPE: TYPE_OBJECT,
+                SCHEMA_PROPERTIES: self._process_object_properties(
+                    items[SCHEMA_PROPERTIES]
+                ),
+            }
+
+            if SCHEMA_DESCRIPTION in items:
+                item_definition[SCHEMA_DESCRIPTION] = items[SCHEMA_DESCRIPTION]
+
+            extracted_definitions[item_def_name] = item_definition
+
+            # Return array with $ref to definition
+            array_property = {
+                SCHEMA_TYPE: TYPE_ARRAY,
+                SCHEMA_ITEMS: {REF_FIELD: f"#/definitions/{item_def_name}"},
+            }
+
+            if SCHEMA_DESCRIPTION in prop_value:
+                array_property["instruction"] = prop_value[SCHEMA_DESCRIPTION]
+
+            return array_property
+        else:
+            # Array of simple items
+            return prop_value
+
+    def _extract_complex_objects(self, properties: dict) -> tuple[dict, dict]:
+        """
+        Extract complex objects from flat nested schema properties.
+
+        Args:
+            properties: Properties dict from flat nested schema
+
+        Returns:
+            tuple: (simple_properties, extracted_definitions)
+                - simple_properties: Properties with complex objects replaced by $ref
+                - extracted_definitions: Complex objects extracted to definitions
+        """
+        simple_properties = {}
+        extracted_definitions = {}
+
+        for prop_name, prop_value in properties.items():
+            if not isinstance(prop_value, dict):
+                simple_properties[prop_name] = prop_value
+                continue
+
+            prop_type = prop_value.get(SCHEMA_TYPE, "string")
+
+            if prop_type == TYPE_OBJECT and SCHEMA_PROPERTIES in prop_value:
+                # This is a complex object - extract to definitions
+                definition_name = prop_name
+
+                # Create the definition for this object
+                object_definition = {
+                    SCHEMA_TYPE: TYPE_OBJECT,
+                    SCHEMA_PROPERTIES: self._process_object_properties(
+                        prop_value[SCHEMA_PROPERTIES]
+                    ),
+                }
+
+                # Preserve description if present
+                if SCHEMA_DESCRIPTION in prop_value:
+                    object_definition[SCHEMA_DESCRIPTION] = prop_value[
+                        SCHEMA_DESCRIPTION
+                    ]
+
+                extracted_definitions[definition_name] = object_definition
+
+                # Replace with $ref in simple properties
+                simple_properties[prop_name] = {
+                    REF_FIELD: f"#/definitions/{definition_name}"
+                }
+
+            elif prop_type == TYPE_ARRAY and SCHEMA_ITEMS in prop_value:
+                # Handle arrays using the dedicated array processor
+                simple_properties[prop_name] = self._process_array_property(
+                    prop_name, prop_value, extracted_definitions
+                )
+            else:
+                # Simple property - keep as is
+                simple_properties[prop_name] = prop_value
+
+        return simple_properties, extracted_definitions
 
     def _add_bda_fields_to_schema(self, schema: dict) -> dict:
         """
         Add BDA fields (inferenceType, instruction) ONLY to leaf properties.
 
         Critical BDA requirements (based on working schemas):
-        - Pure $ref properties: ONLY the $ref field
+        - Pure $ref properties: ONLY the $ref field (when inside definitions)
         - Object/array types: ONLY type and properties (NO description, inferenceType, instruction)
         - Leaf types: type, inferenceType, instruction (NO description)
 
@@ -159,78 +366,28 @@ class BdaBlueprintService:
         if not isinstance(schema, dict):
             return schema
 
-        # If this has a $ref, return ONLY the $ref (strip all other fields)
-        if REF_FIELD in schema:
-            # Pure $ref should have nothing else - this is critical for BDA
-            return {REF_FIELD: schema[REF_FIELD].replace("/$defs/", "/definitions/")}
-
         # Make deep copy to avoid mutation
         result = deepcopy(schema)
 
         # Remove description field - BDA doesn't use it (only instruction)
-        result.pop(SCHEMA_DESCRIPTION, None)
+        original_description = result.pop(SCHEMA_DESCRIPTION, None)
 
         prop_type = result.get(SCHEMA_TYPE, "string")
 
         # Add BDA fields ONLY for leaf/primitive types
         if prop_type not in [TYPE_OBJECT, TYPE_ARRAY]:
-            # This is a leaf property - add BDA fields
-            if "inferenceType" not in result:
-                result["inferenceType"] = "inferred"
+            # This is a leaf property - use the dedicated helper
+            return self._add_bda_fields_to_leaf_property(result, original_description)
 
-            if "instruction" not in result:
-                # Use description if available before we removed it
-                if SCHEMA_DESCRIPTION in schema:
-                    result["instruction"] = schema[SCHEMA_DESCRIPTION]
-                else:
-                    result["instruction"] = "Extract this field from the document"
-
-        # Recursively process nested structures
+        # Handle object types - process properties using helper method
         if prop_type == TYPE_OBJECT and SCHEMA_PROPERTIES in result:
-            result[SCHEMA_PROPERTIES] = {
-                name: self._add_bda_fields_to_schema(value)
-                for name, value in result[SCHEMA_PROPERTIES].items()
-            }
+            result[SCHEMA_PROPERTIES] = self._process_object_properties(
+                result[SCHEMA_PROPERTIES]
+            )
 
         # Handle array items (but don't add BDA fields to the array itself)
         if prop_type == TYPE_ARRAY and SCHEMA_ITEMS in result:
             result[SCHEMA_ITEMS] = self._add_bda_fields_to_schema(result[SCHEMA_ITEMS])
-
-        return result
-
-    def _add_bedrock_fields_to_property(self, prop: dict) -> dict:
-        """
-        Add Bedrock-specific fields (instruction, inferenceType) to a property.
-        """
-        # If this node is a pure reference, return a safe copy without augmenting.
-        if isinstance(prop, dict) and REF_FIELD in prop:
-            return deepcopy(prop)
-
-        # Make a deep copy to avoid modifying the original schema structure.
-        result = deepcopy(prop)
-
-        # Add instruction from description if not present
-        if "instruction" not in result and SCHEMA_DESCRIPTION in result:
-            result["instruction"] = result[SCHEMA_DESCRIPTION]
-        elif "instruction" not in result:
-            result["instruction"] = "Extract this field from the document"
-
-        # Add inferenceType if not present
-        if "inferenceType" not in result:
-            result["inferenceType"] = "inferred"  # Default to inferred for most fields
-
-        # Recursively handle nested objects
-        if result.get(SCHEMA_TYPE) == TYPE_OBJECT and SCHEMA_PROPERTIES in result:
-            for nested_name, nested_value in result[SCHEMA_PROPERTIES].items():
-                result[SCHEMA_PROPERTIES][nested_name] = (
-                    self._add_bedrock_fields_to_property(nested_value)
-                )
-
-        # Handle array items
-        if result.get(SCHEMA_TYPE) == TYPE_ARRAY and SCHEMA_ITEMS in result:
-            result[SCHEMA_ITEMS] = self._add_bedrock_fields_to_property(
-                result[SCHEMA_ITEMS]
-            )
 
         return result
 
@@ -282,15 +439,18 @@ class BdaBlueprintService:
         try:
             config_item = self.config_manager.get_configuration(config_type="Custom")
 
-            if (
-                not config_item
-                or not hasattr(config_item, "classes")
-                or not config_item.classes
-            ):
+            # Type check: Custom configuration should return IDPConfig which has classes attribute
+            if not config_item:
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
 
-            classess = config_item.classes
+            # Use getattr to safely access classes attribute
+            classes = getattr(config_item, "classes", None)
+            if not classes:
+                logger.info("No Custom configuration to process")
+                return {"status": "success", "message": "No classes to process"}
+
+            classess = classes
 
             if not classess or len(classess) == 0:
                 logger.info("No Custom configuration to process")
@@ -311,6 +471,7 @@ class BdaBlueprintService:
                     docu_class = custom_class.get(
                         ID_FIELD, custom_class.get(X_AWS_IDP_DOCUMENT_TYPE, "")
                     )
+
                     blueprint_exists = self._blueprint_lookup(
                         existing_blueprints, docu_class
                     )
@@ -339,7 +500,7 @@ class BdaBlueprintService:
                                 )
                             )
                             logger.info(
-                                f"Blueprint schema generate:: for {json.dumps(custom_class, indent=2)}"
+                                f"Blueprint schema generate:: for {docu_class} to update"
                             )
                             logger.info(json.dumps(blueprint_schema, indent=2))
                             logger.info("Blueprint schema generate:: END")
@@ -373,9 +534,8 @@ class BdaBlueprintService:
                             )
                         )
                         logger.info(
-                            f"Blueprint schema generate:: for {json.dumps(custom_class, indent=2)}"
+                            f"Blueprint schema generate:: for {docu_class} for create"
                         )
-                        logger.info(json.dumps(blueprint_schema, indent=2))
                         logger.info("Blueprint schema generate:: END")
 
                         result = self.blueprint_creator.create_blueprint(
