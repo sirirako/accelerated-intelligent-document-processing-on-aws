@@ -7,6 +7,15 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **OmniAI OCR Benchmark Dataset Auto-Deployment for Test Studio**
+  - Automatically deploys 293 document images from OmniAI OCR Benchmark HuggingFace dataset (https://huggingface.co/datasets/getomni-ai/ocr-benchmark) during stack deployment
+  - **9 Document Formats**: BANK_CHECK (52), COMMERCIAL_LEASE_AGREEMENT (52), CREDIT_CARD_STATEMENT (11), DELIVERY_NOTE (8), EQUIPMENT_INSPECTION (11), GLOSSARY (31), PETITION_FORM (51), REAL_ESTATE (59), SHIFT_SCHEDULE (18)
+  - Pre-selected images filtered for formats with >5 samples per schema for quality benchmarking
+  - Complex nested JSON schemas with objects and arrays matching original HuggingFace dataset structure
+  - Test set available in Test Studio UI alongside existing RealKIE-FCC-Verified dataset
+  - Corresponding config: `config_library/pattern-2/ocr-benchmark/config.yaml` with all 9 document classes
+  - Ideal for testing classification across diverse document types and extraction on complex nested schemas
+
 - **Abort Workflow Feature for Stopping In-Progress Document Processing**
   - Added ability to abort document processing workflows directly from the Web UI
   - New "Abort" button available for documents with in-progress status, with confirmation modal to prevent accidental aborts
