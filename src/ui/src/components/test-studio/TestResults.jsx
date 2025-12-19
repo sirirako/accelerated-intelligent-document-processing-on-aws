@@ -18,6 +18,8 @@ import {
   Textarea,
   FormField,
   Select,
+  CollectionPreferences,
+  ExpandableSection,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
@@ -29,65 +31,136 @@ import useAppContext from '../../contexts/app';
 const client = generateClient();
 
 /* eslint-disable react/prop-types */
-const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, splitClassificationMetrics, averageWeightedScore }) => {
+const ComprehensiveBreakdown = ({
+  costBreakdown,
+  accuracyBreakdown,
+  splitClassificationMetrics,
+  averageWeightedScore,
+  preferences,
+  setPreferences,
+}) => {
   if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics) {
     return <Box>No breakdown data available</Box>;
   }
 
   return (
     <SpaceBetween direction="vertical" size="l">
-      {/* Accuracy breakdown */}
-      {accuracyBreakdown && (
-        <Container header={<Header variant="h3">Average Accuracy Breakdown</Header>}>
-          <Table
-            items={[
-              ...Object.entries(accuracyBreakdown).map(([key, value]) => ({
-                metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
-              })),
-              {
-                metric: 'Weighted Overall Score',
-                value: averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : '0.000',
-              },
-            ]}
-            columnDefinitions={[
-              { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-              { id: 'value', header: 'Value', cell: (item) => item.value },
-            ]}
-            variant="embedded"
-          />
-        </Container>
-      )}
+      {/* Combined Accuracy and Split Classification Metrics */}
+      {(accuracyBreakdown || splitClassificationMetrics) && (
+        <Container
+          header={<Header variant="h3">Average Accuracy and Split Metrics</Header>}
+          preferences={<TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />}
+        >
+          <SpaceBetween direction="vertical" size="m">
+            {/* Main metrics */}
+            <Table
+              resizableColumns
+              wrapLines={preferences.wrapLines}
+              preferences={<TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />}
+              items={(() => {
+                const mainItems = [];
 
-      {/* Split Classification Metrics */}
-      {splitClassificationMetrics && (
-        <Container header={<Header variant="h3">Average Document Split Classification Metrics</Header>}>
-          <Table
-            items={[
-              ...Object.entries(splitClassificationMetrics).map(([key, value]) => ({
-                metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                value:
-                  typeof value === 'number' && key.includes('accuracy')
-                    ? value.toFixed(3)
-                    : value !== null && value !== undefined
-                    ? value.toString()
-                    : '0',
-              })),
-            ]}
-            columnDefinitions={[
-              {
-                id: 'metric',
-                header: 'Metric',
-                cell: (item) => item.metric,
-              },
-              {
-                id: 'value',
-                header: 'Value',
-                cell: (item) => item.value,
-              },
-            ]}
-            variant="embedded"
-          />
+                // Add Weighted Overall Score
+                if (averageWeightedScore !== null) {
+                  mainItems.push({
+                    metric: (
+                      <>
+                        <span style={{ color: '#687078' }}>Extraction:</span> Weighted Overall Score
+                      </>
+                    ),
+                    value: averageWeightedScore.toFixed(3),
+                  });
+                }
+
+                // Add Page and Split with Order Accuracy
+                if (splitClassificationMetrics) {
+                  if (splitClassificationMetrics.page_level_accuracy !== undefined) {
+                    mainItems.push({
+                      metric: (
+                        <>
+                          <span style={{ color: '#687078' }}>Classification:</span> Page Level Accuracy
+                        </>
+                      ),
+                      value:
+                        typeof splitClassificationMetrics.page_level_accuracy === 'number'
+                          ? splitClassificationMetrics.page_level_accuracy.toFixed(3)
+                          : splitClassificationMetrics.page_level_accuracy?.toString() || '0',
+                    });
+                  }
+
+                  if (splitClassificationMetrics.split_accuracy_with_order !== undefined) {
+                    mainItems.push({
+                      metric: (
+                        <>
+                          <span style={{ color: '#687078' }}>Classification:</span> Split Accuracy With Order
+                        </>
+                      ),
+                      value:
+                        typeof splitClassificationMetrics.split_accuracy_with_order === 'number'
+                          ? splitClassificationMetrics.split_accuracy_with_order.toFixed(3)
+                          : splitClassificationMetrics.split_accuracy_with_order?.toString() || '0',
+                    });
+                  }
+                }
+
+                return mainItems;
+              })()}
+              columnDefinitions={[
+                { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                { id: 'value', header: 'Value', cell: (item) => item.value, width: 200 },
+              ]}
+              variant="embedded"
+            />
+
+            {/* Details in collapsible section */}
+            <ExpandableSection headerText="Additional Metrics">
+              <Container>
+                <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
+                  preferences={<div />}
+                  items={[
+                    // All accuracy breakdown metrics
+                    ...(accuracyBreakdown
+                      ? Object.entries(accuracyBreakdown).map(([key, value]) => ({
+                          metric: (
+                            <>
+                              <span style={{ color: '#687078' }}>Extraction:</span>{' '}
+                              {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                            </>
+                          ),
+                          value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
+                        }))
+                      : []),
+                    // Remaining split classification metrics
+                    ...(splitClassificationMetrics
+                      ? Object.entries(splitClassificationMetrics)
+                          .filter(([key]) => key !== 'page_level_accuracy' && key !== 'split_accuracy_with_order')
+                          .map(([key, value]) => ({
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Classification:</span>{' '}
+                                {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                              </>
+                            ),
+                            value:
+                              typeof value === 'number' && key.includes('accuracy')
+                                ? value.toFixed(3)
+                                : value !== null && value !== undefined
+                                ? value.toString()
+                                : '0',
+                          }))
+                      : []),
+                  ]}
+                  columnDefinitions={[
+                    { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                    { id: 'value', header: 'Value', cell: (item) => item.value, width: 200 },
+                  ]}
+                  variant="embedded"
+                />
+              </Container>
+            </ExpandableSection>
+          </SpaceBetween>
         </Container>
       )}
 
@@ -95,6 +168,8 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, splitClassif
       {costBreakdown && (
         <Container header={<Header variant="h3">Estimated Cost</Header>}>
           <Table
+            resizableColumns
+            wrapLines={preferences.wrapLines}
             items={(() => {
               const costItems = [];
               let totalCost = 0;
@@ -243,6 +318,26 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, splitClassif
   );
 };
 
+// Preferences component
+const TestResultsPreferences = ({ preferences, setPreferences }) => (
+  <CollectionPreferences
+    title="Preferences"
+    confirmLabel="Confirm"
+    cancelLabel="Cancel"
+    preferences={preferences}
+    onConfirm={({ detail }) => setPreferences(detail)}
+    wrapLinesPreference={{
+      label: 'Wrap lines',
+      description: 'Check to see all the text and wrap the lines',
+    }}
+  />
+);
+
+TestResultsPreferences.propTypes = {
+  preferences: PropTypes.object.isRequired,
+  setPreferences: PropTypes.func.isRequired,
+};
+
 const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const { addTestRun } = useAppContext();
   const [results, setResults] = useState(null);
@@ -257,6 +352,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [testSetFilePattern, setTestSetFilePattern] = useState(null);
   const [chartType, setChartType] = useState({ label: 'Bar Chart', value: 'bar' });
   const [retryMessage, setRetryMessage] = useState('');
+  const [preferences, setPreferences] = useState({ wrapLines: false });
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [selectedRangeData, setSelectedRangeData] = useState(null);
   const [lowestScoreCount, setLowestScoreCount] = useState({ label: '5', value: 5 });
@@ -886,6 +982,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
 
               return (
                 <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
                   items={sortedDocs}
                   columnDefinitions={[
                     {
@@ -924,6 +1022,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             accuracyBreakdown={accuracyBreakdown}
             splitClassificationMetrics={splitClassificationMetrics}
             averageWeightedScore={averageWeightedScore}
+            preferences={preferences}
+            setPreferences={setPreferences}
           />
         )}
       </SpaceBetween>
@@ -983,6 +1083,8 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         <Box>
           {selectedRangeData?.docs?.length > 0 ? (
             <Table
+              resizableColumns
+              wrapLines={preferences.wrapLines}
               items={selectedRangeData.docs}
               columnDefinitions={[
                 {
