@@ -44,6 +44,10 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
+- **Updated Sample Configurations to Use Amazon Nova 2 Lite as Default Model**
+  - Changed default model to `us.amazon.nova-2-lite-v1:0` for classification, extraction, summarization, and evaluation across all sample configurations in the configuration library
+  - Provides improved cost-efficiency while maintaining strong performance for document processing workflows
+
 - **Improved Publish Script User Experience**
   - Added spinner progress indicators for SAM build and SAM package operations showing real-time elapsed time
   - Added timing metrics summary showing build/package/total duration for main template builds
