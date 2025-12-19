@@ -1851,7 +1851,7 @@ Resources:
       - FccDatasetDeployerFunction
     Properties:
       ServiceToken: !GetAtt FccDatasetDeployerFunction.Arn
-      DatasetVersion: "1.0"
+      DatasetVersion: "1.1"
       DatasetName: "RealKIE-FCC-Verified"
       DatasetDescription: "Test set with single and multi-page invoices sourced from the Federal Communications Commission (FCC) to evaluate extraction performance."
       SourceCodeHash: <FCC_DATASET_DEPLOYER_HASH_TOKEN>

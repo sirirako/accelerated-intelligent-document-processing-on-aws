@@ -1117,12 +1117,6 @@ classes:
             x-aws-idp-evaluation-method: LEVENSHTEIN
             x-aws-idp-evaluation-threshold: '0.7'
             type: string
-        required:
-          - LineItemRate
-          - LineItemDays
-          - LineItemStartDate
-          - LineItemEndDate
-          - LineItemDescription
     description: Invoice document
     type: object
     x-aws-idp-document-type: Invoice
@@ -1173,10 +1167,6 @@ classes:
     required:
       - Agency
       - Advertiser
-      - GrossTotal
-      - PaymentTerms
-      - AgencyCommission
-      - NetAmountDue
       - LineItems
     $id: Invoice
 discovery:

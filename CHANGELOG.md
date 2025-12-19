@@ -46,8 +46,11 @@ SPDX-License-Identifier: MIT-0
   - Updated `config_library/pattern-2/realkie-fcc-verified/config.yaml` to match the HuggingFace json_schema exactly
   - Changed `LineItemDays` from array type with enum values to simple string type (matching raw HuggingFace data format)
   - Updated field descriptions to match HuggingFace schema (e.g., "The agency the invoice is addressed to")
-  - Added `required` arrays at both root level and LineItem level
+  - Fixed `required` arrays to only include non-nullable fields per HuggingFace schema:
+    - Root level: Only `Agency`, `Advertiser`, `LineItems` are required (removed GrossTotal, PaymentTerms, AgencyCommission, NetAmountDue)
+    - LineItem level: Removed entire `required` array (all LineItem fields were nullable in HuggingFace schema)
   - Added "Output null if not shown" guidance in descriptions for optional fields
+  - Removed `transform_line_item_days()` and `transform_json_response()` functions from FCC dataset deployer Lambda - baseline data now preserves original HuggingFace string format for LineItemDays
 
 ## [0.4.8]
 
