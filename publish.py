@@ -2619,8 +2619,13 @@ except Exception as e:
                 if comp_info["component"] != "lib":  # lib doesnt have sam build
                     self.clear_component_cache(comp_info["component"])
 
-            # Build lib package if changed
-            if self._is_lib_changed:
+            # Build lib package for parallel-safe SAM builds
+            # The wheel is needed whenever main template needs rebuilding (regardless of lib changes)
+            # to avoid race conditions when multiple Lambda functions install from ./lib/idp_common_pkg
+            main_needs_rebuild = any(
+                item["component"] == "main" for item in components_needing_rebuild
+            )
+            if main_needs_rebuild or self._is_lib_changed:
                 self.build_lib_package()
 
             # Build patterns and options with smart detection
