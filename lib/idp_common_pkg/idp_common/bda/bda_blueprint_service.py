@@ -439,15 +439,18 @@ class BdaBlueprintService:
         try:
             config_item = self.config_manager.get_configuration(config_type="Custom")
 
-            if (
-                not config_item
-                or not hasattr(config_item, "classes")
-                or not config_item.classes
-            ):
+            # Type check: Custom configuration should return IDPConfig which has classes attribute
+            if not config_item:
+                logger.info("No Custom configuration to process")
+                return {"status": "success", "message": "No classes to process"}
+            
+            # Use getattr to safely access classes attribute
+            classes = getattr(config_item, "classes", None)
+            if not classes:
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
 
-            classess = config_item.classes
+            classess = classes
 
             if not classess or len(classess) == 0:
                 logger.info("No Custom configuration to process")
