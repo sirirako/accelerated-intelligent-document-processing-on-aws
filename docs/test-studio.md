@@ -210,7 +210,16 @@ my-test-set/
 - SQS-based asynchronous processing
 
 ### Results Analysis
-- Comprehensive metrics display
-- Side-by-side test comparison
-- Export capabilities
+- Comprehensive metrics display including:
+  - **Overall accuracy and confidence metrics**
+  - **Accuracy breakdown** (precision, recall, F1-score, false alarm rate, false discovery rate)
+  - **Average Document Split Classification Metrics**:
+    - Page Level Accuracy (average across documents)
+    - Split Accuracy Without Order (average across documents)
+    - Split Accuracy With Order (average across documents)  
+    - Total Pages, Total Splits (sums across documents)
+    - Correctly Classified Pages, Correctly Split counts (sums across documents)
+  - **Cost breakdown** by service and context
+- Side-by-side test comparison with all metrics
+- Export capabilities (JSON/CSV downloads include all metrics)
 - Integrated delete operations

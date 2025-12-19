@@ -182,17 +182,12 @@ discovery:
     top_p: "0.0"
     temperature: "0.0"
     user_prompt: >-
-      This image contains forms data. Analyze the form line by line.
-      Image may contains multiple pages, process all the pages. 
-      Form may contain multiple name value pair in one line. 
-      Extract all the names in the form including the name value pair which doesn't have value. 
-      Organize them into groups, extract field_name, data_type and field description
-      Field_name should be less than 60 characters, should not have space use '-' instead of space.
-      field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form.
-      Field_name should be unique within the group.
-      Add two fields document_class and document_description. 
-      For document_class generate a short name based on the document content like W4, I-9, Paystub. 
-      For document_description generate a description about the document in less than 50 words. 
+      This image contains forms data. Analyze the form line by line. Image may contains multiple pages, process all the pages. 
+      Form may contain multiple name value pair in one line. Extract all the names in the form including the name value pair which doesn't have value. 
+      Organize them into groups, extract field_name, data_type and field description 
+      Field_name should be less than 30 characters, use camelCase naming convention, name should not have special characters. 
+      field_description is a brief description of the field and the location of the field like box number or line number in the form and section of the form. 
+      Field_name should be unique within the group. 
 
       Group the fields based on the section they are grouped in the form. Group should have attributeType as "group".
       If the group repeats and follows table format, update the attributeType as "list".

@@ -299,6 +299,9 @@ class ClassesDiscovery:
             self.without_gt_config.user_prompt or self._prompt_classes_discovery()
         )
         sample_format = self._sample_output_format()
+        logger.info(f"config prompt is : {self.without_gt_config.user_prompt}")
+        logger.info(f"prompt is : {user_prompt}")
+        logger.info(f"sample format is : {sample_format}")
 
         validation_feedback = ""
         for attempt in range(max_retries):
@@ -309,7 +312,6 @@ class ClassesDiscovery:
                     retry_prompt = f"\n\nPREVIOUS ATTEMPT FAILED: {validation_feedback}\nPlease fix the issue and generate a valid JSON Schema.\n\n"
 
                 full_prompt = f"{retry_prompt}{user_prompt}\nFormat the extracted data using the below JSON format:\n{sample_format}"
-
                 # Create content for the user message
                 content = self._create_content_list(
                     prompt=full_prompt,
@@ -522,6 +524,11 @@ class ClassesDiscovery:
                         - For repeating/table data, use type: "array" with "items" containing object schema
                         - Each field should have appropriate "type" based on ground truth values
                         - Add "description" for each field with extraction instructions and location hints
+                        
+                        Nesting Groups:
+                        - Do not nest the groups i.e. groups within groups.
+                        - All groups should be directly associated under main "properties".
+                        
 
                         Match field names, data types, and structure from the ground truth reference.
                         Image may contain multiple pages, process all pages.
@@ -547,12 +554,16 @@ class ClassesDiscovery:
                         - Add "description" with a brief summary of the document (less than 50 words)
 
                         For the "properties" object:
-                        - Group related fields as nested objects (type: "object") with their own "properties"
+                        - Group related fields as objects (type: "object") with their own "properties"
                         - For repeating/table data, use type: "array" with "items" containing object schema
                         - Each field should have "type" (string, number, boolean, etc.) and "description"
-                        - Field names should be less than 60 characters, use camelCase or snake_case
+                        - Field names should be less than 30 characters, use camelCase or snake_case, name should not start with number and name should not have special characters.
                         - Field descriptions should include location hints (box number, line number, section)
 
+                        Nesting Groups:
+                        - Do not nest the groups i.e. groups within groups.
+                        - All groups should be directly associated under main "properties".
+                        
                         Do not extract the actual values, only the schema structure.
                         Return the extracted schema in the exact JSON Schema format below:
                         {sample_output_format}

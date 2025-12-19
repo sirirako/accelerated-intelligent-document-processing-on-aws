@@ -7873,8 +7873,14 @@ Resources:
           TRACKING_TABLE: !Ref TrackingTable
           BASELINE_BUCKET: !Ref EvaluationBaselineBucket
           OUTPUT_BUCKET: !Ref OutputBucket
-          REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
           TEST_RESULT_CACHE_UPDATE_QUEUE_URL: !Ref TestResultCacheUpdateQueue
+          ATHENA_DATABASE: !Ref ReportingDatabase
+          ATHENA_OUTPUT_LOCATION: !Sub
+            - "s3://${Bucket}/athena-results/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
       Events:
         SQSEvent:
           Type: SQS
@@ -7895,8 +7901,38 @@ Resources:
         - Statement:
             - Effect: Allow
               Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+              Resource: !Sub
+                - "${BucketArn}/athena-results/*"
+                - BucketArn: !If
+                    - ShouldCreateReportingBucket
+                    - !GetAtt ReportingBucket.Arn
+                    - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+        - Statement:
+            - Effect: Allow
+              Action:
                 - sqs:SendMessage
               Resource: !GetAtt TestResultCacheUpdateQueue.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+                - athena:StopQueryExecution
+              Resource:
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - glue:GetTable
+                - glue:GetPartitions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
         - Statement:
             - Effect: Allow
               Action:

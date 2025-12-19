@@ -4,13 +4,14 @@
 import json
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
+import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 import boto3
 
 sqs = boto3.client('sqs')
+athena = boto3.client('athena')
 
 
 # Custom JSON encoder to handle Decimal objects from DynamoDB
@@ -73,6 +74,7 @@ def handle_cache_update_request(event, context):
                 'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
                 'averageConfidence': aggregated_metrics.get('average_confidence'),
                 'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+                'splitClassificationMetrics': aggregated_metrics.get('split_classification_metrics', {}),
                 'totalCost': aggregated_metrics.get('total_cost', 0),
                 'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
             }
@@ -183,15 +185,16 @@ def get_test_results(test_run_id):
     if current_status not in ['COMPLETE', 'PARTIAL_COMPLETE']:
         raise ValueError(f"Test run {test_run_id} is not complete. Current status: {current_status}")
     
-    # Check if cached results exist
+    # Check if cached results exist and are complete
     cached_metrics = metadata.get('testRunResult')
     if cached_metrics is not None:
         logger.info(f"Retrieved cached metrics for test run: {test_run_id}")
         
-        # Check if cached weightedOverallScores is old array format - if so, recalculate
+        # Check if cached data needs recalculation
         cached_scores = cached_metrics.get('weightedOverallScores')
-        if isinstance(cached_scores, list):
-            logger.info(f"Found old array format for weightedOverallScores, recalculating for test run: {test_run_id}")
+        if ('splitClassificationMetrics' not in cached_metrics or 
+            isinstance(cached_scores, list)):
+            logger.info(f"Cached metrics incomplete or outdated, recalculating for test run: {test_run_id}")
             # Force recalculation by falling through to aggregation logic
         else:
             # Use cached metrics but get dynamic fields from current metadata
@@ -207,6 +210,7 @@ def get_test_results(test_run_id):
                 'weightedOverallScores': cached_metrics.get('weightedOverallScores', {}),
                 'averageConfidence': cached_metrics.get('averageConfidence'),
                 'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
+                'splitClassificationMetrics': cached_metrics.get('splitClassificationMetrics', {}),
                 'totalCost': cached_metrics.get('totalCost', 0),
                 'costBreakdown': cached_metrics.get('costBreakdown', {}),
                 'createdAt': _format_datetime(metadata.get('CreatedAt')),
@@ -230,6 +234,7 @@ def get_test_results(test_run_id):
         'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
         'averageConfidence': aggregated_metrics.get('average_confidence'),
         'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+        'splitClassificationMetrics': aggregated_metrics.get('split_classification_metrics', {}),
         'totalCost': aggregated_metrics.get('total_cost', 0),
         'costBreakdown': aggregated_metrics.get('cost_breakdown', {}),
         'createdAt': _format_datetime(metadata.get('CreatedAt')),
@@ -248,6 +253,7 @@ def get_test_results(test_run_id):
             'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
             'averageConfidence': aggregated_metrics.get('average_confidence'),
             'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+            'splitClassificationMetrics': aggregated_metrics.get('split_classification_metrics', {}),
             'totalCost': aggregated_metrics.get('total_cost', 0),
             'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
         }
@@ -514,243 +520,24 @@ def get_test_run_status(test_run_id):
     except Exception as e:
         logger.error(f"Error getting test run status for {test_run_id}: {e}")
         return None
-    
-def _parse_s3_uri(uri):
-    """Parse S3 URI into bucket and key"""
-    if uri and uri.startswith('s3://'):
-        parts = uri[5:].split('/', 1)
-        if len(parts) == 2:
-            return parts[0], parts[1]
-    return None, None
 
 def _aggregate_test_run_metrics(test_run_id):
-    """Aggregate metrics from evaluation reports for all documents in test run"""
-    table = dynamodb.Table(os.environ['TRACKING_TABLE'])  # type: ignore[attr-defined]
+    """Aggregate metrics from Athena queries for all documents in test run"""
+    # Get evaluation metrics from Athena
+    evaluation_metrics = _get_evaluation_metrics_from_athena(test_run_id)
     
-    # Get all documents for this test run that completed successfully
-    items = []
-    scan_kwargs = {
-        'FilterExpression': 'begins_with(PK, :pk) AND SK = :sk AND ObjectStatus = :status',
-        'ExpressionAttributeValues': {
-            ':pk': f'doc#{test_run_id}/',
-            ':sk': 'none',
-            ':status': 'COMPLETED'
-        }
-    }
-    
-    while True:
-        response = table.scan(**scan_kwargs)
-        items.extend(response.get('Items', []))
-        if 'LastEvaluatedKey' not in response:
-            break
-        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
-    
-    if not items:
-        return {}
-    
-    # Aggregate metrics from evaluation reports
-    total_accuracy = 0
-    total_confidence = 0
-    total_cost = 0
-    accuracy_count = 0
-    confidence_count = 0
-    weighted_overall_scores = {}  # Dict to collect document ID -> score mapping
-    cost_breakdown = {}
-    
-    # Accuracy metrics aggregation
-    total_precision = 0
-    total_recall = 0
-    total_f1_score = 0
-    total_false_alarm_rate = 0
-    total_false_discovery_rate = 0
-    precision_count = 0
-    recall_count = 0
-    f1_count = 0
-    far_count = 0
-    fdr_count = 0
-    
-    s3 = boto3.client('s3')
-    
-    for item in items:
-        evaluation_uri = item.get('EvaluationReportUri')
-        if not evaluation_uri:
-            continue
-            
-        try:
-            # Get evaluation report data
-            json_uri = evaluation_uri.replace('report.md', 'results.json')
-            bucket, key = _parse_s3_uri(json_uri)
-            if bucket and key:
-                obj = s3.get_object(Bucket=bucket, Key=key)
-                data = json.loads(obj['Body'].read())
-                
-                # Extract accuracy from overall_metrics
-                overall_metrics = data.get('overall_metrics', {})
-                if overall_metrics.get('accuracy'):
-                    total_accuracy += overall_metrics['accuracy']
-                    accuracy_count += 1
-                
-                # Extract weighted overall score
-                if overall_metrics.get('weighted_overall_score') is not None:
-                    # Extract document ID from the item PK (format: doc#{test_run_id}/{file_key})
-                    document_id = item['PK'].replace('doc#', '', 1)
-                    weighted_overall_scores[document_id] = overall_metrics['weighted_overall_score']
-                
-                # Extract additional accuracy metrics
-                if overall_metrics.get('precision'):
-                    total_precision += overall_metrics['precision']
-                    precision_count += 1
-                if overall_metrics.get('recall'):
-                    total_recall += overall_metrics['recall']
-                    recall_count += 1
-                if overall_metrics.get('f1_score'):
-                    total_f1_score += overall_metrics['f1_score']
-                    f1_count += 1
-                if overall_metrics.get('false_alarm_rate'):
-                    total_false_alarm_rate += overall_metrics['false_alarm_rate']
-                    far_count += 1
-                if overall_metrics.get('false_discovery_rate'):
-                    total_false_discovery_rate += overall_metrics['false_discovery_rate']
-                    fdr_count += 1
-                
-                # Extract confidence from section results
-                confidences = []
-                for section in data.get('section_results', []):
-                    for attr in section.get('attributes', []):
-                        if attr.get('confidence') is not None:
-                            confidences.append(float(attr['confidence']))
-                
-                if confidences:
-                    avg_confidence = sum(confidences) / len(confidences)
-                    total_confidence += avg_confidence
-                    confidence_count += 1
-                
-        except Exception as e:
-            logger.warning(f"Failed to process evaluation report for {item['PK']}: {e}")
-            continue
-        
-        # Get cost from completion date if available
-        if item.get('CompletionTime'):
-            completion_date = datetime.fromisoformat(item['CompletionTime']).strftime('%Y-%m-%d')
-            doc_key = item['PK'].replace('doc#', '')
-            doc_costs = _get_document_costs_from_reporting_db(doc_key, completion_date)
-            
-            for context, services in doc_costs.items():
-                if context not in cost_breakdown:
-                    cost_breakdown[context] = {}
-                
-                for service_unit, details in services.items():
-                    if service_unit not in cost_breakdown[context]:
-                        cost_breakdown[context][service_unit] = {
-                            'unit': details['unit'],
-                            'value': 0,
-                            'unit_cost': details['unit_cost'],
-                            'estimated_cost': 0
-                        }
-                    
-                    cost_breakdown[context][service_unit]['value'] += details['value']
-                    cost_breakdown[context][service_unit]['estimated_cost'] += details['estimated_cost']
-                    total_cost += details['estimated_cost']
+    # Get cost data from Athena
+    cost_data = _get_cost_data_from_athena(test_run_id)
     
     return {
-        'overall_accuracy': total_accuracy / accuracy_count if accuracy_count > 0 else None,
-        'weighted_overall_scores': weighted_overall_scores if weighted_overall_scores else {},
-        'average_confidence': total_confidence / confidence_count if confidence_count > 0 else None,
-        'accuracy_breakdown': {
-            'precision': total_precision / precision_count if precision_count > 0 else None,
-            'recall': total_recall / recall_count if recall_count > 0 else None,
-            'f1_score': total_f1_score / f1_count if f1_count > 0 else None,
-            'false_alarm_rate': total_false_alarm_rate / far_count if far_count > 0 else None,
-            'false_discovery_rate': total_false_discovery_rate / fdr_count if fdr_count > 0 else None
-        },
-        'total_cost': total_cost,
-        'cost_breakdown': cost_breakdown
+        'overall_accuracy': evaluation_metrics.get('overall_accuracy'),
+        'weighted_overall_scores': evaluation_metrics.get('weighted_overall_scores', {}),
+        'average_confidence': evaluation_metrics.get('average_confidence'),
+        'accuracy_breakdown': evaluation_metrics.get('accuracy_breakdown', {}),
+        'split_classification_metrics': evaluation_metrics.get('split_classification_metrics', {}),
+        'total_cost': cost_data.get('total_cost', 0),
+        'cost_breakdown': cost_data.get('cost_breakdown', {})
     }
-
-
-
-def _get_document_costs_from_reporting_db(document_id, completion_date):
-    """Get detailed costs from S3 Parquet files using provided completion date"""
-    try:
-        import pyarrow.compute as pc
-        import pyarrow.fs as fs
-        import pyarrow.parquet as pq
-        
-        # Get reporting bucket from environment
-        reporting_bucket = os.environ.get('REPORTING_BUCKET')
-        if not reporting_bucket:
-            return {}
-        
-        logger.info(f"Using completion date {completion_date} for document {document_id}")
-        
-        # List files in the specific date partition
-        s3 = boto3.client('s3')
-        partition_prefix = f"metering/date={completion_date}/"
-        
-        response = s3.list_objects_v2(Bucket=reporting_bucket, Prefix=partition_prefix)
-        
-        if 'Contents' not in response:
-            logger.warning(f"No files found in partition {completion_date}")
-            return {}
-        
-        # Find the parquet file for this document
-        document_pattern = document_id.replace('/', '_')
-        
-        for obj in response['Contents']:
-            if obj['Key'].endswith('_results.parquet') and document_pattern in obj['Key']:
-                logger.info(f"Reading parquet file: {obj['Key']}")
-                
-                # Read parquet file using pyarrow
-                s3_fs = fs.S3FileSystem()
-                parquet_file = f"{reporting_bucket}/{obj['Key']}"
-                
-                table_data = pq.read_table(parquet_file, filesystem=s3_fs)
-                
-                # Filter by document_id if column exists
-                if 'document_id' in table_data.column_names:
-                    mask = pc.equal(table_data['document_id'], document_id)  # type: ignore
-                    table_data = table_data.filter(mask)
-                
-                if table_data.num_rows == 0:
-                    return {}
-                
-                # Convert to Python dict for processing
-                data = table_data.to_pydict()
-                
-                # Group detailed cost information
-                cost_details = {}
-                for i in range(len(data['context'])):
-                    context = data['context'][i]
-                    service_api = data['service_api'][i]
-                    unit = data['unit'][i]
-                    value = float(data['value'][i])
-                    unit_cost = float(data['unit_cost'][i])
-                    estimated_cost = float(data['estimated_cost'][i])
-                    
-                    if context not in cost_details:
-                        cost_details[context] = {}
-                    
-                    key = f"{service_api}_{unit}"
-                    if key not in cost_details[context]:
-                        cost_details[context][key] = {
-                            'unit': unit,
-                            'value': 0,
-                            'unit_cost': unit_cost,
-                            'estimated_cost': 0
-                        }
-                    
-                    cost_details[context][key]['value'] += value
-                    cost_details[context][key]['estimated_cost'] += estimated_cost
-                
-                return cost_details
-        
-        logger.warning(f"No parquet file found for {document_id} in {completion_date}")
-        return {}
-        
-    except Exception as e:
-        logger.warning(f"Failed to get costs from parquet for {document_id}: {e}")
-        return {}
-
 
 def _get_test_run_config(test_run_id):
     """Get test run configuration from metadata record"""
@@ -863,3 +650,197 @@ def _build_config_comparison(configs):
             })
     
     return differences
+
+def _execute_athena_query(query, database):
+    """Execute Athena query and return results"""
+    try:
+        # Get query result location from environment
+        result_location = os.environ.get('ATHENA_OUTPUT_LOCATION')
+        
+        # Start query execution
+        response = athena.start_query_execution(
+            QueryString=query,
+            QueryExecutionContext={'Database': database},
+            ResultConfiguration={'OutputLocation': result_location}
+        )
+        
+        query_execution_id = response['QueryExecutionId']
+        
+        # Wait for query to complete
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            result = athena.get_query_execution(QueryExecutionId=query_execution_id)
+            status = result['QueryExecution']['Status']['State']
+            
+            if status == 'SUCCEEDED':
+                break
+            elif status in ['FAILED', 'CANCELLED']:
+                error = result['QueryExecution']['Status'].get('StateChangeReason', 'Unknown error')
+                logger.error(f"Athena query failed: {error}")
+                return []
+            
+            time.sleep(2)
+        else:
+            logger.error(f"Athena query timed out after {max_attempts * 2} seconds")
+            return []
+        
+        # Get query results
+        results = []
+        paginator = athena.get_paginator('get_query_results')
+        
+        for page in paginator.paginate(QueryExecutionId=query_execution_id):
+            for row in page['ResultSet']['Rows'][1:]:  # Skip header row
+                row_data = {}
+                for i, col in enumerate(page['ResultSet']['ResultSetMetadata']['ColumnInfo']):
+                    col_name = col['Name']
+                    value = row['Data'][i].get('VarCharValue')
+                    if value is not None:
+                        # Try to convert numeric values
+                        try:
+                            if '.' in value:
+                                row_data[col_name] = float(value)
+                            else:
+                                row_data[col_name] = int(value)
+                        except ValueError:
+                            row_data[col_name] = value
+                    else:
+                        row_data[col_name] = None
+                results.append(row_data)
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error executing Athena query: {e}")
+        return []
+
+def _get_evaluation_metrics_from_athena(test_run_id):
+    """Get evaluation metrics from Athena document_evaluations table"""
+    database = os.environ.get('ATHENA_DATABASE')
+    if not database:
+        logger.warning("ATHENA_DATABASE environment variable not set")
+        return {}
+    
+    # Get aggregated metrics directly from document_evaluations table
+    query = f"""
+    SELECT 
+        AVG(CAST(accuracy AS DOUBLE)) as avg_accuracy,
+        AVG(CAST(precision AS DOUBLE)) as avg_precision,
+        AVG(CAST(recall AS DOUBLE)) as avg_recall,
+        AVG(CAST(f1_score AS DOUBLE)) as avg_f1_score,
+        AVG(CAST(false_alarm_rate AS DOUBLE)) as avg_false_alarm_rate,
+        AVG(CAST(false_discovery_rate AS DOUBLE)) as avg_false_discovery_rate,
+        AVG(CAST(page_level_accuracy AS DOUBLE)) as avg_page_level_accuracy,
+        AVG(CAST(split_accuracy_without_order AS DOUBLE)) as avg_split_accuracy_without_order,
+        AVG(CAST(split_accuracy_with_order AS DOUBLE)) as avg_split_accuracy_with_order,
+        SUM(CAST(total_pages AS INT)) as total_pages,
+        SUM(CAST(total_splits AS INT)) as total_splits,
+        SUM(CAST(correctly_classified_pages AS INT)) as correctly_classified_pages,
+        SUM(CAST(correctly_split_without_order AS INT)) as correctly_split_without_order,
+        SUM(CAST(correctly_split_with_order AS INT)) as correctly_split_with_order
+    FROM "{database}"."document_evaluations" 
+    WHERE document_id LIKE '{test_run_id}%'
+    """
+    
+    results = _execute_athena_query(query, database)
+    
+    if not results or not results[0]:
+        return {}
+    
+    result = results[0]
+    
+    # Get weighted overall scores per document
+    weighted_scores_query = f"""
+    SELECT document_id, weighted_overall_score
+    FROM "{database}"."document_evaluations" 
+    WHERE document_id LIKE '{test_run_id}%' AND weighted_overall_score IS NOT NULL
+    """
+    
+    weighted_results = _execute_athena_query(weighted_scores_query, database)
+    weighted_overall_scores = {r['document_id']: r['weighted_overall_score'] for r in weighted_results}
+    
+    # Get confidence data from attribute_evaluations table
+    confidence_query = f"""
+    SELECT AVG(CAST(confidence AS DOUBLE)) as avg_confidence
+    FROM "{database}"."attribute_evaluations" 
+    WHERE document_id LIKE '{test_run_id}%' AND confidence IS NOT NULL AND confidence != ''
+    """
+    
+    confidence_results = _execute_athena_query(confidence_query, database)
+    avg_confidence = confidence_results[0]['avg_confidence'] if confidence_results and confidence_results[0]['avg_confidence'] is not None else None
+    
+    return {
+        'overall_accuracy': result.get('avg_accuracy'),
+        'weighted_overall_scores': weighted_overall_scores,
+        'average_confidence': avg_confidence,
+        'accuracy_breakdown': {
+            'precision': result.get('avg_precision'),
+            'recall': result.get('avg_recall'),
+            'f1_score': result.get('avg_f1_score'),
+            'false_alarm_rate': result.get('avg_false_alarm_rate'),
+            'false_discovery_rate': result.get('avg_false_discovery_rate')
+        },
+        'split_classification_metrics': {
+            'page_level_accuracy': result.get('avg_page_level_accuracy'),
+            'split_accuracy_without_order': result.get('avg_split_accuracy_without_order'),
+            'split_accuracy_with_order': result.get('avg_split_accuracy_with_order'),
+            'total_pages': result.get('total_pages', 0),
+            'total_splits': result.get('total_splits', 0),
+            'correctly_classified_pages': result.get('correctly_classified_pages', 0),
+            'correctly_split_without_order': result.get('correctly_split_without_order', 0),
+            'correctly_split_with_order': result.get('correctly_split_with_order', 0)
+        }
+    }
+
+def _get_cost_data_from_athena(test_run_id):
+    """Get cost data from Athena metering table"""
+    database = os.environ.get('ATHENA_DATABASE')
+    if not database:
+        logger.warning("ATHENA_DATABASE environment variable not set")
+        return {'total_cost': 0, 'cost_breakdown': {}}
+    
+    query = f"""
+    SELECT 
+        context,
+        service_api,
+        unit,
+        SUM(CAST(value AS DOUBLE)) as total_value,
+        AVG(CAST(unit_cost AS DOUBLE)) as unit_cost,
+        SUM(CAST(estimated_cost AS DOUBLE)) as total_estimated_cost
+    FROM "{database}"."metering" 
+    WHERE document_id LIKE '{test_run_id}/%'
+    GROUP BY context, service_api, unit
+    """
+    
+    results = _execute_athena_query(query, database)
+    
+    if not results:
+        return {'total_cost': 0, 'cost_breakdown': {}}
+    
+    cost_breakdown = {}
+    total_cost = 0
+    
+    for result in results:
+        context = result['context']
+        service_api = result['service_api']
+        unit = result['unit']
+        total_value = result['total_value']
+        unit_cost = result['unit_cost']
+        estimated_cost = result['total_estimated_cost']
+        
+        if context not in cost_breakdown:
+            cost_breakdown[context] = {}
+        
+        key = f"{service_api}_{unit}"
+        cost_breakdown[context][key] = {
+            'unit': unit,
+            'value': total_value,
+            'unit_cost': unit_cost,
+            'estimated_cost': estimated_cost
+        }
+        
+        total_cost += estimated_cost
+    
+    return {
+        'total_cost': total_cost,
+        'cost_breakdown': cost_breakdown
+    }

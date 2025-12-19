@@ -15,6 +15,7 @@ const GET_TEST_RUN = `
       weightedOverallScores
       averageConfidence
       accuracyBreakdown
+      splitClassificationMetrics
       totalCost
       costBreakdown
       createdAt
