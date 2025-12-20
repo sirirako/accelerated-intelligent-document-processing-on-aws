@@ -10,8 +10,6 @@ ocr:
     paragraphs, tables, and formatting.
   features:
     - name: LAYOUT
-    - name: TABLES
-    - name: SIGNATURES
   max_workers: 20
   image:
     target_width: null

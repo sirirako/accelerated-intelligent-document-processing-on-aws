@@ -8,8 +8,6 @@ ocr:
   task_prompt: "Extract all text from this document image. Preserve the layout, including paragraphs, tables, and formatting."
   features:
     - name: LAYOUT
-    - name: TABLES
-    - name: SIGNATURES
   image:
     dpi: "150"
     target_width: ""
