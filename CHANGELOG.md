@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.9]
+
 ### Added
 
 - **OmniAI OCR Benchmark Dataset Auto-Deployment for Test Studio**
@@ -42,7 +44,21 @@ SPDX-License-Identifier: MIT-0
   - All global models support prompt caching functionality
   - Enables seamless cross-region model invocation without specifying regional endpoints
 
+- **Amazon Bedrock Service Tier Support for Cost and Performance Optimization**
+  - Added support for Amazon Bedrock service tiers through model ID suffixes enabling performance and cost optimization
+  - **Three Service Tiers Available**:
+    - **Priority**: Fastest response times (~25% better latency) with premium pricing - ideal for customer-facing workflows
+    - **Standard**: Consistent performance at regular pricing - default choice for most workloads
+    - **Flex**: Variable latency with discounted pricing - optimized for batch processing and non-urgent tasks
+  - **Model ID Suffix Format**: Append `:flex` or `:priority` to model IDs (e.g., `us.amazon.nova-2-lite-v1:0:flex`)
+  - **Supported Models**: Nova 2 Lite models available with all three tier options across US, EU, and Global regions
+
 ### Changed
+
+- **Test Studio UI Enhancements for Improved Table Layouts and User Experience**
+  - Added resizable columns and CollectionPreferences with wrap lines for all tables in TestComparison and TestResults
+  - Combined accuracy and split classification metrics into collapsible "Average Accuracy and Split Metrics" section with expandable "Additional Metrics" for comprehensive review
+  - Added color-coded cost comparisons with visual indicators for improved readability
 
 - **Updated Sample Configurations to Use Amazon Nova 2 Lite as Default Model, and remove Textract TABLES, SIGNATURE features**
   - Changed default model to `us.amazon.nova-2-lite-v1:0` for classification, extraction, summarization, and evaluation across all sample configurations in the configuration library
@@ -60,6 +76,11 @@ SPDX-License-Identifier: MIT-0
   - Updated `config_library/pattern-2/realkie-fcc-verified/config.yaml` to match the HuggingFace json_schema exactly
   - Changed `LineItemDays` from array type with enum values to simple string type (matching raw HuggingFace data format)
   - Updated field descriptions to match HuggingFace schema (e.g., "The agency the invoice is addressed to")
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.9.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.9.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.9.yaml`
 
 
 ## [0.4.8]
