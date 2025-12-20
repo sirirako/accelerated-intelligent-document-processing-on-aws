@@ -23,7 +23,7 @@ The OCR Benchmark dataset contains diverse document types with ground truth JSON
 
 ## Pattern Association
 
-**Pattern**: Pattern-2
+**Pattern**: Pattern-1
 
 ## Validation Level
 

@@ -1874,6 +1874,26 @@ pricing:
         price: '7.5E-8'
       - name: cacheWriteInputTokens
         price: '3.0E-7'
+  - name: bedrock/us.amazon.nova-2-lite-v1:0:priority
+    units:
+      - name: inputTokens
+        price: '5.25E-7'
+      - name: outputTokens
+        price: '4.38E-6'
+      - name: cacheReadInputTokens
+        price: '1.31E-7'
+      - name: cacheWriteInputTokens
+        price: '5.25E-7'
+  - name: bedrock/us.amazon.nova-2-lite-v1:0:flex
+    units:
+      - name: inputTokens
+        price: '1.5E-7'
+      - name: outputTokens
+        price: '1.25E-6'
+      - name: cacheReadInputTokens
+        price: '3.75E-8'
+      - name: cacheWriteInputTokens
+        price: '1.5E-7'
   - name: bedrock/anthropic.claude-3-7-sonnet-20250219-v1:0
     units:
       - name: inputTokens
@@ -2114,6 +2134,26 @@ pricing:
       price: '7.5E-8'
     - name: cacheWriteInputTokens
       price: '3.0E-7'
+    - name: bedrock/global.amazon.nova-2-lite-v1:0:priority
+    units:
+      - name: inputTokens
+        price: '5.25E-7'
+      - name: outputTokens
+        price: '4.38E-6'
+      - name: cacheReadInputTokens
+        price: '1.31E-7'
+      - name: cacheWriteInputTokens
+        price: '5.25E-7'
+  - name: bedrock/global.amazon.nova-2-lite-v1:0:flex
+    units:
+      - name: inputTokens
+        price: '1.5E-7'
+      - name: outputTokens
+        price: '1.25E-6'
+      - name: cacheReadInputTokens
+        price: '3.75E-8'
+      - name: cacheWriteInputTokens
+        price: '1.5E-7'
   - name: bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0
     units:
     - name: inputTokens
