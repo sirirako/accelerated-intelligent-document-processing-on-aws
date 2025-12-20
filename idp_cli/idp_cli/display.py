@@ -386,7 +386,7 @@ def format_status_json(status_data: Dict, stats: Dict) -> str:
             # Add status-specific fields
             if doc.get("status") == "COMPLETED":
                 result["num_sections"] = doc.get("num_sections", 0)
-            elif doc.get("status") == "FAILED":
+            elif doc.get("status") in ["FAILED", "ABORTED"]:
                 result["error"] = doc.get("error", "Unknown error")
                 result["failed_step"] = doc.get("failed_step", "Unknown")
             elif doc.get("status") in [
@@ -402,7 +402,7 @@ def format_status_json(status_data: Dict, stats: Dict) -> str:
             # Determine exit code
             if doc.get("status") == "COMPLETED":
                 result["exit_code"] = 0
-            elif doc.get("status") == "FAILED":
+            elif doc.get("status") in ["FAILED", "ABORTED"]:
                 result["exit_code"] = 1
             else:
                 result["exit_code"] = 2

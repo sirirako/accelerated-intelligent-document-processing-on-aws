@@ -14,6 +14,7 @@ import useLocalStorage from '../common/local-storage';
 import { exportToExcel } from '../common/download-func';
 import DeleteDocumentModal from '../common/DeleteDocumentModal';
 import ReprocessDocumentModal from '../common/ReprocessDocumentModal';
+import AbortWorkflowModal from '../common/AbortWorkflowModal';
 
 import {
   DocumentsPreferences,
@@ -36,6 +37,7 @@ const DocumentList = () => {
   const [documentList, setDocumentList] = useState([]);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isReprocessModalVisible, setIsReprocessModalVisible] = useState(false);
+  const [isAbortModalVisible, setIsAbortModalVisible] = useState(false);
   const { settings } = useSettingsContext();
 
   const {
@@ -49,6 +51,7 @@ const DocumentList = () => {
     getDocumentDetailsFromIds,
     deleteDocuments,
     reprocessDocuments,
+    abortWorkflows,
   } = useDocumentsContext();
 
   const [preferences, setPreferences] = useLocalStorage('documents-list-preferences', DEFAULT_PREFERENCES);
@@ -111,6 +114,20 @@ const DocumentList = () => {
     actions.setSelectedItems([]);
   };
 
+  const handleAbortConfirm = async (abortableItems) => {
+    const objectKeys = abortableItems.map((item) => item.objectKey);
+    logger.debug('Aborting workflows', objectKeys);
+
+    const result = await abortWorkflows(objectKeys);
+    logger.debug('Abort result', result);
+
+    // Close the modal
+    setIsAbortModalVisible(false);
+
+    // Clear selection after aborting
+    actions.setSelectedItems([]);
+  };
+
   /* eslint-disable react/jsx-props-no-spreading */
   return (
     <>
@@ -131,6 +148,7 @@ const DocumentList = () => {
             downloadToExcel={() => exportToExcel(documentList, 'Document-List')}
             onReprocess={() => setIsReprocessModalVisible(true)}
             onDelete={() => setIsDeleteModalVisible(true)}
+            onAbort={() => setIsAbortModalVisible(true)}
             // eslint-disable-next-line max-len, prettier/prettier
           />
         }
@@ -167,6 +185,13 @@ const DocumentList = () => {
         visible={isReprocessModalVisible}
         onDismiss={() => setIsReprocessModalVisible(false)}
         onConfirm={handleReprocessConfirm}
+        selectedItems={collectionProps.selectedItems}
+      />
+
+      <AbortWorkflowModal
+        visible={isAbortModalVisible}
+        onDismiss={() => setIsAbortModalVisible(false)}
+        onConfirm={handleAbortConfirm}
         selectedItems={collectionProps.selectedItems}
       />
     </>

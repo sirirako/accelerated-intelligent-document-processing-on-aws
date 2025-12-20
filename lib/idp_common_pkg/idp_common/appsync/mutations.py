@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT-0
 
 """
-GraphQL mutations for AppSync operations.
+GraphQL mutations and queries for AppSync operations.
 
-This module contains the GraphQL mutation strings used by the AppSync client
+This module contains the GraphQL mutation and query strings used by the AppSync client
 for document operations.
 """
 
@@ -21,6 +21,51 @@ mutation CreateDocument($input: CreateDocumentInput!) {
 UPDATE_DOCUMENT = """
 mutation UpdateDocument($input: UpdateDocumentInput!) {
     updateDocument(input: $input) {
+        ObjectKey
+        ObjectStatus
+        InitialEventTime
+        QueuedTime
+        WorkflowStartTime
+        CompletionTime
+        WorkflowExecutionArn
+        WorkflowStatus
+        PageCount
+        Sections {
+            Id
+            PageIds
+            Class
+            OutputJSONUri
+            ConfidenceThresholdAlerts {
+                attributeName
+                confidence
+                confidenceThreshold
+            }
+        }
+        Pages {
+            Id
+            Class
+            ImageUri
+            TextUri
+            TextConfidenceUri
+        }
+        Metering
+        EvaluationReportUri
+        EvaluationStatus
+        SummaryReportUri
+        ExpiresAfter
+        HITLStatus
+        HITLReviewURL
+        TraceId
+    }
+}
+"""
+
+# Query to get a document by ObjectKey
+GET_DOCUMENT = """
+query GetDocument($objectKey: ID!) {
+    getDocument(ObjectKey: $objectKey) {
+        PK
+        SK
         ObjectKey
         ObjectStatus
         InitialEventTime

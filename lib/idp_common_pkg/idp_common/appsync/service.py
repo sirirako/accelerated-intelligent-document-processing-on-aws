@@ -14,7 +14,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from idp_common.appsync.client import AppSyncClient
-from idp_common.appsync.mutations import CREATE_DOCUMENT, UPDATE_DOCUMENT
+from idp_common.appsync.mutations import CREATE_DOCUMENT, GET_DOCUMENT, UPDATE_DOCUMENT
 from idp_common.models import Document, HitlMetadata, Page, Section, Status
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,8 @@ class DocumentAppSyncService:
             input_data["WorkflowStatus"] = "FAILED"
         elif document.status == Status.COMPLETED:
             input_data["WorkflowStatus"] = "SUCCEEDED"
+        elif document.status == Status.ABORTED:
+            input_data["WorkflowStatus"] = "ABORTED"
         else:
             input_data["WorkflowStatus"] = "RUNNING"
 
@@ -225,7 +227,7 @@ class DocumentAppSyncService:
         doc = Document(
             id=appsync_data.get("ObjectKey"),
             input_key=appsync_data.get("ObjectKey"),
-            num_pages=appsync_data.get("PageCount", 0),
+            num_pages=appsync_data.get("PageCount") or 0,
             queued_time=appsync_data.get("QueuedTime"),
             start_time=appsync_data.get("WorkflowStartTime"),
             completion_time=appsync_data.get("CompletionTime"),
@@ -397,6 +399,34 @@ class DocumentAppSyncService:
 
         # Convert the response back to a Document object
         return self._appsync_to_document(result["updateDocument"])
+
+    def get_document(self, object_key: str) -> Optional[Document]:
+        """
+        Get a document from AppSync by its object key.
+
+        Args:
+            object_key: The object key of the document to retrieve
+
+        Returns:
+            Document object if found, None otherwise
+
+        Raises:
+            AppSyncError: If the GraphQL operation fails
+        """
+        try:
+            # Note: execute_mutation works for both mutations and queries
+            # GraphQL operations are sent the same way - only the query string differs
+            result = self.client.execute_mutation(
+                GET_DOCUMENT, {"objectKey": object_key}
+            )
+
+            document_data = result.get("getDocument")
+            if document_data:
+                return self._appsync_to_document(document_data)
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get document {object_key}: {e}")
+            return None
 
     def calculate_ttl(self, days: int = 30) -> int:
         """

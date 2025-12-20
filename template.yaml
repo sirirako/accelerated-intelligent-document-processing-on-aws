@@ -250,6 +250,11 @@ Parameters:
       - "us.amazon.nova-pro-v1:0"
       - "us.amazon.nova-premier-v1:0"
       - "us.amazon.nova-2-lite-v1:0"
+      - "us.amazon.nova-2-lite-v1:0:priority"
+      - "us.amazon.nova-2-lite-v1:0:flex"
+      - "global.amazon.nova-2-lite-v1:0"
+      - "global.amazon.nova-2-lite-v1:0:priority"
+      - "global.amazon.nova-2-lite-v1:0:flex"
       - "us.anthropic.claude-3-haiku-20240307-v1:0"
       - "us.anthropic.claude-3-5-haiku-20241022-v1:0"
       - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
@@ -259,12 +264,18 @@ Parameters:
       - "eu.amazon.nova-lite-v1:0"
       - "eu.amazon.nova-pro-v1:0"
       - "eu.amazon.nova-2-lite-v1:0"
+      - "eu.amazon.nova-2-lite-v1:0:priority"
+      - "eu.amazon.nova-2-lite-v1:0:flex"
       - "eu.anthropic.claude-3-haiku-20240307-v1:0"
       - "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
       - "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
       - "eu.anthropic.claude-sonnet-4-20250514-v1:0"
       - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
       - "qwen.qwen3-vl-235b-a22b"
+      - "global.amazon.nova-2-lite-v1:0"
+      - "global.anthropic.claude-haiku-4-5-v1:0"
+      - "global.anthropic.claude-sonnet-4-5-v1:0"
+
     Description: Model to use for optional Document Knowledge Base. Model access MUST be enabled in Amazon Bedrock. Note - Nova Premier may not be available in all EU regions.
 
   # Optional - Post processing Lambda hook
@@ -1847,10 +1858,81 @@ Resources:
       - FccDatasetDeployerFunction
     Properties:
       ServiceToken: !GetAtt FccDatasetDeployerFunction.Arn
-      DatasetVersion: "1.0"
+      DatasetVersion: "1.1"
       DatasetName: "RealKIE-FCC-Verified"
       DatasetDescription: "Test set with single and multi-page invoices sourced from the Federal Communications Commission (FCC) to evaluate extraction performance."
       SourceCodeHash: <FCC_DATASET_DEPLOYER_HASH_TOKEN>
+
+  ##########################################################################
+  # OCR Benchmark Deployer - Automatically deploys OmniAI OCR Benchmark dataset
+  ##########################################################################
+
+  OcrBenchmarkDeployerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  OcrBenchmarkDeployerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      FunctionName: !Sub "${AWS::StackName}-OcrBenchmarkDeployer"
+      CodeUri: src/lambda/ocr_benchmark_deployer/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 2048
+      LoggingConfig:
+        LogGroup: !Ref OcrBenchmarkDeployerLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TESTSET_BUCKET: !Ref TestSetBucket
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TestSetBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  OcrBenchmarkDeployment:
+    Type: Custom::OcrBenchmarkDeployer
+    DependsOn:
+      - TestSetBucket
+      - TrackingTable
+      - OcrBenchmarkDeployerFunction
+    Properties:
+      ServiceToken: !GetAtt OcrBenchmarkDeployerFunction.Arn
+      DatasetVersion: "1.0"
+      DatasetName: "OmniAI-OCR-Benchmark"
+      DatasetDescription: "Test set with diverse document formats (tables, charts, forms, etc.) from the OmniAI OCR Benchmark, filtered for top format/schema pairs with at least 6 samples each."
+      SourceCodeHash: <OCR_BENCHMARK_DEPLOYER_HASH_TOKEN>
 
   ConfigurationBucket:
     Type: AWS::S3::Bucket
@@ -3166,6 +3248,7 @@ Resources:
               Action:
                 - appsync:GraphQL
               Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Query/*"
                 - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
             - Effect: Allow
               Action:
@@ -6438,6 +6521,7 @@ Resources:
                   - !GetAtt DeleteTestsResolverFunction.Arn
                   - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
                   - !GetAtt ReprocessDocumentResolverFunction.Arn
+                  - !GetAtt AbortWorkflowResolverFunction.Arn
                   - !GetAtt ProcessChangesResolverFunction.Arn
                   - !GetAtt AgentChatResolverFunction.Arn
                   - !GetAtt ListAvailableAgentsFunction.Arn
@@ -7867,8 +7951,14 @@ Resources:
           TRACKING_TABLE: !Ref TrackingTable
           BASELINE_BUCKET: !Ref EvaluationBaselineBucket
           OUTPUT_BUCKET: !Ref OutputBucket
-          REPORTING_BUCKET: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
           TEST_RESULT_CACHE_UPDATE_QUEUE_URL: !Ref TestResultCacheUpdateQueue
+          ATHENA_DATABASE: !Ref ReportingDatabase
+          ATHENA_OUTPUT_LOCATION: !Sub
+            - "s3://${Bucket}/athena-results/"
+            - Bucket: !If
+                - ShouldCreateReportingBucket
+                - !Ref ReportingBucket
+                - !Ref ReportingBucketName
       Events:
         SQSEvent:
           Type: SQS
@@ -7889,8 +7979,38 @@ Resources:
         - Statement:
             - Effect: Allow
               Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+              Resource: !Sub
+                - "${BucketArn}/athena-results/*"
+                - BucketArn: !If
+                    - ShouldCreateReportingBucket
+                    - !GetAtt ReportingBucket.Arn
+                    - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+        - Statement:
+            - Effect: Allow
+              Action:
                 - sqs:SendMessage
               Resource: !GetAtt TestResultCacheUpdateQueue.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+                - athena:StopQueryExecution
+              Resource:
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
+                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - glue:GetTable
+                - glue:GetPartitions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
         - Statement:
             - Effect: Allow
               Action:
@@ -8130,6 +8250,104 @@ Resources:
       DataSourceName: !GetAtt ReprocessDocumentDataSource.Name
       TypeName: Mutation
       FieldName: reprocessDocument
+
+  AbortWorkflowResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+          - id: W12
+            reason: "Lambda requires CloudWatch logs permissions"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/abort_workflow_resolver
+      Description: Lambda function to abort document workflows via GraphQL API
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
+      LoggingConfig:
+        LogGroup: !Ref AbortWorkflowResolverFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !If
+              - IsPattern3
+              - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+              - !If
+                - IsPattern2
+                - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+                - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource:
+                - !Sub "${GraphQLApi.Arn}/types/Query/*"
+                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+            - Effect: Allow
+              Action:
+                - states:StopExecution
+              Resource:
+                - !If
+                  - IsPattern3
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN3STACK.Outputs.StateMachineName}:*"
+                  - !If
+                    - IsPattern2
+                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN2STACK.Outputs.StateMachineName}:*"
+                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN1STACK.Outputs.StateMachineName}:*"
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  AbortWorkflowResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  AbortWorkflowDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: AbortWorkflowDataSource
+      Description: Lambda function for aborting document workflows
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt AbortWorkflowResolverFunction.Arn
+
+  AbortWorkflowResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt AbortWorkflowDataSource.Name
+      TypeName: Mutation
+      FieldName: abortWorkflow
 
   UploadResolverFunction:
     Type: AWS::Serverless::Function
@@ -8977,6 +9195,9 @@ Resources:
         Web UI build for GenAIIDP stack - ${AWS::StackName}
       ServiceRole: !Ref UICodeBuildServiceRole
       EncryptionKey: alias/aws/s3
+      Environment:
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Type: LINUX_CONTAINER
       Artifacts:
         Type: NO_ARTIFACTS
       Source:

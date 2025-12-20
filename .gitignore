@@ -25,6 +25,9 @@ notebooks/examples/data
 *tmp-dev-assets*
 scratch/
 
+# Service tier implementation artifacts
+service_tier_*.md
+
 # Node.js / npm
 node_modules/
 package-lock.json

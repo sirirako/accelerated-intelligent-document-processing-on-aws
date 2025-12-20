@@ -163,6 +163,8 @@ class DocumentDynamoDBService:
             workflow_status = "FAILED"
         elif document.status == Status.COMPLETED:
             workflow_status = "SUCCEEDED"
+        elif document.status == Status.ABORTED:
+            workflow_status = "ABORTED"
         else:
             workflow_status = "RUNNING"
 

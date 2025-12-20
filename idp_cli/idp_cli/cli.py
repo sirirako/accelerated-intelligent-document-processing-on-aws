@@ -101,7 +101,7 @@ def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> 
         )
 
         # Stream output line by line
-        for line in process.stdout:
+        for line in process.stdout or []:  # type: ignore
             # Print each line immediately (preserve formatting from publish.py)
             print(line, end="")
 
@@ -142,7 +142,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.4.5")
+@click.version_option(version="0.4.9")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -204,6 +204,7 @@ def cli():
     "--no-rollback", is_flag=True, help="Disable rollback on stack creation failure"
 )
 @click.option("--region", help="AWS region (optional)")
+@click.option("--role-arn", help="CloudFormation service role ARN")
 def deploy(
     stack_name: str,
     pattern: str,
@@ -219,6 +220,7 @@ def deploy(
     wait: bool,
     no_rollback: bool,
     region: Optional[str],
+    role_arn: Optional[str],
 ):
     """
     Deploy or update IDP stack from command line
@@ -260,7 +262,7 @@ def deploy(
         if not region:
             import boto3
 
-            session = boto3.session.Session()
+            session = boto3.session.Session()  # type: ignore
             region = session.region_name
             if not region:
                 raise ValueError(
@@ -364,6 +366,7 @@ def deploy(
                     parameters=cfn_parameters,
                     wait=wait,
                     no_rollback=no_rollback,
+                    role_arn=role_arn,
                 )
             else:
                 # Deploy from template URL
@@ -373,6 +376,7 @@ def deploy(
                     parameters=cfn_parameters,
                     wait=wait,
                     no_rollback=no_rollback,
+                    role_arn=role_arn,
                 )
 
         # Show results
