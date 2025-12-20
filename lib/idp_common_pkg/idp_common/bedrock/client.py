@@ -8,23 +8,25 @@ This module provides a class-based interface for invoking Bedrock models
 with built-in retry logic, metrics tracking, and configuration options.
 """
 
-import boto3
-import json
-import os
-import time
-import logging
 import copy
+import json
+import logging
+import os
 import random
-import socket
-from typing import Dict, Any, List, Optional, Union, Tuple, Type
+import time
+from typing import Any, Dict, List, Optional, Union
+
+import boto3
 from botocore.config import Config
 from botocore.exceptions import (
     ClientError,
-    ReadTimeoutError,
     ConnectTimeoutError,
     EndpointConnectionError,
+    ReadTimeoutError,
 )
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
+
+from .model_utils import parse_model_id
 
 
 # Dummy exception classes for requests timeouts if requests is not available
@@ -42,8 +44,10 @@ class _RequestsConnectTimeout(Exception):
 
 try:
     from requests.exceptions import (
-        ReadTimeout as RequestsReadTimeout,
         ConnectTimeout as RequestsConnectTimeout,
+    )
+    from requests.exceptions import (
+        ReadTimeout as RequestsReadTimeout,
     )
 except ImportError:
     # Fallback if requests is not available - use dummy exception classes
@@ -91,6 +95,7 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
     "global.anthropic.claude-opus-4-5-20251101-v1:0"
 ]
+
 
 class BedrockClient:
     """Client for interacting with Amazon Bedrock models."""
@@ -144,6 +149,7 @@ class BedrockClient:
         max_tokens: Optional[Union[int, str]] = None,
         max_retries: Optional[int] = None,
         context: str = "Unspecified",
+        service_tier: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Make the instance callable with the same signature as the original function.
@@ -159,6 +165,7 @@ class BedrockClient:
             top_p: Optional top_p parameter (float or string)
             max_tokens: Optional max_tokens parameter (int or string)
             max_retries: Optional override for the instance's max_retries setting
+            service_tier: Optional service tier (priority, standard, flex)
 
         Returns:
             Bedrock response object with metering information
@@ -178,6 +185,7 @@ class BedrockClient:
             max_tokens=max_tokens,
             max_retries=effective_max_retries,
             context=context,
+            service_tier=service_tier,
         )
 
     def _preprocess_content_for_cachepoint(
@@ -269,6 +277,7 @@ class BedrockClient:
         max_tokens: Optional[Union[int, str]] = None,
         max_retries: Optional[int] = None,
         context: str = "Unspecified",
+        service_tier: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Invoke a Bedrock model with retry logic.
@@ -282,6 +291,7 @@ class BedrockClient:
             top_p: Optional top_p parameter (float or string)
             max_tokens: Optional max_tokens parameter (int or string)
             max_retries: Optional override for the instance's max_retries setting
+            service_tier: Optional service tier (priority, standard, flex)
 
         Returns:
             Bedrock response object with metering information
@@ -373,9 +383,7 @@ class BedrockClient:
                 inference_config["topP"] = top_p
                 # Remove temperature when using top_p to avoid conflicts
                 del inference_config["temperature"]
-                logger.debug(
-                    f"Using top_p={top_p} for inference (temperature ignored)"
-                )
+                logger.debug(f"Using top_p={top_p} for inference (temperature ignored)")
             else:
                 logger.debug(
                     f"Using temperature={temperature} for inference (top_p is 0 or None)"
@@ -439,9 +447,36 @@ class BedrockClient:
                 additional_model_fields = {}
             additional_model_fields["anthropic_beta"] = ["context-1m-2025-08-07"]
 
+        # Parse model ID to extract service tier from suffix
+        base_model_id, tier_from_suffix = parse_model_id(use_model_id)
+
+        # Use tier from model ID suffix if present, otherwise use service_tier parameter
+        effective_service_tier = tier_from_suffix or service_tier
+
+        # Update use_model_id to base model ID (without tier suffix)
+        if tier_from_suffix:
+            use_model_id = base_model_id
+            logger.info(
+                f"Extracted service tier '{tier_from_suffix}' from model ID. Using base model ID: {base_model_id}"
+            )
+
         # If no additional model fields were added, set to None
         if not additional_model_fields:
             additional_model_fields = None
+
+        # Normalize and validate service tier
+        normalized_service_tier = None
+        if effective_service_tier:
+            tier_lower = effective_service_tier.lower().strip()
+            if tier_lower in ["priority", "flex"]:
+                normalized_service_tier = tier_lower
+            elif tier_lower in ["standard", "default"]:
+                normalized_service_tier = "default"
+            else:
+                logger.warning(
+                    f"Invalid service_tier value '{effective_service_tier}'. "
+                    f"Valid values are: priority, standard, flex. Using default tier."
+                )
 
         # Get guardrail configuration if available
         guardrail_config = self.get_guardrail_config()
@@ -454,6 +489,11 @@ class BedrockClient:
             "inferenceConfig": inference_config,
             "additionalModelRequestFields": additional_model_fields,
         }
+
+        # Add service tier if specified
+        if normalized_service_tier:
+            converse_params["serviceTier"] = {"type": normalized_service_tier}
+            logger.info(f"Using service tier: {normalized_service_tier}")
 
         # Add guardrail config if available
         if guardrail_config:
