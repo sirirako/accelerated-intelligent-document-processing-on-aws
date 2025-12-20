@@ -1911,6 +1911,12 @@ except Exception as e:
                     "<WORKFORCE_URL_HASH_TOKEN>": workforce_url_hash,
                     "<A2I_RESOURCES_HASH_TOKEN>": a2i_resources_hash,
                     "<COGNITO_CLIENT_HASH_TOKEN>": cognito_client_hash,
+                    "<FCC_DATASET_DEPLOYER_HASH_TOKEN>": self.get_directory_checksum(
+                        "src/lambda/fcc_dataset_deployer"
+                    )[:16],
+                    "<OCR_BENCHMARK_DEPLOYER_HASH_TOKEN>": self.get_directory_checksum(
+                        "src/lambda/ocr_benchmark_deployer"
+                    )[:16],
                 }
 
                 self.console.print("[cyan]Inline edit main template to replace:[/cyan]")
