@@ -11,8 +11,9 @@ The mapper acts as an abstraction layer, allowing the IDP system to use
 neutral evaluation configuration that can be translated to Stickler's format.
 """
 
+import copy
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Set
 
 from idp_common.config.schema_constants import (
     EVALUATION_METHOD_EXACT,
@@ -221,6 +222,110 @@ class SticklerConfigMapper:
                 logger.warning(f"Could not resolve $ref: {ref_path}")
                 return {}
         return {}
+
+    @classmethod
+    def _inline_refs(
+        cls,
+        schema: Dict[str, Any],
+        defs: Dict[str, Any],
+        visited: Optional[Set[str]] = None,
+        field_path: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Recursively inline all $ref references in the schema.
+
+        This replaces all #/$defs/XXX references with the actual definition content,
+        allowing Stickler's JsonSchemaFieldConverter to process nested schemas
+        without losing $defs context.
+
+        Handles circular references by tracking visited definitions.
+
+        Args:
+            schema: Schema or sub-schema to process
+            defs: The $defs dictionary from the root schema
+            visited: Set of definition names already being processed (for circular ref detection)
+            field_path: Current path for logging
+
+        Returns:
+            Schema with all $ref references inlined
+        """
+        if visited is None:
+            visited = set()
+
+        if not isinstance(schema, dict):
+            return schema
+
+        # Handle $ref - inline the referenced definition
+        if "$ref" in schema:
+            ref_path = schema["$ref"]
+            if ref_path.startswith("#/$defs/"):
+                def_name = ref_path[8:]  # Remove "#/$defs/"
+                if def_name in defs:
+                    if def_name in visited:
+                        # Circular reference detected - keep $ref to avoid infinite loop
+                        logger.warning(
+                            f"Circular $ref detected at '{field_path}': {ref_path}. Keeping reference."
+                        )
+                        return schema
+
+                    # Mark as being processed
+                    visited.add(def_name)
+
+                    # Deep copy and recursively inline the definition
+                    inlined = copy.deepcopy(defs[def_name])
+                    inlined = cls._inline_refs(
+                        inlined, defs, visited.copy(), f"{field_path}({def_name})"
+                    )
+
+                    # Merge any other properties from the original schema (like description)
+                    # onto the inlined definition (original props take precedence)
+                    for key, value in schema.items():
+                        if key != "$ref" and key not in inlined:
+                            inlined[key] = value
+
+                    logger.debug(f"Inlined $ref '{ref_path}' at '{field_path}'")
+                    return inlined
+                else:
+                    logger.warning(
+                        f"Cannot inline $ref '{ref_path}' at '{field_path}': "
+                        f"definition not found in $defs. Available: {list(defs.keys())}"
+                    )
+
+        # Recursively process properties
+        if SCHEMA_PROPERTIES in schema:
+            schema[SCHEMA_PROPERTIES] = {
+                k: cls._inline_refs(v, defs, visited.copy(), f"{field_path}.{k}")
+                for k, v in schema[SCHEMA_PROPERTIES].items()
+            }
+
+        # Recursively process array items
+        if SCHEMA_ITEMS in schema:
+            schema[SCHEMA_ITEMS] = cls._inline_refs(
+                schema[SCHEMA_ITEMS], defs, visited.copy(), f"{field_path}[]"
+            )
+
+        # Process allOf, anyOf, oneOf
+        for keyword in ["allOf", "anyOf", "oneOf"]:
+            if keyword in schema:
+                schema[keyword] = [
+                    cls._inline_refs(
+                        item, defs, visited.copy(), f"{field_path}.{keyword}[{i}]"
+                    )
+                    for i, item in enumerate(schema[keyword])
+                ]
+
+        # Process additionalProperties if it's a schema
+        if "additionalProperties" in schema and isinstance(
+            schema["additionalProperties"], dict
+        ):
+            schema["additionalProperties"] = cls._inline_refs(
+                schema["additionalProperties"],
+                defs,
+                visited.copy(),
+                f"{field_path}.additionalProperties",
+            )
+
+        return schema
 
     @classmethod
     def _validate_method_for_field(
@@ -535,6 +640,16 @@ class SticklerConfigMapper:
         logger.info(
             f"Building Stickler config for model '{model_name}' with match_threshold={match_threshold}"
         )
+
+        # Inline all $ref references BEFORE translating extensions
+        # This is necessary because Stickler's JsonSchemaFieldConverter creates new
+        # converter instances for nested schemas without propagating root $defs,
+        # causing nested $ref resolution to fail
+        defs = schema.get("$defs", {}) or schema.get("definitions", {})
+        if defs:
+            num_defs = len(defs)
+            schema = cls._inline_refs(schema, defs, field_path=model_name)
+            logger.info(f"Inlined {num_defs} $defs references for model '{model_name}'")
 
         # Translate IDP extensions to Stickler extensions throughout the schema
         cls._translate_extensions_in_schema(schema)
