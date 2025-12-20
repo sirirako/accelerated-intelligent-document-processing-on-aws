@@ -44,8 +44,9 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Updated Sample Configurations to Use Amazon Nova 2 Lite as Default Model**
+- **Updated Sample Configurations to Use Amazon Nova 2 Lite as Default Model, and remove Textract TABLES, SIGNATURE features**
   - Changed default model to `us.amazon.nova-2-lite-v1:0` for classification, extraction, summarization, and evaluation across all sample configurations in the configuration library
+  - Remove Textract TABLES and SIGNATURES options from default config
   - Provides improved cost-efficiency while maintaining strong performance for document processing workflows
 
 - **Improved Publish Script User Experience**
