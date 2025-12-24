@@ -11,12 +11,14 @@ from botocore.exceptions import ClientError
 import logging
 import datetime
 
-from .models import IDPConfig, SchemaConfig, ConfigurationRecord
+from .models import IDPConfig, SchemaConfig, PricingConfig, ConfigurationRecord
 from .merge_utils import deep_update, get_diff_dict
 from .constants import (
     CONFIG_TYPE_SCHEMA,
     CONFIG_TYPE_DEFAULT,
     CONFIG_TYPE_CUSTOM,
+    CONFIG_TYPE_DEFAULT_PRICING,
+    CONFIG_TYPE_CUSTOM_PRICING,
     VALID_CONFIG_TYPES,
 )
 
@@ -65,7 +67,7 @@ class ConfigurationManager:
 
     def get_configuration(
         self, config_type: str
-    ) -> Optional[Union[SchemaConfig, IDPConfig]]:
+    ) -> Optional[Union[SchemaConfig, IDPConfig, PricingConfig]]:
         """
         Retrieve configuration from DynamoDB.
 
@@ -73,13 +75,13 @@ class ConfigurationManager:
         1. Reads the DynamoDB item
         2. Deserializes into ConfigurationRecord (auto-migrates legacy format)
         3. Checks if migration occurred and persists if needed
-        4. Returns SchemaConfig for Schema type, IDPConfig for Default/Custom
+        4. Returns SchemaConfig for Schema type, PricingConfig for Pricing, IDPConfig for Default/Custom
 
         Args:
-            config_type: Configuration type (Schema, Default, Custom)
+            config_type: Configuration type (Schema, Default, Custom, Pricing)
 
         Returns:
-            SchemaConfig for Schema type, IDPConfig for Default/Custom, or None if not found
+            SchemaConfig for Schema type, PricingConfig for Pricing, IDPConfig for Default/Custom, or None if not found
 
         Raises:
             ClientError: If DynamoDB operation fails
@@ -144,14 +146,14 @@ class ConfigurationManager:
     def save_configuration(
         self,
         config_type: str,
-        config: Union[SchemaConfig, IDPConfig, Dict[str, Any]],
+        config: Union[SchemaConfig, IDPConfig, PricingConfig, Dict[str, Any]],
         skip_sync: bool = False,
     ) -> None:
         """
         Save configuration to DynamoDB.
 
         This method:
-        1. Converts dict to IDPConfig if needed
+        1. Converts dict to appropriate config type if needed
         2. If saving Default, syncs Custom to preserve user customizations (unless skip_sync=True)
         3. Creates ConfigurationRecord
         4. Serializes to DynamoDB item
@@ -159,8 +161,8 @@ class ConfigurationManager:
         6. Sends notification
 
         Args:
-            config_type: Configuration type (Schema, Default, Custom)
-            config: SchemaConfig, IDPConfig model, or dict (dict will be converted to appropriate type)
+            config_type: Configuration type (Schema, Default, Custom, DefaultPricing, CustomPricing)
+            config: SchemaConfig, IDPConfig, PricingConfig model, or dict (dict will be converted to appropriate type)
             skip_sync: If True, skip automatic Custom sync when saving Default (used for save-as-default)
 
         Raises:
@@ -170,6 +172,8 @@ class ConfigurationManager:
         if isinstance(config, dict):
             if config_type == CONFIG_TYPE_SCHEMA:
                 config = SchemaConfig(**config)
+            elif config_type in (CONFIG_TYPE_DEFAULT_PRICING, CONFIG_TYPE_CUSTOM_PRICING):
+                config = PricingConfig(**config)
             else:
                 config = IDPConfig(**config)
 
@@ -224,6 +228,109 @@ class ConfigurationManager:
             logger.error(f"Error deleting configuration {config_type}: {e}")
             raise
 
+    # ===== Pricing Configuration Methods =====
+
+    def get_merged_pricing(self) -> Optional[PricingConfig]:
+        """
+        Get the merged pricing configuration (DefaultPricing + CustomPricing deltas).
+
+        This mirrors the Default/Custom pattern for IDP configuration:
+        - DefaultPricing: Full baseline pricing from deployment
+        - CustomPricing: Only user overrides/deltas (if any)
+
+        Returns:
+            Merged PricingConfig with custom overrides applied, or None if not found
+
+        Raises:
+            ClientError: If DynamoDB operation fails
+        """
+        from copy import deepcopy
+
+        # Get default pricing
+        default_config = self.get_configuration(CONFIG_TYPE_DEFAULT_PRICING)
+        if default_config is None:
+            logger.warning("DefaultPricing not found in DynamoDB")
+            return None
+
+        if not isinstance(default_config, PricingConfig):
+            logger.warning(
+                f"Expected PricingConfig but got {type(default_config).__name__}"
+            )
+            return None
+
+        # Get custom pricing (deltas only)
+        custom_config = self.get_configuration(CONFIG_TYPE_CUSTOM_PRICING)
+
+        # If no custom pricing, return default
+        if custom_config is None:
+            logger.info("No CustomPricing found, returning DefaultPricing")
+            return default_config
+
+        if not isinstance(custom_config, PricingConfig):
+            logger.warning(
+                f"CustomPricing is not PricingConfig, returning DefaultPricing"
+            )
+            return default_config
+
+        # Merge: Start with default, apply custom overrides
+        default_dict = default_config.model_dump(mode="python")
+        custom_dict = custom_config.model_dump(mode="python")
+
+        merged_dict = deepcopy(default_dict)
+        deep_update(merged_dict, custom_dict)
+
+        logger.info("Merged DefaultPricing with CustomPricing deltas")
+        return PricingConfig(**merged_dict)
+
+    def save_custom_pricing(self, pricing_deltas: Union[PricingConfig, Dict[str, Any]]) -> bool:
+        """
+        Save custom pricing overrides to DynamoDB.
+
+        This saves only the user's customizations (deltas from default).
+        The deltas are merged with DefaultPricing when reading.
+
+        Args:
+            pricing_deltas: PricingConfig or dict with only the fields that differ from default
+
+        Returns:
+            True on success
+
+        Raises:
+            ClientError: If DynamoDB operation fails
+        """
+        # Convert dict to PricingConfig if needed
+        if isinstance(pricing_deltas, dict):
+            pricing_deltas = PricingConfig(**pricing_deltas)
+
+        # Save to CustomPricing
+        self.save_configuration(CONFIG_TYPE_CUSTOM_PRICING, pricing_deltas)
+
+        logger.info("Saved CustomPricing configuration")
+        return True
+
+    def delete_custom_pricing(self) -> bool:
+        """
+        Delete custom pricing, effectively resetting to defaults.
+
+        After deletion, get_merged_pricing() will return DefaultPricing only.
+
+        Returns:
+            True on success
+
+        Raises:
+            ClientError: If DynamoDB operation fails
+        """
+        try:
+            self.delete_configuration(CONFIG_TYPE_CUSTOM_PRICING)
+            logger.info("Deleted CustomPricing, pricing reset to defaults")
+            return True
+        except ClientError as e:
+            # If the item doesn't exist, that's fine - it's already "deleted"
+            if e.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+                logger.info("CustomPricing already deleted or never existed")
+                return True
+            raise
+
     def handle_update_custom_configuration(
         self, custom_config: Union[str, Dict[str, Any], IDPConfig]
     ) -> bool:
@@ -271,6 +378,10 @@ class ConfigurationManager:
         # Extract special flags
         save_as_default = config_dict.pop("saveAsDefault", False)
         reset_to_default = config_dict.pop("resetToDefault", False)
+        
+        # Remove legacy pricing field if present (now stored separately as DefaultPricing/CustomPricing)
+        # This handles imported configs that may have old embedded pricing
+        config_dict.pop("pricing", None)
 
         # Handle reset to default - delete Custom entirely
         # On next getConfiguration, the auto-copy logic will repopulate Custom from Default
@@ -357,15 +468,15 @@ class ConfigurationManager:
         logger.info(f"Saved configuration: {record.configuration_type}")
 
     def _send_update_notification(
-        self, configuration_key: str, configuration_data: Union[SchemaConfig, IDPConfig]
+        self, configuration_key: str, configuration_data: Union[SchemaConfig, IDPConfig, PricingConfig]
     ) -> None:
         """
         Send a message to the ConfigurationQueue to notify pattern-specific processors
         about configuration updates.
 
         Args:
-            configuration_key: The configuration key that was updated ('Schema', 'Custom' or 'Default')
-            configuration_data: The updated configuration (SchemaConfig or IDPConfig model)
+            configuration_key: The configuration key that was updated ('Schema', 'Custom', 'Default', or 'Pricing')
+            configuration_data: The updated configuration (SchemaConfig, IDPConfig, or PricingConfig model)
         """
         try:
             configuration_queue_url = os.environ.get("CONFIGURATION_QUEUE_URL")

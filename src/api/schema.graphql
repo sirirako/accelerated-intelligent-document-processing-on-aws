@@ -91,6 +91,19 @@ type UpdateConfigurationResponse @aws_cognito_user_pools @aws_iam {
   error: ConfigurationError
 }
 
+type PricingResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  pricing: AWSJSON
+  defaultPricing: AWSJSON
+  error: ConfigurationError
+}
+
+type UpdatePricingResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  message: String
+  error: ConfigurationError
+}
+
 type ConfigurationLibraryItem @aws_cognito_user_pools @aws_iam {
   name: String!
   hasReadme: Boolean!
@@ -411,6 +424,10 @@ type Mutation {
   deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
   updateConfiguration(customConfig: AWSJSON!): UpdateConfigurationResponse
     @aws_cognito_user_pools
+  updatePricing(pricingConfig: AWSJSON!): UpdatePricingResponse
+    @aws_cognito_user_pools
+  restoreDefaultPricing: UpdatePricingResponse
+    @aws_cognito_user_pools
   uploadDocument(
     fileName: String!
     contentType: String
@@ -476,6 +493,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   listDocumentsDateShard(date: AWSDate, shard: Int): DocumentList
   getFileContents(s3Uri: String!): FileContentsResponse
   getConfiguration: ConfigurationResponse
+  getPricing: PricingResponse
   listDiscoveryJobs: DiscoveryJobList
   queryKnowledgeBase(input: String!, sessionId: String): String
   chatWithDocument(

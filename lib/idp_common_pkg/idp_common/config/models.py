@@ -687,17 +687,69 @@ class AgentsConfig(BaseModel):
 
 
 class PricingUnit(BaseModel):
-    """Pricing unit configuration"""
+    """Individual pricing unit within a service/API"""
 
-    name: str
-    price: float
+    name: str = Field(description="Unit name (e.g., 'pages', 'inputTokens', 'outputTokens')")
+    price: str = Field(description="Price as string (supports scientific notation like '6.0E-8')")
+
+    @field_validator("price", mode="before")
+    @classmethod
+    def parse_price(cls, v: Any) -> str:
+        """Ensure price is stored as string"""
+        if v is None:
+            return "0.0"
+        return str(v)
 
 
-class PricingItem(BaseModel):
-    """Pricing item configuration"""
+class PricingEntry(BaseModel):
+    """Single pricing entry with service/API name and associated units"""
 
-    name: str
-    units: List[PricingUnit]
+    name: str = Field(description="Service/API identifier (e.g., 'textract/detect_document_text', 'bedrock/us.amazon.nova-lite-v1:0')")
+    units: List[PricingUnit] = Field(description="List of pricing units for this service/API")
+
+
+class PricingConfig(BaseModel):
+    """
+    Pricing configuration model.
+
+    This represents the Pricing configuration type stored in DynamoDB.
+    It contains a list of pricing entries, each with:
+    - name: Service/API identifier (format: service/api-name)
+    - units: List of pricing units with name and price
+
+    Structure matches the config.yaml pricing format from the original IDP config:
+    pricing:
+      - name: textract/detect_document_text
+        units:
+          - name: pages
+            price: "0.0015"
+      - name: bedrock/us.amazon.nova-lite-v1:0
+        units:
+          - name: inputTokens
+            price: "6.0E-8"
+          - name: outputTokens
+            price: "2.4E-7"
+
+    Uses DefaultPricing/CustomPricing pattern that mirrors Default/Custom for IDPConfig.
+    """
+
+    config_type: Literal["DefaultPricing", "CustomPricing"] = Field(
+        default="DefaultPricing", description="Discriminator for config type"
+    )
+
+    pricing: List[PricingEntry] = Field(
+        default_factory=list,
+        description="List of pricing entries with service/API name and units"
+    )
+
+    model_config = ConfigDict(
+        extra="forbid",  # Strict validation - only 'pricing' field allowed
+        validate_assignment=True,
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a mutable dictionary."""
+        return self.model_dump(mode="python")
 
 
 class CriteriaValidationConfig(BaseModel):
@@ -935,9 +987,6 @@ class IDPConfig(BaseModel):
     agents: AgentsConfig = Field(
         default_factory=AgentsConfig, description="Agents configuration"
     )
-    pricing: List[PricingItem] = Field(
-        default_factory=list, description="Pricing configuration"
-    )
     classes: List[Dict[str, Any]] = Field(
         default_factory=list, description="Document class definitions (JSON Schema)"
     )
@@ -946,6 +995,11 @@ class IDPConfig(BaseModel):
     )
     evaluation: EvaluationConfig = Field(
         default_factory=EvaluationConfig, description="Evaluation configuration"
+    )
+    
+    # Pricing configuration (optional - loaded separately but can be merged for convenience)
+    pricing: Optional[List[PricingEntry]] = Field(
+        default=None, description="Pricing entries (optional - usually loaded from PricingConfig)"
     )
 
     # Criteria validation specific fields (used in pattern-2/criteria-validation)
@@ -1035,12 +1089,12 @@ class ConfigurationRecord(BaseModel):
     """
 
     configuration_type: str = Field(
-        description="Configuration type (Schema, Default, Custom)"
+        description="Configuration type (Schema, Default, Custom, Pricing)"
     )
-    config: Annotated[Union[SchemaConfig, IDPConfig], Discriminator("config_type")] = (
-        Field(
-            description="The configuration - SchemaConfig for Schema type, IDPConfig for Default/Custom"
-        )
+    config: Annotated[
+        Union[SchemaConfig, IDPConfig, PricingConfig], Discriminator("config_type")
+    ] = Field(
+        description="The configuration - SchemaConfig for Schema type, PricingConfig for Pricing type, IDPConfig for Default/Custom"
     )
     metadata: Optional[ConfigMetadata] = Field(
         default=None, description="Optional metadata about the configuration"
@@ -1107,7 +1161,11 @@ class ConfigurationRecord(BaseModel):
         # Remove DynamoDB metadata keys
         config_data = {k: v for k, v in item.items() if k != "Configuration"}
 
-        # Add config_type discriminator for Pydantic
+        # Set config_type discriminator directly from DynamoDB Configuration key
+        # DynamoDB keys match Pydantic discriminators exactly:
+        # - "Schema" -> SchemaConfig
+        # - "Default", "Custom" -> IDPConfig  
+        # - "DefaultPricing", "CustomPricing" -> PricingConfig
         config_data["config_type"] = config_type
 
         # Auto-migrate legacy format if needed
@@ -1121,6 +1179,12 @@ class ConfigurationRecord(BaseModel):
                 config_data["classes"] = migrate_legacy_to_schema(
                     config_data["classes"]
                 )
+
+        # Remove legacy pricing field (now stored separately as DefaultPricing/CustomPricing)
+        # This handles migration for existing stacks with old embedded pricing
+        if config_data.get("pricing") is not None and config_type in ("Default", "Custom"):
+            logger.info(f"Removing legacy pricing field from {config_type} configuration")
+            config_data.pop("pricing", None)
 
         # Parse into appropriate config type - Pydantic discriminator handles this automatically
         config = cls.model_validate(
