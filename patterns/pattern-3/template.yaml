@@ -1482,47 +1482,6 @@ Resources:
                         description: Default time range in hours for analysis
                         default: 24
                         order: 2
-          pricing:
-            order: 9
-            type: array
-            sectionLabel: Pricing (Estimates only - check https://aws.amazon.com/bedrock/pricing/ & https://aws.amazon.com/textract/pricing/)
-            listLabel: Services
-            itemLabel: Service/API
-            columns: 2
-            items:
-              type: object
-              required:
-                - name
-                - units
-              properties:
-                name:
-                  type: string
-                  description: Service/API
-                units:
-                  type: array
-                  listLabel: Metered unit pricing
-                  itemLabel: Metered Unit price
-                  items:
-                    type: object
-                    required:
-                      - name
-                      - price
-                    properties:
-                      name:
-                        type: string
-                        description: Metered unit name
-                      price:
-                        type: number
-                        description: Estimated cost/unit
-            default:
-              - name: "lambda/requests"
-                units:
-                  - name: "invocations"
-                    price: 2.0E-7
-              - name: "lambda/duration"
-                units:
-                  - name: "gb_seconds"
-                    price: 1.66667E-5
     UpdateReplacePolicy: Delete
     DeletionPolicy: Delete
 
@@ -1531,6 +1490,7 @@ Resources:
     Properties:
       ServiceToken: !Ref UpdateConfigurationFunctionArn
       Default: !Ref ConfigurationDefaultS3Uri
+      DefaultPricing: !Sub "s3://${ConfigurationBucket}/config_library/pricing.yaml"
       ConfigLibraryHash: !Ref ConfigLibraryHash
 
   
