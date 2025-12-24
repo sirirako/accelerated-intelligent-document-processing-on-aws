@@ -91,6 +91,13 @@ type UpdateConfigurationResponse @aws_cognito_user_pools @aws_iam {
   error: ConfigurationError
 }
 
+type SyncBdaIdpResponse @aws_cognito_user_pools @aws_iam {
+  success: Boolean!
+  message: String
+  processedClasses: [String]
+  error: ConfigurationError
+}
+
 type ConfigurationLibraryItem @aws_cognito_user_pools @aws_iam {
   name: String!
   hasReadme: Boolean!
@@ -411,6 +418,7 @@ type Mutation {
   deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
   updateConfiguration(customConfig: AWSJSON!): UpdateConfigurationResponse
     @aws_cognito_user_pools
+  syncBdaIdp: SyncBdaIdpResponse @aws_cognito_user_pools
   uploadDocument(
     fileName: String!
     contentType: String

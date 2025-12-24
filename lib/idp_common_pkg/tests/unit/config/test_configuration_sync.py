@@ -280,8 +280,7 @@ class TestConfigurationManagerSync:
             new_default = IDPConfig(extraction=ExtractionConfig(temperature=0.5))
 
             with patch.object(manager, "_write_record") as mock_write:
-                with patch.object(manager, "_send_update_notification"):
-                    manager.save_configuration("Default", new_default)
+                manager.save_configuration("Default", new_default)
 
             # Should have written BOTH Default and synced Custom
             assert mock_write.call_count == 2
@@ -313,8 +312,7 @@ class TestConfigurationManagerSync:
         custom = IDPConfig(extraction=ExtractionConfig(temperature=0.8))
 
         with patch.object(manager, "_write_record") as mock_write:
-            with patch.object(manager, "_send_update_notification"):
-                manager.save_configuration("Custom", custom)
+            manager.save_configuration("Custom", custom)
 
         # Should have written only once (just Custom, no sync)
         assert mock_write.call_count == 1
