@@ -434,6 +434,7 @@ type Mutation {
     @aws_cognito_user_pools
   restoreDefaultPricing: UpdatePricingResponse
     @aws_cognito_user_pools
+  syncBdaIdp: SyncBdaIdpResponse @aws_cognito_user_pools
   uploadDocument(
     fileName: String!
     contentType: String
