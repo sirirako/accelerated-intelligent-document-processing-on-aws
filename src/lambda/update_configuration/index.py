@@ -92,7 +92,11 @@ MODEL_MAPPINGS = {
 
 def get_current_region() -> str:
     """Get the current AWS region"""
-    return boto3.Session().region_name
+    region = boto3.Session().region_name
+    if region is None:
+        # Fallback to environment variable or default
+        region = os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
+    return region
 
 
 def is_eu_region(region: str) -> bool:

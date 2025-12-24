@@ -260,7 +260,7 @@ class TestConfigurationManagerSync:
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table_name = "test-config-table"
 
-        dynamodb.create_table(
+        dynamodb.create_table(  # type: ignore[attr-defined]
             TableName=table_name,
             KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
@@ -300,7 +300,7 @@ class TestConfigurationManagerSync:
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table_name = "test-config-table"
 
-        dynamodb.create_table(
+        dynamodb.create_table(  # type: ignore[attr-defined]
             TableName=table_name,
             KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],

@@ -593,11 +593,17 @@ class BdaBlueprintService:
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
 
+            # At this point, classess is guaranteed to be non-None and non-empty
+            assert classess is not None, "classess should not be None after validation"
+
             classess_status = []
             # retrieve all blueprints for this project.
             existing_blueprints = self._retrieve_all_blueprints(
                 self.dataAutomationProjectArn
             )
+            if not existing_blueprints:
+                existing_blueprints = []
+
             classess_added = []
             # check for blueprints which doesn't have an IDP class definition
             # create class definitions and save
