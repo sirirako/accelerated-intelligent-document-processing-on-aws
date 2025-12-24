@@ -17,7 +17,7 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
-- **Restore Default Pricing Button** - Fixed missing AppSync resolver causing null response (requires stack update to deploy)
+
 
 ## [0.4.9]
 
