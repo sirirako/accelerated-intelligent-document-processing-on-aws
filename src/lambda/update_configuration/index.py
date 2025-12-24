@@ -12,6 +12,7 @@ from typing import Any, Dict, Union
 import boto3
 import cfnresponse
 import yaml
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -270,7 +271,18 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 and properties["Custom"].get("Info") != "Custom inference settings"
             ):
                 resolved_custom = resolve_content(properties["Custom"])
+                # Remove legacy pricing field if present (now stored separately as DefaultPricing)
+                if isinstance(resolved_custom, dict):
+                    resolved_custom.pop("pricing", None)
                 configurations["Custom"] = resolved_custom
+
+            # Process DefaultPricing configuration if provided
+            if "DefaultPricing" in properties:
+                resolved_pricing = resolve_content(properties["DefaultPricing"])
+                # Pricing doesn't need region-specific filtering or swapping
+                # as it includes all regions (US, EU, Global) in one file
+                configurations["DefaultPricing"] = resolved_pricing
+                logger.info("Loaded DefaultPricing configuration")
 
             # Apply region-specific model swapping to all configurations at once
             if region_type in ["us", "eu"] and configurations:
