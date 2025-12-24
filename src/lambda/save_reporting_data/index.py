@@ -11,6 +11,7 @@ import traceback
 from typing import Dict, Any, List
 
 from idp_common.config import get_config
+from idp_common.config.configuration_manager import ConfigurationManager
 from idp_common.models import Document
 from idp_common.reporting import SaveReportingData
 
@@ -74,14 +75,24 @@ def handler(event, context):
                 database_name = f"{stack_name}-reporting-db"
                 logger.info(f"Using database name from stack name: {database_name}")
         
-        # Get the configuration table name from environment variable and load config
+        # Get the configuration table name from environment variable and load config with pricing
         config_table_name = os.environ.get('CONFIGURATION_TABLE_NAME')
         config = None
         if config_table_name:
             try:
                 logger.info(f"Loading configuration from table: {config_table_name}")
                 config = get_config(table_name=config_table_name, as_model=True)
-                logger.info("Configuration loaded successfully")
+                
+                # Also load pricing separately and attach it to the config
+                config_manager = ConfigurationManager(table_name=config_table_name)
+                pricing_config = config_manager.get_merged_pricing()
+                if pricing_config and hasattr(pricing_config, 'pricing'):
+                    config.pricing = pricing_config.pricing
+                    logger.info(f"Loaded {len(pricing_config.pricing)} pricing entries")
+                else:
+                    logger.warning("No pricing configuration found")
+                
+                logger.info("Configuration and pricing loaded successfully")
             except Exception as e:
                 logger.warning(f"Failed to load configuration from {config_table_name}: {str(e)}")
                 config = None
