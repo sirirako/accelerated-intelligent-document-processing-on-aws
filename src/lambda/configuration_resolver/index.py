@@ -117,6 +117,16 @@ def handler(event, context):
                 },
             },
         }
+    except Exception as e:
+        # Catch all other exceptions to prevent lambda failures
+        logger.error(f"Unexpected error in {operation}: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "error": {
+                "type": "UnexpectedError",
+                "message": f"An unexpected error occurred: {str(e)}",
+            },
+        }
 
 
 def handle_get_configuration(manager):
