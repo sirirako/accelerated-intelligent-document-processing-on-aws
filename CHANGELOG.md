@@ -5,6 +5,20 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Separate Pricing Configuration and Management UI**
+  - Pricing configuration separated from general IDP configuration into dedicated system
+  - New `config_library/pricing.yaml` file with centralized pricing for all AWS services (Textract, Bedrock, BDA, Lambda, SageMaker)
+  - New "Pricing" page in Web UI for managing service pricing with:
+    - Edit pricing for individual APIs and units (e.g., `bedrock/us.amazon.nova-lite-v1:0` → `inputTokens`, `outputTokens`)
+    - Import/Export pricing configurations (JSON/YAML)
+  - Used for cost estimation and reporting across all document processing workflows
+
+### Fixed
+
+- **Restore Default Pricing Button** - Fixed missing AppSync resolver causing null response (requires stack update to deploy)
+
 ## [0.4.9]
 
 ### Added
