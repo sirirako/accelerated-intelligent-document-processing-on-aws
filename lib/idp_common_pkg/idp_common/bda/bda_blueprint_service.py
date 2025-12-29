@@ -37,6 +37,137 @@ class BdaBlueprintService:
 
         return
 
+    def transform_bda_blueprint_to_idp_class_schema(
+        self, blueprint_schema: dict
+    ) -> dict:
+        """
+        Transform BDA blueprint schema to IDP class schema format.
+
+        This is the reverse transformation of _transform_json_schema_to_bedrock_blueprint.
+
+        BDA Blueprint Format (input):
+        - Uses JSON Schema draft-07
+        - Has "definitions" (not "$defs")
+        - References use "#/definitions/"
+        - Leaf properties have "inferenceType" and "instruction" fields
+        - Object/array types do NOT have BDA-specific fields
+
+        IDP Class Schema Format (output):
+        - Uses JSON Schema draft 2020-12
+        - Has "$defs" (not "definitions")
+        - References use "#/$defs/"
+        - Uses "description" instead of "instruction"
+        - No "inferenceType" field
+
+        Args:
+            blueprint_schema: BDA blueprint schema in draft-07 format
+
+        Returns:
+            IDP class schema in draft 2020-12 format
+        """
+        if not isinstance(blueprint_schema, dict):
+            raise ValueError("Blueprint schema must be a dictionary")
+
+        # Create base IDP schema structure
+        idp_schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": blueprint_schema.get("class", "Document"),
+            "x-aws-idp-document-type": blueprint_schema.get("class", "Document"),
+            "type": "object",
+        }
+
+        # Add description if present
+        if "description" in blueprint_schema:
+            idp_schema["description"] = blueprint_schema["description"]
+
+        # Transform definitions to $defs
+        if "definitions" in blueprint_schema:
+            idp_schema["$defs"] = {}
+            for def_name, def_value in blueprint_schema["definitions"].items():
+                idp_schema["$defs"][def_name] = self._transform_bda_definition_to_idp(
+                    def_value
+                )
+
+        # Transform properties
+        if "properties" in blueprint_schema:
+            idp_schema["properties"] = {}
+            for prop_name, prop_value in blueprint_schema["properties"].items():
+                idp_schema["properties"][prop_name] = (
+                    self._transform_bda_property_to_idp(prop_value)
+                )
+
+        return idp_schema
+
+    def _transform_bda_definition_to_idp(self, definition: dict) -> dict:
+        """
+        Transform a BDA definition to IDP format.
+
+        Args:
+            definition: BDA definition schema
+
+        Returns:
+            IDP definition schema
+        """
+        if not isinstance(definition, dict):
+            return definition
+
+        result = deepcopy(definition)
+
+        # Transform properties if present
+        if "properties" in result:
+            transformed_properties = {}
+            for prop_name, prop_value in result["properties"].items():
+                transformed_properties[prop_name] = self._transform_bda_property_to_idp(
+                    prop_value
+                )
+            result["properties"] = transformed_properties
+
+        return result
+
+    def _transform_bda_property_to_idp(self, property_schema: dict) -> dict:
+        """
+        Transform a BDA property to IDP format.
+
+        Args:
+            property_schema: BDA property schema
+
+        Returns:
+            IDP property schema
+        """
+        if not isinstance(property_schema, dict):
+            return property_schema
+
+        result = deepcopy(property_schema)
+
+        # Handle $ref properties - convert definitions to $defs
+        if "$ref" in result:
+            result["$ref"] = result["$ref"].replace("/definitions/", "/$defs/")
+            return result
+
+        # Convert BDA-specific fields to IDP format
+        if "instruction" in result:
+            # Convert instruction to description
+            result["description"] = result.pop("instruction")
+
+        # Remove BDA-specific fields
+        if "inferenceType" in result:
+            result.pop("inferenceType")
+
+        # Handle array items
+        if result.get("type") == "array" and "items" in result:
+            result["items"] = self._transform_bda_property_to_idp(result["items"])
+
+        # Handle object properties
+        if result.get("type") == "object" and "properties" in result:
+            transformed_properties = {}
+            for prop_name, prop_value in result["properties"].items():
+                transformed_properties[prop_name] = self._transform_bda_property_to_idp(
+                    prop_value
+                )
+            result["properties"] = transformed_properties
+
+        return result
+
     def _retrieve_all_blueprints(self, project_arn: str):
         """
         Retrieve all blueprints from the Bedrock Data Automation service.
@@ -387,7 +518,18 @@ class BdaBlueprintService:
 
         # Handle array items (but don't add BDA fields to the array itself)
         if prop_type == TYPE_ARRAY and SCHEMA_ITEMS in result:
-            result[SCHEMA_ITEMS] = self._add_bda_fields_to_schema(result[SCHEMA_ITEMS])
+            # Special handling for $ref items - preserve the $ref structure
+            items = result[SCHEMA_ITEMS]
+            if isinstance(items, dict) and REF_FIELD in items:
+                # For $ref items, just normalize the path and preserve the structure
+                result[SCHEMA_ITEMS] = {
+                    REF_FIELD: self._normalize_ref_path(items[REF_FIELD])
+                }
+            else:
+                # For non-$ref items, process recursively
+                result[SCHEMA_ITEMS] = self._add_bda_fields_to_schema(
+                    result[SCHEMA_ITEMS]
+                )
 
         return result
 
@@ -445,22 +587,67 @@ class BdaBlueprintService:
                 return {"status": "success", "message": "No classes to process"}
 
             # Use getattr to safely access classes attribute
-            classes = getattr(config_item, "classes", None)
-            if not classes:
-                logger.info("No Custom configuration to process")
-                return {"status": "success", "message": "No classes to process"}
-
-            classess = classes
+            classess = getattr(config_item, "classes", None)
 
             if not classess or len(classess) == 0:
                 logger.info("No Custom configuration to process")
                 return {"status": "success", "message": "No classes to process"}
+
+            # At this point, classess is guaranteed to be non-None and non-empty
+            assert classess is not None, "classess should not be None after validation"
 
             classess_status = []
             # retrieve all blueprints for this project.
             existing_blueprints = self._retrieve_all_blueprints(
                 self.dataAutomationProjectArn
             )
+            if not existing_blueprints:
+                existing_blueprints = []
+
+            classess_added = []
+            # check for blueprints which doesn't have an IDP class definition
+            # create class definitions and save
+            for bda_blueprint in existing_blueprints:
+                blueprint_name = bda_blueprint.get("blueprintName", "")
+                docu_class_exists = False
+                for custom_class in classess:
+                    docu_class = custom_class.get(
+                        ID_FIELD, custom_class.get(X_AWS_IDP_DOCUMENT_TYPE, "")
+                    )
+                    if docu_class in blueprint_name:
+                        docu_class_exists = True
+                        break
+                logger.info(
+                    f"Blueprint {blueprint_name} class exists {docu_class_exists}"
+                )
+                if not docu_class_exists:
+                    # docu class doesn't exists
+                    # create IDP doc class from blueprint
+                    blueprint_schema = bda_blueprint["schema"]
+                    if isinstance(blueprint_schema, str):
+                        blueprint_schema = json.loads(blueprint_schema)
+
+                    # Transform BDA blueprint to IDP class schema
+                    idp_class_schema = self.transform_bda_blueprint_to_idp_class_schema(
+                        blueprint_schema
+                    )
+                    docu_class = idp_class_schema.get(
+                        ID_FIELD, custom_class.get(X_AWS_IDP_DOCUMENT_TYPE, "")
+                    )
+                    # Add the new class to the classes list
+                    classess_added.append(idp_class_schema)
+                    blueprint_arn = bda_blueprint.get("blueprintArn", "")
+                    classess_status.append(
+                        {
+                            "class": docu_class,
+                            "blueprint_arn": blueprint_arn,
+                            "status": "success",
+                        }
+                    )
+
+                    logger.info(
+                        f"Created IDP class schema from blueprint {blueprint_name}"
+                    )
 
             blueprints_updated = []
 
@@ -592,6 +779,9 @@ class BdaBlueprintService:
                 existing_blueprints=existing_blueprints,
                 blueprints_updated=blueprints_updated,
             )
+            # add the new class if any
+            if len(classess_added) > 0:
+                classess.extend(classess_added)
             self.config_manager.handle_update_custom_configuration(
                 {"classes": classess}
             )

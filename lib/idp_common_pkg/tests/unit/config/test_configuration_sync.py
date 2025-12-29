@@ -260,7 +260,7 @@ class TestConfigurationManagerSync:
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table_name = "test-config-table"
 
-        dynamodb.create_table(
+        dynamodb.create_table(  # type: ignore[attr-defined]
             TableName=table_name,
             KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
@@ -280,8 +280,7 @@ class TestConfigurationManagerSync:
             new_default = IDPConfig(extraction=ExtractionConfig(temperature=0.5))
 
             with patch.object(manager, "_write_record") as mock_write:
-                with patch.object(manager, "_send_update_notification"):
-                    manager.save_configuration("Default", new_default)
+                manager.save_configuration("Default", new_default)
 
             # Should have written BOTH Default and synced Custom
             assert mock_write.call_count == 2
@@ -301,7 +300,7 @@ class TestConfigurationManagerSync:
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table_name = "test-config-table"
 
-        dynamodb.create_table(
+        dynamodb.create_table(  # type: ignore[attr-defined]
             TableName=table_name,
             KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
             AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
@@ -313,8 +312,7 @@ class TestConfigurationManagerSync:
         custom = IDPConfig(extraction=ExtractionConfig(temperature=0.8))
 
         with patch.object(manager, "_write_record") as mock_write:
-            with patch.object(manager, "_send_update_notification"):
-                manager.save_configuration("Custom", custom)
+            manager.save_configuration("Custom", custom)
 
         # Should have written only once (just Custom, no sync)
         assert mock_write.call_count == 1

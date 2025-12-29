@@ -9,7 +9,6 @@ import os
 from typing import Dict, Any, Optional, Union
 from botocore.exceptions import ClientError
 import logging
-import datetime
 
 from .models import IDPConfig, SchemaConfig, PricingConfig, ConfigurationRecord
 from .merge_utils import deep_update, get_diff_dict
@@ -158,8 +157,7 @@ class ConfigurationManager:
         3. Creates ConfigurationRecord
         4. Serializes to DynamoDB item
         5. Writes to DynamoDB
-        6. Sends notification
-
+        
         Args:
             config_type: Configuration type (Schema, Default, Custom, DefaultPricing, CustomPricing)
             config: SchemaConfig, IDPConfig, PricingConfig model, or dict (dict will be converted to appropriate type)
@@ -208,8 +206,7 @@ class ConfigurationManager:
         # Write to DynamoDB
         self._write_record(record)
 
-        # Send notification
-        self._send_update_notification(config_type, config)
+        
 
     def delete_configuration(self, config_type: str) -> None:
         """
@@ -342,8 +339,7 @@ class ConfigurationManager:
         2. Validates that config is not empty (prevents data loss)
         3. Checks for saveAsDefault flag
         4. Either updates Custom or merges into Default
-        5. Sends notifications
-
+        
         Args:
             custom_config: Configuration as JSON string, dict, or IDPConfig
 
@@ -466,58 +462,3 @@ class ConfigurationManager:
         item = record.to_dynamodb_item()
         self.table.put_item(Item=item)
         logger.info(f"Saved configuration: {record.configuration_type}")
-
-    def _send_update_notification(
-        self, configuration_key: str, configuration_data: Union[SchemaConfig, IDPConfig, PricingConfig]
-    ) -> None:
-        """
-        Send a message to the ConfigurationQueue to notify pattern-specific processors
-        about configuration updates.
-
-        Args:
-            configuration_key: The configuration key that was updated ('Schema', 'Custom', 'Default', or 'Pricing')
-            configuration_data: The updated configuration (SchemaConfig, IDPConfig, or PricingConfig model)
-        """
-        try:
-            configuration_queue_url = os.environ.get("CONFIGURATION_QUEUE_URL")
-            if not configuration_queue_url:
-                logger.debug(
-                    "CONFIGURATION_QUEUE_URL environment variable not set, skipping notification"
-                )
-                return
-
-            sqs = boto3.client("sqs")
-
-            # Create message payload
-            message_body = {
-                "eventType": "CONFIGURATION_UPDATED",
-                "configurationKey": configuration_key,
-                "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                "data": {
-                    "configurationKey": configuration_key,
-                },
-            }
-
-            # Send message to SQS
-            response = sqs.send_message(
-                QueueUrl=configuration_queue_url,
-                MessageBody=json.dumps(message_body),
-                MessageAttributes={
-                    "eventType": {
-                        "StringValue": "CONFIGURATION_UPDATED",
-                        "DataType": "String",
-                    },
-                    "configurationKey": {
-                        "StringValue": configuration_key,
-                        "DataType": "String",
-                    },
-                },
-            )
-
-            logger.info(
-                f"Configuration update message sent to queue. MessageId: {response.get('MessageId')}"
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to send configuration update message: {e}")
-            # Don't fail the entire operation if queue message fails

@@ -22,11 +22,17 @@ import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
 import ReactMarkdown from 'react-markdown';
+import { generateClient } from 'aws-amplify/api';
+import { ConsoleLogger } from 'aws-amplify/utils';
 import useConfiguration from '../../hooks/use-configuration';
 import useConfigurationLibrary from '../../hooks/use-configuration-library';
 import useSettingsContext from '../../contexts/settings';
 import ConfigBuilder from './ConfigBuilder';
 import { deepMerge } from '../../utils/configUtils';
+import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
+
+const client = generateClient();
+const logger = new ConsoleLogger('ConfigurationLayout');
 
 const ConfigurationLayout = () => {
   const {
@@ -71,6 +77,11 @@ const ConfigurationLayout = () => {
   const [readmeContent, setReadmeContent] = useState('');
   const [libraryLoading, setLibraryLoading] = useState(false);
 
+  // BDA/IDP Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncError, setSyncError] = useState(null);
+
   const editorRef = useRef(null);
 
   // Hooks for configuration library
@@ -99,6 +110,9 @@ const ConfigurationLayout = () => {
     const firstClass = config.classes[0];
     return firstClass.attributes && Array.isArray(firstClass.attributes);
   };
+
+  // Helper function to check if Pattern-1 is selected
+  const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -908,6 +922,42 @@ const ConfigurationLayout = () => {
     }
   };
 
+  // Handler for BDA/IDP sync
+  const handleSyncBdaIdp = async () => {
+    setIsSyncing(true);
+    setSyncSuccess(false);
+    setSyncError(null);
+
+    try {
+      logger.debug('Starting BDA/IDP sync...');
+
+      const result = await client.graphql({
+        query: syncBdaIdpMutation,
+      });
+
+      logger.debug('Sync API response:', result);
+
+      const response = result.data.syncBdaIdp;
+
+      if (response.success) {
+        setSyncSuccess(true);
+        // Refresh configuration to show any new classes
+        await fetchConfiguration();
+        setTimeout(() => setSyncSuccess(false), 5000);
+        logger.debug('BDA/IDP sync completed successfully');
+      } else {
+        const errorMsg = response.error?.message || 'Sync operation failed';
+        setSyncError(errorMsg);
+        logger.error('Sync failed:', errorMsg);
+      }
+    } catch (err) {
+      logger.error('Sync error:', err);
+      setSyncError(`Sync failed: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleExport = () => {
     try {
       let content;
@@ -1403,6 +1453,11 @@ const ConfigurationLayout = () => {
                   Import
                 </Button>
                 <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
+                {isPattern1 && (
+                  <Button variant="normal" onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
+                    Sync BDA/IDP
+                  </Button>
+                )}
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)
                 </Button>
@@ -1450,6 +1505,18 @@ const ConfigurationLayout = () => {
           {importError && (
             <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import error">
               {importError}
+            </Alert>
+          )}
+
+          {syncSuccess && (
+            <Alert type="success" dismissible onDismiss={() => setSyncSuccess(false)} header="BDA/IDP sync completed successfully">
+              Document classes have been synchronized with BDA blueprints.
+            </Alert>
+          )}
+
+          {syncError && (
+            <Alert type="error" dismissible onDismiss={() => setSyncError(null)} header="BDA/IDP sync error">
+              {syncError}
             </Alert>
           )}
 
