@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Dict, Any
 
-from idp_common.bda.bda_blueprint_service import BdaBlueprintService
+from idp_common.bda.bda_blueprint_service import BdaBlueprintService  # type: ignore[import-untyped]
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))

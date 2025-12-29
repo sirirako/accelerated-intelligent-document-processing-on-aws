@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-from idp_common.config.configuration_manager import ConfigurationManager
+from idp_common.config.configuration_manager import ConfigurationManager  # type: ignore[import-untyped]
 from pydantic import ValidationError
 import json
 import logging
@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Any, Dict, Union
 
 import boto3
-import cfnresponse
+import cfnresponse  # type: ignore[import-untyped]
 import yaml
 from botocore.exceptions import ClientError
 
