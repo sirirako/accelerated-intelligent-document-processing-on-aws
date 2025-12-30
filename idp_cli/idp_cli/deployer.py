@@ -83,65 +83,26 @@ class StackDeployer:
             else:
                 template_param = {"TemplateBody": template_body}
 
-        # Check if stack exists first (needed for parameter handling)
-        stack_exists = self._stack_exists(stack_name)
-
         # Convert parameters dict to CloudFormation format
-        cfn_parameters = []
+        cfn_parameters = [
+            {"ParameterKey": k, "ParameterValue": v}
+            for k, v in (parameters or {}).items()
+        ]
 
-        if stack_exists:
-            # For updates, get existing parameter keys and use UsePreviousValue for any not provided
-            try:
-                response = self.cfn.describe_stacks(StackName=stack_name)
-                existing_params = response["Stacks"][0].get("Parameters", [])
-                existing_param_keys = {p["ParameterKey"] for p in existing_params}
-
-                logger.debug(f"Existing stack parameters: {existing_param_keys}")
-                logger.debug(f"Provided parameters: {set((parameters or {}).keys())}")
-
-                # Add provided parameters with new values
-                for k, v in (parameters or {}).items():
-                    cfn_parameters.append({"ParameterKey": k, "ParameterValue": v})
-
-                # For existing parameters not provided, use previous value
-                provided_keys = set((parameters or {}).keys())
-                for param_key in existing_param_keys:
-                    if param_key not in provided_keys:
-                        cfn_parameters.append(
-                            {"ParameterKey": param_key, "UsePreviousValue": True}
-                        )
-
-                logger.debug(f"Final CloudFormation parameters: {cfn_parameters}")
-
-            except Exception as e:
-                logger.warning(f"Could not get existing parameters: {e}")
-                # Fallback to just provided parameters
-                cfn_parameters = [
-                    {"ParameterKey": k, "ParameterValue": v}
-                    for k, v in (parameters or {}).items()
-                ]
-        else:
-            # For new stacks, only use provided parameters
-            cfn_parameters = [
-                {"ParameterKey": k, "ParameterValue": v}
-                for k, v in (parameters or {}).items()
-            ]
-            logger.debug(f"New stack - using provided parameters: {cfn_parameters}")
+        # Check if stack exists
+        stack_exists = self._stack_exists(stack_name)
 
         # Prepare common parameters
         common_params = {
             "StackName": stack_name,
             **template_param,
+            "Parameters": cfn_parameters,
             "Capabilities": [
                 "CAPABILITY_IAM",
                 "CAPABILITY_NAMED_IAM",
                 "CAPABILITY_AUTO_EXPAND",
             ],
         }
-
-        # Add Parameters - for updates this includes UsePreviousValue, for creates only provided values
-        if cfn_parameters:
-            common_params["Parameters"] = cfn_parameters
 
         # Add RoleArn if provided
         if role_arn:
