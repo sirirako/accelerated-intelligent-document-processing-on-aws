@@ -246,7 +246,7 @@ const PagesPanel = ({ pages, documentItem }) => {
   // Handle modal save
   const handleModalSave = (pageId, newTextUri, newConfidenceUri) => {
     logger.info(`handleModalSave called: pageId=${pageId}, newTextUri=${newTextUri}, newConfidenceUri=${newConfidenceUri}`);
-    
+
     // Mark page as text modified using functional update
     setModifiedPageIds((prev) => {
       const updated = new Set([...prev, pageId]);
@@ -257,7 +257,7 @@ const PagesPanel = ({ pages, documentItem }) => {
     // Use functional update to ensure we have latest state
     setEditedPages((prevPages) => {
       logger.info(`Current editedPages length: ${prevPages.length}`);
-      
+
       const updatedPages = prevPages.map((page) => {
         if (page.Id === pageId) {
           const updated = {
@@ -271,7 +271,7 @@ const PagesPanel = ({ pages, documentItem }) => {
         }
         return page;
       });
-      
+
       return updatedPages;
     });
 
