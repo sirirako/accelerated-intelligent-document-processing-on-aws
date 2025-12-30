@@ -4,8 +4,12 @@
 import gql from 'graphql-tag';
 
 export default gql`
-  mutation ProcessChanges($objectKey: String!, $modifiedSections: [ModifiedSectionInput!]!) {
-    processChanges(objectKey: $objectKey, modifiedSections: $modifiedSections) {
+  mutation ProcessChanges(
+    $objectKey: String!
+    $modifiedSections: [ModifiedSectionInput!]!
+    $modifiedPages: [ModifiedPageInput!]
+  ) {
+    processChanges(objectKey: $objectKey, modifiedSections: $modifiedSections, modifiedPages: $modifiedPages) {
       success
       message
       processingJobId

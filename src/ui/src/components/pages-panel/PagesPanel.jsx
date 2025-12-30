@@ -245,21 +245,35 @@ const PagesPanel = ({ pages, documentItem }) => {
 
   // Handle modal save
   const handleModalSave = (pageId, newTextUri, newConfidenceUri) => {
-    // Mark page as text modified
-    setModifiedPageIds((prev) => new Set([...prev, pageId]));
-
-    const updatedPages = editedPages.map((page) => {
-      if (page.Id === pageId) {
-        return {
-          ...page,
-          textModified: true,
-          newTextUri: newTextUri || page.TextUri,
-          newConfidenceUri: newConfidenceUri || page.TextConfidenceUri,
-        };
-      }
-      return page;
+    logger.info(`handleModalSave called: pageId=${pageId}, newTextUri=${newTextUri}, newConfidenceUri=${newConfidenceUri}`);
+    
+    // Mark page as text modified using functional update
+    setModifiedPageIds((prev) => {
+      const updated = new Set([...prev, pageId]);
+      logger.info(`Updated modifiedPageIds:`, Array.from(updated));
+      return updated;
     });
-    setEditedPages(updatedPages);
+
+    // Use functional update to ensure we have latest state
+    setEditedPages((prevPages) => {
+      logger.info(`Current editedPages length: ${prevPages.length}`);
+      
+      const updatedPages = prevPages.map((page) => {
+        if (page.Id === pageId) {
+          const updated = {
+            ...page,
+            textModified: true,
+            newTextUri: newTextUri || page.TextUri,
+            newConfidenceUri: newConfidenceUri || page.TextConfidenceUri,
+          };
+          logger.info(`Updated page ${pageId}:`, updated);
+          return updated;
+        }
+        return page;
+      });
+      
+      return updatedPages;
+    });
 
     logger.info(`Page ${pageId} marked as modified`);
   };
@@ -282,20 +296,43 @@ const PagesPanel = ({ pages, documentItem }) => {
 
   // Build modified pages payload
   const buildModifiedPagesPayload = () => {
-    return Array.from(modifiedPageIds)
+    logger.info('Building modified pages payload...');
+    logger.info(`modifiedPageIds (${modifiedPageIds.size} items):`, Array.from(modifiedPageIds));
+    logger.info(`editedPages (${editedPages.length} items):`, editedPages);
+
+    const payload = Array.from(modifiedPageIds)
       .map((pageId) => {
         const page = editedPages.find((p) => p.Id === pageId);
-        if (!page) return null;
+        logger.info(`Looking for page ${pageId}, found:`, page);
 
-        return {
+        if (!page) {
+          logger.warn(`Page ${pageId} not found in editedPages`);
+          return null;
+        }
+
+        const result = {
           pageId: parseInt(pageId, 10),
           textModified: page.textModified || false,
           classReset: page.classReset || false,
           newTextUri: page.newTextUri,
           newConfidenceUri: page.newConfidenceUri,
         };
+
+        logger.info(`Built payload for page ${pageId}:`, result);
+        logger.info(`Will include? textModified=${result.textModified}, classReset=${result.classReset}`);
+
+        return result;
       })
-      .filter((p) => p && (p.textModified || p.classReset));
+      .filter((p) => {
+        const include = p && (p.textModified || p.classReset);
+        if (p && !include) {
+          logger.warn(`Filtering out page ${p.pageId} - no modifications detected`);
+        }
+        return include;
+      });
+
+    logger.info(`Final payload (${payload.length} pages):`, payload);
+    return payload;
   };
 
   // Handle save and process changes
@@ -322,6 +359,12 @@ const PagesPanel = ({ pages, documentItem }) => {
       const modifiedPages = buildModifiedPagesPayload();
 
       logger.info(`Processing ${modifiedPages.length} modified pages`);
+      logger.info('Modified pages payload:', JSON.stringify(modifiedPages));
+
+      // Validate that we have changes to process
+      if (!modifiedPages || modifiedPages.length === 0) {
+        throw new Error('No valid page modifications to process');
+      }
 
       const result = await client.graphql({
         query: processChanges,
