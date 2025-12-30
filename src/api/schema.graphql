@@ -95,6 +95,7 @@ type SyncBdaIdpResponse @aws_cognito_user_pools @aws_iam {
   success: Boolean!
   message: String
   processedClasses: [String]
+  error: ConfigurationError
 }
 
 type PricingResponse @aws_cognito_user_pools @aws_iam {

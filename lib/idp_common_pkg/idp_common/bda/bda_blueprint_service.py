@@ -51,6 +51,7 @@ class BdaBlueprintService:
         - References use "#/definitions/"
         - Leaf properties have "inferenceType" and "instruction" fields
         - Object/array types do NOT have BDA-specific fields
+        - Array properties MUST have "instruction" field
 
         IDP Class Schema Format (output):
         - Uses JSON Schema draft 2020-12
@@ -64,39 +65,89 @@ class BdaBlueprintService:
 
         Returns:
             IDP class schema in draft 2020-12 format
+
+        Raises:
+            ValueError: If blueprint schema is invalid or array properties missing instruction
         """
         if not isinstance(blueprint_schema, dict):
             raise ValueError("Blueprint schema must be a dictionary")
 
+        # Work on a copy to avoid mutating the input
+        schema_copy = deepcopy(blueprint_schema)
+
+        # Validate that array properties have instruction field
+        self._validate_bda_array_instruction_requirements(schema_copy)
+
         # Create base IDP schema structure
         idp_schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": blueprint_schema.get("class", "Document"),
-            "x-aws-idp-document-type": blueprint_schema.get("class", "Document"),
+            "$id": schema_copy.get("class", "Document"),
+            "x-aws-idp-document-type": schema_copy.get("class", "Document"),
             "type": "object",
         }
 
         # Add description if present
-        if "description" in blueprint_schema:
-            idp_schema["description"] = blueprint_schema["description"]
+        if "description" in schema_copy:
+            idp_schema["description"] = schema_copy["description"]
 
         # Transform definitions to $defs
-        if "definitions" in blueprint_schema:
+        if "definitions" in schema_copy:
             idp_schema["$defs"] = {}
-            for def_name, def_value in blueprint_schema["definitions"].items():
+            for def_name, def_value in schema_copy["definitions"].items():
                 idp_schema["$defs"][def_name] = self._transform_bda_definition_to_idp(
                     def_value
                 )
 
         # Transform properties
-        if "properties" in blueprint_schema:
+        if "properties" in schema_copy:
             idp_schema["properties"] = {}
-            for prop_name, prop_value in blueprint_schema["properties"].items():
+            for prop_name, prop_value in schema_copy["properties"].items():
                 idp_schema["properties"][prop_name] = (
                     self._transform_bda_property_to_idp(prop_value)
                 )
 
         return idp_schema
+
+    def _validate_bda_array_instruction_requirements(
+        self, blueprint_schema: dict
+    ) -> None:
+        """
+        Validate that all array properties in BDA blueprint have the required 'instruction' field.
+
+        Args:
+            blueprint_schema: BDA blueprint schema to validate (works in-place on the copy)
+
+        Raises:
+            ValueError: If any array property is missing the 'instruction' field
+        """
+
+        def validate_properties(properties: dict, path: str = ""):
+            """Recursively validate properties for array instruction requirements."""
+            for prop_name, prop_value in properties.items():
+                current_path = f"{path}.{prop_name}" if path else prop_name
+
+                if not isinstance(prop_value, dict):
+                    continue
+
+                # Check if this is an array property
+                if prop_value.get("type") == "array":
+                    # Array properties must have instruction field
+                    if "instruction" not in prop_value:
+                        prop_value["instruction"] = "-"  # default it
+
+                # Recursively check nested object properties
+                if prop_value.get("type") == "object" and "properties" in prop_value:
+                    validate_properties(prop_value["properties"], current_path)
+
+        # Validate main properties
+        if "properties" in blueprint_schema:
+            validate_properties(blueprint_schema["properties"])
+
+        # Validate definitions properties
+        definitions = blueprint_schema.get("definitions", {})
+        for def_name, def_value in definitions.items():
+            if isinstance(def_value, dict) and "properties" in def_value:
+                validate_properties(def_value["properties"], f"definitions.{def_name}")
 
     def _transform_bda_definition_to_idp(self, definition: dict) -> dict:
         """
@@ -233,17 +284,27 @@ class BdaBlueprintService:
         - References use "#/definitions/" (not "#/$defs/")
         - Only LEAF properties get "inferenceType" and "instruction"
         - Object/array types do NOT get these fields
+        - Array properties MUST have "instruction" field
 
         Args:
             json_schema: JSON Schema from configuration
 
         Returns:
             Blueprint schema in BDA-compatible draft-07 format
-        """
-        blueprint = self._create_base_blueprint_structure(json_schema)
 
-        defs = json_schema.get(DEFS_FIELD, {})
-        properties = json_schema.get(SCHEMA_PROPERTIES, {})
+        Raises:
+            ValueError: If array properties are missing required instruction field
+        """
+        # Work on a deep copy to avoid mutating the input
+        schema_copy = deepcopy(json_schema)
+
+        # Validate array properties have instruction field
+        self._validate_array_instruction_requirements(schema_copy)
+
+        blueprint = self._create_base_blueprint_structure(schema_copy)
+
+        defs = schema_copy.get(DEFS_FIELD, {})
+        properties = schema_copy.get(SCHEMA_PROPERTIES, {})
 
         if defs:
             blueprint.update(self._process_schema_with_defs(defs, properties))
@@ -251,6 +312,56 @@ class BdaBlueprintService:
             blueprint.update(self._process_flat_schema(properties))
 
         return blueprint
+
+    def _validate_array_instruction_requirements(self, json_schema: dict) -> None:
+        """
+        Ensure that all array properties have the required 'instruction' field.
+        If not present, this will default it to "-" during transformation.
+
+        BDA requires all array properties to have an 'instruction' field for proper
+        blueprint creation. This method ensures compliance by defaulting missing instructions.
+
+        Args:
+            json_schema: JSON Schema to validate and update (works in-place on the copy)
+
+        Note: This method works in-place on the provided schema (which should be a copy).
+        """
+
+        def add_missing_instructions(properties: dict, path: str = ""):
+            """Recursively add missing instruction fields to array properties."""
+            for prop_name, prop_value in properties.items():
+                current_path = f"{path}.{prop_name}" if path else prop_name
+
+                if not isinstance(prop_value, dict):
+                    continue
+
+                # Check if this is an array property
+                if prop_value.get("type") == "array":
+                    # Array properties must have instruction field - default to "-" if missing
+                    if (
+                        "instruction" not in prop_value
+                        and "description" not in prop_value
+                    ):
+                        prop_value["instruction"] = "-"
+                    elif (
+                        "description" in prop_value and "instruction" not in prop_value
+                    ):
+                        # Use description as instruction if available
+                        prop_value["instruction"] = prop_value["description"]
+
+                # Recursively check nested object properties
+                if prop_value.get("type") == "object" and "properties" in prop_value:
+                    add_missing_instructions(prop_value["properties"], current_path)
+
+        # Add missing instructions to main properties
+        if "properties" in json_schema:
+            add_missing_instructions(json_schema["properties"])
+
+        # Add missing instructions to $defs properties
+        defs = json_schema.get("$defs", {})
+        for def_name, def_value in defs.items():
+            if isinstance(def_value, dict) and "properties" in def_value:
+                add_missing_instructions(def_value["properties"], f"$defs.{def_name}")
 
     def _create_base_blueprint_structure(self, json_schema: dict) -> dict:
         """Create the base blueprint structure."""
@@ -346,7 +457,17 @@ class BdaBlueprintService:
         return result
 
     def _process_object_properties(self, properties: dict) -> dict:
-        """Process object properties, adding BDA fields to leaf properties only."""
+        """
+        Process object properties, adding BDA fields to leaf properties only.
+
+        BDA Limitations (as of current version):
+        - Nested objects are not supported
+        - Nested arrays (arrays within object definitions) are not supported
+
+        TODO: When BDA supports nested structures, re-enable processing of:
+        - TYPE_OBJECT properties with nested properties
+        - TYPE_ARRAY properties within object definitions
+        """
         processed_properties = {}
 
         for name, value in properties.items():
@@ -355,10 +476,22 @@ class BdaBlueprintService:
                 continue
 
             # Skip nested objects - BDA doesn't support them
+            # TODO: Re-enable when BDA supports nested objects
             if value.get(SCHEMA_TYPE) == TYPE_OBJECT:
+                logger.info(
+                    f"Skipping nested object property '{name}' - not supported by BDA"
+                )
                 continue
 
-            # Process leaf property
+            # Skip nested arrays - BDA doesn't support arrays within object definitions
+            # TODO: Re-enable when BDA supports nested arrays within objects
+            if value.get(SCHEMA_TYPE) == TYPE_ARRAY:
+                logger.info(
+                    f"Skipping nested array property '{name}' - not supported by BDA"
+                )
+                continue
+
+            # Process leaf property (non-array, non-object)
             processed_properties[name] = self._add_bda_fields_to_leaf_property(
                 value, value.get(SCHEMA_DESCRIPTION)
             )
@@ -374,17 +507,40 @@ class BdaBlueprintService:
                 SCHEMA_TYPE: TYPE_ARRAY,
                 SCHEMA_ITEMS: {REF_FIELD: items[REF_FIELD]},
             }
-            if SCHEMA_DESCRIPTION in prop_value:
+            # Ensure instruction field is present
+            if "instruction" in prop_value:
+                array_property["instruction"] = prop_value["instruction"]
+            elif SCHEMA_DESCRIPTION in prop_value:
                 array_property["instruction"] = prop_value[SCHEMA_DESCRIPTION]
+            else:
+                # Default instruction to "-" if not present
+                array_property["instruction"] = "-"
             return array_property
         else:
-            # Array with simple items
-            return self._add_bda_fields_to_schema(prop_value)
+            # Array with simple items - ensure instruction field is added but NO inferenceType
+            result = self._add_bda_fields_to_schema(prop_value)
+            # Ensure array has instruction field but remove inferenceType if present
+            if result.get(SCHEMA_TYPE) == TYPE_ARRAY:
+                if "instruction" not in result:
+                    if SCHEMA_DESCRIPTION in prop_value:
+                        result["instruction"] = prop_value[SCHEMA_DESCRIPTION]
+                    else:
+                        result["instruction"] = "-"
+                # Arrays should not have inferenceType
+                result.pop("inferenceType", None)
+            return result
 
     def _process_array_property(
         self, prop_name: str, prop_value: dict, extracted_definitions: dict
     ) -> dict:
-        """Process array properties, extracting complex item types to definitions."""
+        """
+        Process array properties, extracting complex item types to definitions.
+
+        BDA Limitations (as of current version):
+        - Arrays with complex nested object items are not supported if those objects contain nested structures
+
+        TODO: When BDA supports nested structures, re-enable processing of complex nested array items.
+        """
         items = prop_value.get(SCHEMA_ITEMS, {})
 
         if (
@@ -392,7 +548,20 @@ class BdaBlueprintService:
             and items.get(SCHEMA_TYPE) == TYPE_OBJECT
             and SCHEMA_PROPERTIES in items
         ):
-            # Array of complex objects - extract to definition
+            # Check if the array item object has nested complex structures
+            if self._has_nested_complex_structures(items[SCHEMA_PROPERTIES]):
+                # Skip arrays with complex nested item structures
+                logger.info(
+                    f"Skipping array property '{prop_name}' with complex nested item structures - not supported by BDA"
+                )
+                # Return a simple array property with instruction but no items processing
+                result = {
+                    SCHEMA_TYPE: TYPE_ARRAY,
+                    "instruction": prop_value.get(SCHEMA_DESCRIPTION, "-"),
+                }
+                return result
+
+            # Array of simple objects - extract to definition
             item_def_name = f"{prop_name}Item"
 
             item_definition = {
@@ -413,17 +582,36 @@ class BdaBlueprintService:
                 SCHEMA_ITEMS: {REF_FIELD: f"#/definitions/{item_def_name}"},
             }
 
-            if SCHEMA_DESCRIPTION in prop_value:
+            # Ensure instruction field is present
+            if "instruction" in prop_value:
+                array_property["instruction"] = prop_value["instruction"]
+            elif SCHEMA_DESCRIPTION in prop_value:
                 array_property["instruction"] = prop_value[SCHEMA_DESCRIPTION]
+            else:
+                # Default instruction to "-" if not present
+                array_property["instruction"] = "-"
 
             return array_property
         else:
-            # Array of simple items
-            return prop_value
+            # Array of simple items - ensure instruction field is added
+            result = deepcopy(prop_value)
+            if result.get(SCHEMA_TYPE) == TYPE_ARRAY and "instruction" not in result:
+                if SCHEMA_DESCRIPTION in result:
+                    result["instruction"] = result[SCHEMA_DESCRIPTION]
+                else:
+                    result["instruction"] = "-"
+            return result
 
     def _extract_complex_objects(self, properties: dict) -> tuple[dict, dict]:
         """
         Extract complex objects from flat nested schema properties.
+
+        BDA Limitations (as of current version):
+        - Nested objects within objects are not supported
+        - Nested arrays within objects are not supported
+
+        This method will skip complex nested structures that BDA cannot handle.
+        TODO: When BDA supports nested structures, re-enable extraction of complex nested objects.
 
         Args:
             properties: Properties dict from flat nested schema
@@ -444,7 +632,19 @@ class BdaBlueprintService:
             prop_type = prop_value.get(SCHEMA_TYPE, "string")
 
             if prop_type == TYPE_OBJECT and SCHEMA_PROPERTIES in prop_value:
-                # This is a complex object - extract to definitions
+                # Check if this object has nested complex structures
+                has_nested_complex = self._has_nested_complex_structures(
+                    prop_value[SCHEMA_PROPERTIES]
+                )
+
+                if has_nested_complex:
+                    # Skip objects with nested complex structures - BDA doesn't support them
+                    logger.info(
+                        f"Skipping complex object property '{prop_name}' with nested structures - not supported by BDA"
+                    )
+                    continue
+
+                # This is a simple object - extract to definitions
                 definition_name = prop_name
 
                 # Create the definition for this object
@@ -469,6 +669,20 @@ class BdaBlueprintService:
                 }
 
             elif prop_type == TYPE_ARRAY and SCHEMA_ITEMS in prop_value:
+                # Check if array items are complex objects with nested structures
+                items = prop_value.get(SCHEMA_ITEMS, {})
+                if (
+                    isinstance(items, dict)
+                    and items.get(SCHEMA_TYPE) == TYPE_OBJECT
+                    and SCHEMA_PROPERTIES in items
+                    and self._has_nested_complex_structures(items[SCHEMA_PROPERTIES])
+                ):
+                    # Skip arrays with complex nested item structures
+                    logger.info(
+                        f"Skipping array property '{prop_name}' with complex nested item structures - not supported by BDA"
+                    )
+                    continue
+
                 # Handle arrays using the dedicated array processor
                 simple_properties[prop_name] = self._process_array_property(
                     prop_name, prop_value, extracted_definitions
@@ -479,13 +693,47 @@ class BdaBlueprintService:
 
         return simple_properties, extracted_definitions
 
+    def _has_nested_complex_structures(self, properties: dict) -> bool:
+        """
+        Check if properties contain nested complex structures (objects or arrays).
+
+        BDA doesn't support:
+        - Objects within objects
+        - Arrays within objects
+
+        Args:
+            properties: Properties dict to check
+
+        Returns:
+            bool: True if nested complex structures are found
+        """
+        for prop_name, prop_value in properties.items():
+            if not isinstance(prop_value, dict):
+                continue
+
+            prop_type = prop_value.get(SCHEMA_TYPE, "string")
+
+            # Check for nested objects
+            if prop_type == TYPE_OBJECT:
+                logger.debug(f"Found nested object property '{prop_name}'")
+                return True
+
+            # Check for nested arrays
+            if prop_type == TYPE_ARRAY:
+                logger.debug(f"Found nested array property '{prop_name}'")
+                return True
+
+        return False
+
     def _add_bda_fields_to_schema(self, schema: dict) -> dict:
         """
         Add BDA fields (inferenceType, instruction) ONLY to leaf properties.
+        Ensure array properties have instruction field but NOT inferenceType.
 
         Critical BDA requirements (based on working schemas):
         - Pure $ref properties: ONLY the $ref field (when inside definitions)
-        - Object/array types: ONLY type and properties (NO description, inferenceType, instruction)
+        - Object/array types: ONLY type and properties (NO description, inferenceType)
+        - Array types: MUST have instruction field but NO inferenceType
         - Leaf types: type, inferenceType, instruction (NO description)
 
         Args:
@@ -530,6 +778,16 @@ class BdaBlueprintService:
                 result[SCHEMA_ITEMS] = self._add_bda_fields_to_schema(
                     result[SCHEMA_ITEMS]
                 )
+
+            # Ensure array has instruction field but NO inferenceType
+            if "instruction" not in result:
+                if original_description:
+                    result["instruction"] = original_description
+                else:
+                    result["instruction"] = "-"
+
+            # Remove inferenceType if it was added (arrays should not have it)
+            result.pop("inferenceType", None)
 
         return result
 
