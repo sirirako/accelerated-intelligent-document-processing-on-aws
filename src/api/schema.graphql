@@ -241,6 +241,14 @@ input ModifiedSectionInput {
   isDeleted: Boolean
 }
 
+input ModifiedPageInput {
+  pageId: Int!
+  textModified: Boolean!
+  classReset: Boolean!
+  newTextUri: String
+  newConfidenceUri: String
+}
+
 type FileContentsResponse @aws_cognito_user_pools @aws_iam {
   content: String!
   contentType: String!
@@ -456,6 +464,7 @@ type Mutation {
   processChanges(
     objectKey: String!
     modifiedSections: [ModifiedSectionInput!]!
+    modifiedPages: [ModifiedPageInput!]
   ): ProcessChangesResponse! @aws_cognito_user_pools
   updateAgentJobStatus(
     jobId: ID!

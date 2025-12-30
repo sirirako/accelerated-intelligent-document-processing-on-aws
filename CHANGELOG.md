@@ -15,6 +15,13 @@ SPDX-License-Identifier: MIT-0
     - Import/Export pricing configurations (JSON/YAML)
   - Used for cost estimation and reporting across all document processing workflows
 
+- **Enhanced Document Pages Editor for Pattern-2 and Pattern-3**
+  - Replaced confusing "View/Edit Data" button with intuitive "View Page Text" and "Edit Pages" workflow mirroring the Document Sections panel pattern
+  - New modal editor with split-pane layout displaying plain text (left) and live markdown preview (right) - no more raw JSON visible to users
+  - Added ability to reset page classifications to force reclassification and edit page text content with immediate S3 saves to prevent data loss
+  - Implemented "Save & Process Changes" workflow for selective reprocessing - class resets trigger section removal and reclassification, text modifications trigger re-extraction while preserving sections
+  - Resolves #164 
+
 ### Fixed
 
 

@@ -547,7 +547,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       </Container>
       <DocumentViewers objectKey={item.objectKey} evaluationReportUri={item.evaluationReportUri} summaryReportUri={item.summaryReportUri} />
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
-      <PagesPanel pages={item.pages} />
+      <PagesPanel pages={item.pages} documentItem={item} />
       <ChatPanel objectKey={item.objectKey} />
 
       {/* Step Function Flow Viewer */}
