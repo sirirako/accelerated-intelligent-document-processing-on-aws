@@ -32,7 +32,8 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 "error": {
                     "type": "CONFIGURATION_ERROR",
                     "message": "BDA project ARN not configured"
-                }
+                },
+                "processedClasses": []
             }
         
         logger.info(f"Using BDA project ARN: {bda_project_arn}")
@@ -46,34 +47,50 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         logger.info(f"BDA Service results: {result}")
         
         # Extract processed class names for response
-        processed_classes = []
         sync_failed_classes = []
         sync_succeeded_classes = []
-        success = True
+        
         if isinstance(result, list):
             for item in result: 
                 if item.get('status') == 'success':
                     sync_succeeded_classes.append(item.get('class'))
                 else:
-                    sync_failed_classes.append(f"Sync failed for {item.get('class')} with error: {item.get('error_message')}")
-                    success = False
-                
-            
+                    class_name = item.get('class', 'Unknown')
+                    error_msg = item.get('error_message', 'Unknown error')
+                    sync_failed_classes.append(class_name)
         
-        logger.info(f"BDA/IDP sync completed successfully. Processed {len(sync_succeeded_classes)} classes")
-        logger.info(f"BDA/IDP sync failed. Processed {len(sync_failed_classes)} classes")
-        if len(sync_failed_classes) > 0:
+        logger.info(f"BDA/IDP sync completed. Succeeded: {len(sync_succeeded_classes)}, Failed: {len(sync_failed_classes)}")
+        
+        # Handle different scenarios
+        if len(sync_succeeded_classes) == 0 and len(sync_failed_classes) > 0:
+            # Complete failure
             return {
-                    "success": False,
-                    "message": f"Synchronization failed for {len(sync_failed_classes)} document classes.",
-                    "errorMessages" : sync_failed_classes
+                "success": False,
+                "message": f"Synchronization failed for all {len(sync_failed_classes)} document classes.",
+                "processedClasses": [],
+                "error": {
+                    "type": "SYNC_ERROR", 
+                    "message": f"Failed to sync classes: {', '.join(sync_failed_classes)}"
                 }
-
-        
-        return {
-            "success": success,
-            "message": f"Successfully synchronized {len(processed_classes)} document classes with BDA blueprints"
-        }
+            }
+        elif len(sync_failed_classes) > 0:
+            # Partial failure
+            return {
+                "success": True,  # Partial success
+                "message": f"Successfully synchronized {len(sync_succeeded_classes)} document classes. Failed to sync {len(sync_failed_classes)} classes: {', '.join(sync_failed_classes)}",
+                "processedClasses": sync_succeeded_classes,
+                "error": {
+                    "type": "PARTIAL_SYNC_ERROR",
+                    "message": f"Failed to sync classes: {', '.join(sync_failed_classes)}"
+                }
+            }
+        else:
+            # Complete success
+            return {
+                "success": True,
+                "message": f"Successfully synchronized {len(sync_succeeded_classes)} document classes with BDA blueprints",
+                "processedClasses": sync_succeeded_classes
+            }
         
     except Exception as e:
         logger.error(f"BDA/IDP sync failed: {str(e)}", exc_info=True)
@@ -82,5 +99,6 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             "error": {
                 "type": "SYNC_ERROR", 
                 "message": f"Sync operation failed: {str(e)}"
-            }
+            },
+            "processedClasses": []
         }

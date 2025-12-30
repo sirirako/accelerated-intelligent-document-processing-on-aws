@@ -80,6 +80,7 @@ const ConfigurationLayout = () => {
   // BDA/IDP Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [syncError, setSyncError] = useState(null);
 
   const editorRef = useRef(null);
@@ -926,6 +927,7 @@ const ConfigurationLayout = () => {
   const handleSyncBdaIdp = async () => {
     setIsSyncing(true);
     setSyncSuccess(false);
+    setSyncSuccessMessage('');
     setSyncError(null);
 
     try {
@@ -941,12 +943,25 @@ const ConfigurationLayout = () => {
 
       if (response.success) {
         setSyncSuccess(true);
+        setSyncSuccessMessage(response.message || 'Document classes have been synchronized with BDA blueprints.');
+
+        // If there are partial failures, also show the error details
+        if (response.error && response.error.type === 'PARTIAL_SYNC_ERROR') {
+          // Show both success and error for partial failures
+          setTimeout(() => {
+            setSyncError(response.error.message);
+          }, 100); // Small delay to show success first
+        }
+
         // Refresh configuration to show any new classes
         await fetchConfiguration();
-        setTimeout(() => setSyncSuccess(false), 5000);
+        setTimeout(() => {
+          setSyncSuccess(false);
+          setSyncSuccessMessage('');
+        }, 5000);
         logger.debug('BDA/IDP sync completed successfully');
       } else {
-        const errorMsg = response.error?.message || 'Sync operation failed';
+        const errorMsg = response.error?.message || response.message || 'Sync operation failed';
         setSyncError(errorMsg);
         logger.error('Sync failed:', errorMsg);
       }
@@ -1509,14 +1524,40 @@ const ConfigurationLayout = () => {
           )}
 
           {syncSuccess && (
-            <Alert type="success" dismissible onDismiss={() => setSyncSuccess(false)} header="BDA/IDP sync completed successfully">
-              Document classes have been synchronized with BDA blueprints.
+            <Alert
+              type="success"
+              dismissible
+              onDismiss={() => {
+                setSyncSuccess(false);
+                setSyncSuccessMessage('');
+              }}
+              header="BDA/IDP sync completed successfully"
+            >
+              {syncSuccessMessage}
             </Alert>
           )}
 
           {syncError && (
             <Alert type="error" dismissible onDismiss={() => setSyncError(null)} header="BDA/IDP sync error">
-              {syncError}
+              <SpaceBetween size="s">
+                {syncError.includes('Failed to sync classes:') ? (
+                  <div>
+                    <div>The following document classes failed to synchronize:</div>
+                    <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                      {syncError
+                        .replace('Failed to sync classes: ', '')
+                        .split(', ')
+                        .map((classError) => (
+                          <li key={`sync-error-${classError.replace(/[^a-zA-Z0-9]/g, '-')}`} style={{ marginBottom: '4px' }}>
+                            {classError}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div>{syncError}</div>
+                )}
+              </SpaceBetween>
             </Alert>
           )}
 

@@ -292,6 +292,137 @@ class TestTransformBdaToIdp:
         assert "inferenceType" not in field
         assert "instruction" not in field
 
+    def test_validate_array_instruction_requirements(self, service):
+        """Test that array properties get default instruction field when missing."""
+        # Test IDP schema with array missing instruction - this should now default to "-"
+        idp_schema_missing_array_instruction = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "TestDoc",
+            "type": "object",
+            "$defs": {
+                "Item": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Item name"}
+                    },
+                }
+            },
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/Item"},
+                    # Missing "instruction" or "description" field - this should get defaulted to "-"
+                }
+            },
+        }
+
+        # This should now work and default the instruction to "-"
+        result = service._transform_json_schema_to_bedrock_blueprint(
+            idp_schema_missing_array_instruction
+        )
+
+        # Verify array instruction is defaulted to "-"
+        assert "instruction" in result["properties"]["items"]
+        assert result["properties"]["items"]["instruction"] == "-"
+
+    def test_validate_all_properties_have_instruction(self, service):
+        """Test that all properties (including arrays) must have instruction field."""
+        # Test IDP schema with valid array instruction
+        idp_schema_with_valid_array = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "TestDoc",
+            "type": "object",
+            "$defs": {
+                "Item": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Item name"}
+                    },
+                }
+            },
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "List of items",  # Required instruction field (as description in IDP)
+                    "items": {"$ref": "#/$defs/Item"},
+                },
+                "title": {"type": "string", "description": "Document title"},
+            },
+        }
+
+        # This should work without errors
+        result = service._transform_json_schema_to_bedrock_blueprint(
+            idp_schema_with_valid_array
+        )
+
+        # Debug: print the result to see the structure
+        import json
+
+        print("Result:", json.dumps(result, indent=2))
+
+        # Verify array instruction is preserved in BDA format
+        assert "instruction" in result["properties"]["items"]
+        assert result["properties"]["items"]["instruction"] == "List of items"
+
+    def test_validate_nested_array_instruction_requirements(self, service):
+        """Test that nested array properties in definitions are skipped due to BDA limitations."""
+        idp_schema_with_nested_array = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "TestDoc",
+            "type": "object",
+            "$defs": {
+                "Employee": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Employee name"},
+                        "shifts": {
+                            "type": "array",
+                            "description": "Weekly shifts",  # Nested array - should be skipped
+                            "items": {"type": "string"},
+                        },
+                        "tasks": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            # Nested array - should be skipped
+                        },
+                    },
+                }
+            },
+            "properties": {
+                "employees": {
+                    "type": "array",
+                    "description": "List of employees",  # Top-level array - should be processed
+                    "items": {"$ref": "#/$defs/Employee"},
+                },
+                "departments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    # Top-level array - should default to "-"
+                },
+            },
+        }
+
+        # This should work without errors and skip nested arrays
+        result = service._transform_json_schema_to_bedrock_blueprint(
+            idp_schema_with_nested_array
+        )
+
+        # Verify top-level array instructions are handled correctly
+        assert result["properties"]["employees"]["instruction"] == "List of employees"
+        assert result["properties"]["departments"]["instruction"] == "-"  # Defaulted
+
+        # Verify nested arrays are skipped due to BDA limitations
+        employee_def = result["definitions"]["Employee"]
+        assert (
+            "shifts" not in employee_def["properties"]
+        )  # Skipped due to BDA limitations
+        assert (
+            "tasks" not in employee_def["properties"]
+        )  # Skipped due to BDA limitations
+
+        # Verify leaf properties are still processed
+        assert employee_def["properties"]["name"]["instruction"] == "Employee name"
+
 
 @pytest.mark.unit
 class TestPayslipTransformation:

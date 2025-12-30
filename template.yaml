@@ -7044,7 +7044,6 @@ Resources:
           !Ref PermissionsBoundaryArn,
           !Ref AWS::NoValue,
         ]
-      FunctionName: !Sub "${AWS::StackName}-SyncBdaIdpResolver"
       Handler: index.handler
       Runtime: python3.12
       CodeUri: ./src/lambda/sync_bda_idp_resolver
@@ -7108,7 +7107,6 @@ Resources:
     Type: AWS::Logs::LogGroup
     Condition: IsPattern1
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-SyncBdaIdpResolver"
       RetentionInDays: !Ref LogRetentionDays
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
 
