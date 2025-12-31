@@ -1239,6 +1239,12 @@ def discovery_with_fallback(discovery_service, document_key, ground_truth_key=No
 
 The BdaIDP Sync feature provides bidirectional synchronization between BDA (Bedrock Data Automation) blueprints and IDP (Intelligent Document Processing) custom classes. This feature enables seamless integration between BDA's blueprint management system and IDP's document class configuration.
 
+
+
+https://github.com/user-attachments/assets/6016614d-e582-4956-8c39-c189a52f63c6
+
+
+
 ### How BdaIDP Sync Works
 
 The sync feature operates through the `sync_bda_idp_resolver` Lambda function, which orchestrates the synchronization process:
