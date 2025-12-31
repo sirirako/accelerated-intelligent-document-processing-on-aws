@@ -76,6 +76,15 @@ class GovCloudTemplateGenerator:
             'UpdateConfigurationResolver',
             'ListConfigurationLibraryResolver',
             'GetConfigurationLibraryFileResolver',
+            # Pricing-related AppSync resources (new)
+            'GetPricingResolver',
+            'UpdatePricingResolver',
+            'RestoreDefaultPricingResolver',
+            # BDA/IDP Sync AppSync resources (Pattern 1 specific)
+            'SyncBdaIdpDataSource',
+            'SyncBdaIdpResolver',
+            'SyncBdaIdpResolverFunction',
+            'SyncBdaIdpResolverFunctionLogGroup',
             'CopyToBaselineResolverFunction',
             'CopyToBaselineResolverFunctionLogGroup',
             'CopyToBaselineDataSource',
