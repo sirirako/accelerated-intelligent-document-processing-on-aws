@@ -5,7 +5,29 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.9]
+
 ### Added
+
+- **Enhanced Evaluation Reports with Granular Field Comparison Details (sticker-eval v0.1.4)**
+  - Integrated sticker-eval v0.1.4's fine-grain field comparison feature providing detailed nested object match information alongside aggregate scores
+  - **Nested Field Details**: For complex attributes (objects, arrays), reports now show individual field-by-field comparisons in addition to aggregate rollup scores
+  - **Interactive Report Controls**: 
+    - 🔍 "Show Only Unmatched" button to filter and display only problematic fields for focused debugging
+    - ➕➖ Expand/Collapse All buttons to control nested detail visibility across the entire report
+    - Expandable `<details>` sections for each attribute with nested comparisons
+  - **Visual Enhancements**: Aggregate scores clearly marked with blue styling and "(aggregate)" annotation, color-coded rows (green for matched, red for unmatched), HTML tables with field paths and comparison results
+  - **JSON Report Structure**: Full `field_comparison_details` array preserved in JSON output for programmatic analysis and consumption by analytics tools
+  - **Benefits**: Quickly identify which specific nested fields cause aggregate score drops, compact problem view focusing on unmatched rows, complete diagnostic context with both high-level and granular perspectives
+
+- **BDA / IDP Sync Feature for Pattern-1 Blueprint Synchronization**
+  - Added bidirectional synchronization between BDA (Bedrock Data Automation) blueprints and IDP custom document classes
+  - **Key Capabilities**: Automatic blueprint creation from IDP classes, automatic IDP class creation from BDA blueprints, intelligent change detection using DeepDiff, automatic cleanup of orphaned blueprints
+  - **Sync Process**: Discovery configurations automatically trigger blueprint updates in BDA projects via `sync_bda_idp_resolver` Lambda function
+  - **Schema Transformation**: Converts between IDP JSON Schema (draft 2020-12) and BDA blueprint format (draft-07) while preserving semantic meaning
+  - **Important Limitations**: AWS managed blueprints excluded from sync, nested objects within objects not supported by BDA, nested arrays within object definitions not supported
+  - **Best Practices**: Use flattened schema structures, place arrays only at top-level, validate schema structure before sync, monitor sync results for partial failures
+  - **Use Cases**: Maintain consistency between IDP configuration and BDA blueprints, automatically propagate configuration changes, streamline document class management across both systems
 
 - **Separate Pricing Configuration and Management UI**
   - Pricing configuration separated from general IDP configuration into dedicated system
@@ -22,9 +44,10 @@ SPDX-License-Identifier: MIT-0
   - Implemented "Save & Process Changes" workflow for selective reprocessing - class resets trigger section removal and reclassification, text modifications trigger re-extraction while preserving sections
   - Resolves #164 
 
-### Fixed
-
-
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.10.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.10.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.10.yaml`
 
 ## [0.4.9]
 
