@@ -62,6 +62,14 @@ This dual approach ensures discovery insights can be leveraged across different 
   - [Schema Definition](#schema-definition)
   - [Default Configuration](#default-configuration)
   - [Customization Options](#customization-options)
+- [BdaIDP Sync Feature](#bdaidp-sync-feature)
+  - [How BdaIDP Sync Works](#how-bdaidp-sync-works)
+  - [Sync Process Flow](#sync-process-flow)
+  - [Key Features](#key-features-1)
+  - [Limitations and Constraints](#limitations-and-constraints)
+  - [Best Practices for Sync Success](#best-practices-for-sync-success)
+  - [Troubleshooting Sync Issues](#troubleshooting-sync-issues)
+  - [Schema Design Recommendations](#schema-design-recommendations)
 - [Best Practices](#best-practices)
   - [Document Selection](#document-selection)
   - [Ground Truth Preparation](#ground-truth-preparation)
@@ -69,7 +77,7 @@ This dual approach ensures discovery insights can be leveraged across different 
 - [Troubleshooting](#troubleshooting)
   - [Common Issues](#common-issues)
   - [Error Handling](#error-handling)
-  [Limitations](#limitations)
+- [Limitations](#limitations)
   - [Known Limitations](#known-limitations)
   
 
@@ -1226,6 +1234,352 @@ def discovery_with_fallback(discovery_service, document_key, ground_truth_key=No
             input_bucket, document_key
         )
 ```
+
+## BdaIDP Sync Feature
+
+The BdaIDP Sync feature provides bidirectional synchronization between BDA (Bedrock Data Automation) blueprints and IDP (Intelligent Document Processing) custom classes. This feature enables seamless integration between BDA's blueprint management system and IDP's document class configuration.
+
+### How BdaIDP Sync Works
+
+The sync feature operates through the `sync_bda_idp_resolver` Lambda function, which orchestrates the synchronization process:
+
+1. **Bidirectional Sync**: Synchronizes both directions - IDP classes to BDA blueprints and BDA blueprints to IDP classes
+2. **Automatic Detection**: Identifies new blueprints in BDA that don't have corresponding IDP classes
+3. **Schema Transformation**: Converts between IDP JSON Schema format and BDA blueprint format
+4. **Change Detection**: Only updates when actual schema changes are detected
+5. **Cleanup Management**: Removes orphaned blueprints that no longer have corresponding IDP classes
+
+### Sync Process Flow
+
+```mermaid
+graph TD
+    A[Sync Request] --> B[Load Custom Classes from IDP]
+    B --> C[Retrieve BDA Blueprints]
+    C --> D{Blueprint without IDP Class?}
+    D -->|Yes| E[Create IDP Class from Blueprint]
+    D -->|No| F[Process IDP Classes]
+    E --> G[Add to IDP Configuration]
+    F --> H{IDP Class has Blueprint?}
+    H -->|Yes| I[Check for Changes]
+    H -->|No| J[Create New Blueprint]
+    I -->|Changes Found| K[Update Blueprint]
+    I -->|No Changes| L[Skip Update]
+    J --> M[Create Blueprint Version]
+    K --> M
+    M --> N[Update Project]
+    N --> O[Cleanup Orphaned Blueprints]
+    O --> P[Save Updated Configuration]
+```
+
+### Key Features
+
+**🔄 Bidirectional Synchronization**
+- IDP classes automatically create/update BDA blueprints
+- BDA blueprints automatically create corresponding IDP classes
+- Maintains consistency between both systems
+
+**🎯 Intelligent Change Detection**
+- Uses DeepDiff to compare schemas and detect actual changes
+- Only triggers updates when meaningful differences are found
+- Prevents unnecessary blueprint versions and API calls
+
+**🧹 Automatic Cleanup**
+- Removes BDA blueprints that no longer have corresponding IDP classes
+- Maintains clean blueprint inventory in BDA projects
+- Prevents accumulation of obsolete blueprints
+
+**📋 Schema Transformation**
+- Converts IDP JSON Schema (draft 2020-12) to BDA blueprint format (draft-07)
+- Handles field type mapping and structural differences
+- Preserves semantic meaning across format conversions
+
+### Limitations and Constraints
+
+#### AWS Managed Blueprints Exclusion
+
+**AWS Managed Blueprints are ignored during sync operations:**
+- AWS-provided blueprints (identifiable by `aws:blueprint` in ARN) are read-only
+- These blueprints cannot be modified or deleted by users
+- Sync process automatically skips AWS managed blueprints to prevent errors
+- Only user-created blueprints participate in synchronization
+
+```python
+# Example: AWS managed blueprint detection
+if "aws:blueprint" in blueprint_arn:
+    continue  # Skip AWS managed blueprints
+```
+
+#### BDA Schema Limitations
+
+**Nested Objects Not Supported:**
+BDA currently has limitations with complex nested structures that affect sync operations:
+
+```json
+// ❌ NOT SUPPORTED: Nested objects within objects
+{
+  "employee": {
+    "type": "object",
+    "properties": {
+      "personalInfo": {
+        "type": "object",  // Nested object - not supported
+        "properties": {
+          "name": {"type": "string"},
+          "address": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+
+// ✅ SUPPORTED: Flat object structure
+{
+  "employee": {
+    "type": "object",
+    "properties": {
+      "name": {"type": "string"},
+      "address": {"type": "string"},
+      "department": {"type": "string"}
+    }
+  }
+}
+```
+
+**Nested Arrays Not Supported:**
+Arrays within object definitions are not supported by BDA:
+
+```json
+// ❌ NOT SUPPORTED: Arrays within object definitions
+{
+  "Employee": {
+    "type": "object",
+    "properties": {
+      "shifts": {
+        "type": "array",  // Nested array - not supported
+        "items": {"$ref": "#/$defs/Shift"}
+      }
+    }
+  }
+}
+
+// ✅ SUPPORTED: Top-level arrays
+{
+  "employees": {
+    "type": "array",
+    "items": {"$ref": "#/$defs/Employee"}
+  }
+}
+```
+
+#### Sync Failure Scenarios
+
+**Complex Schema Structures:**
+Schemas with nested objects or arrays will cause sync failures:
+
+```json
+// Example of problematic schema structure
+{
+  "$defs": {
+    "Employee": {
+      "type": "object",
+      "properties": {
+        "personalInfo": {
+          "type": "object",  // This will cause sync failure
+          "properties": {
+            "firstName": {"type": "string"},
+            "lastName": {"type": "string"}
+          }
+        },
+        "workSchedule": {
+          "type": "array",   // This will cause sync failure
+          "items": {"$ref": "#/$defs/Shift"}
+        }
+      }
+    }
+  }
+}
+```
+
+### Best Practices for Sync Success
+
+#### 1. Use Simplified IDP Schemas
+
+**Flatten Complex Structures:**
+```json
+// Instead of nested objects
+{
+  "employee": {
+    "type": "object",
+    "properties": {
+      "firstName": {"type": "string", "description": "Employee first name"},
+      "lastName": {"type": "string", "description": "Employee last name"},
+      "streetAddress": {"type": "string", "description": "Street address"},
+      "city": {"type": "string", "description": "City"},
+      "state": {"type": "string", "description": "State"}
+    }
+  }
+}
+```
+
+**Use Top-Level Arrays Only:**
+```json
+// Place arrays at the top level of the schema
+{
+  "properties": {
+    "employees": {
+      "type": "array",
+      "description": "List of employees",
+      "items": {"$ref": "#/$defs/Employee"}
+    }
+  },
+  "$defs": {
+    "Employee": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "id": {"type": "string"}
+        // No nested arrays or objects here
+      }
+    }
+  }
+}
+```
+
+#### 2. Pre-Sync Validation
+
+**Check Schema Structure Before Sync:**
+```bash
+# Use the IDP CLI or API to validate schema structure
+# Look for nested objects and arrays that might cause issues
+```
+
+**Validation Checklist:**
+- ✅ No nested objects within object definitions
+- ✅ No arrays within object definitions  
+- ✅ All array properties have description or instruction fields
+- ✅ Field names follow BDA naming conventions
+- ✅ Schema uses supported data types (string, number, boolean)
+
+#### 3. Error Handling and Recovery
+
+**Monitor Sync Results:**
+```json
+// Sync response includes detailed status for each class
+{
+  "success": true,
+  "message": "Successfully synchronized 2 document classes",
+  "processedClasses": ["Invoice", "Receipt"],
+  "error": {
+    "type": "PARTIAL_SYNC_ERROR",
+    "message": "Failed to sync classes: ComplexForm"
+  }
+}
+```
+
+**Handle Partial Failures:**
+- Review failed classes for nested structures
+- Simplify problematic schemas
+- Re-run sync after schema modifications
+- Monitor CloudWatch logs for detailed error information
+
+### Troubleshooting Sync Issues
+
+#### Common Error Patterns
+
+**1. Nested Structure Errors**
+```
+Error: Skipping nested object property 'personalInfo' - not supported by BDA
+Solution: Flatten the object structure into individual fields
+```
+
+**2. Array Instruction Missing**
+```
+Error: Array property missing required 'instruction' field
+Solution: Add description or instruction field to array properties
+```
+
+**3. Schema Validation Failures**
+```
+Error: BDA schema validation failed
+Solution: Ensure schema follows BDA draft-07 format requirements
+```
+
+#### Debugging Steps
+
+1. **Check CloudWatch Logs:**
+   - Review `sync_bda_idp_resolver` function logs
+   - Look for specific error messages about skipped properties
+   - Identify which classes failed and why
+
+2. **Validate Schema Structure:**
+   - Use JSON Schema validators to check format compliance
+   - Look for nested objects and arrays in definitions
+   - Verify all required fields are present
+
+3. **Test with Simplified Schema:**
+   - Create a minimal test schema without nested structures
+   - Verify sync works with simple structure
+   - Gradually add complexity while monitoring for failures
+
+### Schema Design Recommendations
+
+#### Recommended Pattern
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "SimpleInvoice",
+  "type": "object",
+  "description": "Simple invoice document",
+  "properties": {
+    "invoiceNumber": {
+      "type": "string",
+      "description": "Invoice number"
+    },
+    "invoiceDate": {
+      "type": "string", 
+      "description": "Invoice date"
+    },
+    "lineItems": {
+      "type": "array",
+      "description": "Invoice line items",
+      "items": {"$ref": "#/$defs/LineItem"}
+    }
+  },
+  "$defs": {
+    "LineItem": {
+      "type": "object",
+      "properties": {
+        "description": {"type": "string", "description": "Item description"},
+        "quantity": {"type": "number", "description": "Item quantity"},
+        "unitPrice": {"type": "number", "description": "Unit price"},
+        "totalPrice": {"type": "number", "description": "Total price"}
+      }
+    }
+  }
+}
+```
+
+#### Avoid These Patterns
+```json
+{
+  // ❌ Avoid nested objects
+  "$defs": {
+    "Employee": {
+      "type": "object", 
+      "properties": {
+        "address": {
+          "type": "object",  // This will be skipped
+          "properties": {
+            "street": {"type": "string"},
+            "city": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The BdaIDP Sync feature provides powerful integration capabilities while working within BDA's current limitations. By following these guidelines and using simplified schema designs, you can ensure successful synchronization between IDP and BDA systems.
 
 ## Limitations
 
