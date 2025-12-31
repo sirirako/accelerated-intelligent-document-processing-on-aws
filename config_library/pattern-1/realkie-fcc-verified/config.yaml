@@ -1,7 +1,7 @@
 notes: Default settings for RealKIE-FCC-Verified dataset - Pattern1
 summarization:
   enabled: false
-  model: us.amazon.nova-2-lite-v1:0
+  model: us.amazon.nova-pro-v1:0
   system_prompt: 'You are a document summarization expert who can analyze and summarize
     documents from various domains including medical, financial, legal, and general
     business documents. Your task is to create a summary that captures the key information,
