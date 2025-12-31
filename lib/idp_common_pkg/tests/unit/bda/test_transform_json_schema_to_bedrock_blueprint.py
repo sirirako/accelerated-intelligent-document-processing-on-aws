@@ -513,9 +513,9 @@ class TestTransformJsonSchemaToBedrock:
 
         result = service._transform_json_schema_to_bedrock_blueprint(schema)
 
-        # Verify Level1 is extracted to definitions
-        assert "Level1" in result["definitions"]
-        assert result["properties"]["Level1"]["$ref"] == "#/definitions/Level1"
+        # Since Level1 has nested complex structures, it should be skipped entirely
+        # Only simple top-level properties should remain
+        assert "properties" in result
 
         # Verify simple top-level field is handled correctly
         simple_top_level = result["properties"]["SimpleTopLevel"]
@@ -523,28 +523,10 @@ class TestTransformJsonSchemaToBedrock:
         assert simple_top_level["inferenceType"] == "explicit"
         assert simple_top_level["instruction"] == "Simple top-level field"
 
-        # Verify Level1 definition only contains leaf properties (nested objects ignored)
-        level1_def = result["definitions"]["Level1"]
-        assert level1_def["type"] == "object"
-        assert "properties" in level1_def
+        # Level1 should be skipped due to nested complex structures
+        assert "Level1" not in result["properties"]
 
-        # Should only have the simple field, nested objects should be ignored
-        assert "simpleField" in level1_def["properties"]
-        assert (
-            "Level2" not in level1_def["properties"]
-        )  # Nested object should be ignored
-
-        # Verify the simple field has correct BDA fields
-        simple_field = level1_def["properties"]["simpleField"]
-        assert simple_field["type"] == "string"
-        assert simple_field["inferenceType"] == "explicit"
-        assert simple_field["instruction"] == "Simple field at level 1"
-        assert "description" not in simple_field
-
-        # Verify no nested definitions are created
-        # Only Level1 should be in definitions, not Level2 or Level3
-        assert len(result["definitions"]) == 1
-        assert "Level2" not in result["definitions"]
-        assert "Level3" not in result["definitions"]
+        # No definitions should be created since complex objects are skipped
+        assert "definitions" not in result or len(result.get("definitions", {})) == 0
 
         print(result)

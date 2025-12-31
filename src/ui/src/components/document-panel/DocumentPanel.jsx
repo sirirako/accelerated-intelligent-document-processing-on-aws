@@ -21,6 +21,7 @@ import SectionsPanel from '../sections-panel';
 import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
+import usePricing from '../../hooks/use-pricing';
 import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
 import StepFunctionFlowViewer from '../step-function-flow/StepFunctionFlowViewer';
@@ -73,16 +74,16 @@ const formatCostCell = (rowItem) => {
 
 // Component to display metering information in a table
 const MeteringTable = ({ meteringData, preCalculatedTotals }) => {
-  // Use configuration to get pricing data
-  const { mergedConfig, loading } = useConfiguration();
+  // Use usePricing hook to get pricing data from the new separate pricing config
+  const { pricing, loading } = usePricing();
   const [pricingData, setPricingData] = useState({});
   // We no longer use a default unit cost, showing "None" instead
 
   useEffect(() => {
-    if (mergedConfig && mergedConfig.pricing) {
+    if (pricing && pricing.pricing) {
       // Convert pricing array to lookup object for easier access
       const pricingLookup = {};
-      mergedConfig.pricing.forEach((item) => {
+      pricing.pricing.forEach((item) => {
         if (item.name && item.units) {
           pricingLookup[item.name] = {};
           item.units.forEach((unitItem) => {
@@ -96,7 +97,7 @@ const MeteringTable = ({ meteringData, preCalculatedTotals }) => {
       setPricingData(pricingLookup);
       logger.debug('Pricing data initialized:', pricingLookup);
     }
-  }, [mergedConfig]);
+  }, [pricing]);
 
   if (!meteringData) {
     return null;
@@ -307,14 +308,14 @@ const calculateTotalCosts = (meteringData, documentItem, pricingData) => {
 // Expandable section containing the metering table
 const MeteringExpandableSection = ({ meteringData, documentItem }) => {
   const [expanded, setExpanded] = useState(false);
-  const { mergedConfig } = useConfiguration();
+  const { pricing } = usePricing();
   const [pricingData, setPricingData] = useState(null);
 
   // Convert pricing data to lookup format
   useEffect(() => {
-    if (mergedConfig && mergedConfig.pricing) {
+    if (pricing && pricing.pricing) {
       const pricingLookup = {};
-      mergedConfig.pricing.forEach((item) => {
+      pricing.pricing.forEach((item) => {
         if (item.name && item.units) {
           pricingLookup[item.name] = {};
           item.units.forEach((unitItem) => {
@@ -326,7 +327,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
       });
       setPricingData(pricingLookup);
     }
-  }, [mergedConfig]);
+  }, [pricing]);
 
   // Calculate the cost per page for the header
   const { totalCost, costPerPage } = calculateTotalCosts(meteringData, documentItem, pricingData);
@@ -546,7 +547,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       </Container>
       <DocumentViewers objectKey={item.objectKey} evaluationReportUri={item.evaluationReportUri} summaryReportUri={item.summaryReportUri} />
       <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
-      <PagesPanel pages={item.pages} />
+      <PagesPanel pages={item.pages} documentItem={item} />
       <ChatPanel objectKey={item.objectKey} />
 
       {/* Step Function Flow Viewer */}

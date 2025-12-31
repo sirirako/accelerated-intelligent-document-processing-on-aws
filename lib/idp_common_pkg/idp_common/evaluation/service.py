@@ -14,7 +14,7 @@ import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 if TYPE_CHECKING:
     from stickler import StructuredModel
@@ -60,13 +60,13 @@ def _normalize_comparator_name(comparator: str) -> str:
 
 def _convert_numpy_types(obj: Any) -> Any:
     """
-    Recursively convert numpy types to Python native types for JSON serialization.
+    Recursively convert numpy types and Pydantic models to Python native types for JSON serialization.
 
     Args:
-        obj: Object that may contain numpy types
+        obj: Object that may contain numpy types or Pydantic models
 
     Returns:
-        Object with numpy types converted to Python native types
+        Object with numpy types and Pydantic models converted to Python native types
     """
     import numpy as np
 
@@ -82,6 +82,12 @@ def _convert_numpy_types(obj: Any) -> Any:
         return {key: _convert_numpy_types(value) for key, value in obj.items()}
     elif isinstance(obj, (list, tuple)):
         return [_convert_numpy_types(item) for item in obj]
+    elif hasattr(obj, "model_dump"):
+        # Handle Pydantic v2 models (including DynamicModel from Stickler)
+        return _convert_numpy_types(obj.model_dump())
+    elif hasattr(obj, "dict"):
+        # Handle Pydantic v1 models
+        return _convert_numpy_types(obj.dict())
     else:
         return obj
 
@@ -775,16 +781,16 @@ class EvaluationService:
         attribute_results = []
 
         # Convert Pydantic model instances to dicts upfront using Pydantic's serialization
-        # This handles nested models and lists automatically
+        # Use mode='python' to ensure nested Pydantic models are fully serialized
         if hasattr(expected_instance, "model_dump"):
-            expected_dict = expected_instance.model_dump()
+            expected_dict = expected_instance.model_dump(mode="python")
         elif hasattr(expected_instance, "dict"):
             expected_dict = expected_instance.dict()
         else:
             expected_dict = dict(expected_instance)
 
         if hasattr(actual_instance, "model_dump"):
-            actual_dict = actual_instance.model_dump()
+            actual_dict = actual_instance.model_dump(mode="python")
         elif hasattr(actual_instance, "dict"):
             actual_dict = actual_instance.dict()
         else:
@@ -792,6 +798,24 @@ class EvaluationService:
 
         # Get field scores from Stickler result
         field_scores = stickler_result.get("field_scores", {})
+
+        # Get field_comparisons from Stickler result (sticker-eval v0.1.4+)
+        field_comparisons = stickler_result.get("field_comparisons", [])
+
+        # Group field comparisons by top-level field name for attachment to attributes
+        # field_comparisons is a flat list, we need to group by the root field
+        field_comparison_map: Dict[str, List[Dict[str, Any]]] = {}
+        for fc in field_comparisons:
+            # Extract the root field name from expected_key (e.g., "LineItems" from "LineItems[0].Description")
+            expected_key = fc.get("expected_key", "")
+            root_field = (
+                expected_key.split("[")[0].split(".")[0] if expected_key else ""
+            )
+
+            if root_field:
+                if root_field not in field_comparison_map:
+                    field_comparison_map[root_field] = []
+                field_comparison_map[root_field].append(fc)
 
         # Get Stickler configuration for this document class
         stickler_config = self.stickler_models.get(section.classification.lower(), {})
@@ -970,7 +994,10 @@ class EvaluationService:
                     # Safe default for any other types
                     evaluation_method_value = "Exact"
 
-            # Create AttributeEvaluationResult
+            # Get detailed field comparisons for this attribute (sticker-eval v0.1.4+)
+            detailed_comparisons = field_comparison_map.get(field_name, None)
+
+            # Create AttributeEvaluationResult with field comparison details
             attribute_result = AttributeEvaluationResult(
                 name=field_name,
                 expected=expected_value,
@@ -988,6 +1015,7 @@ class EvaluationService:
                 if confidence_info
                 else None,
                 weight=field_config.get("weight"),  # Stickler field weight
+                field_comparison_details=detailed_comparisons,  # Nested field-by-field comparisons
             )
 
             attribute_results.append(attribute_result)
@@ -1220,12 +1248,22 @@ class EvaluationService:
             expected_instance = ModelClass(**coerced_expected)
             actual_instance = ModelClass(**coerced_actual)
 
-            # Compare using Stickler
-            stickler_result = expected_instance.compare_with(actual_instance)
+            # Compare using Stickler with field_comparisons enabled (sticker-eval v0.1.4+)
+            stickler_result = expected_instance.compare_with(
+                actual_instance,
+                document_field_comparisons=True,  # Enable detailed field-by-field comparison
+            )
 
             logger.debug(
                 f"Stickler comparison complete. Overall score: {stickler_result.get('overall_score', 'N/A'):.3f}"
             )
+
+            # Log field_comparisons count if available
+            field_comparisons = stickler_result.get("field_comparisons", [])
+            if field_comparisons:
+                logger.debug(
+                    f"Field comparisons enabled: {len(field_comparisons)} detailed comparisons available"
+                )
 
             # Transform Stickler result to IDP format
             section_result = self._transform_stickler_result(

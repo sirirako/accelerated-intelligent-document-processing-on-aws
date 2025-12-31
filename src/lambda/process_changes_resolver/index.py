@@ -32,6 +32,7 @@ def handler(event, context):
         
         object_key = args.get('objectKey')
         modified_sections = args.get('modifiedSections', [])
+        modified_pages = args.get('modifiedPages', [])
         
         if not object_key:
             logger.error("objectKey is required but not provided")
@@ -41,16 +42,17 @@ def handler(event, context):
                 'processingJobId': None
             }
         
-        if not modified_sections:
-            logger.error("modifiedSections is required but not provided")
+        if not modified_sections and not modified_pages:
+            logger.error("Either modifiedSections or modifiedPages is required")
             return {
                 'success': False,
-                'message': 'modifiedSections is required',
+                'message': 'Either modifiedSections or modifiedPages is required',
                 'processingJobId': None
             }
 
         logger.info(f"Processing changes for document: {object_key}")
         logger.info(f"Modified sections: {json.dumps(modified_sections)}")
+        logger.info(f"Modified pages: {json.dumps(modified_pages)}")
 
         # Use DynamoDB service to get the document (only service that supports get_document)
         try:
@@ -76,7 +78,11 @@ def handler(event, context):
         # Track modified section IDs for selective processing
         modified_section_ids = []
         
-        # Process each modification
+        # Process page-level modifications first (if any)
+        if modified_pages:
+            process_page_changes(document, modified_pages, modified_section_ids)
+        
+        # Process each section modification
         for modified_section in modified_sections:
             section_id = modified_section['sectionId']
             classification = modified_section['classification']
@@ -249,6 +255,77 @@ def handler(event, context):
         
         logger.error(f"Returning error response: {json.dumps(error_response)}")
         return error_response
+
+def process_page_changes(document, modified_pages, modified_section_ids):
+    """
+    Process page-level modifications
+    
+    Args:
+        document: Document object to modify
+        modified_pages: List of modified page dictionaries
+        modified_section_ids: List to track which sections need reprocessing
+    """
+    for modified_page in modified_pages:
+        page_id = modified_page['pageId']
+        page_id_str = str(page_id)
+        text_modified = modified_page.get('textModified', False)
+        class_reset = modified_page.get('classReset', False)
+        new_text_uri = modified_page.get('newTextUri')
+        new_confidence_uri = modified_page.get('newConfidenceUri')
+        
+        logger.info(f"Processing page {page_id}: textModified={text_modified}, classReset={class_reset}")
+        
+        # Check if page exists in document
+        if page_id_str not in document.pages:
+            logger.warning(f"Page {page_id} not found in document, skipping")
+            continue
+            
+        page = document.pages[page_id_str]
+        
+        # Handle class reset - removes sections containing this page
+        if class_reset:
+            logger.info(f"Resetting classification for page {page_id}")
+            page.classification = None  # Reset to unclassified
+            
+            # Find and remove all sections containing this page
+            sections_to_remove = []
+            for section in document.sections:
+                if page_id_str in section.page_ids:
+                    sections_to_remove.append(section)
+                    logger.info(f"Marking section {section.section_id} for removal (contains page {page_id})")
+            
+            # Clear extraction data and remove sections
+            for section in sections_to_remove:
+                if section.extraction_result_uri:
+                    clear_extraction_data(section.extraction_result_uri)
+                document.sections = [s for s in document.sections if s.section_id != section.section_id]
+                logger.info(f"Removed section {section.section_id} due to page {page_id} class reset")
+        
+        # Handle text modification - clears extraction results but keeps sections
+        elif text_modified:
+            logger.info(f"Text modified for page {page_id}")
+            
+            # Update page URIs if provided
+            if new_text_uri:
+                page.text_uri = new_text_uri
+                logger.info(f"Updated text URI for page {page_id}: {new_text_uri}")
+            
+            if new_confidence_uri:
+                page.text_confidence_uri = new_confidence_uri
+                logger.info(f"Updated confidence URI for page {page_id}: {new_confidence_uri}")
+            
+            # Find sections containing this page and clear their extraction results
+            for section in document.sections:
+                if page_id_str in section.page_ids:
+                    if section.extraction_result_uri:
+                        clear_extraction_data(section.extraction_result_uri)
+                        section.extraction_result_uri = None
+                        section.attributes = None
+                        logger.info(f"Cleared extraction results for section {section.section_id} (page {page_id} text modified)")
+                    
+                    # Track section for reprocessing
+                    if section.section_id not in modified_section_ids:
+                        modified_section_ids.append(section.section_id)
 
 def clear_extraction_data(s3_uri):
     """Clear extraction data from S3"""

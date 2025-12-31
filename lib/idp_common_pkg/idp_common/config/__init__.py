@@ -20,11 +20,14 @@ from .models import (
     OCRConfig,
     AgenticConfig,
     ImageConfig,
+    PricingConfig,
 )
 from .constants import (
     CONFIG_TYPE_SCHEMA,
     CONFIG_TYPE_DEFAULT,
     CONFIG_TYPE_CUSTOM,
+    CONFIG_TYPE_DEFAULT_PRICING,
+    CONFIG_TYPE_CUSTOM_PRICING,
     VALID_CONFIG_TYPES,
 )
 
@@ -51,11 +54,11 @@ class ConfigurationReader:
     @overload
     def get_configuration(
         self, config_type: str, *, as_dict: Literal[False]
-    ) -> Optional[Union[IDPConfig, SchemaConfig]]: ...
+    ) -> Optional[Union[IDPConfig, SchemaConfig, PricingConfig]]: ...
 
     def get_configuration(
         self, config_type: str, *, as_dict: bool = True
-    ) -> Optional[Union[Dict[str, Any], IDPConfig, SchemaConfig]]:
+    ) -> Optional[Union[Dict[str, Any], IDPConfig, SchemaConfig, PricingConfig]]:
         """
         Retrieve a configuration item from DynamoDB with automatic migration
 

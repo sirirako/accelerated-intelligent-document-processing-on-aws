@@ -555,3 +555,362 @@ class TestBdaBlueprintService:
         assert city_prop["type"] == "string"
         assert "inferenceType" in city_prop
         assert "instruction" in city_prop
+
+    def test_create_blueprints_creates_idp_classes_from_orphaned_bda_blueprints(
+        self, service
+    ):
+        """Test that IDP classes are created for BDA blueprints without corresponding IDP classes.
+
+        This test covers the scenario where:
+        1. BDA blueprints exist in the project
+        2. Some blueprints don't have corresponding IDP document classes
+        3. The method should create IDP class schemas from those orphaned blueprints
+        4. The new IDP classes should be added to the configuration
+        """
+        # Mock existing configuration with only one IDP class
+        existing_idp_classes = [
+            build_json_schema(
+                doc_id="W-4",
+                description="Employee's Withholding Certificate form",
+                properties={
+                    "personalInformation": {
+                        "type": "object",
+                        "description": "Personal information of employee",
+                        "properties": {
+                            "firstName": {
+                                "type": "string",
+                                "description": "First Name of Employee",
+                            },
+                            "lastName": {
+                                "type": "string",
+                                "description": "Last Name of Employee",
+                            },
+                        },
+                    }
+                },
+            )
+        ]
+
+        # Mock configuration manager to return existing classes
+        config_obj = MagicMock()
+        config_obj.classes = existing_idp_classes
+        service.config_manager.get_configuration.return_value = config_obj
+
+        # Mock existing BDA blueprints - some have corresponding IDP classes, some don't
+        existing_bda_blueprints = [
+            # This blueprint has a corresponding IDP class (W-4)
+            {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/test-stack-W-4-12345678",
+                "blueprintName": "test-stack-W-4-12345678",
+                "blueprintVersion": "1",
+                "schema": json.dumps(
+                    {
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                        "class": "W-4",
+                        "description": "Employee's Withholding Certificate form",
+                        "type": "object",
+                        "definitions": {
+                            "PersonalInformation": {
+                                "type": "object",
+                                "properties": {
+                                    "firstName": {
+                                        "type": "string",
+                                        "inferenceType": "explicit",
+                                        "instruction": "First Name of Employee",
+                                    },
+                                    "lastName": {
+                                        "type": "string",
+                                        "inferenceType": "explicit",
+                                        "instruction": "Last Name of Employee",
+                                    },
+                                },
+                            }
+                        },
+                        "properties": {
+                            "personalInformation": {
+                                "$ref": "#/definitions/PersonalInformation"
+                            }
+                        },
+                    }
+                ),
+            },
+            # This blueprint does NOT have a corresponding IDP class (I-9)
+            {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/test-stack-I-9-87654321",
+                "blueprintName": "test-stack-I-9-87654321",
+                "blueprintVersion": "1",
+                "schema": json.dumps(
+                    {
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                        "class": "I-9",
+                        "description": "Employment Eligibility Verification",
+                        "type": "object",
+                        "definitions": {
+                            "EmployeeInfo": {
+                                "type": "object",
+                                "properties": {
+                                    "fullName": {
+                                        "type": "string",
+                                        "inferenceType": "explicit",
+                                        "instruction": "Employee full name",
+                                    },
+                                    "dateOfBirth": {
+                                        "type": "string",
+                                        "inferenceType": "explicit",
+                                        "instruction": "Employee date of birth",
+                                    },
+                                },
+                            }
+                        },
+                        "properties": {
+                            "employeeInfo": {"$ref": "#/definitions/EmployeeInfo"}
+                        },
+                    }
+                ),
+            },
+            # This blueprint also does NOT have a corresponding IDP class (1099)
+            {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/test-stack-1099-11111111",
+                "blueprintName": "test-stack-1099-11111111",
+                "blueprintVersion": "1",
+                "schema": json.dumps(
+                    {
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                        "class": "1099",
+                        "description": "Miscellaneous Income Tax Form",
+                        "type": "object",
+                        "properties": {
+                            "payerInfo": {
+                                "type": "string",
+                                "inferenceType": "explicit",
+                                "instruction": "Payer information",
+                            },
+                            "recipientInfo": {
+                                "type": "string",
+                                "inferenceType": "explicit",
+                                "instruction": "Recipient information",
+                            },
+                        },
+                    }
+                ),
+            },
+        ]
+
+        # Mock the _retrieve_all_blueprints method
+        service._retrieve_all_blueprints = MagicMock(
+            return_value=existing_bda_blueprints
+        )
+
+        # Mock blueprint operations for the existing W-4 class
+        service.blueprint_creator.create_blueprint.return_value = {
+            "status": "success",
+            "blueprint": {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/test-stack-W-4-12345678",
+                "blueprintName": "test-stack-W-4-12345678",
+            },
+        }
+        service.blueprint_creator.create_blueprint_version.return_value = {
+            "status": "success"
+        }
+        service.blueprint_creator.update_blueprint.return_value = {"status": "success"}
+
+        # Mock the _check_for_updates to return False (no updates needed)
+        service._check_for_updates = MagicMock(return_value=False)
+
+        # Mock the _blueprint_lookup method
+        def mock_blueprint_lookup(existing_blueprints, doc_class):
+            for blueprint in existing_blueprints:
+                blueprint_name = blueprint.get("blueprintName", "")
+                if doc_class in blueprint_name:
+                    return blueprint
+            return None
+
+        service._blueprint_lookup = MagicMock(side_effect=mock_blueprint_lookup)
+
+        # Execute the method
+        result = service.create_blueprints_from_custom_configuration()
+
+        # Verify the result
+        assert isinstance(result, list)
+        assert (
+            len(result) == 3
+        )  # All classes processed: 1 existing (W-4) + 2 orphaned (I-9, 1099)
+
+        # Verify that handle_update_custom_configuration was called with new classes
+        service.config_manager.handle_update_custom_configuration.assert_called_once()
+
+        # Get the call arguments to verify the new classes were added
+        call_args = service.config_manager.handle_update_custom_configuration.call_args[
+            0
+        ][0]
+        updated_classes = call_args["classes"]
+
+        # Should have 3 classes total: 1 original + 2 new from orphaned blueprints
+        assert len(updated_classes) == 3
+
+        # Verify the original W-4 class is still there
+        w4_class = next(
+            (cls for cls in updated_classes if cls.get("$id") == "W-4"), None
+        )
+        assert w4_class is not None
+        assert w4_class["description"] == "Employee's Withholding Certificate form"
+
+        # Verify the new I-9 class was created from the BDA blueprint
+        i9_class = next(
+            (cls for cls in updated_classes if cls.get("$id") == "I-9"), None
+        )
+        assert i9_class is not None
+        assert i9_class["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+        assert i9_class["x-aws-idp-document-type"] == "I-9"
+        assert i9_class["description"] == "Employment Eligibility Verification"
+        assert i9_class["type"] == "object"
+
+        # Verify I-9 has proper $defs (converted from definitions)
+        assert "$defs" in i9_class
+        assert "EmployeeInfo" in i9_class["$defs"]
+
+        # Verify I-9 properties have proper $ref paths (converted from #/definitions/ to #/$defs/)
+        assert i9_class["properties"]["employeeInfo"]["$ref"] == "#/$defs/EmployeeInfo"
+
+        # Verify I-9 definition properties have descriptions (converted from instruction)
+        employee_info_def = i9_class["$defs"]["EmployeeInfo"]
+        assert (
+            employee_info_def["properties"]["fullName"]["description"]
+            == "Employee full name"
+        )
+        assert (
+            employee_info_def["properties"]["dateOfBirth"]["description"]
+            == "Employee date of birth"
+        )
+
+        # Verify BDA-specific fields were removed
+        assert "inferenceType" not in employee_info_def["properties"]["fullName"]
+        assert "instruction" not in employee_info_def["properties"]["fullName"]
+
+        # Verify the new 1099 class was created from the BDA blueprint
+        form1099_class = next(
+            (cls for cls in updated_classes if cls.get("$id") == "1099"), None
+        )
+        assert form1099_class is not None
+        assert (
+            form1099_class["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+        )
+        assert form1099_class["x-aws-idp-document-type"] == "1099"
+        assert form1099_class["description"] == "Miscellaneous Income Tax Form"
+
+        # Verify 1099 properties (flat structure, no definitions)
+        assert "payerInfo" in form1099_class["properties"]
+        assert "recipientInfo" in form1099_class["properties"]
+        assert (
+            form1099_class["properties"]["payerInfo"]["description"]
+            == "Payer information"
+        )
+        assert (
+            form1099_class["properties"]["recipientInfo"]["description"]
+            == "Recipient information"
+        )
+
+        # Verify BDA-specific fields were removed from 1099 properties
+        assert "inferenceType" not in form1099_class["properties"]["payerInfo"]
+        assert "instruction" not in form1099_class["properties"]["payerInfo"]
+
+    def test_create_blueprints_no_orphaned_blueprints(self, service):
+        """Test that no IDP classes are created when all BDA blueprints have corresponding IDP classes."""
+        # Mock existing configuration with IDP classes that match all blueprints
+        existing_idp_classes = [
+            build_json_schema(doc_id="W-4", description="W-4 form"),
+            build_json_schema(doc_id="I-9", description="I-9 form"),
+        ]
+
+        config_obj = MagicMock()
+        config_obj.classes = existing_idp_classes
+        service.config_manager.get_configuration.return_value = config_obj
+
+        # Mock existing BDA blueprints that all have corresponding IDP classes
+        existing_bda_blueprints = [
+            {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/test-stack-W-4-12345678",
+                "blueprintName": "test-stack-W-4-12345678",
+                "blueprintVersion": "1",
+                "schema": json.dumps({"class": "W-4", "type": "object"}),
+            },
+            {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/test-stack-I-9-87654321",
+                "blueprintName": "test-stack-I-9-87654321",
+                "blueprintVersion": "1",
+                "schema": json.dumps({"class": "I-9", "type": "object"}),
+            },
+        ]
+
+        service._retrieve_all_blueprints = MagicMock(
+            return_value=existing_bda_blueprints
+        )
+        service._check_for_updates = MagicMock(return_value=False)
+
+        def mock_blueprint_lookup(existing_blueprints, doc_class):
+            for blueprint in existing_blueprints:
+                blueprint_name = blueprint.get("blueprintName", "")
+                if doc_class in blueprint_name:
+                    return blueprint
+            return None
+
+        service._blueprint_lookup = MagicMock(side_effect=mock_blueprint_lookup)
+
+        # Execute the method
+        service.create_blueprints_from_custom_configuration()
+
+        # Verify that handle_update_custom_configuration was called
+        service.config_manager.handle_update_custom_configuration.assert_called_once()
+
+        # Get the call arguments to verify no new classes were added
+        call_args = service.config_manager.handle_update_custom_configuration.call_args[
+            0
+        ][0]
+        updated_classes = call_args["classes"]
+
+        # Should still have only the original 2 classes (no new ones added)
+        assert len(updated_classes) == 2
+        assert any(cls.get("$id") == "W-4" for cls in updated_classes)
+        assert any(cls.get("$id") == "I-9" for cls in updated_classes)
+
+    def test_create_blueprints_empty_existing_blueprints(self, service):
+        """Test behavior when no BDA blueprints exist in the project."""
+        # Mock existing configuration with IDP classes
+        existing_idp_classes = [
+            build_json_schema(doc_id="W-4", description="W-4 form"),
+        ]
+
+        config_obj = MagicMock()
+        config_obj.classes = existing_idp_classes
+        service.config_manager.get_configuration.return_value = config_obj
+
+        # Mock empty blueprints list
+        service._retrieve_all_blueprints = MagicMock(return_value=[])
+
+        # Mock blueprint operations
+        service.blueprint_creator.create_blueprint.return_value = {
+            "status": "success",
+            "blueprint": {
+                "blueprintArn": "arn:aws:bedrock:us-west-2:123456789012:blueprint/new-w4",
+                "blueprintName": "new-w4",
+            },
+        }
+        service.blueprint_creator.create_blueprint_version.return_value = {
+            "status": "success"
+        }
+
+        # Execute the method
+        service.create_blueprints_from_custom_configuration()
+
+        # Verify that handle_update_custom_configuration was called
+        service.config_manager.handle_update_custom_configuration.assert_called_once()
+
+        # Get the call arguments to verify no new classes were added (since no orphaned blueprints)
+        call_args = service.config_manager.handle_update_custom_configuration.call_args[
+            0
+        ][0]
+        updated_classes = call_args["classes"]
+
+        # Should still have only the original 1 class (no new ones added from blueprints)
+        assert len(updated_classes) == 1
+        assert updated_classes[0].get("$id") == "W-4"

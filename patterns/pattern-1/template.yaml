@@ -17,9 +17,6 @@ Parameters:
   DiscoveryBucket:
     Type: String
 
-  ConfigurationQueueArn:
-    Type: String
-
   DiscoveryTrackingTable:
     Type: String
 
@@ -828,47 +825,6 @@ Resources:
                         description: Default time range in hours for analysis
                         default: 24
                         order: 2
-          pricing:
-            order: 7
-            type: array
-            sectionLabel: Pricing Estimates - check https://aws.amazon.com/bedrock/pricing/
-            listLabel: Services
-            itemLabel: Service/API
-            columns: 2
-            items:
-              type: object
-              required:
-                - name
-                - units
-              properties:
-                name:
-                  type: string
-                  description: Service/API
-                units:
-                  type: array
-                  listLabel: Metered unit pricing
-                  itemLabel: Metered Unit price
-                  items:
-                    type: object
-                    required:
-                      - name
-                      - price
-                    properties:
-                      name:
-                        type: string
-                        description: Metered unit name
-                      price:
-                        type: number
-                        description: Estimated cost/unit
-            default:
-              - name: "lambda/requests"
-                units:
-                  - name: "invocations"
-                    price: 2.0E-7
-              - name: "lambda/duration"
-                units:
-                  - name: "gb_seconds"
-                    price: 1.66667E-5
     UpdateReplacePolicy: Delete
     DeletionPolicy: Delete
 
@@ -877,6 +833,7 @@ Resources:
     Properties:
       ServiceToken: !Ref UpdateConfigurationFunctionArn
       Default: !Ref ConfigurationDefaultS3Uri
+      DefaultPricing: !Sub "s3://${ConfigurationBucket}/config_library/pricing.yaml"
       ConfigLibraryHash: !Ref ConfigLibraryHash
 
   ##########################################################################
@@ -1135,7 +1092,6 @@ Resources:
       ImageVersion: !Ref ImageVersion
       ExpectedImages:
         - "bda-invoke-function"
-        - "bda-discovery-function"
         - "bda-completion-function"
         - "processresults-function"
         - "summarization-function"
@@ -1283,101 +1239,6 @@ Resources:
       LogGroupName: !Sub "/${AWS::StackName}/lambda/InvokeBDAFunction"
       RetentionInDays: !Ref LogRetentionDays
   
-  BDADiscoveryFunction:
-    DependsOn: DockerBuildRun
-    Type: AWS::Serverless::Function
-    Metadata:
-      SkipBuild: True
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: "Cloudwatch does not support resource-level permissions"
-          - id: W89
-            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
-          - id: W92
-            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      PackageType: Image
-      ImageUri: !Sub "${ECRRepository.RepositoryUri}:bda-discovery-function-${ImageVersion}"
-      Architectures:
-        - arm64
-      Timeout: 900
-      MemorySize: 4096
-      Tracing: Active
-      Environment:
-        Variables:
-          METRIC_NAMESPACE: !Ref StackName
-          STACK_NAME: !Ref StackName
-          LOG_LEVEL: !Ref LogLevel
-          DISCOVERY_TRACKING_TABLE: !Ref DiscoveryTrackingTable
-          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
-          BDA_PROJECT_ARN: !Ref BDAProjectArn
-      Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue: !Ref ConfigurationQueueArn
-            BatchSize: 1
-            FunctionResponseTypes:
-              - ReportBatchItemFailures
-      LoggingConfig:
-        LogGroup: !Ref BDADiscoveryFunctionLogGroup
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - DynamoDBCrudPolicy:
-            TableName: !Ref DiscoveryTrackingTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConfigurationTable
-        - S3ReadPolicy:
-            BucketName: !Ref InputBucket
-        - S3ReadPolicy:
-            BucketName: !Ref DiscoveryBucket
-        - S3CrudPolicy:
-            BucketName: !Ref WorkingBucket
-        - S3CrudPolicy:
-            BucketName: !Ref OutputBucket
-        - Statement:
-            - Effect: Allow
-              Action: cloudwatch:PutMetricData
-              Resource: '*'
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !Ref CustomerManagedEncryptionKeyArn
-            - Effect: Allow
-              Action:
-                - bedrock:InvokeDataAutomationAsync
-                - bedrock:CreateDataAutomationProject
-                - bedrock:UpdateDataAutomationProject
-                - bedrock:GetDataAutomationProject
-                - bedrock:GetDataAutomationStatus
-                - bedrock:GetBlueprint
-                - bedrock:UpdateBlueprint
-                - bedrock:CreateBlueprint
-                - bedrock:CreateBlueprintVersion
-                - bedrock:ListBlueprints
-                - bedrock:DeleteBlueprint
-              Resource:
-                - !Ref BDAProjectArn
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:aws:blueprint/*"
-
-  BDADiscoveryFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
-      LogGroupName: !Sub "/${AWS::StackName}/lambda/BDADiscoveryFunction"
-      RetentionInDays: !Ref LogRetentionDays
-
   ProcessResultsFunction:
     DependsOn: DockerBuildRun
     Type: AWS::Serverless::Function
@@ -2462,7 +2323,6 @@ Outputs:
         - !Ref ProcessResultsFunctionLogGroup
         - !Ref SummarizationFunctionLogGroup
         - !Ref BDACompletionFunctionLogGroup
-        - !Ref BDADiscoveryFunctionLogGroup
         - !Ref HITLProcessLambdaLogGroup
         - !Ref HITLWaitFunctionLogGroup
         - !Ref HITLStatusUpdateFunctionLogGroup

@@ -20,6 +20,34 @@ const MARKDOWN_DEFAULT_HEIGHT = '600px';
 
 const MarkdownViewer = ({ content, documentName, title, simple = false, height = MARKDOWN_DEFAULT_HEIGHT }) => {
   const contentRef = useRef(null);
+  const [showOnlyUnmatched, setShowOnlyUnmatched] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+
+  // Toggle showing only unmatched rows
+  const toggleUnmatchedOnly = () => {
+    if (!contentRef.current) return;
+
+    const matchedRows = contentRef.current.querySelectorAll('tr.matched-row');
+    const newState = !showOnlyUnmatched;
+
+    matchedRows.forEach((row) => {
+      row.style.display = newState ? 'none' : '';
+    });
+
+    setShowOnlyUnmatched(newState);
+  };
+
+  // Toggle expand/collapse all details elements
+  const toggleExpandDetails = () => {
+    if (!contentRef.current) return;
+
+    const newState = !detailsExpanded;
+    contentRef.current.querySelectorAll('details').forEach((d) => {
+      d.open = newState;
+    });
+
+    setDetailsExpanded(newState);
+  };
 
   // Handle anchor link clicks for smooth scrolling within the document
   const handleAnchorClick = (event) => {
@@ -146,11 +174,42 @@ const MarkdownViewer = ({ content, documentName, title, simple = false, height =
     );
   }
 
-  // Standard mode with controls
+  // Check if this is an evaluation report with enhanced features
+  const isEvalReport = content && (content.includes('eval-report-v2') || content.includes('matched-row'));
+
+  // Standard mode with controls and improved styling
   return (
-    <Box className="markdown-viewer">
-      <div className="tools-container">
+    <Box
+      className="markdown-viewer"
+      style={{
+        border: '1px solid #e9ebed',
+        borderRadius: '8px',
+        backgroundColor: '#ffffff',
+        padding: '0',
+      }}
+    >
+      {/* Sticky toolbar container */}
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          backgroundColor: '#ffffff',
+          borderBottom: '1px solid #e9ebed',
+          padding: '16px',
+        }}
+      >
         <SpaceBetween direction="horizontal" size="xs">
+          {isEvalReport && (
+            <>
+              <Button variant={showOnlyUnmatched ? 'primary' : 'normal'} onClick={toggleUnmatchedOnly} iconName="filter" iconAlign="left">
+                Unmatched Items
+              </Button>
+              <Button variant={detailsExpanded ? 'primary' : 'normal'} onClick={toggleExpandDetails} iconName="expand" iconAlign="left">
+                Expand Details
+              </Button>
+            </>
+          )}
           <Button variant="normal" onClick={handleDownload} iconName="download" iconAlign="left" formAction="none">
             Download
           </Button>
@@ -160,7 +219,16 @@ const MarkdownViewer = ({ content, documentName, title, simple = false, height =
         </SpaceBetween>
       </div>
 
-      <div className="table-container" ref={contentRef}>
+      {/* Content container with overflow */}
+      <div
+        ref={contentRef}
+        style={{
+          padding: '20px',
+          overflowX: 'auto',
+          overflowY: 'auto',
+          maxHeight: 'calc(100vh - 400px)',
+        }}
+      >
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
           {content}
         </ReactMarkdown>

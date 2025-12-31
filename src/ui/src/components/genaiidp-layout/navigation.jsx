@@ -12,6 +12,7 @@ import {
   DEFAULT_PATH,
   UPLOAD_DOCUMENT_PATH,
   CONFIGURATION_PATH,
+  PRICING_PATH,
   DISCOVERY_PATH,
   AGENT_CHAT_PATH,
 } from '../../routes/constants';
@@ -21,9 +22,16 @@ export const documentsNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
-  { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
-  { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
   { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
+  {
+    type: 'section',
+    text: 'Configuration',
+    items: [
+      { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
+      { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
+      { type: 'link', text: 'View/Edit Pricing', href: `#${PRICING_PATH}` },
+    ],
+  },
   {
     type: 'section',
     text: 'Test Studio',
@@ -71,7 +79,9 @@ const Navigation = ({ header = documentsNavHeader, items = documentsNavItems, on
   const { settings } = useSettingsContext() || {};
 
   // Determine active link based on current path, most specific routes first
-  if (path.includes(CONFIGURATION_PATH)) {
+  if (path.includes(PRICING_PATH)) {
+    activeHref = `#${PRICING_PATH}`;
+  } else if (path.includes(CONFIGURATION_PATH)) {
     activeHref = `#${CONFIGURATION_PATH}`;
   } else if (path.includes(DOCUMENTS_KB_QUERY_PATH)) {
     activeHref = `#${DOCUMENTS_KB_QUERY_PATH}`;
