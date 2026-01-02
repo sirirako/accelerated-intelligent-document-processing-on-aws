@@ -57,6 +57,7 @@ class StackInfo:
         resources["EvaluationBaselineBucket"] = outputs.get(
             "S3EvaluationBaselineBucketName", ""
         )
+        resources["TestSetBucket"] = outputs.get("S3TestSetBucketName", "")
         resources["DocumentQueueUrl"] = self._get_queue_url()
         resources["LookupFunctionName"] = outputs.get("LambdaLookupFunctionName", "")
         resources["StateMachineArn"] = outputs.get("StateMachineArn", "")

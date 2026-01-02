@@ -332,16 +332,24 @@ idp-cli run-inference [OPTIONS]
 - `--manifest`: Path to manifest file (CSV or JSON)
 - `--dir`: Local directory containing documents
 - `--s3-uri`: S3 URI in InputBucket
+- `--test-set`: Test set name from test set bucket
 
 **Options:**
 - `--stack-name` (required): CloudFormation stack name
-- `--batch-id`: Custom batch ID (auto-generated if omitted)
+- `--batch-id`: Custom batch ID (auto-generated if omitted, ignored with --test-set)
 - `--batch-prefix`: Prefix for auto-generated batch ID (default: `cli-batch`)
 - `--file-pattern`: File pattern for directory/S3 scanning (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
 - `--monitor`: Monitor progress until completion
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--region`: AWS region (optional)
+
+**Test Set Integration:**
+For test runs to appear properly in the Test Studio UI, use either:
+- `--test-set`: Process test set directly by name (recommended for test sets)
+- `--manifest`: Use manifest file with populated baseline_source column for evaluation tracking
+
+Other options (`--dir`, `--s3-uri`) are for general document processing but won't integrate with test studio tracking.
 
 **Examples:**
 
@@ -356,6 +364,12 @@ idp-cli run-inference \
 idp-cli run-inference \
     --stack-name my-stack \
     --manifest documents-with-baselines.csv \
+    --monitor
+
+# Process test set (integrates with Test Studio UI)
+idp-cli run-inference \
+    --stack-name my-stack \
+    --test-set my-invoice-test \
     --monitor
 
 # Process S3 URI
@@ -622,7 +636,7 @@ idp-cli download-results \
 
 ### `generate-manifest`
 
-Generate a manifest file from directory or S3 URI.
+Generate a manifest file from directory or S3 URI, or create a test set in the test set bucket.
 
 **Usage:**
 ```bash
@@ -634,10 +648,13 @@ idp-cli generate-manifest [OPTIONS]
   - `--dir`: Local directory to scan
   - `--s3-uri`: S3 URI to scan
 - `--baseline-dir`: Baseline directory for automatic matching (only with --dir)
-- `--output` (required): Output manifest file path (CSV)
+- `--output`: Output manifest file path (CSV) - optional when using --test-set
 - `--file-pattern`: File pattern (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
 - `--region`: AWS region (optional)
+- **Test Set Creation:**
+  - `--test-set`: Test set name - creates folder in test set bucket and uploads files
+  - `--stack-name`: CloudFormation stack name (required with --test-set)
 
 **Examples:**
 
@@ -652,6 +669,38 @@ idp-cli generate-manifest \
     --dir ./documents/ \
     --baseline-dir ./validated-baselines/ \
     --output manifest-with-baselines.csv
+
+# Create test set and upload files (no manifest needed)
+idp-cli generate-manifest \
+    --dir ./documents/ \
+    --baseline-dir ./baselines/ \
+    --test-set my-invoice-test \
+    --stack-name IDP
+
+# Create test set with manifest output
+idp-cli generate-manifest \
+    --dir ./documents/ \
+    --baseline-dir ./baselines/ \
+    --test-set my-invoice-test \
+    --stack-name IDP \
+    --output test-manifest.csv
+```
+
+**Test Set Creation:**
+When using `--test-set`, the command:
+1. Requires `--stack-name`, `--baseline-dir`, and `--dir`
+2. Uploads input files to `s3://test-set-bucket/{test-set-name}/input/`
+3. Uploads baseline files to `s3://test-set-bucket/{test-set-name}/baseline/`
+4. Creates proper test set structure for evaluation workflows
+5. Test set will be auto-detected by the Test Studio UI
+
+Process the created test set:
+```bash
+# Using S3 URI to process input files
+idp-cli run-inference --stack-name IDP --s3-uri s3://test-set-bucket/my-invoice-test/input/
+
+# Or using manifest if generated
+idp-cli run-inference --stack-name IDP --manifest test-manifest.csv
 ```
 
 ---
