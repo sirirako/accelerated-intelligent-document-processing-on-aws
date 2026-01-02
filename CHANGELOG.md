@@ -5,6 +5,11 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+- **IDP CLI Stack Parameter Preservation During Updates**
+  - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+
 ## [0.4.10]
 
 ### Added

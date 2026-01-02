@@ -83,14 +83,43 @@ class StackDeployer:
             else:
                 template_param = {"TemplateBody": template_body}
 
-        # Convert parameters dict to CloudFormation format
-        cfn_parameters = [
-            {"ParameterKey": k, "ParameterValue": v}
-            for k, v in (parameters or {}).items()
-        ]
-
         # Check if stack exists
         stack_exists = self._stack_exists(stack_name)
+
+        # Build CloudFormation parameters based on operation type
+        if stack_exists:
+            # For UPDATE: Use UsePreviousValue for parameters not explicitly provided
+            current_params = self._get_stack_parameters(stack_name)
+            cfn_parameters = []
+
+            # First, handle all existing parameters
+            for param_key in current_params.keys():
+                if param_key in (parameters or {}):
+                    # User provided new value
+                    cfn_parameters.append(
+                        {
+                            "ParameterKey": param_key,
+                            "ParameterValue": parameters[param_key],
+                        }
+                    )
+                else:
+                    # Use previous value
+                    cfn_parameters.append(
+                        {"ParameterKey": param_key, "UsePreviousValue": True}
+                    )
+
+            # Then, add any new parameters not in current stack
+            for param_key, param_value in (parameters or {}).items():
+                if param_key not in current_params:
+                    cfn_parameters.append(
+                        {"ParameterKey": param_key, "ParameterValue": param_value}
+                    )
+        else:
+            # For CREATE: Use only provided parameters
+            cfn_parameters = [
+                {"ParameterKey": k, "ParameterValue": v}
+                for k, v in (parameters or {}).items()
+            ]
 
         # Prepare common parameters
         common_params = {
@@ -184,6 +213,40 @@ class StackDeployer:
             if "does not exist" in str(e):
                 return False
             raise
+
+    def _get_stack_parameters(self, stack_name: str) -> Dict[str, str]:
+        """
+        Get current parameter values from existing stack
+
+        Args:
+            stack_name: Name of the stack
+
+        Returns:
+            Dictionary mapping parameter keys to their current values
+        """
+        try:
+            response = self.cfn.describe_stacks(StackName=stack_name)
+            stacks = response.get("Stacks", [])
+
+            if not stacks:
+                return {}
+
+            stack = stacks[0]
+            parameters = stack.get("Parameters", [])
+
+            # Build dictionary of current parameter values
+            param_dict = {}
+            for param in parameters:
+                key = param.get("ParameterKey")
+                value = param.get("ParameterValue")
+                if key:
+                    param_dict[key] = value
+
+            return param_dict
+
+        except Exception as e:
+            logger.warning(f"Could not get stack parameters: {e}")
+            return {}
 
     def _wait_for_completion(self, stack_name: str, operation: str) -> Dict:
         """
