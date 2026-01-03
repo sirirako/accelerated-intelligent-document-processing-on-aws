@@ -609,7 +609,16 @@ class GovCloudTemplateGenerator:
                     self.logger.debug(f"Removed CORS configuration from {resource_name}")
                
         # Convert all backend functions from AppSync to DynamoDB tracking mode
-        functions_to_convert = ['QueueSender', 'QueueProcessor', 'WorkflowTracker', 'EvaluationFunction']
+        # Include background workers that reference GraphQLApi.GraphQLUrl
+        functions_to_convert = [
+            'QueueSender', 
+            'QueueProcessor', 
+            'WorkflowTracker', 
+            'EvaluationFunction',
+            'AgentChatProcessorFunction',  # Background worker
+            'AgentProcessorFunction',  # Background worker
+            'DiscoveryProcessorFunction'  # Discovery processor
+        ]
         for func_name in functions_to_convert:
             if func_name in resources:
                 func_def = resources[func_name]
@@ -643,20 +652,78 @@ class GovCloudTemplateGenerator:
                     })
                     self.logger.debug(f"Added DynamoDB CRUD permissions for {func_name}")
                 
-                # Clean AppSync policies
+                # Clean policies - remove AppSync and MCP-related statements
+                cleaned_policies = []
                 for policy in policies:
                     if isinstance(policy, dict) and 'Statement' in policy:
-                        statements = policy['Statement']
-                        if isinstance(statements, list):
-                            # Remove AppSync permissions
-                            policy['Statement'] = [
-                                stmt for stmt in statements 
-                                if not (isinstance(stmt, dict) and 
-                                       isinstance(stmt.get('Action'), list) and 
-                                       any('appsync:GraphQL' in str(action) for action in stmt.get('Action', [])))
-                            ]
-                            if len(policy['Statement']) != len(statements):
-                                self.logger.debug(f"Removed AppSync permissions from {func_name}")
+                        # Handle single statement (dict)
+                        if isinstance(policy['Statement'], dict):
+                            stmt = policy['Statement']
+                            action = stmt.get('Action')
+                            resource = stmt.get('Resource')
+                            
+                            # Check if statement should be removed
+                            should_remove = False
+                            
+                            # Remove if action contains appsync:GraphQL
+                            if isinstance(action, str) and 'appsync:GraphQL' in action:
+                                should_remove = True
+                            elif isinstance(action, list) and any('appsync:GraphQL' in str(a) for a in action):
+                                should_remove = True
+                            
+                            # Remove if references ExternalMCPAgentsSecret (removed resource)
+                            if isinstance(resource, list):
+                                for r in resource:
+                                    if isinstance(r, dict) and r.get('Ref') == 'ExternalMCPAgentsSecret':
+                                        should_remove = True
+                            elif isinstance(resource, dict) and resource.get('Ref') == 'ExternalMCPAgentsSecret':
+                                should_remove = True
+                            
+                            if not should_remove:
+                                cleaned_policies.append(policy)
+                            else:
+                                self.logger.debug(f"Removed AppSync/MCP policy statement from {func_name}")
+                        # Handle list of statements
+                        elif isinstance(policy['Statement'], list):
+                            statements = policy['Statement']
+                            cleaned_statements = []
+                            for stmt in statements:
+                                if isinstance(stmt, dict):
+                                    action = stmt.get('Action')
+                                    resource = stmt.get('Resource')
+                                    
+                                    # Check if statement should be removed
+                                    should_remove = False
+                                    
+                                    # Remove if action contains appsync:GraphQL
+                                    if isinstance(action, str) and 'appsync:GraphQL' in action:
+                                        should_remove = True
+                                    elif isinstance(action, list) and any('appsync:GraphQL' in str(a) for a in action):
+                                        should_remove = True
+                                    
+                                    # Remove if references ExternalMCPAgentsSecret
+                                    if isinstance(resource, list):
+                                        for r in resource:
+                                            if isinstance(r, dict) and r.get('Ref') == 'ExternalMCPAgentsSecret':
+                                                should_remove = True
+                                    elif isinstance(resource, dict) and resource.get('Ref') == 'ExternalMCPAgentsSecret':
+                                        should_remove = True
+                                    
+                                    if not should_remove:
+                                        cleaned_statements.append(stmt)
+                            
+                            if cleaned_statements:
+                                policy['Statement'] = cleaned_statements
+                                cleaned_policies.append(policy)
+                            elif len(cleaned_statements) < len(statements):
+                                self.logger.debug(f"Removed AppSync/MCP permissions from {func_name} policy")
+                        else:
+                            cleaned_policies.append(policy)
+                    else:
+                        cleaned_policies.append(policy)
+                
+                # Update policies list
+                func_def['Properties']['Policies'] = cleaned_policies
         
         # Clean nested stack parameters comprehensively (all patterns need AppSync params removed)
         pattern_stacks = ['PATTERN1STACK', 'PATTERN2STACK', 'PATTERN3STACK']
