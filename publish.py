@@ -2180,7 +2180,9 @@ except Exception as e:
                 "patterns/pattern-3/template.yaml",
                 "Dockerfile.optimized",
             ],
-            "lib": [LIB_DEPENDENCY],
+            "lib": [
+                "./lib/idp_common_pkg"
+            ],  # Include entire package, not just idp_common subdir
         }
         return dependencies
 
