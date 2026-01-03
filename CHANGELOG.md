@@ -5,6 +5,13 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+
+- **Optimized Publish Script Build Performance**
+  - Improved concurrent build performance by building all categories simultaneously instead of sequentially
+  - Enhanced max_workers calculation for I/O-bound operations
+  - Removed obsolete sequential build logic when library changes (no longer needed with pre-built wheel approach)
+
 ### Fixed
 
 - **IDP CLI Stack Parameter Preservation During Updates**

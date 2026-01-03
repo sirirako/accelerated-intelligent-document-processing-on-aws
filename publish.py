@@ -29,8 +29,6 @@ import yaml
 from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
@@ -715,127 +713,78 @@ STDERR:
     def build_components_with_smart_detection(
         self, components_needing_rebuild, component_type, max_workers=None
     ):
-        """Build patterns or options with smart detection and lib dependency handling"""
+        """Build patterns or options with smart detection.
+
+        Note: Sequential builds for lib changes are no longer needed since we pre-build
+        the lib wheel. All Lambda functions install from the wheel without race conditions.
+        """
         # Filter components by type
         components_to_build = []
         for item in components_needing_rebuild:
             if component_type in item["component"]:
-                if (
-                    self._is_lib_changed
-                    and LIB_DEPENDENCY in item["dependencies"]
-                    and max_workers != 1
-                ):
-                    max_workers = 1
                 components_to_build.append(item["component"])
 
         if not components_to_build:
             self.console.print(f"[green]✅ All {component_type} are up to date[/green]")
             return True
 
-        # Force sequential builds if lib changed
-        if self._is_lib_changed and max_workers == 1:
-            self.console.print(
-                f"[yellow]⚠️  lib dependencies detected - using sequential builds for {component_type}[/yellow]"
-            )
-
-        if max_workers == 1:
-            self.console.print(
-                f"[cyan]Building {len(components_to_build)} {component_type} with 1 worker...[/cyan]"
-            )
-        else:
-            self.console.print(
-                f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
-            )
+        self.console.print(
+            f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
+        )
 
         return self._build_components_concurrently(
             components_to_build, component_type, max_workers
         )
 
     def _build_components_concurrently(self, components, component_type, max_workers):
-        """Generic method to build components concurrently with progress display"""
-        # Create progress display
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            transient=False,
-        ) as progress:
-            # Create main task for overall progress
-            main_task = progress.add_task(
-                f"[cyan]Building {component_type}...", total=len(components)
-            )
+        """Generic method to build components concurrently with simple logging.
 
-            # Create individual tasks for each component
-            component_tasks = {}
+        Note: Progress bars removed to avoid Rich LiveDisplay conflicts when building
+        categories concurrently. Simple status logging used instead.
+        """
+        # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all component build tasks
+            future_to_component = {}
             for component in components:
-                task_id = progress.add_task(
-                    f"[yellow]{component}[/yellow] - Waiting...", total=1
+                self.console.print(f"[yellow]  • {component} - Building...[/yellow]")
+                future = executor.submit(
+                    self.build_and_package_template, component, force_rebuild=True
                 )
-                component_tasks[component] = task_id
+                future_to_component[future] = component
 
-            # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                # Submit all component build tasks
-                future_to_component = {}
-                for component in components:
-                    # Update task status to building
-                    progress.update(
-                        component_tasks[component],
-                        description=f"[yellow]{component}[/yellow] - Building...",
-                    )
-                    future = executor.submit(
-                        self.build_and_package_template, component, force_rebuild=True
-                    )
-                    future_to_component[future] = component
+            # Wait for all tasks to complete and check results
+            all_successful = True
+            completed = 0
 
-                # Wait for all tasks to complete and check results
-                all_successful = True
-                completed = 0
+            for future in concurrent.futures.as_completed(future_to_component):
+                component = future_to_component[future]
+                completed += 1
 
-                for future in concurrent.futures.as_completed(future_to_component):
-                    component = future_to_component[future]
-                    completed += 1
-
-                    try:
-                        success = future.result()
-                        if not success:
-                            progress.update(
-                                component_tasks[component],
-                                description=f"[red]{component}[/red] - Failed!",
-                                completed=1,
-                            )
-                            all_successful = False
-                        else:
-                            progress.update(
-                                component_tasks[component],
-                                description=f"[green]{component}[/green] - Complete!",
-                                completed=1,
-                            )
-
-                        # Update main progress
-                        progress.update(main_task, completed=completed)
-
-                    except Exception as e:
-                        # Log detailed error information
-
-                        error_output = f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                        self.log_error_details(
-                            f"{component_type.title()} {component} build exception",
-                            error_output,
-                        )
-
-                        progress.update(
-                            component_tasks[component],
-                            description=f"[red]{component}[/red] - Error: {str(e)[:30]}...",
-                            completed=1,
-                        )
+                try:
+                    success = future.result()
+                    if not success:
+                        self.console.print(f"[red]  ✗ {component} - Failed![/red]")
                         all_successful = False
-                        progress.update(main_task, completed=completed)
+                    else:
+                        self.console.print(
+                            f"[green]  ✓ {component} - Complete! ({completed}/{len(components)})[/green]"
+                        )
+
+                except Exception as e:
+                    # Log detailed error information
+                    error_output = (
+                        f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    )
+                    self.log_error_details(
+                        f"{component_type.title()} {component} build exception",
+                        error_output,
+                    )
+
+                    self.console.print(
+                        f"[red]  ✗ {component} - Error: {str(e)[:50]}...[/red]"
+                    )
+                    all_successful = False
 
         return all_successful
 
@@ -2656,28 +2605,62 @@ except Exception as e:
 
             # Determine optimal number of workers
             if self.max_workers is None:
-                # Auto-detect: typically CPU count or a bit less, capped at 4
-                self.max_workers = min(4, (os.cpu_count() or 1) + 1)
+                # Auto-detect: SAM builds are I/O bound, so use 2x CPU count, capped at 8
+                cpu_count = os.cpu_count() or 4
+                self.max_workers = min(cpu_count * 2, 8)
                 self.console.print(
-                    f"[green]Auto-detected {self.max_workers} concurrent workers[/green]"
+                    f"[green]Auto-detected {self.max_workers} concurrent workers (CPUs: {cpu_count})[/green]"
                 )
 
-            # Build and push Pattern-2 container images FIRST if Pattern-2 needs rebuilding
-            # This MUST happen before SAM build/package since the images need to exist
-            # Pattern-2 Docker images are now built during CloudFormation deployment via CodeBuild
-            # No pre-build required - CodeBuild will download source from S3 and build images
+            # All pattern Docker images (Pattern-1, Pattern-2, Pattern-3) are built during CloudFormation deployment via CodeBuild
+            # CodeBuild will download source from S3 and build images - no pre-build required
             self.console.print(
-                "\n[cyan]ℹ️  Pattern-2 Docker images will be built during stack deployment via CodeBuild[/cyan]"
+                "\n[cyan]ℹ️  Pattern Docker images (Pattern-1/2/3) will be built during stack deployment via CodeBuild[/cyan]"
             )
 
-            # Build nested stacks with smart detection
-            self.console.print("\n[bold yellow]🔗 Building Nested Stacks[/bold yellow]")
-            nested_start = time.time()
-            nested_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "nested", max_workers=self.max_workers
+            # Build all categories concurrently (nested, patterns, options have no dependencies on each other)
+            self.console.print(
+                "\n[bold yellow]🚀 Building All Categories Concurrently[/bold yellow]"
             )
-            nested_time = time.time() - nested_start
 
+            # Submit all category builds concurrently
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=3
+            ) as category_executor:
+                # Submit builds for all three categories
+                nested_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "nested",
+                    self.max_workers,
+                )
+                patterns_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "patterns",
+                    self.max_workers,
+                )
+                options_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "options",
+                    self.max_workers,
+                )
+
+                # Wait for all categories to complete and collect results
+                nested_start = time.time()
+                nested_success = nested_future.result()
+                nested_time = time.time() - nested_start
+
+                patterns_start = time.time()
+                patterns_success = patterns_future.result()
+                patterns_time = time.time() - patterns_start
+
+                options_start = time.time()
+                options_success = options_future.result()
+                options_time = time.time() - options_start
+
+            # Check if any category failed
             if not nested_success:
                 self.print_error_summary()
                 self.console.print(
@@ -2689,14 +2672,6 @@ except Exception as e:
                     )
                 sys.exit(1)
 
-            # Build patterns with smart detection
-            self.console.print("\n[bold yellow]📦 Building Patterns[/bold yellow]")
-            patterns_start = time.time()
-            patterns_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "patterns", max_workers=self.max_workers
-            )
-            patterns_time = time.time() - patterns_start
-
             if not patterns_success:
                 self.print_error_summary()
                 self.console.print(
@@ -2707,14 +2682,6 @@ except Exception as e:
                         "[dim]Use --verbose flag for detailed error information[/dim]"
                     )
                 sys.exit(1)
-
-            # Build options with smart detection
-            self.console.print("\n[bold yellow]⚙️  Building Options[/bold yellow]")
-            options_start = time.time()
-            options_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "options", max_workers=self.max_workers
-            )
-            options_time = time.time() - options_start
 
             if not options_success:
                 self.print_error_summary()
@@ -2729,11 +2696,14 @@ except Exception as e:
 
             total_build_time = time.time() - start_time
             self.console.print(
-                f"\n[bold green]✅ Smart build completed in {total_build_time:.2f}s[/bold green]"
+                f"\n[bold green]✅ Concurrent build completed in {total_build_time:.2f}s[/bold green]"
             )
             self.console.print(f"   [dim]• Nested: {nested_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Patterns: {patterns_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Options: {options_time:.2f}s[/dim]")
+            self.console.print(
+                f"   [dim]• Wall-clock time saved by concurrency: {max(nested_time, patterns_time, options_time) - total_build_time:.2f}s[/dim]"
+            )
 
             if components_needing_rebuild:
                 # Upload configuration library

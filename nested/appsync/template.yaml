@@ -409,8 +409,8 @@ Resources:
               Action:
                 - appsync:GraphQL
               Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Query/*"
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+                - !Sub "${GraphQLApiArn}/types/Query/*"
+                - !Sub "${GraphQLApiArn}/types/Mutation/*"
             - Effect: Allow
               Action:
                 - states:StopExecution
@@ -1125,7 +1125,7 @@ Resources:
               Action:
                 - appsync:GraphQL
               Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+                - !Sub "${GraphQLApiArn}/types/Mutation/*"
 
 
   ##########################################################################
@@ -2245,7 +2245,7 @@ Resources:
               Action:
                 - appsync:GraphQL
               Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+                - !Sub "${GraphQLApiArn}/types/Mutation/*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
@@ -2485,7 +2485,7 @@ Resources:
               Action:
                 - appsync:GraphQL
               Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
+                - !Sub "${GraphQLApiArn}/types/Mutation/*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
