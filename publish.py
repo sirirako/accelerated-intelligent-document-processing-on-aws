@@ -68,7 +68,7 @@ class IDPPublisher:
         self._modified_requirements_files = []  # Track modified requirements.txt files
 
     def clean_checksums(self):
-        """Delete all .checksum files in main, patterns, options, and lib directories"""
+        """Delete all .checksum files in main, patterns, nested, and lib directories"""
         self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
 
         checksum_paths = [
@@ -91,14 +91,6 @@ class IDPPublisher:
                 pattern_path = os.path.join(patterns_dir, item)
                 if os.path.isdir(pattern_path):
                     checksum_paths.append(f"{pattern_path}/.checksum")
-
-        # Add options checksum files
-        options_dir = "options"
-        if os.path.exists(options_dir):
-            for item in os.listdir(options_dir):
-                option_path = os.path.join(options_dir, item)
-                if os.path.isdir(option_path):
-                    checksum_paths.append(f"{option_path}/.checksum")
 
         deleted_count = 0
         for checksum_path in checksum_paths:
@@ -953,18 +945,18 @@ STDERR:
                             )
                         )
 
-        # Check options Lambda functions
-        options_dir = project_root / "options"
-        if options_dir.exists():
-            for option_dir in options_dir.iterdir():
-                if option_dir.is_dir() and (option_dir / "template.yaml").exists():
-                    option_src = option_dir / "src"
-                    if option_src.exists():
+        # Check nested Lambda functions (includes former options/ stacks)
+        nested_dir = project_root / "nested"
+        if nested_dir.exists():
+            for nested_item in nested_dir.iterdir():
+                if nested_item.is_dir() and (nested_item / "template.yaml").exists():
+                    nested_src = nested_item / "src"
+                    if nested_src.exists():
                         functions.update(
                             self._scan_lambda_directory(
-                                option_src,
-                                option_dir / "template.yaml",
-                                option_dir.name,
+                                nested_src,
+                                nested_item / "template.yaml",
+                                f"nested/{nested_item.name}",
                             )
                         )
 
@@ -2155,11 +2147,19 @@ except Exception as e:
         dependencies = {
             # Main template components
             "main": ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY],
-            # Nested components
+            # Nested components (includes all nested stacks - core and optional)
             "nested/appsync": [
                 LIB_DEPENDENCY,
                 "nested/appsync/src",
                 "nested/appsync/template.yaml",
+            ],
+            "nested/bda-lending-project": [
+                "nested/bda-lending-project/src",
+                "nested/bda-lending-project/template.yaml",
+            ],
+            "nested/bedrockkb": [
+                "nested/bedrockkb/src",
+                "nested/bedrockkb/template.yaml",
             ],
             # Pattern components
             "patterns/pattern-1": [
@@ -2178,15 +2178,6 @@ except Exception as e:
                 "patterns/pattern-3/src",
                 "patterns/pattern-3/template.yaml",
                 "Dockerfile.optimized",
-            ],
-            # Option components (no lib dependency - they don't use idp_common)
-            "options/bda-lending-project": [
-                "options/bda-lending-project/src",
-                "options/bda-lending-project/template.yaml",
-            ],
-            "options/bedrockkb": [
-                "options/bedrockkb/src",
-                "options/bedrockkb/template.yaml",
             ],
             "lib": [LIB_DEPENDENCY],
         }
@@ -2618,16 +2609,16 @@ except Exception as e:
                 "\n[cyan]ℹ️  Pattern Docker images (Pattern-1/2/3) will be built during stack deployment via CodeBuild[/cyan]"
             )
 
-            # Build all categories concurrently (nested, patterns, options have no dependencies on each other)
+            # Build nested and patterns concurrently (no dependencies on each other)
             self.console.print(
-                "\n[bold yellow]🚀 Building All Categories Concurrently[/bold yellow]"
+                "\n[bold yellow]🚀 Building Nested Stacks and Patterns Concurrently[/bold yellow]"
             )
 
-            # Submit all category builds concurrently
+            # Submit both category builds concurrently
             with concurrent.futures.ThreadPoolExecutor(
-                max_workers=3
+                max_workers=2
             ) as category_executor:
-                # Submit builds for all three categories
+                # Submit builds for both categories
                 nested_future = category_executor.submit(
                     self.build_components_with_smart_detection,
                     components_needing_rebuild,
@@ -2640,14 +2631,8 @@ except Exception as e:
                     "patterns",
                     self.max_workers,
                 )
-                options_future = category_executor.submit(
-                    self.build_components_with_smart_detection,
-                    components_needing_rebuild,
-                    "options",
-                    self.max_workers,
-                )
 
-                # Wait for all categories to complete and collect results
+                # Wait for both categories to complete and collect results
                 nested_start = time.time()
                 nested_success = nested_future.result()
                 nested_time = time.time() - nested_start
@@ -2655,10 +2640,6 @@ except Exception as e:
                 patterns_start = time.time()
                 patterns_success = patterns_future.result()
                 patterns_time = time.time() - patterns_start
-
-                options_start = time.time()
-                options_success = options_future.result()
-                options_time = time.time() - options_start
 
             # Check if any category failed
             if not nested_success:
@@ -2683,26 +2664,14 @@ except Exception as e:
                     )
                 sys.exit(1)
 
-            if not options_success:
-                self.print_error_summary()
-                self.console.print(
-                    "[red]❌ Error: Failed to build one or more options[/red]"
-                )
-                if not self.verbose:
-                    self.console.print(
-                        "[dim]Use --verbose flag for detailed error information[/dim]"
-                    )
-                sys.exit(1)
-
             total_build_time = time.time() - start_time
             self.console.print(
                 f"\n[bold green]✅ Concurrent build completed in {total_build_time:.2f}s[/bold green]"
             )
             self.console.print(f"   [dim]• Nested: {nested_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Patterns: {patterns_time:.2f}s[/dim]")
-            self.console.print(f"   [dim]• Options: {options_time:.2f}s[/dim]")
             self.console.print(
-                f"   [dim]• Wall-clock time saved by concurrency: {max(nested_time, patterns_time, options_time) - total_build_time:.2f}s[/dim]"
+                f"   [dim]• Wall-clock time saved by concurrency: {max(nested_time, patterns_time) - total_build_time:.2f}s[/dim]"
             )
 
             if components_needing_rebuild:

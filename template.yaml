@@ -852,7 +852,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: ShouldCreateBDASampleProject
     Properties:
-      TemplateURL: ./options/bda-lending-project/.aws-sam/packaged.yaml
+      TemplateURL: ./nested/bda-lending-project/.aws-sam/packaged.yaml
       Parameters:
         ProjectName: !Sub "${AWS::StackName}-BDA-Lending-Sample-Project"
         ProjectDescription: !Sub "${AWS::StackName}-BDA-Lending-Sample-Project"
@@ -865,7 +865,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: ShouldCreateDocumentKnowledgeBase
     Properties:
-      TemplateURL: ./options/bedrockkb/.aws-sam/packaged.yaml
+      TemplateURL: ./nested/bedrockkb/.aws-sam/packaged.yaml
       Parameters:
         pKnowledgeBaseBucketName: !Ref OutputBucket
         pInputDocumentUploadFolderPrefix: ""
