@@ -78,6 +78,14 @@ class IDPPublisher:
             "lib/.checksum",  # lib
         ]
 
+        # Add nested stack checksum files
+        nested_dir = "nested"
+        if os.path.exists(nested_dir):
+            for item in os.listdir(nested_dir):
+                nested_path = os.path.join(nested_dir, item)
+                if os.path.isdir(nested_path):
+                    checksum_paths.append(f"{nested_path}/.checksum")
+
         # Add patterns checksum files
         patterns_dir = "patterns"
         if os.path.exists(patterns_dir):
@@ -2198,6 +2206,12 @@ except Exception as e:
         dependencies = {
             # Main template components
             "main": ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY],
+            # Nested components
+            "nested/appsync": [
+                LIB_DEPENDENCY,
+                "nested/appsync/src",
+                "nested/appsync/template.yaml",
+            ],
             # Pattern components
             "patterns/pattern-1": [
                 LIB_DEPENDENCY,
@@ -2656,6 +2670,25 @@ except Exception as e:
                 "\n[cyan]ℹ️  Pattern-2 Docker images will be built during stack deployment via CodeBuild[/cyan]"
             )
 
+            # Build nested stacks with smart detection
+            self.console.print("\n[bold yellow]🔗 Building Nested Stacks[/bold yellow]")
+            nested_start = time.time()
+            nested_success = self.build_components_with_smart_detection(
+                components_needing_rebuild, "nested", max_workers=self.max_workers
+            )
+            nested_time = time.time() - nested_start
+
+            if not nested_success:
+                self.print_error_summary()
+                self.console.print(
+                    "[red]❌ Error: Failed to build one or more nested stacks[/red]"
+                )
+                if not self.verbose:
+                    self.console.print(
+                        "[dim]Use --verbose flag for detailed error information[/dim]"
+                    )
+                sys.exit(1)
+
             # Build patterns with smart detection
             self.console.print("\n[bold yellow]📦 Building Patterns[/bold yellow]")
             patterns_start = time.time()
@@ -2698,6 +2731,7 @@ except Exception as e:
             self.console.print(
                 f"\n[bold green]✅ Smart build completed in {total_build_time:.2f}s[/bold green]"
             )
+            self.console.print(f"   [dim]• Nested: {nested_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Patterns: {patterns_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Options: {options_time:.2f}s[/dim]")
 

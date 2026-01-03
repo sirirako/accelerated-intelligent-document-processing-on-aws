@@ -6143,6 +6143,24 @@ Resources:
       BucketName: !Ref TestSetBucket
       FunctionArn: !GetAtt TestSetZipExtractorFunction.Arn
 
+  TestSetResolverS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: TestSetResolverS3Access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "${TestSetBucket.Arn}/*"
+              - !GetAtt TestSetBucket.Arn
+      Roles:
+        - !Ref TestSetResolverFunctionRole
 
   ##########################################################################
   # Lambda function to copy test files
