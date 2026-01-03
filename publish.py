@@ -2166,6 +2166,7 @@ except Exception as e:
                 LIB_DEPENDENCY,
                 "patterns/pattern-1/src",
                 "patterns/pattern-1/template.yaml",
+                "Dockerfile.optimized",
             ],
             "patterns/pattern-2": [
                 LIB_DEPENDENCY,
