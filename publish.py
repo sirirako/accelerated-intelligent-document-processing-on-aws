@@ -2301,6 +2301,110 @@ except Exception as e:
         self.console.print("[green]✅ Python linting passed[/green]")
         return True
 
+    def _validate_cfn_lint(self):
+        """Validate CloudFormation templates with cfn-lint after build/package"""
+        if not self.lint_enabled:
+            return True
+
+        self.console.print(
+            "[cyan]🔍 Running CloudFormation linting (cfn-lint) on packaged templates...[/cyan]"
+        )
+
+        # Check if cfn-lint is installed
+        if not shutil.which("cfn-lint"):
+            self.console.print(
+                "[yellow]⚠️  cfn-lint not installed, skipping CloudFormation linting[/yellow]"
+            )
+            self.console.print("[dim]Install with: pip install cfn-lint[/dim]")
+            return True
+
+        all_errors = []
+        all_warnings = []
+
+        # List of templates to lint (packaged templates after token replacement)
+        templates_to_lint = []
+
+        # Main packaged template
+        main_packaged = ".aws-sam/idp-main.yaml"
+        if os.path.exists(main_packaged):
+            templates_to_lint.append(("Main template", main_packaged))
+
+        # Nested templates (packaged versions)
+        nested_dir = "nested"
+        if os.path.exists(nested_dir):
+            for nested_name in os.listdir(nested_dir):
+                nested_packaged = os.path.join(
+                    nested_dir, nested_name, ".aws-sam", "packaged.yaml"
+                )
+                if os.path.exists(nested_packaged):
+                    templates_to_lint.append((f"Nested/{nested_name}", nested_packaged))
+
+        # Pattern templates (packaged versions)
+        patterns_dir = "patterns"
+        if os.path.exists(patterns_dir):
+            for pattern_name in os.listdir(patterns_dir):
+                pattern_packaged = os.path.join(
+                    patterns_dir, pattern_name, ".aws-sam", "packaged.yaml"
+                )
+                if os.path.exists(pattern_packaged):
+                    templates_to_lint.append(
+                        (f"Patterns/{pattern_name}", pattern_packaged)
+                    )
+
+        if not templates_to_lint:
+            self.console.print(
+                "[yellow]⚠️  No packaged templates found to lint[/yellow]"
+            )
+            return True
+
+        # Lint each template
+        for template_name, template_path in templates_to_lint:
+            self.log_verbose(f"Linting {template_name}: {template_path}")
+
+            result = subprocess.run(
+                ["cfn-lint", template_path], capture_output=True, text=True
+            )
+
+            if result.returncode != 0:
+                output = result.stdout + result.stderr
+                lines = output.strip().split("\n") if output.strip() else []
+
+                # Separate errors from warnings
+                for line in lines:
+                    if not line.strip():
+                        continue
+                    if line.strip().startswith("E") or ":E" in line:
+                        all_errors.append(f"[{template_name}] {line}")
+                    elif line.strip().startswith("W") or ":W" in line:
+                        all_warnings.append(f"[{template_name}] {line}")
+
+        # Report results
+        if all_errors:
+            self.console.print("[red]❌ CloudFormation linting found errors:[/red]")
+            for line in all_errors[:10]:  # Show first 10 errors
+                self.console.print(f"[red]  {line}[/red]")
+            if len(all_errors) > 10:
+                self.console.print(
+                    f"[red]  ... and {len(all_errors) - 10} more errors[/red]"
+                )
+            return False
+
+        if all_warnings:
+            self.console.print(
+                f"[yellow]⚠️  CloudFormation linting found {len(all_warnings)} warnings (continuing):[/yellow]"
+            )
+            for line in all_warnings[:5]:  # Show first 5 warnings
+                self.console.print(f"[dim]  {line}[/dim]")
+            if len(all_warnings) > 5:
+                self.console.print(
+                    f"[dim]  ... and {len(all_warnings) - 5} more warnings[/dim]"
+                )
+
+        self.console.print(
+            f"[green]✅ CloudFormation linting passed ({len(templates_to_lint)} templates checked)[/green]"
+        )
+        return True
+
     def build_lib_package(self):
         """Build lib package as wheel for parallel-safe SAM builds"""
         try:
@@ -2835,6 +2939,10 @@ except Exception as e:
 
             # Validate Lambda builds for idp_common inclusion (after all builds complete)
             self.validate_lambda_builds()
+
+            # Validate CloudFormation templates with cfn-lint (after all templates are built/packaged)
+            if not self._validate_cfn_lint():
+                raise Exception("CloudFormation linting validation failed")
 
             # Restore requirements.txt files after validation completes successfully
             if self._modified_requirements_files:

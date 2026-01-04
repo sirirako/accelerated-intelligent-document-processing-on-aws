@@ -1530,6 +1530,8 @@ Resources:
           - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
           - !Ref Pattern1BDAProjectArn
         HasPattern1BDAProjectArn: !If [HasPattern1BDAProjectArn, "true", "false"]
+        IsPattern2: !If [IsPattern2, "true", "false"]
+        IsPattern3: !If [IsPattern3, "true", "false"]
 
   CustomerManagedEncryptionKey:
     DependsOn:
@@ -6580,9 +6582,6 @@ Resources:
         Web UI build for GenAIIDP stack - ${AWS::StackName}
       ServiceRole: !Ref UICodeBuildServiceRole
       EncryptionKey: alias/aws/s3
-      Environment:
-        ComputeType: BUILD_GENERAL1_MEDIUM
-        Type: LINUX_CONTAINER
       Artifacts:
         Type: NO_ARTIFACTS
       Source:

@@ -166,12 +166,24 @@ Parameters:
   HasPattern1BDAProjectArn:
     Type: String
     AllowedValues: ["true", "false"]
+  
+  IsPattern2:
+    Type: String
+    AllowedValues: ["true", "false"]
+  
+  IsPattern3:
+    Type: String
+    AllowedValues: ["true", "false"]
 
 Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasGuardrail: !Equals [!Ref HasGuardrailConfig, "true"]
   UseDocumentKnowledgeBase: !Equals [!Ref ShouldUseDocumentKnowledgeBase, "true"]
+  ShouldCreateEvaluationBaselineBucket: !Equals [!Ref ShouldCreateEvaluationBaselineBucket, "true"]
+  ShouldCreateReportingBucket: !Equals [!Ref ShouldCreateReportingBucket, "true"]
   IsPattern1Enabled: !Equals [!Ref IsPattern1, "true"]
+  IsPattern2: !Equals [!Ref IsPattern2, "true"]
+  IsPattern3: !Equals [!Ref IsPattern3, "true"]
   HasBDAProjectArn: !Equals [!Ref HasPattern1BDAProjectArn, "true"]
 
 Resources:
