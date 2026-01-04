@@ -425,7 +425,17 @@ const TestSets = () => {
     {
       id: 'id',
       header: 'Test Set ID',
-      cell: (item) => item.id,
+      cell: (item) => {
+        const region = import.meta.env.VITE_AWS_REGION;
+        const bucketName = import.meta.env.VITE_TEST_SET_BUCKET_NAME;
+        const s3Url = `https://s3.console.aws.amazon.com/s3/buckets/${bucketName}?region=${region}&prefix=${item.id}/`;
+
+        return (
+          <a href={s3Url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+            {item.id}
+          </a>
+        );
+      },
       sortingField: 'id',
     },
     {
