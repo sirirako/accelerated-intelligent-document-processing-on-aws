@@ -144,6 +144,10 @@ Parameters:
   KnowledgeBaseId:
     Type: String
   
+  KnowledgeBaseModelId:
+    Type: String
+    Description: Model ID for Knowledge Base queries
+  
   ShouldCreateEvaluationBaselineBucket:
     Type: String
     AllowedValues: ["true", "false"]
@@ -2749,8 +2753,8 @@ Resources:
                 - glue:GetPartitions
               Resource:
                 - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
-                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabaseName}"
+                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabaseName}/*"
         - Statement:
             - Effect: Allow
               Action:

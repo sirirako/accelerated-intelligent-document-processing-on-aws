@@ -1777,10 +1777,9 @@ except Exception as e:
                                 task,
                                 description=f"[red]✗ SAM build failed after {sam_build_elapsed:.1f}s",
                             )
-                finally:
-                    # Always restore requirements.txt files after build
-                    if self._modified_requirements_files:
-                        self._restore_requirements_files()
+                except Exception:
+                    # Re-raise the exception to be caught by outer try/finally
+                    raise
 
                 if not success:
                     # Delete main template checksum on build failure
@@ -2144,9 +2143,17 @@ except Exception as e:
 
     def get_component_dependencies(self):
         """Map each component to its dependencies for smart rebuild detection"""
+        # Include the wheel file in main dependencies to detect when wheel changes
+        # This ensures rebuild when wheel is rebuilt with different content
+        wheel_dep = self._get_wheel_dependency()
+
+        main_deps = ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY]
+        if wheel_dep:
+            main_deps.append(wheel_dep)
+
         dependencies = {
             # Main template components
-            "main": ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY],
+            "main": main_deps,
             # Nested components (includes all nested stacks - core and optional)
             "nested/appsync": [
                 LIB_DEPENDENCY,
@@ -2413,6 +2420,102 @@ except Exception as e:
 
         self._modified_requirements_files = []
 
+    def _get_wheel_dependency(self):
+        """Get the wheel file path if it exists, for checksum calculation.
+
+        This ensures that when the wheel is rebuilt, the checksum changes and
+        triggers a rebuild of dependent components.
+        """
+        dist_dir = os.path.join(LIB_PKG_PATH, "dist")
+        if not os.path.exists(dist_dir):
+            return None
+
+        wheel_files = [f for f in os.listdir(dist_dir) if f.endswith(".whl")]
+        if wheel_files:
+            return os.path.join(dist_dir, wheel_files[0])
+        return None
+
+    def _verify_build_integrity(self):
+        """Verify that existing builds have idp_common properly included.
+
+        This is a quick pre-validation check that runs before the "is up to date"
+        decision. If builds appear corrupted (missing idp_common), this deletes
+        the relevant checksum files to force a rebuild.
+
+        Returns:
+            bool: True if integrity check passed, False if checksums were deleted
+        """
+        self.console.print(
+            "[cyan]🔍 Verifying build integrity for Lambda functions...[/cyan]"
+        )
+
+        # Check if main .aws-sam/build exists
+        main_build_dir = Path(".aws-sam/build")
+        if not main_build_dir.exists():
+            self.log_verbose("No existing build directory, skipping integrity check")
+            return True
+
+        # Find Lambda functions that should have idp_common
+        functions_with_idp_common = []
+        src_lambda_dir = Path("src/lambda")
+
+        if src_lambda_dir.exists():
+            for func_dir in src_lambda_dir.iterdir():
+                if not func_dir.is_dir():
+                    continue
+                req_file = func_dir / "requirements.txt"
+                if req_file.exists():
+                    content = req_file.read_text()
+                    if "idp_common_pkg" in content:
+                        functions_with_idp_common.append(func_dir.name)
+
+        if not functions_with_idp_common:
+            self.log_verbose("No Lambda functions with idp_common_pkg found")
+            return True
+
+        # Check a sample of functions for idp_common in build
+        integrity_issues = []
+        for func_name in functions_with_idp_common[:3]:  # Check first 3 as sample
+            # Find the CloudFormation function name
+            cf_name = self._extract_function_name(func_name, Path("template.yaml"))
+            if not cf_name:
+                continue
+
+            build_func_dir = main_build_dir / cf_name
+            idp_common_dir = build_func_dir / "idp_common"
+
+            if build_func_dir.exists() and not idp_common_dir.exists():
+                integrity_issues.append(f"{func_name} ({cf_name})")
+                self.log_verbose(
+                    f"Integrity issue: {func_name} build exists but missing idp_common"
+                )
+
+        if integrity_issues:
+            self.console.print(
+                f"[yellow]⚠️  Build integrity issues detected in {len(integrity_issues)} functions:[/yellow]"
+            )
+            for issue in integrity_issues:
+                self.console.print(f"[yellow]   • {issue}[/yellow]")
+
+            # Delete main checksum to force rebuild
+            checksum_file = ".checksum"
+            if os.path.exists(checksum_file):
+                os.remove(checksum_file)
+                self.console.print(
+                    "[yellow]   Deleted .checksum to force rebuild[/yellow]"
+                )
+
+            # Also clear the SAM build cache for main
+            self.clear_component_cache("main")
+            self.console.print(
+                "[yellow]   Cleared .aws-sam cache to ensure fresh build[/yellow]"
+            )
+
+            return False
+
+        self.console.print("[green]✅ Build integrity check passed[/green]")
+        return True
+
     def _delete_checksum_file(self, checksum_path):
         """Delete checksum file - handles both component paths and direct file paths"""
         if os.path.isdir(checksum_path):
@@ -2571,8 +2674,19 @@ except Exception as e:
                     self.sts_client = boto3.client("sts", region_name=self.region)
                 self.account_id = self.sts_client.get_caller_identity()["Account"]
 
+            # Verify build integrity before checking if rebuild is needed
+            # This catches cases where builds exist but are corrupted/missing idp_common
+            integrity_ok = self._verify_build_integrity()
+
             # Perform smart rebuild detection and cache management
             components_needing_rebuild = self.smart_rebuild_detection()
+
+            # If integrity check failed, it deleted checksums - re-run detection
+            if not integrity_ok:
+                self.console.print(
+                    "[yellow]Re-running rebuild detection after integrity check...[/yellow]"
+                )
+                components_needing_rebuild = self.smart_rebuild_detection()
 
             # Start UI validation early in parallel
             ui_validation_future, ui_executor = self.start_ui_validation_parallel()
@@ -2722,6 +2836,13 @@ except Exception as e:
             # Validate Lambda builds for idp_common inclusion (after all builds complete)
             self.validate_lambda_builds()
 
+            # Restore requirements.txt files after validation completes successfully
+            if self._modified_requirements_files:
+                self.log_verbose(
+                    "Restoring requirements.txt files after successful validation"
+                )
+                self._restore_requirements_files()
+
             # All builds completed successfully if we reach here
             self.console.print("[green]✅ All builds completed successfully[/green]")
 
@@ -2744,6 +2865,16 @@ except Exception as e:
             self.console.print("\n[yellow]Traceback:[/yellow]")
             traceback.print_exc()
             sys.exit(1)
+        finally:
+            # Always restore requirements.txt files on exit (success or failure)
+            if self._modified_requirements_files:
+                self.log_verbose("Cleaning up: Restoring requirements.txt files")
+                try:
+                    self._restore_requirements_files()
+                except Exception as restore_error:
+                    self.console.print(
+                        f"[yellow]Warning: Could not restore requirements.txt files: {restore_error}[/yellow]"
+                    )
 
 
 if __name__ == "__main__":

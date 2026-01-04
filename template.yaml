@@ -1521,6 +1521,7 @@ Resources:
           - ShouldUseDocumentKnowledgeBase
           - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
           - ""
+        KnowledgeBaseModelId: !Ref KnowledgeBaseModelId
         ShouldCreateEvaluationBaselineBucket: !If [ShouldCreateEvaluationBaselineBucket, "true", "false"]
         ShouldCreateReportingBucket: !If [ShouldCreateReportingBucket, "true", "false"]
         IsPattern1: !If [IsPattern1, "true", "false"]
@@ -1833,7 +1834,7 @@ Resources:
 
   TestSetBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: RetainExceptOnCreate
+    DeletionPolicy: Delete
     Properties:
       CorsConfiguration:
         CorsRules:
@@ -1894,6 +1895,103 @@ Resources:
             Condition:
               Bool:
                 "aws:SecureTransport": false
+
+  ##########################################################################
+  # TestSetBucket Auto-Delete - Empties bucket before CloudFormation deletion
+  ##########################################################################
+
+  TestSetBucketAutoDeleteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 512
+      InlineCode: |
+        import boto3
+        import cfnresponse
+        import json
+        import logging
+
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        def handler(event, context):
+            logger.info(json.dumps(event))
+            
+            try:
+                bucket_name = event['ResourceProperties']['BucketName']
+                
+                if event['RequestType'] == 'Delete':
+                    logger.info(f"Emptying bucket {bucket_name} before deletion")
+                    s3 = boto3.resource('s3')
+                    bucket = s3.Bucket(bucket_name)
+                    
+                    # Delete all objects including versions
+                    bucket.object_versions.all().delete()
+                    logger.info(f"Successfully emptied bucket {bucket_name}")
+                
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                
+            except Exception as e:
+                logger.error(f"Error: {str(e)}")
+                # On delete, we want to succeed even if there's an error
+                # to avoid blocking stack deletion
+                if event['RequestType'] == 'Delete':
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, 
+                                   reason=f"Bucket cleanup attempted: {str(e)}")
+                else:
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+      LoggingConfig:
+        LogGroup: !Ref TestSetBucketAutoDeleteFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:GetBucketVersioning
+                - s3:ListBucket
+                - s3:ListBucketVersions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:s3:::${TestSetBucket}"
+                - !Sub "arn:${AWS::Partition}:s3:::${TestSetBucket}/*"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:GenerateDataKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestSetBucketAutoDeleteFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  TestSetBucketAutoDelete:
+    Type: Custom::S3AutoDelete
+    DependsOn:
+      - TestSetBucket
+      - TestSetBucketAutoDeleteFunction
+    Properties:
+      ServiceToken: !GetAtt TestSetBucketAutoDeleteFunction.Arn
+      BucketName: !Ref TestSetBucket
 
   ##########################################################################
   # FCC Dataset Deployer - Automatically deploys RealKIE-FCC-Verified dataset

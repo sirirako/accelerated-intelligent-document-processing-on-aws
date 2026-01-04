@@ -1,0 +1,5 @@
+Published S3 artifacts will NOT be accessible by public.
+🔍 Running Python linting...
+✅ Python linting passed
+Error accessing bucket:
+An error occurred (403) when calling the HeadBucket operation: Forbidden
