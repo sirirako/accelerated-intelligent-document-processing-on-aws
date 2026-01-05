@@ -2333,77 +2333,31 @@ except Exception as e:
             else:
                 checksum_file = f"{component}/.checksum"
 
-            # Calculate individual checksums for each dependency
-            current_dep_checksums = {}
-            for dep in deps:
-                if os.path.isfile(dep):
-                    current_dep_checksums[dep] = self.get_file_checksum(dep)
-                elif os.path.isdir(dep):
-                    current_dep_checksums[dep] = self.get_source_files_checksum(dep)
-                else:
-                    current_dep_checksums[dep] = ""
-
-            # Combine checksums for overall comparison (include deployment context)
-            combined_checksum = hashlib.sha256(
-                (
-                    "".join(current_dep_checksums.values())
-                    + (self.bucket or "")
-                    + (self.prefix_and_version or "")
-                    + (self.region or "")
-                ).encode()
-            ).hexdigest()
+            current_checksum = self.get_component_checksum(*deps)
 
             needs_rebuild = True
-            changed_deps = []
-
             if os.path.exists(checksum_file):
-                try:
-                    with open(checksum_file, "r") as f:
-                        stored_data = json.load(f)
-                    stored_checksum = stored_data.get("combined", "")
-                    stored_dep_checksums = stored_data.get("dependencies", {})
-
-                    needs_rebuild = combined_checksum != stored_checksum
-
-                    # Identify which specific dependencies changed
-                    if needs_rebuild:
-                        for dep, current_cs in current_dep_checksums.items():
-                            stored_cs = stored_dep_checksums.get(dep, "")
-                            if current_cs != stored_cs:
-                                changed_deps.append(dep)
-                except (json.JSONDecodeError, KeyError):
-                    # Old format or corrupted - rebuild and show all deps
-                    changed_deps = deps
-            else:
-                # No checksum file - show all deps as changed
-                changed_deps = deps
+                with open(checksum_file, "r") as f:
+                    stored_checksum = f.read().strip()
+                needs_rebuild = current_checksum != stored_checksum
 
             if needs_rebuild:
                 components_to_rebuild.append(
                     {
                         "component": component,
                         "dependencies": deps,
-                        "changed_dependencies": changed_deps,
                         "checksum_file": checksum_file,
-                        "current_checksum": combined_checksum,
-                        "current_dep_checksums": current_dep_checksums,
+                        "current_checksum": current_checksum,
                     }
                 )
                 if component == "lib":  # update _is_lib_changed
                     self._is_lib_changed = True
 
-                # Show only changed dependencies
-                if changed_deps:
-                    change_msg = (
-                        "changed"
-                        if len(changed_deps) < len(deps)
-                        else "new/no previous build"
-                    )
-                    self.console.print(
-                        f"[yellow]📝 {component} needs rebuild ({change_msg}):[/yellow]"
-                    )
-                    for dep in changed_deps:
-                        self.console.print(f"[yellow]   • {dep}[/yellow]")
+                self.console.print(
+                    f"[yellow]📝 {component} needs rebuild due to changes in any of these dependencies:[/yellow]"
+                )
+                for dep in deps:
+                    self.console.print(f"[yellow]   • {dep}[/yellow]")
 
         return components_to_rebuild
 
@@ -2814,20 +2768,12 @@ except Exception as e:
             self.log_verbose(f"Deleted checksum file: {checksum_file}")
 
     def update_component_checksum(self, components_needing_rebuild):
-        """Update checksum with individual dependency tracking"""
+        """Update checksum"""
         for item in components_needing_rebuild:
             current_checksum = item["current_checksum"]
-            current_dep_checksums = item["current_dep_checksums"]
             checksum_file = item["checksum_file"]
-
-            # Store both combined checksum and individual dependency checksums
-            checksum_data = {
-                "combined": current_checksum,
-                "dependencies": current_dep_checksums,
-            }
-
             with open(os.path.join(".", checksum_file), "w") as f:
-                json.dump(checksum_data, f, indent=2)
+                f.write(current_checksum)
             self.log_verbose(f"Updated checksum for {item['component']}")
 
     def smart_rebuild_detection(self):
@@ -2941,43 +2887,27 @@ except Exception as e:
 
     def run(self, args):
         """Main execution method"""
-        # Track overall timing
-        overall_start_time = time.time()
-        timing_breakdown = {}
-
         try:
             # Parse and validate parameters
-            step_start = time.time()
             self.check_parameters(args)
-            timing_breakdown["Parameter validation"] = time.time() - step_start
 
             # Check for interrupted build state at startup - recover from any previous crash
-            step_start = time.time()
             self._prepare_for_build_at_start()
-            timing_breakdown["Build state recovery"] = time.time() - step_start
 
             # Container deployment is now handled within this script
 
             # Set up environment
-            step_start = time.time()
             self.setup_environment()
-            timing_breakdown["Environment setup"] = time.time() - step_start
 
             # Check prerequisites
-            step_start = time.time()
             self.check_prerequisites()
-            timing_breakdown["Prerequisites check"] = time.time() - step_start
 
             # Validate Python linting if enabled
-            step_start = time.time()
             if not self._validate_python_linting():
                 raise Exception("Python linting validation failed")
-            timing_breakdown["Python linting"] = time.time() - step_start
 
             # Set up S3 bucket
-            step_start = time.time()
             self.setup_artifacts_bucket()
-            timing_breakdown["S3 bucket setup"] = time.time() - step_start
 
             # Get AWS account ID (needed for ECR placeholder)
             if not self.account_id:
@@ -2987,14 +2917,10 @@ except Exception as e:
 
             # Verify build integrity before checking if rebuild is needed
             # This catches cases where builds exist but are corrupted/missing idp_common
-            step_start = time.time()
             integrity_ok = self._verify_build_integrity()
-            timing_breakdown["Build integrity check"] = time.time() - step_start
 
             # Perform smart rebuild detection and cache management
-            step_start = time.time()
             components_needing_rebuild = self.smart_rebuild_detection()
-            timing_breakdown["Smart rebuild detection"] = time.time() - step_start
 
             # If integrity check failed, it deleted checksums - re-run detection
             if not integrity_ok:
@@ -3004,16 +2930,12 @@ except Exception as e:
                 components_needing_rebuild = self.smart_rebuild_detection()
 
             # Start UI validation early in parallel
-            step_start = time.time()
             ui_validation_future, ui_executor = self.start_ui_validation_parallel()
-            timing_breakdown["Start UI validation"] = time.time() - step_start
 
             # clear component cache
-            step_start = time.time()
             for comp_info in components_needing_rebuild:
                 if comp_info["component"] != "lib":  # lib doesnt have sam build
                     self.clear_component_cache(comp_info["component"])
-            timing_breakdown["Clear component cache"] = time.time() - step_start
 
             # Build lib package for parallel-safe SAM builds
             # The wheel is needed whenever main template needs rebuilding (regardless of lib changes)
@@ -3022,15 +2944,13 @@ except Exception as e:
                 item["component"] == "main" for item in components_needing_rebuild
             )
             if main_needs_rebuild or self._is_lib_changed:
-                step_start = time.time()
                 self.build_lib_package()
-                timing_breakdown["Build lib package"] = time.time() - step_start
 
             # Build patterns and options with smart detection
             self.console.print(
                 "[bold cyan]Building components with smart dependency detection...[/bold cyan]"
             )
-            concurrent_build_start = time.time()
+            start_time = time.time()
 
             # Determine optimal number of workers
             if self.max_workers is None:
@@ -3102,8 +3022,7 @@ except Exception as e:
                     )
                 sys.exit(1)
 
-            total_build_time = time.time() - concurrent_build_start
-            timing_breakdown["Concurrent builds (nested + patterns)"] = total_build_time
+            total_build_time = time.time() - start_time
             self.console.print(
                 f"\n[bold green]✅ Concurrent build completed in {total_build_time:.2f}s[/bold green]"
             )
@@ -3115,13 +3034,10 @@ except Exception as e:
 
             if components_needing_rebuild:
                 # Upload configuration library
-                step_start = time.time()
                 self.upload_config_library()
-                timing_breakdown["Upload config library"] = time.time() - step_start
 
             # Wait for UI validation to complete if it was started
             if ui_validation_future:
-                step_start = time.time()
                 try:
                     self.console.print(
                         "[cyan]⏳ Waiting for UI validation to complete...[/cyan]"
@@ -3136,30 +3052,20 @@ except Exception as e:
                     sys.exit(1)
                 finally:
                     ui_executor.shutdown(wait=True)
-                timing_breakdown["UI validation (wait)"] = time.time() - step_start
 
             # Package UI and start validation in parallel if needed
-            step_start = time.time()
             webui_zipfile = self.package_ui()
-            timing_breakdown["Package UI"] = time.time() - step_start
 
             # Package Pattern-1 source for CodeBuild Docker builds
-            step_start = time.time()
             pattern1_source_zipfile = self.package_pattern1_source()
-            timing_breakdown["Package Pattern-1 source"] = time.time() - step_start
 
             # Package Pattern-2 source for CodeBuild Docker builds
-            step_start = time.time()
             pattern2_source_zipfile = self.package_pattern2_source()
-            timing_breakdown["Package Pattern-2 source"] = time.time() - step_start
 
             # Package Pattern-3 source for CodeBuild Docker builds
-            step_start = time.time()
             pattern3_source_zipfile = self.package_pattern3_source()
-            timing_breakdown["Package Pattern-3 source"] = time.time() - step_start
 
             # Build main template
-            step_start = time.time()
             self.build_main_template(
                 webui_zipfile,
                 pattern1_source_zipfile,
@@ -3167,18 +3073,13 @@ except Exception as e:
                 pattern3_source_zipfile,
                 components_needing_rebuild,
             )
-            timing_breakdown["Build main template"] = time.time() - step_start
 
             # Validate Lambda builds for idp_common inclusion (after all builds complete)
-            step_start = time.time()
             self.validate_lambda_builds()
-            timing_breakdown["Validate Lambda builds"] = time.time() - step_start
 
             # Validate CloudFormation templates with cfn-lint (after all templates are built/packaged)
-            step_start = time.time()
             if not self._validate_cfn_lint():
                 raise Exception("CloudFormation linting validation failed")
-            timing_breakdown["CloudFormation linting"] = time.time() - step_start
 
             # Restore requirements.txt files after validation completes successfully
             if self._modified_requirements_files:
@@ -3191,49 +3092,10 @@ except Exception as e:
             self.console.print("[green]✅ All builds completed successfully[/green]")
 
             # Update checksum for components needing rebuild upon success
-            step_start = time.time()
             self.update_component_checksum(components_needing_rebuild)
-            timing_breakdown["Update checksums"] = time.time() - step_start
 
             # Print outputs
-            step_start = time.time()
             self.print_outputs()
-            timing_breakdown["Print outputs"] = time.time() - step_start
-
-            # Calculate total time
-            total_time = time.time() - overall_start_time
-
-            # Print timing breakdown - show top 4 steps and "Other"
-            self.console.print("\n[bold cyan]⏱️  Timing Breakdown:[/bold cyan]")
-            self.console.print("=" * 60)
-
-            # Sort by duration (longest first)
-            sorted_steps = sorted(
-                timing_breakdown.items(), key=lambda x: x[1], reverse=True
-            )
-
-            # Show top 4 steps
-            top_steps = sorted_steps[:4]
-            for step_name, duration in top_steps:
-                percentage = (duration / total_time * 100) if total_time > 0 else 0
-                self.console.print(
-                    f"  • {step_name:<40} {duration:>6.2f}s ({percentage:>5.1f}%)"
-                )
-
-            # Combine remaining steps as "Other"
-            if len(sorted_steps) > 4:
-                other_time = sum(duration for _, duration in sorted_steps[4:])
-                other_percentage = (
-                    (other_time / total_time * 100) if total_time > 0 else 0
-                )
-                self.console.print(
-                    f"  • {'Other':<40} {other_time:>6.2f}s ({other_percentage:>5.1f}%)"
-                )
-
-            self.console.print("=" * 60)
-            self.console.print(
-                f"  [bold green]TOTAL TIME: {total_time:.2f}s ({total_time / 60:.1f} minutes)[/bold green]"
-            )
 
             self.console.print("\n[bold green]✅ Done![/bold green]")
 
