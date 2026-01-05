@@ -9402,6 +9402,10 @@ Resources:
               - "true"
           - Name: VITE_CLOUDFRONT_DOMAIN
             Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
+          - Name: VITE_TEST_SET_BUCKET_NAME
+            Value: !Ref TestSetBucket
+          - Name: VITE_INPUT_BUCKET_NAME
+            Value: !Ref InputBucket
       TimeoutInMinutes: 30
 
   StartUICodeBuildExecutionRole:
@@ -9676,6 +9680,8 @@ Outputs:
       VITE_APPSYNC_GRAPHQL_URL=${GraphQLApi.GraphQLUrl}
       VITE_AWS_REGION=${AWS::Region}
       VITE_SETTINGS_PARAMETER=${SettingsParameter}
+      VITE_TEST_SET_BUCKET_NAME=${TestSetBucket}
+      VITE_INPUT_BUCKET_NAME=${InputBucket}
   ExternalMCPAgentsSecretConsoleURL:
     Description: External MCP Agents secret console URL - configure MCP server credentials here (JSON array format)
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/secretsmanager/secret?name=${AWS::StackName}/external-mcp-agents/credentials&region=${AWS::Region}"

@@ -891,7 +891,14 @@ def rerun_inference(
     help="Local directory containing documents to process",
 )
 @click.option("--s3-uri", help="S3 URI to process (e.g., s3://bucket/prefix/)")
-@click.option("--batch-id", help="Custom batch ID (auto-generated if not provided)")
+@click.option("--test-set", help="Test set name to process from test set bucket")
+@click.option(
+    "--context", help="Context description for test run (used with --test-set)"
+)
+@click.option(
+    "--batch-id",
+    help="Custom batch ID (auto-generated if not provided, ignored with --test-set)",
+)
 @click.option(
     "--file-pattern",
     default="*.pdf",
@@ -925,6 +932,8 @@ def run_inference(
     manifest: Optional[str],
     directory: Optional[str],
     s3_uri: Optional[str],
+    test_set: Optional[str],
+    context: Optional[str],
     batch_id: Optional[str],
     file_pattern: str,
     recursive: bool,
@@ -939,8 +948,17 @@ def run_inference(
 
     Specify documents using ONE of:
       --manifest: Explicit manifest file (CSV or JSON)
+                 If manifest contains baseline_source column, automatically creates
+                 "idp-cli" test set for Test Studio integration and evaluation
       --dir: Local directory (auto-generates manifest)
       --s3-uri: S3 URI (auto-generates manifest, any bucket)
+      --test-set: Process existing test set from test set bucket
+
+    Test Studio Integration:
+      - --test-set: Processes existing test sets and tracks results in Test Studio UI
+      - --context: Adds descriptive labels to test runs (e.g., "Model v2.1", "Production validation")
+      - Manifests with baselines: Automatically creates test sets for accuracy evaluation
+      - All processing appears in Test Studio dashboard for analysis and comparison
 
     Examples:
 
@@ -958,20 +976,29 @@ def run_inference(
 
       # Process with file pattern
       idp-cli run-inference --stack-name my-stack --dir ./docs/ --file-pattern "invoice*.pdf"
+
+      # Process test set (integrates with Test Studio UI)
+      idp-cli run-inference --stack-name my-stack --test-set my-invoice-test --monitor
+
+      # Process test set with custom context
+      idp-cli run-inference --stack-name my-stack --test-set my-test --context "Experiment v2.1" --monitor
+
+      # Process manifest with baselines (automatically creates "idp-cli" test set for Test Studio integration)
+      idp-cli run-inference --stack-name my-stack --manifest docs_with_baselines.csv --monitor
     """
     try:
         # Validate mutually exclusive options
-        sources = [manifest, directory, s3_uri]
+        sources = [manifest, directory, s3_uri, test_set]
         sources_provided = sum(1 for s in sources if s is not None)
 
         if sources_provided == 0:
             console.print(
-                "[red]✗ Error: Must specify one of: --manifest, --dir, or --s3-uri[/red]"
+                "[red]✗ Error: Must specify exactly one source: --manifest, --dir, --s3-uri, or --test-set[/red]"
             )
             sys.exit(1)
         elif sources_provided > 1:
             console.print(
-                "[red]✗ Error: Cannot specify more than one of: --manifest, --dir, --s3-uri[/red]"
+                "[red]✗ Error: Cannot specify more than one of: --manifest, --dir, --s3-uri, --test-set[/red]"
             )
             sys.exit(1)
 
@@ -994,12 +1021,32 @@ def run_inference(
 
         # Process batch based on source type
         with console.status("[bold green]Processing batch..."):
-            if manifest:
-                batch_result = processor.process_batch(
-                    manifest_path=manifest,
-                    output_prefix=batch_prefix,
-                    batch_id=batch_id,
+            if test_set:
+                batch_result = _process_test_set(
+                    stack_name, test_set, context, region, processor
                 )
+            elif manifest:
+                # Check if manifest has baselines for test studio integration
+                has_baselines = _manifest_has_baselines(manifest)
+
+                if has_baselines:
+                    # Create test set and copy files for test studio integration
+                    test_set_name = "idp-cli"
+                    _create_test_set_from_manifest(
+                        manifest, test_set_name, stack_name, region, processor.resources
+                    )
+
+                    # Use common test set processing logic
+                    batch_result = _process_test_set(
+                        stack_name, test_set_name, context, region, processor
+                    )
+                else:
+                    # Normal manifest processing without test studio
+                    batch_result = processor.process_batch(
+                        manifest_path=manifest,
+                        output_prefix=batch_prefix,
+                        batch_id=batch_id,
+                    )
             elif directory:
                 batch_result = processor.process_batch_from_directory(
                     dir_path=directory,
@@ -1306,7 +1353,9 @@ def download_results(
     help="Baseline directory to auto-match (only with --dir)",
 )
 @click.option(
-    "--output", required=True, type=click.Path(), help="Output manifest file path (CSV)"
+    "--output",
+    type=click.Path(),
+    help="Output manifest file path (CSV) - optional when using --test-set",
 )
 @click.option("--file-pattern", default="*.pdf", help="File pattern (default: *.pdf)")
 @click.option(
@@ -1315,20 +1364,30 @@ def download_results(
     help="Include subdirectories (default: recursive)",
 )
 @click.option("--region", help="AWS region (optional)")
+@click.option(
+    "--test-set",
+    help="Test set name - creates folder in test set bucket and uploads files",
+)
+@click.option(
+    "--stack-name", help="CloudFormation stack name (required with --test-set)"
+)
 def generate_manifest(
     directory: Optional[str],
     s3_uri: Optional[str],
     baseline_dir: Optional[str],
-    output: str,
+    output: Optional[str],
     file_pattern: str,
     recursive: bool,
     region: Optional[str],
+    test_set: Optional[str],
+    stack_name: Optional[str],
 ):
     """
     Generate a manifest file from directory or S3 URI
 
     The manifest can then be edited to add baseline_source or customize document_id values.
     Use --baseline-dir to automatically match baseline directories by document ID.
+    Use --test-set to upload files to test set bucket and create test set folder structure.
 
     Examples:
 
@@ -1343,10 +1402,42 @@ def generate_manifest(
 
       # With file pattern
       idp-cli generate-manifest --dir ./docs/ --output manifest.csv --file-pattern "W2*.pdf"
+
+      # Create test set and upload files (output optional)
+      idp-cli generate-manifest --dir ./documents/ --baseline-dir ./baselines/ --test-set my-test-set --stack-name IDP
+
+      # Create test set with baseline matching and manifest output
+      idp-cli generate-manifest --dir ./documents/ --baseline-dir ./baselines/ --test-set my-test-set --stack-name IDP --output manifest.csv
     """
     try:
         import csv
         import os
+
+        # Validate test set requirements
+        if test_set and not stack_name:
+            console.print(
+                "[red]✗ Error: --stack-name is required when using --test-set[/red]"
+            )
+            sys.exit(1)
+
+        if test_set and not baseline_dir:
+            console.print(
+                "[red]✗ Error: --baseline-dir is required when using --test-set[/red]"
+            )
+            sys.exit(1)
+
+        if test_set and s3_uri:
+            console.print(
+                "[red]✗ Error: --test-set requires --dir (not --s3-uri) to work with --baseline-dir[/red]"
+            )
+            sys.exit(1)
+
+        # Validate output requirements
+        if not test_set and not output:
+            console.print(
+                "[red]✗ Error: --output is required when not using --test-set[/red]"
+            )
+            sys.exit(1)
 
         # Validate mutually exclusive options
         if not directory and not s3_uri:
@@ -1359,6 +1450,26 @@ def generate_manifest(
         # Import here to avoid circular dependency during scanning
 
         documents = []
+
+        # Initialize test set bucket info if needed
+        test_set_bucket = None
+        s3_client = None
+        if test_set:
+            import boto3
+
+            from .stack_info import StackInfo
+
+            stack_info = StackInfo(stack_name, region)
+            resources = stack_info.get_resources()
+            test_set_bucket = resources.get("TestSetBucket")
+            if not test_set_bucket:
+                console.print(
+                    "[red]✗ Error: TestSetBucket not found in stack resources[/red]"
+                )
+                sys.exit(1)
+
+            s3_client = boto3.client("s3", region_name=region)
+            console.print(f"[bold blue]Test set bucket: {test_set_bucket}[/bold blue]")
 
         if directory:
             console.print(f"[bold blue]Scanning directory: {directory}[/bold blue]")
@@ -1462,37 +1573,151 @@ def generate_manifest(
                 )
                 console.print()
 
-        # Write manifest (2 columns only)
-        with open(output, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["document_path", "baseline_source"])
-            writer.writeheader()
-            for doc in documents:
-                # Match baseline using full filename (including extension)
-                filename = os.path.basename(doc["document_path"])
-                baseline_source = baseline_map.get(filename, "")
+        # Upload to test set bucket if test_set is specified
+        if test_set:
+            # Check if test set already exists
+            try:
+                response = s3_client.list_objects_v2(
+                    Bucket=test_set_bucket, Prefix=f"{test_set}/", MaxKeys=1
+                )
+                if response.get("Contents"):
+                    console.print(
+                        f"[yellow]Warning: Test set '{test_set}' already exists in bucket[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]Files will be overwritten. Continue? [y/N][/yellow]",
+                        end=" ",
+                    )
 
-                writer.writerow(
-                    {
-                        "document_path": doc["document_path"],
-                        "baseline_source": baseline_source,
-                    }
+                    response = input().strip().lower()
+                    if response not in ["y", "yes"]:
+                        console.print("[red]✗ Aborted[/red]")
+                        sys.exit(1)
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Could not check existing test set: {e}[/yellow]"
                 )
 
-        console.print(f"[green]✓ Generated manifest: {output}[/green]")
-        console.print()
+            console.print(
+                f"[bold blue]Uploading files to test set: {test_set}[/bold blue]"
+            )
 
-        if baseline_map:
+            # Clear existing test set folder if it exists
+            try:
+                response = s3_client.list_objects_v2(
+                    Bucket=test_set_bucket, Prefix=f"{test_set}/"
+                )
+
+                if "Contents" in response:
+                    # Delete all existing objects in the test set folder
+                    objects_to_delete = [
+                        {"Key": obj["Key"]} for obj in response["Contents"]
+                    ]
+
+                    if objects_to_delete:
+                        s3_client.delete_objects(
+                            Bucket=test_set_bucket,
+                            Delete={"Objects": objects_to_delete},
+                        )
+                        console.print(
+                            f"  Cleared {len(objects_to_delete)} existing files"
+                        )
+
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Could not clear existing files: {e}[/yellow]"
+                )
+
+            # Upload input documents
+            for i, doc in enumerate(documents):
+                doc_path = doc["document_path"]
+                filename = os.path.basename(doc_path)
+                s3_key = f"{test_set}/input/{filename}"
+
+                s3_client.upload_file(doc_path, test_set_bucket, s3_key)
+                doc["document_path"] = f"s3://{test_set_bucket}/{s3_key}"
+                console.print(f"  Uploaded input {i + 1}/{len(documents)}: {filename}")
+
+            # Upload baseline files
+            for filename, baseline_path in baseline_map.items():
+                # Upload all files in the baseline directory recursively
+                import glob as glob_module
+                import os
+
+                baseline_files = glob_module.glob(
+                    os.path.join(baseline_path, "**", "*"), recursive=True
+                )
+                for baseline_file in baseline_files:
+                    if os.path.isfile(baseline_file):
+                        # Preserve directory structure relative to baseline_path
+                        rel_path = os.path.relpath(baseline_file, baseline_path)
+                        s3_key = f"{test_set}/baseline/{filename}/{rel_path}"
+                        s3_client.upload_file(baseline_file, test_set_bucket, s3_key)
+
+                # Update baseline_map to point to S3 location
+                baseline_map[filename] = (
+                    f"s3://{test_set_bucket}/{test_set}/baseline/{filename}/"
+                )
+                console.print(f"  Uploaded baseline: {filename}")
+
+        # Write manifest (2 columns only)
+        if output:
+            with open(output, "w", newline="") as f:
+                writer = csv.DictWriter(
+                    f, fieldnames=["document_path", "baseline_source"]
+                )
+                writer.writeheader()
+                for doc in documents:
+                    # Match baseline using full filename (including extension)
+                    filename = os.path.basename(doc["document_path"])
+                    baseline_source = baseline_map.get(filename, "")
+
+                    writer.writerow(
+                        {
+                            "document_path": doc["document_path"],
+                            "baseline_source": baseline_source,
+                        }
+                    )
+
+            console.print(f"[green]✓ Generated manifest: {output}[/green]")
+            console.print()
+
+        if test_set:
+            # Auto-register test set in tracking table
+            from idp_cli.stack_info import StackInfo
+
+            stack_info = StackInfo(stack_name, region=region)
+            resources = stack_info.get_resources()
+            _invoke_test_set_resolver(stack_name, test_set, region, resources)
+
+            console.print(
+                f"[green]✓ Test set '{test_set}' created successfully[/green]"
+            )
+            console.print(f"  Input files: s3://{test_set_bucket}/{test_set}/input/")
+            console.print(
+                f"  Baseline files: s3://{test_set_bucket}/{test_set}/baseline/"
+            )
+            console.print()
+            console.print("[bold]Next Steps: Run inference[/bold]")
+            console.print(
+                f"  - Using test set: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
+            )
+            if output:
+                console.print(
+                    f"  - Using manifest: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --monitor[/cyan]"
+                )
+        elif baseline_map:
             console.print("[bold]Baseline matching complete[/bold]")
             console.print("Ready to process with evaluations!")
         else:
             console.print("[bold]Next steps:[/bold]")
             console.print(
-                "1. Edit manifest to add baseline_source or customize document_id"
+                "  1. Edit manifest to add baseline_source or customize document_id"
             )
-
-        console.print(
-            f"2. Process: [cyan]idp-cli run-inference --stack-name <stack> --manifest {output}[/cyan]"
-        )
+            if output:
+                console.print(
+                    f"  2. Process: [cyan]idp-cli run-inference --stack-name <stack> --manifest {output}[/cyan]"
+                )
         console.print()
 
     except Exception as e:
@@ -1601,6 +1826,312 @@ def _monitor_progress(
     logger.info("Showing final summary")
     elapsed_time = time.time() - start_time
     display.show_final_summary(status_data, stats, elapsed_time)
+
+
+def _process_test_set(
+    stack_name: str,
+    test_set_name: str,
+    context: Optional[str],
+    region: Optional[str],
+    processor,
+):
+    """Common function to process test sets"""
+    # Auto-detect test set using test_set_resolver lambda
+    _invoke_test_set_resolver(stack_name, test_set_name, region, processor.resources)
+
+    # Invoke test runner lambda
+    test_run_result = _invoke_test_runner(
+        stack_name, test_set_name, context, region, processor.resources
+    )
+    batch_id = test_run_result["testRunId"]
+
+    # Get document IDs from test set for monitoring
+    document_ids = _get_test_set_document_ids(
+        stack_name, test_set_name, batch_id, region, processor.resources
+    )
+
+    # Create mock batch_result for monitoring
+    batch_result = {
+        "batch_id": batch_id,
+        "documents_queued": test_run_result["filesCount"],
+        "documents": [],  # Test runner handles document tracking
+        "document_ids": document_ids,
+        "uploaded": 0,  # No files uploaded by CLI for test sets
+        "skipped": 0,
+        "failed": 0,
+        "queued": test_run_result["filesCount"],  # Files queued by test runner
+    }
+
+    return batch_result
+
+
+def _invoke_test_set_resolver(
+    stack_name: str, test_set_name: str, region: Optional[str], resources: dict
+):
+    """Invoke test set resolver lambda for auto-detection"""
+    import json
+
+    import boto3
+
+    lambda_client = boto3.client("lambda", region_name=region)
+
+    # Handle pagination to get all functions - EXACT same logic as test runner
+    all_functions = []
+    paginator = lambda_client.get_paginator("list_functions")
+    for page in paginator.paginate():
+        all_functions.extend(page["Functions"])
+
+    test_set_resolver_function = next(
+        (
+            f["FunctionName"]
+            for f in all_functions
+            if stack_name in f["FunctionName"]
+            and "TestSetResolverFunction" in f["FunctionName"]
+        ),
+        None,
+    )
+
+    if not test_set_resolver_function:
+        console.print(
+            "[yellow]Warning: TestSetResolverFunction not found, skipping auto-detection[/yellow]"
+        )
+        return
+
+    # Call getTestSets to trigger auto-detection and registration
+    payload = {"info": {"fieldName": "getTestSets"}, "arguments": {}}
+
+    console.print(f"[bold blue]Auto-detecting test set: {test_set_name}[/bold blue]")
+
+    try:
+        response = lambda_client.invoke(
+            FunctionName=test_set_resolver_function, Payload=json.dumps(payload)
+        )
+
+        result = json.loads(response["Payload"].read())
+
+        if response["StatusCode"] == 200:
+            console.print("[green]✓ Test set auto-detection completed[/green]")
+        else:
+            console.print(
+                f"[yellow]Warning: Test set resolver failed: {result}[/yellow]"
+            )
+
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not auto-detect test set: {e}[/yellow]")
+
+
+def _invoke_test_runner(
+    stack_name: str,
+    test_set: str,
+    context: Optional[str],
+    region: Optional[str],
+    resources: dict,
+):
+    """Invoke test runner lambda to start test set processing"""
+    import json
+
+    import boto3
+
+    # Find test runner function by name pattern
+    lambda_client = boto3.client("lambda", region_name=region)
+
+    # Handle pagination to get all functions
+    all_functions = []
+    paginator = lambda_client.get_paginator("list_functions")
+    for page in paginator.paginate():
+        all_functions.extend(page["Functions"])
+
+    test_runner_function = next(
+        (
+            f["FunctionName"]
+            for f in all_functions
+            if stack_name in f["FunctionName"]
+            and "TestRunnerFunction" in f["FunctionName"]
+        ),
+        None,
+    )
+
+    if not test_runner_function:
+        raise ValueError(f"TestRunnerFunction not found for stack {stack_name}")
+
+    # Prepare payload
+    payload = {
+        "arguments": {
+            "input": {
+                "testSetId": test_set,
+            }
+        }
+    }
+
+    # Add context if provided
+    if context:
+        payload["arguments"]["input"]["context"] = context
+
+    console.print(f"[bold blue]Starting test run for test set: {test_set}[/bold blue]")
+
+    # Invoke test runner lambda
+    response = lambda_client.invoke(
+        FunctionName=test_runner_function, Payload=json.dumps(payload)
+    )
+
+    # Parse response
+    result = json.loads(response["Payload"].read())
+
+    if response["StatusCode"] != 200:
+        raise ValueError(f"Test runner invocation failed: {result}")
+
+    console.print(f"[green]✓ Test run started: {result['testRunId']}[/green]")
+    return result
+
+
+def _get_test_set_document_ids(
+    stack_name: str,
+    test_set: str,
+    batch_id: str,
+    region: Optional[str],
+    resources: dict,
+):
+    """Get document IDs from test set for monitoring"""
+    import boto3
+
+    # Get test set bucket from resources
+    test_set_bucket = resources.get("TestSetBucket")
+    if not test_set_bucket:
+        raise ValueError("TestSetBucket not found in stack resources")
+
+    # List files in test set input directory
+    s3_client = boto3.client("s3", region_name=region)
+
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=test_set_bucket, Prefix=f"{test_set}/input/"
+        )
+
+        document_ids = []
+        if "Contents" in response:
+            for obj in response["Contents"]:
+                key = obj["Key"]
+                if key.endswith("/"):  # Skip directories
+                    continue
+                # Create document_id as batch_id/filename
+                filename = key.split("/")[-1]
+                doc_id = f"{batch_id}/{filename}"
+                document_ids.append(doc_id)
+
+        return document_ids
+
+    except Exception as e:
+        console.print(
+            f"[yellow]Warning: Could not get document IDs from test set: {e}[/yellow]"
+        )
+        return []  # Return empty list if we can't get IDs
+
+
+def _manifest_has_baselines(manifest_path: str) -> bool:
+    """Check if manifest has baseline_source column populated"""
+    import pandas as pd
+
+    try:
+        if manifest_path.endswith(".json"):
+            df = pd.read_json(manifest_path)
+        else:
+            df = pd.read_csv(manifest_path)
+
+        return "baseline_source" in df.columns and df["baseline_source"].notna().any()
+    except Exception:
+        return False
+
+
+def _create_test_set_from_manifest(
+    manifest_path: str,
+    test_set_name: str,
+    stack_name: str,
+    region: Optional[str],
+    resources: dict,
+):
+    """Create test set structure from manifest files"""
+    import os
+
+    import boto3
+    import pandas as pd
+
+    # Get test set bucket
+    test_set_bucket = resources.get("TestSetBucket")
+    if not test_set_bucket:
+        raise ValueError("TestSetBucket not found in stack resources")
+
+    s3_client = boto3.client("s3", region_name=region)
+
+    # Read manifest
+    if manifest_path.endswith(".json"):
+        df = pd.read_json(manifest_path)
+    else:
+        df = pd.read_csv(manifest_path)
+
+    console.print(
+        f"[bold blue]Creating test set '{test_set_name}' from manifest...[/bold blue]"
+    )
+
+    # Clear existing test set folder if it exists
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=test_set_bucket, Prefix=f"{test_set_name}/"
+        )
+
+        if "Contents" in response:
+            # Delete all existing objects in the test set folder
+            objects_to_delete = [{"Key": obj["Key"]} for obj in response["Contents"]]
+
+            if objects_to_delete:
+                s3_client.delete_objects(
+                    Bucket=test_set_bucket,
+                    Delete={"Objects": objects_to_delete},
+                )
+                console.print("  Cleared existing test set files")
+
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not clear existing files: {e}[/yellow]")
+
+    # Copy input files
+    for _, row in df.iterrows():
+        source_path = row["document_path"]
+        filename = os.path.basename(source_path)
+
+        # Upload to test set input directory
+        s3_key = f"{test_set_name}/input/{filename}"
+
+        if source_path.startswith("s3://"):
+            # Copy from S3 to S3
+            source_bucket, source_key = source_path[5:].split("/", 1)
+            s3_client.copy_object(
+                CopySource={"Bucket": source_bucket, "Key": source_key},
+                Bucket=test_set_bucket,
+                Key=s3_key,
+            )
+        else:
+            # Upload from local file
+            s3_client.upload_file(source_path, test_set_bucket, s3_key)
+
+        # Copy baseline if exists
+        if "baseline_source" in row and pd.notna(row["baseline_source"]):
+            baseline_path = row["baseline_source"]
+
+            # Upload all files in the baseline directory recursively
+            import glob as glob_module
+
+            baseline_files = glob_module.glob(
+                os.path.join(baseline_path, "**", "*"), recursive=True
+            )
+            for baseline_file in baseline_files:
+                if os.path.isfile(baseline_file):
+                    # Preserve directory structure relative to baseline_path
+                    rel_path = os.path.relpath(baseline_file, baseline_path)
+                    s3_key = f"{test_set_name}/baseline/{filename}/{rel_path}"
+                    s3_client.upload_file(baseline_file, test_set_bucket, s3_key)
+
+    console.print(
+        f"[green]✓ Test set '{test_set_name}' created with {len(df)} files[/green]"
+    )
 
 
 def main():
