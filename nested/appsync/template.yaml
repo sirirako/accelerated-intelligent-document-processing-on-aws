@@ -1604,7 +1604,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref DiscoveryTrackingTableName
         - SQSSendMessagePolicy:
-            QueueName: !Select [5, !Split ["/", !Ref DiscoveryQueueUrl]]
+            QueueName: !Select [4, !Split ["/", !Ref DiscoveryQueueUrl]]
         - Statement:
             - Effect: Allow
               Action:
@@ -2251,7 +2251,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
         - SQSSendMessagePolicy:
-            QueueName: !Select [5, !Split ["/", !Ref DocumentQueueUrl]]
+            QueueName: !Select [4, !Split ["/", !Ref DocumentQueueUrl]]
         - S3CrudPolicy:
             BucketName: !Ref OutputBucketName
         - S3CrudPolicy:
@@ -2493,7 +2493,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
         - SQSSendMessagePolicy:
-            QueueName: !Select [5, !Split ["/", !Ref DocumentQueueUrl]]
+            QueueName: !Select [4, !Split ["/", !Ref DocumentQueueUrl]]
         - S3ReadPolicy:
             BucketName: !Ref InputBucketName
         - Statement:
@@ -2911,7 +2911,7 @@ Resources:
               - !Ref EvaluationBaselineBucketName
               - !Ref EvaluationBaselineBucketName
         - SQSSendMessagePolicy:
-            QueueName: !Select [5, !Split ["/", !Ref TestFileCopyQueueUrl]]
+            QueueName: !Select [4, !Split ["/", !Ref TestFileCopyQueueUrl]]
         - Statement:
             - Effect: Allow
               Action:
@@ -3007,7 +3007,7 @@ Resources:
               - !Ref EvaluationBaselineBucketName
               - !Ref EvaluationBaselineBucketName
         - SQSSendMessagePolicy:
-            QueueName: !Select [5, !Split ["/", !Ref TestSetFileCopyQueueUrl]]
+            QueueName: !Select [4, !Split ["/", !Ref TestSetFileCopyQueueUrl]]
         - Statement:
             - Effect: Allow
               Action:
