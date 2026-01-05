@@ -1703,7 +1703,9 @@ def generate_manifest(
                 f"  - Using test set: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
             )
             if output:
-                console.print(f"  - Using manifest: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --monitor[/cyan]")
+                console.print(
+                    f"  - Using manifest: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --monitor[/cyan]"
+                )
         elif baseline_map:
             console.print("[bold]Baseline matching complete[/bold]")
             console.print("Ready to process with evaluations!")
