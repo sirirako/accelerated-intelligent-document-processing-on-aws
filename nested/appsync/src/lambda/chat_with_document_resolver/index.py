@@ -13,6 +13,7 @@ import re
 from urllib.parse import urlparse
 from botocore.exceptions import ClientError
 from idp_common.bedrock.client import BedrockClient
+from idp_common.utils.settings_helper import get_setting
 
 # Set up logging
 logger = logging.getLogger()

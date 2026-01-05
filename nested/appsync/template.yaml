@@ -116,17 +116,16 @@ Parameters:
   ReportingDatabaseName:
     Type: String
   
-  StateMachineArn:
-    Type: String
-  
-  StateMachineName:
-    Type: String
-  
   LookupFunctionName:
     Type: String
   
   SaveReportingFunctionName:
     Type: String
+  
+  # Runtime settings (resolved from Parameter Store)
+  SettingsParameterName:
+    Type: String
+    Description: Name of SSM parameter containing runtime settings
   
   # Configuration
   StackName:
@@ -161,9 +160,6 @@ Parameters:
   ShouldUseDocumentKnowledgeBase:
     Type: String
     AllowedValues: ["true", "false"]
-  
-  KnowledgeBaseId:
-    Type: String
   
   KnowledgeBaseModelId:
     Type: String
@@ -428,19 +424,12 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           APPSYNC_API_URL: !Ref GraphQLApiUrl
+          SETTINGS_PARAMETER: !Ref SettingsParameterName
       LoggingConfig:
         LogGroup: !Ref AbortWorkflowResolverFunctionLogGroup
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
-        - StepFunctionsExecutionPolicy:
-            StateMachineName: !If
-              - IsPattern3
-              - !Ref StateMachineName
-              - !If
-                - IsPattern2
-                - !Ref StateMachineName
-                - !Ref StateMachineName
         - Statement:
             - Effect: Allow
               Action:
@@ -452,13 +441,12 @@ Resources:
               Action:
                 - states:StopExecution
               Resource:
-                - !If
-                  - IsPattern3
-                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}:*"
-                  - !If
-                    - IsPattern2
-                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}:*"
-                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}:*"
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StackName}-*:*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
             - Effect: Allow
               Action:
                 - kms:Encrypt
@@ -810,6 +798,7 @@ Resources:
           OUTPUT_BUCKET: !Ref OutputBucketName
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTableName
           TRACKING_TABLE_NAME: !Ref TrackingTableName
+          SETTINGS_PARAMETER: !Ref SettingsParameterName
           GUARDRAIL_ID_AND_VERSION:
             !If [
               HasGuardrail,
@@ -826,14 +815,11 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
         - Statement:
-            - !If
-              - UseDocumentKnowledgeBase
-              - Effect: Allow
-                Action:
-                  - bedrock:Retrieve
-                  - bedrock:RetrieveAndGenerate
-                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBaseId}"
-              - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - bedrock:Retrieve
+                - bedrock:RetrieveAndGenerate
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
             - Effect: Allow
               Action:
                 - "bedrock:InvokeModel"
@@ -855,6 +841,11 @@ Resources:
                 - "bedrock:GetInferenceProfile"
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
             - !If
               - HasGuardrail
               - Effect: Allow
@@ -1983,6 +1974,9 @@ Resources:
         - x86_64
       MemorySize: 512
       Timeout: 60
+      Environment:
+        Variables:
+          SETTINGS_PARAMETER: !Ref SettingsParameterName
       LoggingConfig:
         LogGroup: !Ref GetStepFunctionExecutionResolverFunctionLogGroup
       Policies:
@@ -1992,15 +1986,12 @@ Resources:
                 - states:DescribeExecution
                 - states:GetExecutionHistory
               Resource:
-                - !Sub
-                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
-                  - StateMachineName: !If
-                      - IsPattern3
-                      - !Ref StateMachineName
-                      - !If
-                        - IsPattern2
-                        - !Ref StateMachineName
-                        - !Ref StateMachineName
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StackName}-*:*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
         - KMSDecryptPolicy:
             KeyId: !Ref CustomerManagedEncryptionKeyArn
         - Statement:
@@ -2367,13 +2358,10 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          KB_ID: !If
-            - UseDocumentKnowledgeBase
-            - !Ref KnowledgeBaseId
-            - ""
           KB_ACCOUNT_ID: !Ref AWS::AccountId
           KB_REGION: !Ref AWS::Region
           MODEL_ID: !Ref KnowledgeBaseModelId
+          SETTINGS_PARAMETER: !Ref SettingsParameterName
           GUARDRAIL_ID_AND_VERSION:
             !If [
               HasGuardrail,
@@ -2384,14 +2372,11 @@ Resources:
         LogGroup: !Ref QueryKnowledgeBaseResolverFunctionLogGroup
       Policies:
         - Statement:
-            - !If
-              - UseDocumentKnowledgeBase
-              - Effect: Allow
-                Action:
-                  - bedrock:Retrieve
-                  - bedrock:RetrieveAndGenerate
-                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBaseId}"
-              - !Ref AWS::NoValue
+            - Effect: Allow
+              Action:
+                - bedrock:Retrieve
+                - bedrock:RetrieveAndGenerate
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
             - Effect: Allow
               Action:
                 - "bedrock:InvokeModel"
@@ -2409,6 +2394,11 @@ Resources:
                 - aws-marketplace:Unsubscribe
                 - aws-marketplace:ViewSubscriptions
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
             - !If
               - HasGuardrail
               - Effect: Allow

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 # Import IDP Common modules
 from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from idp_common.utils.settings_helper import get_setting
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
@@ -135,6 +136,13 @@ def abort_document(object_key):
     # For documents with active workflows (not QUEUED), stop the Step Functions execution
     if document.status != Status.QUEUED and document.workflow_execution_arn:
         try:
+            # Validate execution ARN format - ensure it matches our stack's state machines
+            state_machine_name = get_setting('StateMachineName')
+            if state_machine_name:
+                # Verify the execution ARN belongs to our state machine
+                if f":{state_machine_name}:" not in document.workflow_execution_arn:
+                    logger.warning(f"Execution ARN {document.workflow_execution_arn} doesn't match expected state machine {state_machine_name}")
+            
             logger.info(f"Stopping Step Functions execution: {document.workflow_execution_arn}")
             sfn_client.stop_execution(
                 executionArn=document.workflow_execution_arn,

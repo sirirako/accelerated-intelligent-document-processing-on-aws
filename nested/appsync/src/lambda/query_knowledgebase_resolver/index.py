@@ -7,6 +7,7 @@ import boto3
 import re
 import urllib.parse
 import logging
+from idp_common.utils.settings_helper import get_setting
 
 # Configure logging
 logger = logging.getLogger()
@@ -15,7 +16,11 @@ logger.setLevel(logging.getLevelName(os.environ.get("LOG_LEVEL", "INFO")))
 
 print("Boto3 version: ", boto3.__version__)
 
+# Try environment variable first (backward compatibility), then Settings
 KB_ID = os.environ.get("KB_ID")
+if not KB_ID:
+    KB_ID = get_setting('KnowledgeBaseId', default='')
+
 KB_ACCOUNT_ID = os.environ.get("KB_ACCOUNT_ID")
 KB_REGION = os.environ.get("KB_REGION") or os.environ["AWS_REGION"]
 MODEL_ID = os.environ.get("MODEL_ID")
@@ -25,9 +30,15 @@ GUARDRAIL_ENV = os.environ.get("GUARDRAIL_ID_AND_VERSION", "")
 KB_CLIENT = boto3.client(
     service_name="bedrock-agent-runtime",
     region_name=KB_REGION
-)
+) if KB_ID else None
 
 def get_kb_response(query, sessionId):
+    # Check if Knowledge Base is configured
+    if not KB_ID:
+        return {
+            "systemMessage": "Knowledge Base is not configured for this deployment"
+        }
+    
     input = {
         "input": {
             'text': query

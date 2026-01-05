@@ -1491,22 +1491,11 @@ Resources:
         # Other resources
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         ReportingDatabaseName: !Ref ReportingDatabase
-        StateMachineArn: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-          - !If
-            - IsPattern2
-            - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
-            - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
-        StateMachineName: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-          - !If
-            - IsPattern2
-            - !GetAtt PATTERN2STACK.Outputs.StateMachineName
-            - !GetAtt PATTERN1STACK.Outputs.StateMachineName
         LookupFunctionName: !Ref LookupFunction
         SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        
+        # Runtime settings (read from Parameter Store)
+        SettingsParameterName: !Ref SettingsParameter
         
         # Configuration
         StackName: !Ref AWS::StackName
@@ -1521,10 +1510,6 @@ Resources:
         BedrockGuardrailId: !Ref BedrockGuardrailId
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
         ShouldUseDocumentKnowledgeBase: !If [ShouldUseDocumentKnowledgeBase, "true", "false"]
-        KnowledgeBaseId: !If
-          - ShouldUseDocumentKnowledgeBase
-          - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
-          - ""
         KnowledgeBaseModelId: !Ref KnowledgeBaseModelId
         ShouldCreateEvaluationBaselineBucket: !If [ShouldCreateEvaluationBaselineBucket, "true", "false"]
         ShouldCreateReportingBucket: !If [ShouldCreateReportingBucket, "true", "false"]
@@ -3216,6 +3201,25 @@ Resources:
           - ShouldUseDocumentKnowledgeBase
           - True
           - False
+        # Runtime-resolved values for APPSYNCSTACK decoupling
+        StateMachineArn: !If
+          - IsPattern3
+          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
+          - !If
+            - IsPattern2
+            - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
+            - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+        StateMachineName: !If
+          - IsPattern3
+          - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+          - !If
+            - IsPattern2
+            - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+            - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+        KnowledgeBaseId: !If
+          - ShouldCreateDocumentKnowledgeBase
+          - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
+          - ""
     UpdateReplacePolicy: Delete
     DeletionPolicy: Delete
 
