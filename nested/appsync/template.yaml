@@ -88,6 +88,23 @@ Parameters:
   TestResultCacheUpdateQueueUrl:
     Type: String
   
+  # SQS Queue Names (for SQSSendMessagePolicy resources)
+  DocumentQueueName:
+    Type: String
+    Description: Name of the document processing SQS queue
+  
+  DiscoveryQueueName:
+    Type: String
+    Description: Name of the discovery SQS queue
+  
+  TestFileCopyQueueName:
+    Type: String
+    Description: Name of the test file copy SQS queue
+  
+  TestSetFileCopyQueueName:
+    Type: String
+    Description: Name of the test set file copy SQS queue
+  
   # Other resources
   CustomerManagedEncryptionKeyArn:
     Type: String
@@ -1604,7 +1621,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref DiscoveryTrackingTableName
         - SQSSendMessagePolicy:
-            QueueName: !Select [4, !Split ["/", !Ref DiscoveryQueueUrl]]
+            QueueName: !Ref DiscoveryQueueName
         - Statement:
             - Effect: Allow
               Action:
@@ -2251,7 +2268,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
         - SQSSendMessagePolicy:
-            QueueName: !Select [4, !Split ["/", !Ref DocumentQueueUrl]]
+            QueueName: !Ref DocumentQueueName
         - S3CrudPolicy:
             BucketName: !Ref OutputBucketName
         - S3CrudPolicy:
@@ -2493,7 +2510,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
         - SQSSendMessagePolicy:
-            QueueName: !Select [4, !Split ["/", !Ref DocumentQueueUrl]]
+            QueueName: !Ref DocumentQueueName
         - S3ReadPolicy:
             BucketName: !Ref InputBucketName
         - Statement:
@@ -2911,7 +2928,7 @@ Resources:
               - !Ref EvaluationBaselineBucketName
               - !Ref EvaluationBaselineBucketName
         - SQSSendMessagePolicy:
-            QueueName: !Select [4, !Split ["/", !Ref TestFileCopyQueueUrl]]
+            QueueName: !Ref TestFileCopyQueueName
         - Statement:
             - Effect: Allow
               Action:
@@ -3007,7 +3024,7 @@ Resources:
               - !Ref EvaluationBaselineBucketName
               - !Ref EvaluationBaselineBucketName
         - SQSSendMessagePolicy:
-            QueueName: !Select [4, !Split ["/", !Ref TestSetFileCopyQueueUrl]]
+            QueueName: !Ref TestSetFileCopyQueueName
         - Statement:
             - Effect: Allow
               Action:
