@@ -16,6 +16,7 @@ import {
   Badge,
   ExpandableSection,
   Select,
+  Link,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import ADD_TEST_SET from '../../graphql/queries/addTestSet';
@@ -610,6 +611,18 @@ const TestSets = () => {
                 }}
                 options={BUCKET_OPTIONS}
               />
+              {(selectedBucket.value === 'input' || selectedBucket.value === 'testset') && (
+                <Box>
+                  <Link
+                    href={`https://s3.console.aws.amazon.com/s3/buckets/${
+                      selectedBucket.value === 'input' ? import.meta.env.VITE_INPUT_BUCKET_NAME : import.meta.env.VITE_TEST_SET_BUCKET_NAME
+                    }?region=${import.meta.env.VITE_AWS_REGION}`}
+                    external
+                  >
+                    Browse {selectedBucket.label}
+                  </Link>
+                </Box>
+              )}
               <ExpandableSection
                 headerText="Bucket Structure Help"
                 variant="footer"
