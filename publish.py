@@ -66,6 +66,7 @@ class IDPPublisher:
         self.account_id = None
         self._lib_wheel_path = None  # Path to pre-built wheel for parallel builds
         self._modified_requirements_files = []  # Track modified requirements.txt files
+        self._backup_suffix = ".pre-build-backup"  # Suffix for backup files
 
     def clean_checksums(self):
         """Delete all .checksum files in main, patterns, nested, and lib directories"""
@@ -105,6 +106,129 @@ class IDPPublisher:
             self.console.print(
                 f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
             )
+
+    def _find_all_requirements_files(self):
+        """Find all requirements.txt files in the project"""
+        requirements_files = []
+
+        # Main Lambda functions
+        src_lambda_dir = Path("src/lambda")
+        if src_lambda_dir.exists():
+            for func_dir in src_lambda_dir.iterdir():
+                req_file = func_dir / "requirements.txt"
+                if req_file.exists():
+                    requirements_files.append(str(req_file))
+
+        # Nested Lambda functions
+        nested_dir = Path("nested")
+        if nested_dir.exists():
+            for nested_item in nested_dir.iterdir():
+                nested_src = nested_item / "src"
+                if nested_src.exists():
+                    for func_dir in nested_src.iterdir():
+                        req_file = func_dir / "requirements.txt"
+                        if req_file.exists():
+                            requirements_files.append(str(req_file))
+
+        # Pattern Lambda functions
+        patterns_dir = Path("patterns")
+        if patterns_dir.exists():
+            for pattern_dir in patterns_dir.iterdir():
+                pattern_src = pattern_dir / "src"
+                if pattern_src.exists():
+                    for func_dir in pattern_src.iterdir():
+                        req_file = func_dir / "requirements.txt"
+                        if req_file.exists():
+                            requirements_files.append(str(req_file))
+
+        return requirements_files
+
+    def _find_backup_files(self):
+        """Find any .pre-build-backup files left from interrupted builds"""
+        backups = []
+        for req_file in self._find_all_requirements_files():
+            backup_file = Path(f"{req_file}{self._backup_suffix}")
+            if backup_file.exists():
+                backups.append(backup_file)
+        return backups
+
+    def _find_corrupted_requirements(self):
+        """Detect requirements.txt with wheel paths (corruption from interrupted build)"""
+        corrupted = []
+        for req_file in self._find_all_requirements_files():
+            try:
+                content = Path(req_file).read_text()
+                # Check for the specific corruption pattern (double /dist/ or wheel path)
+                if content.count("/dist/") > 1 or (
+                    ".whl" in content and "./lib/idp_common_pkg/dist" in content
+                ):
+                    corrupted.append(req_file)
+            except Exception:
+                pass  # Skip files that can't be read
+        return corrupted
+
+    def _restore_from_backups(self):
+        """Restore all requirements.txt from .backup files (recovery from crash)"""
+        backup_files = self._find_backup_files()
+        for backup_file in backup_files:
+            req_file = Path(str(backup_file).replace(self._backup_suffix, ""))
+            try:
+                backup_content = backup_file.read_text()
+                req_file.write_text(backup_content)
+                backup_file.unlink()
+                self.console.print(f"[green]  ✓ Restored {req_file}[/green]")
+            except Exception as e:
+                self.console.print(
+                    f"[yellow]  ⚠️  Could not restore {req_file}: {e}[/yellow]"
+                )
+
+    def _replace_lib_with_wheel(self, content, wheel_relative):
+        """Replace ./lib/idp_common_pkg with wheel path, preserving extras"""
+        import re
+
+        def replace_path(match):
+            extras = match.group(1) if match.group(1) else ""
+            return f"./{wheel_relative}{extras}"
+
+        return re.sub(r"\./lib/idp_common_pkg(\[[^\]]+\])?", replace_path, content)
+
+    def _prepare_for_build_at_start(self):
+        """Run at script startup - recover from any previous crash and detect corruption"""
+        self.console.print("[cyan]🔍 Checking for interrupted build state...[/cyan]")
+
+        # 1. Restore any orphaned backup files from previous interrupted build
+        backup_files = self._find_backup_files()
+        if backup_files:
+            self.console.print(
+                f"[yellow]⚠️  Found {len(backup_files)} backup files from previous interrupted run[/yellow]"
+            )
+            self._restore_from_backups()
+            self.console.print("[green]✅ Restored successfully[/green]")
+
+        # 2. Detect any corrupted requirements.txt files (wheel paths without backups)
+        corrupted = self._find_corrupted_requirements()
+        if corrupted:
+            self.console.print(
+                f"[red]❌ ERROR: {len(corrupted)} requirements.txt files have wheel paths[/red]"
+            )
+            self.console.print(
+                "[red]These files were modified by a previous interrupted build:[/red]"
+            )
+            for f in corrupted:
+                self.console.print(f"[red]  • {f}[/red]")
+            self.console.print(
+                "\n[yellow]Cannot auto-fix without risking uncommitted changes.[/yellow]"
+            )
+            self.console.print(
+                "[yellow]Please manually restore these files to point to:[/yellow]"
+            )
+            self.console.print("[yellow]  ./lib/idp_common_pkg[extras][/yellow]")
+            self.console.print(
+                "[yellow]  (where [extras] is optional, e.g., [agents], [docs_service], etc.)[/yellow]"
+            )
+            sys.exit(1)
+
+        self.log_verbose("✅ No interrupted build state detected")
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
@@ -2472,38 +2596,38 @@ except Exception as e:
                 self._modify_single_requirements_file(req_path, wheel_relative)
 
     def _modify_single_requirements_file(self, req_path, wheel_relative):
-        """Modify a single requirements.txt to use wheel path."""
+        """Modify a single requirements.txt - IDEMPOTENT with backup"""
         try:
-            with open(req_path, "r") as f:
-                original_content = f.read()
+            req_file = Path(req_path)
+            backup_file = Path(f"{req_path}{self._backup_suffix}")
 
-            # Check if this file references idp_common_pkg
+            original_content = req_file.read_text()
+
+            # IDEMPOTENT CHECK: Skip if already pointing to wheel
+            if f"./{wheel_relative}" in original_content:
+                self.log_verbose(f"⏭️  {req_path} already points to wheel, skipping")
+                return
+
+            # Only modify if pointing to source directory
             if "./lib/idp_common_pkg" not in original_content:
                 return
 
-            # Replace source path with wheel path, preserving extras
-            # Pattern: ./lib/idp_common_pkg[extras]  -> ./lib/idp_common_pkg/dist/wheel.whl[extras]
-            import re
+            # Create backup BEFORE modification
+            backup_file.write_text(original_content)
+            self.log_verbose(f"💾 Created backup: {backup_file}")
 
-            def replace_path(match):
-                extras = match.group(1) if match.group(1) else ""
-                return f"./{wheel_relative}{extras}"
+            # Perform modification using extracted method
+            modified_content = self._replace_lib_with_wheel(
+                original_content, wheel_relative
+            )
+            req_file.write_text(modified_content)
 
-            modified_content = re.sub(
-                r"\./lib/idp_common_pkg(\[[^\]]+\])?", replace_path, original_content
+            # Track for restoration (now tracks backup path instead of content)
+            self._modified_requirements_files.append(
+                {"path": req_path, "backup": str(backup_file)}
             )
 
-            if modified_content != original_content:
-                # Save original for restoration
-                self._modified_requirements_files.append(
-                    {"path": req_path, "original": original_content}
-                )
-
-                # Write modified content
-                with open(req_path, "w") as f:
-                    f.write(modified_content)
-
-                self.log_verbose(f"Modified {req_path} to use wheel")
+            self.log_verbose(f"✏️  Modified {req_path} to use wheel")
 
         except Exception as e:
             self.console.print(
@@ -2511,15 +2635,25 @@ except Exception as e:
             )
 
     def _restore_requirements_files(self):
-        """Restore all modified requirements.txt files to original content."""
+        """Restore from backup files"""
         for file_info in self._modified_requirements_files:
             try:
-                with open(file_info["path"], "w") as f:
-                    f.write(file_info["original"])
-                self.log_verbose(f"Restored {file_info['path']}")
+                backup_path = Path(file_info["backup"])
+                req_path = Path(file_info["path"])
+
+                if backup_path.exists():
+                    # Restore from backup
+                    backup_content = backup_path.read_text()
+                    req_path.write_text(backup_content)
+
+                    # Delete backup
+                    backup_path.unlink()
+
+                    self.log_verbose(f"♻️  Restored {req_path}")
+
             except Exception as e:
                 self.console.print(
-                    f"[yellow]Warning: Could not restore {file_info['path']}: {e}[/yellow]"
+                    f"[yellow]⚠️  Warning: Could not restore {file_info['path']}: {e}[/yellow]"
                 )
 
         self._modified_requirements_files = []
@@ -2756,6 +2890,9 @@ except Exception as e:
         try:
             # Parse and validate parameters
             self.check_parameters(args)
+
+            # Check for interrupted build state at startup - recover from any previous crash
+            self._prepare_for_build_at_start()
 
             # Container deployment is now handled within this script
 

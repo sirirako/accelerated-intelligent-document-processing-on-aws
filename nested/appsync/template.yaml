@@ -88,6 +88,10 @@ Parameters:
   TestResultCacheUpdateQueueUrl:
     Type: String
   
+  TestResultCacheUpdateQueueArn:
+    Type: String
+    Description: ARN of the TestResultCacheUpdateQueue for Lambda event source
+  
   # SQS Queue Names (for SQSSendMessagePolicy resources)
   DocumentQueueName:
     Type: String
@@ -2736,7 +2740,7 @@ Resources:
         SQSEvent:
           Type: SQS
           Properties:
-            Queue: !Ref TestResultCacheUpdateQueueUrl
+            Queue: !Ref TestResultCacheUpdateQueueArn
             BatchSize: 1
       LoggingConfig:
         LogGroup: !Ref TestResultsResolverFunctionLogGroup

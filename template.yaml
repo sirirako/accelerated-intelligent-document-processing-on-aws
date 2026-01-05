@@ -1436,9 +1436,6 @@ Resources:
   APPSYNCSTACK:
     DependsOn:
       - IsStacknameLengthOK
-      - GraphQLApi
-      - AgentChatProcessorFunction
-      - AgentProcessorFunction
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./nested/appsync/.aws-sam/packaged.yaml
@@ -1483,6 +1480,13 @@ Resources:
         TestFileCopyQueueUrl: !Ref TestFileCopyQueue
         TestSetFileCopyQueueUrl: !Ref TestSetFileCopyQueue
         TestResultCacheUpdateQueueUrl: !Ref TestResultCacheUpdateQueue
+        TestResultCacheUpdateQueueArn: !GetAtt TestResultCacheUpdateQueue.Arn
+        
+        # SQS Queue Names (for IAM policies)
+        DocumentQueueName: !GetAtt DocumentQueue.QueueName
+        DiscoveryQueueName: !GetAtt DiscoveryQueue.QueueName
+        TestFileCopyQueueName: !GetAtt TestFileCopyQueue.QueueName
+        TestSetFileCopyQueueName: !GetAtt TestSetFileCopyQueue.QueueName
         
         # Other resources
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn

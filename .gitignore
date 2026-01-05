@@ -6,6 +6,10 @@ model.tar.gz
 .checksums/
 .build_checksum
 .lib_checksum
+
+# Build artifacts - backup files from publish.py
+*.pre-build-backup
+requirements.txt.pre-build-backup
 .vscode/
 .DS_Store
 dist/
