@@ -1698,23 +1698,24 @@ def generate_manifest(
                 f"  Baseline files: s3://{test_set_bucket}/{test_set}/baseline/"
             )
             console.print()
-            console.print("[bold]Next steps:[/bold]")
+            console.print("[bold]Next Steps: Run inference[/bold]")
             console.print(
-                f"  Process test set: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
+                f"  - Using test set: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
             )
+            if output:
+                console.print(f"  - Using manifest: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --monitor[/cyan]")
         elif baseline_map:
             console.print("[bold]Baseline matching complete[/bold]")
             console.print("Ready to process with evaluations!")
         else:
             console.print("[bold]Next steps:[/bold]")
             console.print(
-                "1. Edit manifest to add baseline_source or customize document_id"
+                "  1. Edit manifest to add baseline_source or customize document_id"
             )
-
-        if output:
-            console.print(
-                f"2. Process: [cyan]idp-cli run-inference --stack-name <stack> --manifest {output}[/cyan]"
-            )
+            if output:
+                console.print(
+                    f"  2. Process: [cyan]idp-cli run-inference --stack-name <stack> --manifest {output}[/cyan]"
+                )
         console.print()
 
     except Exception as e:
