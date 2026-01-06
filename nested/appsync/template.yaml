@@ -446,7 +446,7 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameterName}"
             - Effect: Allow
               Action:
                 - kms:Encrypt
@@ -845,7 +845,7 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameterName}"
             - !If
               - HasGuardrail
               - Effect: Allow
@@ -1991,7 +1991,7 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameterName}"
         - KMSDecryptPolicy:
             KeyId: !Ref CustomerManagedEncryptionKeyArn
         - Statement:
@@ -2398,7 +2398,7 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource:
-                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SettingsParameterName}"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameterName}"
             - !If
               - HasGuardrail
               - Effect: Allow
