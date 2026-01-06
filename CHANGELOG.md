@@ -5,6 +5,32 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+
+- **AppSync Resolvers Extracted to Nested Stack for Improved Template Modularity**
+  - Refactored main CloudFormation template by extracting 130 AppSync resources into new nested stack architecture
+  - **Extracted Components**:
+    - Created `nested/appsync/template.yaml` containing GraphQLSchema, AppSyncServiceRole, Lambda resolver functions, LogGroups, DataSources, and Resolvers
+    - Moved related Lambda functions from `src/lambda/` to `nested/appsync/src/lambda/` with colocated template definitions
+    - Relocated GraphQL schema from `src/api/` to `nested/appsync/src/api/`
+  - **Main Template Optimization**: Reduced resource count by keeping only core infrastructure (GraphQLApi, GraphQLApiLogGroup, AppSyncCwlRole, WAF resources, background worker functions)
+  - **Build System Integration**: Updated `publish.py` to build nested stack in parallel with patterns
+  - **Impact**: Main template now more manageable and faster to navigate, nested stack enables modular development of AppSync resources, parallel builds reduce overall build time
+
+- **Consolidated Nested Stack Directory Structure**
+  - Moved `options/bda-lending-project` and `options/bedrockkb` into `nested/` directory for simplified project organization
+  - All CloudFormation nested stacks now located in single `nested/` directory alongside `appsync`, `bda-lending-project`, and `bedrockkb`
+  - Updated build system to build only two categories concurrently (nested + patterns) instead of three (nested + patterns + options)
+  - **Breaking Change**: Directory paths changed - `options/` → `nested/`. Existing work-in-progress branches will have merge conflicts in directory structure.
+
+- **Optimized Publish Script Build Performance**
+  - Improved concurrent build performance by building all categories simultaneously instead of sequentially
+  - Enhanced max_workers calculation for I/O-bound operations: now uses `min(cpu_count * 2, 8)` instead of `min(4, cpu_count + 1)` for better resource utilization
+  - Removed obsolete sequential build logic when library changes (no longer needed with pre-built wheel approach)
+  - Updated informational messages to reflect that all three patterns (Pattern-1/2/3) use CodeBuild for Docker image builds
+  - Fixed Rich Progress LiveDisplay conflicts when building categories concurrently by replacing progress bars with simple status logging
+  - **Performance Impact**: Potential 50-60% build time reduction on multi-core systems through maximized parallelism
+
 ### Fixed
 
 - **IDP CLI Stack Parameter Preservation During Updates**

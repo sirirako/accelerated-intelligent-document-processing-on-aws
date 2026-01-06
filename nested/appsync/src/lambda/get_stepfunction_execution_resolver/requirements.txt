@@ -1,0 +1,2 @@
+boto3>=1.26.0
+../../lib/idp_common_pkg  # idp_common package with settings helper

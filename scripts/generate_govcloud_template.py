@@ -46,172 +46,13 @@ class GovCloudTemplateGenerator:
         }
         
         self.appsync_resources = {
-            'GraphQLApi',
-            'GraphQLSchema',
-            'GraphQLApiLogGroup',
-            'AppSyncCwlRole',
-            'AppSyncServiceRole',
-            'TrackingTableDataSource',
-            'UpdateDocumentResolver',
-            'GetDocumentResolver',
-            'ListDocumentResolver',
-            'ListDocumentDateHourResolver',
-            'ListDocumentDateShardResolver',
-            'GetFileContentsResolverFunction',
-            'GetFileContentsResolverFunctionLogGroup',
-            'GetFileContentsDataSource',
-            'GetFileContentsResolver',
-            'GetStepFunctionExecutionResolverFunction',
-            'GetStepFunctionExecutionResolverFunctionLogGroup',
-            'GetStepFunctionExecutionDataSource',
-            'GetStepFunctionExecutionResolver',
-            'PublishStepFunctionUpdateResolverFunction',
-            'PublishStepFunctionUpdateResolverFunctionLogGroup',
-            'PublishStepFunctionUpdateDataSource',
-            'PublishStepFunctionUpdateResolver',
-            'ConfigurationResolverFunction',
-            'ConfigurationResolverFunctionLogGroup',
-            'ConfigurationDataSource',
-            'GetConfigurationResolver',
-            'UpdateConfigurationResolver',
-            'ListConfigurationLibraryResolver',
-            'GetConfigurationLibraryFileResolver',
-            # Pricing-related AppSync resources (new)
-            'GetPricingResolver',
-            'UpdatePricingResolver',
-            'RestoreDefaultPricingResolver',
-            # BDA/IDP Sync AppSync resources (Pattern 1 specific)
-            'SyncBdaIdpDataSource',
-            'SyncBdaIdpResolver',
-            'SyncBdaIdpResolverFunction',
-            'SyncBdaIdpResolverFunctionLogGroup',
-            'CopyToBaselineResolverFunction',
-            'CopyToBaselineResolverFunctionLogGroup',
-            'CopyToBaselineDataSource',
-            'CopyToBaselineResolver',
-            'DeleteDocumentResolverFunction',
-            'DeleteDocumentResolverFunctionLogGroup',
-            'DeleteDocumentDataSource',
-            'DeleteDocumentResolver',
-            'ReprocessDocumentResolverFunction',
-            'ReprocessDocumentResolverFunctionLogGroup',
-            'ReprocessDocumentDataSource',
-            'ReprocessDocumentResolver',
-            'UploadResolverFunction',
-            'UploadResolverFunctionLogGroup',
-            'UploadResolverDataSource',
-            'UploadDocumentResolver',
-            'QueryKnowledgeBaseResolverFunction',
-            'QueryKnowledgeBaseResolverFunctionLogGroup',
-            'QueryKnowledgeBaseDataSource',
-            'QueryKnowledgeBaseResolver',
-            'ChatWithDocumentResolverFunction',
-            'ChatWithDocumentResolverFunctionLogGroup',
-            'ChatWithDocumentDataSource',
-            'ChatWithDocumentResolver',
-            'CreateDocumentResolverFunction',
-            'CreateDocumentResolverFunctionLogGroup',
-            'CreateDocumentDataSource',
-            'CreateDocumentResolver',
-            'AgentTableDataSource',
-            'SubmitAgentQueryResolver',
-            'AgentRequestHandlerDataSource',
-            'GetAgentJobStatusResolver',
-            'ListAgentJobsResolver',
-            'UpdateAgentJobStatusResolver',
-            'DeleteAgentJobResolver',
-            'ListAvailableAgentsResolver',
-            'ListAvailableAgentsDataSource',
-            'DiscoveryJobsResolver',
-            'DiscoveryProcessorFunction',
-            'DiscoveryTableDataSource',
-            'DiscoveryUploadDocumentResolver',
-            'DiscoveryUploadResolverDataSource',
-            'UpdateDiscoveryJobStatusResolver',
-            'ProcessChangesResolverFunction',
-            'ProcessChangesResolverFunctionLogGroup',
-            'ProcessChangesDataSource',
-            'ProcessChangesResolver',
-            # Chat Session Management Resources (added for GovCloud compatibility)
-            'ChatSessionsTable',
-            'ListAgentChatSessionsFunction',
-            'ListAgentChatSessionsFunctionLogGroup',
-            'GetAgentChatMessagesFunction',
-            'GetAgentChatMessagesFunctionLogGroup',
-            'DeleteAgentChatSessionFunction',
-            'DeleteAgentChatSessionFunctionLogGroup',
-            'ListAgentChatSessionsDataSource',
-            'GetAgentChatMessagesDataSource',
-            'DeleteAgentChatSessionDataSource',
-            'ListChatSessionsResolver',
-            'GetChatMessagesResolver',
-            'DeleteChatSessionResolver',
-            # Chat Infrastructure Resources (added for GovCloud compatibility)
-            'ChatMessagesTable',
-            'IdHelperChatMemoryTable',
-            'NoneDataSource',
-            'ChatMessagesDataSource',
-            'OnAgentChatMessageUpdateResolver',
-            'SendAgentChatMessageResolver',
-            'AgentChatDataSource',
-            'AgentChatResolverDataSource',
-            # Agent Chat Lambda Functions (added for GovCloud compatibility)
-            'AgentChatProcessorFunction',
-            'AgentChatProcessorLogGroup',
-            'AgentChatResolverFunction',
-            'AgentChatResolverLogGroup',
-            # Test Studio Resources (added for GovCloud compatibility)
-            'DeleteTestsResolverFunction',
-            'DeleteTestsResolverFunctionLogGroup',
-            'DeleteTestsDataSource',
-            'DeleteTestsResolver',
-            'TestRunnerFunction',
-            'TestRunnerFunctionLogGroup',
-            'TestRunnerDataSource',
-            'TestRunnerResolver',
-            'TestResultsResolverFunction',
-            'TestResultsResolverFunctionLogGroup',
-            'TestResultsDataSource',
-            'GetTestRunsResolver',
-            'CompareTestRunsResolver',
-            'GetTestRunResolver',
-            'GetTestRunStatusResolver',
-            'TestSetResolverFunction',
-            'TestSetResolverFunctionLogGroup',
-            'TestSetDataSource',
-            'AddTestSetResolver',
-            'AddTestSetFromUploadResolver',
-            'DeleteTestSetsResolver',
-            'GetTestSetsResolver',
-            'ListBucketFilesResolver',
-            'ValidateTestFileNameResolver',
-            'TestResultCacheUpdateQueue',
-            'TestFileCopierFunction',
-            'TestFileCopierFunctionLogGroup',
-            'TestFileCopierFunctionDLQ',
-            'TestFileCopyQueue',
-            'TestFileCopyQueueDLQ',
-            'TestFileCopyQueuePolicy',
-            'TestFileCopyQueueDLQPolicy',
-            'TestSetFileCopierFunction',
-            'TestSetFileCopierFunctionLogGroup',
-            'TestSetFileCopierFunctionDLQ',
-            'TestSetFileCopyQueue',
-            'TestSetFileCopyQueueDLQ',
-            'TestSetFileCopyQueuePolicy',
-            'TestSetFileCopyQueueDLQPolicy',
-            'TestSetZipExtractorFunction',
-            'TestSetZipExtractorFunctionLogGroup',
-            'TestSetZipExtractorFunctionInvokePermission',
-            'TestSetZipExtractorS3Policy',
-            'TestSetBucketNotificationFunction',
-            'TestSetBucketNotificationConfiguration',
-            'TestSetResolverS3Policy',
-            # Abort Workflow Resources (added for GovCloud compatibility - depends on AppSync)
-            'AbortWorkflowResolverFunction',
-            'AbortWorkflowResolverFunctionLogGroup',
-            'AbortWorkflowDataSource',
-            'AbortWorkflowResolver'
+            # Core AppSync infrastructure in main template (post-refactoring)
+            'APPSYNCSTACK',  # Nested stack containing all AppSync resolvers/functions/datasources
+            'GraphQLApi',  # Core API resource
+            'GraphQLApiLogGroup',  # API logging
+            'AppSyncCwlRole',  # CloudWatch logging role
+            # Note: All resolvers, datasources, and resolver Lambda functions are now in nested/appsync/
+            # and will be removed by deleting APPSYNCSTACK. No need to list them individually.
         }
         
         self.auth_resources = {
@@ -768,7 +609,16 @@ class GovCloudTemplateGenerator:
                     self.logger.debug(f"Removed CORS configuration from {resource_name}")
                
         # Convert all backend functions from AppSync to DynamoDB tracking mode
-        functions_to_convert = ['QueueSender', 'QueueProcessor', 'WorkflowTracker', 'EvaluationFunction']
+        # Include background workers that reference GraphQLApi.GraphQLUrl
+        functions_to_convert = [
+            'QueueSender', 
+            'QueueProcessor', 
+            'WorkflowTracker', 
+            'EvaluationFunction',
+            'AgentChatProcessorFunction',  # Background worker
+            'AgentProcessorFunction',  # Background worker
+            'DiscoveryProcessorFunction'  # Discovery processor
+        ]
         for func_name in functions_to_convert:
             if func_name in resources:
                 func_def = resources[func_name]
@@ -802,20 +652,78 @@ class GovCloudTemplateGenerator:
                     })
                     self.logger.debug(f"Added DynamoDB CRUD permissions for {func_name}")
                 
-                # Clean AppSync policies
+                # Clean policies - remove AppSync and MCP-related statements
+                cleaned_policies = []
                 for policy in policies:
                     if isinstance(policy, dict) and 'Statement' in policy:
-                        statements = policy['Statement']
-                        if isinstance(statements, list):
-                            # Remove AppSync permissions
-                            policy['Statement'] = [
-                                stmt for stmt in statements 
-                                if not (isinstance(stmt, dict) and 
-                                       isinstance(stmt.get('Action'), list) and 
-                                       any('appsync:GraphQL' in str(action) for action in stmt.get('Action', [])))
-                            ]
-                            if len(policy['Statement']) != len(statements):
-                                self.logger.debug(f"Removed AppSync permissions from {func_name}")
+                        # Handle single statement (dict)
+                        if isinstance(policy['Statement'], dict):
+                            stmt = policy['Statement']
+                            action = stmt.get('Action')
+                            resource = stmt.get('Resource')
+                            
+                            # Check if statement should be removed
+                            should_remove = False
+                            
+                            # Remove if action contains appsync:GraphQL
+                            if isinstance(action, str) and 'appsync:GraphQL' in action:
+                                should_remove = True
+                            elif isinstance(action, list) and any('appsync:GraphQL' in str(a) for a in action):
+                                should_remove = True
+                            
+                            # Remove if references ExternalMCPAgentsSecret (removed resource)
+                            if isinstance(resource, list):
+                                for r in resource:
+                                    if isinstance(r, dict) and r.get('Ref') == 'ExternalMCPAgentsSecret':
+                                        should_remove = True
+                            elif isinstance(resource, dict) and resource.get('Ref') == 'ExternalMCPAgentsSecret':
+                                should_remove = True
+                            
+                            if not should_remove:
+                                cleaned_policies.append(policy)
+                            else:
+                                self.logger.debug(f"Removed AppSync/MCP policy statement from {func_name}")
+                        # Handle list of statements
+                        elif isinstance(policy['Statement'], list):
+                            statements = policy['Statement']
+                            cleaned_statements = []
+                            for stmt in statements:
+                                if isinstance(stmt, dict):
+                                    action = stmt.get('Action')
+                                    resource = stmt.get('Resource')
+                                    
+                                    # Check if statement should be removed
+                                    should_remove = False
+                                    
+                                    # Remove if action contains appsync:GraphQL
+                                    if isinstance(action, str) and 'appsync:GraphQL' in action:
+                                        should_remove = True
+                                    elif isinstance(action, list) and any('appsync:GraphQL' in str(a) for a in action):
+                                        should_remove = True
+                                    
+                                    # Remove if references ExternalMCPAgentsSecret
+                                    if isinstance(resource, list):
+                                        for r in resource:
+                                            if isinstance(r, dict) and r.get('Ref') == 'ExternalMCPAgentsSecret':
+                                                should_remove = True
+                                    elif isinstance(resource, dict) and resource.get('Ref') == 'ExternalMCPAgentsSecret':
+                                        should_remove = True
+                                    
+                                    if not should_remove:
+                                        cleaned_statements.append(stmt)
+                            
+                            if cleaned_statements:
+                                policy['Statement'] = cleaned_statements
+                                cleaned_policies.append(policy)
+                            elif len(cleaned_statements) < len(statements):
+                                self.logger.debug(f"Removed AppSync/MCP permissions from {func_name} policy")
+                        else:
+                            cleaned_policies.append(policy)
+                    else:
+                        cleaned_policies.append(policy)
+                
+                # Update policies list
+                func_def['Properties']['Policies'] = cleaned_policies
         
         # Clean nested stack parameters comprehensively (all patterns need AppSync params removed)
         pattern_stacks = ['PATTERN1STACK', 'PATTERN2STACK', 'PATTERN3STACK']

@@ -29,8 +29,6 @@ import yaml
 from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
@@ -68,15 +66,24 @@ class IDPPublisher:
         self.account_id = None
         self._lib_wheel_path = None  # Path to pre-built wheel for parallel builds
         self._modified_requirements_files = []  # Track modified requirements.txt files
+        self._backup_suffix = ".pre-build-backup"  # Suffix for backup files
 
     def clean_checksums(self):
-        """Delete all .checksum files in main, patterns, options, and lib directories"""
+        """Delete all .checksum files in main, patterns, nested, and lib directories"""
         self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
 
         checksum_paths = [
             ".checksum",  # main
             "lib/.checksum",  # lib
         ]
+
+        # Add nested stack checksum files
+        nested_dir = "nested"
+        if os.path.exists(nested_dir):
+            for item in os.listdir(nested_dir):
+                nested_path = os.path.join(nested_dir, item)
+                if os.path.isdir(nested_path):
+                    checksum_paths.append(f"{nested_path}/.checksum")
 
         # Add patterns checksum files
         patterns_dir = "patterns"
@@ -85,14 +92,6 @@ class IDPPublisher:
                 pattern_path = os.path.join(patterns_dir, item)
                 if os.path.isdir(pattern_path):
                     checksum_paths.append(f"{pattern_path}/.checksum")
-
-        # Add options checksum files
-        options_dir = "options"
-        if os.path.exists(options_dir):
-            for item in os.listdir(options_dir):
-                option_path = os.path.join(options_dir, item)
-                if os.path.isdir(option_path):
-                    checksum_paths.append(f"{option_path}/.checksum")
 
         deleted_count = 0
         for checksum_path in checksum_paths:
@@ -107,6 +106,129 @@ class IDPPublisher:
             self.console.print(
                 f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
             )
+
+    def _find_all_requirements_files(self):
+        """Find all requirements.txt files in the project"""
+        requirements_files = []
+
+        # Main Lambda functions
+        src_lambda_dir = Path("src/lambda")
+        if src_lambda_dir.exists():
+            for func_dir in src_lambda_dir.iterdir():
+                req_file = func_dir / "requirements.txt"
+                if req_file.exists():
+                    requirements_files.append(str(req_file))
+
+        # Nested Lambda functions
+        nested_dir = Path("nested")
+        if nested_dir.exists():
+            for nested_item in nested_dir.iterdir():
+                nested_src = nested_item / "src"
+                if nested_src.exists():
+                    for func_dir in nested_src.iterdir():
+                        req_file = func_dir / "requirements.txt"
+                        if req_file.exists():
+                            requirements_files.append(str(req_file))
+
+        # Pattern Lambda functions
+        patterns_dir = Path("patterns")
+        if patterns_dir.exists():
+            for pattern_dir in patterns_dir.iterdir():
+                pattern_src = pattern_dir / "src"
+                if pattern_src.exists():
+                    for func_dir in pattern_src.iterdir():
+                        req_file = func_dir / "requirements.txt"
+                        if req_file.exists():
+                            requirements_files.append(str(req_file))
+
+        return requirements_files
+
+    def _find_backup_files(self):
+        """Find any .pre-build-backup files left from interrupted builds"""
+        backups = []
+        for req_file in self._find_all_requirements_files():
+            backup_file = Path(f"{req_file}{self._backup_suffix}")
+            if backup_file.exists():
+                backups.append(backup_file)
+        return backups
+
+    def _find_corrupted_requirements(self):
+        """Detect requirements.txt with wheel paths (corruption from interrupted build)"""
+        corrupted = []
+        for req_file in self._find_all_requirements_files():
+            try:
+                content = Path(req_file).read_text()
+                # Check for the specific corruption pattern (double /dist/ or wheel path)
+                if content.count("/dist/") > 1 or (
+                    ".whl" in content and "./lib/idp_common_pkg/dist" in content
+                ):
+                    corrupted.append(req_file)
+            except Exception:
+                pass  # Skip files that can't be read
+        return corrupted
+
+    def _restore_from_backups(self):
+        """Restore all requirements.txt from .backup files (recovery from crash)"""
+        backup_files = self._find_backup_files()
+        for backup_file in backup_files:
+            req_file = Path(str(backup_file).replace(self._backup_suffix, ""))
+            try:
+                backup_content = backup_file.read_text()
+                req_file.write_text(backup_content)
+                backup_file.unlink()
+                self.console.print(f"[green]  ✓ Restored {req_file}[/green]")
+            except Exception as e:
+                self.console.print(
+                    f"[yellow]  ⚠️  Could not restore {req_file}: {e}[/yellow]"
+                )
+
+    def _replace_lib_with_wheel(self, content, wheel_relative):
+        """Replace ./lib/idp_common_pkg with wheel path, preserving extras"""
+        import re
+
+        def replace_path(match):
+            extras = match.group(1) if match.group(1) else ""
+            return f"./{wheel_relative}{extras}"
+
+        return re.sub(r"\./lib/idp_common_pkg(\[[^\]]+\])?", replace_path, content)
+
+    def _prepare_for_build_at_start(self):
+        """Run at script startup - recover from any previous crash and detect corruption"""
+        self.console.print("[cyan]🔍 Checking for interrupted build state...[/cyan]")
+
+        # 1. Restore any orphaned backup files from previous interrupted build
+        backup_files = self._find_backup_files()
+        if backup_files:
+            self.console.print(
+                f"[yellow]⚠️  Found {len(backup_files)} backup files from previous interrupted run[/yellow]"
+            )
+            self._restore_from_backups()
+            self.console.print("[green]✅ Restored successfully[/green]")
+
+        # 2. Detect any corrupted requirements.txt files (wheel paths without backups)
+        corrupted = self._find_corrupted_requirements()
+        if corrupted:
+            self.console.print(
+                f"[red]❌ ERROR: {len(corrupted)} requirements.txt files have wheel paths[/red]"
+            )
+            self.console.print(
+                "[red]These files were modified by a previous interrupted build:[/red]"
+            )
+            for f in corrupted:
+                self.console.print(f"[red]  • {f}[/red]")
+            self.console.print(
+                "\n[yellow]Cannot auto-fix without risking uncommitted changes.[/yellow]"
+            )
+            self.console.print(
+                "[yellow]Please manually restore these files to point to:[/yellow]"
+            )
+            self.console.print("[yellow]  ./lib/idp_common_pkg[extras][/yellow]")
+            self.console.print(
+                "[yellow]  (where [extras] is optional, e.g., [agents], [docs_service], etc.)[/yellow]"
+            )
+            sys.exit(1)
+
+        self.log_verbose("✅ No interrupted build state detected")
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
@@ -707,127 +829,78 @@ STDERR:
     def build_components_with_smart_detection(
         self, components_needing_rebuild, component_type, max_workers=None
     ):
-        """Build patterns or options with smart detection and lib dependency handling"""
+        """Build patterns or options with smart detection.
+
+        Note: Sequential builds for lib changes are no longer needed since we pre-build
+        the lib wheel. All Lambda functions install from the wheel without race conditions.
+        """
         # Filter components by type
         components_to_build = []
         for item in components_needing_rebuild:
             if component_type in item["component"]:
-                if (
-                    self._is_lib_changed
-                    and LIB_DEPENDENCY in item["dependencies"]
-                    and max_workers != 1
-                ):
-                    max_workers = 1
                 components_to_build.append(item["component"])
 
         if not components_to_build:
             self.console.print(f"[green]✅ All {component_type} are up to date[/green]")
             return True
 
-        # Force sequential builds if lib changed
-        if self._is_lib_changed and max_workers == 1:
-            self.console.print(
-                f"[yellow]⚠️  lib dependencies detected - using sequential builds for {component_type}[/yellow]"
-            )
-
-        if max_workers == 1:
-            self.console.print(
-                f"[cyan]Building {len(components_to_build)} {component_type} with 1 worker...[/cyan]"
-            )
-        else:
-            self.console.print(
-                f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
-            )
+        self.console.print(
+            f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
+        )
 
         return self._build_components_concurrently(
             components_to_build, component_type, max_workers
         )
 
     def _build_components_concurrently(self, components, component_type, max_workers):
-        """Generic method to build components concurrently with progress display"""
-        # Create progress display
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            transient=False,
-        ) as progress:
-            # Create main task for overall progress
-            main_task = progress.add_task(
-                f"[cyan]Building {component_type}...", total=len(components)
-            )
+        """Generic method to build components concurrently with simple logging.
 
-            # Create individual tasks for each component
-            component_tasks = {}
+        Note: Progress bars removed to avoid Rich LiveDisplay conflicts when building
+        categories concurrently. Simple status logging used instead.
+        """
+        # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all component build tasks
+            future_to_component = {}
             for component in components:
-                task_id = progress.add_task(
-                    f"[yellow]{component}[/yellow] - Waiting...", total=1
+                self.console.print(f"[yellow]  • {component} - Building...[/yellow]")
+                future = executor.submit(
+                    self.build_and_package_template, component, force_rebuild=True
                 )
-                component_tasks[component] = task_id
+                future_to_component[future] = component
 
-            # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                # Submit all component build tasks
-                future_to_component = {}
-                for component in components:
-                    # Update task status to building
-                    progress.update(
-                        component_tasks[component],
-                        description=f"[yellow]{component}[/yellow] - Building...",
-                    )
-                    future = executor.submit(
-                        self.build_and_package_template, component, force_rebuild=True
-                    )
-                    future_to_component[future] = component
+            # Wait for all tasks to complete and check results
+            all_successful = True
+            completed = 0
 
-                # Wait for all tasks to complete and check results
-                all_successful = True
-                completed = 0
+            for future in concurrent.futures.as_completed(future_to_component):
+                component = future_to_component[future]
+                completed += 1
 
-                for future in concurrent.futures.as_completed(future_to_component):
-                    component = future_to_component[future]
-                    completed += 1
-
-                    try:
-                        success = future.result()
-                        if not success:
-                            progress.update(
-                                component_tasks[component],
-                                description=f"[red]{component}[/red] - Failed!",
-                                completed=1,
-                            )
-                            all_successful = False
-                        else:
-                            progress.update(
-                                component_tasks[component],
-                                description=f"[green]{component}[/green] - Complete!",
-                                completed=1,
-                            )
-
-                        # Update main progress
-                        progress.update(main_task, completed=completed)
-
-                    except Exception as e:
-                        # Log detailed error information
-
-                        error_output = f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                        self.log_error_details(
-                            f"{component_type.title()} {component} build exception",
-                            error_output,
-                        )
-
-                        progress.update(
-                            component_tasks[component],
-                            description=f"[red]{component}[/red] - Error: {str(e)[:30]}...",
-                            completed=1,
-                        )
+                try:
+                    success = future.result()
+                    if not success:
+                        self.console.print(f"[red]  ✗ {component} - Failed![/red]")
                         all_successful = False
-                        progress.update(main_task, completed=completed)
+                    else:
+                        self.console.print(
+                            f"[green]  ✓ {component} - Complete! ({completed}/{len(components)})[/green]"
+                        )
+
+                except Exception as e:
+                    # Log detailed error information
+                    error_output = (
+                        f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    )
+                    self.log_error_details(
+                        f"{component_type.title()} {component} build exception",
+                        error_output,
+                    )
+
+                    self.console.print(
+                        f"[red]  ✗ {component} - Error: {str(e)[:50]}...[/red]"
+                    )
+                    all_successful = False
 
         return all_successful
 
@@ -996,18 +1069,18 @@ STDERR:
                             )
                         )
 
-        # Check options Lambda functions
-        options_dir = project_root / "options"
-        if options_dir.exists():
-            for option_dir in options_dir.iterdir():
-                if option_dir.is_dir() and (option_dir / "template.yaml").exists():
-                    option_src = option_dir / "src"
-                    if option_src.exists():
+        # Check nested Lambda functions (includes former options/ stacks)
+        nested_dir = project_root / "nested"
+        if nested_dir.exists():
+            for nested_item in nested_dir.iterdir():
+                if nested_item.is_dir() and (nested_item / "template.yaml").exists():
+                    nested_src = nested_item / "src"
+                    if nested_src.exists():
                         functions.update(
                             self._scan_lambda_directory(
-                                option_src,
-                                option_dir / "template.yaml",
-                                option_dir.name,
+                                nested_src,
+                                nested_item / "template.yaml",
+                                f"nested/{nested_item.name}",
                             )
                         )
 
@@ -1828,10 +1901,9 @@ except Exception as e:
                                 task,
                                 description=f"[red]✗ SAM build failed after {sam_build_elapsed:.1f}s",
                             )
-                finally:
-                    # Always restore requirements.txt files after build
-                    if self._modified_requirements_files:
-                        self._restore_requirements_files()
+                except Exception:
+                    # Re-raise the exception to be caught by outer try/finally
+                    raise
 
                 if not success:
                     # Delete main template checksum on build failure
@@ -2195,14 +2267,37 @@ except Exception as e:
 
     def get_component_dependencies(self):
         """Map each component to its dependencies for smart rebuild detection"""
+        # Include the wheel file in main dependencies to detect when wheel changes
+        # This ensures rebuild when wheel is rebuilt with different content
+        wheel_dep = self._get_wheel_dependency()
+
+        main_deps = ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY]
+        if wheel_dep:
+            main_deps.append(wheel_dep)
+
         dependencies = {
             # Main template components
-            "main": ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY],
+            "main": main_deps,
+            # Nested components (includes all nested stacks - core and optional)
+            "nested/appsync": [
+                LIB_DEPENDENCY,
+                "nested/appsync/src",
+                "nested/appsync/template.yaml",
+            ],
+            "nested/bda-lending-project": [
+                "nested/bda-lending-project/src",
+                "nested/bda-lending-project/template.yaml",
+            ],
+            "nested/bedrockkb": [
+                "nested/bedrockkb/src",
+                "nested/bedrockkb/template.yaml",
+            ],
             # Pattern components
             "patterns/pattern-1": [
                 LIB_DEPENDENCY,
                 "patterns/pattern-1/src",
                 "patterns/pattern-1/template.yaml",
+                "Dockerfile.optimized",
             ],
             "patterns/pattern-2": [
                 LIB_DEPENDENCY,
@@ -2216,16 +2311,9 @@ except Exception as e:
                 "patterns/pattern-3/template.yaml",
                 "Dockerfile.optimized",
             ],
-            # Option components (no lib dependency - they don't use idp_common)
-            "options/bda-lending-project": [
-                "options/bda-lending-project/src",
-                "options/bda-lending-project/template.yaml",
-            ],
-            "options/bedrockkb": [
-                "options/bedrockkb/src",
-                "options/bedrockkb/template.yaml",
-            ],
-            "lib": [LIB_DEPENDENCY],
+            "lib": [
+                "./lib/idp_common_pkg"
+            ],  # Include entire package, not just idp_common subdir
         }
         return dependencies
 
@@ -2245,31 +2333,77 @@ except Exception as e:
             else:
                 checksum_file = f"{component}/.checksum"
 
-            current_checksum = self.get_component_checksum(*deps)
+            # Calculate individual checksums for each dependency
+            current_dep_checksums = {}
+            for dep in deps:
+                if os.path.isfile(dep):
+                    current_dep_checksums[dep] = self.get_file_checksum(dep)
+                elif os.path.isdir(dep):
+                    current_dep_checksums[dep] = self.get_source_files_checksum(dep)
+                else:
+                    current_dep_checksums[dep] = ""
+
+            # Combine checksums for overall comparison (include deployment context)
+            combined_checksum = hashlib.sha256(
+                (
+                    "".join(current_dep_checksums.values())
+                    + (self.bucket or "")
+                    + (self.prefix_and_version or "")
+                    + (self.region or "")
+                ).encode()
+            ).hexdigest()
 
             needs_rebuild = True
+            changed_deps = []
+
             if os.path.exists(checksum_file):
-                with open(checksum_file, "r") as f:
-                    stored_checksum = f.read().strip()
-                needs_rebuild = current_checksum != stored_checksum
+                try:
+                    with open(checksum_file, "r") as f:
+                        stored_data = json.load(f)
+                    stored_checksum = stored_data.get("combined", "")
+                    stored_dep_checksums = stored_data.get("dependencies", {})
+
+                    needs_rebuild = combined_checksum != stored_checksum
+
+                    # Identify which specific dependencies changed
+                    if needs_rebuild:
+                        for dep, current_cs in current_dep_checksums.items():
+                            stored_cs = stored_dep_checksums.get(dep, "")
+                            if current_cs != stored_cs:
+                                changed_deps.append(dep)
+                except (json.JSONDecodeError, KeyError):
+                    # Old format or corrupted - rebuild and show all deps
+                    changed_deps = deps
+            else:
+                # No checksum file - show all deps as changed
+                changed_deps = deps
 
             if needs_rebuild:
                 components_to_rebuild.append(
                     {
                         "component": component,
                         "dependencies": deps,
+                        "changed_dependencies": changed_deps,
                         "checksum_file": checksum_file,
-                        "current_checksum": current_checksum,
+                        "current_checksum": combined_checksum,
+                        "current_dep_checksums": current_dep_checksums,
                     }
                 )
                 if component == "lib":  # update _is_lib_changed
                     self._is_lib_changed = True
 
-                self.console.print(
-                    f"[yellow]📝 {component} needs rebuild due to changes in any of these dependencies:[/yellow]"
-                )
-                for dep in deps:
-                    self.console.print(f"[yellow]   • {dep}[/yellow]")
+                # Show only changed dependencies
+                if changed_deps:
+                    change_msg = (
+                        "changed"
+                        if len(changed_deps) < len(deps)
+                        else "new/no previous build"
+                    )
+                    self.console.print(
+                        f"[yellow]📝 {component} needs rebuild ({change_msg}):[/yellow]"
+                    )
+                    for dep in changed_deps:
+                        self.console.print(f"[yellow]   • {dep}[/yellow]")
 
         return components_to_rebuild
 
@@ -2335,6 +2469,110 @@ except Exception as e:
             return False
 
         self.console.print("[green]✅ Python linting passed[/green]")
+        return True
+
+    def _validate_cfn_lint(self):
+        """Validate CloudFormation templates with cfn-lint after build/package"""
+        if not self.lint_enabled:
+            return True
+
+        self.console.print(
+            "[cyan]🔍 Running CloudFormation linting (cfn-lint) on packaged templates...[/cyan]"
+        )
+
+        # Check if cfn-lint is installed
+        if not shutil.which("cfn-lint"):
+            self.console.print(
+                "[yellow]⚠️  cfn-lint not installed, skipping CloudFormation linting[/yellow]"
+            )
+            self.console.print("[dim]Install with: pip install cfn-lint[/dim]")
+            return True
+
+        all_errors = []
+        all_warnings = []
+
+        # List of templates to lint (packaged templates after token replacement)
+        templates_to_lint = []
+
+        # Main packaged template
+        main_packaged = ".aws-sam/idp-main.yaml"
+        if os.path.exists(main_packaged):
+            templates_to_lint.append(("Main template", main_packaged))
+
+        # Nested templates (packaged versions)
+        nested_dir = "nested"
+        if os.path.exists(nested_dir):
+            for nested_name in os.listdir(nested_dir):
+                nested_packaged = os.path.join(
+                    nested_dir, nested_name, ".aws-sam", "packaged.yaml"
+                )
+                if os.path.exists(nested_packaged):
+                    templates_to_lint.append((f"Nested/{nested_name}", nested_packaged))
+
+        # Pattern templates (packaged versions)
+        patterns_dir = "patterns"
+        if os.path.exists(patterns_dir):
+            for pattern_name in os.listdir(patterns_dir):
+                pattern_packaged = os.path.join(
+                    patterns_dir, pattern_name, ".aws-sam", "packaged.yaml"
+                )
+                if os.path.exists(pattern_packaged):
+                    templates_to_lint.append(
+                        (f"Patterns/{pattern_name}", pattern_packaged)
+                    )
+
+        if not templates_to_lint:
+            self.console.print(
+                "[yellow]⚠️  No packaged templates found to lint[/yellow]"
+            )
+            return True
+
+        # Lint each template
+        for template_name, template_path in templates_to_lint:
+            self.log_verbose(f"Linting {template_name}: {template_path}")
+
+            result = subprocess.run(
+                ["cfn-lint", template_path], capture_output=True, text=True
+            )
+
+            if result.returncode != 0:
+                output = result.stdout + result.stderr
+                lines = output.strip().split("\n") if output.strip() else []
+
+                # Separate errors from warnings
+                for line in lines:
+                    if not line.strip():
+                        continue
+                    if line.strip().startswith("E") or ":E" in line:
+                        all_errors.append(f"[{template_name}] {line}")
+                    elif line.strip().startswith("W") or ":W" in line:
+                        all_warnings.append(f"[{template_name}] {line}")
+
+        # Report results
+        if all_errors:
+            self.console.print("[red]❌ CloudFormation linting found errors:[/red]")
+            for line in all_errors[:10]:  # Show first 10 errors
+                self.console.print(f"[red]  {line}[/red]")
+            if len(all_errors) > 10:
+                self.console.print(
+                    f"[red]  ... and {len(all_errors) - 10} more errors[/red]"
+                )
+            return False
+
+        if all_warnings:
+            self.console.print(
+                f"[yellow]⚠️  CloudFormation linting found {len(all_warnings)} warnings (continuing):[/yellow]"
+            )
+            for line in all_warnings[:5]:  # Show first 5 warnings
+                self.console.print(f"[dim]  {line}[/dim]")
+            if len(all_warnings) > 5:
+                self.console.print(
+                    f"[dim]  ... and {len(all_warnings) - 5} more warnings[/dim]"
+                )
+
+        self.console.print(
+            f"[green]✅ CloudFormation linting passed ({len(templates_to_lint)} templates checked)[/green]"
+        )
         return True
 
     def build_lib_package(self):
@@ -2404,38 +2642,38 @@ except Exception as e:
                 self._modify_single_requirements_file(req_path, wheel_relative)
 
     def _modify_single_requirements_file(self, req_path, wheel_relative):
-        """Modify a single requirements.txt to use wheel path."""
+        """Modify a single requirements.txt - IDEMPOTENT with backup"""
         try:
-            with open(req_path, "r") as f:
-                original_content = f.read()
+            req_file = Path(req_path)
+            backup_file = Path(f"{req_path}{self._backup_suffix}")
 
-            # Check if this file references idp_common_pkg
+            original_content = req_file.read_text()
+
+            # IDEMPOTENT CHECK: Skip if already pointing to wheel
+            if f"./{wheel_relative}" in original_content:
+                self.log_verbose(f"⏭️  {req_path} already points to wheel, skipping")
+                return
+
+            # Only modify if pointing to source directory
             if "./lib/idp_common_pkg" not in original_content:
                 return
 
-            # Replace source path with wheel path, preserving extras
-            # Pattern: ./lib/idp_common_pkg[extras]  -> ./lib/idp_common_pkg/dist/wheel.whl[extras]
-            import re
+            # Create backup BEFORE modification
+            backup_file.write_text(original_content)
+            self.log_verbose(f"💾 Created backup: {backup_file}")
 
-            def replace_path(match):
-                extras = match.group(1) if match.group(1) else ""
-                return f"./{wheel_relative}{extras}"
+            # Perform modification using extracted method
+            modified_content = self._replace_lib_with_wheel(
+                original_content, wheel_relative
+            )
+            req_file.write_text(modified_content)
 
-            modified_content = re.sub(
-                r"\./lib/idp_common_pkg(\[[^\]]+\])?", replace_path, original_content
+            # Track for restoration (now tracks backup path instead of content)
+            self._modified_requirements_files.append(
+                {"path": req_path, "backup": str(backup_file)}
             )
 
-            if modified_content != original_content:
-                # Save original for restoration
-                self._modified_requirements_files.append(
-                    {"path": req_path, "original": original_content}
-                )
-
-                # Write modified content
-                with open(req_path, "w") as f:
-                    f.write(modified_content)
-
-                self.log_verbose(f"Modified {req_path} to use wheel")
+            self.log_verbose(f"✏️  Modified {req_path} to use wheel")
 
         except Exception as e:
             self.console.print(
@@ -2443,18 +2681,124 @@ except Exception as e:
             )
 
     def _restore_requirements_files(self):
-        """Restore all modified requirements.txt files to original content."""
+        """Restore from backup files"""
         for file_info in self._modified_requirements_files:
             try:
-                with open(file_info["path"], "w") as f:
-                    f.write(file_info["original"])
-                self.log_verbose(f"Restored {file_info['path']}")
+                backup_path = Path(file_info["backup"])
+                req_path = Path(file_info["path"])
+
+                if backup_path.exists():
+                    # Restore from backup
+                    backup_content = backup_path.read_text()
+                    req_path.write_text(backup_content)
+
+                    # Delete backup
+                    backup_path.unlink()
+
+                    self.log_verbose(f"♻️  Restored {req_path}")
+
             except Exception as e:
                 self.console.print(
-                    f"[yellow]Warning: Could not restore {file_info['path']}: {e}[/yellow]"
+                    f"[yellow]⚠️  Warning: Could not restore {file_info['path']}: {e}[/yellow]"
                 )
 
         self._modified_requirements_files = []
+
+    def _get_wheel_dependency(self):
+        """Get the wheel file path if it exists, for checksum calculation.
+
+        This ensures that when the wheel is rebuilt, the checksum changes and
+        triggers a rebuild of dependent components.
+        """
+        dist_dir = os.path.join(LIB_PKG_PATH, "dist")
+        if not os.path.exists(dist_dir):
+            return None
+
+        wheel_files = [f for f in os.listdir(dist_dir) if f.endswith(".whl")]
+        if wheel_files:
+            return os.path.join(dist_dir, wheel_files[0])
+        return None
+
+    def _verify_build_integrity(self):
+        """Verify that existing builds have idp_common properly included.
+
+        This is a quick pre-validation check that runs before the "is up to date"
+        decision. If builds appear corrupted (missing idp_common), this deletes
+        the relevant checksum files to force a rebuild.
+
+        Returns:
+            bool: True if integrity check passed, False if checksums were deleted
+        """
+        self.console.print(
+            "[cyan]🔍 Verifying build integrity for Lambda functions...[/cyan]"
+        )
+
+        # Check if main .aws-sam/build exists
+        main_build_dir = Path(".aws-sam/build")
+        if not main_build_dir.exists():
+            self.log_verbose("No existing build directory, skipping integrity check")
+            return True
+
+        # Find Lambda functions that should have idp_common
+        functions_with_idp_common = []
+        src_lambda_dir = Path("src/lambda")
+
+        if src_lambda_dir.exists():
+            for func_dir in src_lambda_dir.iterdir():
+                if not func_dir.is_dir():
+                    continue
+                req_file = func_dir / "requirements.txt"
+                if req_file.exists():
+                    content = req_file.read_text()
+                    if "idp_common_pkg" in content:
+                        functions_with_idp_common.append(func_dir.name)
+
+        if not functions_with_idp_common:
+            self.log_verbose("No Lambda functions with idp_common_pkg found")
+            return True
+
+        # Check a sample of functions for idp_common in build
+        integrity_issues = []
+        for func_name in functions_with_idp_common[:3]:  # Check first 3 as sample
+            # Find the CloudFormation function name
+            cf_name = self._extract_function_name(func_name, Path("template.yaml"))
+            if not cf_name:
+                continue
+
+            build_func_dir = main_build_dir / cf_name
+            idp_common_dir = build_func_dir / "idp_common"
+
+            if build_func_dir.exists() and not idp_common_dir.exists():
+                integrity_issues.append(f"{func_name} ({cf_name})")
+                self.log_verbose(
+                    f"Integrity issue: {func_name} build exists but missing idp_common"
+                )
+
+        if integrity_issues:
+            self.console.print(
+                f"[yellow]⚠️  Build integrity issues detected in {len(integrity_issues)} functions:[/yellow]"
+            )
+            for issue in integrity_issues:
+                self.console.print(f"[yellow]   • {issue}[/yellow]")
+
+            # Delete main checksum to force rebuild
+            checksum_file = ".checksum"
+            if os.path.exists(checksum_file):
+                os.remove(checksum_file)
+                self.console.print(
+                    "[yellow]   Deleted .checksum to force rebuild[/yellow]"
+                )
+
+            # Also clear the SAM build cache for main
+            self.clear_component_cache("main")
+            self.console.print(
+                "[yellow]   Cleared .aws-sam cache to ensure fresh build[/yellow]"
+            )
+
+            return False
+
+        self.console.print("[green]✅ Build integrity check passed[/green]")
+        return True
 
     def _delete_checksum_file(self, checksum_path):
         """Delete checksum file - handles both component paths and direct file paths"""
@@ -2470,12 +2814,20 @@ except Exception as e:
             self.log_verbose(f"Deleted checksum file: {checksum_file}")
 
     def update_component_checksum(self, components_needing_rebuild):
-        """Update checksum"""
+        """Update checksum with individual dependency tracking"""
         for item in components_needing_rebuild:
             current_checksum = item["current_checksum"]
+            current_dep_checksums = item["current_dep_checksums"]
             checksum_file = item["checksum_file"]
+
+            # Store both combined checksum and individual dependency checksums
+            checksum_data = {
+                "combined": current_checksum,
+                "dependencies": current_dep_checksums,
+            }
+
             with open(os.path.join(".", checksum_file), "w") as f:
-                f.write(current_checksum)
+                json.dump(checksum_data, f, indent=2)
             self.log_verbose(f"Updated checksum for {item['component']}")
 
     def smart_rebuild_detection(self):
@@ -2589,24 +2941,43 @@ except Exception as e:
 
     def run(self, args):
         """Main execution method"""
+        # Track overall timing
+        overall_start_time = time.time()
+        timing_breakdown = {}
+
         try:
             # Parse and validate parameters
+            step_start = time.time()
             self.check_parameters(args)
+            timing_breakdown["Parameter validation"] = time.time() - step_start
+
+            # Check for interrupted build state at startup - recover from any previous crash
+            step_start = time.time()
+            self._prepare_for_build_at_start()
+            timing_breakdown["Build state recovery"] = time.time() - step_start
 
             # Container deployment is now handled within this script
 
             # Set up environment
+            step_start = time.time()
             self.setup_environment()
+            timing_breakdown["Environment setup"] = time.time() - step_start
 
             # Check prerequisites
+            step_start = time.time()
             self.check_prerequisites()
+            timing_breakdown["Prerequisites check"] = time.time() - step_start
 
             # Validate Python linting if enabled
+            step_start = time.time()
             if not self._validate_python_linting():
                 raise Exception("Python linting validation failed")
+            timing_breakdown["Python linting"] = time.time() - step_start
 
             # Set up S3 bucket
+            step_start = time.time()
             self.setup_artifacts_bucket()
+            timing_breakdown["S3 bucket setup"] = time.time() - step_start
 
             # Get AWS account ID (needed for ECR placeholder)
             if not self.account_id:
@@ -2614,16 +2985,35 @@ except Exception as e:
                     self.sts_client = boto3.client("sts", region_name=self.region)
                 self.account_id = self.sts_client.get_caller_identity()["Account"]
 
+            # Verify build integrity before checking if rebuild is needed
+            # This catches cases where builds exist but are corrupted/missing idp_common
+            step_start = time.time()
+            integrity_ok = self._verify_build_integrity()
+            timing_breakdown["Build integrity check"] = time.time() - step_start
+
             # Perform smart rebuild detection and cache management
+            step_start = time.time()
             components_needing_rebuild = self.smart_rebuild_detection()
+            timing_breakdown["Smart rebuild detection"] = time.time() - step_start
+
+            # If integrity check failed, it deleted checksums - re-run detection
+            if not integrity_ok:
+                self.console.print(
+                    "[yellow]Re-running rebuild detection after integrity check...[/yellow]"
+                )
+                components_needing_rebuild = self.smart_rebuild_detection()
 
             # Start UI validation early in parallel
+            step_start = time.time()
             ui_validation_future, ui_executor = self.start_ui_validation_parallel()
+            timing_breakdown["Start UI validation"] = time.time() - step_start
 
             # clear component cache
+            step_start = time.time()
             for comp_info in components_needing_rebuild:
                 if comp_info["component"] != "lib":  # lib doesnt have sam build
                     self.clear_component_cache(comp_info["component"])
+            timing_breakdown["Clear component cache"] = time.time() - step_start
 
             # Build lib package for parallel-safe SAM builds
             # The wheel is needed whenever main template needs rebuilding (regardless of lib changes)
@@ -2632,37 +3022,74 @@ except Exception as e:
                 item["component"] == "main" for item in components_needing_rebuild
             )
             if main_needs_rebuild or self._is_lib_changed:
+                step_start = time.time()
                 self.build_lib_package()
+                timing_breakdown["Build lib package"] = time.time() - step_start
 
             # Build patterns and options with smart detection
             self.console.print(
                 "[bold cyan]Building components with smart dependency detection...[/bold cyan]"
             )
-            start_time = time.time()
+            concurrent_build_start = time.time()
 
             # Determine optimal number of workers
             if self.max_workers is None:
-                # Auto-detect: typically CPU count or a bit less, capped at 4
-                self.max_workers = min(4, (os.cpu_count() or 1) + 1)
+                # Auto-detect: SAM builds are I/O bound, so use 2x CPU count, capped at 8
+                cpu_count = os.cpu_count() or 4
+                self.max_workers = min(cpu_count * 2, 8)
                 self.console.print(
-                    f"[green]Auto-detected {self.max_workers} concurrent workers[/green]"
+                    f"[green]Auto-detected {self.max_workers} concurrent workers (CPUs: {cpu_count})[/green]"
                 )
 
-            # Build and push Pattern-2 container images FIRST if Pattern-2 needs rebuilding
-            # This MUST happen before SAM build/package since the images need to exist
-            # Pattern-2 Docker images are now built during CloudFormation deployment via CodeBuild
-            # No pre-build required - CodeBuild will download source from S3 and build images
+            # All pattern Docker images (Pattern-1, Pattern-2, Pattern-3) are built during CloudFormation deployment via CodeBuild
+            # CodeBuild will download source from S3 and build images - no pre-build required
             self.console.print(
-                "\n[cyan]ℹ️  Pattern-2 Docker images will be built during stack deployment via CodeBuild[/cyan]"
+                "\n[cyan]ℹ️  Pattern Docker images (Pattern-1/2/3) will be built during stack deployment via CodeBuild[/cyan]"
             )
 
-            # Build patterns with smart detection
-            self.console.print("\n[bold yellow]📦 Building Patterns[/bold yellow]")
-            patterns_start = time.time()
-            patterns_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "patterns", max_workers=self.max_workers
+            # Build nested and patterns concurrently (no dependencies on each other)
+            self.console.print(
+                "\n[bold yellow]🚀 Building Nested Stacks and Patterns Concurrently[/bold yellow]"
             )
-            patterns_time = time.time() - patterns_start
+
+            # Submit both category builds concurrently
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=2
+            ) as category_executor:
+                # Submit builds for both categories
+                nested_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "nested",
+                    self.max_workers,
+                )
+                patterns_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "patterns",
+                    self.max_workers,
+                )
+
+                # Wait for both categories to complete and collect results
+                nested_start = time.time()
+                nested_success = nested_future.result()
+                nested_time = time.time() - nested_start
+
+                patterns_start = time.time()
+                patterns_success = patterns_future.result()
+                patterns_time = time.time() - patterns_start
+
+            # Check if any category failed
+            if not nested_success:
+                self.print_error_summary()
+                self.console.print(
+                    "[red]❌ Error: Failed to build one or more nested stacks[/red]"
+                )
+                if not self.verbose:
+                    self.console.print(
+                        "[dim]Use --verbose flag for detailed error information[/dim]"
+                    )
+                sys.exit(1)
 
             if not patterns_success:
                 self.print_error_summary()
@@ -2675,38 +3102,26 @@ except Exception as e:
                     )
                 sys.exit(1)
 
-            # Build options with smart detection
-            self.console.print("\n[bold yellow]⚙️  Building Options[/bold yellow]")
-            options_start = time.time()
-            options_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "options", max_workers=self.max_workers
-            )
-            options_time = time.time() - options_start
-
-            if not options_success:
-                self.print_error_summary()
-                self.console.print(
-                    "[red]❌ Error: Failed to build one or more options[/red]"
-                )
-                if not self.verbose:
-                    self.console.print(
-                        "[dim]Use --verbose flag for detailed error information[/dim]"
-                    )
-                sys.exit(1)
-
-            total_build_time = time.time() - start_time
+            total_build_time = time.time() - concurrent_build_start
+            timing_breakdown["Concurrent builds (nested + patterns)"] = total_build_time
             self.console.print(
-                f"\n[bold green]✅ Smart build completed in {total_build_time:.2f}s[/bold green]"
+                f"\n[bold green]✅ Concurrent build completed in {total_build_time:.2f}s[/bold green]"
             )
+            self.console.print(f"   [dim]• Nested: {nested_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Patterns: {patterns_time:.2f}s[/dim]")
-            self.console.print(f"   [dim]• Options: {options_time:.2f}s[/dim]")
+            self.console.print(
+                f"   [dim]• Wall-clock time saved by concurrency: {max(nested_time, patterns_time) - total_build_time:.2f}s[/dim]"
+            )
 
             if components_needing_rebuild:
                 # Upload configuration library
+                step_start = time.time()
                 self.upload_config_library()
+                timing_breakdown["Upload config library"] = time.time() - step_start
 
             # Wait for UI validation to complete if it was started
             if ui_validation_future:
+                step_start = time.time()
                 try:
                     self.console.print(
                         "[cyan]⏳ Waiting for UI validation to complete...[/cyan]"
@@ -2721,20 +3136,30 @@ except Exception as e:
                     sys.exit(1)
                 finally:
                     ui_executor.shutdown(wait=True)
+                timing_breakdown["UI validation (wait)"] = time.time() - step_start
 
             # Package UI and start validation in parallel if needed
+            step_start = time.time()
             webui_zipfile = self.package_ui()
+            timing_breakdown["Package UI"] = time.time() - step_start
 
             # Package Pattern-1 source for CodeBuild Docker builds
+            step_start = time.time()
             pattern1_source_zipfile = self.package_pattern1_source()
+            timing_breakdown["Package Pattern-1 source"] = time.time() - step_start
 
             # Package Pattern-2 source for CodeBuild Docker builds
+            step_start = time.time()
             pattern2_source_zipfile = self.package_pattern2_source()
+            timing_breakdown["Package Pattern-2 source"] = time.time() - step_start
 
             # Package Pattern-3 source for CodeBuild Docker builds
+            step_start = time.time()
             pattern3_source_zipfile = self.package_pattern3_source()
+            timing_breakdown["Package Pattern-3 source"] = time.time() - step_start
 
             # Build main template
+            step_start = time.time()
             self.build_main_template(
                 webui_zipfile,
                 pattern1_source_zipfile,
@@ -2742,18 +3167,73 @@ except Exception as e:
                 pattern3_source_zipfile,
                 components_needing_rebuild,
             )
+            timing_breakdown["Build main template"] = time.time() - step_start
 
             # Validate Lambda builds for idp_common inclusion (after all builds complete)
+            step_start = time.time()
             self.validate_lambda_builds()
+            timing_breakdown["Validate Lambda builds"] = time.time() - step_start
+
+            # Validate CloudFormation templates with cfn-lint (after all templates are built/packaged)
+            step_start = time.time()
+            if not self._validate_cfn_lint():
+                raise Exception("CloudFormation linting validation failed")
+            timing_breakdown["CloudFormation linting"] = time.time() - step_start
+
+            # Restore requirements.txt files after validation completes successfully
+            if self._modified_requirements_files:
+                self.log_verbose(
+                    "Restoring requirements.txt files after successful validation"
+                )
+                self._restore_requirements_files()
 
             # All builds completed successfully if we reach here
             self.console.print("[green]✅ All builds completed successfully[/green]")
 
             # Update checksum for components needing rebuild upon success
+            step_start = time.time()
             self.update_component_checksum(components_needing_rebuild)
+            timing_breakdown["Update checksums"] = time.time() - step_start
 
             # Print outputs
+            step_start = time.time()
             self.print_outputs()
+            timing_breakdown["Print outputs"] = time.time() - step_start
+
+            # Calculate total time
+            total_time = time.time() - overall_start_time
+
+            # Print timing breakdown - show top 4 steps and "Other"
+            self.console.print("\n[bold cyan]⏱️  Timing Breakdown:[/bold cyan]")
+            self.console.print("=" * 60)
+
+            # Sort by duration (longest first)
+            sorted_steps = sorted(
+                timing_breakdown.items(), key=lambda x: x[1], reverse=True
+            )
+
+            # Show top 4 steps
+            top_steps = sorted_steps[:4]
+            for step_name, duration in top_steps:
+                percentage = (duration / total_time * 100) if total_time > 0 else 0
+                self.console.print(
+                    f"  • {step_name:<40} {duration:>6.2f}s ({percentage:>5.1f}%)"
+                )
+
+            # Combine remaining steps as "Other"
+            if len(sorted_steps) > 4:
+                other_time = sum(duration for _, duration in sorted_steps[4:])
+                other_percentage = (
+                    (other_time / total_time * 100) if total_time > 0 else 0
+                )
+                self.console.print(
+                    f"  • {'Other':<40} {other_time:>6.2f}s ({other_percentage:>5.1f}%)"
+                )
+
+            self.console.print("=" * 60)
+            self.console.print(
+                f"  [bold green]TOTAL TIME: {total_time:.2f}s ({total_time / 60:.1f} minutes)[/bold green]"
+            )
 
             self.console.print("\n[bold green]✅ Done![/bold green]")
 
@@ -2768,6 +3248,16 @@ except Exception as e:
             self.console.print("\n[yellow]Traceback:[/yellow]")
             traceback.print_exc()
             sys.exit(1)
+        finally:
+            # Always restore requirements.txt files on exit (success or failure)
+            if self._modified_requirements_files:
+                self.log_verbose("Cleaning up: Restoring requirements.txt files")
+                try:
+                    self._restore_requirements_files()
+                except Exception as restore_error:
+                    self.console.print(
+                        f"[yellow]Warning: Could not restore requirements.txt files: {restore_error}[/yellow]"
+                    )
 
 
 if __name__ == "__main__":

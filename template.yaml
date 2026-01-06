@@ -178,7 +178,7 @@ Parameters:
       If you already have a GenAI-IDP deployment with HITL enabled, provide the existing workteam ARN here.
       Leave empty for first-time HITL deployment to create a new private workteam automatically.
       Find the ARN in your existing stack's CloudFormation outputs under 'PrivateWorkteamArn'.
-      Format: arn:${AWS::Partition}:sagemaker:region:account-id:workteam/private-crowd/workteam-name
+      Format: arn:partition:sagemaker:region:account-id:workteam/private-crowd/workteam-name
 
   # Evaluation
   EvaluationBaselineBucketName:
@@ -334,7 +334,7 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
       Required by some organizations with Service Control Policies (SCPs).
-      Format: arn:${AWS::Partition}:iam::account-id:policy/policy-name
+      Format: arn:partition:iam::account-id:policy/policy-name
       Leave blank if no Permissions Boundary is required.
     AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
@@ -852,7 +852,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: ShouldCreateBDASampleProject
     Properties:
-      TemplateURL: ./options/bda-lending-project/.aws-sam/packaged.yaml
+      TemplateURL: ./nested/bda-lending-project/.aws-sam/packaged.yaml
       Parameters:
         ProjectName: !Sub "${AWS::StackName}-BDA-Lending-Sample-Project"
         ProjectDescription: !Sub "${AWS::StackName}-BDA-Lending-Sample-Project"
@@ -865,7 +865,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: ShouldCreateDocumentKnowledgeBase
     Properties:
-      TemplateURL: ./options/bedrockkb/.aws-sam/packaged.yaml
+      TemplateURL: ./nested/bedrockkb/.aws-sam/packaged.yaml
       Parameters:
         pKnowledgeBaseBucketName: !Ref OutputBucket
         pInputDocumentUploadFolderPrefix: ""
@@ -1428,6 +1428,100 @@ Resources:
   # Encryption key
   ##########################################################################
 
+
+  ##########################################################################
+  # Nested stack for AppSync resolvers
+  ##########################################################################
+
+  APPSYNCSTACK:
+    DependsOn:
+      - IsStacknameLengthOK
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./nested/appsync/.aws-sam/packaged.yaml
+      Parameters:
+        # Core AppSync resources
+        GraphQLApiId: !GetAtt GraphQLApi.ApiId
+        GraphQLApiArn: !GetAtt GraphQLApi.Arn
+        GraphQLApiUrl: !GetAtt GraphQLApi.GraphQLUrl
+        
+        # Background worker ARNs
+        AgentChatProcessorFunctionArn: !GetAtt AgentChatProcessorFunction.Arn
+        AgentProcessorFunctionArn: !GetAtt AgentProcessorFunction.Arn
+        
+        # DynamoDB Tables
+        TrackingTableName: !Ref TrackingTable
+        ConfigurationTableName: !Ref ConfigurationTable
+        AgentTableName: !Ref AgentTable
+        ChatMessagesTableName: !Ref ChatMessagesTable
+        ChatSessionsTableName: !Ref ChatSessionsTable
+        IdHelperChatMemoryTableName: !Ref IdHelperChatMemoryTable
+        DiscoveryTrackingTableName: !Ref DiscoveryTrackingTable
+        
+        # S3 Buckets
+        InputBucketName: !Ref InputBucket
+        OutputBucketName: !Ref OutputBucket
+        ConfigurationBucketName: !Ref ConfigurationBucket
+        TestSetBucketName: !Ref TestSetBucket
+        EvaluationBaselineBucketName: !If
+          - ShouldCreateEvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucket
+          - !Ref EvaluationBaselineBucketName
+        ReportingBucketName: !If
+          - ShouldCreateReportingBucket
+          - !Ref ReportingBucket
+          - !Ref ReportingBucketName
+        WorkingBucketName: !Ref WorkingBucket
+        DiscoveryBucketName: !Ref DiscoveryBucket
+        
+        # SQS Queues
+        DocumentQueueUrl: !Ref DocumentQueue
+        DiscoveryQueueUrl: !Ref DiscoveryQueue
+        TestFileCopyQueueUrl: !Ref TestFileCopyQueue
+        TestSetFileCopyQueueUrl: !Ref TestSetFileCopyQueue
+        TestResultCacheUpdateQueueUrl: !Ref TestResultCacheUpdateQueue
+        TestResultCacheUpdateQueueArn: !GetAtt TestResultCacheUpdateQueue.Arn
+        
+        # SQS Queue Names (for IAM policies)
+        DocumentQueueName: !GetAtt DocumentQueue.QueueName
+        DiscoveryQueueName: !GetAtt DiscoveryQueue.QueueName
+        TestFileCopyQueueName: !GetAtt TestFileCopyQueue.QueueName
+        TestSetFileCopyQueueName: !GetAtt TestSetFileCopyQueue.QueueName
+        
+        # Other resources
+        CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
+        ReportingDatabaseName: !Ref ReportingDatabase
+        LookupFunctionName: !Ref LookupFunction
+        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        
+        # Runtime settings (read from Parameter Store)
+        SettingsParameterName: !Ref SettingsParameter
+        
+        # Configuration
+        StackName: !Ref AWS::StackName
+        LogRetentionDays: !Ref LogRetentionDays
+        LogLevel: !Ref LogLevel
+        DataRetentionInDays: !Ref DataRetentionInDays
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
+        ExecutionTimeThresholdMs: !Ref ExecutionTimeThresholdMs
+        
+        # Conditional parameters
+        HasGuardrailConfig: !If [HasGuardrailConfig, "true", "false"]
+        BedrockGuardrailId: !Ref BedrockGuardrailId
+        BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
+        ShouldUseDocumentKnowledgeBase: !If [ShouldUseDocumentKnowledgeBase, "true", "false"]
+        KnowledgeBaseModelId: !Ref KnowledgeBaseModelId
+        ShouldCreateEvaluationBaselineBucket: !If [ShouldCreateEvaluationBaselineBucket, "true", "false"]
+        ShouldCreateReportingBucket: !If [ShouldCreateReportingBucket, "true", "false"]
+        IsPattern1: !If [IsPattern1, "true", "false"]
+        Pattern1BDAProjectArn: !If
+          - ShouldCreateBDASampleProject
+          - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
+          - !Ref Pattern1BDAProjectArn
+        HasPattern1BDAProjectArn: !If [HasPattern1BDAProjectArn, "true", "false"]
+        IsPattern2: !If [IsPattern2, "true", "false"]
+        IsPattern3: !If [IsPattern3, "true", "false"]
+
   CustomerManagedEncryptionKey:
     DependsOn:
       - IsStacknameLengthOK
@@ -1731,7 +1825,7 @@ Resources:
 
   TestSetBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: RetainExceptOnCreate
+    DeletionPolicy: Delete
     Properties:
       CorsConfiguration:
         CorsRules:
@@ -1792,6 +1886,103 @@ Resources:
             Condition:
               Bool:
                 "aws:SecureTransport": false
+
+  ##########################################################################
+  # TestSetBucket Auto-Delete - Empties bucket before CloudFormation deletion
+  ##########################################################################
+
+  TestSetBucketAutoDeleteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 512
+      InlineCode: |
+        import boto3
+        import cfnresponse
+        import json
+        import logging
+
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        def handler(event, context):
+            logger.info(json.dumps(event))
+            
+            try:
+                bucket_name = event['ResourceProperties']['BucketName']
+                
+                if event['RequestType'] == 'Delete':
+                    logger.info(f"Emptying bucket {bucket_name} before deletion")
+                    s3 = boto3.resource('s3')
+                    bucket = s3.Bucket(bucket_name)
+                    
+                    # Delete all objects including versions
+                    bucket.object_versions.all().delete()
+                    logger.info(f"Successfully emptied bucket {bucket_name}")
+                
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                
+            except Exception as e:
+                logger.error(f"Error: {str(e)}")
+                # On delete, we want to succeed even if there's an error
+                # to avoid blocking stack deletion
+                if event['RequestType'] == 'Delete':
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, 
+                                   reason=f"Bucket cleanup attempted: {str(e)}")
+                else:
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+      LoggingConfig:
+        LogGroup: !Ref TestSetBucketAutoDeleteFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:GetBucketVersioning
+                - s3:ListBucket
+                - s3:ListBucketVersions
+              Resource:
+                - !Sub "arn:${AWS::Partition}:s3:::${TestSetBucket}"
+                - !Sub "arn:${AWS::Partition}:s3:::${TestSetBucket}/*"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:GenerateDataKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  TestSetBucketAutoDeleteFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  TestSetBucketAutoDelete:
+    Type: Custom::S3AutoDelete
+    DependsOn:
+      - TestSetBucket
+      - TestSetBucketAutoDeleteFunction
+    Properties:
+      ServiceToken: !GetAtt TestSetBucketAutoDeleteFunction.Arn
+      BucketName: !Ref TestSetBucket
 
   ##########################################################################
   # FCC Dataset Deployer - Automatically deploys RealKIE-FCC-Verified dataset
@@ -3010,6 +3201,25 @@ Resources:
           - ShouldUseDocumentKnowledgeBase
           - True
           - False
+        # Runtime-resolved values for APPSYNCSTACK decoupling
+        StateMachineArn: !If
+          - IsPattern3
+          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
+          - !If
+            - IsPattern2
+            - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
+            - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
+        StateMachineName: !If
+          - IsPattern3
+          - !GetAtt PATTERN3STACK.Outputs.StateMachineName
+          - !If
+            - IsPattern2
+            - !GetAtt PATTERN2STACK.Outputs.StateMachineName
+            - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+        KnowledgeBaseId: !If
+          - ShouldCreateDocumentKnowledgeBase
+          - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
+          - ""
     UpdateReplacePolicy: Delete
     DeletionPolicy: Delete
 
@@ -4214,70 +4424,6 @@ Resources:
       KmsKeyId: !Ref CustomerManagedEncryptionKey
 
   # Lambda function for agent chat resolver
-  AgentChatResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W58
-            reason: "DLQ not required for AppSeync Resolver function"
-          - id: W11
-            reason: "Role requires * resource access for Marketplace, CloudWatch Metrics and Logs"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics processor as it's invoked asynchronously by request handler with error handling and job status tracking in DynamoDB"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/agent_chat_resolver/
-      Handler: index.handler
-      Runtime: python3.12
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
-          AGENT_CHAT_PROCESSOR_FUNCTION: !Ref AgentChatProcessorFunction
-          DATA_RETENTION_DAYS: !Ref DataRetentionInDays
-          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
-      LoggingConfig:
-        LogGroup: !Ref AgentChatResolverLogGroup
-      Policies:
-        - Statement:
-            Effect: Allow
-            Action: lambda:InvokeFunction
-            Resource: !GetAtt AgentChatProcessorFunction.Arn
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ChatMessagesTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ChatSessionsTable
-        - LambdaInvokePolicy:
-            FunctionName: !Ref AgentChatProcessorFunction
-        - Statement:
-            Effect: Allow
-            Action:
-              - kms:Encrypt
-              - kms:Decrypt
-              - kms:ReEncrypt*
-              - kms:GenerateDataKey*
-              - kms:DescribeKey
-            Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  AgentChatResolverLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  # Lambda function for agent chat processor
   AgentChatProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -4534,573 +4680,6 @@ Resources:
   ##########################################################################
 
   # Lambda function for listing agent chat sessions
-  ListAgentChatSessionsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/list_agent_chat_sessions_resolver/
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
-      LoggingConfig:
-        LogGroup: !Ref ListAgentChatSessionsFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ChatSessionsTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  ListAgentChatSessionsFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  # Lambda function for getting agent chat messages
-  GetAgentChatMessagesFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/get_agent_chat_messages_resolver/
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
-      LoggingConfig:
-        LogGroup: !Ref GetAgentChatMessagesFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ChatMessagesTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  GetAgentChatMessagesFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  # Lambda function for deleting agent chat sessions
-  DeleteAgentChatSessionFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/delete_agent_chat_session_resolver/
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          CHAT_MESSAGES_TABLE: !Ref ChatMessagesTable
-          CHAT_SESSIONS_TABLE: !Ref ChatSessionsTable
-      LoggingConfig:
-        LogGroup: !Ref DeleteAgentChatSessionFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ChatMessagesTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ChatSessionsTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  DeleteAgentChatSessionFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  ##########################################################################
-  # AppSync Data Sources for Agent Chat Session Management
-  ##########################################################################
-
-  ListAgentChatSessionsDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ListAgentChatSessionsDataSource
-      Description: Lambda function for listing agent chat sessions
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt ListAgentChatSessionsFunction.Arn
-
-  GetAgentChatMessagesDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: GetAgentChatMessagesDataSource
-      Description: Lambda function for getting agent chat messages
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt GetAgentChatMessagesFunction.Arn
-
-  DeleteAgentChatSessionDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: DeleteAgentChatSessionDataSource
-      Description: Lambda function for deleting agent chat sessions
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt DeleteAgentChatSessionFunction.Arn
-
-  ##########################################################################
-  # AppSync Resolvers for Agent Chat Session Management
-  ##########################################################################
-
-  ListChatSessionsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listChatSessions
-      DataSourceName: !GetAtt ListAgentChatSessionsDataSource.Name
-      
-  GetChatMessagesResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: getChatMessages
-      DataSourceName: !GetAtt GetAgentChatMessagesDataSource.Name
-
-  DeleteChatSessionResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: deleteChatSession
-      DataSourceName: !GetAtt DeleteAgentChatSessionDataSource.Name
-
-  # Lambda function for listing available agents
-  ListAvailableAgentsFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with local agent factory"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with local agent factory"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/list_available_agents/
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 30
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          AWS_STACK_NAME: !Ref AWS::StackName
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource:
-                - !Ref ExternalMCPAgentsSecret
-            - Effect: Allow
-              Action:
-                - kms:Decrypt
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-      LoggingConfig:
-        LogGroup: !Ref ListAvailableAgentsLogGroup
-
-  ListAvailableAgentsLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  # AppSync resolvers for agent operations
-  ListAvailableAgentsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listAvailableAgents
-      DataSourceName: !GetAtt ListAvailableAgentsDataSource.Name
-
-  ListAvailableAgentsDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ListAvailableAgentsDataSource
-      Description: Lambda function for listing available agents
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt ListAvailableAgentsFunction.Arn
-
-  AgentChatDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentChatDataSource
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt AgentChatResolverFunction.Arn
-
-  SendAgentChatMessageResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: sendAgentChatMessage
-      DataSourceName: !GetAtt AgentChatDataSource.Name
-      RequestMappingTemplate: |
-        {
-          "version": "2017-02-28",
-          "operation": "Invoke",
-          "payload": {
-            "arguments": $util.toJson($context.arguments),
-            "identity": {
-              "username": $util.toJson($context.identity.username),
-              "sub": $util.toJson($context.identity.sub),
-              "sourceIp": $util.toJson($context.identity.sourceIp),
-              "userArn": $util.toJson($context.identity.userArn),
-              "accountId": $util.toJson($context.identity.accountId),  
-              "cognitoIdentityPoolId": $util.toJson($context.identity.cognitoIdentityPoolId),
-              "cognitoIdentityId": $util.toJson($context.identity.cognitoIdentityId),
-              "userPoolUserId": $util.toJson($context.identity.claims.sub),
-              "claims": $util.toJson($context.identity.claims)
-            }
-          }
-        }
-      ResponseMappingTemplate: |
-        #if($ctx.error)
-            $util.error($ctx.error.message, $ctx.error.type)
-        #end
-        #if($ctx.result)
-            $util.toJson($ctx.result)
-        #else
-            $util.error("No response from Lambda")
-        #end
-
-  OnAgentChatMessageUpdateResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Subscription
-      FieldName: onAgentChatMessageUpdate
-      DataSourceName: !GetAtt NoneDataSource.Name
-      RequestMappingTemplate: |
-        {
-          "version": "2018-05-29",
-          "payload": {}
-        }
-      ResponseMappingTemplate: |
-        #if($context.arguments.sessionId && $context.source.sessionId)
-          #if($context.arguments.sessionId == $context.source.sessionId)
-            $util.toJson($context.source)
-          #else
-            #set($result = $util.appendError("Session ID does not match", "Unauthorized"))
-            $util.toJson(null)
-          #end
-        #else
-          $util.toJson($context.source)
-        #end     
-
-  AgentChatResolverDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentChatResolverDataSource
-      Description: Lambda function for handling agent chat messages
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt AgentChatResolverFunction.Arn
-
-  GetAgentJobStatusResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: getAgentJobStatus
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "GetItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          }
-        }
-      ResponseMappingTemplate: |
-        #if(!$ctx.result)
-          null
-        #else
-          {
-            "jobId": $util.toJson($ctx.result.SK),
-            "status": $util.toJson($ctx.result.status),
-            "query": $util.toJson($ctx.result.query),
-            "agentIds": $util.toJson($ctx.result.agentIds),
-            "createdAt": $util.toJson($ctx.result.createdAt),
-            "completedAt": $util.toJson($ctx.result.completedAt),
-            "result": $util.toJson($ctx.result.result),
-            "error": $util.toJson($ctx.result.error),
-            "agent_messages": $util.toJson($ctx.result.agent_messages)
-          }
-        #end
-
-  ListAgentJobsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listAgentJobs
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "Query",
-          "query": {
-            "expression": "PK = :pk",
-            "expressionValues": {
-              ":pk": $util.dynamodb.toDynamoDBJson("agent#${userId}")
-            }
-          },
-          #if($ctx.args.limit)
-            "limit": $ctx.args.limit,
-          #end
-          #if($ctx.args.nextToken)
-            "nextToken": "$ctx.args.nextToken",
-          #end
-          "scanIndexForward": false
-        }
-      ResponseMappingTemplate: |
-        {
-          "items": [
-            #foreach($item in $ctx.result.items)
-              {
-                "jobId": $util.toJson($item.SK),
-                "status": $util.toJson($item.status),
-                "query": $util.toJson($item.query),
-                "agentIds": $util.toJson($item.agentIds),
-                "createdAt": $util.toJson($item.createdAt),
-                "completedAt": $util.toJson($item.completedAt),
-                "result": $util.toJson($item.result),
-                "error": $util.toJson($item.error)
-              }#if($foreach.hasNext),#end
-            #end
-          ],
-          "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-
-  UpdateAgentJobStatusResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: updateAgentJobStatus
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |-
-        #set($userId = $ctx.args.userId)
-        #set($expNames = {})
-        #set($expValues = {})
-
-        ## Set status (required)
-        $util.qr($expNames.put("#status", "status"))
-        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
-        #set($updateExpression = "SET #status = :status")
-
-        ## Set result (optional)
-        #if($ctx.args.result)
-          $util.qr($expNames.put("#result", "result"))
-          $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
-          #set($updateExpression = "${updateExpression}, #result = :result")
-        #end
-
-        ## Set completedAt to current timestamp when status is COMPLETED or FAILED
-        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
-          $util.qr($expNames.put("#completedAt", "completedAt"))
-          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-          #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
-        #end
-
-        {
-          "version": "2018-05-29",
-          "operation": "UpdateItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          },
-          "update": {
-            "expression": "$updateExpression",
-            "expressionNames": $utils.toJson($expNames),
-            "expressionValues": $utils.toJson($expValues)
-          }
-        }
-      ResponseMappingTemplate: |-
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #end
-
-        ## Return false if no item was updated (item not found)
-        #if(!$ctx.result)
-          false
-        #else
-          true
-        #end
-
-  DeleteAgentJobResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: deleteAgentJob
-      DataSourceName: !GetAtt AgentTableDataSource.Name
-      RequestMappingTemplate: |-
-        #set($userId = $context.identity.username)
-        #if(!$userId)
-          #set($userId = $context.identity.sub)
-        #end
-        #if(!$userId)
-          #set($userId = "anonymous")
-        #end
-        {
-          "version": "2018-05-29",
-          "operation": "DeleteItem",
-          "key": {
-            "PK": $util.dynamodb.toDynamoDBJson("agent#${userId}"),
-            "SK": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          }
-        }
-      ResponseMappingTemplate: |-
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #else
-          true
-        #end
-
-  AgentTableDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentTableDataSource
-      Description: DynamoDB table for agent job tracking
-      Type: AMAZON_DYNAMODB
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      DynamoDBConfig:
-        TableName: !Ref AgentTable
-        AwsRegion: !Ref AWS::Region
-
-
   ChatMessagesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -5149,35 +4728,6 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
-  NoneDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: NoneDataSource
-      Type: NONE
-
-  ChatMessagesDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ChatMessagesDataSource
-      Type: AMAZON_DYNAMODB
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      DynamoDBConfig:
-        TableName: !Ref ChatMessagesTable
-        AwsRegion: !Ref AWS::Region
-
-  ##########################################################################
-  # Backward Compatible for Error Anlayzer Agent 
-  ##########################################################################
-
-  AgentRequestHandlerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-AgentRequestHandler"
-      RetentionInDays: !Ref LogRetentionDays
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-  
   AgentProcessorLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -5186,54 +4736,6 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
 
   # Lambda function for agent request handler
-  AgentRequestHandlerFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for analytics request handler as it's invoked synchronously via AppSync and errors are handled by the caller"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/agent_request_handler/
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 30
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          AGENT_TABLE: !Ref AgentTable
-          AGENT_PROCESSOR_FUNCTION: !Ref AgentProcessorFunction
-          DATA_RETENTION_DAYS: !Ref DataRetentionInDays
-      LoggingConfig:
-        LogGroup: !Ref AgentRequestHandlerLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AgentTable
-        - LambdaInvokePolicy:
-            FunctionName: !Ref AgentProcessorFunction
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  # Lambda function for agent processor
   AgentProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -5434,30 +4936,6 @@ Resources:
                 - xray:GetServiceGraph
               Resource: "*"
   
-  AgentRequestHandlerDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AgentRequestHandlerDataSource
-      Description: Lambda function for handling agent query requests
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt AgentRequestHandlerFunction.Arn
-
-  SubmitAgentQueryResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: submitAgentQuery
-      DataSourceName: !GetAtt AgentRequestHandlerDataSource.Name
-
-  ##########################################################################
-  # External Client
-  ##########################################################################
-
   ExternalAppClient:
     Type: AWS::Cognito::UserPoolClient
     Condition: CreateExternalAppClient
@@ -6413,1177 +5891,6 @@ Resources:
 
   # Api Schema, datasource, resolvers
 
-  GraphQLSchema:
-    Type: AWS::AppSync::GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DefinitionS3Location: ./src/api/schema.graphql
-
-  TrackingTableDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: TrackingTableDataSource
-      Type: AMAZON_DYNAMODB
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      DynamoDBConfig:
-        TableName: !Ref TrackingTable
-        AwsRegion: !Ref AWS::Region
-
-  DiscoveryTableDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: DiscoveryTableDataSource
-      Type: AMAZON_DYNAMODB
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      DynamoDBConfig:
-        TableName: !Ref DiscoveryTrackingTable
-        AwsRegion: !Ref AWS::Region
-
-  AppSyncServiceRole:
-    Type: AWS::IAM::Role
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W76
-            reason: "Suppressing W76: SPCM for IAM policy document is higher than 25"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: !Sub "appsync.${AWS::URLSuffix}"
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Policies:
-        - PolicyName: DynamoDBAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
-                  - dynamodb:Query
-                  - dynamodb:Scan
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}"
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AgentTable}"
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DiscoveryTrackingTable}"
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatMessagesTable}"
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ChatSessionsTable}"
-              - Effect: Allow
-                Action:
-                  - kms:Encrypt
-                  - kms:Decrypt
-                  - kms:ReEncrypt*
-                  - kms:GenerateDataKey*
-                  - kms:DescribeKey
-                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource:
-                  - !GetAtt GetFileContentsResolverFunction.Arn
-                  - !GetAtt GetStepFunctionExecutionResolverFunction.Arn
-                  - !GetAtt ConfigurationResolverFunction.Arn
-                  - !GetAtt UploadResolverFunction.Arn
-                  - !GetAtt CopyToBaselineResolverFunction.Arn
-                  - !GetAtt CreateDocumentResolverFunction.Arn
-                  - !GetAtt DeleteDocumentResolverFunction.Arn
-                  - !GetAtt DeleteTestsResolverFunction.Arn
-                  - !GetAtt QueryKnowledgeBaseResolverFunction.Arn
-                  - !GetAtt ReprocessDocumentResolverFunction.Arn
-                  - !GetAtt AbortWorkflowResolverFunction.Arn
-                  - !GetAtt ProcessChangesResolverFunction.Arn
-                  - !GetAtt AgentChatResolverFunction.Arn
-                  - !GetAtt ListAvailableAgentsFunction.Arn
-                  - !GetAtt ChatWithDocumentResolverFunction.Arn
-                  - !GetAtt DiscoveryUploadResolverFunction.Arn
-                  - !GetAtt TestRunnerFunction.Arn
-                  - !GetAtt TestResultsResolverFunction.Arn
-                  - !GetAtt TestSetResolverFunction.Arn
-                  - !GetAtt AgentRequestHandlerFunction.Arn  # <-- Backward Compatibility for error analyzer agent
-                  - !GetAtt ListAgentChatSessionsFunction.Arn
-                  - !GetAtt GetAgentChatMessagesFunction.Arn
-                  - !GetAtt DeleteAgentChatSessionFunction.Arn
-                  - !If
-                    - IsPattern1
-                    - !GetAtt SyncBdaIdpResolverFunction.Arn
-                    - !Ref AWS::NoValue
-
-  # Lambda function for Create Document resolver
-  CreateDocumentResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/create_document_resolver
-      Description: Lambda function to create document tracking via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          TRACKING_TABLE_NAME: !Ref TrackingTable
-      LoggingConfig:
-        LogGroup: !Ref CreateDocumentResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  CreateDocumentResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  # Create Document resolver configuration
-  CreateDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: createDocument
-      DataSourceName: !GetAtt CreateDocumentDataSource.Name
-
-  # Data source for Create Document resolver
-  CreateDocumentDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: CreateDocumentDataSource
-      Description: Lambda function for creating document tracking records
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt CreateDocumentResolverFunction.Arn
-
-  UpdateDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: updateDocument
-      DataSourceName: !GetAtt TrackingTableDataSource.Name
-      RequestMappingTemplate: |-
-        #set( $PK = "doc#${ctx.args.input.ObjectKey}" )
-        #set( $expNames = {} )
-        #set( $expValues = {} )
-        #set( $expSet = {} )
-        ## Iterate through each argument with values and update expression variables **
-        #foreach( $entry in $ctx.args.input.entrySet() )
-            ## skip empty values **
-            #if( !$util.isNullOrBlank($entry.value)  )
-                $util.qr( $expSet.put("#${entry.key}", ":${entry.key}") )
-                $util.qr( $expNames.put("#${entry.key}", "${entry.key}") )
-                $util.qr( $expValues.put(":${entry.key}", $util.dynamodb.toDynamoDB($entry.value)) )
-            #end
-        #end
-        ## Start building the update expression, starting with attributes we're going to SET **
-        #set( $expression = "" )
-        #if( !${expSet.isEmpty()} )
-            #set( $expression = "SET" )
-            #foreach( $entry in $expSet.entrySet() )
-                #set( $expression = "${expression} ${entry.key} = ${entry.value}" )
-                #if ( $foreach.hasNext )
-                    #set( $expression = "${expression}," )
-                #end
-            #end
-        #end
-        {
-            "version" : "2018-05-29",
-            "operation" : "UpdateItem",
-            "key" : {
-              "PK": $util.dynamodb.toDynamoDBJson($PK),
-              "SK": $util.dynamodb.toDynamoDBJson("none"),
-            },
-            "update" : {
-                "expression": "$expression"
-                #if( !${expNames.isEmpty()} )
-                , "expressionNames": $utils.toJson($expNames)
-                #end
-                #if( !${expValues.isEmpty()} )
-                , "expressionValues": $utils.toJson($expValues)
-                #end
-            }
-        }
-      ResponseMappingTemplate: |
-        $util.toJson($ctx.result)
-
-  GetDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: getDocument
-      DataSourceName: !GetAtt TrackingTableDataSource.Name
-      RequestMappingTemplate: |
-        #set( $PK = "doc#${context.arguments.ObjectKey}" )
-        {
-          "version": "2018-05-29",
-          "operation": "GetItem",
-          "key" : {
-            "PK": $util.dynamodb.toDynamoDBJson($PK),
-            "SK": $util.dynamodb.toDynamoDBJson("none"),
-          }
-        }
-      ResponseMappingTemplate: |
-        $util.toJson($ctx.result)
-
-  ListDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listDocuments
-      DataSourceName: !GetAtt TrackingTableDataSource.Name
-      RequestMappingTemplate: |
-        {
-            "version": "2018-05-29",
-            "operation": "Scan",
-            "filter": {
-                #if($context.arguments.startDateTime && $context.arguments.endDateTime)
-                    "expression": "InitialEventTime BETWEEN :startDateTime AND :endDateTime",
-                    "expressionValues": {
-                        ":startDateTime": { "S": "$context.arguments.startDateTime" },
-                        ":endDateTime": { "S": "$context.arguments.endDateTime" }
-                    }
-                #elseif($context.arguments.startDateTime)
-                    "expression": "InitialEventTime >= :startDateTime",
-                    "expressionValues": {
-                        ":startDateTime": { "S": "$context.arguments.startDateTime" }
-                    }
-                #elseif($context.arguments.endDateTime)
-                    "expression": "InitialEventTime <= :endDateTime",
-                    "expressionValues": {
-                        ":endDateTime": { "S": "$context.arguments.endDateTime" }
-                    }
-                #end
-            },
-            #if($context.prev.result)
-                "nextToken": "$context.prev.result.nextToken",
-            #end
-            "limit": 50,
-            "consistentRead": false,
-            "select": "ALL_ATTRIBUTES"
-        }
-      ResponseMappingTemplate: |
-        {
-            "Documents": $util.toJson($ctx.result.items),
-            "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-
-  ListDocumentDateHourResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listDocumentsDateHour
-      DataSourceName: !GetAtt TrackingTableDataSource.Name
-      RequestMappingTemplate: |
-        #set( $shardsInDay = 6 )
-        #set( $shardDivider = 24 / $shardsInDay )
-        #set( $Integer = 0 )
-        #set( $now = $util.time.nowISO8601() )
-        #set( $hourNow = $Integer.parseInt($now.substring(11, 13)) )
-        #set( $date = $util.defaultIfNullOrBlank($ctx.args.date, $now.substring(0, 10)) )
-        #set( $hour = $util.defaultIfNull($ctx.args.hour, $hourNow) )
-        #if( $hour < 0 || $hour > 23 )
-          $util.error("Invalid hour parameter - value should be between 0 and 23")
-        #end
-        #set( $hourPad = $date.format("%02d", $hour) )
-        #set( $hourShard = $hour / $shardDivider )
-        #set( $shardPad = $date.format("%02d", $hourShard) )
-
-        #set( $PK = "list#${date}#s#${shardPad}" )
-        #set( $skPrefix = "ts#${date}T${hourPad}" )
-
-        {
-          "version" : "2018-05-29",
-          "operation" : "Query",
-          "query" : {
-            "expression": "PK = :PK and begins_with(SK, :prefix)",
-            "expressionValues": {
-              ":PK": $util.dynamodb.toDynamoDBJson($PK),
-              ":prefix": $util.dynamodb.toDynamoDBJson($skPrefix),
-            },
-          },
-        }
-      ResponseMappingTemplate: |
-        {
-            "Documents": $util.toJson($ctx.result.items),
-            "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-
-  ListDocumentDateShardResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listDocumentsDateShard
-      DataSourceName: !GetAtt TrackingTableDataSource.Name
-      RequestMappingTemplate: |
-        #set( $shardsInDay = 6 )
-        #set( $shardDivider = 24 / $shardsInDay )
-        #set( $Integer = 0 )
-        #set( $now = $util.time.nowISO8601() )
-        #set( $hourNow = $Integer.parseInt($now.substring(11, 13)) )
-        #set( $shardNow = $hourNow / $shardDivider )
-        #set( $date = $util.defaultIfNullOrBlank($ctx.args.date, $now.substring(0, 10)) )
-        #set( $shard = $util.defaultIfNull($ctx.args.shard, $shardNow) )
-        #if( $shard >= $shardsInDay )
-          $util.error("Invalid shard parameter value - must positive and less than ${shardsInDay}")
-        #end
-        #set( $hourShard = $hour / $shardDivider )
-        #set( $shardPad = $date.format("%02d", $shard) )
-
-        #set( $PK = "list#${date}#s#${shardPad}" )
-
-        {
-          "version" : "2018-05-29",
-          "operation" : "Query",
-          "query" : {
-            "expression": "PK = :PK",
-            "expressionValues": {
-              ":PK": $util.dynamodb.toDynamoDBJson($PK),
-            }
-          }
-        }
-      ResponseMappingTemplate: |
-        {
-            "Documents": $util.toJson($ctx.result.items),
-            "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-
-  GetFileContentsResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/get_file_contents_resolver
-      Description: Lambda function to return file contents via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      LoggingConfig:
-        LogGroup: !Ref GetFileContentsResolverFunctionLogGroup
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - S3ReadPolicy:
-            BucketName: !Ref InputBucket
-        - S3ReadPolicy:
-            BucketName: !Ref ConfigurationBucket
-        - S3ReadPolicy:
-            BucketName: !Ref OutputBucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  GetFileContentsResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  GetFileContentsDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: GetFileContents
-      Description: Lambda function to return file contents via GraphQL API
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt GetFileContentsResolverFunction.Arn
-
-  GetFileContentsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt GetFileContentsDataSource.Name
-      TypeName: Query
-      FieldName: getFileContents
-
-  GetStepFunctionExecutionResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W58
-            reason: "DLQ not required for AppSync resolver function as GraphQL handles retries"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function as GraphQL handles retries"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/get_stepfunction_execution_resolver/
-      Handler: index.lambda_handler
-      Runtime: python3.12
-      Architectures:
-        - x86_64
-      MemorySize: 512
-      Timeout: 60
-      LoggingConfig:
-        LogGroup: !Ref GetStepFunctionExecutionResolverFunctionLogGroup
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action:
-                - states:DescribeExecution
-                - states:GetExecutionHistory
-              Resource:
-                - !Sub
-                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
-                  - StateMachineName: !If
-                      - IsPattern3
-                      - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-                      - !If
-                        - IsPattern2
-                        - !GetAtt PATTERN2STACK.Outputs.StateMachineName
-                        - !GetAtt PATTERN1STACK.Outputs.StateMachineName
-        - KMSDecryptPolicy:
-            KeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  GetStepFunctionExecutionResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  GetStepFunctionExecutionDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: GetStepFunctionExecution
-      Description: Lambda function to return Step Functions execution details via GraphQL API
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt GetStepFunctionExecutionResolverFunction.Arn
-
-  GetStepFunctionExecutionResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt GetStepFunctionExecutionDataSource.Name
-      TypeName: Query
-      FieldName: getStepFunctionExecution
-
-  ConfigurationResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/configuration_resolver
-      Description: Lambda function to manage configuration through GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
-          STACK_NAME: !Ref AWS::StackName
-          CONFIGURATION_BUCKET: !Ref ConfigurationBucket
-      LoggingConfig:
-        LogGroup: !Ref ConfigurationResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConfigurationTable
-        - S3ReadPolicy:
-            BucketName: !Ref ConfigurationBucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-            - Effect: Allow
-              Action:
-                - ssm:GetParameter
-                - ssm:PutParameter
-              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn"
-
-  ConfigurationResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  SyncBdaIdpResolverFunction:
-    Type: AWS::Serverless::Function
-    Condition: IsPattern1
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W58
-            reason: Lambda function has permission to write CloudWatch Logs via the attached IAM role
-          - id: W89
-            reason: Lambda function does not need to be deployed inside a VPC
-          - id: W92
-            reason: Lambda function does not need reserved concurrency
-          - id: W11
-            reason: CloudWatch does not support resource-level permissions
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/sync_bda_idp_resolver
-      Timeout: 300  # 5 minutes for sync operation
-      Description: Lambda function to synchronously sync BDA blueprints with IDP classes
-      MemorySize: 512
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
-          STACK_NAME: !Ref AWS::StackName
-          BDA_PROJECT_ARN: !If
-            - HasPattern1BDAProjectArn
-            - !Ref Pattern1BDAProjectArn
-            - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
-      LoggingConfig:
-        LogGroup: !Ref SyncBdaIdpResolverFunctionLogGroup
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConfigurationTable
-        - S3ReadPolicy:
-            BucketName: !Ref ConfigurationBucket
-        - Statement:
-            # CloudWatch metrics permission
-            - Effect: Allow
-              Action: cloudwatch:PutMetricData
-              Resource: '*'
-            # KMS permissions for encryption
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-            # BDA permissions for blueprint management
-            - Effect: Allow
-              Action:
-                - bedrock:InvokeDataAutomationAsync
-                - bedrock:CreateDataAutomationProject
-                - bedrock:UpdateDataAutomationProject
-                - bedrock:GetDataAutomationProject
-                - bedrock:GetDataAutomationStatus
-                - bedrock:GetBlueprint
-                - bedrock:UpdateBlueprint
-                - bedrock:CreateBlueprint
-                - bedrock:CreateBlueprintVersion
-                - bedrock:ListBlueprints
-                - bedrock:DeleteBlueprint
-              Resource:
-                - !If
-                  - HasPattern1BDAProjectArn
-                  - !Ref Pattern1BDAProjectArn
-                  - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:aws:blueprint/*"
-
-  SyncBdaIdpResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Condition: IsPattern1
-    Properties:
-      RetentionInDays: !Ref LogRetentionDays
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  ConfigurationDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ConfigurationDataSource
-      Description: Lambda function to manage configuration via GraphQL API
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt ConfigurationResolverFunction.Arn
-
-  GetConfigurationResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Query
-      FieldName: getConfiguration
-
-  UpdateConfigurationResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Mutation
-      FieldName: updateConfiguration
-
-  SyncBdaIdpDataSource:
-    Type: AWS::AppSync::DataSource
-    Condition: IsPattern1
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: SyncBdaIdpDataSource
-      Description: Lambda function to synchronously sync BDA blueprints with IDP classes
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt SyncBdaIdpResolverFunction.Arn
-
-  SyncBdaIdpResolver:
-    Type: AWS::AppSync::Resolver
-    Condition: IsPattern1
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt SyncBdaIdpDataSource.Name
-      TypeName: Mutation
-      FieldName: syncBdaIdp
-
-  ListConfigurationLibraryResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Query
-      FieldName: listConfigurationLibrary
-
-  GetConfigurationLibraryFileResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Query
-      FieldName: getConfigurationLibraryFile
-
-  GetPricingResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Query
-      FieldName: getPricing
-
-  UpdatePricingResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Mutation
-      FieldName: updatePricing
-
-  RestoreDefaultPricingResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ConfigurationDataSource.Name
-      TypeName: Mutation
-      FieldName: restoreDefaultPricing
-
-  CopyToBaselineResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/copy_to_baseline_resolver
-      Description: Lambda function to copy files to baseline bucket via GraphQL API
-      MemorySize: 512
-      Timeout: 300
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          OUTPUT_BUCKET: !Ref OutputBucket
-          EVALUATION_BASELINE_BUCKET: !If
-            - ShouldCreateEvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucketName
-          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
-      LoggingConfig:
-        LogGroup: !Ref CopyToBaselineResolverFunctionLogGroup
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref OutputBucket
-        - S3CrudPolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-        # Allow the function to invoke itself asynchronously
-        - Statement:
-            - Effect: Allow
-              Action:
-                - lambda:InvokeFunction
-              Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-CopyToBaseline*"
-        # Allow AppSync access for document updates
-        - Statement:
-            - Effect: Allow
-              Action:
-                - appsync:GraphQL
-              Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
-
-  CopyToBaselineResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  CopyToBaselineDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: CopyToBaselineDataSource
-      Description: Lambda function for copying files to baseline bucket
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt CopyToBaselineResolverFunction.Arn
-
-  CopyToBaselineResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt CopyToBaselineDataSource.Name
-      TypeName: Mutation
-      FieldName: copyToBaseline
-
-  DeleteDocumentResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/delete_document_resolver
-      Description: Lambda function to delete documents via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          TRACKING_TABLE_NAME: !Ref TrackingTable
-          INPUT_BUCKET: !Ref InputBucket
-          OUTPUT_BUCKET: !Ref OutputBucket
-      LoggingConfig:
-        LogGroup: !Ref DeleteDocumentResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - S3CrudPolicy:
-            BucketName: !Ref InputBucket
-        - S3CrudPolicy:
-            BucketName: !Ref OutputBucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  DeleteDocumentResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  DeleteTestsResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      Handler: index.lambda_handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/delete_tests
-      Description: Lambda function to delete test runs via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          TRACKING_TABLE_NAME: !Ref TrackingTable
-          DELETE_DOCUMENT_FUNCTION_NAME: !Ref DeleteDocumentResolverFunction
-          BASELINE_BUCKET: !If
-            - ShouldCreateEvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucketName
-      LoggingConfig:
-        LogGroup: !Ref DeleteTestsResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - S3CrudPolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - lambda:InvokeFunction
-              Resource: !GetAtt DeleteDocumentResolverFunction.Arn
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  DeleteTestsResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  DeleteDocumentDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: DeleteDocumentDataSource
-      Description: Lambda function for deleting documents
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt DeleteDocumentResolverFunction.Arn
-
-  DeleteDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt DeleteDocumentDataSource.Name
-      TypeName: Mutation
-      FieldName: deleteDocument
-
-  DeleteTestsDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: DeleteTestsDataSource
-      Description: Lambda function for deleting test runs
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt DeleteTestsResolverFunction.Arn
-
-  DeleteTestsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt DeleteTestsDataSource.Name
-      TypeName: Mutation
-      FieldName: deleteTests
-
-  AddTestSetResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestSetDataSource.Name
-      TypeName: Mutation
-      FieldName: addTestSet
-
-  AddTestSetFromUploadResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestSetDataSource.Name
-      TypeName: Mutation
-      FieldName: addTestSetFromUpload
-
-  DeleteTestSetsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestSetDataSource.Name
-      TypeName: Mutation
-      FieldName: deleteTestSets
-
-  GetTestSetsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestSetDataSource.Name
-      TypeName: Query
-      FieldName: getTestSets
-
-  ListBucketFilesResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestSetDataSource.Name
-      TypeName: Query
-      FieldName: listBucketFiles
-
-  ValidateTestFileNameResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestSetDataSource.Name
-      TypeName: Query
-      FieldName: validateTestFileName
-      
-  TestRunnerFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/test_runner
-      Description: Lambda function to run test sets via GraphQL API
-      MemorySize: 256
-      Timeout: 300
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          INPUT_BUCKET: !Ref InputBucket
-          BASELINE_BUCKET: !If
-            - ShouldCreateEvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucketName
-          CONFIG_TABLE: !Ref ConfigurationTable
-          TRACKING_TABLE: !Ref TrackingTable
-          FILE_COPY_QUEUE_URL: !Ref TestFileCopyQueue
-      LoggingConfig:
-        LogGroup: !Ref TestRunnerFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConfigurationTable
-        - S3CrudPolicy:
-            BucketName: !Ref InputBucket
-        - S3CrudPolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt TestFileCopyQueue.QueueName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  TestRunnerFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  ##########################################################################
-  # SQS Queue for test file copying jobs
-  ##########################################################################
-
   TestFileCopyQueueDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -7944,24 +6251,6 @@ Resources:
       BucketName: !Ref TestSetBucket
       FunctionArn: !GetAtt TestSetZipExtractorFunction.Arn
 
-  TestSetResolverS3Policy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: TestSetResolverS3Access
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-              - s3:ListBucket
-            Resource:
-              - !Sub "${TestSetBucket.Arn}/*"
-              - !GetAtt TestSetBucket.Arn
-      Roles:
-        - !Ref TestSetResolverFunctionRole
 
   ##########################################################################
   # Lambda function to copy test files
@@ -8050,685 +6339,6 @@ Resources:
       VisibilityTimeout: 900
       MessageRetentionPeriod: 1209600
       KmsMasterKeyId: !Ref CustomerManagedEncryptionKey
-
-  TestResultsResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/test_results_resolver
-      Description: GraphQL resolver for test results queries
-      MemorySize: 512
-      Timeout: 300
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          TRACKING_TABLE: !Ref TrackingTable
-          BASELINE_BUCKET: !Ref EvaluationBaselineBucket
-          OUTPUT_BUCKET: !Ref OutputBucket
-          TEST_RESULT_CACHE_UPDATE_QUEUE_URL: !Ref TestResultCacheUpdateQueue
-          ATHENA_DATABASE: !Ref ReportingDatabase
-          ATHENA_OUTPUT_LOCATION: !Sub
-            - "s3://${Bucket}/athena-results/"
-            - Bucket: !If
-                - ShouldCreateReportingBucket
-                - !Ref ReportingBucket
-                - !Ref ReportingBucketName
-      Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt TestResultCacheUpdateQueue.Arn
-            BatchSize: 1
-      LoggingConfig:
-        LogGroup: !Ref TestResultsResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - S3ReadPolicy:
-            BucketName: !Ref EvaluationBaselineBucket
-        - S3ReadPolicy:
-            BucketName: !Ref OutputBucket
-        - S3ReadPolicy:
-            BucketName: !If [ShouldCreateReportingBucket, !Ref ReportingBucket, !Ref ReportingBucketName]
-        - Statement:
-            - Effect: Allow
-              Action:
-                - s3:PutObject
-                - s3:PutObjectAcl
-              Resource: !Sub
-                - "${BucketArn}/athena-results/*"
-                - BucketArn: !If
-                    - ShouldCreateReportingBucket
-                    - !GetAtt ReportingBucket.Arn
-                    - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
-        - Statement:
-            - Effect: Allow
-              Action:
-                - sqs:SendMessage
-              Resource: !GetAtt TestResultCacheUpdateQueue.Arn
-        - Statement:
-            - Effect: Allow
-              Action:
-                - athena:StartQueryExecution
-                - athena:GetQueryExecution
-                - athena:GetQueryResults
-                - athena:StopQueryExecution
-              Resource:
-                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary"
-                - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:datacatalog/*"
-        - Statement:
-            - Effect: Allow
-              Action:
-                - glue:GetTable
-                - glue:GetPartitions
-              Resource:
-                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${ReportingDatabase}"
-                - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${ReportingDatabase}/*"
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  TestResultsResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  TestSetResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/test_set_resolver
-      Description: GraphQL resolver for test set mutations
-      MemorySize: 256
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          TRACKING_TABLE: !Ref TrackingTable
-          INPUT_BUCKET: !Ref InputBucket
-          TEST_SET_BUCKET: !Ref TestSetBucket
-          TEST_SET_COPY_QUEUE_URL: !Ref TestSetFileCopyQueue
-          BASELINE_BUCKET: !If
-            - ShouldCreateEvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucket
-            - !Ref EvaluationBaselineBucketName
-      LoggingConfig:
-        LogGroup: !Ref TestSetResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - S3ReadPolicy:
-            BucketName: !Ref InputBucket
-        - S3ReadPolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt TestSetFileCopyQueue.QueueName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  TestSetResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  TestResultsDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: TestResultsDataSource
-      Description: Lambda function for test results queries
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt TestResultsResolverFunction.Arn
-
-  TestSetDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: TestSetDataSource
-      Description: Lambda function for test set mutations
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt TestSetResolverFunction.Arn
-
-  GetTestRunsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestResultsDataSource.Name
-      TypeName: Query
-      FieldName: getTestRuns
-
-  CompareTestRunsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestResultsDataSource.Name
-      TypeName: Query
-      FieldName: compareTestRuns
-
-  GetTestRunResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestResultsDataSource.Name
-      TypeName: Query
-      FieldName: getTestRun
-
-  GetTestRunStatusResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestResultsDataSource.Name
-      TypeName: Query
-      FieldName: getTestRunStatus
-
-  TestRunnerDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: TestRunnerDataSource
-      Description: Lambda function for running test sets
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt TestRunnerFunction.Arn
-
-  TestRunnerResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt TestRunnerDataSource.Name
-      TypeName: Mutation
-      FieldName: startTestRun
-
-  ReprocessDocumentResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/reprocess_document_resolver
-      Description: Lambda function to reprocess documents via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          INPUT_BUCKET: !Ref InputBucket
-          OUTPUT_BUCKET: !Ref OutputBucket
-          QUEUE_URL: !Ref DocumentQueue
-          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
-          DATA_RETENTION_IN_DAYS: !Ref DataRetentionInDays
-      LoggingConfig:
-        LogGroup: !Ref ReprocessDocumentResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt DocumentQueue.QueueName
-        - S3ReadPolicy:
-            BucketName: !Ref InputBucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - appsync:GraphQL
-              Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  ReprocessDocumentResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  ReprocessDocumentDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ReprocessDocumentDataSource
-      Description: Lambda function for reprocessing documents
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt ReprocessDocumentResolverFunction.Arn
-
-  ReprocessDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ReprocessDocumentDataSource.Name
-      TypeName: Mutation
-      FieldName: reprocessDocument
-
-  AbortWorkflowResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/abort_workflow_resolver
-      Description: Lambda function to abort document workflows via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
-      LoggingConfig:
-        LogGroup: !Ref AbortWorkflowResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - StepFunctionsExecutionPolicy:
-            StateMachineName: !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-              - !If
-                - IsPattern2
-                - !GetAtt PATTERN2STACK.Outputs.StateMachineName
-                - !GetAtt PATTERN1STACK.Outputs.StateMachineName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - appsync:GraphQL
-              Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Query/*"
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
-            - Effect: Allow
-              Action:
-                - states:StopExecution
-              Resource:
-                - !If
-                  - IsPattern3
-                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN3STACK.Outputs.StateMachineName}:*"
-                  - !If
-                    - IsPattern2
-                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN2STACK.Outputs.StateMachineName}:*"
-                    - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${PATTERN1STACK.Outputs.StateMachineName}:*"
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  AbortWorkflowResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  AbortWorkflowDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: AbortWorkflowDataSource
-      Description: Lambda function for aborting document workflows
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt AbortWorkflowResolverFunction.Arn
-
-  AbortWorkflowResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt AbortWorkflowDataSource.Name
-      TypeName: Mutation
-      FieldName: abortWorkflow
-
-  UploadResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/upload_resolver
-      Description: Lambda function to return signed upload URL via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          INPUT_BUCKET: !Ref InputBucket
-      LoggingConfig:
-        LogGroup: !Ref UploadResolverFunctionLogGroup
-      Policies:
-        - S3WritePolicy:
-            BucketName: !Ref InputBucket
-        - S3WritePolicy:
-            BucketName: !Ref ConfigurationBucket
-        - S3WritePolicy:
-            BucketName: !Ref OutputBucket
-        - S3WritePolicy:
-            BucketName: !If
-              - ShouldCreateEvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucket
-              - !Ref EvaluationBaselineBucketName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  UploadResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  # AppSync resolver data source
-  UploadResolverDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: UploadResolverDataSource
-      Description: Lambda function for generating presigned URLs
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt UploadResolverFunction.Arn
-
-  # AppSync resolver
-  UploadDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt UploadResolverDataSource.Name
-      TypeName: Mutation
-      FieldName: uploadDocument
-
-  ##########################################################################
-  # Discovery Upload Resolver
-  ##########################################################################
-
-  DiscoveryUploadResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/discovery_upload_resolver
-      Description: Lambda function to handle discovery document uploads via GraphQL API
-      MemorySize: 512
-      Timeout: 120
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          DISCOVERY_BUCKET: !Ref DiscoveryBucket
-          DISCOVERY_TRACKING_TABLE: !Ref DiscoveryTrackingTable
-          DISCOVERY_QUEUE_URL: !Ref DiscoveryQueue
-      LoggingConfig:
-        LogGroup: !Ref DiscoveryUploadResolverFunctionLogGroup
-      Policies:
-        - S3WritePolicy:
-            BucketName: !Ref DiscoveryBucket
-        - DynamoDBCrudPolicy:
-            TableName: !Ref DiscoveryTrackingTable
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt DiscoveryQueue.QueueName
-        - Statement:
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  DiscoveryUploadResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  DiscoveryUploadResolverDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: DiscoveryUploadResolverDataSource
-      Description: Lambda function for discovery document uploads
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt DiscoveryUploadResolverFunction.Arn
-
-  DiscoveryUploadDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt DiscoveryUploadResolverDataSource.Name
-      TypeName: Mutation
-      FieldName: uploadDiscoveryDocument
-
-  ##########################################################################
-  # Discovery Jobs List Resolver
-  ##########################################################################
-  DiscoveryJobsResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Query
-      FieldName: listDiscoveryJobs
-      DataSourceName: !GetAtt DiscoveryTableDataSource.Name
-      RequestMappingTemplate: |
-        {
-            "version": "2018-05-29",
-            "operation": "Scan",
-            "limit": 50,
-            "consistentRead": false,
-            "select": "ALL_ATTRIBUTES"
-        }
-      ResponseMappingTemplate: |
-        {
-            "DiscoveryJobs": $util.toJson($ctx.result.items),
-            "nextToken": $util.toJson($ctx.result.nextToken)
-        }
-
-  ##########################################################################
-  # Update Discovery Job Status Resolver
-  ##########################################################################
-  UpdateDiscoveryJobStatusResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      TypeName: Mutation
-      FieldName: updateDiscoveryJobStatus
-      DataSourceName: !GetAtt DiscoveryTableDataSource.Name
-      RequestMappingTemplate: |-
-        ## Validate status is one of the allowed values
-        #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
-        #if(!$validStatuses.contains($ctx.args.status))
-          $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
-        #end
-
-        #set($expNames = {})
-        #set($expValues = {})
-
-        ## Set status (required)
-        $util.qr($expNames.put("#status", "status"))
-        $util.qr($expValues.put(":status", $util.dynamodb.toDynamoDB($ctx.args.status)))
-        #set($updateExpression = "SET #status = :status")
-
-        ## Set errorMessage (optional)
-        #if($ctx.args.errorMessage)
-          $util.qr($expNames.put("#errorMessage", "errorMessage"))
-          $util.qr($expValues.put(":errorMessage", $util.dynamodb.toDynamoDB($ctx.args.errorMessage)))
-          #set($updateExpression = "${updateExpression}, #errorMessage = :errorMessage")
-        #end
-
-        ## Set updatedAt to current timestamp
-        $util.qr($expNames.put("#updatedAt", "updatedAt"))
-        $util.qr($expValues.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-        #set($updateExpression = "${updateExpression}, #updatedAt = :updatedAt")
-
-        ## Set completedAt when status is COMPLETED or FAILED
-        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
-          $util.qr($expNames.put("#completedAt", "completedAt"))
-          $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
-          #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
-        #end
-
-        {
-          "version": "2018-05-29",
-          "operation": "UpdateItem",
-          "key": {
-            "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
-          },
-          "update": {
-            "expression": "$updateExpression",
-            "expressionNames": $utils.toJson($expNames),
-            "expressionValues": $utils.toJson($expValues)
-          }
-        }
-      ResponseMappingTemplate: |-
-        $util.toJson($ctx.result)
-
-  ##########################################################################
-  # Discovery Processor Function
-  ##########################################################################
 
   DiscoveryProcessorFunction:
     Type: AWS::Serverless::Function
@@ -8823,346 +6433,6 @@ Resources:
 
   ##########################################################################
   # Knowledge Base Query Resolver
-  ##########################################################################
-
-  QueryKnowledgeBaseResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-          - id: W11
-            reason: "Role requires * resource access for Marketplace and CloudWatch Metrics and Logs"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/query_knowledgebase_resolver
-      Description: Lambda function to query Bedrock Knowledge Base via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          KB_ID: !If
-            - ShouldUseDocumentKnowledgeBase
-            - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
-            - ""
-          KB_ACCOUNT_ID: !Ref AWS::AccountId
-          KB_REGION: !Ref AWS::Region
-          MODEL_ID: !Ref KnowledgeBaseModelId
-          GUARDRAIL_ID_AND_VERSION:
-            !If [
-              HasGuardrailConfig,
-              !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}",
-              "",
-            ]
-      LoggingConfig:
-        LogGroup: !Ref QueryKnowledgeBaseResolverFunctionLogGroup
-      Policies:
-        - Statement:
-            - !If
-              - ShouldUseDocumentKnowledgeBase
-              - Effect: Allow
-                Action:
-                  - bedrock:Retrieve
-                  - bedrock:RetrieveAndGenerate
-                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTKB.Outputs.KnowledgeBaseID}"
-              - !Ref AWS::NoValue
-            - Effect: Allow
-              Action:
-                - "bedrock:InvokeModel"
-              Resource:
-                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-            - Effect: Allow
-              Action:
-                - "bedrock:GetInferenceProfile"
-              Resource:
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-            - Effect: Allow
-              Action:
-                - aws-marketplace:Subscribe
-                - aws-marketplace:Unsubscribe
-                - aws-marketplace:ViewSubscriptions
-              Resource: "*"
-            - !If
-              - HasGuardrailConfig
-              - Effect: Allow
-                Action:
-                  - "bedrock:ApplyGuardrail"
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
-              - !Ref AWS::NoValue
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  QueryKnowledgeBaseResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  QueryKnowledgeBaseDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: QueryKnowledgeBase
-      Description: Lambda function to query Bedrock Knowledge Base
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt QueryKnowledgeBaseResolverFunction.Arn
-
-  QueryKnowledgeBaseResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt QueryKnowledgeBaseDataSource.Name
-      TypeName: Query
-      FieldName: queryKnowledgeBase
-
-  ##########################################################################
-  # Chat With Document Resolver
-  ##########################################################################
-
-  ChatWithDocumentResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-          - id: W11
-            reason: "Role requires * resource access for CloudWatch Metrics and Logs"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/chat_with_document_resolver
-      Description: Lambda function to chat with the document via GraphQL API
-      MemorySize: 512
-      Timeout: 120
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          OUTPUT_BUCKET: !Ref OutputBucket
-          CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
-          TRACKING_TABLE_NAME: !Ref TrackingTable
-          GUARDRAIL_ID_AND_VERSION:
-            !If [
-              HasGuardrailConfig,
-              !Sub "${BedrockGuardrailId}:${BedrockGuardrailVersion}",
-              "",
-            ]
-      LoggingConfig:
-        LogGroup: !Ref ChatWithDocumentResolverFunctionLogGroup
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref OutputBucket
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConfigurationTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - Statement:
-            - !If
-              - ShouldUseDocumentKnowledgeBase
-              - Effect: Allow
-                Action:
-                  - bedrock:Retrieve
-                  - bedrock:RetrieveAndGenerate
-                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${DOCUMENTKB.Outputs.KnowledgeBaseID}"
-              - !Ref AWS::NoValue
-            - Effect: Allow
-              Action:
-                - "bedrock:InvokeModel"
-              Resource:
-                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-            - Effect: Allow
-              Action:
-                - aws-marketplace:Subscribe
-                - aws-marketplace:Unsubscribe
-                - aws-marketplace:ViewSubscriptions
-              Resource: "*"
-            - Effect: Allow
-              Action:
-                - cloudwatch:PutMetricData
-              Resource: "*"
-            - Effect: Allow
-              Action:
-                - "bedrock:GetInferenceProfile"
-              Resource:
-                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
-            - !If
-              - HasGuardrailConfig
-              - Effect: Allow
-                Action:
-                  - "bedrock:ApplyGuardrail"
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${BedrockGuardrailId}"
-              - !Ref AWS::NoValue
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  ChatWithDocumentResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  ProcessChangesResolverFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W12
-            reason: "Lambda requires CloudWatch logs permissions"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: ./src/lambda/process_changes_resolver
-      Description: Lambda function to process section changes via GraphQL API
-      MemorySize: 512
-      Timeout: 60
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          TRACKING_TABLE: !Ref TrackingTable
-          QUEUE_URL: !Ref DocumentQueue
-          DATA_RETENTION_IN_DAYS: !Ref DataRetentionInDays
-          WORKING_BUCKET: !Ref WorkingBucket
-          INPUT_BUCKET: !Ref InputBucket
-          OUTPUT_BUCKET: !Ref OutputBucket
-          APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
-      LoggingConfig:
-        LogGroup: !Ref ProcessChangesResolverFunctionLogGroup
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt DocumentQueue.QueueName
-        - S3CrudPolicy:
-            BucketName: !Ref OutputBucket
-        - S3CrudPolicy:
-            BucketName: !Ref WorkingBucket
-        - Statement:
-            - Effect: Allow
-              Action:
-                - appsync:GraphQL
-              Resource:
-                - !Sub "${GraphQLApi.Arn}/types/Mutation/*"
-            - Effect: Allow
-              Action:
-                - kms:Encrypt
-                - kms:Decrypt
-                - kms:ReEncrypt*
-                - kms:GenerateDataKey*
-                - kms:DescribeKey
-              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  ProcessChangesResolverFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      RetentionInDays: !Ref LogRetentionDays
-
-  ProcessChangesDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ProcessChangesDataSource
-      Description: Lambda function for processing section changes
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt ProcessChangesResolverFunction.Arn
-
-  ProcessChangesResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ProcessChangesDataSource.Name
-      TypeName: Mutation
-      FieldName: processChanges
-
-  ChatWithDocumentDataSource:
-    Type: AWS::AppSync::DataSource
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      Name: ChatWithDocument
-      Description: Lambda function to chat with document
-      Type: AWS_LAMBDA
-      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt ChatWithDocumentResolverFunction.Arn
-
-  ChatWithDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    DependsOn: GraphQLSchema
-    Properties:
-      ApiId: !GetAtt GraphQLApi.ApiId
-      DataSourceName: !GetAtt ChatWithDocumentDataSource.Name
-      TypeName: Query
-      FieldName: chatWithDocument
-
-  ##########################################################################
-  # WebUI build and deployment
   ##########################################################################
 
   CloudFrontOriginAccessIdentity:
@@ -9320,9 +6590,6 @@ Resources:
         Web UI build for GenAIIDP stack - ${AWS::StackName}
       ServiceRole: !Ref UICodeBuildServiceRole
       EncryptionKey: alias/aws/s3
-      Environment:
-        ComputeType: BUILD_GENERAL1_MEDIUM
-        Type: LINUX_CONTAINER
       Artifacts:
         Type: NO_ARTIFACTS
       Source:

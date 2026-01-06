@@ -1,0 +1,112 @@
+Published S3 artifacts will NOT be accessible by public.
+🔍 Running Python linting...
+✅ Python linting passed
+Using existing bucket: bobs-artifacts-us-west-2
+🔍 Analyzing component dependencies for smart rebuilds...
+📝 main needs rebuild due to changes in any of these dependencies:
+   • ./src
+   • template.yaml
+   • ./config_library
+   • ./lib/idp_common_pkg/idp_common
+📝 nested/appsync needs rebuild due to changes in any of these dependencies:
+   • ./lib/idp_common_pkg/idp_common
+   • nested/appsync/src
+   • nested/appsync/template.yaml
+📝 patterns/pattern-1 needs rebuild due to changes in any of these dependencies:
+   • ./lib/idp_common_pkg/idp_common
+   • patterns/pattern-1/src
+   • patterns/pattern-1/template.yaml
+📝 patterns/pattern-2 needs rebuild due to changes in any of these dependencies:
+   • ./lib/idp_common_pkg/idp_common
+   • patterns/pattern-2/src
+   • patterns/pattern-2/template.yaml
+   • Dockerfile.optimized
+📝 patterns/pattern-3 needs rebuild due to changes in any of these dependencies:
+   • ./lib/idp_common_pkg/idp_common
+   • patterns/pattern-3/src
+   • patterns/pattern-3/template.yaml
+   • Dockerfile.optimized
+📝 options/bda-lending-project needs rebuild due to changes in any of these 
+dependencies:
+   • options/bda-lending-project/src
+   • options/bda-lending-project/template.yaml
+📝 options/bedrockkb needs rebuild due to changes in any of these dependencies:
+   • options/bedrockkb/src
+   • options/bedrockkb/template.yaml
+📝 lib needs rebuild due to changes in any of these dependencies:
+   • ./lib/idp_common_pkg/idp_common
+📦 8 components need rebuilding:
+   📚 Components: main, nested/appsync, patterns/pattern-1, patterns/pattern-2, 
+patterns/pattern-3, options/bda-lending-project, options/bedrockkb, lib
+Computing hash of ui folder contents
+🔍 VALIDATING UI build
+📦 Installing UI dependencies (this may take a while)...
+Running: npm ci
+🔍 Starting UI validation in parallel with builds...
+📚 Building lib package as wheel
+✅ Lib wheel built: idp_common-0.4.9-py3-none-any.whl
+Building components with smart dependency detection...
+Auto-detected 4 concurrent workers
+
+ℹ️  Pattern-2 Docker images will be built during stack deployment via CodeBuild
+
+🔗 Building Nested Stacks
+⚠️  lib dependencies detected - using sequential builds for nested
+Building 1 nested with 1 worker...
+  npm warn deprecated inflight@1.0.6: This module is not supported, and leaks 
+memory. Do not use it. Check out lru-cache if you want a good and tested way to 
+coalesce async requests by a key value, which is much more comprehensive and 
+powerful.
+  npm warn deprecated @humanwhocodes/config-array@0.13.0: Use 
+@eslint/config-array instead
+  npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer 
+supported
+Command failed: sam build --template-file template.yaml
+Working directory: nested/appsync
+Return code: 1
+
+STDOUT:
+
+Build Failed
+
+
+STDERR:
+Building codeuri: /Users/strahanr/Projects/idp2/nested/appsync/src/lambda/abort_workflow_resolver runtime: python3.12 architecture: x86_64 functions: AbortWorkflowResolverFunction
+ Running PythonPipBuilder:ResolveDependencies
+Error: PythonPipBuilder:ResolveDependencies - WARNING: pip is being invoked by an old script wrapper. This will fail in a future version of pip.
+Please see https://github.com/pypa/pip/issues/5599 for advice on fixing the underlying issue.
+To avoid this problem you can invoke Python with '-m pip' instead of running pip directly.
+ERROR: Invalid requirement: './lib/idp_common_pkg[docs_service]': Expected package name at the start of dependency specifier
+    ./lib/idp_common_pkg[docs_service]
+    ^ (from line 1 of /Users/strahanr/Projects/idp2/nested/appsync/src/lambda/abort_workflow_resolver/requirements.txt)
+Hint: It looks like a path. File './lib/idp_common_pkg[docs_service]' does not exist.
+
+
+❌ SAM build for nested/appsync build failed (use --verbose for details)
+❌ Build failed for nested/appsync:
+SAM build failed
+⠦ Building nested...                                                 0/1 0:00:02
+⠦ nested/appsync - Building...                                       0/1 0:00:02
+  npm warn deprecated @babel/plugin-proposal-private-property-in-object@7.21.11:
+This proposal has been merged to the ECMAScript standard and thus this plugin is
+no longer maintained. Please use 
+@babel/plugin-transform-private-property-in-object instead.
+  npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer 
+supported
+  npm warn deprecated @aws-sdk/url-parser@3.374.0: This package has moved to 
+@smithy/url-parser
+  npm warn deprecated @aws-sdk/protocol-http@3.374.0: This package has moved to 
+@smithy/protocol-http
+  npm warn deprecated @aws-sdk/middleware-retry@3.374.0: This package has moved 
+to @smithy/middleware-retry
+  npm warn deprecated @aws-sdk/hash-node@3.374.0: This package has moved to 
+@smithy/hash-node
+  npm warn deprecated @humanwhocodes/object-schema@2.0.3: Use 
+@eslint/object-schema instead
+  npm warn deprecated eslint@8.57.1: This version is no longer supported. Please
+see https://eslint.org/version-support for other options.
+  added 1434 packages, and audited 1435 packages in 13s
+🔨 Building UI (validating ESLint/Prettier)...
+Running: npm run build
+  - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✅ UI build validation passed

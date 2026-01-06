@@ -129,6 +129,7 @@ check_and_install_packages() {
     "yaml:PyYAML"
     "ruff:ruff"
     "build:build"
+    "cfnlint:cfn-lint"
   )
   missing_packages=()
 
@@ -236,4 +237,3 @@ fi
 
 # Run main function with all arguments
 main "$@"
-

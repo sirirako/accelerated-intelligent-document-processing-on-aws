@@ -37,8 +37,8 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'build',
     sourcemap: mode === 'development' ? 'inline' : false,
-    // Increase chunk size warning limit
-    chunkSizeWarningLimit: 1000,
+    // Increase chunk size warning limit (suppressed for enterprise internal tool)
+    chunkSizeWarningLimit: 3000,
     rollupOptions: {
       output: {
         // Manual chunking for better code splitting
