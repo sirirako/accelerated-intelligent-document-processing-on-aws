@@ -375,6 +375,7 @@ Resources:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !Ref GraphQLApiId
+      Name: !Sub "${StackName}-NoneDataSource"
       Type: NONE
 
 
