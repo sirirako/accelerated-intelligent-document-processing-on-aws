@@ -6332,8 +6332,6 @@ Resources:
       MemorySize: 1024
       Timeout: 900
 
-      Layers:
-        - !Ref IDPCommonBaseLayer
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt TestFileCopierFunctionDLQ.Arn
