@@ -911,6 +911,8 @@ Resources:
       Runtime: python3.12
       MemorySize: 1024
       Timeout: 900
+      Layers:
+        - !Ref IDPCommonAgentsLayer
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -945,7 +947,7 @@ Resources:
             - - !Ref QueueSenderLogGroup
               - !Ref QueueProcessorLogGroup
               - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionLogGroup
+              - !Ref SaveReportingDataFunctionV2LogGroup
               - !If
                 - IsPattern1
                 - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
@@ -1073,7 +1075,7 @@ Resources:
                 - !GetAtt QueueSenderLogGroup.Arn
                 - !GetAtt QueueProcessorLogGroup.Arn
                 - !GetAtt WorkflowTrackerLogGroup.Arn
-                - !GetAtt SaveReportingDataFunctionLogGroup.Arn
+                - !GetAtt SaveReportingDataFunctionV2LogGroup.Arn
             - Effect: Allow
               Action:
                 - logs:DescribeLogGroups
@@ -1294,7 +1296,7 @@ Resources:
           - ShouldCreateEvaluationBaselineBucket
           - !Ref EvaluationBaselineBucket
           - !Ref EvaluationBaselineBucketName
-        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
         ImageVersion: "<PATTERN1_IMAGE_VERSION>"
         ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
         ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
@@ -1360,7 +1362,7 @@ Resources:
           - ShouldCreateEvaluationBaselineBucket
           - !Ref EvaluationBaselineBucket
           - !Ref EvaluationBaselineBucketName
-        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
         EnableECRImageScanning: !Ref EnableECRImageScanning
 
   PATTERN3STACK:
@@ -1417,7 +1419,7 @@ Resources:
           - ShouldCreateEvaluationBaselineBucket
           - !Ref EvaluationBaselineBucket
           - !Ref EvaluationBaselineBucketName
-        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
         ImageVersion: "<PATTERN3_IMAGE_VERSION>"
         ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
         ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
@@ -1492,7 +1494,7 @@ Resources:
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
         ReportingDatabaseName: !Ref ReportingDatabase
         LookupFunctionName: !Ref LookupFunction
-        SaveReportingFunctionName: !Ref SaveReportingDataFunction
+        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
         
         # Runtime settings (read from Parameter Store)
         SettingsParameterName: !Ref SettingsParameter
@@ -1520,6 +1522,11 @@ Resources:
           - !Ref Pattern1BDAProjectArn
         HasPattern1BDAProjectArn: !If [HasPattern1BDAProjectArn, "true", "false"]
         IsPattern2: !If [IsPattern2, "true", "false"]
+                
+        # Lambda Layers
+        IDPCommonBaseLayerArn: !Ref IDPCommonBaseLayer
+        IDPCommonAgentsLayerArn: !Ref IDPCommonAgentsLayer
+        
         IsPattern3: !If [IsPattern3, "true", "false"]
 
   CustomerManagedEncryptionKey:
@@ -1600,6 +1607,46 @@ Resources:
     Properties:
       AliasName: !Sub "alias/${AWS::StackName}-customer-encryption-key"
       TargetKeyId: !Ref CustomerManagedEncryptionKey
+
+  ##########################################################################
+  # Lambda Layers for idp_common package
+  ##########################################################################
+
+  IDPCommonBaseLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-idp-common-base"
+      Description: "IDP Common base layer (core + docs_service + image)"
+      Content:
+        S3Bucket: "<ARTIFACT_BUCKET_TOKEN>"
+        S3Key: "<ARTIFACT_PREFIX_TOKEN>/layers/<IDP_COMMON_BASE_LAYER_ZIP>"
+      CompatibleRuntimes:
+        - python3.12
+        - python3.13
+
+  IDPCommonReportingLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-idp-common-reporting"
+      Description: "IDP Common reporting layer (core + docs_service + reporting)"
+      Content:
+        S3Bucket: "<ARTIFACT_BUCKET_TOKEN>"
+        S3Key: "<ARTIFACT_PREFIX_TOKEN>/layers/<IDP_COMMON_REPORTING_LAYER_ZIP>"
+      CompatibleRuntimes:
+        - python3.12
+        - python3.13
+
+  IDPCommonAgentsLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-idp-common-agents"
+      Description: "IDP Common agents layer (core + agents)"
+      Content:
+        S3Bucket: "<ARTIFACT_BUCKET_TOKEN>"
+        S3Key: "<ARTIFACT_PREFIX_TOKEN>/layers/<IDP_COMMON_AGENTS_LAYER_ZIP>"
+      CompatibleRuntimes:
+        - python3.12
+        - python3.13
 
   ##########################################################################
   # S3 buckets for data processing, webUI static assets, and logging
@@ -3052,6 +3099,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       CodeUri: src/lambda/update_configuration
       Environment:
         Variables:
@@ -3329,6 +3379,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       Tracing: Active
       DeadLetterQueue:
         Type: SQS
@@ -3403,6 +3456,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       Tracing: Active
       LoggingConfig:
         LogGroup: !Ref QueueProcessorLogGroup
@@ -3525,6 +3581,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 30
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       Tracing: Active
       DeadLetterQueue:
         Type: SQS
@@ -3544,7 +3603,7 @@ Resources:
               !Ref ReportingBucket,
               !Ref ReportingBucketName,
             ]
-          SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunction
+          SAVE_REPORTING_FUNCTION_NAME: !Ref SaveReportingDataFunctionV2
           WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - DynamoDBCrudPolicy:
@@ -3561,7 +3620,7 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
-              Resource: !GetAtt SaveReportingDataFunction.Arn
+              Resource: !GetAtt SaveReportingDataFunctionV2.Arn
             - Effect: Allow
               Action:
                 - appsync:GraphQL
@@ -3674,6 +3733,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 300
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       MemorySize: 512
       Tracing: Active
       DeadLetterQueue:
@@ -3747,10 +3809,10 @@ Resources:
       SourceArn: !GetAtt PostProcessingLambdaHookRule.Arn
 
   ##########################################################################
-  # SaveReportingDataFunction Lambda, writes to ReportingBucket
+  # SaveReportingDataFunctionV2 Lambda, writes to ReportingBucket
   ##########################################################################
 
-  SaveReportingDataFunction:
+  SaveReportingDataFunctionV2:
     Type: AWS::Serverless::Function
     Metadata:
       cfn_nag:
@@ -3776,10 +3838,13 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 300
+
+      Layers:
+        - !Ref IDPCommonReportingLayer
       MemorySize: 1024
       Tracing: Active
       LoggingConfig:
-        LogGroup: !Ref SaveReportingDataFunctionLogGroup
+        LogGroup: !Ref SaveReportingDataFunctionV2LogGroup
       Policies:
         - S3CrudPolicy:
             BucketName: !If
@@ -3824,7 +3889,7 @@ Resources:
           STACK_NAME: !Ref AWS::StackName
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
 
-  SaveReportingDataFunctionLogGroup:
+  SaveReportingDataFunctionV2LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
@@ -4236,7 +4301,7 @@ Resources:
                 "width": 12,
                 "height": 6,
                 "properties": {
-                  "query": "SOURCE '${SaveReportingDataFunctionLogGroup}' | fields @timestamp, @logStream, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20",
+                  "query": "SOURCE '${SaveReportingDataFunctionV2LogGroup}' | fields @timestamp, @logStream, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20",
                   "region": "${AWS::Region}",
                   "title": "Save Reporting Data Tracker Lambda Errors",
                   "view": "table"
@@ -4454,6 +4519,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 600 # Increase timeout to handle longer Bedrock responses
+
+      Layers:
+        - !Ref IDPCommonAgentsLayer
       MemorySize: 1024 # Increase memory for agents with MCP clients and streaming
       Environment:
         Variables:
@@ -4491,7 +4559,7 @@ Resources:
             - - !Ref QueueSenderLogGroup
               - !Ref QueueProcessorLogGroup
               - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionLogGroup
+              - !Ref SaveReportingDataFunctionV2LogGroup
               - !If
                 - IsPattern1
                 - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
@@ -4602,7 +4670,7 @@ Resources:
                 - !GetAtt QueueSenderLogGroup.Arn
                 - !GetAtt QueueProcessorLogGroup.Arn
                 - !GetAtt WorkflowTrackerLogGroup.Arn
-                - !GetAtt SaveReportingDataFunctionLogGroup.Arn
+                - !GetAtt SaveReportingDataFunctionV2LogGroup.Arn
             - Effect: Allow
               Action:
                 - logs:DescribeLogGroups
@@ -4766,6 +4834,9 @@ Resources:
       Handler: index.handler
       Runtime: python3.12
       Timeout: 900
+
+      Layers:
+        - !Ref IDPCommonAgentsLayer
       MemorySize: 1024
       Environment:
         Variables:
@@ -4796,7 +4867,7 @@ Resources:
             - - !Ref QueueSenderLogGroup
               - !Ref QueueProcessorLogGroup
               - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionLogGroup
+              - !Ref SaveReportingDataFunctionV2LogGroup
               - !If
                 - IsPattern1
                 - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
@@ -4897,7 +4968,7 @@ Resources:
                 - !GetAtt QueueSenderLogGroup.Arn
                 - !GetAtt QueueProcessorLogGroup.Arn
                 - !GetAtt WorkflowTrackerLogGroup.Arn
-                - !GetAtt SaveReportingDataFunctionLogGroup.Arn
+                - !GetAtt SaveReportingDataFunctionV2LogGroup.Arn
             - Effect: Allow
               Action:
                 - logs:DescribeLogGroups
@@ -6023,6 +6094,9 @@ Resources:
       Description: Lambda function to copy test set files from SQS queue
       MemorySize: 1024
       Timeout: 900
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt TestSetFileCopierFunctionDLQ.Arn
@@ -6073,7 +6147,7 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
 
   ##########################################################################
-  # Lambda function to extract uploaded ZIP files for test sets
+  # Lambda function to extract uploaded ZIP files for TestSets
   ##########################################################################
 
   TestSetZipExtractorFunction:
@@ -6283,6 +6357,9 @@ Resources:
       Description: Lambda function to copy test files from SQS queue
       MemorySize: 1024
       Timeout: 900
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt TestFileCopierFunctionDLQ.Arn
@@ -6370,6 +6447,9 @@ Resources:
       Description: Lambda function to process discovery jobs from SQS queue
       MemorySize: 1024
       Timeout: 900
+
+      Layers:
+        - !Ref IDPCommonBaseLayer
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -6952,6 +7032,18 @@ Outputs:
   ExternalMCPAgentsSecretConsoleURL:
     Description: External MCP Agents secret console URL - configure MCP server credentials here (JSON array format)
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/secretsmanager/secret?name=${AWS::StackName}/external-mcp-agents/credentials&region=${AWS::Region}"
+  IDPCommonBaseLayerArn:
+    Description: ARN of IDP Common Base Layer
+    Value: !Ref IDPCommonBaseLayer
+  
+  IDPCommonReportingLayerArn:
+    Description: ARN of IDP Common Reporting Layer
+    Value: !Ref IDPCommonReportingLayer
+  
+  IDPCommonAgentsLayerArn:
+    Description: ARN of IDP Common Agents Layer
+    Value: !Ref IDPCommonAgentsLayer
+  
   MCPServerEndpoint:
     Condition: CreateAgentCoreLambda
     Description: MCP Server Endpoint

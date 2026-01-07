@@ -1,6 +1,53 @@
 # Active Context
 
 ## Current Work Focus
+Lambda Layer x86_64 Platform Fix - COMPLETED
+
+## Recent Fix: pydantic_core Architecture Mismatch (2026-01-07)
+
+### Problem
+Lambda function `GetStepFunctionExecutionResolverFunction` (and potentially others) failed with:
+```
+[ERROR] Runtime.ImportModuleError: Unable to import module 'index': No module named 'pydantic_core._pydantic_core'
+```
+
+### Root Cause
+The `publish.py` script built Lambda layers using `pip install` without platform-specific flags. When running on ARM64 machines (e.g., M-series MacBooks), pip installed ARM64-compiled `.so` files for `pydantic_core`. These don't work on Lambda's x86_64 architecture.
+
+### Solution Applied
+Modified `publish.py` `build_lambda_layer()` method to use platform-specific pip install:
+```python
+cmd = [
+    sys.executable, "-m", "pip", "install", install_spec,
+    "--platform", "manylinux2014_x86_64",  # Force x86_64 wheels
+    "--implementation", "cp",
+    "--python-version", "312",
+    "--only-binary=:all:",  # Only use pre-built wheels
+    "-t", layer_python_dir,
+    "--upgrade",
+]
+```
+
+### To Deploy Fix
+1. Run `python3 publish.py <bucket> <prefix> <region> --clean-build` to rebuild layers
+2. Update the CloudFormation stack
+
+## Future Work: ARM64 Lambda Migration
+
+**Rationale**: ARM64 (Graviton2) Lambda functions are ~20% cheaper and often faster.
+
+**Work Required**:
+1. Audit all dependencies for ARM64 wheel availability (pydantic ✓, need to verify all)
+2. Update all Lambda function templates with `Architectures: [arm64]`
+3. Update Pattern-1/2/3 container build processes for ARM64
+4. Modify `publish.py` to build ARM64 layers instead
+5. Comprehensive testing across all functions
+
+**Status**: Tracked for future implementation
+
+---
+
+## Previous Work Focus
 Centralized Pricing Configuration System - COMPLETED
 
 ## Recent Changes
