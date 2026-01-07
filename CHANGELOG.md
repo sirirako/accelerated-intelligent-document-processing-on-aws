@@ -7,6 +7,26 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
+- **Lambda Layers Architecture for Improved Build Efficiency**
+  - Replaced bundled `idp_common` package dependencies in individual Lambda functions with three shared Lambda Layers
+  - **Three Specialized Layers**:
+    - `base` layer: Core functionality with docs_service and image extras
+    - `reporting` layer: Reporting and analytics dependencies
+    - `agents` layer: Agent-related dependencies
+  - **Key Benefits**:
+    - Reduced SAM build times by eliminating redundant dependency installation across 50+ Lambda functions
+    - Layer content-based hashing ensures layers are only rebuilt when actual contents change
+    - Automatic removal of Lambda runtime packages (boto3, botocore, etc.) reduces layer sizes by ~100MB
+    - Layer zips cached locally and in S3, skipping uploads when content hasn't changed
+  - **Build System Integration**: publish.py automatically builds, hashes, and uploads layers before SAM builds
+
+- **Enhanced publish.py Performance and Logging**
+  - **Consistent Logging Helpers**: Added 8 standardized logging methods (`log_phase`, `log_task`, `log_detail`, `log_success`, `log_cached`, `log_warning`, `log_error`) for uniform output formatting with colored icons and thread prefixes
+  - **Timed S3 Uploads**: Added `upload_to_s3_with_timer()` helper with spinner animation, elapsed time display, and optimized `TransferConfig` for multi-threaded multipart uploads
+  - **AWS CLI Config Library Sync**: Replaced boto3 ThreadPoolExecutor-based config library upload (~60 lines) with `aws s3 sync` command for built-in concurrency, delta sync (skip unchanged files), and simpler code
+  - **Timing Breakdown Summary**: End-of-build summary shows top 4 time-consuming steps and percentages for build optimization insights
+  - **Phase Headers**: Major build phases now display with clear `═══` separator lines and emojis for visual clarity
+
 - **AppSync Resolvers Extracted to Nested Stack for Improved Template Modularity**
   - Refactored main CloudFormation template by extracting 130 AppSync resources into new nested stack architecture
   - **Extracted Components**:
@@ -22,14 +42,6 @@ SPDX-License-Identifier: MIT-0
   - All CloudFormation nested stacks now located in single `nested/` directory alongside `appsync`, `bda-lending-project`, and `bedrockkb`
   - Updated build system to build only two categories concurrently (nested + patterns) instead of three (nested + patterns + options)
   - **Breaking Change**: Directory paths changed - `options/` → `nested/`. Existing work-in-progress branches will have merge conflicts in directory structure.
-
-- **Optimized Publish Script Build Performance**
-  - Improved concurrent build performance by building all categories simultaneously instead of sequentially
-  - Enhanced max_workers calculation for I/O-bound operations: now uses `min(cpu_count * 2, 8)` instead of `min(4, cpu_count + 1)` for better resource utilization
-  - Removed obsolete sequential build logic when library changes (no longer needed with pre-built wheel approach)
-  - Updated informational messages to reflect that all three patterns (Pattern-1/2/3) use CodeBuild for Docker image builds
-  - Fixed Rich Progress LiveDisplay conflicts when building categories concurrently by replacing progress bars with simple status logging
-  - **Performance Impact**: Potential 50-60% build time reduction on multi-core systems through maximized parallelism
 
 ### Fixed
 
