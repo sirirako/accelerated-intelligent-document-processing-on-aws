@@ -2937,8 +2937,6 @@ Resources:
       MemorySize: 256
       Timeout: 300
 
-      Layers:
-        - !Ref IDPCommonBaseLayerArn
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
