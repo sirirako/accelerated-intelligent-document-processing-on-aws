@@ -467,12 +467,6 @@ Conditions:
       !Condition IsHITLEnabled,
       !Equals [ !Ref ExistingPrivateWorkforceArn, "" ],
     ]
-  ShouldUseExistingPrivateWorkteam:
-    !And [
-      !Condition IsHITLEnabled,
-      !Not [ !Equals [ !Ref ExistingPrivateWorkforceArn, "" ] ],
-    ]
-
   # General rules
   ShouldAllowSignUpEmailDomain:
     !Not [ !Equals [ !Ref AllowedSignUpEmailDomain, "" ] ]
@@ -607,8 +601,6 @@ Metadata:
         default: "Post Processing Lambda Hook Function ARN"
       EvaluationBaselineBucketName:
         default: "Evaluation Baseline Bucket Name"
-      EvaluationAutoEnabled:
-        default: "Evaluation Auto Enabled"
       ReportingBucketName:
         default: "Reporting Bucket Name"
       DocumentKnowledgeBase:
@@ -831,8 +823,6 @@ Resources:
 
   CopyConfigurationFiles:
     Type: Custom::ConfigurationCopy
-    DependsOn:
-      - ConfigurationBucket
     Properties:
       ServiceToken: !GetAtt ConfigurationCopyFunction.Arn
       SourceBucket: "<ARTIFACT_BUCKET_TOKEN>"
@@ -1218,11 +1208,6 @@ Resources:
   AgentCoreGateway:
     Type: Custom::AgentCoreGateway
     Condition: CreateAgentCoreLambda
-    DependsOn:
-      - AgentCoreAnalyticsLambdaFunction
-      - ExternalAppClient
-      - UserPool
-      - AgentCoreGatewayExecutionRole
     Properties:
       ServiceToken: !GetAtt AgentCoreGatewayManagerFunction.Arn
       StackName: !Ref AWS::StackName
@@ -1307,7 +1292,6 @@ Resources:
     DependsOn:
       - IsStacknameLengthOK
       - CopyConfigurationFiles
-      - GraphQLApi
     Type: AWS::CloudFormation::Stack
     Condition: IsPattern2
     Properties:
@@ -2024,9 +2008,6 @@ Resources:
 
   TestSetBucketAutoDelete:
     Type: Custom::S3AutoDelete
-    DependsOn:
-      - TestSetBucket
-      - TestSetBucketAutoDeleteFunction
     Properties:
       ServiceToken: !GetAtt TestSetBucketAutoDeleteFunction.Arn
       BucketName: !Ref TestSetBucket
@@ -2094,7 +2075,6 @@ Resources:
     DependsOn:
       - TestSetBucket
       - TrackingTable
-      - FccDatasetDeployerFunction
     Properties:
       ServiceToken: !GetAtt FccDatasetDeployerFunction.Arn
       DatasetVersion: "1.1"
@@ -2165,7 +2145,6 @@ Resources:
     DependsOn:
       - TestSetBucket
       - TrackingTable
-      - OcrBenchmarkDeployerFunction
     Properties:
       ServiceToken: !GetAtt OcrBenchmarkDeployerFunction.Arn
       DatasetVersion: "1.0"
@@ -5464,8 +5443,6 @@ Resources:
         Ref: LogRetentionDays
 
   CognitoClientUpdaterFunction:
-    DependsOn:
-      - UserPoolClienta2i
     Type: AWS::Serverless::Function
     Condition: ShouldCreatePrivateWorkteam
     Metadata:
@@ -5509,13 +5486,11 @@ Resources:
   CognitoClientCustomResource:
     Type: Custom::CognitoClientUpdater
     Condition: ShouldCreatePrivateWorkteam
+    DependsOn:
+      - PrivateWorkteam
     Properties:
       ServiceToken: !GetAtt CognitoClientUpdaterFunction.Arn
       SourceCodeHash: <COGNITO_CLIENT_HASH_TOKEN>
-    DependsOn:
-      - UserPoolClienta2i
-      - PrivateWorkteam
-      - CognitoClientUpdaterFunction
 
   ##########################################################################
   # SageMaker A2I (HITL) Resources with Comprehensive Cleanup
@@ -6198,6 +6173,7 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: !Sub "s3.${AWS::URLSuffix}"
       SourceArn: !GetAtt TestSetBucket.Arn
+      SourceAccount: !Ref AWS::AccountId
 
   TestSetZipExtractorFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -6316,8 +6292,6 @@ Resources:
   TestSetBucketNotificationConfiguration:
     Type: Custom::S3BucketNotification
     DependsOn:
-      - TestSetBucket
-      - TestSetZipExtractorFunction
       - TestSetZipExtractorFunctionInvokePermission
       - TestSetZipExtractorS3Policy
     Properties:
