@@ -3012,6 +3012,8 @@ Resources:
             TableName: !Ref TrackingTableName
         - S3ReadPolicy:
             BucketName: !Ref InputBucketName
+        - S3CrudPolicy:
+            BucketName: !Ref TestSetBucketName
         - S3ReadPolicy:
             BucketName: !If
               - ShouldCreateEvaluationBaselineBucket
