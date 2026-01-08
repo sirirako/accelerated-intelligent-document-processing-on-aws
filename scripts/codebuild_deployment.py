@@ -801,6 +801,22 @@ def cleanup_single_stack(stack_name, pattern_name):
         
         print(f"[{pattern_name}] ✅ Cleanup completed")
         
+        # Clean up CloudFront Response Headers Policies
+        print(f"[{pattern_name}] Cleaning up CloudFront Response Headers Policies...")
+        try:
+            cloudfront_client = boto3.client('cloudfront')
+            response = cloudfront_client.list_response_headers_policies()
+            
+            for policy in response.get('ResponseHeadersPolicyList', {}).get('Items', []):
+                if policy['Type'] == 'custom':
+                    policy_name = policy['ResponseHeadersPolicy']['ResponseHeadersPolicyConfig']['Name']
+                    if stack_name in policy_name:
+                        policy_id = policy['ResponseHeadersPolicy']['Id']
+                        print(f"[{pattern_name}] Deleting Response Headers Policy: {policy_name}")
+                        cloudfront_client.delete_response_headers_policy(Id=policy_id)
+        except Exception as e:
+            print(f"[{pattern_name}] ⚠️ Failed to cleanup CloudFront policies: {e}")
+
         # Clean up IAM resources
         cleanup_iam_resources(stack_name)
         
