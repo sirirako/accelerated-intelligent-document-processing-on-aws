@@ -31,7 +31,7 @@ The web interface allows real-time configuration updates without stack redeploym
     - **Dual Format Support**: Automatically detects and imports both `config.yaml` and `config.json` formats
     - **README Preview**: View markdown-formatted documentation before importing to understand configuration purpose and features
     - **Format Indicators**: Visual badges show file format (YAML/JSON) and README availability
-    - **Library Contents**: Includes sample configurations like lending-package-sample, bank-statement-sample, rvl-cdip-package-sample, criteria-validation, and more
+    - **Library Contents**: Includes sample configurations like lending-package-sample, bank-statement-sample, rvl-cdip, criteria-validation, and more
 - **Restore Default**: Reset all configuration settings back to the original default values, removing all customizations.
 
 Configuration changes are validated and applied immediately, with rollback capability if issues arise. See [web-ui.md](web-ui.md) for details on using the administration interface.

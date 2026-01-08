@@ -1103,7 +1103,7 @@ SPDX-License-Identifier: MIT-0
 - **Lending Package Configuration Support for Pattern-2**
   - Added new `lending-package-sample` configuration to Pattern-2, providing comprehensive support for lending and financial document processing workflows
   - New default configuration for Pattern-2 stack deployments, optimized for loan applications, mortgage processing, and financial verification documents
-  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip-package-sample` for the `Pattern2Configuration` parameter when deploying or updating stacks
+  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip` for the `Pattern2Configuration` parameter when deploying or updating stacks
 
 - **Text Confidence View for Document Pages**
   - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field
