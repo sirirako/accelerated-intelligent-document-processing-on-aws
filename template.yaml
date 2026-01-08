@@ -170,7 +170,7 @@ Parameters:
   ExistingPrivateWorkforceArn:
     Type: String
     Default: ""
-    AllowedPattern: "^(|arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+)$"
+    AllowedPattern: "^$|^arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+$"
     Description: >-
       ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL). 
       If you do not have existing Private workteam and leave it blank then solution will create one. 
@@ -489,6 +489,11 @@ Conditions:
   CreateExternalAppClient: !Equals [ !Ref EnableMCP, "true" ]
 
 Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - E2015  # AllowedPattern with empty string default for ExistingPrivateWorkforceArn
+        - W1030  # ARN pattern matching when Ref resolves to empty string
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
@@ -1495,7 +1500,6 @@ Resources:
         HasGuardrailConfig: !If [HasGuardrailConfig, "true", "false"]
         BedrockGuardrailId: !Ref BedrockGuardrailId
         BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
-        ShouldUseDocumentKnowledgeBase: !If [ShouldUseDocumentKnowledgeBase, "true", "false"]
         KnowledgeBaseModelId: !Ref KnowledgeBaseModelId
         ShouldCreateEvaluationBaselineBucket: !If [ShouldCreateEvaluationBaselineBucket, "true", "false"]
         ShouldCreateReportingBucket: !If [ShouldCreateReportingBucket, "true", "false"]
@@ -1505,14 +1509,11 @@ Resources:
           - !GetAtt BDASAMPLEPROJECT.Outputs.ProjectArn
           - !Ref Pattern1BDAProjectArn
         HasPattern1BDAProjectArn: !If [HasPattern1BDAProjectArn, "true", "false"]
-        IsPattern2: !If [IsPattern2, "true", "false"]
                 
         # Lambda Layers
         IDPCommonBaseLayerArn: !Ref IDPCommonBaseLayer
         IDPCommonAgentsLayerArn: !Ref IDPCommonAgentsLayer
         
-        IsPattern3: !If [IsPattern3, "true", "false"]
-
   CustomerManagedEncryptionKey:
     DependsOn:
       - IsStacknameLengthOK
@@ -1640,6 +1641,7 @@ Resources:
     DependsOn:
       - IsStacknameLengthOK
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -1722,6 +1724,7 @@ Resources:
 
   DiscoveryBucket:
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: RetainExceptOnCreate
     Properties:
       NotificationConfiguration:
@@ -1789,6 +1792,7 @@ Resources:
 
   InputBucket:
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: RetainExceptOnCreate
     Properties:
       NotificationConfiguration:
@@ -2154,6 +2158,7 @@ Resources:
 
   ConfigurationBucket:
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: Retain
     Properties:
       NotificationConfiguration:
@@ -2221,6 +2226,7 @@ Resources:
 
   WorkingBucket:
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: RetainExceptOnCreate
     Properties:
       BucketEncryption:
@@ -2267,6 +2273,7 @@ Resources:
 
   OutputBucket:
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: RetainExceptOnCreate
     Properties:
       CorsConfiguration:
@@ -2332,6 +2339,7 @@ Resources:
   ReportingBucket:
     Type: AWS::S3::Bucket
     Condition: ShouldCreateReportingBucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: RetainExceptOnCreate
     Properties:
       CorsConfiguration:
@@ -2782,6 +2790,7 @@ Resources:
   EvaluationBaselineBucket:
     Type: AWS::S3::Bucket
     Condition: ShouldCreateEvaluationBaselineBucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: RetainExceptOnCreate
     Properties:
       CorsConfiguration:
@@ -2841,7 +2850,13 @@ Resources:
 
   WebUIBucket:
     Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
     DeletionPolicy: Retain
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3045
     Properties:
       AccessControl: Private
       BucketEncryption:

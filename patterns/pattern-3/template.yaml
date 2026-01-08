@@ -155,7 +155,6 @@ Conditions:
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
-  IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
   IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
 
 Resources:
@@ -256,9 +255,6 @@ Resources:
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
-    DependsOn:
-      - DockerBuildRole
-      - ECRRepository
     Properties:
       Name: !Sub "${AWS::StackName}-docker-build"
       Description: !Sub >-
@@ -393,9 +389,6 @@ Resources:
 
   DockerBuildRun:
     Type: Custom::CodeBuildRun
-    DependsOn:
-      - DockerBuildProject
-      - CodeBuildTrigger
     Properties:
       ServiceToken: !GetAtt CodeBuildTrigger.Arn
       BuildProjectName: !Ref DockerBuildProject
@@ -415,7 +408,6 @@ Resources:
     Type: Custom::ECRRepositoryCleanup
     DependsOn:
       - DockerBuildRun
-      - ECRRepository
     Properties:
       ServiceToken: !GetAtt CodeBuildTrigger.Arn
       RepositoryName: !Ref ECRRepository

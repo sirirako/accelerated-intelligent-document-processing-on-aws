@@ -6,6 +6,12 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: AWS GenAI IDP Accelerator - resources for IDP Pattern 1 (BDA)
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W1030  # BDAProjectArn parameter can be empty string (creates new project) which doesn't match ARN pattern
+
 Parameters:
 
   StackName:
@@ -944,9 +950,6 @@ Resources:
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
-    DependsOn:
-      - DockerBuildRole
-      - ECRRepository
     Properties:
       Name: !Sub "${AWS::StackName}-docker-build"
       Description: !Sub >-
@@ -1081,9 +1084,6 @@ Resources:
 
   DockerBuildRun:
     Type: Custom::CodeBuildRun
-    DependsOn:
-      - DockerBuildProject
-      - CodeBuildTrigger
     Properties:
       ServiceToken: !GetAtt CodeBuildTrigger.Arn
       BuildProjectName: !Ref DockerBuildProject
@@ -1104,7 +1104,6 @@ Resources:
     Type: Custom::ECRRepositoryCleanup
     DependsOn:
       - DockerBuildRun
-      - ECRRepository
     Properties:
       ServiceToken: !GetAtt CodeBuildTrigger.Arn
       RepositoryName: !Ref ECRRepository
@@ -1476,7 +1475,6 @@ Resources:
           WORKING_BUCKET: !Ref WorkingBucket
           DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
           TRACKING_TABLE: !Ref TrackingTable
-          DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
       LoggingConfig:
         LogGroup: !Ref EvaluationFunctionLogGroup
       Policies:

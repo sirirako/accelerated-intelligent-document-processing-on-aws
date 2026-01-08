@@ -1727,9 +1727,7 @@ STDERR:
 
                 self.log_verbose("Inline edit main template to replace:")
                 for token, value in replacements.items():
-                    self.log_verbose(
-                        f"   {token} with: {value}"
-                    )
+                    self.log_verbose(f"   {token} with: {value}")
                     template_content = template_content.replace(token, value)
 
                 # Write the modified template to the build directory
