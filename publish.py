@@ -1725,10 +1725,10 @@ STDERR:
                         f"[dim]  {layer_name}: {layer_info.get('zip_name', 'NOT SET')}[/dim]"
                     )
 
-                self.console.print("[cyan]Inline edit main template to replace:[/cyan]")
+                self.log_verbose("Inline edit main template to replace:")
                 for token, value in replacements.items():
-                    self.console.print(
-                        f"   [yellow]{token}[/yellow] with: [green]{value}[/green]"
+                    self.log_verbose(
+                        f"   {token} with: {value}"
                     )
                     template_content = template_content.replace(token, value)
 
