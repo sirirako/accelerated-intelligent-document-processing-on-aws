@@ -2551,6 +2551,10 @@ STDERR:
         Used when lib hasn't changed but we need to populate _layer_arns
         with the correct layer zip names for template token replacement.
 
+        IMPORTANT: Also verifies that layers exist in S3 at the current version path.
+        If a layer exists locally but not in S3 (e.g., VERSION changed), it uploads it.
+        This prevents deployment failures when the S3 prefix changes due to VERSION updates.
+
         Returns:
             Dict mapping layer names to layer info dicts with zip_name, etc.
         """
@@ -2591,16 +2595,33 @@ STDERR:
                 layer_hash = zip_name.replace(f"idp-common-{layer_name}-", "").replace(
                     ".zip", ""
                 )
+                s3_key = f"{self.prefix_and_version}/layers/{zip_name}"
+
+                # Verify layer exists in S3 at current version path
+                # This handles VERSION changes where layer exists locally but not at new S3 path
+                try:
+                    self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+                    self.console.print(
+                        f"[green]   ✓ Layer '{layer_name}': {zip_name} (in S3)[/green]"
+                    )
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "404":
+                        # Layer exists locally but not in S3 at new version path - upload it
+                        self.console.print(
+                            f"[yellow]   ⚠️  Layer '{layer_name}' not in S3 at current version path - uploading[/yellow]"
+                        )
+                        self.upload_to_s3_with_timer(
+                            zip_path, s3_key, f"layer '{layer_name}'"
+                        )
+                    else:
+                        raise
 
                 layer_info[layer_name] = {
                     "zip_path": zip_path,
                     "zip_name": zip_name,
                     "hash": layer_hash,
-                    "s3_key": f"{self.prefix_and_version}/layers/{zip_name}",
+                    "s3_key": s3_key,
                 }
-                self.console.print(
-                    f"[green]   ✓ Layer '{layer_name}': {zip_name}[/green]"
-                )
             else:
                 self.console.print(
                     f"[yellow]⚠️  No existing layer zip found for '{layer_name}'[/yellow]"
