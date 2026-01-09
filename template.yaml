@@ -2228,7 +2228,7 @@ Resources:
       - TrackingTable
     Properties:
       ServiceToken: !GetAtt RvlCdipNmpDeployerFunction.Arn
-      DatasetVersion: "1.0"
+      DatasetVersion: "0.1"
       DatasetName: "RVL-CDIP-NMP-Packets"
       DatasetDescription: "Test set with 500 multi-page document packets combining 13 document types (budget, email, form, handwritten, invoice, language, letter, memo, news article, questionnaire, resume, scientific publication, specification) for classification and document splitting evaluation."
       SourceCodeHash: <RVL_CDIP_NMP_DEPLOYER_HASH_TOKEN>
