@@ -392,7 +392,7 @@ properties:
 
 ## Classification Prompt Customization
 
-### TextBasedHolisticClassification (rvl-cdip-package-sample)
+### TextBasedHolisticClassification (rvl-cdip)
 
 This approach analyzes entire document packages to identify logical document boundaries.
 
@@ -1119,7 +1119,7 @@ The IDP accelerator supports two primary processing patterns, each with distinct
 | **Primary Use Case** | Multi-document packages | Single-page documents |
 | **Input Data** | OCR text + document images | Document images only |
 | **Processing Method** | Document boundary detection | Independent page analysis |
-| **Example Config** | `rvl-cdip-package-sample` | `lending-package-sample` |
+| **Example Config** | `rvl-cdip` | `lending-package-sample` |
 | **Configuration Complexity** | Higher (boundary rules) | Lower (direct classification) |
 | **Output Format** | Segmented page ranges | Single classification |
 

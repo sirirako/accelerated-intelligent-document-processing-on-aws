@@ -33,28 +33,36 @@ Mappings:
       ConfigPath: "lending-package-sample"
     realkie-fcc-verified:
       ConfigPath: "realkie-fcc-verified"
+    ocr-benchmark:
+      ConfigPath: "ocr-benchmark"
+    rvl-cdip:
+      ConfigPath: "rvl-cdip"
     default:
       ConfigPath: "lending-package-sample"
 
   Pattern2ConfigurationMap:
     lending-package-sample:
       ConfigPath: "lending-package-sample"
-    rvl-cdip-package-sample:
-      ConfigPath: "rvl-cdip-package-sample"
-    rvl-cdip-package-sample-with-few-shot-examples:
-      ConfigPath: "rvl-cdip-package-sample-with-few-shot-examples"
+    rvl-cdip:
+      ConfigPath: "rvl-cdip"
+    rvl-cdip-with-few-shot-examples:
+      ConfigPath: "rvl-cdip-with-few-shot-examples"
     bank-statement-sample:
       ConfigPath: "bank-statement-sample"
     realkie-fcc-verified:
       ConfigPath: "realkie-fcc-verified"
+    ocr-benchmark:
+      ConfigPath: "ocr-benchmark"
     default:
-      ConfigPath: "rvl-cdip-package-sample"
+      ConfigPath: "rvl-cdip"
 
   Pattern3ConfigurationMap:
-    rvl-cdip-package-sample:
-      ConfigPath: "rvl-cdip-package-sample"
+    rvl-cdip:
+      ConfigPath: "rvl-cdip"
+    rvl-cdip-package-sample:  # for backward compatibility when updating existing stacks
+      ConfigPath: "rvl-cdip"
     default:
-      ConfigPath: "rvl-cdip-package-sample"
+      ConfigPath: "rvl-cdip"
 
 Parameters:
   # Authorization params
@@ -113,6 +121,8 @@ Parameters:
     AllowedValues:
       - "lending-package-sample"
       - "realkie-fcc-verified"
+      - "ocr-benchmark"
+      - "rvl-cdip"
       - "default"
     Description: >-
       Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
@@ -124,10 +134,11 @@ Parameters:
     Default: "lending-package-sample"
     AllowedValues:
       - "lending-package-sample"
-      - "rvl-cdip-package-sample"
-      - "rvl-cdip-package-sample-with-few-shot-examples"
+      - "rvl-cdip"
+      - "rvl-cdip-with-few-shot-examples"
       - "bank-statement-sample"
       - "realkie-fcc-verified"
+      - "ocr-benchmark"
       - "default"
     Description: >-
       Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
@@ -150,10 +161,11 @@ Parameters:
 
   Pattern3Configuration:
     Type: String
-    Default: "rvl-cdip-package-sample"
+    Default: "rvl-cdip"
     AllowedValues:
-      - "rvl-cdip-package-sample"
+      - "rvl-cdip"
       - "default"
+      - "rvl-cdip-package-sample" # for backward compatibility when updating existing stacks
     Description: >-
       Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
 
@@ -937,19 +949,7 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
-          CLOUDWATCH_LOG_GROUPS: !Join
-            - ","
-            - - !Ref QueueSenderLogGroup
-              - !Ref QueueProcessorLogGroup
-              - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionV2LogGroup
-              - !If
-                - IsPattern1
-                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-                - !If
-                  - IsPattern2
-                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+          SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
       LoggingConfig:
         LogGroup: !Ref AgentCoreAnalyticsLambdaLogGroup
       Policies:
@@ -1104,6 +1104,11 @@ Resources:
                 - states:GetExecutionHistory
               Resource:
                 - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
 
   ##########################################################################
   # AgentCore Gateway Manager Lambda Function
@@ -2155,6 +2160,78 @@ Resources:
       DatasetName: "OmniAI-OCR-Benchmark"
       DatasetDescription: "Test set with diverse document formats (tables, charts, forms, etc.) from the OmniAI OCR Benchmark, filtered for top format/schema pairs with at least 6 samples each."
       SourceCodeHash: <OCR_BENCHMARK_DEPLOYER_HASH_TOKEN>
+
+  ##########################################################################
+  # RVL-CDIP-NMP Packet Deployer - Automatically deploys packet TestSet
+  ##########################################################################
+
+  RvlCdipNmpDeployerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  RvlCdipNmpDeployerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
+          - id: W92
+            reason: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      FunctionName: !Sub "${AWS::StackName}-RvlCdipNmpDeployer"
+      CodeUri: src/lambda/rvl_cdip_nmp_deployer/
+      Handler: index.handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      LoggingConfig:
+        LogGroup: !Ref RvlCdipNmpDeployerLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TESTSET_BUCKET: !Ref TestSetBucket
+          TRACKING_TABLE: !Ref TrackingTable
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TestSetBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:ReEncrypt*
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  RvlCdipNmpDeployment:
+    Type: Custom::RvlCdipNmpDeployer
+    DependsOn:
+      - TestSetBucket
+      - TrackingTable
+    Properties:
+      ServiceToken: !GetAtt RvlCdipNmpDeployerFunction.Arn
+      DatasetVersion: "0.1"
+      DatasetName: "RVL-CDIP-NMP-Packets"
+      DatasetDescription: "Test set with 500 multi-page document packets combining 13 document types (budget, email, form, handwritten, invoice, language, letter, memo, news article, questionnaire, resume, scientific publication, specification) for classification and document splitting evaluation."
+      SourceCodeHash: <RVL_CDIP_NMP_DEPLOYER_HASH_TOKEN>
 
   ConfigurationBucket:
     Type: AWS::S3::Bucket
@@ -3246,6 +3323,20 @@ Resources:
           - True
           - False
         # Runtime-resolved values for APPSYNCSTACK decoupling
+        # CloudWatch log groups moved here to decouple Agent Lambda functions from Pattern stacks
+        CloudWatchLogGroups: !Join
+          - ","
+          - - !Ref QueueSenderLogGroup
+            - !Ref QueueProcessorLogGroup
+            - !Ref WorkflowTrackerLogGroup
+            - !Ref SaveReportingDataFunctionV2LogGroup
+            - !If
+              - IsPattern1
+              - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
+              - !If
+                - IsPattern2
+                - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
+                - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
         StateMachineArn: !If
           - IsPattern3
           - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
@@ -4420,15 +4511,7 @@ Resources:
                 - states:DescribeExecution
                 - states:GetExecutionHistory
               Resource:
-                - !Sub
-                  - "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}*"
-                  - StateMachineName: !If
-                      - IsPattern3
-                      - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-                      - !If
-                        - IsPattern2
-                        - !GetAtt PATTERN2STACK.Outputs.StateMachineName
-                        - !GetAtt PATTERN1STACK.Outputs.StateMachineName
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
@@ -4548,19 +4631,7 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
-          CLOUDWATCH_LOG_GROUPS: !Join
-            - ","
-            - - !Ref QueueSenderLogGroup
-              - !Ref QueueProcessorLogGroup
-              - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionV2LogGroup
-              - !If
-                - IsPattern1
-                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-                - !If
-                  - IsPattern2
-                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+          SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
       LoggingConfig:
         LogGroup: !Ref AgentChatProcessorLogGroup
       Policies:
@@ -4702,6 +4773,11 @@ Resources:
                 - xray:BatchGetTraces
                 - xray:GetServiceGraph
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
 
   AgentChatProcessorLogGroup:
     Type: AWS::Logs::LogGroup
@@ -4856,19 +4932,7 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
-          CLOUDWATCH_LOG_GROUPS: !Join
-            - ","
-            - - !Ref QueueSenderLogGroup
-              - !Ref QueueProcessorLogGroup
-              - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionV2LogGroup
-              - !If
-                - IsPattern1
-                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-                - !If
-                  - IsPattern2
-                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+          SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
       LoggingConfig:
         LogGroup: !Ref AgentProcessorLogGroup
       Policies:
@@ -5000,7 +5064,12 @@ Resources:
                 - xray:BatchGetTraces
                 - xray:GetServiceGraph
               Resource: "*"
-  
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+
   ExternalAppClient:
     Type: AWS::Cognito::UserPoolClient
     Condition: CreateExternalAppClient

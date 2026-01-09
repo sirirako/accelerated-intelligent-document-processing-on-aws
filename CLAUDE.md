@@ -230,8 +230,8 @@ Configuration is managed via DynamoDB Configuration Table with two record types:
 
 Configuration presets available:
 - **Pattern 1**: `lending-package-sample`, `realkie-fcc-verified`
-- **Pattern 2**: `lending-package-sample`, `rvl-cdip-package-sample`, `rvl-cdip-package-sample-with-few-shot-examples`, `bank-statement-sample`, `realkie-fcc-verified`
-- **Pattern 3**: `rvl-cdip-package-sample`
+- **Pattern 2**: `lending-package-sample`, `rvl-cdip`, `rvl-cdip-with-few-shot-examples`, `bank-statement-sample`, `realkie-fcc-verified`
+- **Pattern 3**: `rvl-cdip`
 
 Custom configurations override selected pattern presets when specified.
 
