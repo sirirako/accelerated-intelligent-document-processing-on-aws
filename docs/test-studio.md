@@ -324,7 +324,9 @@ components/
 1. **Pattern-based**: Define file patterns (e.g., `*.pdf`) with bucket type selection
    - **Input Bucket**: Scan main processing bucket for matching files
    - **Test Set Bucket**: Scan dedicated test set bucket for matching files
+   - **Description**: Optional description field to document the test set purpose
 2. **Zip Upload**: Upload zip containing `input/` and `baseline/` folders
+   - **Description**: Optional description field to document the test set purpose
 3. **Direct Upload**: Files uploaded directly to TestSetBucket are auto-detected
 
 ### File Structure Requirements
@@ -353,9 +355,11 @@ my-test-set/
 
 ### Running Tests
 1. Select test set from dropdown
-2. Click "Run Test" (single test execution only)
-3. Monitor progress via TestRunnerStatus
-4. View results in integrated listing
+2. **Optional**: Enter number of files to limit processing (useful for quick testing)
+3. **Optional**: Add context description for the test run
+4. Click "Run Test" (single test execution only)
+5. Monitor progress via TestRunnerStatus
+6. View results in integrated listing
 
 ### Test States
 - **QUEUED**: File copying jobs queued in SQS
@@ -374,12 +378,14 @@ my-test-set/
 ### Test Set Management
 - Reusable collections with file patterns across multiple buckets
 - Dual bucket support (Input Bucket and Test Set Bucket)
+- Optional description field for documenting test set purpose
 - Zip upload with automatic extraction
 - Direct upload detection via dual polling
 - File structure validation with error reporting
 
 ### Test Execution
 - Single test concurrency prevention
+- Optional file count limiting for quick testing
 - Real-time status monitoring
 - Global state persistence across navigation
 - SQS-based asynchronous processing
