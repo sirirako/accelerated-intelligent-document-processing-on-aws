@@ -1104,6 +1104,11 @@ Resources:
                 - states:GetExecutionHistory
               Resource:
                 - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
 
   ##########################################################################
   # AgentCore Gateway Manager Lambda Function
@@ -4776,6 +4781,11 @@ Resources:
                 - xray:BatchGetTraces
                 - xray:GetServiceGraph
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
 
   AgentChatProcessorLogGroup:
     Type: AWS::Logs::LogGroup
@@ -5062,7 +5072,12 @@ Resources:
                 - xray:BatchGetTraces
                 - xray:GetServiceGraph
               Resource: "*"
-  
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${SettingsParameter}"
+
   ExternalAppClient:
     Type: AWS::Cognito::UserPoolClient
     Condition: CreateExternalAppClient
