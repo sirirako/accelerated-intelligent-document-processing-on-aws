@@ -61,9 +61,10 @@ def handler(event, context):
         
         # Check if dataset already exists with this version
         if check_existing_version(dataset_version):
-            logger.info(f"Dataset version {dataset_version} already deployed, skipping")
+            logger.info(f"Dataset version {dataset_version} already deployed, updating description only")
+            update_description_only(dataset_description)
             cfnresponse.send(event, context, cfnresponse.SUCCESS, {
-                'Message': f'Dataset version {dataset_version} already exists'
+                'Message': f'Dataset version {dataset_version} already exists, description updated'
             })
             return
         
@@ -77,6 +78,28 @@ def handler(event, context):
         logger.error(f"Error deploying dataset: {str(e)}", exc_info=True)
         cfnresponse.send(event, context, cfnresponse.FAILED, {}, 
                         reason=f"Error deploying dataset: {str(e)}")
+
+
+def update_description_only(description: str):
+    """
+    Update only the description field in the existing DynamoDB record.
+    """
+    try:
+        table = dynamodb.Table(TRACKING_TABLE)  # type: ignore[attr-defined]
+        table.update_item(
+            Key={
+                'PK': f'testset#{TEST_SET_ID}',
+                'SK': 'metadata'
+            },
+            UpdateExpression='SET description = :desc',
+            ExpressionAttributeValues={
+                ':desc': description
+            }
+        )
+        logger.info(f"Updated description for test set {TEST_SET_ID}")
+    except Exception as e:
+        logger.error(f"Failed to update description: {e}")
+        raise
 
 
 def check_existing_version(version: str) -> bool:
