@@ -1,13 +1,19 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# Default Configuration
+# RVL-CDIP Configuration
 
-This directory contains the default configuration for the GenAI IDP Accelerator. This configuration serves as the baseline for all document processing tasks and can be used as a starting point for creating custom configurations.
+This configuration is designed for the RVL-CDIP-N-MP-Packets test set and handles 13 diverse business and administrative document types.
 
 ## Pattern Association
 
-**Pattern**: Pattern-2 - Uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction
+**Pattern**: Pattern-3 - Uses SageMaker fine-tuned UDOP model for page classification and Amazon Bedrock for information extraction
+
+## Test Set Compatibility
+
+**Compatible Test Set**: RVL-CDIP-N-MP-Packets
+
+This configuration should be used with the RVL-CDIP-N-MP-Packets test set, which contains 500 multi-page packets with 13 document types. The test set is automatically deployed during stack deployment and is available in the Test Studio UI. See [docs/test-studio.md](../../../docs/test-studio.md) for details.
 
 ## Validation Level
 
@@ -18,27 +24,29 @@ This directory contains the default configuration for the GenAI IDP Accelerator.
 
 ## Overview
 
-The default configuration is designed to handle a variety of common business document types, including:
+This configuration is designed to handle 13 diverse business and administrative document types, including:
 
-- Letters
-- Forms
-- Invoices
-- Resumes
-- Scientific publications
-- Memos
-- Advertisements
-- Emails
-- Questionnaires
-- Specifications
-- Generic documents
+- **letter**: Business and personal correspondence
+- **form**: Administrative forms and applications
+- **invoice**: Billing and financial documents
+- **resume**: Professional resumes and CVs
+- **scientific_publication**: Academic and research papers
+- **memo**: Internal business memos
+- **email**: Email communications
+- **questionnaire**: Surveys and questionnaires
+- **specification**: Technical specifications
+- **budget**: Financial budgets and reports
+- **news_article**: Newspaper and news articles
+- **handwritten**: Handwritten notes and documents
+- **language**: Non-English documents (e.g., Arabic documents)
 
-It includes settings for document classification, information extraction, and document summarization using Amazon Bedrock models.
+It includes settings for document classification using SageMaker UDOP model, information extraction, and document summarization using Amazon Bedrock models.
 
 ## Key Components
 
 ### Document Classes
 
-The configuration defines 11 document classes, each with specific attributes to extract:
+The configuration defines 13 document classes, each with specific attributes to extract:
 
 - **letter**: Extracts sender name and address
 - **form**: Extracts form type and ID
@@ -46,20 +54,21 @@ The configuration defines 11 document classes, each with specific attributes to 
 - **resume**: Extracts full name and contact information
 - **scientific_publication**: Extracts title and authors
 - **memo**: Extracts memo date and sender
-- **advertisement**: Extracts product name and brand
 - **email**: Extracts from and to addresses
 - **questionnaire**: Extracts form title and respondent information
 - **specification**: Extracts product name and version
-- **generic**: Extracts document type and date
+- **budget**: Extracts budget period and total amount
+- **news_article**: Extracts article headline and publication date
+- **handwritten**: Extracts document type and key content summary
+- **language**: Extracts detected language and document type
 
 ### Classification Settings
 
-- **Model**: Amazon Nova Pro
-- **Method**: Text-based holistic classification
-- **Temperature**: 0 (deterministic outputs)
+- **Model**: SageMaker fine-tuned UDOP model
+- **Method**: Page-level classification using vision model
 - **Top-k**: 200
 
-The classification component analyzes document content and structure to determine the document type and page boundaries within multi-page documents.
+The classification component uses a fine-tuned vision model to analyze document page images and determine the document type and page boundaries within multi-page documents.
 
 ### Extraction Settings
 
@@ -77,9 +86,17 @@ The extraction component identifies and extracts specific attributes from each d
 
 The summarization component creates concise summaries of documents with citations and hover functionality.
 
-## Sample Documents
+## Test Set
 
-Sample documents for this configuration will be added in a future update. These will demonstrate the configuration's effectiveness across various document types.
+This configuration is designed to work with the **RVL-CDIP-N-MP-Packets** test set:
+
+- **500 multi-page packets** containing 2-10 distinct documents each
+- **7,330 total pages** across all packets
+- **2,027 document sections** for classification and splitting evaluation
+- **Automatic deployment** during stack creation
+- **Complete ground truth** for evaluation of page-level classification and document splitting accuracy
+
+The test set is automatically available in the Test Studio UI after stack deployment. See the [Test Studio documentation](../../../docs/test-studio.md) for usage instructions.
 
 ## How to Use
 
@@ -89,7 +106,7 @@ To use this default configuration:
 
 2. **As a Template**: Copy this configuration to a new directory and modify it for your specific use case:
    ```bash
-   cp -r config_library/pattern-2/default config_library/pattern-2/your_use_case_name
+   cp -r config_library/pattern-3/rvl-cdip config_library/pattern-3/your_use_case_name
    ```
 
 3. **For Testing**: Use this configuration as a baseline for comparing the performance of customized configurations.

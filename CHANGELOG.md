@@ -5,6 +5,19 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
+  - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
+  - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
+  - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing
+  - **Packet Statistics**: 7,330 total pages across 2,027 document sections with average of 14.7 pages and 4.1 sections per packet
+  - **Ground Truth Included**: Page-level classification and document boundary information for each packet. Extraction ground truth is not included.
+  - **Evaluation Capabilities**: Enables testing of page-level classification accuracy, document splitting accuracy, and split order preservation. Does NOT enable testing of extraction accuracy since there is no extraction ground truth for this data set
+  - Test set available in Test Studio UI alongside RealKIE-FCC-Verified and OmniAI-OCR-Benchmark datasets
+  - Corresponding configs available in Configuration Library
+  - Ideal for evaluating document splitting and classification accuracy in complex multi-document scenarios
+
 ### Changed
 
 - **Lambda Layers Architecture for Improved Build Efficiency**
