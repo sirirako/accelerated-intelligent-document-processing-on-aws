@@ -314,6 +314,7 @@ def create_testset_record(version: str, description: str, file_count: int):
         'SK': 'metadata',
         'id': TEST_SET_ID,
         'name': DATASET_NAME,
+        'description': description,
         'filePattern': '',
         'fileCount': file_count,
         'status': 'COMPLETED',

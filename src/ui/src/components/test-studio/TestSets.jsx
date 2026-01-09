@@ -43,6 +43,7 @@ const TestSets = () => {
   const [showAddUploadModal, setShowAddUploadModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newTestSetName, setNewTestSetName] = useState('');
+  const [newTestSetDescription, setNewTestSetDescription] = useState('');
   const [filePattern, setFilePattern] = useState('');
   const [selectedBucket, setSelectedBucket] = useState(BUCKET_OPTIONS[0]);
   const [zipFile, setZipFile] = useState(null);
@@ -211,6 +212,7 @@ const TestSets = () => {
         query: ADD_TEST_SET,
         variables: {
           name: newTestSetName.trim(),
+          description: newTestSetDescription.trim(),
           filePattern: filePattern.trim(),
           bucketType: selectedBucket.value,
           fileCount,
@@ -236,6 +238,7 @@ const TestSets = () => {
           }
         });
         setNewTestSetName('');
+        setNewTestSetDescription('');
         setFilePattern('');
         setSelectedBucket(BUCKET_OPTIONS[0]);
         setFileCount(0);
@@ -306,6 +309,7 @@ const TestSets = () => {
           input: {
             fileName: zipFile.name,
             fileSize: zipFile.size,
+            description: newTestSetDescription.trim(),
           },
         },
       });
@@ -336,6 +340,7 @@ const TestSets = () => {
       const newTestSet = {
         id: response.testSetId,
         name: newTestSetName.trim(),
+        description: newTestSetDescription.trim(),
         status: 'QUEUED',
         fileCount: null,
         createdAt: new Date().toISOString(),
@@ -360,6 +365,7 @@ const TestSets = () => {
       setError('');
       setShowAddUploadModal(false);
       setNewTestSetName('');
+      setNewTestSetDescription('');
       setZipFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -426,18 +432,15 @@ const TestSets = () => {
     {
       id: 'id',
       header: 'Test Set ID',
-      cell: (item) => {
-        const region = import.meta.env.VITE_AWS_REGION;
-        const bucketName = import.meta.env.VITE_TEST_SET_BUCKET_NAME;
-        const s3Url = `https://s3.console.aws.amazon.com/s3/buckets/${bucketName}?region=${region}&prefix=${item.id}/`;
-
-        return (
-          <a href={s3Url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-            {item.id}
-          </a>
-        );
-      },
+      cell: (item) => item.id,
       sortingField: 'id',
+    },
+    {
+      id: 'description',
+      header: 'Description',
+      cell: (item) => item.description || '-',
+      width: 200,
+      minWidth: 120,
     },
     {
       id: 'filePattern',
@@ -539,6 +542,8 @@ const TestSets = () => {
       )}
 
       <Table
+        resizableColumns
+        wrapLines
         columnDefinitions={columnDefinitions}
         items={filteredTestSets}
         selectedItems={selectedItems}
@@ -562,6 +567,7 @@ const TestSets = () => {
           setConfirmReplacement(false);
           setWarningMessage('');
           setSelectedBucket(BUCKET_OPTIONS[0]);
+          setNewTestSetDescription('');
         }}
         header="Add Test Set from Pattern"
         footer={
@@ -574,6 +580,7 @@ const TestSets = () => {
                   setConfirmReplacement(false);
                   setWarningMessage('');
                   setSelectedBucket(BUCKET_OPTIONS[0]);
+                  setNewTestSetDescription('');
                 }}
               >
                 Cancel
@@ -601,6 +608,14 @@ const TestSets = () => {
             />
           </FormField>
 
+          <FormField label="Description" description="Optional description for this test set">
+            <Input
+              value={newTestSetDescription}
+              onChange={({ detail }) => setNewTestSetDescription(detail.value)}
+              placeholder="Test set description"
+            />
+          </FormField>
+
           <FormField label="Source Bucket" description="Select the bucket to search for files">
             <SpaceBetween direction="vertical" size="xs">
               <Select
@@ -611,18 +626,6 @@ const TestSets = () => {
                 }}
                 options={BUCKET_OPTIONS}
               />
-              {(selectedBucket.value === 'input' || selectedBucket.value === 'testset') && (
-                <Box>
-                  <Link
-                    href={`https://s3.console.aws.amazon.com/s3/buckets/${
-                      selectedBucket.value === 'input' ? import.meta.env.VITE_INPUT_BUCKET_NAME : import.meta.env.VITE_TEST_SET_BUCKET_NAME
-                    }?region=${import.meta.env.VITE_AWS_REGION}`}
-                    external
-                  >
-                    Browse {selectedBucket.label}
-                  </Link>
-                </Box>
-              )}
               <ExpandableSection
                 headerText="Bucket Structure Help"
                 variant="footer"
@@ -728,6 +731,7 @@ const TestSets = () => {
           setError('');
           setZipFile(null);
           setNewTestSetName('');
+          setNewTestSetDescription('');
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
           }
@@ -745,6 +749,7 @@ const TestSets = () => {
                   setError('');
                   setZipFile(null);
                   setNewTestSetName('');
+                  setNewTestSetDescription('');
                   if (fileInputRef.current) {
                     fileInputRef.current.value = '';
                   }
@@ -762,6 +767,14 @@ const TestSets = () => {
         <SpaceBetween size="m">
           {error && <Alert type="error">{error}</Alert>}
           {warningMessage && <Alert type="warning">{warningMessage}</Alert>}
+
+          <FormField label="Description" description="Optional description for this test set">
+            <Input
+              value={newTestSetDescription}
+              onChange={({ detail }) => setNewTestSetDescription(detail.value)}
+              placeholder="Test set description"
+            />
+          </FormField>
 
           <FormField label="Test Set Zip File" description="Select a zip file containing your test set structure">
             <ExpandableSection

@@ -22,6 +22,7 @@ def handler(event, context):
         input_data = event['arguments']['input']
         test_set_id = input_data['testSetId']
         test_context = input_data.get('context', '')
+        number_of_files = input_data.get('numberOfFiles')
         tracking_table = os.environ['TRACKING_TABLE']
         config_table = os.environ['CONFIG_TABLE']
         
@@ -30,6 +31,17 @@ def handler(event, context):
         if not test_set:
             raise ValueError(f"Test set with ID '{test_set_id}' not found")
         
+        # Determine actual file count to process
+        test_set_file_count = test_set['fileCount']
+        files_to_process = test_set_file_count
+        
+        if number_of_files is not None:
+            if number_of_files <= 0:
+                raise ValueError("numberOfFiles must be greater than 0")
+            if number_of_files > test_set_file_count:
+                raise ValueError(f"numberOfFiles ({number_of_files}) cannot exceed test set file count ({test_set_file_count})")
+            files_to_process = number_of_files
+        
         # Create test run identifier using test set name
         timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
         test_run_id = f"{test_set['name']}-{timestamp}"
@@ -37,29 +49,35 @@ def handler(event, context):
         # Capture current config
         config = _capture_config(config_table)
         
-        # Store initial test run metadata using test set file count
-        _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set['name'], config, [], test_context, test_set['fileCount'])
+        # Store initial test run metadata
+        _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set['name'], config, [], test_context, files_to_process)
         
         # Send file copying job to SQS queue
         queue_url = os.environ['FILE_COPY_QUEUE_URL']
         
+        message_body = {
+            'testRunId': test_run_id,
+            'testSetId': test_set_id,
+            'trackingTable': tracking_table
+        }
+        
+        # Only include numberOfFiles if it was specified
+        if number_of_files is not None:
+            message_body['numberOfFiles'] = number_of_files
+        
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=json.dumps({
-                'testRunId': test_run_id,
-                'testSetId': test_set_id,
-                'trackingTable': tracking_table
-            })
+            MessageBody=json.dumps(message_body)
         )
         
-        logger.info(f"Queued test run {test_run_id} for test set {test_set_id}")
+        logger.info(f"Queued test run {test_run_id} for test set {test_set_id} with {files_to_process} files")
         
         # Return immediately
         return {
             'testRunId': test_run_id,
             'testSetName': test_set['name'],
             'status': 'QUEUED',
-            'filesCount': test_set['fileCount'],
+            'filesCount': files_to_process,
             'completedFiles': 0,
             'createdAt': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         }
