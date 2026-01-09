@@ -28,6 +28,7 @@ def handler(event, context):
             
             test_run_id = message['testRunId']
             test_set_id = message['testSetId']
+            number_of_files = message.get('numberOfFiles')  # Optional parameter
             tracking_table = message['trackingTable']
             
             # Get environment variables
@@ -44,7 +45,13 @@ def handler(event, context):
             if not input_files:
                 raise ValueError(f"No input files found for test set: {test_set_id}")
             
-            logger.info(f"Found {len(input_files)} input files and {len(baseline_files)} baseline files")
+            # Limit files if numberOfFiles is specified
+            if number_of_files is not None:
+                input_files = input_files[:number_of_files]
+                baseline_files = baseline_files[:number_of_files]
+                logger.info(f"Limited to first {number_of_files} files")
+            
+            logger.info(f"Processing {len(input_files)} input files and {len(baseline_files)} baseline files")
             
             # Update test run with file list and set status to IN_PROGRESS
             _update_tracking_in_progress(tracking_table, test_run_id, input_files)

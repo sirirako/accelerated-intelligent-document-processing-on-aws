@@ -46,6 +46,7 @@ def add_test_set_from_upload(args):
     
     input_data = args['input']
     zip_filename = input_data['fileName']
+    description = input_data.get('description', '')  # Optional field
     
     # Validate zip file extension
     if not zip_filename.lower().endswith('.zip'):
@@ -84,6 +85,7 @@ def add_test_set_from_upload(args):
         'SK': 'metadata',
         'id': test_set_id,
         'name': test_set_name,
+        'description': description,
         'filePattern': '',  # Empty for uploaded test sets
         'status': 'QUEUED',
         'createdAt': now
@@ -105,6 +107,7 @@ def add_test_set(args):
     logger.info(f"Adding test set: {args}")
     
     test_set_name = args['name']
+    description = args.get('description', '')  # Optional field
     file_count = args['fileCount']
     
     # Generate test set ID with name format, replace spaces with dashes
@@ -118,6 +121,7 @@ def add_test_set(args):
         'SK': 'metadata',
         'id': test_set_id,
         'name': test_set_name,
+        'description': description,
         'filePattern': args['filePattern'],
         'fileCount': file_count,
         'status': 'QUEUED',
@@ -147,6 +151,7 @@ def add_test_set(args):
     return {
         'id': test_set_id,
         'name': test_set_name,
+        'description': description,
         'filePattern': args['filePattern'],
         'fileCount': file_count,
         'status': 'QUEUED',
@@ -212,6 +217,7 @@ def get_test_sets():
         result.append({
             'id': test_set_id,
             'name': item['name'],
+            'description': item.get('description', ''),
             'filePattern': item.get('filePattern', ''),
             'fileCount': item.get('fileCount'),  # Returns None if attribute doesn't exist
             'status': item.get('status'),
@@ -271,6 +277,7 @@ def get_test_sets():
                     result.append({
                         'id': prefix,
                         'name': prefix,
+                        'description': '',  # Direct uploads don't have descriptions
                         'filePattern': '',
                         'fileCount': validation_result['input_count'],
                         'status': status,
@@ -436,6 +443,7 @@ def _create_test_set_tracking_entry(test_set_id, name, file_count, status, error
             'SK': 'metadata',
             'id': test_set_id,
             'name': name,
+            'description': '',  # Direct uploads don't have descriptions
             'filePattern': '',
             'fileCount': file_count,
             'status': status,
