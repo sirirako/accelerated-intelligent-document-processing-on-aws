@@ -832,61 +832,61 @@ classes:
     type: object
     x-aws-idp-document-type: letter
     properties:
-      date:
+      Date:
         type: string
         description: >-
           The date when the letter was written. Look for a standalone date or
           text following phrases like 'written on' or 'dated'.
-      cc:
+      Cc:
         type: string
         description: >-
           Names of people who receive a copy of the letter in addition to the
           main recipient. Often preceded by 'cc', 'carbon copy', or 'copy to'.
-      sender_address:
+      SenderAddress:
         type: string
         description: >-
           The physical address of the sender, typically appearing at the top of
           the letter. May be labeled as 'address', 'location', or 'from
           address'.
         x-aws-idp-confidence-threshold: '0.8'
-      signature:
+      Signature:
         type: string
         description: >-
           The handwritten name or mark of the sender at the end of the letter.
           May follow terms like 'signed by' or simply appear at the bottom of
           the document.
-      subject:
+      Subject:
         type: string
         description: >-
           The topic or main point of the letter. Often preceded by 'subject',
           'RE:', or 'regarding'.
-      sender_name:
+      SenderName:
         type: string
         description: >-
           The name of the person or entity who wrote or sent the letter. Look
           for text following or near terms like 'from', 'sender', 'authored by',
           'written by', or at the end of the letter before a signature.
         x-aws-idp-confidence-threshold: '0.85'
-      recipient_address:
+      RecipientAddress:
         type: string
         description: >-
           The physical address where the letter is to be delivered. Often
           labeled as 'to address' or 'delivery address', typically appearing
           below the recipient name.
-      recipient_name:
+      RecipientName:
         type: string
         description: >-
           The name of the person or entity receiving the letter. Look for this
           after 'to', 'recipient', 'addressee', or at the beginning of the
           letter.
         x-aws-idp-confidence-threshold: '0.9'
-      letter_type:
+      LetterType:
         type: string
         description: >-
           The category or classification of the letter, such as 'complaint',
           'inquiry', 'invitation', etc. May be indicated by 'type' or
           'category'.
-      reference_number:
+      ReferenceNumber:
         type: string
         description: >-
           An identifying number or code associated with the letter. Look for
@@ -899,55 +899,55 @@ classes:
     type: object
     x-aws-idp-document-type: form
     properties:
-      submission_date:
+      SubmissionDate:
         type: string
         description: >-
           The date when the form was submitted or filed. Look for text near
           'date', 'submitted on', or 'filed on'.
-      comments:
+      Comments:
         type: string
         description: >-
           Additional notes or remarks about the form. Look for sections labeled
           'notes', 'remarks', or 'comments'.
-      processed_by:
+      ProcessedBy:
         type: string
         description: >-
           The name of the person or department that processed the form. May be
           indicated by 'processor', 'handled by', or 'approved by'.
-      approval_status:
+      ApprovalStatus:
         type: string
         description: >-
           The current state of approval for the form, such as 'approved',
           'pending', 'rejected', etc. Look for terms like 'status', 'approved',
           or 'pending'.
-      form_id:
+      FormId:
         type: string
         description: >-
           The unique identifier for the form, typically a number or alphanumeric
           code. Often labeled as 'form number', 'id', or 'reference number'.
-      submitter_id:
+      SubmitterId:
         type: string
         description: >-
           An identification number for the person submitting the form, such as
           social security number, employee ID, etc. Often labeled as 'id
           number', 'identification', or 'reference'.
-      submitter_name:
+      SubmitterName:
         type: string
         description: >-
           The name of the person who submitted the form. May be labeled as
           'name', 'submitted by', or 'filed by'.
-      processing_date:
+      ProcessingDate:
         type: string
         description: >-
           The date when the form was processed or completed. Look for labels
           like 'processed on' or 'completion date'.
-      form_type:
+      FormType:
         type: string
         description: >-
           The category or purpose of the form, such as 'application',
           'registration', 'request', etc. May be identified by 'form name',
           'document type', or 'form category'.
-      department:
+      Department:
         type: string
         description: >-
           The organizational unit responsible for the form. Often abbreviated as
@@ -960,78 +960,78 @@ classes:
     type: object
     x-aws-idp-document-type: invoice
     properties:
-      customer_address:
+      CustomerAddress:
         type: string
         description: >-
           The address where the invoice is sent or goods are delivered. May be
           labeled as 'billing address' or 'ship to'.
-      due_date:
+      DueDate:
         type: string
         description: >-
           The deadline by which payment must be made. Look for 'due date',
           'payment due', or 'payable by'.
-      quantities:
+      Quantities:
         type: string
         description: >-
           The number of each item provided. Often abbreviated as 'qty' or may
           appear as 'quantity' or 'amount' in a table column.
-      vendor_name:
+      VendorName:
         type: string
         description: >-
           The name of the business providing goods or services. May be labeled
           as 'vendor', 'seller', 'supplier', or simply appear prominently at the
           top of the invoice.
-      tax:
+      Tax:
         type: string
         description: >-
           The amount of tax charged on the invoice. May be labeled as 'tax',
           'VAT', or 'GST', usually appearing after the subtotal.
-      payment_terms:
+      PaymentTerms:
         type: string
         description: >-
           The conditions under which payment should be made, such as '30 days',
           'COD', etc. Often labeled as 'terms', 'payment terms', or
           'conditions'.
-      vendor_address:
+      VendorAddress:
         type: string
         description: >-
           The physical location of the vendor. Look for 'address', 'location',
           or 'business address', typically near the vendor name.
-      invoice_date:
+      InvoiceDate:
         type: string
         description: >-
           The date when the invoice was issued. May be labeled as 'date',
           'invoice date', or 'billing date'.
-      unit_prices:
+      UnitPrices:
         type: string
         description: >-
           The cost per unit of each item. May be labeled as 'price', 'rate', or
           'unit cost'.
-      po_number:
+      PoNumber:
         type: string
         description: >-
           The purchase order reference number. May be abbreviated as 'PO' or
           appear as 'purchase order' or 'order reference'.
-      total_amount:
+      TotalAmount:
         type: string
         description: >-
           The final amount to be paid including all charges. Look for 'total',
           'grand total', or 'amount due', typically the last figure on the
           invoice.
-      subtotal:
+      Subtotal:
         type: string
         description: >-
           The sum of all items before tax and other charges. Look for 'subtotal'
           or 'net amount', typically found toward the bottom of the invoice.
-      customer_name:
+      CustomerName:
         type: string
         description: >-
           The name of the person or entity being billed. Often preceded by
           'customer', 'buyer', or 'bill to'.
-      invoice_number:
+      InvoiceNumber:
         type: string
         description: The unique identifier for the invoice. Look for 'invoice no', 'invoice
-      items:
+      Items:
         type: string
         description: >-
           Descriptions of the products or services provided. Look for a section
@@ -1045,54 +1045,54 @@ classes:
     type: object
     x-aws-idp-document-type: resume
     properties:
-      skills:
+      Skills:
         type: string
         description: >-
           The abilities and competencies of the applicant. Look for a section
           titled 'skills', 'competencies', or 'expertise'.
-      full_name:
+      FullName:
         type: string
         description: >-
           The complete name of the job applicant, typically appearing
           prominently at the top of the resume. May be simply labeled as 'name'
           or 'applicant name'.
-      education:
+      Education:
         type: string
         description: >-
           The academic history and qualifications of the applicant. Look for a
           section with 'education', 'academic background', or 'qualifications'.
-      achievements:
+      Achievements:
         type: string
         description: >-
           Notable accomplishments and recognition. May be labeled as
           'achievements', 'accomplishments', or 'awards'.
-      languages:
+      Languages:
         type: string
         description: >-
           Languages known and level of proficiency. Often appears in a section
           labeled 'languages' or 'language proficiency'.
-      references:
+      References:
         type: string
         description: >-
           People who can vouch for the applicant's abilities. Look for
           'references' or 'referees', typically at the end of the resume.
-      contact_info:
+      ContactInfo:
         type: string
         description: >-
           The phone number, email, and address of the applicant. Look for a
           section with 'contact', 'phone', 'email', or 'address', usually near
           the top of the resume.
-      experience:
+      Experience:
         type: string
         description: >-
           The work history and previous roles of the applicant. Often labeled as
           'experience', 'work history', or 'employment'.
-      certifications:
+      Certifications:
         type: string
         description: >-
           Professional credentials and qualifications. May be labeled as
           'certifications', 'certificates', or 'credentials'.
-      objective:
+      Objective:
         type: string
         description: >-
           A statement outlining the applicant's career goals. May be labeled as
@@ -1106,69 +1106,69 @@ classes:
     type: object
     x-aws-idp-document-type: scientific_publication
     properties:
-      funding:
+      Funding:
         type: string
         description: >-
           Financial support received for the research. May be indicated by
           'funding', 'grants', or 'financial support'.
-      keywords:
+      Keywords:
         type: string
         description: >-
           Terms that represent the core topics of the paper. Look for a list
           labeled 'keywords' or 'key terms', typically after the abstract.
-      issue:
+      Issue:
         type: string
         description: >-
           The issue number of the journal. May be labeled as 'issue' or
           abbreviated as 'no'.
-      journal_name:
+      JournalName:
         type: string
         description: >-
           The name of the journal where the paper was published. Look for text
           following 'journal' or 'publication'.
-      abstract:
+      Abstract:
         type: string
         description: >-
           A brief summary of the paper's content. Often labeled as 'abstract' or
           'summary', appearing before the main text.
-      title:
+      Title:
         type: string
         description: >-
           The name of the scientific paper, typically appearing prominently at
           the beginning. May be labeled as 'title', 'paper title', or 'article
           title'.
-      volume:
+      Volume:
         type: string
         description: >-
           The volume number of the journal. Often abbreviated as 'vol' or may
           appear as 'volume'.
-      institutions:
+      Institutions:
         type: string
         description: >-
           The organizations with which the authors are affiliated. May be
           labeled as 'affiliations' or 'institutions'.
-      pages:
+      Pages:
         type: string
         description: >-
           The page range of the paper in the journal. Often abbreviated as 'pp'
           or may appear as 'pages'.
-      corresponding_author:
+      CorrespondingAuthor:
         type: string
         description: >-
           The author responsible for communication regarding the paper. Look for
           'corresponding author' or 'contact author'.
-      publication_date:
+      PublicationDate:
         type: string
         description: >-
           The date when the paper was published. May be preceded by 'published'
           or labeled as 'publication date'.
-      authors:
+      Authors:
         type: string
         description: >-
           The researchers who conducted the study and wrote the paper. Look for
           names after 'authors', 'contributors', or 'researchers', usually
           following the title.
-      doi:
+      Doi:
         type: string
         description: >-
           The Digital Object Identifier for the paper, a unique alphanumeric
@@ -1181,52 +1181,52 @@ classes:
     type: object
     x-aws-idp-document-type: memo
     properties:
-      memo_type:
+      MemoType:
         type: string
         description: >-
           The category or classification of the memo, such as 'informational',
           'directive', etc. May be indicated by 'type' or 'category'.
-      subject:
+      Subject:
         type: string
         description: >-
           The topic of the memo. Often preceded by 'subject', 'RE:', or
           'regarding'.
-      memo_date:
+      MemoDate:
         type: string
         description: >-
           The date when the memo was written. Look for 'date' or 'memo date',
           typically near the top of the document.
-      from:
+      From:
         type: string
         description: >-
           The person or department that wrote the memo. May be labeled as
           'from', 'sender', or 'author'.
-      action_required:
+      ActionRequired:
         type: string
         description: >-
           Steps that should be taken in response to the memo. Look for 'action',
           'response needed', or 'next steps'.
-      to:
+      To:
         type: string
         description: >-
           The intended recipient of the memo. Look for text after 'to',
           'recipient', or 'addressee'.
-      priority:
+      Priority:
         type: string
         description: >-
           The urgency level of the memo, such as 'urgent', 'high', 'normal',
           etc. Look for 'priority' or 'urgency'.
-      distribution_list:
+      DistributionList:
         type: string
         description: >-
           Additional people who receive copies of the memo. May be labeled as
           'distribution', 'cc', or 'copy'.
-      department:
+      Department:
         type: string
         description: >-
           The organizational unit issuing the memo. Often abbreviated as 'dept'
           or may appear as 'department' or 'division'.
-      reference_number:
+      ReferenceNumber:
         type: string
         description: >-
           An identifying number or code for the memo. Look for 'reference' or
@@ -1239,52 +1239,52 @@ classes:
     type: object
     x-aws-idp-document-type: advertisement
     properties:
-      features:
+      Features:
         type: string
         description: >-
           Notable qualities or benefits of the product. Often listed under
           'features', 'benefits', or 'highlights'.
-      call_to_action:
+      CallToAction:
         type: string
         description: >-
           What the advertisement encourages the reader to do. Often appears as
           imperative phrases like 'call now', 'visit today', or 'order now'.
-      price:
+      Price:
         type: string
         description: >-
           The cost of the product or service. Look for currency symbols or
           numbers followed by terms like 'price', 'cost', or 'special offer'.
-      terms_conditions:
+      TermsConditions:
         type: string
         description: >-
           Legal constraints or limitations of the offer. Look for fine print
           labeled as 'terms', 'conditions', or 'restrictions'.
-      validity_period:
+      ValidityPeriod:
         type: string
         description: >-
           The timeframe during which the offer is valid. Look for phrases like
           'valid until', 'offer ends', or 'expires'.
-      promotion_details:
+      PromotionDetails:
         type: string
         description: >-
           Information about special deals or discounts. May be introduced with
           'promotion', 'offer', or 'deal'.
-      contact_info:
+      ContactInfo:
         type: string
         description: >-
           How to reach the advertiser. May include phone numbers, websites, or
           addresses following 'contact', 'call', or 'visit'.
-      product_name:
+      ProductName:
         type: string
         description: >-
           The name of the item or service being advertised. Look for prominently
           displayed text that could be a 'product', 'item', or 'service' name.
-      brand:
+      Brand:
         type: string
         description: >-
           The company or manufacturer of the product. May be indicated by a logo
           or text labeled as 'brand', 'company', or 'manufacturer'.
-      disclaimer:
+      Disclaimer:
         type: string
         description: >-
           Legal statements limiting liability or making clarifications. Usually
@@ -1298,52 +1298,52 @@ classes:
     type: object
     x-aws-idp-document-type: email
     properties:
-      cc_address:
+      CcAddress:
         type: string
         description: >-
           Email addresses of additional recipients who receive copies. Look for
           'cc' or 'carbon copy' followed by one or more email addresses.
-      thread_id:
+      ThreadId:
         type: string
         description: >-
           An identifier for the email conversation. May be labeled as 'thread'
           or 'conversation', typically not visible to regular users.
-      date_sent:
+      DateSent:
         type: string
         description: >-
           The date and time when the email was sent. Look for 'date', 'sent on',
           or 'received', typically in the email header.
-      attachments:
+      Attachments:
         type: string
         description: >-
           Files included with the email. May be indicated by 'attached',
           'attachment', or 'enclosed', often with icons or file names.
-      bcc_address:
+      BccAddress:
         type: string
         description: >-
           Email addresses of hidden recipients. May be labeled as 'bcc' or
           'blind copy'.
-      subject:
+      Subject:
         type: string
         description: >-
           The topic of the email. Often preceded by 'subject', 'RE:', or
           'regarding'.
-      to_address:
+      ToAddress:
         type: string
         description: >-
           The email address of the primary recipient. May be labeled as 'to',
           'recipient', or 'sent to'.
-      message_id:
+      MessageId:
         type: string
         description: >-
           A unique identifier for the specific email. Look for 'message id' or
           'email id', usually hidden in the email metadata.
-      priority:
+      Priority:
         type: string
         description: >-
           The urgency level of the email, such as 'high', 'normal', etc. Look
           for 'priority' or 'importance'.
-      from_address:
+      FromAddress:
         type: string
         description: >-
           The email address of the sender. Look for text following 'from',
@@ -1357,93 +1357,93 @@ classes:
     type: object
     x-aws-idp-document-type: questionnaire
     properties:
-      instructions:
+      Instructions:
         type: string
         description: >-
           Guidance on how to complete the questionnaire. Look for text
           introduced by 'instructions', 'directions', or 'guidelines'.
-      Request handling satisfaction rating:
+      RequestHandlingSatisfactionRating:
         type: string
         description: >-
           Measures the customer's level of satisfaction with the way their
           request was handled. Checkbox selection on the satisfaction scale with
           options like "Very Satisfied", "Somewhat Satisfied" etc.
-      Future purchase intent:
+      FuturePurchaseIntent:
         type: string
         description: >-
           A measure of whether the user will continue to buy the product they
           contacted about. Checkbox selection with options like "I definitely
           would", "I probably would" etc.
-      Product recommendation intent:
+      ProductRecommendationIntent:
         type: string
         description: >-
           A measure of whether the caller is willing to recommend the product
           that they called about to others. Checkbox selection with options like
           "I definitely would", "I probably would" etc.
-      form_title:
+      FormTitle:
         type: string
         description: >-
           The name or title of the questionnaire. Look for prominently displayed
           text at the beginning that could be a 'title', 'survey name', or
           'questionnaire name'.
-      submission_date:
+      SubmissionDate:
         type: string
         description: >-
           The date when the questionnaire was completed. Look for 'date',
           'completed on', or 'submitted'.
-      required_fields:
+      RequiredFields:
         type: string
         description: >-
           Questions that must be answered to complete the questionnaire. Often
           marked with an asterisk (*) or explicitly labeled as 'required',
           'mandatory', or 'must answer'.
-      survey_id:
+      SurveyId:
         type: string
         description: >-
           A unique identifier for the questionnaire. May be labeled as 'survey
           id', 'reference number', or 'form id'.
-      Overall Satisfaction rating:
+      OverallSatisfactionRating:
         type: string
         description: >-
           This rating BEST describes the way the customer feels about the
           representative's response to their request for asssistance. Checkbox
           selection on the satisfaction scale with options like "I was very
           satisfied", "I was somewhat satisfied" etc.
-      section_headers:
+      SectionHeaders:
         type: string
         description: >-
           Titles for different segments of the questionnaire. Often appear as
           bold or larger text introducing a new 'section', 'part', or 'segment'.
-      respondent_info:
+      RespondentInfo:
         type: string
         description: >-
           Information about the person completing the questionnaire. May include
           fields labeled 'respondent', 'participant', or 'name'.
-      completion_status:
+      CompletionStatus:
         type: string
         description: >-
           Whether the questionnaire has been fully completed. Look for
           indicators of 'status', 'completion', or 'progress', often shown as a
           percentage or progress bar.
-      Phone call representative knowledge rating:
+      PhoneCallRepresentativeKnowledgeRating:
         type: string
         description: >-
           Measures the perceived knowledge level of the customer service
           representative during the phone interaction. Checkbox selection on the
           satisfaction scale with options like "Very Satisfied", "Somewhat
           Satisfied" etc.
-      response_options:
+      ResponseOptions:
         type: string
         description: >-
           Possible answers for multiple-choice questions. Look for checkboxes,
           radio buttons, or dropdown menus with 'options', 'choices', or
           'answers'.
-      question_types:
+      QuestionTypes:
         type: string
         description: >-
           The format of questions (multiple choice, free text, etc.). May be
           indicated by 'type', 'question format', or 'response format'.
-      Phone Call Representative Courtesy:
+      PhoneCallRepresentativeCourtesy:
         type: string
         description: >-
           Measures the perceived politeness and professionalism of the customer
@@ -1459,54 +1459,54 @@ classes:
     type: object
     x-aws-idp-document-type: specification
     properties:
-      standards:
+      Standards:
         type: string
         description: >-
           Industry guidelines or certifications met. Look for references to
           'standards', 'certifications', or 'compliance'.
-      approval_info:
+      ApprovalInfo:
         type: string
         description: >-
           Details about who has validated the specification. May be indicated by
           phrases like 'approved by', 'certified by', or 'validated'.
-      requirements:
+      Requirements:
         type: string
         description: >-
           Necessary conditions or resources. May be introduced with
           'requirements', 'prerequisites', or 'needed'.
-      materials:
+      Materials:
         type: string
         description: >-
           What the product is made from. May be indicated by 'materials',
           'composition', or phrases like 'made from'.
-      revision_history:
+      RevisionHistory:
         type: string
         description: >-
           Record of changes to the specification. Often labeled as 'revisions',
           'changes', or 'updates', typically in a table format.
-      product_name:
+      ProductName:
         type: string
         description: >-
           The name of the item being specified. Look for text labeled as
           'product', 'item', or 'model', typically appearing prominently at the
           beginning.
-      version:
+      Version:
         type: string
         description: >-
           The iteration or release number. May be indicated by 'version',
           'revision', or 'release', often followed by a number or code.
-      compatibility:
+      Compatibility:
         type: string
         description: >-
           What the product can work with. Look for text following 'compatible
           with', 'works with', or 'supports'.
-      technical_details:
+      TechnicalDetails:
         type: string
         description: >-
           Specific characteristics and capabilities. Look for sections labeled
           'specifications', 'tech specs', or 'details', often presented in a
           detailed list.
-      dimensions:
+      Dimensions:
         type: string
         description: >-
           Physical measurements of the product. Often labeled as 'dimensions',
@@ -1520,57 +1520,21 @@ classes:
     type: object
     x-aws-idp-document-type: generic
     properties:
-      content_summary:
+      Language:
         type: string
-        description: >-
-          A brief description of the document's contents. Look for 'summary',
-          'abstract', or 'overview', typically appearing early in the document.
-      comments:
+        description: The dominant language used in the document text
+      Title:
         type: string
-        description: >-
-          Additional notes or remarks about the document. Look for sections
-          labeled 'notes', 'remarks', or 'comments'.
-      author:
+        description: The title of the document, if known - otherwise 'unknown'
+      Author:
         type: string
-        description: >-
-          The person who created the document. Look for 'author', 'creator', or
-          'sender'.
-      document_date:
+        description: The author or authors of the document, if known - otherwise 'unknown'
+      Summary:
         type: string
-        description: >-
-          The date when the document was created. May be labeled as 'date',
-          'created on', or 'issued on'.
-      recipient:
+        description: A 1-paragraph summary of the contents of the document
+      Metadata:
         type: string
-        description: >-
-          The person for whom the document is intended. May be indicated by
-          'recipient', 'to', or 'addressee'.
-      document_id:
-        type: string
-        description: >-
-          A unique identifier for the document. Look for 'id', 'reference', or
-          'number', typically appearing near the top of the document.
-      title:
-        type: string
-        description: >-
-          The name or heading of the document. Often appears prominently at the
-          beginning, may be labeled as 'title', 'heading', or 'subject'.
-      department:
-        type: string
-        description: >-
-          The organizational unit associated with the document. Often
-          abbreviated as 'dept' or may appear as 'department' or 'division'.
-      document_type:
-        type: string
-        description: >-
-          The classification or category of the document. Look for terms like
-          'type', 'category', or 'class' that indicate what kind of document
-          this is.
-      status:
-        type: string
-        description: >-
-          The current state of the document, such as 'draft', 'final',
-          'pending', etc. May be labeled as 'status', 'state', or 'condition'.
+        description: Additional metadata about the document, if any
     $id: generic
   - $schema: https://json-schema.org/draft/2020-12/schema
     $defs:
@@ -1716,13 +1680,13 @@ classes:
       AdditionalDetails:
         description: Additional details and notes.
         $ref: '#/$defs/AdditionalDetails'
-      document_class:
+      DocumentClass:
         type: string
         description: Short name based on document content.
       ExpenseDetails:
         description: Details of different types of expenses.
         $ref: '#/$defs/ExpenseDetails'
-      document_description:
+      DocumentDescription:
         type: string
         description: Description about the document in less than 50 words.
       SummaryInformation:
@@ -1734,47 +1698,47 @@ classes:
     type: object
     x-aws-idp-document-type: language
     properties:
-      document_description:
+      Language:
         type: string
-        description: A 1-paragraph description of the contents of the document
+        description: The dominant language used in the document text
+      Title:
+        type: string
+        description: The title of the document, if known - otherwise 'unknown'
+      Author:
+        type: string
+        description: The author or authors of the document, if known - otherwise 'unknown'
+      Summary:
+        type: string
+        description: A 1-paragraph summary of the contents of the document
+      Metadata:
+        type: string
+        description: Additional metadata about the document, if any
     $id: language
   - $schema: https://json-schema.org/draft/2020-12/schema
     $defs:
       Article-Content:
         type: object
-        description: Content of the newspaper article.
+        description: Content of the news article.
         properties:
           Event-Description:
             type: string
-            description: Description of the event (Beatles' performance).
+            description: Description of the news event.
           Introduction:
             type: string
             description: Introduction paragraph of the article.
-          Fan-Reaction:
+          Summary:
             type: string
-            description: Reaction of the fans to the performance.
-          Crowd-Details:
-            type: string
-            description: Details about the crowd at the event.
-          Artist-Comments:
-            type: string
-            description: Comments made by the artists (Beatles).
-          Security-Measures:
-            type: string
-            description: Security measures taken for the event.
-          Conclusion:
-            type: string
-            description: Conclusion paragraph of the article.
+            description: One paragraph summary of the article.
       Article-Metadata:
         type: object
-        description: Metadata about the newspaper article.
+        description: Metadata about the news article.
         properties:
           Author:
             type: string
             description: Author of the article.
-          Newspaper-Name:
+          Publisher-Name:
             type: string
-            description: Name of the newspaper.
+            description: Name of the newspaper or news source publishing the article.
           Publication-Date:
             type: string
             description: Date of publication.
@@ -1786,42 +1750,34 @@ classes:
     x-aws-idp-document-type: news_article
     properties:
       Article-Content:
-        description: Content of the newspaper article.
+        description: Content of the news article.
         $ref: '#/$defs/Article-Content'
       Article-Metadata:
-        description: Metadata about the newspaper article.
+        description: Metadata about the news article.
         $ref: '#/$defs/Article-Metadata'
     $id: news_article
   - $schema: https://json-schema.org/draft/2020-12/schema
-    $defs:
-      Journal-Entry:
-        type: object
-        description: Details of the journal entry
-        properties:
-          Conversations:
-            type: string
-            description: Summary of conversations with others
-          Date:
-            type: string
-            description: Date of the journal entry
-          Reflections:
-            type: string
-            description: Personal reflections and thoughts
-          Dreams:
-            type: string
-            description: Description of dreams and their interpretation
-          Business:
-            type: string
-            description: Thoughts and considerations about business ventures
     description: >-
       A handwritten document, journal, memo, doodle, notes, or any other image
       with hand writing.
     type: object
     x-aws-idp-document-type: handwritten
     properties:
-      description:
-        description: a 1-paragraph summary of the document contents
-        $ref: '#/$defs/Journal-Entry'
+      Language:
+        type: string
+        description: The dominant language used in the document text
+      Title:
+        type: string
+        description: The title of the document, if known - otherwise 'unknown'
+      Author:
+        type: string
+        description: The author or authors of the document, if known - otherwise 'unknown'
+      Summary:
+        type: string
+        description: A 1-paragraph summary of the contents of the document
+      Metadata:
+        type: string
+        description: Additional metadata about the document, if any
     $id: handwritten
 discovery:
   without_ground_truth:
