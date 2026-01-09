@@ -33,6 +33,10 @@ Mappings:
       ConfigPath: "lending-package-sample"
     realkie-fcc-verified:
       ConfigPath: "realkie-fcc-verified"
+    ocr-benchmark:
+      ConfigPath: "ocr-benchmark"
+    rvl-cdip:
+      ConfigPath: "rvl-cdip"
     default:
       ConfigPath: "lending-package-sample"
 
@@ -47,11 +51,15 @@ Mappings:
       ConfigPath: "bank-statement-sample"
     realkie-fcc-verified:
       ConfigPath: "realkie-fcc-verified"
+    ocr-benchmark:
+      ConfigPath: "ocr-benchmark"
     default:
       ConfigPath: "rvl-cdip"
 
   Pattern3ConfigurationMap:
     rvl-cdip:
+      ConfigPath: "rvl-cdip"
+    rvl-cdip-package-sample:  # for backward compatibility when updating existing stacks
       ConfigPath: "rvl-cdip"
     default:
       ConfigPath: "rvl-cdip"
@@ -113,6 +121,8 @@ Parameters:
     AllowedValues:
       - "lending-package-sample"
       - "realkie-fcc-verified"
+      - "ocr-benchmark"
+      - "rvl-cdip"
       - "default"
     Description: >-
       Select the configuration preset for Pattern 1. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: This selected configuration will be replaced by the Custom Configuration Path if specified.
@@ -128,6 +138,7 @@ Parameters:
       - "rvl-cdip-with-few-shot-examples"
       - "bank-statement-sample"
       - "realkie-fcc-verified"
+      - "ocr-benchmark"
       - "default"
     Description: >-
       Select the configuration preset for Pattern 2. Each configuration contains pre-tuned settings for specific document processing scenarios see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
@@ -154,6 +165,7 @@ Parameters:
     AllowedValues:
       - "rvl-cdip"
       - "default"
+      - "rvl-cdip-package-sample" # for backward compatibility when updating existing stacks
     Description: >-
       Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
 
