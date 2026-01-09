@@ -154,7 +154,7 @@ def download_and_extract_dataset(extract_dir: Path) -> Path:
     Download data.tar.gz from HuggingFace and extract to temporary directory.
     
     Returns:
-        Path to the extracted assets directory
+        Path to the extracted assets directory containing document type folders
     """
     logger.info(f"Downloading dataset from: {HF_DATA_URL}")
     
@@ -170,13 +170,59 @@ def download_and_extract_dataset(extract_dir: Path) -> Path:
     with tarfile.open(fileobj=tar_bytes, mode='r:gz') as tar:
         tar.extractall(path=extract_dir)
     
-    # Find the assets directory (should be rvl-cdip-nmp-assets or similar)
-    for item in extract_dir.iterdir():
-        if item.is_dir():
-            logger.info(f"Found extracted directory: {item}")
-            return item
+    # Find the assets directory - handle two common structures:
+    # 1. Tar contains wrapper directory with doc type folders inside
+    # 2. Tar contains doc type folders directly at top level
     
-    raise RuntimeError("No directory found in extracted archive")
+    # Get all top-level items
+    top_level_items = list(extract_dir.iterdir())
+    directories = [item for item in top_level_items if item.is_dir()]
+    
+    logger.info(f"Found {len(directories)} directories in extracted archive:")
+    for d in directories:
+        logger.info(f"  - {d.name}")
+    
+    # Expected document type folders from the manifest
+    expected_doc_types = {
+        'invoice', 'email', 'form', 'letter', 'memo', 'resume', 
+        'budget', 'news article', 'scientific publication', 
+        'specification', 'questionnaire', 'handwritten', 'language'
+    }
+    
+    # Case 1: Single directory - check if it's the wrapper containing doc types
+    if len(directories) == 1:
+        wrapper_dir = directories[0]
+        logger.info(f"Checking if '{wrapper_dir.name}' contains document type folders...")
+        
+        subdirs = {d.name.lower() for d in wrapper_dir.iterdir() if d.is_dir()}
+        matching_types = expected_doc_types.intersection(subdirs)
+        
+        if len(matching_types) >= 3:  # Require at least 3 matching doc types
+            logger.info(f"Found {len(matching_types)} document type folders in '{wrapper_dir.name}'")
+            logger.info(f"Using assets directory: {wrapper_dir}")
+            return wrapper_dir
+        else:
+            logger.warning(f"Directory '{wrapper_dir.name}' doesn't contain expected doc types")
+            logger.warning(f"Found subdirs: {sorted(subdirs)}")
+    
+    # Case 2: Multiple directories - check if doc types are at top level
+    top_level_names = {d.name.lower() for d in directories}
+    matching_types = expected_doc_types.intersection(top_level_names)
+    
+    if len(matching_types) >= 3:  # Require at least 3 matching doc types
+        logger.info(f"Found {len(matching_types)} document type folders at top level")
+        logger.info(f"Using extract directory as assets directory: {extract_dir}")
+        return extract_dir
+    
+    # Case 3: Unexpected structure - provide diagnostic info
+    error_msg = (
+        f"Unexpected archive structure. Found {len(directories)} directories but "
+        f"could not locate document type folders.\n"
+        f"Top-level directories: {[d.name for d in directories]}\n"
+        f"Expected document types: {sorted(expected_doc_types)}"
+    )
+    logger.error(error_msg)
+    raise RuntimeError(error_msg)
 
 
 def create_packet_pdf(
