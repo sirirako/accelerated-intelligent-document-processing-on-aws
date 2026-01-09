@@ -319,7 +319,8 @@ def create_testset_record(version: str, description: str, file_count: int):
         'status': 'COMPLETED',
         'createdAt': timestamp,
         'datasetVersion': version,
-        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified'
+        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified',
+        'description': description or 'RealKIE-FCC-Verified dataset from HuggingFace'
     }
     
     table.put_item(Item=item)
