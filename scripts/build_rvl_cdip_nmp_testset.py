@@ -35,7 +35,7 @@ from pypdf import PdfReader, PdfWriter
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-NUM_PACKETS = 500
+NUM_PACKETS = 10
 
 
 def normalize_doc_type(doc_type: str) -> str:
