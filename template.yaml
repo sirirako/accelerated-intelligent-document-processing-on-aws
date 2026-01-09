@@ -949,19 +949,7 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
-          CLOUDWATCH_LOG_GROUPS: !Join
-            - ","
-            - - !Ref QueueSenderLogGroup
-              - !Ref QueueProcessorLogGroup
-              - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionV2LogGroup
-              - !If
-                - IsPattern1
-                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-                - !If
-                  - IsPattern2
-                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+          SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
       LoggingConfig:
         LogGroup: !Ref AgentCoreAnalyticsLambdaLogGroup
       Policies:
@@ -3330,6 +3318,20 @@ Resources:
           - True
           - False
         # Runtime-resolved values for APPSYNCSTACK decoupling
+        # CloudWatch log groups moved here to decouple Agent Lambda functions from Pattern stacks
+        CloudWatchLogGroups: !Join
+          - ","
+          - - !Ref QueueSenderLogGroup
+            - !Ref QueueProcessorLogGroup
+            - !Ref WorkflowTrackerLogGroup
+            - !Ref SaveReportingDataFunctionV2LogGroup
+            - !If
+              - IsPattern1
+              - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
+              - !If
+                - IsPattern2
+                - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
+                - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
         StateMachineArn: !If
           - IsPattern3
           - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
@@ -4632,19 +4634,7 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
-          CLOUDWATCH_LOG_GROUPS: !Join
-            - ","
-            - - !Ref QueueSenderLogGroup
-              - !Ref QueueProcessorLogGroup
-              - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionV2LogGroup
-              - !If
-                - IsPattern1
-                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-                - !If
-                  - IsPattern2
-                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+          SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
       LoggingConfig:
         LogGroup: !Ref AgentChatProcessorLogGroup
       Policies:
@@ -4940,19 +4930,7 @@ Resources:
               "",
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
-          CLOUDWATCH_LOG_GROUPS: !Join
-            - ","
-            - - !Ref QueueSenderLogGroup
-              - !Ref QueueProcessorLogGroup
-              - !Ref WorkflowTrackerLogGroup
-              - !Ref SaveReportingDataFunctionV2LogGroup
-              - !If
-                - IsPattern1
-                - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-                - !If
-                  - IsPattern2
-                  - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                  - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+          SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
       LoggingConfig:
         LogGroup: !Ref AgentProcessorLogGroup
       Policies:
