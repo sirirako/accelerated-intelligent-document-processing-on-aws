@@ -9,7 +9,6 @@ model.tar.gz
 
 # Build artifacts - backup files from publish.py
 *.pre-build-backup
-requirements.txt.pre-build-backup
 .vscode/
 .DS_Store
 dist/
@@ -22,15 +21,11 @@ __pycache__
 *.code-workspace
 .ruff_cache
 .kiro
-rvl_cdip_*
 notebooks/examples/data
 .idea/
 .dsr/
 *tmp-dev-assets*
 scratch/
-
-# Service tier implementation artifacts
-service_tier_*.md
 
 # Node.js / npm
 node_modules/

@@ -36,6 +36,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 NUM_PACKETS = 500
+
+
+def normalize_doc_type(doc_type: str) -> str:
+    """Normalize document type for JSON Schema compatibility (replace spaces with underscores)."""
+    return doc_type.replace(" ", "_")
+
 RANDOM_SEED = 42
 
 
@@ -69,7 +75,7 @@ def transform_manifest(original: Dict[str, Any], packet_id: str) -> Dict[str, An
             continue
         source_pages = [page["local_doc_id_page_ordinal"] for page in subdoc["pages"]]
         simplified["subdocuments"].append({
-            "doc_type_id": subdoc["doc_type_id"],
+            "doc_type_id": normalize_doc_type(subdoc["doc_type_id"]),
             "page_ordinals": subdoc["page_ordinals"],
             "source_pdf": source_pdf,
             "source_pages": source_pages
@@ -116,7 +122,7 @@ def create_baseline_files(manifest, baseline_dir):
             section_dir.mkdir(parents=True, exist_ok=True)
             page_indices = [p - 1 for p in subdoc["page_ordinals"]]
             result = {
-                "document_class": {"type": subdoc["doc_type_id"]},
+                "document_class": {"type": normalize_doc_type(subdoc["doc_type_id"])},
                 "split_document": {"page_indices": page_indices},
                 "inference_result": {}
             }
