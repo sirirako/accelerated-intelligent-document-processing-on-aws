@@ -63,6 +63,7 @@ class BatchProcessor:
         manifest_path: str,
         output_prefix: str = "cli-batch",
         batch_id: Optional[str] = None,
+        number_of_files: Optional[int] = None,
     ) -> Dict:
         """
         Process batch of documents from manifest
@@ -86,6 +87,11 @@ class BatchProcessor:
         documents = parse_manifest(manifest_path)
         logger.info(f"Found {len(documents)} documents in manifest")
 
+        # Limit number of files if specified
+        if number_of_files is not None and number_of_files > 0:
+            documents = documents[:number_of_files]
+            logger.info(f"Limited to {len(documents)} documents for processing")
+
         # Process documents
         return self._process_documents(
             documents, batch_id, output_prefix, manifest_path
@@ -98,6 +104,7 @@ class BatchProcessor:
         recursive: bool = True,
         output_prefix: str = "cli-batch",
         batch_id: Optional[str] = None,
+        number_of_files: Optional[int] = None,
     ) -> Dict:
         """
         Process batch of documents from local directory
@@ -127,6 +134,11 @@ class BatchProcessor:
             raise ValueError(
                 f"No documents found matching pattern '{file_pattern}' in {dir_path}"
             )
+
+        # Limit number of files if specified
+        if number_of_files is not None and number_of_files > 0:
+            documents = documents[:number_of_files]
+            logger.info(f"Limited to {len(documents)} documents for processing")
 
         # Process documents
         return self._process_documents(
