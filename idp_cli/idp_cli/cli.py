@@ -927,6 +927,11 @@ def rerun_inference(
     help="Seconds between status checks (default: 5)",
 )
 @click.option("--region", help="AWS region (optional)")
+@click.option(
+    "--number-of-files",
+    type=int,
+    help="Limit number of files to process (for testing purposes)",
+)
 def run_inference(
     stack_name: str,
     manifest: Optional[str],
@@ -942,6 +947,7 @@ def run_inference(
     monitor: bool,
     refresh_interval: int,
     region: Optional[str],
+    number_of_files: Optional[int],
 ):
     """
     Run inference on a batch of documents
@@ -983,6 +989,9 @@ def run_inference(
       # Process test set with custom context
       idp-cli run-inference --stack-name my-stack --test-set my-test --context "Experiment v2.1" --monitor
 
+      # Process test set with limited files for quick testing
+      idp-cli run-inference --stack-name my-stack --test-set my-test --number-of-files 5 --monitor
+
       # Process manifest with baselines (automatically creates "idp-cli" test set for Test Studio integration)
       idp-cli run-inference --stack-name my-stack --manifest docs_with_baselines.csv --monitor
     """
@@ -1002,6 +1011,14 @@ def run_inference(
             )
             sys.exit(1)
 
+        # Validate number_of_files parameter
+        if number_of_files is not None:
+            if number_of_files <= 0:
+                console.print(
+                    "[red]✗ Error: --number-of-files must be greater than 0[/red]"
+                )
+                sys.exit(1)
+
         # Validate manifest if provided
         if manifest:
             console.print("[bold blue]Validating manifest...[/bold blue]")
@@ -1009,6 +1026,17 @@ def run_inference(
             if not is_valid:
                 console.print(f"[red]✗ Manifest validation failed: {error}[/red]")
                 sys.exit(1)
+
+            # Validate number_of_files against manifest size
+            if number_of_files is not None:
+                from .manifest_parser import parse_manifest
+
+                documents = parse_manifest(manifest)
+                if number_of_files > len(documents):
+                    console.print(
+                        f"[red]✗ Error: --number-of-files ({number_of_files}) cannot exceed manifest size ({len(documents)})[/red]"
+                    )
+                    sys.exit(1)
             console.print("[green]✓ Manifest validated successfully[/green]")
 
         # Initialize processor
@@ -1023,7 +1051,7 @@ def run_inference(
         with console.status("[bold green]Processing batch..."):
             if test_set:
                 batch_result = _process_test_set(
-                    stack_name, test_set, context, region, processor
+                    stack_name, test_set, context, region, processor, number_of_files
                 )
             elif manifest:
                 # Check if manifest has baselines for test studio integration
@@ -1038,7 +1066,12 @@ def run_inference(
 
                     # Use common test set processing logic
                     batch_result = _process_test_set(
-                        stack_name, test_set_name, context, region, processor
+                        stack_name,
+                        test_set_name,
+                        context,
+                        region,
+                        processor,
+                        number_of_files,
                     )
                 else:
                     # Normal manifest processing without test studio
@@ -1046,6 +1079,7 @@ def run_inference(
                         manifest_path=manifest,
                         output_prefix=batch_prefix,
                         batch_id=batch_id,
+                        number_of_files=number_of_files,
                     )
             elif directory:
                 batch_result = processor.process_batch_from_directory(
@@ -1054,6 +1088,7 @@ def run_inference(
                     recursive=recursive,
                     output_prefix=batch_prefix,
                     batch_id=batch_id,
+                    number_of_files=number_of_files,
                 )
             else:  # s3_uri
                 batch_result = processor.process_batch_from_s3_uri(
@@ -1702,9 +1737,15 @@ def generate_manifest(
             console.print(
                 f"  - Using test set: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
             )
+            console.print(
+                f"  - With limited files: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --number-of-files {{N}} --monitor[/cyan]"
+            )
             if output:
                 console.print(
                     f"  - Using manifest: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --monitor[/cyan]"
+                )
+                console.print(
+                    f"  - With limited files: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --number-of-files {{N}} --monitor[/cyan]"
                 )
         elif baseline_map:
             console.print("[bold]Baseline matching complete[/bold]")
@@ -1834,6 +1875,7 @@ def _process_test_set(
     context: Optional[str],
     region: Optional[str],
     processor,
+    number_of_files: Optional[int] = None,
 ):
     """Common function to process test sets"""
     # Auto-detect test set using test_set_resolver lambda
@@ -1841,7 +1883,7 @@ def _process_test_set(
 
     # Invoke test runner lambda
     test_run_result = _invoke_test_runner(
-        stack_name, test_set_name, context, region, processor.resources
+        stack_name, test_set_name, context, region, processor.resources, number_of_files
     )
     batch_id = test_run_result["testRunId"]
 
@@ -1849,6 +1891,13 @@ def _process_test_set(
     document_ids = _get_test_set_document_ids(
         stack_name, test_set_name, batch_id, region, processor.resources
     )
+
+    # If numberOfFiles was specified, limit document_ids to match actual queued count
+    if (
+        number_of_files is not None
+        and len(document_ids) > test_run_result["filesCount"]
+    ):
+        document_ids = document_ids[: test_run_result["filesCount"]]
 
     # Create mock batch_result for monitoring
     batch_result = {
@@ -1926,6 +1975,7 @@ def _invoke_test_runner(
     context: Optional[str],
     region: Optional[str],
     resources: dict,
+    number_of_files: Optional[int] = None,
 ):
     """Invoke test runner lambda to start test set processing"""
     import json
@@ -1967,7 +2017,13 @@ def _invoke_test_runner(
     if context:
         payload["arguments"]["input"]["context"] = context
 
+    # Add numberOfFiles if provided
+    if number_of_files is not None:
+        payload["arguments"]["input"]["numberOfFiles"] = number_of_files
+
     console.print(f"[bold blue]Starting test run for test set: {test_set}[/bold blue]")
+    if number_of_files:
+        console.print(f"[blue]Limiting to {number_of_files} files[/blue]")
 
     # Invoke test runner lambda
     response = lambda_client.invoke(

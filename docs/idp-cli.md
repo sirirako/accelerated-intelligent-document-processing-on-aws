@@ -340,6 +340,7 @@ idp-cli run-inference [OPTIONS]
 - `--batch-prefix`: Prefix for auto-generated batch ID (default: `cli-batch`)
 - `--file-pattern`: File pattern for directory/S3 scanning (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
+- `--number-of-files`: Limit number of files to process
 - `--monitor`: Monitor progress until completion
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--region`: AWS region (optional)
@@ -366,10 +367,24 @@ idp-cli run-inference \
     --manifest documents-with-baselines.csv \
     --monitor
 
+# Process from manifest with limited files
+idp-cli run-inference \
+    --stack-name my-stack \
+    --manifest documents-with-baselines.csv \
+    --number-of-files 10 \
+    --monitor
+
 # Process test set (integrates with Test Studio UI)
 idp-cli run-inference \
     --stack-name my-stack \
     --test-set my-invoice-test \
+    --monitor
+
+# Process test set with limited files for quick testing
+idp-cli run-inference \
+    --stack-name my-stack \
+    --test-set my-invoice-test \
+    --number-of-files 5 \
     --monitor
 
 # Process S3 URI
