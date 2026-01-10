@@ -124,7 +124,8 @@ def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix
     """Copy files from source bucket to destination bucket - track failures"""
     successful_files = []
     
-    for filename in files:
+    def copy_single_file(filename):
+        """Copy a single file and return result"""
         try:
             source_key = f"{source_prefix}{filename}"
             dest_key = f"{dest_prefix}{filename}"
@@ -136,11 +137,24 @@ def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix
                 Key=dest_key
             )
             
-            successful_files.append(filename)
             logger.info(f"Copied file: {source_key} -> {dest_bucket}/{dest_key}")
+            return filename, None
             
         except Exception as e:
             logger.error(f"Failed to copy file {filename}: {e}")
+            return filename, str(e)
+    
+    # Use ThreadPoolExecutor for parallel copying
+    max_workers = min(10, len(files))  # Limit to 10 threads or number of files
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all copy tasks
+        future_to_file = {executor.submit(copy_single_file, filename): filename for filename in files}
+        
+        # Collect results
+        for future in concurrent.futures.as_completed(future_to_file):
+            filename, error = future.result()
+            if error is None:
+                successful_files.append(filename)
     
     return successful_files
 
