@@ -652,15 +652,30 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             print("🔍 Getting CloudFormation logs for detailed analysis...")
             # Get CloudFormation logs for failed stacks
             cf_logs = {}
+            logs_retrieved = 0
+            
             for result in deployment_results:
                 if not result["success"] and result.get("stack_name") and result["stack_name"] != "N/A":
                     print(f"📋 Getting CF logs for: {result['stack_name']}")
-                    cf_logs[result["stack_name"]] = get_cloudformation_logs(result["stack_name"])
+                    try:
+                        logs = get_cloudformation_logs(result["stack_name"])
+                        # Check if we got actual events or just error messages
+                        if logs and not (len(logs) == 1 and 'error' in logs[0]):
+                            cf_logs[result["stack_name"]] = logs
+                            logs_retrieved += 1
+                            print(f"✅ Retrieved {len(logs)} events for {result['stack_name']}")
+                        else:
+                            error_msg = logs[0].get('error', 'Unknown error') if logs else 'No logs returned'
+                            print(f"⚠️ Failed to get CF logs for {result['stack_name']}: {error_msg}")
+                            cf_logs[result["stack_name"]] = [{"error": error_msg, "stack_name": result["stack_name"]}]
+                    except Exception as e:
+                        print(f"⚠️ Exception getting CF logs for {result['stack_name']}: {e}")
+                        cf_logs[result["stack_name"]] = [{"error": f"Exception: {str(e)}", "stack_name": result["stack_name"]}]
             
-            print(f"✅ Retrieved CF logs for {len(cf_logs)} stacks")
+            print(f"✅ Retrieved CF logs for {logs_retrieved}/{len(cf_logs)} stacks")
             
-            # Second Bedrock call with CloudFormation logs
-            print("🤖 Making second Bedrock call with CF logs...")
+            # Always proceed with second Bedrock call, even with partial/error data
+            print("🤖 Making second Bedrock call with available CF data...")
             cf_prompt = dedent(f"""
             Analyze CloudFormation error events to determine root cause of deployment failures.
 
@@ -670,7 +685,11 @@ def generate_deployment_summary(deployment_results, stack_prefix, template_url):
             CloudFormation Error Events:
             {json.dumps(cf_logs, indent=2)}
 
+            IMPORTANT: Some stacks may have failed to retrieve logs (check for "error" fields).
+            For stacks with log retrieval errors, base analysis on the pattern results error messages.
+            
             Search through the events and find CREATE_FAILED events. Determine the root cause based on ResourceStatusReason.
+            If no events available due to log retrieval failures, analyze the pattern error messages for clues.
 
             Provide analysis in this format:
 
