@@ -488,7 +488,7 @@ This simulates an incoming document rate of 500 docs per minute for 10 minutes.
 Use the dynamic load simulator script for variable document rates over time:
 
 ```bash
-python ./scripts/simulate_load.py -s source_bucket -k prefix/exampledoc.pdf -d idp-kmsxxxxxxxxx -f schedule.csv
+python ./scripts/simulate_dynamic_load.py -s source_bucket -k prefix/exampledoc.pdf -d idp-kmsxxxxxxxxx -f schedule.csv
 ```
 
 This simulates incoming documents based on minute-by-minute rates in the schedule CSV file.
