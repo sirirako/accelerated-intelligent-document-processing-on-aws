@@ -1034,7 +1034,7 @@ class StackDeployer:
 
         # Get resources that weren't deleted by CloudFormation
         retained = self.get_retained_resources_after_deletion(stack_identifier)
-        
+
         # Always clean up additional stack-specific resources
         self._cleanup_additional_resources(stack_identifier)
 
