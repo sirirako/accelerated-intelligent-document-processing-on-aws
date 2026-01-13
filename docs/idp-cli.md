@@ -203,7 +203,7 @@ idp-cli delete [OPTIONS]
 The `--force-delete-all` flag performs a comprehensive cleanup AFTER CloudFormation deletion completes:
 
 1. **CloudFormation Deletion Phase**: Standard stack deletion
-2. **Additional Resource Cleanup Phase** (happens with `--wait` on all deletions): Removes stack-specific resources not tracked by CloudFormation:
+2. **Additional Resource Cleanup Phase** (happens with `--wait` on all deletions and always with `--force-delete-all`): Removes stack-specific resources not tracked by CloudFormation:
    - IAM custom policies and permissions boundaries
    - CloudWatch Logs resource policies
    - CloudFront response header policies
@@ -214,7 +214,7 @@ The `--force-delete-all` flag performs a comprehensive cleanup AFTER CloudFormat
    - CloudWatch Log Groups (matching stack name pattern)
    - S3 buckets (regular buckets first, LoggingBucket last)
 
-**Resources Always Cleaned Up (with `--wait`):**
+**Resources Always Cleaned Up (with `--wait` or `--force-delete-all`):**
 - IAM custom policies (containing stack name)
 - IAM permissions boundary policies
 - CloudFront response header policies (custom)
