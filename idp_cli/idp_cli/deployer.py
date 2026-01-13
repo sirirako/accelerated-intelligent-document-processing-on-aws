@@ -456,6 +456,10 @@ class StackDeployer:
                 # Ensure stack_id is preserved after wait
                 result["stack_id"] = stack_id
 
+                # Clean up additional stack-specific resources after stack deletion completes
+                logger.info("Cleaning up additional stack-specific resources...")
+                self._cleanup_additional_resources(stack_name)
+
             return result
 
         except Exception as e:
@@ -519,6 +523,13 @@ class StackDeployer:
                 logger.info(f"Emptied bucket: {bucket_name}")
 
             except Exception as e:
+                # Handle missing buckets gracefully - if bucket doesn't exist, it's already "empty"
+                if "NoSuchBucket" in str(e):
+                    logger.warning(
+                        f"Bucket {bucket_name} does not exist, skipping empty operation"
+                    )
+                    continue
+
                 logger.error(f"Error emptying bucket {bucket_name}: {e}")
                 raise Exception(
                     f"Failed to empty bucket {bucket_name}. You may need to empty it manually."
@@ -1270,6 +1281,151 @@ class StackDeployer:
         except Exception as e:
             logger.error(f"Error deleting bucket {bucket_name}: {e}")
             raise
+
+    def _cleanup_additional_resources(self, stack_identifier: str) -> None:
+        """Clean up additional resources not tracked by CloudFormation"""
+        import json
+        import os
+
+        # Extract stack name from identifier
+        stack_name = stack_identifier
+        if stack_identifier.startswith("arn:"):
+            stack_name = stack_identifier.split("/")[1]
+
+        logger.info(f"Cleaning up additional resources for: {stack_name}")
+
+        # Set AWS retry configuration to handle throttling
+        os.environ["AWS_MAX_ATTEMPTS"] = "10"
+        os.environ["AWS_RETRY_MODE"] = "adaptive"
+
+        try:
+            # Clean up additional log groups that might not be caught by standard cleanup
+            logs_client = boto3.client("logs", region_name=self.region)
+            try:
+                response = logs_client.describe_log_groups()
+                for log_group in response.get("logGroups", []):
+                    log_group_name = log_group.get("logGroupName", "")
+                    if stack_name in log_group_name:
+                        logs_client.delete_log_group(logGroupName=log_group_name)
+                        logger.info(f"Deleted additional log group: {log_group_name}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up additional log groups: {e}")
+
+            # Clean up AppSync log groups
+            try:
+                appsync_client = boto3.client("appsync", region_name=self.region)
+                response = appsync_client.list_graphql_apis()
+                for api in response.get("graphqlApis", []):
+                    if stack_name in api.get("name", ""):
+                        api_id = api.get("apiId")
+                        if api_id:
+                            appsync_log_group = f"/aws/appsync/apis/{api_id}"
+                            try:
+                                logs_client.delete_log_group(
+                                    logGroupName=appsync_log_group
+                                )
+                                logger.info(
+                                    f"Deleted AppSync log group: {appsync_log_group}"
+                                )
+                            except logs_client.exceptions.ResourceNotFoundException:
+                                pass
+            except Exception as e:
+                logger.warning(f"Failed to clean up AppSync log groups: {e}")
+
+            # Check if permissions boundary was created as part of stack
+            iam_client = boto3.client("iam", region_name=self.region)
+            boundary_name = f"{stack_name}-PermissionsBoundary"
+            try:
+                sts_client = boto3.client("sts", region_name=self.region)
+                account_id = sts_client.get_caller_identity()["Account"]
+                iam_client.delete_policy(
+                    PolicyArn=f"arn:aws:iam::{account_id}:policy/{boundary_name}"
+                )
+                logger.info(f"Deleted permissions boundary: {boundary_name}")
+            except iam_client.exceptions.NoSuchEntityException:
+                pass
+
+            # Clean up CloudWatch Logs Resource Policy entries
+            try:
+                response = logs_client.describe_resource_policies()
+                for policy in response.get("resourcePolicies", []):
+                    if policy.get("policyName") == "AWSLogDeliveryWrite20150319":
+                        policy_doc = json.loads(policy.get("policyDocument", "{}"))
+                        original_count = len(policy_doc.get("Statement", []))
+
+                        policy_doc["Statement"] = [
+                            stmt
+                            for stmt in policy_doc.get("Statement", [])
+                            if stack_name not in stmt.get("Resource", "")
+                        ]
+
+                        new_count = len(policy_doc.get("Statement", []))
+                        if new_count < original_count:
+                            logs_client.put_resource_policy(
+                                policyName="AWSLogDeliveryWrite20150319",
+                                policyDocument=json.dumps(policy_doc),
+                            )
+                            logger.info(
+                                f"Removed {original_count - new_count} CloudWatch Logs policy entries"
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to clean up CloudWatch Logs policy: {e}")
+
+            # Clean up stack-specific CloudWatch Logs Resource Policies
+            try:
+                response = logs_client.describe_resource_policies()
+                for policy in response.get("resourcePolicies", []):
+                    policy_name = policy.get("policyName", "")
+                    if stack_name in policy_name:
+                        logs_client.delete_resource_policy(policyName=policy_name)
+                        logger.info(f"Deleted resource policy: {policy_name}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to delete stack-specific resource policies: {e}"
+                )
+
+            # Clean up CloudFront Response Headers Policies
+            try:
+                cloudfront_client = boto3.client("cloudfront")
+                response = cloudfront_client.list_response_headers_policies()
+
+                for policy in response.get("ResponseHeadersPolicyList", {}).get(
+                    "Items", []
+                ):
+                    if policy["Type"] == "custom":
+                        policy_name = policy["ResponseHeadersPolicy"][
+                            "ResponseHeadersPolicyConfig"
+                        ]["Name"]
+                        if stack_name in policy_name:
+                            policy_id = policy["ResponseHeadersPolicy"]["Id"]
+                            cloudfront_client.delete_response_headers_policy(
+                                Id=policy_id
+                            )
+                            logger.info(
+                                f"Deleted CloudFront Response Headers Policy: {policy_name}"
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to cleanup CloudFront policies: {e}")
+
+            # Clean up IAM custom policies
+            try:
+                response = iam_client.list_policies(Scope="Local")
+                for policy in response.get("Policies", []):
+                    policy_name = policy.get("PolicyName", "")
+                    if stack_name in policy_name:
+                        policy_arn = policy.get("Arn")
+                        try:
+                            iam_client.delete_policy(PolicyArn=policy_arn)
+                            logger.info(f"Deleted IAM custom policy: {policy_name}")
+                        except Exception as policy_error:
+                            logger.warning(
+                                f"Failed to delete IAM policy {policy_name}: {policy_error}"
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to cleanup IAM custom policies: {e}")
+
+        except Exception as e:
+            logger.warning(f"Additional resource cleanup failed: {e}")
 
 
 def is_local_file_path(path: str) -> bool:
