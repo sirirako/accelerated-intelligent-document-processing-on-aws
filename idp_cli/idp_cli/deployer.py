@@ -1308,7 +1308,9 @@ class StackDeployer:
                 response = logs_client.describe_log_groups()
                 for log_group in response.get("logGroups", []):
                     log_group_name = log_group.get("logGroupName", "")
-                    if stack_name in log_group_name:
+                    # Only match exact patterns for this stack
+                    if (log_group_name.startswith(f"/{stack_name}-") or 
+                        log_group_name.startswith(f"/aws-glue/crawlers-role/{stack_name}-")):
                         logs_client.delete_log_group(logGroupName=log_group_name)
                         logger.info(f"Deleted additional log group: {log_group_name}")
             except Exception as e:
@@ -1319,7 +1321,10 @@ class StackDeployer:
                 appsync_client = boto3.client("appsync", region_name=self.region)
                 response = appsync_client.list_graphql_apis()
                 for api in response.get("graphqlApis", []):
-                    if stack_name in api.get("name", ""):
+                    api_name = api.get("name", "")
+                    # Only match exact stack API patterns
+                    if (api_name == f"{stack_name}-api" or 
+                        (api_name.startswith(f"{stack_name}-p") and api_name.endswith("-api"))):
                         api_id = api.get("apiId")
                         if api_id:
                             appsync_log_group = f"/aws/appsync/apis/{api_id}"
@@ -1359,7 +1364,7 @@ class StackDeployer:
                         policy_doc["Statement"] = [
                             stmt
                             for stmt in policy_doc.get("Statement", [])
-                            if stack_name not in stmt.get("Resource", "")
+                            if f"/aws/vendedlogs/states/{stack_name}-" not in stmt.get("Resource", "")
                         ]
 
                         new_count = len(policy_doc.get("Statement", []))
@@ -1379,7 +1384,7 @@ class StackDeployer:
                 response = logs_client.describe_resource_policies()
                 for policy in response.get("resourcePolicies", []):
                     policy_name = policy.get("policyName", "")
-                    if stack_name in policy_name:
+                    if policy_name.startswith(f"{stack_name}-"):
                         logs_client.delete_resource_policy(policyName=policy_name)
                         logger.info(f"Deleted resource policy: {policy_name}")
             except Exception as e:
@@ -1387,26 +1392,126 @@ class StackDeployer:
                     f"Failed to delete stack-specific resource policies: {e}"
                 )
 
+            # Clean up CloudFront Distributions
+            try:
+                cloudfront_client = boto3.client("cloudfront")
+                response = cloudfront_client.list_distributions()
+                
+                # Phase 1: Delete previously disabled distributions from any stack
+                for distribution in response.get("DistributionList", {}).get("Items", []):
+                    comment = distribution.get("Comment", "")
+                    if comment.startswith("Web app cloudfront distribution "):
+                        distribution_id = distribution["Id"]
+                        
+                        # Check if it's disabled and ready for deletion
+                        if distribution.get("Status") == "Deployed" and not distribution.get("Enabled", True):
+                            config_response = cloudfront_client.get_distribution(Id=distribution_id)
+                            etag = config_response["ETag"]
+                            
+                            logger.info(f"Deleting previously disabled distribution: {distribution_id}")
+                            cloudfront_client.delete_distribution(Id=distribution_id, IfMatch=etag)
+                
+                # Phase 2: Disable current stack's distribution for future cleanup
+                for distribution in response.get("DistributionList", {}).get("Items", []):
+                    comment = distribution.get("Comment", "")
+                    if comment == f"Web app cloudfront distribution {stack_name}":
+                        distribution_id = distribution["Id"]
+                        logger.info(f"Found CloudFront distribution: {distribution_id}")
+                        
+                        # Get current config with ETag
+                        config_response = cloudfront_client.get_distribution(Id=distribution_id)
+                        etag = config_response["ETag"]
+                        config = config_response["Distribution"]["DistributionConfig"]
+                        
+                        if config.get("Enabled", False):
+                            logger.info(f"Disabling distribution for future cleanup: {distribution_id}")
+                            config["Enabled"] = False
+                            cloudfront_client.update_distribution(
+                                Id=distribution_id,
+                                DistributionConfig=config,
+                                IfMatch=etag
+                            )
+                        else:
+                            # Already disabled, delete immediately
+                            logger.info(f"Deleting already disabled distribution: {distribution_id}")
+                            cloudfront_client.delete_distribution(Id=distribution_id, IfMatch=etag)
+                        
+            except Exception as e:
+                logger.warning(f"Failed to cleanup CloudFront distributions: {e}")
+
             # Clean up CloudFront Response Headers Policies
             try:
                 cloudfront_client = boto3.client("cloudfront")
                 response = cloudfront_client.list_response_headers_policies()
 
-                for policy in response.get("ResponseHeadersPolicyList", {}).get(
-                    "Items", []
-                ):
+                # Helper function to check stack state
+                def get_stack_state(check_stack_name: str) -> str:
+                    """Get stack state: 'ACTIVE', 'MISSING', or 'INCONSISTENT'"""
+                    try:
+                        cf_response = self.cloudformation.describe_stacks(StackName=check_stack_name)
+                        stacks = cf_response.get("Stacks", [])
+                        
+                        if not stacks:
+                            return "MISSING"
+                        else:
+                            stack_status = stacks[0].get("StackStatus", "")
+                            if stack_status in [
+                                "CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"
+                            ]:
+                                return "ACTIVE"
+                            elif stack_status in [
+                                "DELETE_COMPLETE", "DELETE_FAILED", "CREATE_FAILED", 
+                                "ROLLBACK_COMPLETE", "ROLLBACK_FAILED", "UPDATE_ROLLBACK_FAILED"
+                            ]:
+                                return "INCONSISTENT"
+                            else:
+                                # In progress states - consider active for safety
+                                return "ACTIVE"
+                                
+                    except self.cloudformation.exceptions.ClientError as e:
+                        if "does not exist" in str(e):
+                            return "MISSING"
+                        else:
+                            # Unknown error - be conservative
+                            return "ACTIVE"
+                    except Exception:
+                        # Unknown error - be conservative  
+                        return "ACTIVE"
+
+                def is_resource_orphaned(check_stack_name: str) -> bool:
+                    """Check if resource is orphaned based on stack state"""
+                    if not check_stack_name:
+                        return False  # Can't determine - be safe
+                        
+                    state = get_stack_state(check_stack_name)
+                    return state in ["MISSING", "INCONSISTENT"]
+
+                # Delete policies from orphaned stacks only
+                for policy in response.get("ResponseHeadersPolicyList", {}).get("Items", []):
                     if policy["Type"] == "custom":
-                        policy_name = policy["ResponseHeadersPolicy"][
-                            "ResponseHeadersPolicyConfig"
-                        ]["Name"]
-                        if stack_name in policy_name:
-                            policy_id = policy["ResponseHeadersPolicy"]["Id"]
-                            cloudfront_client.delete_response_headers_policy(
-                                Id=policy_id
-                            )
-                            logger.info(
-                                f"Deleted CloudFront Response Headers Policy: {policy_name}"
-                            )
+                        policy_name = policy["ResponseHeadersPolicy"]["ResponseHeadersPolicyConfig"]["Name"]
+                        policy_id = policy["ResponseHeadersPolicy"]["Id"]
+                        
+                        # Check if it's an IDP policy
+                        if policy_name.endswith("-security-headers-policy"):
+                            # Extract stack name from policy name
+                            policy_stack_name = policy_name.replace("-security-headers-policy", "")
+                            
+                            # Skip current stack's policy (can't delete while distribution exists)
+                            if policy_stack_name == stack_name:
+                                logger.info(f"Skipping current stack's policy: {policy_name}")
+                                continue
+                            
+                            # Only delete if from orphaned stack
+                            if is_resource_orphaned(policy_stack_name):
+                                try:
+                                    cloudfront_client.delete_response_headers_policy(Id=policy_id)
+                                    logger.info(f"Deleted orphaned CloudFront Response Headers Policy: {policy_name} (stack: {policy_stack_name})")
+                                except Exception as policy_error:
+                                    logger.warning(f"Failed to delete CloudFront policy {policy_name}: {policy_error}")
+                            else:
+                                logger.info(f"Skipping active stack's policy: {policy_name} (stack: {policy_stack_name})")
+                
             except Exception as e:
                 logger.warning(f"Failed to cleanup CloudFront policies: {e}")
 
@@ -1415,7 +1520,8 @@ class StackDeployer:
                 response = iam_client.list_policies(Scope="Local")
                 for policy in response.get("Policies", []):
                     policy_name = policy.get("PolicyName", "")
-                    if stack_name in policy_name:
+                    # Only match policies that start with stack name
+                    if policy_name.startswith(f"{stack_name}-"):
                         policy_arn = policy.get("Arn")
                         try:
                             iam_client.delete_policy(PolicyArn=policy_arn)

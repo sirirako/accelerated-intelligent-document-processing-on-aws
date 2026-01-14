@@ -204,11 +204,12 @@ The `--force-delete-all` flag performs a comprehensive cleanup AFTER CloudFormat
 
 1. **CloudFormation Deletion Phase**: Standard stack deletion
 2. **Additional Resource Cleanup Phase** (happens with `--wait` on all deletions and always with `--force-delete-all`): Removes stack-specific resources not tracked by CloudFormation:
+   - CloudWatch Log Groups (Lambda functions, Glue crawlers)
+   - AppSync APIs and their log groups
+   - CloudFront distributions (two-phase cleanup - initiates disable, takes 15-20 minutes to propagate globally)
+   - CloudFront Response Headers Policies (from previously deleted stacks)
    - IAM custom policies and permissions boundaries
    - CloudWatch Logs resource policies
-   - CloudFront response header policies
-   - AppSync log groups
-   - Additional log groups containing stack name
 3. **Retained Resource Cleanup Phase** (only with `--force-delete-all`): Deletes remaining resources in order:
    - DynamoDB tables (disables PITR, then deletes)
    - CloudWatch Log Groups (matching stack name pattern)
