@@ -58,12 +58,9 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
-- **Bedrock OCR Request Tracking in Reporting Dashboard**
-  - Fixed issue where Bedrock OCR requests were not displayed in the "Requests" section of monitoring dashboards
-  - **Root Cause**: Bedrock OCR requests were tracked as `"requests": 1` under key `"OCR/bedrock/{model_id}"`, while Textract OCR requests were tracked as `"pages": N` under key `"OCR/textract/{api_name}{features}"`
-  - **Impact**: Reporting system was not aggregating these different metric types together when displaying "Requests" in the UI
-  - Bedrock OCR requests are now properly included in request metrics alongside other inference types
-
+- **Metering Table Added Requests**
+  - Added requests count to bedrock metering data to track API request metrics
+  
 - **IDP CLI Stack Parameter Preservation During Updates**
   - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
 
