@@ -1474,7 +1474,7 @@ class StackDeployer:
                 def get_stack_state(check_stack_name: str) -> str:
                     """Get stack state: 'ACTIVE', 'MISSING', or 'INCONSISTENT'"""
                     try:
-                        cf_response = self.cloudformation.describe_stacks(
+                        cf_response = self.cfn.describe_stacks(
                             StackName=check_stack_name
                         )
                         stacks = cf_response.get("Stacks", [])
@@ -1502,7 +1502,7 @@ class StackDeployer:
                                 # In progress states - consider active for safety
                                 return "ACTIVE"
 
-                    except self.cloudformation.exceptions.ClientError as e:
+                    except self.cfn.exceptions.ClientError as e:
                         if "does not exist" in str(e):
                             return "MISSING"
                         else:
