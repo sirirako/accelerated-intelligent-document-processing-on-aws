@@ -28,7 +28,7 @@ def main():
     
     print("Running DSR fix...")
     
-    if not run_command("./dsr fix", cwd=dsr_dir):
+    if not run_command(".dsr/dsr fix -e", cwd=project_root):
         print("DSR fix failed")
         sys.exit(1)
     
