@@ -855,20 +855,21 @@ class SaveReportingData:
                 )
 
                 config_loaded_count = 0
-                # Convert configuration pricing to lookup dictionary (same format as UI)
+                # Convert configuration pricing to lookup dictionary (convert strings to floats)
                 for service in self.config.pricing:
                     service_name = service.name
                     for unit_info in service.units:
                         unit_name = unit_info.name
                         try:
-                            price = unit_info.price
+                            # Convert price string to float for calculations
+                            price = float(unit_info.price)
                             if service_name not in pricing_map:
                                 pricing_map[service_name] = {}
                             pricing_map[service_name][unit_name] = price
                             config_loaded_count += 1
                         except (ValueError, TypeError) as e:
                             logger.warning(
-                                f"Invalid price value for {service_name}/{unit_name}: {unit_name}, error: {e}. Skipping entry."
+                                f"Invalid price value for {service_name}/{unit_name}: {unit_info.price}, error: {e}. Skipping entry."
                             )
 
                 if config_loaded_count > 0:

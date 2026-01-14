@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Container,
   Header,
@@ -16,8 +17,10 @@ import {
   Modal,
   Textarea,
   FormField,
-  BarChart,
+  Input,
   Select,
+  CollectionPreferences,
+  ExpandableSection,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
@@ -29,33 +32,136 @@ import useAppContext from '../../contexts/app';
 const client = generateClient();
 
 /* eslint-disable react/prop-types */
-const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeightedScore }) => {
-  if (!costBreakdown && !accuracyBreakdown) {
+const ComprehensiveBreakdown = ({
+  costBreakdown,
+  accuracyBreakdown,
+  splitClassificationMetrics,
+  averageWeightedScore,
+  preferences,
+  setPreferences,
+}) => {
+  if (!costBreakdown && !accuracyBreakdown && !splitClassificationMetrics) {
     return <Box>No breakdown data available</Box>;
   }
 
   return (
     <SpaceBetween direction="vertical" size="l">
-      {/* Accuracy breakdown */}
-      {accuracyBreakdown && (
-        <Container header={<Header variant="h3">Average Accuracy Breakdown</Header>}>
-          <Table
-            items={[
-              ...Object.entries(accuracyBreakdown).map(([key, value]) => ({
-                metric: key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
-              })),
-              {
-                metric: 'Weighted Overall Score',
-                value: averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : '0.000',
-              },
-            ]}
-            columnDefinitions={[
-              { id: 'metric', header: 'Metric', cell: (item) => item.metric },
-              { id: 'value', header: 'Value', cell: (item) => item.value },
-            ]}
-            variant="embedded"
-          />
+      {/* Combined Accuracy and Split Classification Metrics */}
+      {(accuracyBreakdown || splitClassificationMetrics) && (
+        <Container
+          header={<Header variant="h3">Average Accuracy and Split Metrics</Header>}
+          preferences={<TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />}
+        >
+          <SpaceBetween direction="vertical" size="m">
+            {/* Main metrics */}
+            <Table
+              resizableColumns
+              wrapLines={preferences.wrapLines}
+              preferences={<TestResultsPreferences preferences={preferences} setPreferences={setPreferences} />}
+              items={(() => {
+                const mainItems = [];
+
+                // Add Weighted Overall Score
+                if (averageWeightedScore !== null) {
+                  mainItems.push({
+                    metric: (
+                      <>
+                        <span style={{ color: '#687078' }}>Extraction:</span> Weighted Overall Score
+                      </>
+                    ),
+                    value: averageWeightedScore.toFixed(3),
+                  });
+                }
+
+                // Add Page and Split with Order Accuracy
+                if (splitClassificationMetrics) {
+                  if (splitClassificationMetrics.page_level_accuracy !== undefined) {
+                    mainItems.push({
+                      metric: (
+                        <>
+                          <span style={{ color: '#687078' }}>Classification:</span> Page Level Accuracy
+                        </>
+                      ),
+                      value:
+                        typeof splitClassificationMetrics.page_level_accuracy === 'number'
+                          ? splitClassificationMetrics.page_level_accuracy.toFixed(3)
+                          : splitClassificationMetrics.page_level_accuracy?.toString() || '0',
+                    });
+                  }
+
+                  if (splitClassificationMetrics.split_accuracy_with_order !== undefined) {
+                    mainItems.push({
+                      metric: (
+                        <>
+                          <span style={{ color: '#687078' }}>Classification:</span> Split Accuracy With Order
+                        </>
+                      ),
+                      value:
+                        typeof splitClassificationMetrics.split_accuracy_with_order === 'number'
+                          ? splitClassificationMetrics.split_accuracy_with_order.toFixed(3)
+                          : splitClassificationMetrics.split_accuracy_with_order?.toString() || '0',
+                    });
+                  }
+                }
+
+                return mainItems;
+              })()}
+              columnDefinitions={[
+                { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                { id: 'value', header: 'Value', cell: (item) => item.value, width: 200 },
+              ]}
+              variant="embedded"
+            />
+
+            {/* Details in collapsible section */}
+            <ExpandableSection headerText="Additional Metrics">
+              <Container>
+                <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
+                  preferences={<div />}
+                  items={[
+                    // All accuracy breakdown metrics
+                    ...(accuracyBreakdown
+                      ? Object.entries(accuracyBreakdown).map(([key, value]) => ({
+                          metric: (
+                            <>
+                              <span style={{ color: '#687078' }}>Extraction:</span>{' '}
+                              {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                            </>
+                          ),
+                          value: value !== null && value !== undefined ? value.toFixed(3) : '0.000',
+                        }))
+                      : []),
+                    // Remaining split classification metrics
+                    ...(splitClassificationMetrics
+                      ? Object.entries(splitClassificationMetrics)
+                          .filter(([key]) => key !== 'page_level_accuracy' && key !== 'split_accuracy_with_order')
+                          .map(([key, value]) => ({
+                            metric: (
+                              <>
+                                <span style={{ color: '#687078' }}>Classification:</span>{' '}
+                                {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                              </>
+                            ),
+                            value:
+                              typeof value === 'number' && key.includes('accuracy')
+                                ? value.toFixed(3)
+                                : value !== null && value !== undefined
+                                ? value.toString()
+                                : '0',
+                          }))
+                      : []),
+                  ]}
+                  columnDefinitions={[
+                    { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                    { id: 'value', header: 'Value', cell: (item) => item.value, width: 200 },
+                  ]}
+                  variant="embedded"
+                />
+              </Container>
+            </ExpandableSection>
+          </SpaceBetween>
         </Container>
       )}
 
@@ -63,6 +169,8 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
       {costBreakdown && (
         <Container header={<Header variant="h3">Estimated Cost</Header>}>
           <Table
+            resizableColumns
+            wrapLines={preferences.wrapLines}
             items={(() => {
               const costItems = [];
               let totalCost = 0;
@@ -211,6 +319,26 @@ const ComprehensiveBreakdown = ({ costBreakdown, accuracyBreakdown, averageWeigh
   );
 };
 
+// Preferences component
+const TestResultsPreferences = ({ preferences, setPreferences }) => (
+  <CollectionPreferences
+    title="Preferences"
+    confirmLabel="Confirm"
+    cancelLabel="Cancel"
+    preferences={preferences}
+    onConfirm={({ detail }) => setPreferences(detail)}
+    wrapLinesPreference={{
+      label: 'Wrap lines',
+      description: 'Check to see all the text and wrap the lines',
+    }}
+  />
+);
+
+TestResultsPreferences.propTypes = {
+  preferences: PropTypes.object.isRequired,
+  setPreferences: PropTypes.func.isRequired,
+};
+
 const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const { addTestRun } = useAppContext();
   const [results, setResults] = useState(null);
@@ -220,11 +348,16 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
+  const [reRunNumberOfFiles, setReRunNumberOfFiles] = useState('');
   const [testSetFileCount, setTestSetFileCount] = useState(null);
   const [testSetStatus, setTestSetStatus] = useState(null);
   const [testSetFilePattern, setTestSetFilePattern] = useState(null);
   const [chartType, setChartType] = useState({ label: 'Bar Chart', value: 'bar' });
   const [retryMessage, setRetryMessage] = useState('');
+  const [preferences, setPreferences] = useState({ wrapLines: false });
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [selectedRangeData, setSelectedRangeData] = useState(null);
+  const [lowestScoreCount, setLowestScoreCount] = useState({ label: '5', value: 5 });
 
   const getProgressMessage = (progressLevel) => {
     if (progressLevel <= 1) return 'Initializing test results...';
@@ -428,13 +561,17 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const hasAccuracyData = results.overallAccuracy !== null && results.overallAccuracy !== undefined;
 
   // Calculate average weighted overall score
-  const averageWeightedScore =
-    results.weightedOverallScores && results.weightedOverallScores.length > 0
-      ? results.weightedOverallScores.reduce((sum, score) => sum + score, 0) / results.weightedOverallScores.length
-      : null;
+  const averageWeightedScore = (() => {
+    if (!results.weightedOverallScores) return null;
+    const scores =
+      typeof results.weightedOverallScores === 'string' ? JSON.parse(results.weightedOverallScores) : results.weightedOverallScores;
+    const values = Object.values(scores);
+    return values.length > 0 ? values.reduce((sum, score) => sum + score, 0) / values.length : null;
+  })();
 
   let costBreakdown = null;
   let accuracyBreakdown = null;
+  let splitClassificationMetrics = null;
 
   try {
     if (results.costBreakdown) {
@@ -442,6 +579,12 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     }
     if (results.accuracyBreakdown) {
       accuracyBreakdown = typeof results.accuracyBreakdown === 'string' ? JSON.parse(results.accuracyBreakdown) : results.accuracyBreakdown;
+    }
+    if (results.splitClassificationMetrics) {
+      splitClassificationMetrics =
+        typeof results.splitClassificationMetrics === 'string'
+          ? JSON.parse(results.splitClassificationMetrics)
+          : results.splitClassificationMetrics;
     }
   } catch (e) {
     console.error('Error parsing breakdown data:', e);
@@ -478,12 +621,26 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       return;
     }
 
+    // Validate numberOfFiles if provided
+    if (reRunNumberOfFiles.trim()) {
+      const numFiles = parseInt(reRunNumberOfFiles.trim(), 10);
+      if (isNaN(numFiles) || numFiles <= 0) {
+        console.error('Invalid numberOfFiles value');
+        return;
+      }
+      if (numFiles > testSetFileCount) {
+        console.error(`numberOfFiles (${numFiles}) exceeds test set file count (${testSetFileCount})`);
+        return;
+      }
+    }
+
     setReRunLoading(true);
 
     try {
       const input = {
         testSetId: testSetId,
         ...(reRunContext && { context: reRunContext }),
+        ...(reRunNumberOfFiles.trim() && { numberOfFiles: parseInt(reRunNumberOfFiles.trim(), 10) }),
       };
 
       console.log('About to call GraphQL with input:', input);
@@ -502,6 +659,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         addTestRun(newTestRun.testRunId, newTestRun.testSetName, reRunContext, newTestRun.filesCount);
         setShowReRunModal(false);
         setReRunContext('');
+        setReRunNumberOfFiles('');
         // Navigate to test executions tab
         window.location.hash = '#/test-studio?tab=executions';
       } else {
@@ -628,7 +786,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         </ColumnLayout>
 
         {/* Weighted Overall Scores Distribution Chart */}
-        {results.weightedOverallScores && results.weightedOverallScores.length > 1 && (
+        {results.weightedOverallScores && Object.keys(results.weightedOverallScores).length > 1 && (
           <Container
             header={
               <Header
@@ -649,74 +807,240 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
               </Header>
             }
           >
-            <BarChart
-              title={`Distribution of Weighted Overall Scores (${results.testRunId})`}
-              series={[
-                {
-                  title: 'Number of Documents',
-                  type: chartType.value,
-                  data: (() => {
-                    // Create score range buckets
-                    const buckets = {
-                      '0.0-0.1': 0,
-                      '0.1-0.2': 0,
-                      '0.2-0.3': 0,
-                      '0.3-0.4': 0,
-                      '0.4-0.5': 0,
-                      '0.5-0.6': 0,
-                      '0.6-0.7': 0,
-                      '0.7-0.8': 0,
-                      '0.8-0.9': 0,
-                      '0.9-1.0': 0,
-                    };
+            {(() => {
+              const generateChartData = () => {
+                const scores =
+                  typeof results.weightedOverallScores === 'string'
+                    ? JSON.parse(results.weightedOverallScores)
+                    : results.weightedOverallScores;
 
-                    // Count documents in each bucket
-                    results.weightedOverallScores.forEach((score) => {
-                      if (score < 0.1) buckets['0.0-0.1']++;
-                      else if (score < 0.2) buckets['0.1-0.2']++;
-                      else if (score < 0.3) buckets['0.2-0.3']++;
-                      else if (score < 0.4) buckets['0.3-0.4']++;
-                      else if (score < 0.5) buckets['0.4-0.5']++;
-                      else if (score < 0.6) buckets['0.5-0.6']++;
-                      else if (score < 0.7) buckets['0.6-0.7']++;
-                      else if (score < 0.8) buckets['0.7-0.8']++;
-                      else if (score < 0.9) buckets['0.8-0.9']++;
-                      else buckets['0.9-1.0']++;
-                    });
+                // Create score range buckets
+                const buckets = {
+                  '0.0-0.1': { count: 0, docs: [] },
+                  '0.1-0.2': { count: 0, docs: [] },
+                  '0.2-0.3': { count: 0, docs: [] },
+                  '0.3-0.4': { count: 0, docs: [] },
+                  '0.4-0.5': { count: 0, docs: [] },
+                  '0.5-0.6': { count: 0, docs: [] },
+                  '0.6-0.7': { count: 0, docs: [] },
+                  '0.7-0.8': { count: 0, docs: [] },
+                  '0.8-0.9': { count: 0, docs: [] },
+                  '0.9-1.0': { count: 0, docs: [] },
+                };
 
-                    return Object.entries(buckets).map(([range, count]) => ({
-                      x: range,
-                      y: count,
-                    }));
-                  })(),
-                },
-              ]}
-              xDomain={['0.0-0.1', '0.1-0.2', '0.2-0.3', '0.3-0.4', '0.4-0.5', '0.5-0.6', '0.6-0.7', '0.7-0.8', '0.8-0.9', '0.9-1.0']}
-              yDomain={[0, Math.max(...results.weightedOverallScores.map(() => 1)) * results.weightedOverallScores.length]}
-              xTitle="Weighted Overall Score Range"
-              yTitle="Number of Documents"
-              height={300}
-              hideFilter
-              hideLegend
-              i18nStrings={{
-                filterLabel: 'Filter displayed data',
-                filterPlaceholder: 'Filter data',
-                filterSelectedAriaLabel: 'selected',
-                legendAriaLabel: 'Legend',
-                chartAriaRoleDescription: 'bar chart',
-                xTickFormatter: (value) => value,
-                yTickFormatter: (value) => value.toString(),
-              }}
-            />
+                // Count documents and collect IDs in each bucket
+                Object.entries(scores).forEach(([docId, score]) => {
+                  let bucket;
+                  if (score < 0.1) bucket = '0.0-0.1';
+                  else if (score < 0.2) bucket = '0.1-0.2';
+                  else if (score < 0.3) bucket = '0.2-0.3';
+                  else if (score < 0.4) bucket = '0.3-0.4';
+                  else if (score < 0.5) bucket = '0.4-0.5';
+                  else if (score < 0.6) bucket = '0.5-0.6';
+                  else if (score < 0.7) bucket = '0.6-0.7';
+                  else if (score < 0.8) bucket = '0.7-0.8';
+                  else if (score < 0.9) bucket = '0.8-0.9';
+                  else bucket = '0.9-1.0';
+
+                  buckets[bucket].count++;
+                  buckets[bucket].docs.push({ docId, score });
+                });
+
+                let maxCount = 0;
+                const mappedData = Object.entries(buckets).map(([range, data]) => {
+                  if (data.count > maxCount) {
+                    maxCount = data.count;
+                  }
+
+                  const sortedDocs = data.docs.sort((a, b) => b.score - a.score);
+                  const topDocs = sortedDocs.slice(0, 3);
+
+                  let tooltip = `${data.count} documents in range ${range}\n\n`;
+                  topDocs.forEach((doc) => {
+                    tooltip += `• ${doc.docId} (${doc.score?.toFixed(3)})\n`;
+                  });
+                  if (data.docs.length > 3) {
+                    tooltip += `\n...and ${data.docs.length - 3} more documents`;
+                  }
+
+                  return {
+                    x: range,
+                    y: data.count,
+                    tooltip: tooltip,
+                  };
+                });
+
+                return { mappedData, maxCount, buckets };
+              };
+
+              const { mappedData, maxCount, buckets } = generateChartData();
+
+              const chartData = mappedData.map((item) => ({
+                range: item.x,
+                count: item.y,
+                tooltip: item.tooltip,
+              }));
+
+              return (
+                <ResponsiveContainer width="100%" height={320}>
+                  {chartType.value === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="range"
+                        angle={-45}
+                        textAnchor="end"
+                        height={55}
+                        interval={0}
+                        label={{ value: 'Weighted Overall Score Range', position: 'insideBottom', offset: -8 }}
+                      />
+                      <YAxis
+                        label={{ value: 'Number of Documents', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [value, 'Number of Documents']}
+                        labelFormatter={(label) => `Score Range: ${label}`}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="#0073bb"
+                        onClick={(data) => {
+                          const range = data.range;
+                          if (range && buckets[range] && buckets[range].docs.length > 0) {
+                            const docs = buckets[range].docs.sort((a, b) => b.score - a.score);
+                            setSelectedRangeData({ range, docs });
+                            setTimeout(() => {
+                              setShowDocumentsModal(true);
+                            }, 0);
+                          }
+                        }}
+                      />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="range"
+                        angle={-45}
+                        textAnchor="end"
+                        height={55}
+                        interval={0}
+                        label={{ value: 'Weighted Overall Score Range', position: 'insideBottom', offset: -8 }}
+                      />
+                      <YAxis
+                        label={{ value: 'Number of Documents', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [value, 'Number of Documents']}
+                        labelFormatter={(label) => `Score Range: ${label}`}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke="#0073bb"
+                        strokeWidth={2}
+                        dot={{ fill: '#0073bb', strokeWidth: 2, r: 4, cursor: 'pointer' }}
+                        activeDot={{
+                          r: 6,
+                          cursor: 'pointer',
+                          onClick: (data) => {
+                            const range = data.payload.range;
+                            if (range && buckets[range] && buckets[range].docs.length > 0) {
+                              const docs = buckets[range].docs.sort((a, b) => b.score - a.score);
+                              setSelectedRangeData({ range, docs });
+                              setTimeout(() => {
+                                setShowDocumentsModal(true);
+                              }, 0);
+                            }
+                          },
+                        }}
+                      />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              );
+            })()}
+          </Container>
+        )}
+
+        {/* Lowest Scoring Documents Table */}
+        {results?.weightedOverallScores && (
+          <Container
+            header={
+              <Header
+                actions={
+                  <Select
+                    selectedOption={lowestScoreCount}
+                    onChange={({ detail }) => setLowestScoreCount(detail.selectedOption)}
+                    options={[
+                      { label: '5', value: 5 },
+                      { label: '10', value: 10 },
+                      { label: '20', value: 20 },
+                      { label: '50', value: 50 },
+                    ]}
+                    placeholder="Select count"
+                  />
+                }
+              >
+                Documents with Lowest Weighted Overall Scores
+              </Header>
+            }
+          >
+            {(() => {
+              const scores =
+                typeof results.weightedOverallScores === 'string'
+                  ? JSON.parse(results.weightedOverallScores)
+                  : results.weightedOverallScores;
+
+              const sortedDocs = Object.entries(scores)
+                .map(([docId, score]) => ({ docId, score }))
+                .sort((a, b) => a.score - b.score)
+                .slice(0, lowestScoreCount.value);
+
+              return (
+                <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
+                  items={sortedDocs}
+                  columnDefinitions={[
+                    {
+                      id: 'docId',
+                      header: 'Document ID',
+                      cell: (item) => (
+                        <Button
+                          variant="link"
+                          onClick={() => {
+                            const urlPath = item.docId.replace(/\//g, '%252F');
+                            window.open(`#/documents/${urlPath}`, '_blank');
+                          }}
+                        >
+                          {item.docId}
+                        </Button>
+                      ),
+                    },
+                    {
+                      id: 'score',
+                      header: 'Weighted Overall Score',
+                      cell: (item) => item.score.toFixed(3),
+                    },
+                  ]}
+                  variant="embedded"
+                  contentDensity="compact"
+                />
+              );
+            })()}
           </Container>
         )}
 
         {/* Breakdown Tables */}
-        {(costBreakdown || accuracyBreakdown) && (
+        {(costBreakdown || accuracyBreakdown || splitClassificationMetrics) && (
           <ComprehensiveBreakdown
             costBreakdown={costBreakdown}
             accuracyBreakdown={accuracyBreakdown}
+            splitClassificationMetrics={splitClassificationMetrics}
             averageWeightedScore={averageWeightedScore}
+            preferences={preferences}
+            setPreferences={setPreferences}
           />
         )}
       </SpaceBetween>
@@ -726,6 +1050,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         onDismiss={() => {
           setShowReRunModal(false);
           setReRunContext('');
+          setReRunNumberOfFiles('');
         }}
         header="Re-Run Test"
         footer={
@@ -736,6 +1061,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                 onClick={() => {
                   setShowReRunModal(false);
                   setReRunContext('');
+                  setReRunNumberOfFiles('');
                 }}
               >
                 Cancel
@@ -756,6 +1082,35 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             <strong>Files:</strong>{' '}
             {testSetStatus === 'NOT_FOUND' ? 'Test set deleted' : testSetFileCount !== null ? `${testSetFileCount} files` : 'Loading...'}
           </Box>
+          <FormField label="Number of Files" description={`Optional: Limit the number of files to process (max: ${testSetFileCount || 0})`}>
+            <Input
+              value={reRunNumberOfFiles}
+              onChange={({ detail }) => {
+                const value = detail.value;
+
+                // Allow empty value
+                if (value === '') {
+                  setReRunNumberOfFiles('');
+                  return;
+                }
+
+                // Only allow digits (reject any non-digit characters)
+                if (!/^\d+$/.test(value)) {
+                  return; // Don't update state if invalid characters
+                }
+
+                // Check range
+                const num = parseInt(value, 10);
+                if (num > 0 && num <= (testSetFileCount || 0)) {
+                  setReRunNumberOfFiles(value);
+                }
+                // If number is too large, don't update the state (prevents typing)
+              }}
+              placeholder={`Enter 1-${testSetFileCount || 0}`}
+              type="text"
+              inputMode="numeric"
+            />
+          </FormField>
           <FormField label="Context" description="Optional context information for this test run">
             <Textarea
               value={reRunContext}
@@ -765,6 +1120,49 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             />
           </FormField>
         </SpaceBetween>
+      </Modal>
+
+      <Modal
+        visible={showDocumentsModal}
+        onDismiss={() => setShowDocumentsModal(false)}
+        header={`Documents in Range ${selectedRangeData?.range || ''}`}
+        size="medium"
+      >
+        <Box>
+          {selectedRangeData?.docs?.length > 0 ? (
+            <Table
+              resizableColumns
+              wrapLines={preferences.wrapLines}
+              items={selectedRangeData.docs}
+              columnDefinitions={[
+                {
+                  id: 'docId',
+                  header: 'Document ID',
+                  cell: (item) => (
+                    <Button
+                      variant="link"
+                      onClick={() => {
+                        const urlPath = item.docId.replace(/\//g, '%252F');
+                        window.open(`#/documents/${urlPath}`, '_blank');
+                      }}
+                    >
+                      {item.docId}
+                    </Button>
+                  ),
+                },
+                {
+                  id: 'score',
+                  header: 'Score',
+                  cell: (item) => item.score.toFixed(3),
+                },
+              ]}
+              variant="embedded"
+              contentDensity="compact"
+            />
+          ) : (
+            <Box>No documents found in this range</Box>
+          )}
+        </Box>
       </Modal>
     </Container>
   );

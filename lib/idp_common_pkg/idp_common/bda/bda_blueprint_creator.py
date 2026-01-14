@@ -357,7 +357,6 @@ class BDABlueprintCreator:
                 projectArn=projectArn, projectStage="LIVE"
             )
             project = project.get("project", None)
-            logger.info(f"Updating project: {project}")
             customOutputConfiguration = project.get("customOutputConfiguration", None)
 
             return customOutputConfiguration

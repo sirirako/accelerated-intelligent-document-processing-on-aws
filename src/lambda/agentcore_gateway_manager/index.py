@@ -96,7 +96,7 @@ def create_gateway(props, gateway_name, client):
     lambda_arn = props['LambdaArn']
     user_pool_id = props['UserPoolId']
     client_id = props['ClientId']
-    execution_role_arn = props.get('ExecutionRoleArn')
+    execution_role_arn = props['ExecutionRoleArn']
 
     # Create JWT authorizer config using existing Cognito resources
     authorizer_config = {

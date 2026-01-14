@@ -14,6 +14,7 @@ import strands
 
 from ..common.config import load_result_format_description
 from ..common.strands_bedrock_model import create_strands_bedrock_model
+from .analytics_logger import analytics_logger
 from .config import load_python_plot_generation_examples
 from .schema_provider import get_database_overview as _get_database_overview
 from .tools import (
@@ -42,6 +43,9 @@ def create_analytics_agent(
     Returns:
         strands.Agent: Configured Strands agent instance
     """
+
+    # Clear analytics events for this request
+    analytics_logger.clear()
 
     # Load the output format description
     final_result_format = load_result_format_description()

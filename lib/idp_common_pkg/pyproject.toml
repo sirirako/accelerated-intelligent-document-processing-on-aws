@@ -16,7 +16,7 @@ exclude = [
 
 [project]
 name = "idp_common"
-version = "0.4.6"
+version = "0.4.11"
 description = "Common utilities for GenAI IDP Accelerator patterns"
 authors = [{ name = "AWS", email = "noreply@amazon.com" }]
 requires-python = ">=3.10,<3.14"
@@ -25,6 +25,7 @@ dependencies = [
   "jsonschema>=4.25.1",
   "pydantic>=2.12.0",
   "deepdiff>=6.0.0",
+  "PyYAML>=6.0.0",      # Required for YAML configuration parsing
 ]
 readme = "README.md"
 classifiers = [
@@ -77,10 +78,12 @@ assessment = [
 
 # Evaluation module dependencies
 evaluation = [
-  "stickler-eval==0.1.3",
+  "stickler-eval==0.1.4",
   "genson==1.3.0",  # For automatic JSON Schema generation from data
   "munkres>=1.1.4", # For Hungarian algorithm (legacy, may be removed)
   "numpy==1.26.4",  # For numeric operations
+  # Explicitly prevent ruamel-yaml C extensions (they require compilation in Lambda)
+  "ruamel-yaml>=0.17.0,<0.19.0; python_version>='3.10'",  # Pure Python YAML, no C extensions
 ]
 
 # Criteria validation module dependencies
@@ -144,15 +147,16 @@ test = [
   "datamodel-code-generator>=0.25.0",   # Required for schema/pydantic generator tests
   "mypy-boto3-bedrock-runtime>=1.39.0", # Required for bedrock_utils tests
   # Evaluation module dependencies (from evaluation group)
-  "stickler-eval==0.1.3",
+  "stickler-eval==0.1.4",
   "genson==1.3.0",
   "munkres>=1.1.4",
   "numpy==1.26.4",
+  "build==1.3.0",
 ]
 
 # Full package with all dependencies
 all = [
-  "stickler-eval==0.1.3",
+  "stickler-eval==0.1.4",
   "genson==1.3.0",
   "Pillow==11.2.1",
   "PyMuPDF==1.25.5",

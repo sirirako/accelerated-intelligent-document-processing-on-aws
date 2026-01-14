@@ -173,8 +173,8 @@ def main():
         'patterns/pattern-1/template.yaml',
         'patterns/pattern-2/template.yaml', 
         'patterns/pattern-3/template.yaml',
-        'options/bda-lending-project/template.yaml',
-        'options/bedrockkb/template.yaml'
+        'nested/bda-lending-project/template.yaml',
+        'nested/bedrockkb/template.yaml'
     ]
     
     # Extract required permissions from templates

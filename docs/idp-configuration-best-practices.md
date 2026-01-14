@@ -392,7 +392,7 @@ properties:
 
 ## Classification Prompt Customization
 
-### TextBasedHolisticClassification (rvl-cdip-package-sample)
+### TextBasedHolisticClassification (rvl-cdip)
 
 This approach analyzes entire document packages to identify logical document boundaries.
 
@@ -1119,7 +1119,7 @@ The IDP accelerator supports two primary processing patterns, each with distinct
 | **Primary Use Case** | Multi-document packages | Single-page documents |
 | **Input Data** | OCR text + document images | Document images only |
 | **Processing Method** | Document boundary detection | Independent page analysis |
-| **Example Config** | `rvl-cdip-package-sample` | `lending-package-sample` |
+| **Example Config** | `rvl-cdip` | `lending-package-sample` |
 | **Configuration Complexity** | Higher (boundary rules) | Lower (direct classification) |
 | **Output Format** | Segmented page ranges | Single classification |
 
@@ -1499,6 +1499,11 @@ Configure from these supported models:
 - `eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
 - `eu.anthropic.claude-opus-4-5-20251101-v1:0`
 - `qwen.qwen3-vl-235b-a22b`
+- `global.amazon.nova-2-lite-v1:0`
+- `global.anthropic.claude-haiku-4-5-20251001-v1:0`
+- `global.anthropic.claude-sonnet-4-5-20250929-v1:0`
+- `global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`
+- `global.anthropic.claude-opus-4-5-20251101-v1:0`
 
 #### When to Configure Bedrock OCR
 

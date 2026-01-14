@@ -89,8 +89,8 @@ class ProgressMonitor:
             for status in statuses:
                 self._categorize_document(status, status_summary)
 
-                # Cache finished documents
-                if status["status"] in ["COMPLETED", "FAILED"]:
+                # Cache finished documents (terminal states)
+                if status["status"] in ["COMPLETED", "FAILED", "ABORTED"]:
                     self.finished_docs[status["document_id"]] = status
 
         except Exception as e:
@@ -101,7 +101,7 @@ class ProgressMonitor:
                     status = self.get_document_status(doc_id)
                     self._categorize_document(status, status_summary)
 
-                    if status["status"] in ["COMPLETED", "FAILED"]:
+                    if status["status"] in ["COMPLETED", "FAILED", "ABORTED"]:
                         self.finished_docs[status["document_id"]] = status
                 except Exception as e:
                     logger.error(f"Error getting status for {doc_id}: {e}")
@@ -156,9 +156,10 @@ class ProgressMonitor:
             timing = doc_result.get("timing", {})
             elapsed = timing.get("elapsed", {})
 
+            status_value = doc_result.get("status", "UNKNOWN")
             status = {
                 "document_id": doc_result.get("object_key"),
-                "status": doc_result.get("status", "UNKNOWN"),
+                "status": status_value,
                 "workflow_arn": "",
                 "start_time": "",
                 "end_time": "",
@@ -166,6 +167,15 @@ class ProgressMonitor:
                 if elapsed.get("total")
                 else 0,  # Convert ms to seconds
             }
+
+            # Add error info for failed/aborted documents
+            if status_value == "ABORTED":
+                status["error"] = "Aborted by user"
+                status["failed_step"] = "N/A"
+            elif status_value == "FAILED":
+                status["error"] = doc_result.get("error", "Unknown error")
+                status["failed_step"] = doc_result.get("failed_step", "Unknown")
+
             statuses.append(status)
 
         return statuses
@@ -182,7 +192,7 @@ class ProgressMonitor:
 
         if status_value == "COMPLETED":
             status_summary["completed"].append(status)
-        elif status_value == "FAILED":
+        elif status_value in ["FAILED", "ABORTED"]:
             status_summary["failed"].append(status)
         elif status_value in [
             "RUNNING",
@@ -244,6 +254,10 @@ class ProgressMonitor:
             # Add status-specific fields
             if status == "RUNNING":
                 doc_status["current_step"] = result.get("CurrentStep", "Unknown")
+            elif status == "ABORTED":
+                # Aborted documents show user-friendly message
+                doc_status["error"] = result.get("Error", "Aborted by user")
+                doc_status["failed_step"] = result.get("FailedStep", "N/A")
             elif status == "FAILED":
                 doc_status["error"] = result.get("Error", "Unknown error")
                 doc_status["failed_step"] = result.get("FailedStep", "Unknown")
@@ -332,11 +346,23 @@ class ProgressMonitor:
         """
         failed = status_data.get("failed", [])
 
-        return [
-            {
-                "document_id": doc["document_id"],
-                "error": doc.get("error", "Unknown error"),
-                "failed_step": doc.get("failed_step", "Unknown"),
-            }
-            for doc in failed
-        ]
+        result = []
+        for doc in failed:
+            # Check if document was aborted vs failed
+            status = doc.get("status", "FAILED")
+            if status == "ABORTED":
+                error = "Aborted by user"
+                failed_step = "N/A"
+            else:
+                error = doc.get("error", "Unknown error")
+                failed_step = doc.get("failed_step", "Unknown")
+
+            result.append(
+                {
+                    "document_id": doc["document_id"],
+                    "error": error,
+                    "failed_step": failed_step,
+                }
+            )
+
+        return result

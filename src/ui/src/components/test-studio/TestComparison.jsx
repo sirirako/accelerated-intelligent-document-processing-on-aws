@@ -2,10 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Table, Box, Button, ButtonDropdown, ProgressBar } from '@cloudscape-design/components';
+import {
+  Container,
+  Header,
+  SpaceBetween,
+  Table,
+  Box,
+  Button,
+  ButtonDropdown,
+  ProgressBar,
+  Select,
+  CollectionPreferences,
+  ExpandableSection,
+} from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
 import TestStudioHeader from './TestStudioHeader';
+import useLocalStorage from '../common/local-storage';
 
 const client = generateClient();
 
@@ -13,6 +26,93 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
   const [comparisonData, setComparisonData] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [currentAttempt, setCurrentAttempt] = useState(1);
+  const [lowestScoreCount, setLowestScoreCount] = useState({ label: '5', value: 5 });
+  const [preferences, setPreferences] = useLocalStorage('test-comparison-preferences', { wrapLines: false });
+
+  // Color grading functions
+  const getCostColorGrade = (cost, allCosts) => {
+    if (!cost || cost === 'N/A') return {};
+    const numCost = typeof cost === 'string' ? parseFloat(cost.replace('$', '')) : cost;
+    const validCosts = allCosts.filter((c) => c && c !== 'N/A').map((c) => (typeof c === 'string' ? parseFloat(c.replace('$', '')) : c));
+    if (validCosts.length === 0) return {};
+
+    const sortedCosts = [...validCosts].sort((a, b) => a - b);
+    const index = sortedCosts.indexOf(numCost);
+    const ratio = validCosts.length === 1 ? 0 : index / (validCosts.length - 1);
+
+    // Green → Yellow → Red gradient
+    let r, g, b;
+    if (ratio <= 0.5) {
+      // Green to Yellow (first half)
+      const t = ratio * 2;
+      r = Math.round(34 + t * (255 - 34)); // 34 to 255
+      g = Math.round(139 + t * (255 - 139)); // 139 to 255
+      b = Math.round(34 + t * (0 - 34)); // 34 to 0
+    } else {
+      // Yellow to Red (second half)
+      const t = (ratio - 0.5) * 2;
+      r = 255; // Stay at 255
+      g = Math.round(255 + t * (0 - 255)); // 255 to 0
+      b = 0; // Stay at 0
+    }
+
+    // Use black text for light backgrounds (yellow range)
+    const textColor = ratio > 0.3 && ratio < 0.7 ? 'black' : 'white';
+
+    return { backgroundColor: `rgb(${r}, ${g}, ${b})`, color: textColor };
+  };
+
+  const getScoreColorGrade = (score, allScores) => {
+    if (!score || score === 'N/A') return {};
+    const numScore = typeof score === 'string' ? parseFloat(score) : score;
+    const validScores = allScores.filter((s) => s && s !== 'N/A').map((s) => (typeof s === 'string' ? parseFloat(s) : s));
+    if (validScores.length === 0) return {};
+
+    const sortedScores = [...validScores].sort((a, b) => b - a); // Highest to lowest
+    const index = sortedScores.indexOf(numScore);
+    const ratio = validScores.length === 1 ? 0 : index / (validScores.length - 1);
+
+    // Green → Yellow → Red gradient
+    let r, g, b;
+    if (ratio <= 0.5) {
+      // Green to Yellow (first half)
+      const t = ratio * 2;
+      r = Math.round(34 + t * (255 - 34)); // 34 to 255
+      g = Math.round(139 + t * (255 - 139)); // 139 to 255
+      b = Math.round(34 + t * (0 - 34)); // 34 to 0
+    } else {
+      // Yellow to Red (second half)
+      const t = (ratio - 0.5) * 2;
+      r = 255; // Stay at 255
+      g = Math.round(255 + t * (0 - 255)); // 255 to 0
+      b = 0; // Stay at 0
+    }
+
+    // Use black text for light backgrounds (yellow range)
+    const textColor = ratio > 0.3 && ratio < 0.7 ? 'black' : 'white';
+
+    return { backgroundColor: `rgb(${r}, ${g}, ${b})`, color: textColor };
+  };
+
+  // Preferences component
+  const TestComparisonPreferences = ({ preferences: prefs, setPreferences: setPrefs }) => (
+    <CollectionPreferences
+      title="Preferences"
+      confirmLabel="Confirm"
+      cancelLabel="Cancel"
+      preferences={prefs}
+      onConfirm={({ detail }) => setPrefs(detail)}
+      wrapLinesPreference={{
+        label: 'Wrap lines',
+        description: 'Check to see all the text and wrap the lines',
+      }}
+    />
+  );
+
+  TestComparisonPreferences.propTypes = {
+    preferences: PropTypes.object.isRequired,
+    setPreferences: PropTypes.func.isRequired,
+  };
 
   useEffect(() => {
     const fetchComparison = async () => {
@@ -104,7 +204,8 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
   // Helper function to create clickable test run ID headers
   const createTestRunHeader = (testRunId, truncate = false) => {
-    const displayId = truncate ? `T${Object.keys(completeTestRuns).indexOf(testRunId) + 1}` : testRunId;
+    const displayId = testRunId;
+    const testSetName = truncate ? completeTestRuns[testRunId]?.testSetName : null;
 
     if (truncate) {
       return (
@@ -180,9 +281,14 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
       [
         'Average Weighted Overall Score',
         ...Object.values(completeTestRuns).map((run) => {
-          if (run.weightedOverallScores && run.weightedOverallScores.length > 0) {
-            const avg = run.weightedOverallScores.reduce((sum, score) => sum + score, 0) / run.weightedOverallScores.length;
-            return avg.toFixed(3);
+          if (run.weightedOverallScores) {
+            const scores =
+              typeof run.weightedOverallScores === 'string' ? JSON.parse(run.weightedOverallScores) : run.weightedOverallScores;
+            const values = Object.values(scores);
+            if (values.length > 0) {
+              const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+              return avg.toFixed(3);
+            }
           }
           return 'N/A';
         }),
@@ -348,9 +454,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     // Add weighted overall score to accuracy breakdown
     const weightedRow = ['Weighted Overall Score'];
     Object.entries(completeTestRuns).forEach(([testRunId, testRun]) => {
-      if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-        const avg = testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-        weightedRow.push(avg.toFixed(3));
+      if (testRun.weightedOverallScores) {
+        const scores =
+          typeof testRun.weightedOverallScores === 'string' ? JSON.parse(testRun.weightedOverallScores) : testRun.weightedOverallScores;
+        const values = Object.values(scores);
+        if (values.length > 0) {
+          const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+          weightedRow.push(avg.toFixed(3));
+        } else {
+          weightedRow.push('N/A');
+        }
       } else {
         weightedRow.push('N/A');
       }
@@ -431,10 +544,17 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             totalCost: testRun.totalCost,
             averageAccuracy: testRun.overallAccuracy,
             averageConfidence: testRun.averageConfidence,
-            averageWeightedOverallScore:
-              testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0
-                ? testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length
-                : null,
+            averageWeightedOverallScore: (() => {
+              if (testRun.weightedOverallScores) {
+                const scores =
+                  typeof testRun.weightedOverallScores === 'string'
+                    ? JSON.parse(testRun.weightedOverallScores)
+                    : testRun.weightedOverallScores;
+                const values = Object.values(scores);
+                return values.length > 0 ? values.reduce((sum, score) => sum + score, 0) / values.length : null;
+              }
+              return null;
+            })(),
             duration:
               testRun.createdAt && testRun.completedAt
                 ? (() => {
@@ -452,9 +572,13 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
         Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
           const breakdown = { ...(testRun.accuracyBreakdown || {}) };
           // Add weighted overall score to accuracy breakdown
-          if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-            breakdown.weightedOverallScore =
-              testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
+          if (testRun.weightedOverallScores) {
+            const scores =
+              typeof testRun.weightedOverallScores === 'string' ? JSON.parse(testRun.weightedOverallScores) : testRun.weightedOverallScores;
+            const values = Object.values(scores);
+            if (values.length > 0) {
+              breakdown.weightedOverallScore = values.reduce((sum, score) => sum + score, 0) / values.length;
+            }
           }
           return [testRunId, breakdown];
         }),
@@ -560,6 +684,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           )}
           {Object.keys(completeTestRuns).length > 0 ? (
             <Table
+              resizableColumns
+              contentDensity="compact"
+              wrapLines={preferences.wrapLines}
+              preferences={<TestComparisonPreferences preferences={preferences} setPreferences={setPreferences} />}
               items={[
                 {
                   metric: 'Test Set',
@@ -615,10 +743,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   metric: 'Average Weighted Overall Score',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                      if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-                        const avg =
-                          testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-                        return [testRunId, avg.toFixed(3)];
+                      if (testRun.weightedOverallScores) {
+                        const scores =
+                          typeof testRun.weightedOverallScores === 'string'
+                            ? JSON.parse(testRun.weightedOverallScores)
+                            : testRun.weightedOverallScores;
+                        const values = Object.values(scores);
+                        if (values.length > 0) {
+                          const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+                          return [testRunId, avg.toFixed(3)];
+                        }
                       }
                       return [testRunId, 'N/A'];
                     }),
@@ -651,12 +785,23 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 },
               ]}
               columnDefinitions={[
-                { id: 'metric', header: 'Metric', cell: (item) => item.metric },
+                { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 250 },
                 ...Object.keys(completeTestRuns).map((testRunId) => ({
                   id: testRunId,
                   header: createTestRunHeader(testRunId, true),
                   cell: (item) => {
-                    return item[testRunId];
+                    const value = item[testRunId];
+                    let style = {};
+
+                    if (item.metric === 'Total Cost') {
+                      const allCosts = Object.keys(completeTestRuns).map((id) => item[id]);
+                      style = getCostColorGrade(value, allCosts);
+                    } else if (item.metric === 'Average Weighted Overall Score') {
+                      const allScores = Object.keys(completeTestRuns).map((id) => item[id]);
+                      style = getScoreColorGrade(value, allScores);
+                    }
+
+                    return <span style={{ ...style, WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>{value}</span>;
                   },
                 })),
               ]}
@@ -666,6 +811,156 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             <Box>No completed test runs available</Box>
           )}
         </Box>
+
+        {/* Lowest Scoring Documents Across Tests */}
+        <Container
+          header={
+            <Header
+              actions={
+                <Select
+                  selectedOption={lowestScoreCount}
+                  onChange={({ detail }) => setLowestScoreCount(detail.selectedOption)}
+                  options={[
+                    { label: '5', value: 5 },
+                    { label: '10', value: 10 },
+                    { label: '20', value: 20 },
+                    { label: '50', value: 50 },
+                  ]}
+                  placeholder="Select count"
+                />
+              }
+            >
+              Documents with Lowest Weighted Overall Scores Across Tests
+            </Header>
+          }
+        >
+          {(() => {
+            const testRunIds = Object.keys(completeTestRuns);
+
+            // Get lowest scoring documents from each test run
+            const getLowestDocs = (testRun) => {
+              if (!testRun?.weightedOverallScores) return [];
+
+              const scores =
+                typeof testRun.weightedOverallScores === 'string'
+                  ? JSON.parse(testRun.weightedOverallScores)
+                  : testRun.weightedOverallScores;
+
+              return Object.entries(scores)
+                .map(([docId, score]) => ({ docId, score }))
+                .sort((a, b) => a.score - b.score)
+                .slice(0, lowestScoreCount.value);
+            };
+
+            const allTestDocs = testRunIds.map((testRunId) => getLowestDocs(completeTestRuns[testRunId]));
+            const maxRows = Math.max(...allTestDocs.map((docs) => docs.length));
+
+            // Create table items with T1 and T2 columns
+            const tableItems = Array.from({ length: maxRows }, (_, index) => {
+              const item = { index };
+              testRunIds.forEach((testRunId, testIndex) => {
+                item[`t${testIndex + 1}Doc`] = allTestDocs[testIndex][index];
+              });
+              return item;
+            });
+
+            // Helper function to extract filename from document ID
+            const getDocumentFilename = (docId) => {
+              return docId.split('/').pop().split('\\').pop(); // Handle both / and \ separators
+            };
+
+            // Create color mapping for matching document filenames
+            const getDocumentColor = (docId) => {
+              const filename = getDocumentFilename(docId);
+
+              // Count how many test runs have this filename
+              let matchCount = 0;
+              tableItems.forEach((item) => {
+                testRunIds.forEach((_, testIndex) => {
+                  if (item[`t${testIndex + 1}Doc`] && getDocumentFilename(item[`t${testIndex + 1}Doc`].docId) === filename) {
+                    matchCount++;
+                  }
+                });
+              });
+
+              // Only color if document appears in multiple test runs
+              if (matchCount <= 1) return 'transparent';
+
+              const colors = ['#e3f2fd', '#f3e5f5', '#e8f5e8', '#fff3e0', '#fce4ec', '#e0f2f1', '#f1f8e9', '#fff8e1', '#e8eaf6', '#fafafa'];
+
+              // Get all matching filenames
+              const matchingFilenames = new Set();
+              tableItems.forEach((item) => {
+                testRunIds.forEach((_, testIndex) => {
+                  if (item[`t${testIndex + 1}Doc`]) {
+                    const fname = getDocumentFilename(item[`t${testIndex + 1}Doc`].docId);
+                    // Count occurrences of this filename
+                    let count = 0;
+                    tableItems.forEach((innerItem) => {
+                      testRunIds.forEach((__, innerTestIndex) => {
+                        if (
+                          innerItem[`t${innerTestIndex + 1}Doc`] &&
+                          getDocumentFilename(innerItem[`t${innerTestIndex + 1}Doc`].docId) === fname
+                        ) {
+                          count++;
+                        }
+                      });
+                    });
+                    if (count > 1) matchingFilenames.add(fname);
+                  }
+                });
+              });
+
+              const filenameArray = Array.from(matchingFilenames).sort();
+              const colorIndex = filenameArray.indexOf(filename) % colors.length;
+              return colors[colorIndex];
+            };
+
+            return tableItems.length > 0 ? (
+              <Table
+                resizableColumns
+                wrapLines={preferences.wrapLines}
+                preferences={<div />}
+                items={tableItems}
+                columnDefinitions={testRunIds.map((testRunId, index) => ({
+                  id: `t${index + 1}`,
+                  header: createTestRunHeader(testRunId, true),
+                  width: 400,
+                  cell: (item) =>
+                    item[`t${index + 1}Doc`] ? (
+                      <div
+                        style={{
+                          textAlign: 'left',
+                          backgroundColor: getDocumentColor(item[`t${index + 1}Doc`].docId),
+                          padding: '8px',
+                          borderRadius: '4px',
+                          WebkitPrintColorAdjust: 'exact',
+                          colorAdjust: 'exact',
+                        }}
+                      >
+                        <Button
+                          variant="link"
+                          onClick={() => {
+                            const urlPath = item[`t${index + 1}Doc`].docId.replace(/\//g, '%252F');
+                            window.open(`#/documents/${urlPath}`, '_blank');
+                          }}
+                        >
+                          {item[`t${index + 1}Doc`].docId}
+                        </Button>
+                        <div style={{ fontSize: '12px', color: '#666' }}>Score: {item[`t${index + 1}Doc`].score.toFixed(3)}</div>
+                      </div>
+                    ) : (
+                      ''
+                    ),
+                }))}
+                variant="embedded"
+                contentDensity="compact"
+              />
+            ) : (
+              <Box>No documents with weighted overall scores found</Box>
+            );
+          })()}
+        </Container>
 
         {/* Breakdown Tables */}
         <SpaceBetween direction="vertical" size="l">
@@ -678,6 +973,9 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
               return (
                 <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
+                  preferences={<div />}
                   items={comparisonData.configs.map((config) => {
                     const values = typeof config.values === 'string' ? JSON.parse(config.values) : config.values;
                     return {
@@ -686,7 +984,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                     };
                   })}
                   columnDefinitions={[
-                    { id: 'setting', header: 'Config', cell: (item) => item.setting },
+                    { id: 'setting', header: 'Config', cell: (item) => item.setting, width: 200 },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
                       header: createTestRunHeader(testRunId, true),
@@ -699,62 +997,187 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
             })()}
           </Container>
 
-          {/* Average Accuracy Comparison */}
-          <Container header={<Header variant="h3">Average Accuracy Comparison</Header>}>
+          {/* Average Accuracy and Split Metrics Comparison */}
+          <Container header={<Header variant="h3">Average Accuracy and Split Metrics Comparison</Header>}>
             {(() => {
               const hasAccuracyData = Object.values(completeTestRuns).some((testRun) => testRun.accuracyBreakdown);
+              const hasSplitData = Object.values(completeTestRuns).some((testRun) => testRun.splitClassificationMetrics);
 
-              if (!hasAccuracyData) {
-                return <Box>No accuracy breakdown data available</Box>;
+              if (!hasAccuracyData && !hasSplitData) {
+                return <Box>No accuracy or split metrics data available</Box>;
               }
 
-              const allAccuracyMetrics = new Set();
-              Object.values(completeTestRuns).forEach((testRun) => {
-                if (testRun.accuracyBreakdown) {
-                  Object.keys(testRun.accuracyBreakdown).forEach((metric) => {
-                    allAccuracyMetrics.add(metric);
-                  });
-                }
+              const mainItems = [];
+
+              // Add weighted overall score
+              mainItems.push({
+                metric: (
+                  <>
+                    <span style={{ color: '#687078' }}>Extraction:</span> Weighted Overall Score
+                  </>
+                ),
+                ...Object.fromEntries(
+                  Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                    if (testRun.weightedOverallScores) {
+                      const scores =
+                        typeof testRun.weightedOverallScores === 'string'
+                          ? JSON.parse(testRun.weightedOverallScores)
+                          : testRun.weightedOverallScores;
+                      const values = Object.values(scores);
+                      if (values.length > 0) {
+                        const avg = values.reduce((sum, score) => sum + score, 0) / values.length;
+                        return [testRunId, avg.toFixed(3)];
+                      }
+                    }
+                    return [testRunId, 'N/A'];
+                  }),
+                ),
               });
 
+              // Add Page Level Accuracy and Split Accuracy With Order
+              if (hasSplitData) {
+                mainItems.push({
+                  metric: (
+                    <>
+                      <span style={{ color: '#687078' }}>Classification:</span> Page Level Accuracy
+                    </>
+                  ),
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                      const splitMetrics = testRun.splitClassificationMetrics || {};
+                      const value = splitMetrics.page_level_accuracy;
+                      const displayValue = typeof value === 'number' ? value.toFixed(3) : value?.toString() || '0';
+                      return [testRunId, displayValue];
+                    }),
+                  ),
+                });
+
+                mainItems.push({
+                  metric: (
+                    <>
+                      <span style={{ color: '#687078' }}>Classification:</span> Split Accuracy With Order
+                    </>
+                  ),
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                      const splitMetrics = testRun.splitClassificationMetrics || {};
+                      const value = splitMetrics.split_accuracy_with_order;
+                      const displayValue = typeof value === 'number' ? value.toFixed(3) : value?.toString() || '0';
+                      return [testRunId, displayValue];
+                    }),
+                  ),
+                });
+              }
+
               return (
-                <Table
-                  items={[
-                    ...Array.from(allAccuracyMetrics).map((metricKey) => ({
-                      metric: metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                      ...Object.fromEntries(
-                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                          const accuracyBreakdown = testRun.accuracyBreakdown || {};
-                          const value = accuracyBreakdown[metricKey];
-                          const displayValue = value !== null && value !== undefined ? value.toFixed(3) : '0.000';
-                          return [testRunId, displayValue];
-                        }),
-                      ),
-                    })),
-                    {
-                      metric: 'Weighted Overall Score',
-                      ...Object.fromEntries(
-                        Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
-                          if (testRun.weightedOverallScores && testRun.weightedOverallScores.length > 0) {
-                            const avg =
-                              testRun.weightedOverallScores.reduce((sum, score) => sum + score, 0) / testRun.weightedOverallScores.length;
-                            return [testRunId, avg.toFixed(3)];
-                          }
-                          return [testRunId, 'N/A'];
-                        }),
-                      ),
-                    },
-                  ]}
-                  columnDefinitions={[
-                    { id: 'metric', header: 'Accuracy Metric', cell: (item) => item.metric },
-                    ...Object.keys(completeTestRuns).map((testRunId) => ({
-                      id: testRunId,
-                      header: createTestRunHeader(testRunId, true),
-                      cell: (item) => item[testRunId],
-                    })),
-                  ]}
-                  variant="embedded"
-                />
+                <>
+                  <Table
+                    resizableColumns
+                    wrapLines={preferences.wrapLines}
+                    preferences={<div />}
+                    items={mainItems}
+                    columnDefinitions={[
+                      { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                      ...Object.keys(completeTestRuns).map((testRunId) => ({
+                        id: testRunId,
+                        header: createTestRunHeader(testRunId, true),
+                        cell: (item) => item[testRunId],
+                        width: 200,
+                      })),
+                    ]}
+                    variant="embedded"
+                  />
+
+                  {/* Additional Metrics in collapsible section */}
+                  <ExpandableSection headerText="Additional Metrics">
+                    <Container>
+                      <Table
+                        resizableColumns
+                        wrapLines={preferences.wrapLines}
+                        preferences={<div />}
+                        items={[
+                          // All accuracy breakdown metrics
+                          ...(hasAccuracyData
+                            ? (() => {
+                                const allAccuracyMetrics = new Set();
+                                Object.values(completeTestRuns).forEach((testRun) => {
+                                  if (testRun.accuracyBreakdown) {
+                                    Object.keys(testRun.accuracyBreakdown).forEach((metric) => {
+                                      allAccuracyMetrics.add(metric);
+                                    });
+                                  }
+                                });
+
+                                return Array.from(allAccuracyMetrics).map((metricKey) => ({
+                                  metric: (
+                                    <>
+                                      <span style={{ color: '#687078' }}>Extraction:</span>{' '}
+                                      {metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                                    </>
+                                  ),
+                                  ...Object.fromEntries(
+                                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                                      const accuracyBreakdown = testRun.accuracyBreakdown || {};
+                                      const value = accuracyBreakdown[metricKey];
+                                      const displayValue = value !== null && value !== undefined ? value.toFixed(3) : '0.000';
+                                      return [testRunId, displayValue];
+                                    }),
+                                  ),
+                                }));
+                              })()
+                            : []),
+                          // Remaining split classification metrics (excluding main ones)
+                          ...(hasSplitData
+                            ? (() => {
+                                const allSplitMetrics = new Set();
+                                Object.values(completeTestRuns).forEach((testRun) => {
+                                  if (testRun.splitClassificationMetrics) {
+                                    Object.keys(testRun.splitClassificationMetrics)
+                                      .filter((key) => key !== 'page_level_accuracy' && key !== 'split_accuracy_with_order')
+                                      .forEach((metric) => {
+                                        allSplitMetrics.add(metric);
+                                      });
+                                  }
+                                });
+
+                                return Array.from(allSplitMetrics).map((metricKey) => ({
+                                  metric: (
+                                    <>
+                                      <span style={{ color: '#687078' }}>Classification:</span>{' '}
+                                      {metricKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                                    </>
+                                  ),
+                                  ...Object.fromEntries(
+                                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => {
+                                      const splitMetrics = testRun.splitClassificationMetrics || {};
+                                      const value = splitMetrics[metricKey];
+                                      const displayValue =
+                                        typeof value === 'number' && metricKey.includes('accuracy')
+                                          ? value.toFixed(3)
+                                          : value !== null && value !== undefined
+                                          ? value.toString()
+                                          : '0';
+                                      return [testRunId, displayValue];
+                                    }),
+                                  ),
+                                }));
+                              })()
+                            : []),
+                        ]}
+                        columnDefinitions={[
+                          { id: 'metric', header: 'Metric', cell: (item) => item.metric, width: 400 },
+                          ...Object.keys(completeTestRuns).map((testRunId) => ({
+                            id: testRunId,
+                            header: createTestRunHeader(testRunId, true),
+                            cell: (item) => item[testRunId],
+                            width: 200,
+                          })),
+                        ]}
+                        variant="embedded"
+                      />
+                    </Container>
+                  </ExpandableSection>
+                </>
               );
             })()}
           </Container>
@@ -866,17 +1289,16 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
               return finalItems.length > 0 ? (
                 <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
+                  preferences={<div />}
                   items={finalItems}
                   columnDefinitions={[
-                    {
-                      id: 'context',
-                      header: 'Context',
-                      cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.context),
-                      width: 120,
-                    },
+                    { id: 'context', header: 'Context', cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.context), width: 180 },
                     {
                       id: 'serviceApi',
                       header: 'Service/Api',
+                      width: 300,
                       cell: (item) => (
                         <span
                           style={{
@@ -887,17 +1309,12 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                           {item.serviceApi}
                         </span>
                       ),
-                      width: 200,
                     },
-                    {
-                      id: 'unit',
-                      header: 'Unit',
-                      cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.unit),
-                      width: 100,
-                    },
+                    { id: 'unit', header: 'Unit', cell: (item) => (item.isSubtotal || item.isTotal ? '' : item.unit), width: 200 },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
                       header: createTestRunHeader(testRunId, true),
+                      width: 100,
                       cell: (item) => (
                         <span
                           style={{
@@ -908,7 +1325,6 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                           {item[testRunId] || '$0.0000'}
                         </span>
                       ),
-                      width: 80,
                     })),
                   ]}
                   variant="embedded"
@@ -973,31 +1389,19 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
               return tableItems.length > 0 ? (
                 <Table
+                  resizableColumns
+                  wrapLines={preferences.wrapLines}
+                  preferences={<div />}
                   items={tableItems}
                   columnDefinitions={[
-                    {
-                      id: 'context',
-                      header: 'Context',
-                      cell: (item) => item.context,
-                      width: 120,
-                    },
-                    {
-                      id: 'serviceApi',
-                      header: 'Service/Api',
-                      cell: (item) => item.serviceApi,
-                      width: 200,
-                    },
-                    {
-                      id: 'unit',
-                      header: 'Unit',
-                      cell: (item) => item.unit,
-                      width: 100,
-                    },
+                    { id: 'context', header: 'Context', cell: (item) => item.context, width: 180 },
+                    { id: 'serviceApi', header: 'Service/Api', cell: (item) => item.serviceApi, width: 300 },
+                    { id: 'unit', header: 'Unit', cell: (item) => item.unit, width: 200 },
                     ...Object.keys(completeTestRuns).map((testRunId) => ({
                       id: testRunId,
                       header: createTestRunHeader(testRunId, true),
+                      width: 150,
                       cell: (item) => item[testRunId] || '0',
-                      width: 60,
                     })),
                   ]}
                   variant="embedded"

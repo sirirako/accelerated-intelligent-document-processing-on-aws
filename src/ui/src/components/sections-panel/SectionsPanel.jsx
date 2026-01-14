@@ -10,6 +10,7 @@ import {
   Table,
   StatusIndicator,
   Button,
+  ButtonDropdown,
   Header,
   FormField,
   Select,
@@ -19,14 +20,17 @@ import {
   Alert,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
+import { ConsoleLogger } from 'aws-amplify/utils';
 
 import FileViewer from '../document-viewer/JSONViewer';
 import { getSectionConfidenceAlertCount, getSectionConfidenceAlerts } from '../common/confidence-alerts-utils';
 import useConfiguration from '../../hooks/use-configuration';
 import useSettingsContext from '../../contexts/settings';
 import processChanges from '../../graphql/queries/processChanges';
+import getFileContents from '../../graphql/queries/getFileContents';
 
 const client = generateClient();
+const logger = new ConsoleLogger('SectionsPanel');
 
 // Cell renderer components
 const IdCell = ({ item }) => <span>{item.Id}</span>;
@@ -51,14 +55,166 @@ const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
   return <StatusIndicator type="warning">{alertCount}</StatusIndicator>;
 };
 
-const ActionsCell = ({ item, pages, documentItem, mergedConfig }) => (
-  <FileViewer
-    fileUri={item.OutputJSONUri}
-    fileType="json"
-    buttonText="View/Edit Data"
-    sectionData={{ ...item, pages, documentItem, mergedConfig }}
-  />
-);
+const ActionsCell = ({ item, pages, documentItem, mergedConfig }) => {
+  const [isDownloading, setIsDownloading] = React.useState(false);
+  const [isViewerOpen, setIsViewerOpen] = React.useState(false);
+  const { settings } = useSettingsContext();
+
+  // Check if baseline is available based on evaluation status
+  const isBaselineAvailable = documentItem?.evaluationStatus === 'BASELINE_AVAILABLE' || documentItem?.evaluationStatus === 'COMPLETED';
+
+  // Construct baseline URI by replacing output bucket with evaluation baseline bucket
+  const constructBaselineUri = (outputUri) => {
+    if (!outputUri) return null;
+
+    // Get actual bucket names from settings
+    const outputBucketName = settings?.OutputBucket;
+    const baselineBucketName = settings?.EvaluationBaselineBucket;
+
+    if (!outputBucketName || !baselineBucketName) {
+      logger.error('Bucket names not available in settings');
+      logger.debug('Settings:', settings);
+      return null;
+    }
+
+    // Parse the S3 URI to extract bucket and key
+    // Format: s3://bucket-name/path/to/file
+    const match = outputUri.match(/^s3:\/\/([^/]+)\/(.+)$/);
+    if (!match) {
+      logger.error('Invalid S3 URI format:', outputUri);
+      return null;
+    }
+
+    const [, bucketName, objectKey] = match;
+
+    // Verify this is actually the output bucket before replacing
+    if (bucketName !== outputBucketName) {
+      logger.warn(`URI bucket (${bucketName}) does not match expected output bucket (${outputBucketName})`);
+    }
+
+    // Replace the output bucket with the baseline bucket (same object key)
+    const baselineUri = `s3://${baselineBucketName}/${objectKey}`;
+
+    logger.info(`Converted output URI to baseline URI:`);
+    logger.info(`  Output: ${outputUri}`);
+    logger.info(`  Baseline: ${baselineUri}`);
+
+    return baselineUri;
+  };
+
+  // Generate download filename
+  const generateFilename = (documentKey, sectionId, type) => {
+    // Sanitize document key by replacing forward slashes with underscores
+    const sanitizedDocId = documentKey.replace(/\//g, '_');
+    return `${sanitizedDocId}_section${sectionId}_${type}.json`;
+  };
+
+  // Download handler for both prediction and baseline data
+  const handleDownload = async (type) => {
+    setIsDownloading(true);
+
+    try {
+      const fileUri = type === 'baseline' ? constructBaselineUri(item.OutputJSONUri) : item.OutputJSONUri;
+
+      if (!fileUri) {
+        alert('File URI not available');
+        return;
+      }
+
+      logger.info(`Downloading ${type} data from:`, fileUri);
+
+      // Fetch file contents using GraphQL
+      const response = await client.graphql({
+        query: getFileContents,
+        variables: { s3Uri: fileUri },
+      });
+
+      const result = response.data.getFileContents;
+
+      if (result.isBinary) {
+        alert('This file contains binary content that cannot be downloaded');
+        return;
+      }
+
+      const content = result.content;
+
+      // Create blob and download
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      // Generate filename
+      const documentKey = documentItem?.objectKey || documentItem?.ObjectKey || 'document';
+      const filename = generateFilename(documentKey, item.Id, type);
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      logger.info(`Successfully downloaded ${type} data as ${filename}`);
+    } catch (error) {
+      logger.error(`Error downloading ${type} data:`, error);
+
+      let errorMessage = `Failed to download ${type} data`;
+
+      if (type === 'baseline' && error.message?.includes('not found')) {
+        errorMessage = 'Baseline data not found. The baseline may not have been set for this document yet.';
+      } else if (error.message) {
+        errorMessage = `Failed to download ${type} data: ${error.message}`;
+      }
+
+      alert(errorMessage);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Build dropdown menu items
+  const downloadMenuItems = [
+    {
+      id: 'prediction',
+      text: 'Download Data',
+      iconName: 'download',
+    },
+  ];
+
+  // Add baseline option if available
+  if (isBaselineAvailable) {
+    downloadMenuItems.push({
+      id: 'baseline',
+      text: 'Download Baseline',
+      iconName: 'download',
+    });
+  }
+
+  return (
+    <SpaceBetween direction="horizontal" size="xs">
+      <FileViewer
+        fileUri={item.OutputJSONUri}
+        fileType="json"
+        buttonText="View/Edit Data"
+        sectionData={{ ...item, pages, documentItem, mergedConfig }}
+        onOpen={() => setIsViewerOpen(true)}
+        onClose={() => setIsViewerOpen(false)}
+      />
+      {!isViewerOpen && (
+        <ButtonDropdown
+          items={downloadMenuItems}
+          onItemClick={({ detail }) => handleDownload(detail.id)}
+          disabled={isDownloading}
+          loading={isDownloading}
+          variant="normal"
+          expandToViewport
+        >
+          Download
+        </ButtonDropdown>
+      )}
+    </SpaceBetween>
+  );
+};
 
 // Editable cell components for edit mode (moved outside render)
 const EditableIdCell = ({ item, validationErrors, updateSectionId }) => (

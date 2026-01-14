@@ -16,13 +16,23 @@ import {
   FormField,
   Input,
   RadioGroup,
+  Icon,
 } from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
+import ReactMarkdown from 'react-markdown';
+import { generateClient } from 'aws-amplify/api';
+import { ConsoleLogger } from 'aws-amplify/utils';
 import useConfiguration from '../../hooks/use-configuration';
+import useConfigurationLibrary from '../../hooks/use-configuration-library';
+import useSettingsContext from '../../contexts/settings';
 import ConfigBuilder from './ConfigBuilder';
 import { deepMerge } from '../../utils/configUtils';
+import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
+
+const client = generateClient();
+const logger = new ConsoleLogger('ConfigurationLayout');
 
 const ConfigurationLayout = () => {
   const {
@@ -45,6 +55,7 @@ const ConfigurationLayout = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [importSuccess, setImportSuccess] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
   const [viewMode, setViewMode] = useState('form'); // Form view as default
   const [showResetModal, setShowResetModal] = useState(false);
@@ -57,7 +68,39 @@ const ConfigurationLayout = () => {
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [pendingImportConfig, setPendingImportConfig] = useState(null);
 
+  // Configuration Library state
+  const [showImportSourceModal, setShowImportSourceModal] = useState(false);
+  const [showLibraryBrowserModal, setShowLibraryBrowserModal] = useState(false);
+  const [showReadmeModal, setShowReadmeModal] = useState(false);
+  const [libraryConfigs, setLibraryConfigs] = useState([]);
+  const [selectedLibraryConfig, setSelectedLibraryConfig] = useState(null);
+  const [readmeContent, setReadmeContent] = useState('');
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  // BDA/IDP Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
+  const [syncError, setSyncError] = useState(null);
+
   const editorRef = useRef(null);
+
+  // Hooks for configuration library
+  const { listConfigurations, getFile } = useConfigurationLibrary();
+  const { settings } = useSettingsContext();
+
+  // Helper function to map IDPPattern to directory name
+  const getPatternDirectory = (idpPattern) => {
+    if (!idpPattern) return null;
+
+    // Extract pattern number from string like "Pattern1 - Description" or "Pattern2 - Description"
+    const match = idpPattern.match(/Pattern(\d+)/i);
+    if (match) {
+      return `pattern-${match[1]}`;
+    }
+
+    return null;
+  };
 
   // Helper function to detect legacy format
   const isLegacyFormat = (config) => {
@@ -68,6 +111,9 @@ const ConfigurationLayout = () => {
     const firstClass = config.classes[0];
     return firstClass.attributes && Array.isArray(firstClass.attributes);
   };
+
+  // Helper function to check if Pattern-1 is selected
+  const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -877,6 +923,56 @@ const ConfigurationLayout = () => {
     }
   };
 
+  // Handler for BDA/IDP sync
+  const handleSyncBdaIdp = async () => {
+    setIsSyncing(true);
+    setSyncSuccess(false);
+    setSyncSuccessMessage('');
+    setSyncError(null);
+
+    try {
+      logger.debug('Starting BDA/IDP sync...');
+
+      const result = await client.graphql({
+        query: syncBdaIdpMutation,
+      });
+
+      logger.debug('Sync API response:', result);
+
+      const response = result.data.syncBdaIdp;
+
+      if (response.success) {
+        setSyncSuccess(true);
+        setSyncSuccessMessage(response.message || 'Document classes have been synchronized with BDA blueprints.');
+
+        // If there are partial failures, also show the error details
+        if (response.error && response.error.type === 'PARTIAL_SYNC_ERROR') {
+          // Show both success and error for partial failures
+          setTimeout(() => {
+            setSyncError(response.error.message);
+          }, 100); // Small delay to show success first
+        }
+
+        // Refresh configuration to show any new classes
+        await fetchConfiguration();
+        setTimeout(() => {
+          setSyncSuccess(false);
+          setSyncSuccessMessage('');
+        }, 5000);
+        logger.debug('BDA/IDP sync completed successfully');
+      } else {
+        const errorMsg = response.error?.message || response.message || 'Sync operation failed';
+        setSyncError(errorMsg);
+        logger.error('Sync failed:', errorMsg);
+      }
+    } catch (err) {
+      logger.error('Sync error:', err);
+      setSyncError(`Sync failed: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleExport = () => {
     try {
       let content;
@@ -974,6 +1070,106 @@ const ConfigurationLayout = () => {
   const handleMigrationCancel = () => {
     setShowMigrationModal(false);
     setPendingImportConfig(null);
+  };
+
+  // Handler for Import button click - show source selection modal
+  const handleImportClick = () => {
+    setShowImportSourceModal(true);
+  };
+
+  // Handler for local file import
+  const handleLocalFileImport = () => {
+    setShowImportSourceModal(false);
+    document.getElementById('import-file').click();
+  };
+
+  // Handler for library import
+  const handleLibraryImport = async () => {
+    setShowImportSourceModal(false);
+    setLibraryLoading(true);
+
+    try {
+      const patternDir = getPatternDirectory(settings?.IDPPattern);
+      if (!patternDir) {
+        setImportError('Pattern not configured in settings');
+        setLibraryLoading(false);
+        return;
+      }
+
+      const configs = await listConfigurations(patternDir);
+      setLibraryConfigs(configs);
+      setShowLibraryBrowserModal(true);
+    } catch (err) {
+      setImportError(`Failed to load library: ${err.message}`);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  // Handler for selecting a library config
+  const handleSelectLibraryConfig = async (config) => {
+    setSelectedLibraryConfig(config);
+
+    if (config.hasReadme) {
+      // Fetch and show README
+      const patternDir = getPatternDirectory(settings?.IDPPattern);
+      const file = await getFile(patternDir, config.name, 'README.md');
+
+      if (file) {
+        setReadmeContent(file.content);
+        setShowLibraryBrowserModal(false);
+        setShowReadmeModal(true);
+      } else {
+        // No README or error, import directly
+        await importFromLibrary(config);
+      }
+    } else {
+      // No README, import directly
+      await importFromLibrary(config);
+    }
+  };
+
+  // Handler to import configuration from library
+  const importFromLibrary = async (config) => {
+    setShowReadmeModal(false);
+    setShowLibraryBrowserModal(false);
+
+    try {
+      const patternDir = getPatternDirectory(settings?.IDPPattern);
+
+      // Use the detected file type from the config object
+      const fileName = config.configFileType === 'json' ? 'config.json' : 'config.yaml';
+      const file = await getFile(patternDir, config.name, fileName);
+
+      if (!file) {
+        setImportError('Failed to load configuration file');
+        return;
+      }
+
+      // Parse based on file type
+      const importedConfig = fileName.endsWith('.json') ? JSON.parse(file.content) : yaml.load(file.content);
+
+      if (importedConfig && typeof importedConfig === 'object') {
+        if (isLegacyFormat(importedConfig)) {
+          setPendingImportConfig(importedConfig);
+          setShowMigrationModal(true);
+        } else {
+          if (importedConfig.classes) {
+            setExtractionSchema(importedConfig.classes);
+          }
+          handleFormChange(importedConfig);
+          setSaveSuccess(false);
+          setSaveError(null);
+          setImportSuccess(true);
+          // Auto-dismiss after 3 seconds
+          setTimeout(() => setImportSuccess(false), 3000);
+        }
+      } else {
+        setImportError('Invalid configuration format');
+      }
+    } catch (err) {
+      setImportError(`Import failed: ${err.message}`);
+    }
   };
 
   if (loading) {
@@ -1141,6 +1337,105 @@ const ConfigurationLayout = () => {
         </SpaceBetween>
       </Modal>
 
+      {/* Import Source Selection Modal */}
+      <Modal
+        visible={showImportSourceModal}
+        onDismiss={() => setShowImportSourceModal(false)}
+        header="Choose Import Source"
+        footer={
+          <Box float="right">
+            <Button variant="link" onClick={() => setShowImportSourceModal(false)}>
+              Cancel
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="l">
+          <Button variant="primary" onClick={handleLocalFileImport} iconName="upload" fullWidth>
+            Import from Local File
+          </Button>
+          <Button variant="normal" onClick={handleLibraryImport} iconName="folder" fullWidth loading={libraryLoading}>
+            Import from Configuration Library
+          </Button>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Configuration Library Browser Modal */}
+      <Modal
+        visible={showLibraryBrowserModal}
+        onDismiss={() => setShowLibraryBrowserModal(false)}
+        header={`Configuration Library - ${settings?.IDPPattern || 'Pattern'}`}
+        size="large"
+        footer={
+          <Box float="right">
+            <Button variant="link" onClick={() => setShowLibraryBrowserModal(false)}>
+              Cancel
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          {libraryConfigs.length === 0 && (
+            <Alert type="info">No configurations found for {settings?.IDPPattern} in the Config Library</Alert>
+          )}
+
+          {libraryConfigs.map((config) => (
+            <Container key={config.name}>
+              <SpaceBetween size="xs">
+                <Box fontSize="heading-m" fontWeight="bold">
+                  {config.name}
+                </Box>
+                <SpaceBetween size="xs" direction="horizontal">
+                  <Box fontSize="body-s" color="text-body-secondary">
+                    Format: {config.configFileType?.toUpperCase() || 'YAML'}
+                  </Box>
+                  {config.hasReadme && (
+                    <Box fontSize="body-s" color="text-status-info">
+                      <Icon name="file" /> README available
+                    </Box>
+                  )}
+                </SpaceBetween>
+                <Box float="right">
+                  <Button variant="primary" onClick={() => handleSelectLibraryConfig(config)}>
+                    Select
+                  </Button>
+                </Box>
+              </SpaceBetween>
+            </Container>
+          ))}
+        </SpaceBetween>
+      </Modal>
+
+      {/* README Preview Modal */}
+      <Modal
+        visible={showReadmeModal}
+        onDismiss={() => setShowReadmeModal(false)}
+        header={`Configuration: ${selectedLibraryConfig?.name}`}
+        size="large"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowReadmeModal(false);
+                  setShowLibraryBrowserModal(true);
+                }}
+              >
+                Go Back
+              </Button>
+              <Button variant="primary" onClick={() => importFromLibrary(selectedLibraryConfig)}>
+                Import This Configuration
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <Box padding="l">
+          <ReactMarkdown>{readmeContent}</ReactMarkdown>
+        </Box>
+      </Modal>
+
       <Container
         header={
           <Header
@@ -1169,10 +1464,15 @@ const ConfigurationLayout = () => {
                 <Button variant="normal" onClick={() => setShowExportModal(true)}>
                   Export
                 </Button>
-                <Button variant="normal" onClick={() => document.getElementById('import-file').click()}>
+                <Button variant="normal" onClick={handleImportClick}>
                   Import
                 </Button>
                 <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
+                {isPattern1 && (
+                  <Button variant="normal" onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
+                    Sync BDA/IDP
+                  </Button>
+                )}
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)
                 </Button>
@@ -1205,6 +1505,12 @@ const ConfigurationLayout = () => {
             </Alert>
           )}
 
+          {importSuccess && (
+            <Alert type="success" dismissible onDismiss={() => setImportSuccess(false)} header="Configuration imported successfully">
+              The configuration has been imported from the library and loaded into the editor.
+            </Alert>
+          )}
+
           {saveError && (
             <Alert type="error" dismissible onDismiss={() => setSaveError(null)} header="Error saving configuration">
               {saveError}
@@ -1214,6 +1520,44 @@ const ConfigurationLayout = () => {
           {importError && (
             <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import error">
               {importError}
+            </Alert>
+          )}
+
+          {syncSuccess && (
+            <Alert
+              type="success"
+              dismissible
+              onDismiss={() => {
+                setSyncSuccess(false);
+                setSyncSuccessMessage('');
+              }}
+              header="BDA/IDP sync completed successfully"
+            >
+              {syncSuccessMessage}
+            </Alert>
+          )}
+
+          {syncError && (
+            <Alert type="error" dismissible onDismiss={() => setSyncError(null)} header="BDA/IDP sync error">
+              <SpaceBetween size="s">
+                {syncError.includes('Failed to sync classes:') ? (
+                  <div>
+                    <div>The following document classes failed to synchronize:</div>
+                    <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                      {syncError
+                        .replace('Failed to sync classes: ', '')
+                        .split(', ')
+                        .map((classError) => (
+                          <li key={`sync-error-${classError.replace(/[^a-zA-Z0-9]/g, '-')}`} style={{ marginBottom: '4px' }}>
+                            {classError}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div>{syncError}</div>
+                )}
+              </SpaceBetween>
             </Alert>
           )}
 
@@ -1230,46 +1574,48 @@ const ConfigurationLayout = () => {
 
           <Box padding="s">
             {viewMode === 'form' && (
-              <ConfigBuilder
-                schema={{
-                  ...schema,
-                  properties: Object.fromEntries(Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes')),
-                }}
-                formValues={formValues}
-                defaultConfig={defaultConfig}
-                isCustomized={isCustomized}
-                onResetToDefault={resetToDefault}
-                onChange={handleFormChange}
-                extractionSchema={extractionSchema}
-                onSchemaChange={(schemaData, isDirty) => {
-                  setExtractionSchema(schemaData);
-                  if (isDirty) {
-                    const updatedConfig = { ...formValues };
-                    // CRITICAL: Always set classes, even if empty array (to support wipe all functionality)
-                    // Handle null (no classes) by setting empty array
-                    if (schemaData === null) {
-                      updatedConfig.classes = [];
-                    } else if (Array.isArray(schemaData)) {
-                      // Store as 'classes' field with JSON Schema content
-                      updatedConfig.classes = schemaData;
+              <SpaceBetween size="l">
+                <ConfigBuilder
+                  schema={{
+                    ...schema,
+                    properties: Object.fromEntries(Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes')),
+                  }}
+                  formValues={formValues}
+                  defaultConfig={defaultConfig}
+                  isCustomized={isCustomized}
+                  onResetToDefault={resetToDefault}
+                  onChange={handleFormChange}
+                  extractionSchema={extractionSchema}
+                  onSchemaChange={(schemaData, isDirty) => {
+                    setExtractionSchema(schemaData);
+                    if (isDirty) {
+                      const updatedConfig = { ...formValues };
+                      // CRITICAL: Always set classes, even if empty array (to support wipe all functionality)
+                      // Handle null (no classes) by setting empty array
+                      if (schemaData === null) {
+                        updatedConfig.classes = [];
+                      } else if (Array.isArray(schemaData)) {
+                        // Store as 'classes' field with JSON Schema content
+                        updatedConfig.classes = schemaData;
+                      }
+                      setFormValues(updatedConfig);
+                      setJsonContent(JSON.stringify(updatedConfig, null, 2));
+                      try {
+                        setYamlContent(yaml.dump(updatedConfig));
+                      } catch (e) {
+                        console.error('Error converting to YAML:', e);
+                      }
                     }
-                    setFormValues(updatedConfig);
-                    setJsonContent(JSON.stringify(updatedConfig, null, 2));
-                    try {
-                      setYamlContent(yaml.dump(updatedConfig));
-                    } catch (e) {
-                      console.error('Error converting to YAML:', e);
+                  }}
+                  onSchemaValidate={(valid, errors) => {
+                    if (!valid) {
+                      setValidationErrors(errors.map((e) => ({ message: `Schema: ${e.path} - ${e.message}` })));
+                    } else {
+                      setValidationErrors([]);
                     }
-                  }
-                }}
-                onSchemaValidate={(valid, errors) => {
-                  if (!valid) {
-                    setValidationErrors(errors.map((e) => ({ message: `Schema: ${e.path} - ${e.message}` })));
-                  } else {
-                    setValidationErrors([]);
-                  }
-                }}
-              />
+                  }}
+                />
+              </SpaceBetween>
             )}
 
             {viewMode === 'json' && (

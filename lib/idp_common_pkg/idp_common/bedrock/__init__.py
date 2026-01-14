@@ -3,7 +3,7 @@
 
 """Bedrock integration module for IDP Common package."""
 
-from .client import BedrockClient, invoke_model, default_client
+from .client import BedrockClient, default_client, invoke_model
 
 # Add version info
 __version__ = "0.1.0"

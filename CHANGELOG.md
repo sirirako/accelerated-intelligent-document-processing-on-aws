@@ -5,6 +5,271 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
+  - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
+  - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
+  - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing
+  - **Packet Statistics**: 7,330 total pages across 2,027 document sections with average of 14.7 pages and 4.1 sections per packet
+  - **Ground Truth Included**: Page-level classification and document boundary information for each packet. Extraction ground truth is not included.
+  - **Evaluation Capabilities**: Enables testing of page-level classification accuracy, document splitting accuracy, and split order preservation. Does NOT enable testing of extraction accuracy since there is no extraction ground truth for this data set
+  - Test set available in Test Studio UI alongside RealKIE-FCC-Verified and OmniAI-OCR-Benchmark datasets
+  - Corresponding configs available in Configuration Library
+  - Ideal for evaluating document splitting and classification accuracy in complex multi-document scenarios
+
+### Changed
+
+- **Lambda Layers Architecture for Improved Build Efficiency**
+  - Replaced bundled `idp_common` package dependencies in individual Lambda functions with three shared Lambda Layers
+  - **Three Specialized Layers**:
+    - `base` layer: Core functionality with docs_service and image extras
+    - `reporting` layer: Reporting and analytics dependencies
+    - `agents` layer: Agent-related dependencies
+  - **Key Benefits**:
+    - Reduced SAM build times by eliminating redundant dependency installation across 50+ Lambda functions
+    - Layer content-based hashing ensures layers are only rebuilt when actual contents change
+    - Automatic removal of Lambda runtime packages (boto3, botocore, etc.) reduces layer sizes by ~100MB
+    - Layer zips cached locally and in S3, skipping uploads when content hasn't changed
+  - **Build System Integration**: publish.py automatically builds, hashes, and uploads layers before SAM builds
+
+- **Enhanced publish.py Performance and Logging**
+  - **Consistent Logging Helpers**: Added 8 standardized logging methods (`log_phase`, `log_task`, `log_detail`, `log_success`, `log_cached`, `log_warning`, `log_error`) for uniform output formatting with colored icons and thread prefixes
+  - **Timed S3 Uploads**: Added `upload_to_s3_with_timer()` helper with spinner animation, elapsed time display, and optimized `TransferConfig` for multi-threaded multipart uploads
+  - **AWS CLI Config Library Sync**: Replaced boto3 ThreadPoolExecutor-based config library upload (~60 lines) with `aws s3 sync` command for built-in concurrency, delta sync (skip unchanged files), and simpler code
+  - **Timing Breakdown Summary**: End-of-build summary shows top 4 time-consuming steps and percentages for build optimization insights
+  - **Phase Headers**: Major build phases now display with clear `═══` separator lines and emojis for visual clarity
+
+- **AppSync Resolvers Extracted to Nested Stack for Improved Template Modularity**
+  - Refactored main CloudFormation template by extracting 130 AppSync resources into new nested stack architecture
+  - **Extracted Components**:
+    - Created `nested/appsync/template.yaml` containing GraphQLSchema, AppSyncServiceRole, Lambda resolver functions, LogGroups, DataSources, and Resolvers
+    - Moved related Lambda functions from `src/lambda/` to `nested/appsync/src/lambda/` with colocated template definitions
+    - Relocated GraphQL schema from `src/api/` to `nested/appsync/src/api/`
+  - **Main Template Optimization**: Reduced resource count by keeping only core infrastructure (GraphQLApi, GraphQLApiLogGroup, AppSyncCwlRole, WAF resources, background worker functions)
+  - **Build System Integration**: Updated `publish.py` to build nested stack in parallel with patterns
+  - **Impact**: Main template now more manageable and faster to navigate, nested stack enables modular development of AppSync resources, parallel builds reduce overall build time
+
+- **Consolidated Nested Stack Directory Structure**
+  - Moved `options/bda-lending-project` and `options/bedrockkb` into `nested/` directory for simplified project organization
+  - All CloudFormation nested stacks now located in single `nested/` directory alongside `appsync`, `bda-lending-project`, and `bedrockkb`
+  - Updated build system to build only two categories concurrently (nested + patterns) instead of three (nested + patterns + options)
+  - **Breaking Change**: Directory paths changed - `options/` → `nested/`. Existing work-in-progress branches will have merge conflicts in directory structure.
+
+### Fixed
+
+- **IDP CLI Stack Parameter Preservation During Updates**
+  - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+
+## [0.4.10]
+
+### Added
+
+- **Enhanced Evaluation Reports with Granular Field Comparison Details (sticker-eval v0.1.4)**
+  - Integrated sticker-eval v0.1.4's fine-grain field comparison feature providing detailed nested object match information alongside aggregate scores
+  - **Nested Field Details**: For complex attributes (objects, arrays), reports now show individual field-by-field comparisons in addition to aggregate rollup scores
+  - **Interactive Report Controls**: 
+    - 🔍 "Show Only Unmatched" button to filter and display only problematic fields for focused debugging
+    - ➕➖ Expand/Collapse All buttons to control nested detail visibility across the entire report
+    - Expandable `<details>` sections for each attribute with nested comparisons
+  - **Visual Enhancements**: Aggregate scores clearly marked with blue styling and "(aggregate)" annotation, color-coded rows (green for matched, red for unmatched), HTML tables with field paths and comparison results
+  - **JSON Report Structure**: Full `field_comparison_details` array preserved in JSON output for programmatic analysis and consumption by analytics tools
+  - **Benefits**: Quickly identify which specific nested fields cause aggregate score drops, compact problem view focusing on unmatched rows, complete diagnostic context with both high-level and granular perspectives
+
+- **BDA / IDP Sync Feature for Pattern-1 Blueprint Synchronization**
+  - Added bidirectional synchronization between BDA (Bedrock Data Automation) blueprints and IDP custom document classes
+  - **Key Capabilities**: Automatic blueprint creation from IDP classes, automatic IDP class creation from BDA blueprints, intelligent change detection using DeepDiff, automatic cleanup of orphaned blueprints
+  - **Sync Process**: Discovery configurations automatically trigger blueprint updates in BDA projects via `sync_bda_idp_resolver` Lambda function
+  - **Schema Transformation**: Converts between IDP JSON Schema (draft 2020-12) and BDA blueprint format (draft-07) while preserving semantic meaning
+  - **Important Limitations**: AWS managed blueprints excluded from sync, nested objects within objects not supported by BDA, nested arrays within object definitions not supported
+  - **Best Practices**: Use flattened schema structures, place arrays only at top-level, validate schema structure before sync, monitor sync results for partial failures
+  - **Use Cases**: Maintain consistency between IDP configuration and BDA blueprints, automatically propagate configuration changes, streamline document class management across both systems
+
+- **Separate Pricing Configuration and Management UI**
+  - Pricing configuration separated from general IDP configuration into dedicated system
+  - New `config_library/pricing.yaml` file with centralized pricing for all AWS services (Textract, Bedrock, BDA, Lambda, SageMaker)
+  - New "Pricing" page in Web UI for managing service pricing with:
+    - Edit pricing for individual APIs and units (e.g., `bedrock/us.amazon.nova-lite-v1:0` → `inputTokens`, `outputTokens`)
+    - Import/Export pricing configurations (JSON/YAML)
+  - Used for cost estimation and reporting across all document processing workflows
+
+- **Enhanced Document Pages Editor for Pattern-2 and Pattern-3**
+  - Replaced confusing "View/Edit Data" button with intuitive "View Page Text" and "Edit Pages" workflow mirroring the Document Sections panel pattern
+  - New modal editor with split-pane layout displaying plain text (left) and live markdown preview (right) - no more raw JSON visible to users
+  - Added ability to reset page classifications to force reclassification and edit page text content with immediate S3 saves to prevent data loss
+  - Implemented "Save & Process Changes" workflow for selective reprocessing - class resets trigger section removal and reclassification, text modifications trigger re-extraction while preserving sections
+  - Resolves #164 
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.10.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.10.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.10.yaml`
+
+## [0.4.9]
+
+### Added
+
+- **OmniAI OCR Benchmark Dataset Auto-Deployment for Test Studio**
+  - Automatically deploys 293 document images from OmniAI OCR Benchmark HuggingFace dataset (https://huggingface.co/datasets/getomni-ai/ocr-benchmark) during stack deployment
+  - **9 Document Formats**: BANK_CHECK (52), COMMERCIAL_LEASE_AGREEMENT (52), CREDIT_CARD_STATEMENT (11), DELIVERY_NOTE (8), EQUIPMENT_INSPECTION (11), GLOSSARY (31), PETITION_FORM (51), REAL_ESTATE (59), SHIFT_SCHEDULE (18)
+  - Pre-selected images filtered for formats with >5 samples per schema for quality benchmarking
+  - Complex nested JSON schemas with objects and arrays matching original HuggingFace dataset structure
+  - Test set available in Test Studio UI alongside existing RealKIE-FCC-Verified dataset
+  - Corresponding config: `config_library/pattern-2/ocr-benchmark/config.yaml` with all 9 document classes
+  - Ideal for testing classification across diverse document types and extraction on complex nested schemas
+  
+- **GovCloud Configuration Library for Pattern-1 and Pattern-2** - [GitHub Issue #162](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/162)
+  - Added `lending-package-sample-govcloud` configurations for both Pattern-1 and Pattern-2 with GovCloud-compatible model IDs
+  - **Model ID Mappings for GovCloud**:
+    - `us.amazon.nova-pro-v1:0` → `amazon.nova-pro-v1:0`
+    - `us.amazon.nova-lite-v1:0` → `amazon.nova-lite-v1:0`
+    - All other models (Claude, Nova Premier) → `anthropic.claude-3-7-sonnet-20250219-v1:0`
+  - Enhanced `generate_govcloud_template.py` to automatically set GovCloud configurations as default when generating GovCloud templates
+  - **Automatic Integration**: GovCloud templates now default to `lending-package-sample-govcloud` configuration ensuring proper model IDs without manual configuration
+
+- **Abort Workflow Feature for Stopping In-Progress Document Processing**
+  - Added ability to abort document processing workflows directly from the Web UI
+  - New "Abort" button available for documents with in-progress status, with confirmation modal to prevent accidental aborts
+  - GraphQL mutation `abortWorkflow` enables programmatic workflow cancellation
+  - Documents aborted mid-processing are marked with ABORTED status for clear tracking and reporting
+
+- **Global Cross-Region Inference Profile Model Support**
+  - Added support for Bedrock global inference profile models enabling cross-region model access
+  - **Supported Global Models**:
+    - Amazon Nova 2 Lite (`global.amazon.nova-2-lite-v1:0`)
+    - Claude Haiku 4.5 (`global.anthropic.claude-haiku-4-5-20251001-v1:0`)
+    - Claude Sonnet 4.5 (`global.anthropic.claude-sonnet-4-5-20250929-v1:0`)
+    - Claude Sonnet 4.5 - Long Context (`global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m`)
+    - Claude Opus 4.5 (`global.anthropic.claude-opus-4-5-20251101-v1:0`)
+  - All global models support prompt caching functionality
+  - Enables seamless cross-region model invocation without specifying regional endpoints
+
+- **Amazon Bedrock Service Tier Support for Cost and Performance Optimization**
+  - Added support for Amazon Bedrock service tiers through model ID suffixes enabling performance and cost optimization
+  - **Three Service Tiers Available**:
+    - **Priority**: Fastest response times (~25% better latency) with premium pricing - ideal for customer-facing workflows
+    - **Standard**: Consistent performance at regular pricing - default choice for most workloads
+    - **Flex**: Variable latency with discounted pricing - optimized for batch processing and non-urgent tasks
+  - **Model ID Suffix Format**: Append `:flex` or `:priority` to model IDs (e.g., `us.amazon.nova-2-lite-v1:0:flex`)
+  - **Supported Models**: Nova 2 Lite models available with all three tier options across US, EU, and Global regions
+
+### Changed
+
+- **Test Studio UI Enhancements for Improved Table Layouts and User Experience**
+  - Added resizable columns and CollectionPreferences with wrap lines for all tables in TestComparison and TestResults
+  - Combined accuracy and split classification metrics into collapsible "Average Accuracy and Split Metrics" section with expandable "Additional Metrics" for comprehensive review
+  - Added color-coded cost comparisons with visual indicators for improved readability
+
+- **Updated Sample Configurations to Use Amazon Nova 2 Lite as Default Model, and remove Textract TABLES, SIGNATURE features**
+  - Changed default model to `us.amazon.nova-2-lite-v1:0` for classification, extraction, summarization, and evaluation across all sample configurations in the configuration library
+  - Remove Textract TABLES and SIGNATURES options from default config
+  - Provides improved cost-efficiency while maintaining strong performance for document processing workflows
+
+- **Improved Publish Script User Experience**
+  - Added spinner progress indicators for SAM build and SAM package operations showing real-time elapsed time
+  - Added timing metrics summary showing build/package/total duration for main template builds
+  - Output now provides visual feedback during long-running operations instead of appearing silent
+  - Enabled parallel SAM builds (`sam build --parallel`) for significantly faster build times (~73s vs 4+ minutes)
+  - Pre-built wheel approach for idp_common package eliminates race conditions during parallel Lambda builds
+
+- **RealKIE-FCC-Verified Dataset Schema Alignment with HuggingFace**
+  - Updated `config_library/pattern-2/realkie-fcc-verified/config.yaml` to match the HuggingFace json_schema exactly
+  - Changed `LineItemDays` from array type with enum values to simple string type (matching raw HuggingFace data format)
+  - Updated field descriptions to match HuggingFace schema (e.g., "The agency the invoice is addressed to")
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.9.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.9.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.9.yaml`
+
+
+## [0.4.8]
+
+### Added
+
+- **Section Data Download Feature for Document Results Export**
+  - Added compact "Download" dropdown button in Document Sections panel for exporting section processing results
+  - **Two Download Options**: 
+    - "Download Data" - Downloads prediction results from OutputBucket (always available)
+    - "Download Baseline" - Downloads baseline/ground truth data from EvaluationBaselineBucket (only shown when baseline exists)
+
+- **Configuration Library Import Feature for Enhanced Configuration Management**
+  - Added Configuration Library browser enabling users to import pre-configured document processing workflows directly from the solution's configuration library
+  - **Dual Import Options**: Users can now choose between importing from local files (existing) or from the Configuration Library (new)
+  - **Pattern-Aware Filtering**: Automatically displays only configurations compatible with the currently deployed pattern (Pattern 1, 2, or 3)
+  - **README Preview**: When available, displays markdown-formatted README documentation before importing to help users understand configuration purpose and features
+
+- **Test Studio Interactive Charts and Document Analysis Enhancements**
+  - **Interactive Score Distribution Charts**: Replaced CloudScape chart with native Recharts implementation featuring dual chart support (Bar Chart and Line Chart options with dropdown selector), native interactivity with built-in click events that open document details modal, and optimized layout with improved margins, labels, and space utilization
+  - **Lowest Scoring Documents Analysis**: Enhanced TestResults with table showing documents with lowest weighted overall scores, TestComparison with cross-test comparison of problematic documents, user-configurable count dropdown (5, 10, 20, or 50 documents), side-by-side T1 vs T2 comparison format for easy analysis, and clickable document links for direct navigation to document viewer
+  - **UI/UX Improvements**: Compact table styling with reduced spacing and improved readability, left-aligned content for better text alignment of document IDs, consistent design matching existing CloudScape design system, and responsive layout where charts adapt to container width
+
+- **RealKIE-FCC-Verified Dataset Auto-Deployment for Test Studio**
+  - Automatically deploys 75 FCC invoice documents from HuggingFace public dataset during stack deployment - zero manual steps required
+  - Test set immediately available in Test Studio UI with complete ground truth for benchmarking extraction accuracy
+  - Version controlled via CloudFormation property - skips re-download on stack updates unless version changes
+
+### Fixed
+
+- **Bedrock OCR Image Resizing Regression - Partial Dimension Configuration Support**
+  - Fixed critical regression where configuring only `target_width` (without `target_height`) disabled all image resizing, causing Bedrock OCR to fail with "length limit exceeded" errors
+  - **Root Cause**: OCR service used `and` condition requiring both dimensions, rejecting partial configs and sending full-resolution images that exceeded model input limits
+  - **Solution**: Implemented aspect-ratio-preserving single-dimension resizing that calculates missing dimension from actual image aspect ratio
+
+- **Test Studio Bug Fixes**
+  - Fixed TestSets manual upload issues
+
+- **Agentic Extraction Prompt Caching** - [GitHub PR #156](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/156)
+  - Removed additional cachepoints to prevent prompt caching conflicts in agentic extraction
+
+- **GovCloud S3 Vectors Service Principal Deployment Failure** - [GitHub Issue #159](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/159)
+  - Fixed CloudFormation deployment failure in GovCloud regions caused by S3 Vectors service not being available
+  - **Root Cause**: KMS key policy referenced `indexing.s3vectors.${AWS::URLSuffix}` service principal which doesn't exist in GovCloud (us-gov-west-1, us-gov-east-1)
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.8.yaml`
+
+## [0.4.7]
+
+### Added
+
+- **MCP Integration Cross-Region Support for QuickSuite Integration**
+  - Added cross-region support for QuickSuite integration enabling MCP connectivity across multiple AWS regions: us-east-1, us-west-2, eu-west-1, ap-southeast-2
+
+### Fixed
+
+- **Stack deployment failure due to MCP Integration IAM Permissions - [GitHub Issue #154](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/154)**
+  - Fixed missing permissions in AgentCoreGatewayManagerFunctionRole by creating the AgentCoreGateway execution role explicitly in the CloudFormation template instead of dynamically in the Lambda function
+
+- **Post-Processing Lambda Hook Compression Handling - [GitHub Issue #155](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/155)**
+  - Added intermediate decompression lambda to handle document decompression before invoking custom post-processing lambdas
+  - **Root Cause**: After introducing document compression, the post-processing lambda hook was receiving compressed documents in the EventBridge payload, forcing external lambdas to import `idp_common` package and handle decompression manually
+  - **Solution**: New `PostProcessingDecompressor` lambda function intercepts EventBridge events, decompresses documents using `Document.load_document()`, and invokes custom post-processors with decompressed payload
+  - **Benefits**: Maintains backward compatibility, eliminates external dependencies (no `idp_common` import needed), keeps compression/decompression logic encapsulated within IDP stack, minimal performance impact (<1s latency)
+
+- **Enhanced Bedrock Error Handling for Agent Companion Chat**
+  - Implemented robust error handling system for Bedrock API errors in Agent Companion Chat feature with automatic retry and graceful degradation
+  - **Automatic Retry with Exponential Backoff**: Configured boto3 with adaptive retry mode (3 attempts) and exponential back-off to prevent service overload
+  - **User-Friendly Error Messages**: Created `BedrockErrorMessageHandler` to convert technical errors into clear, actionable messages for service unavailable (503), throttling (429), access denied (403), validation errors (400), timeouts (408), and quota exceeded scenarios
+  - **Sub-Agent Error Handling**: When sub-agents (Analytics, Error Analyzer, Code Intelligence) encounter Bedrock errors, the orchestrator continues gracefully without crashing, only displaying the first error to avoid duplicates while allowing other sub-agents to complete
+
+- **GovCloud Template Generation - Missing AppSync and MCP Resource Removal**
+  - Fixed CloudFormation deployment error "Unresolved resource dependencies [DeleteDocumentResolverFunction]" when deploying GovCloud templates
+  - **Test Studio Resources Added (36 resources)**: Added all Test Studio Lambda functions, AppSync resolvers, data sources, and supporting infrastructure to removal list (DeleteTestsResolver, TestRunnerResolver, TestResultsResolver, TestSetResolver, and all related functions, queues, and policies)
+  - **MCP/AgentCore Gateway Resources Added (7 resources)**: Added MCP integration resources that depend on Cognito UserPool to removal list (AgentCoreAnalyticsLambdaFunction, AgentCoreGatewayManagerFunction, AgentCoreGatewayExecutionRole, AgentCoreGateway, ExternalAppClient)
+  - **MCP Outputs Removed (8 outputs)**: Removed MCP-related outputs that reference deleted resources (MCPServerEndpoint, MCPClientId, MCPClientSecret, MCPUserPool, MCPTokenURL, MCPAuthorizationURL, DynamoDBAgentTableName, DynamoDBAgentTableConsoleURL)
+  - **EnableMCP Default Changed**: Set `EnableMCP` parameter default to 'false' for GovCloud since MCP integration requires Cognito authentication infrastructure
+  - **Impact**: GovCloud templates now deploy successfully without dependency errors, maintaining core document processing functionality in headless mode
+
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.7.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.7.yaml`
+
+
 ## [0.4.6]
 
 ### Added
@@ -851,7 +1116,7 @@ SPDX-License-Identifier: MIT-0
 - **Lending Package Configuration Support for Pattern-2**
   - Added new `lending-package-sample` configuration to Pattern-2, providing comprehensive support for lending and financial document processing workflows
   - New default configuration for Pattern-2 stack deployments, optimized for loan applications, mortgage processing, and financial verification documents
-  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip-package-sample` for the `Pattern2Configuration` parameter when deploying or updating stacks
+  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip` for the `Pattern2Configuration` parameter when deploying or updating stacks
 
 - **Text Confidence View for Document Pages**
   - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field

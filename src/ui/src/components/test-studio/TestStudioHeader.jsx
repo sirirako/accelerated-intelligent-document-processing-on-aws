@@ -5,7 +5,15 @@ import PropTypes from 'prop-types';
 import { Header, SpaceBetween, Button } from '@cloudscape-design/components';
 import handlePrint from './PrintUtils';
 
-const TestStudioHeader = ({ title, description, showBackButton = true, showPrintButton = false, additionalActions = [], onBackClick }) => {
+const TestStudioHeader = ({
+  title,
+  description,
+  showBackButton = true,
+  showPrintButton = false,
+  additionalActions = [],
+  onBackClick,
+  preferences,
+}) => {
   const actions = [];
 
   if (showBackButton) {
@@ -52,6 +60,7 @@ TestStudioHeader.propTypes = {
   showPrintButton: PropTypes.bool,
   additionalActions: PropTypes.arrayOf(PropTypes.node),
   onBackClick: PropTypes.func,
+  preferences: PropTypes.node,
 };
 
 export default TestStudioHeader;

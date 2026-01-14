@@ -27,6 +27,7 @@ import Breadcrumbs from './breadcrumbs';
 import ToolsPanel from './tools-panel';
 import SplitPanel from './documents-split-panel';
 import ConfigurationLayout from '../configuration-layout';
+import PricingLayout from '../pricing-layout';
 
 import { DOCUMENT_LIST_SHARDS_PER_DAY, PERIODS_TO_LOAD_STORAGE_KEY } from '../document-list/documents-table-config';
 
@@ -72,6 +73,7 @@ const GenAIIDPLayout = ({ children }) => {
     setPeriodsToLoad,
     deleteDocuments,
     reprocessDocuments,
+    abortWorkflows,
   } = useGraphQlApi({ initialPeriodsToLoad });
 
   // eslint-disable-next-line prettier/prettier
@@ -91,6 +93,7 @@ const GenAIIDPLayout = ({ children }) => {
     toolsOpen,
     deleteDocuments,
     reprocessDocuments,
+    abortWorkflows,
   };
 
   return (
@@ -117,6 +120,7 @@ const GenAIIDPLayout = ({ children }) => {
               <Route path="query" element={<DocumentsQueryLayout />} />
               <Route path="agents" element={<DocumentsAgentsLayout />} />
               <Route path="config" element={<ConfigurationLayout />} />
+              <Route path="pricing" element={<PricingLayout />} />
               <Route path="upload" element={<UploadDocumentPanel />} />
               <Route path="discovery" element={<DiscoveryPanel />} />
               <Route path=":objectKey" element={<DocumentDetails />} />
