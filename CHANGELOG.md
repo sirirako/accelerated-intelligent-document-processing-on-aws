@@ -58,6 +58,9 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Metering Table Added Requests**
+  - Added requests count to bedrock metering data to track API request metrics
+  
 - **IDP CLI Stack Parameter Preservation During Updates**
   - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
 

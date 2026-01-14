@@ -615,7 +615,7 @@ class BedrockClient:
             usage = response.get("usage", {})
             response_with_metering = {
                 "response": response,
-                "metering": {f"{context}/bedrock/{model_id}": {**usage}},
+                "metering": {f"{context}/bedrock/{model_id}": {**usage, "requests": 1}},
             }
 
             return response_with_metering
