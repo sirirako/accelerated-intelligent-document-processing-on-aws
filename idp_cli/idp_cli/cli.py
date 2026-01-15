@@ -891,7 +891,7 @@ def rerun_inference(
     help="Local directory containing documents to process",
 )
 @click.option("--s3-uri", help="S3 URI to process (e.g., s3://bucket/prefix/)")
-@click.option("--test-set", help="Test set name to process from test set bucket")
+@click.option("--test-set", help="Test set ID to process from test set bucket")
 @click.option(
     "--context", help="Context description for test run (used with --test-set)"
 )
@@ -958,7 +958,7 @@ def run_inference(
                  "idp-cli" test set for Test Studio integration and evaluation
       --dir: Local directory (auto-generates manifest)
       --s3-uri: S3 URI (auto-generates manifest, any bucket)
-      --test-set: Process existing test set from test set bucket
+      --test-set: Process existing test set from test set bucket (use test set ID)
 
     Test Studio Integration:
       - --test-set: Processes existing test sets and tracks results in Test Studio UI
@@ -983,14 +983,14 @@ def run_inference(
       # Process with file pattern
       idp-cli run-inference --stack-name my-stack --dir ./docs/ --file-pattern "invoice*.pdf"
 
-      # Process test set (integrates with Test Studio UI)
-      idp-cli run-inference --stack-name my-stack --test-set my-invoice-test --monitor
+      # Process test set (integrates with Test Studio UI - use test set ID)
+      idp-cli run-inference --stack-name my-stack --test-set fcc-example-test --monitor
 
       # Process test set with custom context
-      idp-cli run-inference --stack-name my-stack --test-set my-test --context "Experiment v2.1" --monitor
+      idp-cli run-inference --stack-name my-stack --test-set fcc-example-test --context "Experiment v2.1" --monitor
 
       # Process test set with limited files for quick testing
-      idp-cli run-inference --stack-name my-stack --test-set my-test --number-of-files 5 --monitor
+      idp-cli run-inference --stack-name my-stack --test-set fcc-example-test --number-of-files 5 --monitor
 
       # Process manifest with baselines (automatically creates "idp-cli" test set for Test Studio integration)
       idp-cli run-inference --stack-name my-stack --manifest docs_with_baselines.csv --monitor
@@ -1401,7 +1401,7 @@ def download_results(
 @click.option("--region", help="AWS region (optional)")
 @click.option(
     "--test-set",
-    help="Test set name - creates folder in test set bucket and uploads files",
+    help="Test set name - creates folder in test set bucket and uploads files (backend generates ID)",
 )
 @click.option(
     "--stack-name", help="CloudFormation stack name (required with --test-set)"
@@ -1438,11 +1438,11 @@ def generate_manifest(
       # With file pattern
       idp-cli generate-manifest --dir ./docs/ --output manifest.csv --file-pattern "W2*.pdf"
 
-      # Create test set and upload files (output optional)
-      idp-cli generate-manifest --dir ./documents/ --baseline-dir ./baselines/ --test-set my-test-set --stack-name IDP
+      # Create test set and upload files (output optional) - use test set name
+      idp-cli generate-manifest --dir ./documents/ --baseline-dir ./baselines/ --test-set "fcc example test" --stack-name IDP
 
       # Create test set with baseline matching and manifest output
-      idp-cli generate-manifest --dir ./documents/ --baseline-dir ./baselines/ --test-set my-test-set --stack-name IDP --output manifest.csv
+      idp-cli generate-manifest --dir ./documents/ --baseline-dir ./baselines/ --test-set "fcc example test" --stack-name IDP --output manifest.csv
     """
     try:
         import csv

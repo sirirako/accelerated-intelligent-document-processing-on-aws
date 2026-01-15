@@ -179,25 +179,10 @@ def create_iam_resources(stack_name):
 
 
 def cleanup_iam_resources(stack_name):
-    """Clean up IAM role and permission boundary"""
-    print(f"[{stack_name}] Cleaning up IAM resources...")
+    """Clean up IAM CloudFormation stack"""
+    print(f"[{stack_name}] Cleaning up IAM stack...")
     
     try:
-        # Clean up permission boundary
-        iam_client = boto3.client('iam')
-        boundary_name = f"{stack_name}-PermissionsBoundary"
-        try:
-            sts_client = boto3.client('sts')
-            account_id = sts_client.get_caller_identity()['Account']
-            iam_client.delete_policy(
-                PolicyArn=f"arn:aws:iam::{account_id}:policy/{boundary_name}"
-            )
-            print(f"[{stack_name}] ✅ Deleted permissions boundary: {boundary_name}")
-        except iam_client.exceptions.NoSuchEntityException:
-            print(f"[{stack_name}] ℹ️ Permissions boundary not found: {boundary_name}")
-        except Exception as e:
-            print(f"[{stack_name}] ⚠️ Failed to delete permissions boundary: {e}")
-        
         # Clean up IAM CloudFormation stack
         cf_client = boto3.client('cloudformation')
         iam_stack_name = f"{stack_name}-iam"
@@ -216,7 +201,7 @@ def cleanup_iam_resources(stack_name):
                 print(f"[{stack_name}] ⚠️ Failed to delete IAM stack: {e}")
             
     except Exception as e:
-        print(f"[{stack_name}] ❌ Failed to cleanup IAM resources: {e}")
+        print(f"[{stack_name}] ❌ Failed to cleanup IAM stack: {e}")
 
 
 def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_url, role_arn=None, permissions_boundary_arn=None):
@@ -751,92 +736,13 @@ def cleanup_single_stack(stack_name, pattern_name):
         
         print(f"[{pattern_name}] Stack status: {stack_status}")
         
-        # Delete the stack and wait for completion
+        # Delete the stack and wait for completion (includes all cleanup via --force-delete-all)
         print(f"[{pattern_name}] Attempting stack deletion...")
         run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --force-delete-all --wait", check=False)
         
-        # Clean up additional log groups that might not be caught by idp-cli
-        print(f"[{pattern_name}] Cleaning up additional log groups...")
-        
-        # Set AWS retry configuration to handle throttling
-        os.environ['AWS_MAX_ATTEMPTS'] = '10'
-        os.environ['AWS_RETRY_MODE'] = 'adaptive'
-
-        # CloudWatch log groups
-        result = run_command(f"aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `{stack_name}`)].logGroupName' --output json", check=False)
-        if result.stdout.strip():
-            try:
-                import json
-                log_group_names = json.loads(result.stdout.strip())
-                for log_group_name in log_group_names:
-                    if log_group_name:  # Skip empty names
-                        print(f"[{pattern_name}] Deleting log group: {log_group_name}")
-                        run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(log_group_name)}", check=False)
-            except json.JSONDecodeError:
-                print(f"[{pattern_name}] Failed to parse log group names")
-
-        # AppSync logs
-        result = run_command(f"aws appsync list-graphql-apis --query 'graphqlApis[?contains(name, `{stack_name}`)].apiId' --output json", check=False)
-        if result.stdout.strip():
-            try:
-                import json
-                api_ids = json.loads(result.stdout.strip())
-                for api_id in api_ids:
-                    if api_id:  # Skip empty IDs
-                        print(f"[{pattern_name}] Deleting AppSync log group for API: {api_id}")
-                        run_command(f"aws logs delete-log-group --log-group-name {shlex.quote(f'/aws/appsync/apis/{api_id}')}", check=False)
-            except json.JSONDecodeError:
-                print(f"[{pattern_name}] Failed to parse AppSync API IDs")
-        
-        # Clean up CloudWatch Logs Resource Policy entries for this stack
-        try:
-            result = run_command("aws logs describe-resource-policies --query 'resourcePolicies[0].policyDocument' --output text", check=False)
-            if result.returncode == 0 and result.stdout.strip():
-                import json
-                policy_doc = json.loads(result.stdout.strip())
-                original_count = len(policy_doc.get('Statement', []))
-                
-                # Remove statements that reference this stack
-                policy_doc['Statement'] = [
-                    stmt for stmt in policy_doc.get('Statement', [])
-                    if stack_name not in stmt.get('Resource', '')
-                ]
-                
-                new_count = len(policy_doc.get('Statement', []))
-                if new_count < original_count:
-                    print(f"[{pattern_name}] Removing {original_count - new_count} CloudWatch Logs policy entries")
-                    updated_policy = json.dumps(policy_doc)
-                    run_command(f"aws logs put-resource-policy --policy-name AWSLogDeliveryWrite20150319 --policy-document '{updated_policy}'", check=False)
-        except Exception as e:
-            print(f"[{pattern_name}] Failed to clean up CloudWatch Logs policy: {e}")
-        
-        # Clean up CloudWatch Logs Resource Policy only if stack-specific
-        result = run_command(f"aws logs describe-resource-policies --query 'resourcePolicies[?contains(policyName, `{stack_name}`)].policyName' --output text", check=False)
-        if result.stdout.strip():
-            policy_names = [name for name in result.stdout.strip().split('\t') if name]
-            for policy_name in policy_names:
-                print(f"[{pattern_name}] Deleting resource policy: {policy_name}")
-                run_command(f"aws logs delete-resource-policy --policy-name '{policy_name}'", check=False)
-        
         print(f"[{pattern_name}] ✅ Cleanup completed")
         
-        # Clean up CloudFront Response Headers Policies
-        print(f"[{pattern_name}] Cleaning up CloudFront Response Headers Policies...")
-        try:
-            cloudfront_client = boto3.client('cloudfront')
-            response = cloudfront_client.list_response_headers_policies()
-            
-            for policy in response.get('ResponseHeadersPolicyList', {}).get('Items', []):
-                if policy['Type'] == 'custom':
-                    policy_name = policy['ResponseHeadersPolicy']['ResponseHeadersPolicyConfig']['Name']
-                    if stack_name in policy_name:
-                        policy_id = policy['ResponseHeadersPolicy']['Id']
-                        print(f"[{pattern_name}] Deleting Response Headers Policy: {policy_name}")
-                        cloudfront_client.delete_response_headers_policy(Id=policy_id)
-        except Exception as e:
-            print(f"[{pattern_name}] ⚠️ Failed to cleanup CloudFront policies: {e}")
-
-        # Clean up IAM resources
+        # Clean up CodeBuild-specific IAM resources
         cleanup_iam_resources(stack_name)
         
     except Exception as e:
