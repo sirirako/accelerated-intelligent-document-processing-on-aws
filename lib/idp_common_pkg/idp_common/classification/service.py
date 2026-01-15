@@ -1946,6 +1946,54 @@ class ClassificationService:
 
         return header + rows
 
+    def _calculate_and_store_page_indices(self, document: Document) -> Document:
+        """
+        Calculate page_indices for all sections and store in section.attributes.
+
+        This ensures consistent page_indices calculation across all sections in a document packet.
+        Each section will have its page_indices calculated relative to the global minimum page ID,
+        preventing the bug where all sections had page_indices starting from 0.
+
+        Args:
+            document: Document with sections to process
+
+        Returns:
+            Document with page_indices stored in each section's attributes
+        """
+        if not document.sections:
+            return document
+
+        try:
+            # Calculate global minimum page ID across all sections
+            all_page_ids = []
+            for section in document.sections:
+                all_page_ids.extend(section.page_ids)
+
+            if all_page_ids:
+                global_min_page_id = min(int(page_id) for page_id in all_page_ids)
+                logger.info(
+                    f"Calculated global_min_page_id={global_min_page_id} for page_indices calculation"
+                )
+
+                # Calculate and store page_indices for each section
+                for section in document.sections:
+                    page_indices = [
+                        int(page_id) - global_min_page_id
+                        for page_id in section.page_ids
+                    ]
+                    section.attributes = section.attributes or {}
+                    section.attributes["page_indices"] = page_indices
+                    logger.debug(
+                        f"Section {section.section_id}: page_ids={section.page_ids} -> page_indices={page_indices}"
+                    )
+
+        except (ValueError, TypeError) as e:
+            logger.error(
+                f"Error calculating page_indices: {e}. Sections will not have page_indices pre-calculated."
+            )
+
+        return document
+
     def _update_document_status(
         self,
         document: Document,
@@ -1975,6 +2023,9 @@ class ClassificationService:
                 logger.warning(
                     f"Document classified with {len(document.errors)} errors"
                 )
+
+        # Calculate and store page_indices for each section for use during extraction
+        document = self._calculate_and_store_page_indices(document)
 
         return document
 

@@ -563,13 +563,39 @@ class ExtractionService:
         start_page = int(sorted_page_ids[0])
         end_page = int(sorted_page_ids[-1])
 
-        # Find minimum page ID across all sections
-        min_page_id = min(
-            int(page_id) for sec in document.sections for page_id in sec.page_ids
-        )
+        # Use pre-calculated page_indices from classification service if available
+        # This ensures consistent page_indices calculation across all sections in a document packet
+        if section.attributes and "page_indices" in section.attributes:
+            page_indices = section.attributes["page_indices"]
+            logger.info(
+                f"Using pre-calculated page_indices from section attributes: {page_indices}"
+            )
+        else:
+            # Fallback: calculate page_indices for backward compatibility
+            # This handles sections processed before the fix was implemented
+            try:
+                # Find minimum page ID across all available sections
+                all_page_ids = []
+                for sec in document.sections:
+                    all_page_ids.extend(sec.page_ids)
 
-        # Adjust page indices to be zero-based
-        page_indices = [int(page_id) - min_page_id for page_id in sorted_page_ids]
+                if all_page_ids:
+                    global_min_page_id = min(int(page_id) for page_id in all_page_ids)
+                else:
+                    global_min_page_id = 1
+
+                page_indices = [
+                    int(page_id) - global_min_page_id for page_id in sorted_page_ids
+                ]
+                logger.warning(
+                    f"page_indices not found in section attributes, calculated: {page_indices} (global_min_page_id={global_min_page_id})"
+                )
+            except (ValueError, TypeError) as e:
+                # Final fallback: assume 1-indexed page IDs
+                page_indices = [int(page_id) - 1 for page_id in sorted_page_ids]
+                logger.warning(
+                    f"Error calculating page_indices, using 1-indexed fallback: {page_indices} - {e}"
+                )
 
         logger.info(
             f"Processing {len(sorted_page_ids)} pages, class {class_label}: {start_page}-{end_page}"
