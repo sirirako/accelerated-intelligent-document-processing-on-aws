@@ -58,6 +58,9 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Fixed page_indices Reset Bug in Multi-Section Documents**
+  - Fixed issue where all sections in document packets had page_indices starting from 0 instead of their actual position in the original document by pre-calculating indices during classification with access to global minimum page ID and storing in section.attributes for extraction step to use
+
 - **Metering Table Added Requests**
   - Added requests count to bedrock metering data to track API request metrics
   
