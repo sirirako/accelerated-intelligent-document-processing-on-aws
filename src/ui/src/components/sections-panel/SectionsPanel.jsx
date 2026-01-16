@@ -26,8 +26,11 @@ import FileViewer from '../document-viewer/JSONViewer';
 import { getSectionConfidenceAlertCount, getSectionConfidenceAlerts } from '../common/confidence-alerts-utils';
 import useConfiguration from '../../hooks/use-configuration';
 import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
 import processChanges from '../../graphql/queries/processChanges';
 import getFileContents from '../../graphql/queries/getFileContents';
+import completeSectionReviewMutation from '../../graphql/mutations/completeSectionReview';
+import skipAllSectionsReviewMutation from '../../graphql/mutations/skipAllSectionsReview';
 
 const client = generateClient();
 const logger = new ConsoleLogger('SectionsPanel');
@@ -55,10 +58,16 @@ const ConfidenceAlertsCell = ({ item, mergedConfig }) => {
   return <StatusIndicator type="warning">{alertCount}</StatusIndicator>;
 };
 
-const ActionsCell = ({ item, pages, documentItem, mergedConfig }) => {
+const ActionsCell = ({ item, pages, documentItem, mergedConfig, onReviewComplete, isSectionCompleted, isReviewerOnly }) => {
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [isViewerOpen, setIsViewerOpen] = React.useState(false);
   const { settings } = useSettingsContext();
+
+  // Disable View/Edit if:
+  // 1. Reviewer and section is completed, OR
+  // 2. Reviewer and no review owner (review not claimed)
+  const hasReviewOwner = documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail;
+  const shouldDisableViewEdit = isReviewerOnly && (isSectionCompleted || !hasReviewOwner);
 
   // Check if baseline is available based on evaluation status
   const isBaselineAvailable = documentItem?.evaluationStatus === 'BASELINE_AVAILABLE' || documentItem?.evaluationStatus === 'COMPLETED';
@@ -196,9 +205,11 @@ const ActionsCell = ({ item, pages, documentItem, mergedConfig }) => {
         fileUri={item.OutputJSONUri}
         fileType="json"
         buttonText="View/Edit Data"
-        sectionData={{ ...item, pages, documentItem, mergedConfig }}
+        sectionData={{ ...item, pages, documentItem, mergedConfig, isSectionCompleted, isReviewerOnly }}
         onOpen={() => setIsViewerOpen(true)}
         onClose={() => setIsViewerOpen(false)}
+        onReviewComplete={isSectionCompleted ? null : onReviewComplete}
+        disabled={shouldDisableViewEdit}
       />
       {!isViewerOpen && (
         <ButtonDropdown
@@ -315,50 +326,127 @@ const EditableActionsCell = ({ item, deleteSection }) => (
 );
 
 // Column definitions
-const createColumnDefinitions = (pages, documentItem, mergedConfig) => [
-  {
-    id: 'id',
-    header: 'Section ID',
-    cell: (item) => <IdCell item={item} />,
-    sortingField: 'Id',
-    minWidth: 160,
-    width: 160,
-    isResizable: true,
-  },
-  {
-    id: 'class',
-    header: 'Class/Type',
-    cell: (item) => <ClassCell item={item} />,
-    sortingField: 'Class',
-    minWidth: 200,
-    width: 200,
-    isResizable: true,
-  },
-  {
-    id: 'pageIds',
-    header: 'Page IDs',
-    cell: (item) => <PageIdsCell item={item} />,
-    minWidth: 120,
-    width: 120,
-    isResizable: true,
-  },
-  {
-    id: 'confidenceAlerts',
-    header: 'Low Confidence Fields',
-    cell: (item) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
-    minWidth: 140,
-    width: 140,
-    isResizable: true,
-  },
-  {
-    id: 'actions',
-    header: 'Actions',
-    cell: (item) => <ActionsCell item={item} pages={pages} documentItem={documentItem} mergedConfig={mergedConfig} />,
-    minWidth: 400,
-    width: 400,
-    isResizable: true,
-  },
-];
+const createColumnDefinitions = (pages, documentItem, mergedConfig, handleReviewComplete, isReviewerOnly) => {
+  // Get completed sections from documentItem
+  const completedSections = documentItem?.hitlSectionsCompleted || [];
+  const pendingSections = documentItem?.hitlSectionsPending || [];
+  const skippedSections = documentItem?.hitlSectionsSkipped || [];
+  const hitlTriggered = documentItem?.hitlTriggered;
+  const reviewHistory = documentItem?.hitlReviewHistory || [];
+
+  // Helper to find reviewer for a section
+  const getReviewerForSection = (sectionId) => {
+    if (!Array.isArray(reviewHistory)) return null;
+    const record = reviewHistory.find((r) => r.sectionId === sectionId);
+    return record ? record.reviewedByEmail || record.reviewedBy : null;
+  };
+
+  return [
+    {
+      id: 'id',
+      header: 'Section ID',
+      cell: (item) => <IdCell item={item} />,
+      sortingField: 'Id',
+      minWidth: 160,
+      width: 160,
+      isResizable: true,
+    },
+    {
+      id: 'class',
+      header: 'Class/Type',
+      cell: (item) => <ClassCell item={item} />,
+      sortingField: 'Class',
+      minWidth: 200,
+      width: 200,
+      isResizable: true,
+    },
+    {
+      id: 'pageIds',
+      header: 'Page IDs',
+      cell: (item) => <PageIdsCell item={item} />,
+      minWidth: 120,
+      width: 120,
+      isResizable: true,
+    },
+    {
+      id: 'confidenceAlerts',
+      header: 'Low Confidence Fields',
+      cell: (item) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
+      minWidth: 140,
+      width: 140,
+      isResizable: true,
+    },
+    {
+      id: 'reviewStatus',
+      header: 'Review Status',
+      cell: (item) => {
+        // N/A if HITL not triggered
+        if (!hitlTriggered) return <StatusIndicator type="info">N/A</StatusIndicator>;
+
+        // Check if section is in any HITL tracking list
+        const isSkipped = skippedSections.includes(item.Id);
+        const isCompleted = completedSections.includes(item.Id);
+        const isPending = pendingSections.includes(item.Id);
+
+        if (isSkipped) {
+          return <StatusIndicator type="stopped">Review Skipped</StatusIndicator>;
+        }
+        if (isCompleted) {
+          return <StatusIndicator type="success">Review Complete</StatusIndicator>;
+        }
+        if (isPending) {
+          return <StatusIndicator type="pending">Pending Review</StatusIndicator>;
+        }
+
+        // Check low confidence field count - N/A if no alerts
+        const alertCount = mergedConfig ? getSectionConfidenceAlerts(item, mergedConfig).length : getSectionConfidenceAlertCount(item);
+        if (alertCount === 0) return <StatusIndicator type="info">N/A</StatusIndicator>;
+
+        // Has alerts but not in any list - show pending
+        return <StatusIndicator type="pending">Pending Review</StatusIndicator>;
+      },
+      minWidth: 140,
+      width: 140,
+      isResizable: true,
+    },
+    {
+      id: 'reviewedBy',
+      header: 'Reviewed By',
+      cell: (item) => {
+        if (!hitlTriggered) return 'N/A';
+        const reviewer = getReviewerForSection(item.Id);
+        if (reviewer) return reviewer;
+        if (skippedSections.includes(item.Id)) {
+          // For skipped sections, check if there's an ALL_SKIPPED record
+          const skipRecord = Array.isArray(reviewHistory) ? reviewHistory.find((r) => r.sectionId === 'ALL_SKIPPED') : null;
+          return skipRecord ? `${skipRecord.reviewedByEmail || skipRecord.reviewedBy} (Skipped)` : 'Skipped';
+        }
+        return '-';
+      },
+      minWidth: 160,
+      width: 160,
+      isResizable: true,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: (item) => (
+        <ActionsCell
+          item={item}
+          pages={pages}
+          documentItem={documentItem}
+          mergedConfig={mergedConfig}
+          onReviewComplete={handleReviewComplete}
+          isSectionCompleted={completedSections.includes(item.Id)}
+          isReviewerOnly={isReviewerOnly}
+        />
+      ),
+      minWidth: 400,
+      width: 400,
+      isResizable: true,
+    },
+  ];
+};
 
 // Edit mode column definitions - expanded to use maximum available width
 const createEditColumnDefinitions = (validationErrors, updateSection, updateSectionId, getAvailableClasses, deleteSection) => [
@@ -403,15 +491,133 @@ const createEditColumnDefinitions = (validationErrors, updateSection, updateSect
   },
 ];
 
-const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChanges }) => {
+const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocumentUpdate }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedSections, setEditedSections] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showPattern1Modal, setShowPattern1Modal] = useState(false);
+  const [showSkipAllModal, setShowSkipAllModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
   const { mergedConfig: configuration } = useConfiguration();
   const { settings } = useSettingsContext();
+  const { isReviewer, isAdmin } = useUserRole();
+  const isReviewerOnly = isReviewer && !isAdmin;
+
+  // Check if document has pending HITL sections
+  const hasPendingHITL = documentItem?.hitlTriggered && !documentItem?.hitlCompleted;
+  const isHitlInProgress = documentItem?.objectStatus === 'HITL_IN_PROGRESS';
+  const isHitlSkipped = documentItem?.hitlStatus?.toLowerCase() === 'skipped';
+  // Show skip button only if HITL in progress and not already completed/skipped
+  const showSkipAllButton = isAdmin && (hasPendingHITL || isHitlInProgress) && !documentItem?.hitlCompleted && !isHitlSkipped;
+
+  // Handle skip all sections review (Admin only)
+  const handleSkipAllSections = async () => {
+    setIsSkipping(true);
+    setShowSkipAllModal(false);
+
+    try {
+      const objectKey = documentItem?.objectKey || documentItem?.ObjectKey;
+      if (!objectKey) {
+        throw new Error('Document object key is missing');
+      }
+
+      const result = await client.graphql({
+        query: skipAllSectionsReviewMutation,
+        variables: { objectKey },
+      });
+
+      logger.info('All sections review skipped successfully', result);
+
+      // Update document state immediately with mutation response
+      const updatedData = result.data?.skipAllSectionsReview;
+      if (updatedData && onDocumentUpdate) {
+        // Parse HITLReviewHistory if it's a string (AWSJSON type)
+        let reviewHistory = updatedData.HITLReviewHistory;
+        if (typeof reviewHistory === 'string') {
+          try {
+            reviewHistory = JSON.parse(reviewHistory);
+          } catch (e) {
+            reviewHistory = [];
+          }
+        }
+
+        onDocumentUpdate((prev) => ({
+          ...prev,
+          objectStatus: updatedData.ObjectStatus || prev.objectStatus,
+          hitlStatus: updatedData.HITLStatus?.toLowerCase() || prev.hitlStatus,
+          hitlSectionsPending: updatedData.HITLSectionsPending || [],
+          hitlSectionsCompleted: updatedData.HITLSectionsCompleted || prev.hitlSectionsCompleted,
+          hitlSectionsSkipped: updatedData.HITLSectionsSkipped || [],
+          hitlReviewOwner: updatedData.HITLReviewOwner || prev.hitlReviewOwner,
+          hitlReviewOwnerEmail: updatedData.HITLReviewOwnerEmail || prev.hitlReviewOwnerEmail,
+          hitlReviewHistory: reviewHistory || prev.hitlReviewHistory,
+          hitlCompleted: true,
+        }));
+      }
+    } catch (error) {
+      logger.error('Failed to skip all sections review:', error);
+      alert(`Failed to skip all sections: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsSkipping(false);
+    }
+  };
+
+  // Handle section review completion
+  const handleReviewComplete = async (sectionData, editedJsonData) => {
+    try {
+      logger.debug('Completing section review:', {
+        sectionId: sectionData.Id,
+        objectKey: documentItem.objectKey || documentItem.ObjectKey,
+      });
+
+      const variables = {
+        objectKey: documentItem.objectKey || documentItem.ObjectKey,
+        sectionId: sectionData.Id,
+      };
+
+      // Include edited data if provided
+      if (editedJsonData) {
+        variables.editedData = JSON.stringify(editedJsonData);
+      }
+
+      const result = await client.graphql({
+        query: completeSectionReviewMutation,
+        variables,
+      });
+
+      logger.info('Section review completed successfully');
+
+      // Update document state immediately with mutation response
+      const updatedData = result.data?.completeSectionReview;
+      if (updatedData && onDocumentUpdate) {
+        // Parse HITLReviewHistory if it's a string (AWSJSON type)
+        let reviewHistory = updatedData.HITLReviewHistory;
+        if (typeof reviewHistory === 'string') {
+          try {
+            reviewHistory = JSON.parse(reviewHistory);
+          } catch (e) {
+            reviewHistory = [];
+          }
+        }
+
+        onDocumentUpdate((prev) => ({
+          ...prev,
+          objectStatus: updatedData.ObjectStatus || prev.objectStatus,
+          hitlStatus: updatedData.HITLStatus?.toLowerCase() || prev.hitlStatus,
+          hitlSectionsPending: updatedData.HITLSectionsPending || [],
+          hitlSectionsCompleted: updatedData.HITLSectionsCompleted || [],
+          hitlSectionsSkipped: updatedData.HITLSectionsSkipped || prev.hitlSectionsSkipped,
+          hitlReviewHistory: reviewHistory || prev.hitlReviewHistory,
+          hitlCompleted: (updatedData.HITLSectionsPending || []).length === 0,
+        }));
+      }
+    } catch (error) {
+      logger.error('Failed to complete section review:', error);
+      throw error;
+    }
+  };
 
   // Initialize edited sections when entering edit mode
   useEffect(() => {
@@ -813,7 +1019,7 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
   // Determine which columns and data to use
   const columnDefinitions = isEditMode
     ? createEditColumnDefinitions(validationErrors, updateSection, updateSectionId, getAvailableClasses, deleteSection)
-    : createColumnDefinitions(pages, documentItem, mergedConfig);
+    : createColumnDefinitions(pages, documentItem, mergedConfig, handleReviewComplete, isReviewerOnly);
 
   const tableItems = isEditMode ? editedSections : sections || [];
 
@@ -829,9 +1035,16 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
             actions={
               <SpaceBetween direction="horizontal" size="xs">
                 {!isEditMode ? (
-                  <Button variant="primary" iconName="edit" onClick={handleEditSectionsClick}>
-                    Edit Sections
-                  </Button>
+                  <>
+                    {showSkipAllButton && (
+                      <Button variant="normal" onClick={() => setShowSkipAllModal(true)} disabled={isSkipping} loading={isSkipping}>
+                        Skip All Reviews
+                      </Button>
+                    )}
+                    <Button variant="primary" iconName="edit" onClick={handleEditSectionsClick}>
+                      Edit Sections
+                    </Button>
+                  </>
                 ) : (
                   <>
                     <Button variant="link" onClick={cancelEdit} disabled={isProcessing}>
@@ -876,23 +1089,25 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
           </Alert>
         )}
 
-        <Table
-          columnDefinitions={columnDefinitions}
-          items={tableItems}
-          sortingDisabled
-          variant="embedded"
-          resizableColumns
-          stickyHeader
-          empty={
-            <Box textAlign="center" color="inherit">
-              <b>No sections</b>
-              <Box padding={{ bottom: 's' }} variant="p" color="inherit">
-                {isEditMode ? "Click 'Add Section' to create a new section." : 'This document has no sections.'}
+        <div style={{ overflowX: 'auto', position: 'relative' }}>
+          <Table
+            columnDefinitions={columnDefinitions}
+            items={tableItems}
+            sortingDisabled
+            variant="embedded"
+            resizableColumns
+            stickyHeader={false}
+            empty={
+              <Box textAlign="center" color="inherit">
+                <b>No sections</b>
+                <Box padding={{ bottom: 's' }} variant="p" color="inherit">
+                  {isEditMode ? "Click 'Add Section' to create a new section." : 'This document has no sections.'}
+                </Box>
               </Box>
-            </Box>
-          }
-          wrapLines
-        />
+            }
+            wrapLines
+          />
+        </div>
       </Container>
 
       {/* Confirmation Modal */}
@@ -979,6 +1194,35 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onSaveChan
             {/* eslint-disable-next-line max-len */}
             For fine-grained section control, consider using <strong>Pattern-2</strong> or <strong>Pattern-3</strong> for future documents.
           </Box>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Skip All Sections Review Modal (Admin only) */}
+      <Modal
+        onDismiss={() => setShowSkipAllModal(false)}
+        visible={showSkipAllModal}
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowSkipAllModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleSkipAllSections}>
+                Skip All Reviews
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+        header="Skip All Section Reviews"
+      >
+        <SpaceBetween size="s">
+          <Alert type="warning">This action will skip all pending section reviews and continue the document processing workflow.</Alert>
+          <Box>Skipping review will:</Box>
+          <ul>
+            <li>Mark all pending sections as review skipped without human verification</li>
+            <li>Record this action in the review history</li>
+          </ul>
+          <Box>Are you sure you want to skip all section reviews?</Box>
         </SpaceBetween>
       </Modal>
     </SpaceBetween>

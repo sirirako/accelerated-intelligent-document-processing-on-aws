@@ -204,7 +204,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
 
   // Helper function to create clickable test run ID headers
   const createTestRunHeader = (testRunId, truncate = false) => {
-    const displayId = truncate ? `T${Object.keys(completeTestRuns).indexOf(testRunId) + 1}` : testRunId;
+    const displayId = testRunId;
     const testSetName = truncate ? completeTestRuns[testRunId]?.testSetName : null;
 
     if (truncate) {
@@ -224,7 +224,6 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           }}
         >
           {displayId}
-          {testSetName && <span style={{ fontSize: '12px', color: '#666', fontWeight: 'normal' }}> ({testSetName})</span>}
         </span>
       );
     }

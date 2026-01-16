@@ -6,6 +6,7 @@ import { ConsoleLogger } from 'aws-amplify/utils';
 
 import useDocumentsContext from '../../contexts/documents';
 import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
 
 import mapDocumentsAttributes from '../common/map-document-attributes';
 import DeleteDocumentModal from '../common/DeleteDocumentModal';
@@ -34,6 +35,8 @@ const DocumentDetails = () => {
 
   const { documents, getDocumentDetailsFromIds, setToolsOpen, deleteDocuments, reprocessDocuments, abortWorkflows } = useDocumentsContext();
   const { settings } = useSettingsContext();
+  const { isReviewer, isAdmin } = useUserRole();
+  const isReviewerOnly = isReviewer && !isAdmin;
 
   const [document, setDocument] = useState(null);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
@@ -134,9 +137,9 @@ const DocumentDetails = () => {
           item={document}
           setToolsOpen={setToolsOpen}
           getDocumentDetailsFromIds={getDocumentDetailsFromIds}
-          onDelete={handleDeleteClick}
-          onReprocess={handleReprocessClick}
-          onAbort={handleAbortClick}
+          onDelete={isReviewerOnly ? null : handleDeleteClick}
+          onReprocess={isReviewerOnly ? null : handleReprocessClick}
+          onAbort={isReviewerOnly ? null : handleAbortClick}
         />
       )}
 

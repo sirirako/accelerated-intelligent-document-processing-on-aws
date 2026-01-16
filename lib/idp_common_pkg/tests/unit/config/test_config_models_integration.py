@@ -168,7 +168,7 @@ class TestConfigModelsIntegration:
         config_file = (
             config_root
             / "pattern-2"
-            / "rvl-cdip-package-sample-with-few-shot-examples"
+            / "rvl-cdip-with-few-shot-examples"
             / "config.yaml"
         )
 
@@ -185,9 +185,7 @@ class TestConfigModelsIntegration:
 
     def test_pattern3_config(self, config_root):
         """Test Pattern 3 configuration"""
-        config_file = (
-            config_root / "pattern-3" / "rvl-cdip-package-sample" / "config.yaml"
-        )
+        config_file = config_root / "pattern-3" / "rvl-cdip" / "config.yaml"
 
         if not config_file.exists():
             pytest.skip(f"Config file not found: {config_file}")

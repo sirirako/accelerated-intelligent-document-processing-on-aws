@@ -674,7 +674,7 @@ const FormFieldRenderer = memo(
 
 FormFieldRenderer.displayName = 'FormFieldRenderer';
 
-const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly, sectionData }) => {
+const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly, sectionData, onReviewComplete }) => {
   const { currentCredentials } = useAppContext();
   const [pageImages, setPageImages] = useState({});
   const [loadingImages, setLoadingImages] = useState(true);
@@ -683,9 +683,37 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [localJsonData, setLocalJsonData] = useState(jsonData);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const imageRef = useRef(null);
   const imageContainerRef = useRef(null);
   const debounceTimerRef = useRef(null);
+
+  // Check if section needs review (either low confidence or HITL triggered)
+  const needsReview = sectionData?.confidenceAlertCount > 0 || 
+    (sectionData?.documentItem?.hitlTriggered && !sectionData?.documentItem?.hitlCompleted);
+
+  // Check if this specific section is already completed
+  const isSectionCompleted = sectionData?.isSectionCompleted || false;
+  
+  // Check if user is reviewer only (not admin)
+  const isReviewerOnly = sectionData?.isReviewerOnly || false;
+  
+  // Only show completed state for reviewers
+  const showCompletedState = isReviewerOnly && isSectionCompleted;
+
+  // Handle review complete button click
+  const handleReviewComplete = async () => {
+    if (!onReviewComplete) return;
+    setReviewSubmitting(true);
+    try {
+      // Pass the current edited JSON data along with section data
+      await onReviewComplete(sectionData, localJsonData);
+      // Close the modal after successful review completion
+      onDismiss();
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   // Sync local data with props
   useEffect(() => {
@@ -1039,6 +1067,16 @@ const VisualEditorModal = ({ visible, onDismiss, jsonData, onChange, isReadOnly,
       footer={
         <Box float="right">
           <SpaceBetween direction="horizontal" size="xs">
+            {(needsReview || showCompletedState) && onReviewComplete && (
+              <Button
+                variant="primary"
+                onClick={handleReviewComplete}
+                loading={reviewSubmitting}
+                disabled={reviewSubmitting || showCompletedState}
+              >
+                {showCompletedState ? 'Section Review Completed' : 'Mark Section Review Complete'}
+              </Button>
+            )}
             <Button
               variant="link"
               onClick={() => {

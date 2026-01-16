@@ -26,11 +26,10 @@ from urllib.parse import quote
 
 import boto3
 import yaml
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
@@ -66,17 +65,26 @@ class IDPPublisher:
         self.skip_validation = False
         self.lint_enabled = True
         self.account_id = None
-        self._lib_wheel_path = None  # Path to pre-built wheel for parallel builds
-        self._modified_requirements_files = []  # Track modified requirements.txt files
+        self._layer_arns = {}  # Store built layer ARNs for template injection
 
     def clean_checksums(self):
-        """Delete all .checksum files in main, patterns, options, and lib directories"""
-        self.console.print("[yellow]🧹 Cleaning all .checksum files...[/yellow]")
+        """Delete all .checksum files and Lambda layer caches for full rebuild"""
+        self.console.print(
+            "[yellow]🧹 Cleaning build cache for full rebuild...[/yellow]"
+        )
 
         checksum_paths = [
             ".checksum",  # main
             "lib/.checksum",  # lib
         ]
+
+        # Add nested stack checksum files
+        nested_dir = "nested"
+        if os.path.exists(nested_dir):
+            for item in os.listdir(nested_dir):
+                nested_path = os.path.join(nested_dir, item)
+                if os.path.isdir(nested_path):
+                    checksum_paths.append(f"{nested_path}/.checksum")
 
         # Add patterns checksum files
         patterns_dir = "patterns"
@@ -86,14 +94,6 @@ class IDPPublisher:
                 if os.path.isdir(pattern_path):
                     checksum_paths.append(f"{pattern_path}/.checksum")
 
-        # Add options checksum files
-        options_dir = "options"
-        if os.path.exists(options_dir):
-            for item in os.listdir(options_dir):
-                option_path = os.path.join(options_dir, item)
-                if os.path.isdir(option_path):
-                    checksum_paths.append(f"{option_path}/.checksum")
-
         deleted_count = 0
         for checksum_path in checksum_paths:
             if os.path.exists(checksum_path):
@@ -101,17 +101,144 @@ class IDPPublisher:
                 self.console.print(f"[green]  ✓ Deleted {checksum_path}[/green]")
                 deleted_count += 1
 
+        # Delete cached Lambda layer zips to force layer rebuilds
+        layers_dir = ".aws-sam/layers"
+        if os.path.exists(layers_dir):
+            layer_zips = [f for f in os.listdir(layers_dir) if f.endswith(".zip")]
+            for layer_zip in layer_zips:
+                layer_path = os.path.join(layers_dir, layer_zip)
+                os.remove(layer_path)
+                self.console.print(f"[green]  ✓ Deleted {layer_path}[/green]")
+                deleted_count += 1
+
         if deleted_count == 0:
-            self.console.print("[dim]  No .checksum files found to delete[/dim]")
+            self.console.print("[dim]  No cache files found to delete[/dim]")
         else:
             self.console.print(
-                f"[green]✅ Deleted {deleted_count} .checksum files - full rebuild will be triggered[/green]"
+                f"[green]✅ Deleted {deleted_count} cache files - full rebuild will be triggered[/green]"
             )
+
+    def _find_all_requirements_files(self):
+        """Find all requirements.txt files in the project"""
+        requirements_files = []
+
+        # Main Lambda functions
+        src_lambda_dir = Path("src/lambda")
+        if src_lambda_dir.exists():
+            for func_dir in src_lambda_dir.iterdir():
+                req_file = func_dir / "requirements.txt"
+                if req_file.exists():
+                    requirements_files.append(str(req_file))
+
+        # Nested Lambda functions
+        nested_dir = Path("nested")
+        if nested_dir.exists():
+            for nested_item in nested_dir.iterdir():
+                nested_src = nested_item / "src"
+                if nested_src.exists():
+                    for func_dir in nested_src.iterdir():
+                        req_file = func_dir / "requirements.txt"
+                        if req_file.exists():
+                            requirements_files.append(str(req_file))
+
+        # Pattern Lambda functions
+        patterns_dir = Path("patterns")
+        if patterns_dir.exists():
+            for pattern_dir in patterns_dir.iterdir():
+                pattern_src = pattern_dir / "src"
+                if pattern_src.exists():
+                    for func_dir in pattern_src.iterdir():
+                        req_file = func_dir / "requirements.txt"
+                        if req_file.exists():
+                            requirements_files.append(str(req_file))
+
+        return requirements_files
+
+    def _prepare_for_build_at_start(self):
+        """Run at script startup - placeholder for future startup checks"""
+        self.log_verbose("✅ Build startup checks complete")
 
     def log_verbose(self, message, style="dim"):
         """Log verbose messages if verbose mode is enabled"""
         if self.verbose:
-            self.console.print(f"[{style}]{message}[/{style}]")
+            # Use markup=False to prevent Rich from eating brackets like [extras]
+            self.console.print(message, style=style, markup=False)
+
+    # ========================================================================
+    # LOGGING HELPERS - Consistent styling for all output
+    # ========================================================================
+
+    def log_phase(self, title, emoji=""):
+        """Print a major phase header with separators"""
+        separator = "═" * 65
+        self.console.print(f"\n[bold cyan]{separator}[/bold cyan]")
+        if emoji:
+            self.console.print(f"[bold cyan] {emoji} {title.upper()}[/bold cyan]")
+        else:
+            self.console.print(f"[bold cyan] {title.upper()}[/bold cyan]")
+        self.console.print(f"[bold cyan]{separator}[/bold cyan]")
+
+    def log_task(self, message, thread=None):
+        """Print task start (cyan with arrow)"""
+        prefix = f"[{thread}] " if thread else ""
+        self.console.print(f"[cyan]▶ {prefix}{message}[/cyan]")
+
+    def log_detail(self, message, thread=None):
+        """Print indented detail info (dim)"""
+        prefix = f"[{thread}] " if thread else ""
+        self.console.print(f"[dim]  └─ {prefix}{message}[/dim]")
+
+    def log_success(self, message, thread=None):
+        """Print success message (green checkmark)"""
+        prefix = f"[{thread}] " if thread else ""
+        self.console.print(f"[green]✓ {prefix}{message}[/green]")
+
+    def log_cached(self, message, thread=None):
+        """Print cached/skipped message (blue arrow)"""
+        prefix = f"[{thread}] " if thread else ""
+        self.console.print(f"[blue]→ {prefix}{message}[/blue]")
+
+    def log_warning(self, message, thread=None):
+        """Print warning message (yellow)"""
+        prefix = f"[{thread}] " if thread else ""
+        self.console.print(f"[yellow]⚠ {prefix}{message}[/yellow]")
+
+    def log_error(self, message, thread=None):
+        """Print error message (red X)"""
+        prefix = f"[{thread}] " if thread else ""
+        self.console.print(f"[red]✗ {prefix}{message}[/red]")
+
+    def upload_to_s3_with_timer(self, local_path, s3_key, description):
+        """Upload file to S3 with a spinner, elapsed time display, and optimized transfer config.
+
+        Uses multi-threaded, multipart uploads for better performance on slow connections.
+        Shows progress during upload and final timing on completion.
+        """
+        # Optimized transfer config for better upload performance
+        # Matches AWS CLI's optimized defaults for parallel uploads
+        transfer_config = TransferConfig(
+            multipart_threshold=5
+            * 1024
+            * 1024,  # 5 MB - enable multipart for smaller files
+            max_concurrency=10,  # Use 10 threads for parallel chunk uploads
+            multipart_chunksize=5 * 1024 * 1024,  # 5 MB chunks
+            use_threads=True,  # Enable multi-threading
+        )
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=True,  # Clears spinner after completion
+        ) as progress:
+            progress.add_task(f"[cyan]Uploading {description}...", total=None)
+            start = time.time()
+            self.s3_client.upload_file(
+                local_path, self.bucket, s3_key, Config=transfer_config
+            )
+            elapsed = time.time() - start
+        self.log_success(f"Uploaded {description} ({elapsed:.1f}s)")
 
     def log_error_details(self, component, error_output):
         """Log detailed error information and store for summary"""
@@ -320,8 +447,8 @@ STDERR:
                     self.print_usage()
                     sys.exit(1)
             elif arg in ["--verbose", "-v"]:
-                # Verbose flag is already handled by Typer, just acknowledge it here
-                pass
+                self.verbose = True
+                self.console.print("[green]Verbose mode enabled[/green]")
             elif arg == "--no-validate":
                 self.skip_validation = True
                 self.console.print(
@@ -707,127 +834,72 @@ STDERR:
     def build_components_with_smart_detection(
         self, components_needing_rebuild, component_type, max_workers=None
     ):
-        """Build patterns or options with smart detection and lib dependency handling"""
+        """Build patterns or options with smart detection using Lambda Layers."""
         # Filter components by type
         components_to_build = []
         for item in components_needing_rebuild:
             if component_type in item["component"]:
-                if (
-                    self._is_lib_changed
-                    and LIB_DEPENDENCY in item["dependencies"]
-                    and max_workers != 1
-                ):
-                    max_workers = 1
                 components_to_build.append(item["component"])
 
         if not components_to_build:
             self.console.print(f"[green]✅ All {component_type} are up to date[/green]")
             return True
 
-        # Force sequential builds if lib changed
-        if self._is_lib_changed and max_workers == 1:
-            self.console.print(
-                f"[yellow]⚠️  lib dependencies detected - using sequential builds for {component_type}[/yellow]"
-            )
-
-        if max_workers == 1:
-            self.console.print(
-                f"[cyan]Building {len(components_to_build)} {component_type} with 1 worker...[/cyan]"
-            )
-        else:
-            self.console.print(
-                f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
-            )
+        self.console.print(
+            f"[cyan]Building {len(components_to_build)} {component_type} with {max_workers} workers...[/cyan]"
+        )
 
         return self._build_components_concurrently(
             components_to_build, component_type, max_workers
         )
 
     def _build_components_concurrently(self, components, component_type, max_workers):
-        """Generic method to build components concurrently with progress display"""
-        # Create progress display
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            transient=False,
-        ) as progress:
-            # Create main task for overall progress
-            main_task = progress.add_task(
-                f"[cyan]Building {component_type}...", total=len(components)
-            )
+        """Generic method to build components concurrently with simple logging.
 
-            # Create individual tasks for each component
-            component_tasks = {}
+        Note: Progress bars removed to avoid Rich LiveDisplay conflicts when building
+        categories concurrently. Simple status logging used instead.
+        """
+        # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all component build tasks
+            future_to_component = {}
             for component in components:
-                task_id = progress.add_task(
-                    f"[yellow]{component}[/yellow] - Waiting...", total=1
+                self.log_task("Building...", thread=component)
+                future = executor.submit(
+                    self.build_and_package_template, component, force_rebuild=True
                 )
-                component_tasks[component] = task_id
+                future_to_component[future] = component
 
-            # Use ThreadPoolExecutor for I/O bound operations (sam build/package)
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                # Submit all component build tasks
-                future_to_component = {}
-                for component in components:
-                    # Update task status to building
-                    progress.update(
-                        component_tasks[component],
-                        description=f"[yellow]{component}[/yellow] - Building...",
-                    )
-                    future = executor.submit(
-                        self.build_and_package_template, component, force_rebuild=True
-                    )
-                    future_to_component[future] = component
+            # Wait for all tasks to complete and check results
+            all_successful = True
+            completed = 0
 
-                # Wait for all tasks to complete and check results
-                all_successful = True
-                completed = 0
+            for future in concurrent.futures.as_completed(future_to_component):
+                component = future_to_component[future]
+                completed += 1
 
-                for future in concurrent.futures.as_completed(future_to_component):
-                    component = future_to_component[future]
-                    completed += 1
-
-                    try:
-                        success = future.result()
-                        if not success:
-                            progress.update(
-                                component_tasks[component],
-                                description=f"[red]{component}[/red] - Failed!",
-                                completed=1,
-                            )
-                            all_successful = False
-                        else:
-                            progress.update(
-                                component_tasks[component],
-                                description=f"[green]{component}[/green] - Complete!",
-                                completed=1,
-                            )
-
-                        # Update main progress
-                        progress.update(main_task, completed=completed)
-
-                    except Exception as e:
-                        # Log detailed error information
-
-                        error_output = f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                        self.log_error_details(
-                            f"{component_type.title()} {component} build exception",
-                            error_output,
-                        )
-
-                        progress.update(
-                            component_tasks[component],
-                            description=f"[red]{component}[/red] - Error: {str(e)[:30]}...",
-                            completed=1,
-                        )
+                try:
+                    success = future.result()
+                    if not success:
+                        self.log_error("Build failed!", thread=component)
                         all_successful = False
-                        progress.update(main_task, completed=completed)
+                    else:
+                        self.log_success(
+                            f"Complete ({completed}/{len(components)})",
+                            thread=component,
+                        )
+
+                except Exception as e:
+                    # Log detailed error information
+                    error_output = (
+                        f"Exception: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    )
+                    self.log_error_details(
+                        f"{component_type.title()} {component} build exception",
+                        error_output,
+                    )
+                    self.log_error(f"Error: {str(e)[:50]}...", thread=component)
+                    all_successful = False
 
         return all_successful
 
@@ -843,228 +915,6 @@ STDERR:
                 file_list.append(relative_path)
 
         return sorted(file_list)
-
-    def validate_lambda_builds(self):
-        """Validate that Lambda functions with idp_common_pkg in requirements.txt have the library included."""
-        self.console.print(
-            "\n[bold cyan]🔍 VALIDATING Lambda builds for idp_common inclusion[/bold cyan]"
-        )
-
-        try:
-            # Discover functions with idp_common_pkg in requirements.txt
-            functions = self._discover_lambda_functions_with_idp_common()
-
-            if not functions:
-                self.console.print(
-                    "[yellow]No Lambda functions found with idp_common_pkg in requirements.txt[/yellow]"
-                )
-                return
-
-            self.console.print(
-                f"[cyan]📋 Found {len(functions)} Lambda functions with idp_common_pkg in requirements.txt:[/cyan]"
-            )
-            for func_key, func_info in functions.items():
-                self.console.print(f"   • {func_key} → {func_info['function_name']}")
-                self.log_verbose(f"     Requirements: {func_info['requirements_msg']}")
-
-            # Validate each function
-            all_passed = True
-            results = []
-
-            for func_key, func_info in functions.items():
-                function_name = func_info["function_name"]
-                template_dir = func_info["template_dir"]
-                source_path = func_info["source_path"]
-
-                self.log_verbose(f"Validating function: {func_key} → {function_name}")
-
-                # Skip validation for Pattern-1 and Pattern-2 functions (use containers)
-                if "pattern-1" in func_key or "pattern-2" in func_key:
-                    results.append((func_key, True, "Skipped (container deployment)"))
-                    self.log_verbose(
-                        f"⏭️  {func_key}: Skipping validation for container deployment"
-                    )
-                    continue
-
-                # Check if build directory exists and has idp_common
-                has_package, issues = self._validate_idp_common_in_build(
-                    template_dir, function_name, source_path
-                )
-
-                if not has_package:
-                    error_msg = f"Missing idp_common: {'; '.join(issues)}"
-                    results.append((func_key, False, error_msg))
-                    all_passed = False
-                    self.log_verbose(f"❌ {func_key}: {error_msg}")
-                    continue
-
-                # Test import functionality
-                import_success, import_msg = self._test_import_functionality(
-                    template_dir, function_name
-                )
-
-                if import_success:
-                    results.append((func_key, True, "Validation passed"))
-                    self.log_verbose(f"✅ {func_key}: All validations passed")
-                else:
-                    results.append(
-                        (func_key, False, f"Import test failed: {import_msg}")
-                    )
-                    all_passed = False
-                    self.log_verbose(f"❌ {func_key}: Import test failed")
-
-            # Print summary
-            self.console.print("\n[cyan]📊 Validation Results Summary:[/cyan]")
-            self.console.print("=" * 60)
-
-            passed_count = sum(1 for _, passed, _ in results if passed)
-            total_count = len(results)
-
-            for func_key, passed, message in results:
-                status = "[green]✅ PASS[/green]" if passed else "[red]❌ FAIL[/red]"
-                self.console.print(f"{status} {func_key}: {message}")
-
-            self.console.print("=" * 60)
-            self.console.print(
-                f"Results: {passed_count}/{total_count} functions passed validation"
-            )
-
-            if all_passed:
-                self.console.print(
-                    "[bold green]🎉 All Lambda functions with idp_common_pkg in requirements.txt have the library properly included![/bold green]"
-                )
-                self.console.print(
-                    "[bold green]✅ Lambda build validation passed![/bold green]"
-                )
-            else:
-                self.console.print(
-                    "[bold red]💥 Some Lambda functions are missing idp_common library in their builds.[/bold red]"
-                )
-                self.console.print(
-                    "[bold red]❌ Lambda build validation failed![/bold red]"
-                )
-                self.console.print(
-                    "[bold red]🚫 Publish process aborted due to validation failures![/bold red]"
-                )
-                self.console.print(
-                    "[yellow]Fix the missing idp_common dependencies and rebuild before publishing.[/yellow]"
-                )
-                sys.exit(1)
-
-        except Exception as e:
-            self.console.print("[red]❌ Error running lambda build validation:[/red]")
-            self.console.print(str(e), style="red", markup=False)
-            if self.verbose:
-                self.console.print(f"[red]{traceback.format_exc()}[/red]")
-            self.console.print(
-                "[bold red]🚫 Publish process aborted due to validation error![/bold red]"
-            )
-            sys.exit(1)
-
-    def _discover_lambda_functions_with_idp_common(self):
-        """Discover all Lambda functions that have idp_common_pkg in requirements.txt."""
-        functions = {}
-        project_root = Path(__file__).parent.resolve()
-
-        # Check main template Lambda functions
-        main_src_dir = project_root / "src" / "lambda"
-        if main_src_dir.exists():
-            functions.update(
-                self._scan_lambda_directory(
-                    main_src_dir, project_root / "template.yaml", "main"
-                )
-            )
-
-        # Check pattern Lambda functions
-        patterns_dir = project_root / "patterns"
-        if patterns_dir.exists():
-            for pattern_dir in patterns_dir.iterdir():
-                if pattern_dir.is_dir() and (pattern_dir / "template.yaml").exists():
-                    # Skip Pattern-1, Pattern-2, and Pattern-3 validation since they use containers
-                    if pattern_dir.name in ["pattern-1", "pattern-2", "pattern-3"]:
-                        self.console.print(
-                            f"[dim]Skipping validation for {pattern_dir.name} (uses containers)[/dim]"
-                        )
-                        continue
-                    pattern_src = pattern_dir / "src"
-                    if pattern_src.exists():
-                        functions.update(
-                            self._scan_lambda_directory(
-                                pattern_src,
-                                pattern_dir / "template.yaml",
-                                pattern_dir.name,
-                            )
-                        )
-
-        # Check options Lambda functions
-        options_dir = project_root / "options"
-        if options_dir.exists():
-            for option_dir in options_dir.iterdir():
-                if option_dir.is_dir() and (option_dir / "template.yaml").exists():
-                    option_src = option_dir / "src"
-                    if option_src.exists():
-                        functions.update(
-                            self._scan_lambda_directory(
-                                option_src,
-                                option_dir / "template.yaml",
-                                option_dir.name,
-                            )
-                        )
-
-        return functions
-
-    def _scan_lambda_directory(self, src_dir, template_path, context):
-        """Scan a directory for Lambda functions that have idp_common_pkg in requirements.txt."""
-        functions = {}
-
-        for func_dir in src_dir.iterdir():
-            if not func_dir.is_dir():
-                continue
-
-            has_idp_common_req, req_msg = self._check_requirements_has_idp_common_pkg(
-                func_dir
-            )
-            if has_idp_common_req:
-                function_key = f"{context}/{func_dir.name}"
-                functions[function_key] = {
-                    "template_path": template_path,
-                    "function_name": self._extract_function_name(
-                        func_dir.name, template_path
-                    ),
-                    "source_path": func_dir,
-                    "context": context,
-                    "template_dir": template_path.parent,
-                    "requirements_msg": req_msg,
-                }
-
-        return functions
-
-    def _check_requirements_has_idp_common_pkg(self, func_dir):
-        """Check if requirements.txt contains idp_common_pkg dependency."""
-        requirements_file = func_dir / "requirements.txt"
-        if not requirements_file.exists():
-            return False, "No requirements.txt found"
-
-        try:
-            content = requirements_file.read_text(encoding="utf-8")
-            lines = [
-                line.strip()
-                for line in content.split("\n")
-                if line.strip() and not line.strip().startswith("#")
-            ]
-
-            # Look for idp_common_pkg reference
-            for line in lines:
-                if "idp_common_pkg" in line or "lib/idp_common_pkg" in line:
-                    return True, f"Found dependency: {line}"
-
-            return False, "No idp_common_pkg found in requirements.txt"
-        except Exception as e:
-            self.console.print(
-                f"[red]❌ Error reading requirements.txt in {func_dir}:[/red]"
-            )
-            self.console.print(str(e), style="red", markup=False)
-            sys.exit(1)
 
     def _extract_function_name(self, dir_name, template_path):
         """Extract CloudFormation function name from template by matching CodeUri."""
@@ -1140,107 +990,55 @@ STDERR:
             # Don't exit - just skip this function
             return None
 
-    def _validate_idp_common_in_build(self, template_dir, function_name, source_path):
-        """Validate that idp_common package exists in the built Lambda function."""
-        build_dir = template_dir / ".aws-sam" / "build" / function_name
-        issues = []
-
-        if not build_dir.exists():
-            issues.append(f"Build directory not found: {build_dir}")
-            return False, issues
-
-        # Check for idp_common directory in build
-        idp_common_dir = build_dir / "idp_common"
-        if not idp_common_dir.exists():
-            issues.append("idp_common directory not found in build")
-            return False, issues
-
-        # Check core files
-        core_files = ["__init__.py", "models.py"]
-        for core_file in core_files:
-            file_path = idp_common_dir / core_file
-            if not file_path.exists():
-                issues.append(f"Missing core file: {core_file}")
-
-        return len(issues) == 0, issues
-
-    def _test_import_functionality(self, template_dir, function_name):
-        """Test that idp_common can actually be imported in the built function."""
-        build_dir = template_dir / ".aws-sam" / "build" / function_name
-
-        if not build_dir.exists():
-            return False, "Build directory not found"
-
-        # Create a test script
-        test_script = build_dir / "test_imports.py"
-        test_content = """
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-
-try:
-    import idp_common
-    from idp_common import models
-    print("SUCCESS: All imports working")
-except ImportError as e:
-    print(f"IMPORT_ERROR: {str(e)}")
-    sys.exit(1)
-except Exception as e:
-    print(f"ERROR: {str(e)}")
-    sys.exit(1)
-"""
-
-        try:
-            test_script.write_text(test_content)
-
-            result = subprocess.run(
-                [sys.executable, str(test_script)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            test_script.unlink()  # Clean up
-
-            if result.returncode == 0:
-                return True, "Import test passed"
-            else:
-                return False, f"Import failed: {result.stdout} {result.stderr}"
-
-        except Exception as e:
-            if test_script.exists():
-                test_script.unlink()
-            return False, f"Test execution failed: {str(e)}"
-
     def upload_config_library(self):
-        """Upload configuration library to S3"""
-        self.console.print("[bold cyan]UPLOADING config_library to S3[/bold cyan]")
+        """Upload configuration library to S3 using aws s3 sync.
+
+        Uses AWS CLI's built-in concurrency and delta sync for optimal performance.
+        AWS CLI automatically skips unchanged files and uses parallel uploads.
+        """
+        self.log_phase("Uploading Config Library", "📂")
         config_dir = "config_library"
 
         if not os.path.exists(config_dir):
-            self.console.print(
-                f"[yellow]Warning: {config_dir} directory not found[/yellow]"
-            )
+            self.log_warning(f"{config_dir} directory not found")
             return
 
-        self.console.print("[cyan]Uploading configuration library to S3[/cyan]")
+        # Count files for reporting
+        file_count = sum(len(files) for _, _, files in os.walk(config_dir))
+        s3_dest = f"s3://{self.bucket}/{self.prefix_and_version}/config_library"
 
-        # Upload all files in config_library
-        for root, dirs, files in os.walk(config_dir):
-            for file in files:
-                local_path = os.path.join(root, file)
-                relative_path = os.path.relpath(local_path, config_dir)
-                s3_key = f"{self.prefix_and_version}/config_library/{relative_path}"
+        self.log_task(f"Syncing {file_count} config files to S3...")
 
-                try:
-                    self.s3_client.upload_file(local_path, self.bucket, s3_key)
-                except ClientError as e:
-                    self.console.print(f"[red]Error uploading {local_path}:[/red]")
-                    self.console.print(str(e), style="red", markup=False)
-                    sys.exit(1)
+        # Use aws s3 sync with progress spinner and timing
+        cmd = [
+            "aws",
+            "s3",
+            "sync",
+            config_dir,
+            s3_dest,
+            "--region",
+            self.region,
+        ]
 
-        self.console.print(
-            f"[green]Configuration library uploaded to s3://{self.bucket}/{self.prefix_and_version}/config_library[/green]"
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=True,
+        ) as progress:
+            progress.add_task("[cyan]Syncing config library to S3...", total=None)
+            start = time.time()
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            elapsed = time.time() - start
+
+        if result.returncode != 0:
+            self.log_error(f"Failed to sync config library: {result.stderr}")
+            sys.exit(1)
+
+        self.log_success(
+            f"Config library synced ({file_count} files in {elapsed:.1f}s)"
         )
 
     def ui_changed(self):
@@ -1778,21 +1576,11 @@ except Exception as e:
                     raise Exception("Python syntax validation failed")
 
                 # Build main template with progress indicator
-                # Pre-built wheel enables --parallel flag without race conditions
-                # (multiple Lambda functions can install from wheel simultaneously)
-                """run sam build"""
-
-                # Modify requirements.txt files to use pre-built wheel for parallel-safe builds
-                if self._lib_wheel_path:
-                    self.console.print(
-                        "[cyan]🔧 Configuring requirements.txt to use pre-built wheel for parallel builds...[/cyan]"
-                    )
-                    self._modify_requirements_for_wheel()
-
+                # Lambda functions now use Lambda Layers instead of bundled dependencies
                 cmd = [
                     "sam",
                     "build",
-                    "--parallel",  # Safe with pre-built wheel
+                    "--parallel",  # Safe with Lambda Layers
                     "--template-file",
                     "template.yaml",
                 ]
@@ -1828,10 +1616,9 @@ except Exception as e:
                                 task,
                                 description=f"[red]✗ SAM build failed after {sam_build_elapsed:.1f}s",
                             )
-                finally:
-                    # Always restore requirements.txt files after build
-                    if self._modified_requirements_files:
-                        self._restore_requirements_files()
+                except Exception:
+                    # Re-raise the exception to be caught by outer try/finally
+                    raise
 
                 if not success:
                     # Delete main template checksum on build failure
@@ -1900,6 +1687,16 @@ except Exception as e:
                     "<PATTERN1_IMAGE_VERSION>": pattern1_image_version,
                     "<PATTERN2_IMAGE_VERSION>": pattern2_image_version,
                     "<PATTERN3_IMAGE_VERSION>": pattern3_image_version,
+                    # Lambda Layer zip filenames
+                    "<IDP_COMMON_BASE_LAYER_ZIP>": self._layer_arns.get("base", {}).get(
+                        "zip_name", "idp-common-base.zip"
+                    ),
+                    "<IDP_COMMON_REPORTING_LAYER_ZIP>": self._layer_arns.get(
+                        "reporting", {}
+                    ).get("zip_name", "idp-common-reporting.zip"),
+                    "<IDP_COMMON_AGENTS_LAYER_ZIP>": self._layer_arns.get(
+                        "agents", {}
+                    ).get("zip_name", "idp-common-agents.zip"),
                     "<HASH_TOKEN>": self.get_directory_checksum("./lib")[:16],
                     "<LAMBDA_HASH_TOKEN>": self.get_directory_checksum(
                         "./src/lambda/agentcore_gateway_manager"
@@ -1919,11 +1716,18 @@ except Exception as e:
                     )[:16],
                 }
 
-                self.console.print("[cyan]Inline edit main template to replace:[/cyan]")
-                for token, value in replacements.items():
+                # Debug: show layer ARNs being used
+                self.console.print(
+                    f"[dim]Layer ARNs for token replacement: {list(self._layer_arns.keys())}[/dim]"
+                )
+                for layer_name, layer_info in self._layer_arns.items():
                     self.console.print(
-                        f"   [yellow]{token}[/yellow] with: [green]{value}[/green]"
+                        f"[dim]  {layer_name}: {layer_info.get('zip_name', 'NOT SET')}[/dim]"
                     )
+
+                self.log_verbose("Inline edit main template to replace:")
+                for token, value in replacements.items():
+                    self.log_verbose(f"   {token} with: {value}")
                     template_content = template_content.replace(token, value)
 
                 # Write the modified template to the build directory
@@ -2099,9 +1903,11 @@ except Exception as e:
                 with os.scandir(dir_path) as entries:
                     for entry in entries:
                         if entry.is_dir():
+                            # Skip excluded directories by name and by suffix (e.g., *.egg-info)
                             if (
                                 entry.name not in exclude_dirs
                                 and not entry.name.startswith(".")
+                                and not entry.name.endswith(".egg-info")
                             ):
                                 process_directory(entry.path)
                         elif entry.is_file():
@@ -2195,14 +2001,31 @@ except Exception as e:
 
     def get_component_dependencies(self):
         """Map each component to its dependencies for smart rebuild detection"""
+        main_deps = ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY]
+
         dependencies = {
             # Main template components
-            "main": ["./src", "template.yaml", "./config_library", LIB_DEPENDENCY],
+            "main": main_deps,
+            # Nested components (includes all nested stacks - core and optional)
+            "nested/appsync": [
+                LIB_DEPENDENCY,
+                "nested/appsync/src",
+                "nested/appsync/template.yaml",
+            ],
+            "nested/bda-lending-project": [
+                "nested/bda-lending-project/src",
+                "nested/bda-lending-project/template.yaml",
+            ],
+            "nested/bedrockkb": [
+                "nested/bedrockkb/src",
+                "nested/bedrockkb/template.yaml",
+            ],
             # Pattern components
             "patterns/pattern-1": [
                 LIB_DEPENDENCY,
                 "patterns/pattern-1/src",
                 "patterns/pattern-1/template.yaml",
+                "Dockerfile.optimized",
             ],
             "patterns/pattern-2": [
                 LIB_DEPENDENCY,
@@ -2216,16 +2039,9 @@ except Exception as e:
                 "patterns/pattern-3/template.yaml",
                 "Dockerfile.optimized",
             ],
-            # Option components (no lib dependency - they don't use idp_common)
-            "options/bda-lending-project": [
-                "options/bda-lending-project/src",
-                "options/bda-lending-project/template.yaml",
-            ],
-            "options/bedrockkb": [
-                "options/bedrockkb/src",
-                "options/bedrockkb/template.yaml",
-            ],
-            "lib": [LIB_DEPENDENCY],
+            "lib": [
+                "./lib/idp_common_pkg"
+            ],  # Include entire package, not just idp_common subdir
         }
         return dependencies
 
@@ -2245,54 +2061,114 @@ except Exception as e:
             else:
                 checksum_file = f"{component}/.checksum"
 
-            current_checksum = self.get_component_checksum(*deps)
+            # Calculate individual checksums for each dependency
+            current_dep_checksums = {}
+            for dep in deps:
+                if os.path.isfile(dep):
+                    current_dep_checksums[dep] = self.get_file_checksum(dep)
+                elif os.path.isdir(dep):
+                    current_dep_checksums[dep] = self.get_source_files_checksum(dep)
+                else:
+                    current_dep_checksums[dep] = ""
+
+            # Combine checksums for overall comparison (include deployment context)
+            combined_checksum = hashlib.sha256(
+                (
+                    "".join(current_dep_checksums.values())
+                    + (self.bucket or "")
+                    + (self.prefix_and_version or "")
+                    + (self.region or "")
+                ).encode()
+            ).hexdigest()
 
             needs_rebuild = True
+            changed_deps = []
+
             if os.path.exists(checksum_file):
-                with open(checksum_file, "r") as f:
-                    stored_checksum = f.read().strip()
-                needs_rebuild = current_checksum != stored_checksum
+                try:
+                    with open(checksum_file, "r") as f:
+                        stored_data = json.load(f)
+                    stored_checksum = stored_data.get("combined", "")
+                    stored_dep_checksums = stored_data.get("dependencies", {})
+
+                    needs_rebuild = combined_checksum != stored_checksum
+
+                    # Identify which specific dependencies changed
+                    if needs_rebuild:
+                        for dep, current_cs in current_dep_checksums.items():
+                            stored_cs = stored_dep_checksums.get(dep, "")
+                            if current_cs != stored_cs:
+                                changed_deps.append(dep)
+                except (json.JSONDecodeError, KeyError):
+                    # Old format or corrupted - rebuild and show all deps
+                    changed_deps = deps
+            else:
+                # No checksum file - show all deps as changed
+                changed_deps = deps
 
             if needs_rebuild:
                 components_to_rebuild.append(
                     {
                         "component": component,
                         "dependencies": deps,
+                        "changed_dependencies": changed_deps,
                         "checksum_file": checksum_file,
-                        "current_checksum": current_checksum,
+                        "current_checksum": combined_checksum,
+                        "current_dep_checksums": current_dep_checksums,
                     }
                 )
                 if component == "lib":  # update _is_lib_changed
                     self._is_lib_changed = True
 
-                self.console.print(
-                    f"[yellow]📝 {component} needs rebuild due to changes in any of these dependencies:[/yellow]"
-                )
-                for dep in deps:
-                    self.console.print(f"[yellow]   • {dep}[/yellow]")
+                # Show only changed dependencies
+                if changed_deps:
+                    change_msg = (
+                        "changed"
+                        if len(changed_deps) < len(deps)
+                        else "new/no previous build"
+                    )
+                    self.console.print(
+                        f"[yellow]📝 {component} needs rebuild ({change_msg}):[/yellow]"
+                    )
+                    for dep in changed_deps:
+                        self.console.print(f"[yellow]   • {dep}[/yellow]")
 
         return components_to_rebuild
 
     def clear_component_cache(self, component):
-        """Clear build cache for a specific component"""
+        """Clear build cache for a specific component.
+
+        For main component, only clears the 'build' subdirectory to preserve
+        the 'layers' subdirectory which contains Lambda layer zips.
+        """
         if component == "main":
-            sam_dir = ".aws-sam"
+            # For main, only clear the build subdirectory, NOT the layers directory
+            sam_build_dir = ".aws-sam/build"
+            if os.path.exists(sam_build_dir):
+                self.log_verbose(
+                    f"Clearing SAM build cache for {component}: {sam_build_dir}"
+                )
+                try:
+                    shutil.rmtree(sam_build_dir)
+                except (FileNotFoundError, OSError) as e:
+                    self.log_verbose(f"Warning: Error clearing SAM cache: {e}")
         else:
             sam_dir = os.path.join(component, ".aws-sam")
-
-        if os.path.exists(sam_dir):
-            self.log_verbose(f"Clearing entire SAM cache for {component}: {sam_dir}")
-            try:
-                shutil.rmtree(sam_dir)
-            except (FileNotFoundError, OSError) as e:
+            if os.path.exists(sam_dir):
                 self.log_verbose(
-                    f"Warning: Error clearing SAM cache (may already be deleted): {e}"
+                    f"Clearing entire SAM cache for {component}: {sam_dir}"
                 )
-                # Try alternative cleanup method for broken symlinks
                 try:
-                    subprocess.run(["rm", "-rf", sam_dir], check=False)
-                except Exception as e2:
-                    self.log_verbose(f"Alternative cleanup also failed: {e2}")
+                    shutil.rmtree(sam_dir)
+                except (FileNotFoundError, OSError) as e:
+                    self.log_verbose(
+                        f"Warning: Error clearing SAM cache (may already be deleted): {e}"
+                    )
+                    # Try alternative cleanup method for broken symlinks
+                    try:
+                        subprocess.run(["rm", "-rf", sam_dir], check=False)
+                    except Exception as e2:
+                        self.log_verbose(f"Alternative cleanup also failed: {e2}")
 
     def _validate_python_syntax(self, directory):
         """Validate Python syntax in all .py files in the directory"""
@@ -2337,124 +2213,517 @@ except Exception as e:
         self.console.print("[green]✅ Python linting passed[/green]")
         return True
 
-    def build_lib_package(self):
-        """Build lib package as wheel for parallel-safe SAM builds"""
-        try:
+    def _validate_cfn_lint(self):
+        """Validate CloudFormation templates with cfn-lint after build/package"""
+        if not self.lint_enabled:
+            return True
+
+        self.console.print(
+            "[cyan]🔍 Running CloudFormation linting (cfn-lint) on packaged templates...[/cyan]"
+        )
+
+        # Check if cfn-lint is installed
+        if not shutil.which("cfn-lint"):
             self.console.print(
-                "[bold yellow]📚 Building lib package as wheel[/bold yellow]"
+                "[yellow]⚠️  cfn-lint not installed, skipping CloudFormation linting[/yellow]"
             )
-            lib_dir = "lib/idp_common_pkg"
+            self.console.print("[dim]Install with: pip install cfn-lint[/dim]")
+            return True
 
-            # Validate Python syntax in lib source code before building
-            if not self._validate_python_syntax("lib/idp_common_pkg/idp_common"):
-                raise Exception("Python syntax validation failed")
+        all_errors = []
+        all_warnings = []
 
-            # Clean old dist directory
-            dist_dir = os.path.join(lib_dir, "dist")
-            if os.path.exists(dist_dir):
-                shutil.rmtree(dist_dir)
+        # List of templates to lint (packaged templates after token replacement)
+        templates_to_lint = []
 
-            # Build wheel using python -m build
+        # Main packaged template
+        main_packaged = ".aws-sam/idp-main.yaml"
+        if os.path.exists(main_packaged):
+            templates_to_lint.append(("Main template", main_packaged))
+
+        # Nested templates (packaged versions)
+        nested_dir = "nested"
+        if os.path.exists(nested_dir):
+            for nested_name in os.listdir(nested_dir):
+                nested_packaged = os.path.join(
+                    nested_dir, nested_name, ".aws-sam", "packaged.yaml"
+                )
+                if os.path.exists(nested_packaged):
+                    templates_to_lint.append((f"Nested/{nested_name}", nested_packaged))
+
+        # Pattern templates (packaged versions)
+        patterns_dir = "patterns"
+        if os.path.exists(patterns_dir):
+            for pattern_name in os.listdir(patterns_dir):
+                pattern_packaged = os.path.join(
+                    patterns_dir, pattern_name, ".aws-sam", "packaged.yaml"
+                )
+                if os.path.exists(pattern_packaged):
+                    templates_to_lint.append(
+                        (f"Patterns/{pattern_name}", pattern_packaged)
+                    )
+
+        if not templates_to_lint:
+            self.console.print(
+                "[yellow]⚠️  No packaged templates found to lint[/yellow]"
+            )
+            return True
+
+        # Lint each template
+        for template_name, template_path in templates_to_lint:
+            self.log_verbose(f"Linting {template_name}: {template_path}")
+
             result = subprocess.run(
-                [sys.executable, "-m", "build", "--wheel"],
-                cwd=lib_dir,
-                capture_output=True,
-                text=True,
+                ["cfn-lint", template_path], capture_output=True, text=True
             )
+
             if result.returncode != 0:
-                raise Exception(f"Wheel build failed: {result.stderr}")
+                output = result.stdout + result.stderr
+                lines = output.strip().split("\n") if output.strip() else []
 
-            # Find the built wheel
-            wheel_files = [f for f in os.listdir(dist_dir) if f.endswith(".whl")]
-            if not wheel_files:
-                raise Exception("No wheel file found after build")
+                # Separate errors from warnings
+                for line in lines:
+                    if not line.strip():
+                        continue
+                    if line.strip().startswith("E") or ":E" in line:
+                        all_errors.append(f"[{template_name}] {line}")
+                    elif line.strip().startswith("W") or ":W" in line:
+                        all_warnings.append(f"[{template_name}] {line}")
 
-            self._lib_wheel_path = os.path.join(lib_dir, "dist", wheel_files[0])
-            self.console.print(f"[green]✅ Lib wheel built: {wheel_files[0]}[/green]")
+        # Report results
+        if all_errors:
+            self.console.print("[red]❌ CloudFormation linting found errors:[/red]")
+            for line in all_errors[:10]:  # Show first 10 errors
+                self.console.print(f"[red]  {line}[/red]")
+            if len(all_errors) > 10:
+                self.console.print(
+                    f"[red]  ... and {len(all_errors) - 10} more errors[/red]"
+                )
+            return False
+
+        if all_warnings:
+            self.console.print(
+                f"[yellow]⚠️  CloudFormation linting found {len(all_warnings)} warnings (continuing):[/yellow]"
+            )
+            for line in all_warnings[:5]:  # Show first 5 warnings
+                self.console.print(f"[dim]  {line}[/dim]")
+            if len(all_warnings) > 5:
+                self.console.print(
+                    f"[dim]  ... and {len(all_warnings) - 5} more warnings[/dim]"
+                )
+
+        self.console.print(
+            f"[green]✅ CloudFormation linting passed ({len(templates_to_lint)} templates checked)[/green]"
+        )
+        return True
+
+    def compute_directory_hash(self, directory):
+        """Compute hash of actual directory contents for layer versioning."""
+        if not os.path.exists(directory):
+            return ""
+
+        checksums = []
+        for root, dirs, files in os.walk(directory):
+            dirs.sort()  # Consistent ordering
+            for file in sorted(files):
+                file_path = os.path.join(root, file)
+                if os.path.isfile(file_path):
+                    # Include relative path and content in hash for accuracy
+                    rel_path = os.path.relpath(file_path, directory)
+                    file_hash = self.get_file_checksum(file_path)
+                    checksums.append(f"{rel_path}:{file_hash}")
+
+        combined = "\n".join(checksums)
+        return hashlib.sha256(combined.encode()).hexdigest()[:8]
+
+    def build_lambda_layer(self, layer_name, layer_extras):
+        """Build a single Lambda layer with specified extras.
+
+        The hash is computed from actual layer contents AFTER removing boto packages,
+        ensuring the hash accurately reflects what's in the final layer.
+
+        Args:
+            layer_name: Name of the layer (e.g., 'base', 'reporting', 'agents')
+            layer_extras: List of extras to install (e.g., ['docs_service', 'image'])
+
+        Returns:
+            Tuple of (layer_zip_path, layer_zip_name)
+        """
+        try:
+            # Create layer directory structure
+            layer_build_dir = os.path.join(".aws-sam", "layers", f"{layer_name}-build")
+            layer_python_dir = os.path.join(layer_build_dir, "python")
+
+            # Clean and recreate directories
+            if os.path.exists(layer_build_dir):
+                shutil.rmtree(layer_build_dir)
+            os.makedirs(layer_python_dir, exist_ok=True)
+
+            # Build pip install command with extras
+            self.log_verbose(
+                f"  DEBUG: layer_extras = {layer_extras}, type = {type(layer_extras)}"
+            )
+            if layer_extras:
+                extras_str = ",".join(layer_extras)
+                self.log_verbose(f"  DEBUG: extras_str = {extras_str}")
+                install_spec = f"./lib/idp_common_pkg[{extras_str}]"
+                self.log_verbose(f"  DEBUG: install_spec with extras = {install_spec}")
+            else:
+                install_spec = "./lib/idp_common_pkg"
+                self.log_verbose(
+                    f"  DEBUG: install_spec without extras = {install_spec}"
+                )
+
+            # Install dependencies into layer python directory
+            # Use platform-specific flags to ensure x86_64 Lambda compatibility
+            # regardless of the local machine's architecture (e.g., ARM64 Mac)
+            cmd = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                install_spec,
+                "--platform",
+                "manylinux2014_x86_64",
+                "--implementation",
+                "cp",
+                "--python-version",
+                "312",
+                "--only-binary=:all:",
+                "-t",
+                layer_python_dir,
+                "--upgrade",
+            ]
+
+            # Show what's being installed
+            extras_info = (
+                f" [{', '.join(layer_extras)}]" if layer_extras else " (core only)"
+            )
+            self.console.print(
+                f"[cyan]Building layer '{layer_name}'{extras_info}...[/cyan]"
+            )
+            self.console.print(f"Installing: {install_spec}", style="dim", markup=False)
+            self.log_verbose(f"  Full command: {' '.join(cmd)}")
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"Layer build failed: {result.stderr}")
+
+            # Remove Lambda runtime packages (already provided by Lambda runtime)
+            # This saves ~100+ MB per layer and prevents size limit issues
+            self.console.print(
+                "[dim]  Removing packages already included in Lambda runtime (boto3, botocore, etc.)...[/dim]"
+            )
+            runtime_packages = [
+                "boto3",
+                "botocore",
+                "s3transfer",
+                "awscli",
+                "urllib3",  # Included with botocore
+                "jmespath",  # Included with botocore
+                "python_dateutil",  # Included with botocore
+                "dateutil",  # Included with botocore
+            ]
+
+            removed_packages = []
+            for pkg in runtime_packages:
+                # Remove package directories and dist-info directories
+                for pattern in [pkg, f"{pkg}-*", f"{pkg.replace('-', '_')}-*"]:
+                    import glob
+
+                    matches = glob.glob(os.path.join(layer_python_dir, pattern))
+                    for match in matches:
+                        if os.path.isdir(match):
+                            shutil.rmtree(match)
+                            removed_packages.append(os.path.basename(match))
+                        elif os.path.isfile(match):
+                            os.remove(match)
+                            removed_packages.append(os.path.basename(match))
+
+            if removed_packages:
+                self.log_verbose(
+                    f"  Removed Lambda runtime packages: {', '.join(set(removed_packages))}"
+                )
+
+            # Compute hash from actual layer contents AFTER removing boto packages
+            layer_hash = self.compute_directory_hash(layer_python_dir)
+            layer_zip_name = f"idp-common-{layer_name}-{layer_hash}.zip"
+            layer_zip_path = os.path.join(".aws-sam", "layers", layer_zip_name)
+
+            # Check if layer with this content hash already exists
+            if os.path.exists(layer_zip_path):
+                self.console.print(
+                    f"[green]Layer {layer_name} already built with same content: {layer_zip_name}[/green]"
+                )
+                # Clean up build directory
+                shutil.rmtree(layer_build_dir)
+                return layer_zip_path, layer_zip_name
+
+            # Create zip file
+            self.console.print(f"[cyan]Creating layer zip: {layer_zip_name}[/cyan]")
+            with zipfile.ZipFile(layer_zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(layer_build_dir):
+                    # Exclude unnecessary files
+                    dirs[:] = [
+                        d for d in dirs if d not in {"__pycache__", "*.dist-info"}
+                    ]
+                    for file in files:
+                        if file.endswith((".pyc", ".pyo", ".dist-info")):
+                            continue
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, layer_build_dir)
+                        zipf.write(file_path, arcname)
+
+            # Clean up build directory
+            shutil.rmtree(layer_build_dir)
+
+            layer_size_mb = os.path.getsize(layer_zip_path) / 1024 / 1024
+            self.console.print(
+                f"[green]✅ Layer '{layer_name}' built: {layer_size_mb:.2f} MB[/green]"
+            )
+
+            return layer_zip_path, layer_zip_name
 
         except Exception as e:
-            self._delete_checksum_file("lib/.checksum")
-            self.console.print("[red]❌ Failed to build lib wheel:[/red]")
+            self.console.print(f"[red]❌ Failed to build layer '{layer_name}':[/red]")
             self.console.print(str(e), style="red", markup=False)
             sys.exit(1)
 
-    def _modify_requirements_for_wheel(self, base_dir="."):
-        """Modify all requirements.txt files to use pre-built wheel instead of source path.
+    def _verify_packaged_templates_exist(self, components_needing_rebuild):
+        """Verify that packaged templates exist for components NOT needing rebuild.
 
-        This enables parallel SAM builds without race conditions when multiple Lambda
-        functions try to build ./lib/idp_common_pkg simultaneously.
+        If a component's checksum says it's up-to-date but the packaged.yaml is missing,
+        add it to the rebuild list. This handles cases where .aws-sam/ was deleted
+        but .checksum file still exists.
         """
-        if not self._lib_wheel_path:
-            self.log_verbose("No wheel path set, skipping requirements modification")
-            return
+        dependencies = self.get_component_dependencies()
 
-        self._modified_requirements_files = []
+        for component in dependencies.keys():
+            if component in ["main", "lib"]:
+                continue  # Main and lib don't have packaged templates
 
-        # Convert wheel path to relative path from project root
-        wheel_relative = os.path.relpath(self._lib_wheel_path, base_dir)
-
-        # Find all requirements.txt files in src/lambda
-        src_lambda_dir = os.path.join(base_dir, "src", "lambda")
-        if not os.path.exists(src_lambda_dir):
-            return
-
-        for func_dir in os.listdir(src_lambda_dir):
-            req_path = os.path.join(src_lambda_dir, func_dir, "requirements.txt")
-            if os.path.isfile(req_path):
-                self._modify_single_requirements_file(req_path, wheel_relative)
-
-    def _modify_single_requirements_file(self, req_path, wheel_relative):
-        """Modify a single requirements.txt to use wheel path."""
-        try:
-            with open(req_path, "r") as f:
-                original_content = f.read()
-
-            # Check if this file references idp_common_pkg
-            if "./lib/idp_common_pkg" not in original_content:
-                return
-
-            # Replace source path with wheel path, preserving extras
-            # Pattern: ./lib/idp_common_pkg[extras]  -> ./lib/idp_common_pkg/dist/wheel.whl[extras]
-            import re
-
-            def replace_path(match):
-                extras = match.group(1) if match.group(1) else ""
-                return f"./{wheel_relative}{extras}"
-
-            modified_content = re.sub(
-                r"\./lib/idp_common_pkg(\[[^\]]+\])?", replace_path, original_content
+            # Check if component is already marked for rebuild
+            already_marked = any(
+                item["component"] == component for item in components_needing_rebuild
             )
+            if already_marked:
+                continue
 
-            if modified_content != original_content:
-                # Save original for restoration
-                self._modified_requirements_files.append(
-                    {"path": req_path, "original": original_content}
-                )
-
-                # Write modified content
-                with open(req_path, "w") as f:
-                    f.write(modified_content)
-
-                self.log_verbose(f"Modified {req_path} to use wheel")
-
-        except Exception as e:
-            self.console.print(
-                f"[yellow]Warning: Could not modify {req_path}: {e}[/yellow]"
-            )
-
-    def _restore_requirements_files(self):
-        """Restore all modified requirements.txt files to original content."""
-        for file_info in self._modified_requirements_files:
-            try:
-                with open(file_info["path"], "w") as f:
-                    f.write(file_info["original"])
-                self.log_verbose(f"Restored {file_info['path']}")
-            except Exception as e:
+            # Check if packaged.yaml exists
+            packaged_path = os.path.join(component, ".aws-sam", "packaged.yaml")
+            if not os.path.exists(packaged_path):
                 self.console.print(
-                    f"[yellow]Warning: Could not restore {file_info['path']}: {e}[/yellow]"
+                    f"[yellow]⚠️  {component}/packaged.yaml missing - forcing rebuild[/yellow]"
                 )
 
-        self._modified_requirements_files = []
+                # Get component's dependencies for rebuild info
+                deps = dependencies.get(component, [])
+                current_dep_checksums = {}
+                for dep in deps:
+                    if os.path.isfile(dep):
+                        current_dep_checksums[dep] = self.get_file_checksum(dep)
+                    elif os.path.isdir(dep):
+                        current_dep_checksums[dep] = self.get_source_files_checksum(dep)
+
+                combined_checksum = hashlib.sha256(
+                    (
+                        "".join(current_dep_checksums.values())
+                        + (self.bucket or "")
+                        + (self.prefix_and_version or "")
+                        + (self.region or "")
+                    ).encode()
+                ).hexdigest()
+
+                components_needing_rebuild.append(
+                    {
+                        "component": component,
+                        "dependencies": deps,
+                        "changed_dependencies": ["packaged.yaml missing"],
+                        "checksum_file": f"{component}/.checksum",
+                        "current_checksum": combined_checksum,
+                        "current_dep_checksums": current_dep_checksums,
+                    }
+                )
+
+    def _discover_existing_layer_zips(self):
+        """Discover existing layer zips in .aws-sam/layers/ directory.
+
+        Used when lib hasn't changed but we need to populate _layer_arns
+        with the correct layer zip names for template token replacement.
+
+        IMPORTANT: Also verifies that layers exist in S3 at the current version path.
+        If a layer exists locally but not in S3 (e.g., VERSION changed), it uploads it.
+        This prevents deployment failures when the S3 prefix changes due to VERSION updates.
+
+        Returns:
+            Dict mapping layer names to layer info dicts with zip_name, etc.
+        """
+        layers_dir = ".aws-sam/layers"
+        layer_info = {}
+
+        self.console.print(
+            f"[cyan]🔍 Discovering existing layer zips in {layers_dir}...[/cyan]"
+        )
+
+        if not os.path.exists(layers_dir):
+            self.console.print(
+                "[yellow]⚠️  Layers directory not found - cannot discover existing layers[/yellow]"
+            )
+            return layer_info
+
+        # Find existing layer zips
+        layer_zips = [
+            f
+            for f in os.listdir(layers_dir)
+            if f.startswith("idp-common-") and f.endswith(".zip")
+        ]
+
+        self.console.print(
+            f"[dim]   Found {len(layer_zips)} layer zip files: {layer_zips}[/dim]"
+        )
+
+        # Map each layer name to its zip file
+        expected_layers = ["base", "reporting", "agents"]
+        for layer_name in expected_layers:
+            # Find the zip for this layer (format: idp-common-{name}-{hash}.zip)
+            matching_zips = [z for z in layer_zips if f"idp-common-{layer_name}-" in z]
+            if matching_zips:
+                # Use the most recent one (in case there are multiple)
+                zip_name = sorted(matching_zips)[-1]
+                zip_path = os.path.join(layers_dir, zip_name)
+                # Extract hash from zip_name
+                layer_hash = zip_name.replace(f"idp-common-{layer_name}-", "").replace(
+                    ".zip", ""
+                )
+                s3_key = f"{self.prefix_and_version}/layers/{zip_name}"
+
+                # Verify layer exists in S3 at current version path
+                # This handles VERSION changes where layer exists locally but not at new S3 path
+                try:
+                    self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+                    self.console.print(
+                        f"[green]   ✓ Layer '{layer_name}': {zip_name} (in S3)[/green]"
+                    )
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "404":
+                        # Layer exists locally but not in S3 at new version path - upload it
+                        self.console.print(
+                            f"[yellow]   ⚠️  Layer '{layer_name}' not in S3 at current version path - uploading[/yellow]"
+                        )
+                        self.upload_to_s3_with_timer(
+                            zip_path, s3_key, f"layer '{layer_name}'"
+                        )
+                    else:
+                        raise
+
+                layer_info[layer_name] = {
+                    "zip_path": zip_path,
+                    "zip_name": zip_name,
+                    "hash": layer_hash,
+                    "s3_key": s3_key,
+                }
+            else:
+                self.console.print(
+                    f"[yellow]⚠️  No existing layer zip found for '{layer_name}'[/yellow]"
+                )
+
+        if layer_info:
+            self.console.print(
+                f"[green]✅ Discovered {len(layer_info)} existing layer zips (lib unchanged)[/green]"
+            )
+        else:
+            self.console.print("[yellow]⚠️  No layer zips discovered[/yellow]")
+
+        return layer_info
+
+    def _verify_layer_zips_exist(self):
+        """Verify that all layer zip files exist locally.
+
+        Returns True if any layer zips are missing, requiring a rebuild.
+        This prevents the situation where lib/.checksum exists but layer zips were deleted.
+        """
+        layers_dir = ".aws-sam/layers"
+        if not os.path.exists(layers_dir):
+            self.console.print(
+                "[yellow]⚠️  Layers directory missing - forcing layer rebuild[/yellow]"
+            )
+            return True  # Need rebuild
+
+        # Check if any idp-common-*.zip files exist
+        layer_zips = [
+            f
+            for f in os.listdir(layers_dir)
+            if f.startswith("idp-common-") and f.endswith(".zip")
+        ]
+        if not layer_zips:
+            self.console.print(
+                "[yellow]⚠️  No layer zips found in .aws-sam/layers/ - forcing layer rebuild[/yellow]"
+            )
+            return True  # Need rebuild
+
+        # We have at least some layer zips, check we have all 3
+        expected_layers = ["base", "reporting", "agents"]
+        for layer_name in expected_layers:
+            found = any(f"idp-common-{layer_name}-" in z for z in layer_zips)
+            if not found:
+                self.console.print(
+                    f"[yellow]⚠️  Layer zip for '{layer_name}' missing - forcing layer rebuild[/yellow]"
+                )
+                return True  # Need rebuild
+
+        return False  # All layers exist
+
+    def build_all_lambda_layers(self):
+        """Build all 3 Lambda layers for idp_common.
+
+        Returns:
+            Dict mapping layer names to (zip_path, zip_name, hash) tuples
+        """
+        self.log_phase("Building Lambda Layers", "📦")
+
+        # Ensure layers directory exists
+        os.makedirs(".aws-sam/layers", exist_ok=True)
+
+        # Define the 3 layers
+        layers_config = {
+            "base": ["docs_service", "image"],
+            "reporting": ["reporting"],
+            "agents": ["agents"],
+        }
+
+        built_layers = {}
+
+        for layer_name, layer_extras in layers_config.items():
+            # Build the layer (hash is computed from actual contents after removing boto packages)
+            self.log_task(f"Building layer '{layer_name}' [{', '.join(layer_extras)}]")
+            zip_path, zip_name = self.build_lambda_layer(layer_name, layer_extras)
+
+            # Extract hash from zip_name (format: idp-common-{name}-{hash}.zip)
+            layer_hash = zip_name.split("-")[-1].replace(".zip", "")
+
+            # Upload to S3
+            s3_key = f"{self.prefix_and_version}/layers/{zip_name}"
+            try:
+                self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+                self.log_cached(f"Layer '{layer_name}' already in S3: {zip_name}")
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "404":
+                    self.upload_to_s3_with_timer(
+                        zip_path, s3_key, f"layer '{layer_name}'"
+                    )
+                else:
+                    raise
+
+            # Store layer info for template injection
+            built_layers[layer_name] = {
+                "zip_path": zip_path,
+                "zip_name": zip_name,
+                "hash": layer_hash,
+                "s3_key": s3_key,
+            }
+
+        self.log_success("All Lambda layers built and uploaded")
+        return built_layers
 
     def _delete_checksum_file(self, checksum_path):
         """Delete checksum file - handles both component paths and direct file paths"""
@@ -2470,19 +2739,38 @@ except Exception as e:
             self.log_verbose(f"Deleted checksum file: {checksum_file}")
 
     def update_component_checksum(self, components_needing_rebuild):
-        """Update checksum"""
+        """Update checksum with individual dependency tracking"""
         for item in components_needing_rebuild:
             current_checksum = item["current_checksum"]
+            current_dep_checksums = item["current_dep_checksums"]
             checksum_file = item["checksum_file"]
+
+            # Store both combined checksum and individual dependency checksums
+            checksum_data = {
+                "combined": current_checksum,
+                "dependencies": current_dep_checksums,
+            }
+
             with open(os.path.join(".", checksum_file), "w") as f:
-                f.write(current_checksum)
+                json.dump(checksum_data, f, indent=2)
             self.log_verbose(f"Updated checksum for {item['component']}")
 
     def smart_rebuild_detection(self):
         self.console.print(
             "[cyan]🔍 Analyzing component dependencies for smart rebuilds...[/cyan]"
         )
+
+        # Safety check: verify layer zips exist even if checksum says they're up to date
+        layers_missing = self._verify_layer_zips_exist()
+        if layers_missing:
+            self._is_lib_changed = True  # Force layer rebuild
+
         components_to_rebuild = self.get_components_needing_rebuild()
+
+        # Safety check: verify packaged.yaml files exist for components marked as up-to-date
+        # This handles cases where .aws-sam/ was deleted but .checksum file still exists
+        self._verify_packaged_templates_exist(components_to_rebuild)
+
         components_names = []
         for item in components_to_rebuild:
             components_names.append(item["component"])
@@ -2589,24 +2877,43 @@ except Exception as e:
 
     def run(self, args):
         """Main execution method"""
+        # Track overall timing
+        overall_start_time = time.time()
+        timing_breakdown = {}
+
         try:
             # Parse and validate parameters
+            step_start = time.time()
             self.check_parameters(args)
+            timing_breakdown["Parameter validation"] = time.time() - step_start
+
+            # Check for interrupted build state at startup - recover from any previous crash
+            step_start = time.time()
+            self._prepare_for_build_at_start()
+            timing_breakdown["Build state recovery"] = time.time() - step_start
 
             # Container deployment is now handled within this script
 
             # Set up environment
+            step_start = time.time()
             self.setup_environment()
+            timing_breakdown["Environment setup"] = time.time() - step_start
 
             # Check prerequisites
+            step_start = time.time()
             self.check_prerequisites()
+            timing_breakdown["Prerequisites check"] = time.time() - step_start
 
             # Validate Python linting if enabled
+            step_start = time.time()
             if not self._validate_python_linting():
                 raise Exception("Python linting validation failed")
+            timing_breakdown["Python linting"] = time.time() - step_start
 
             # Set up S3 bucket
+            step_start = time.time()
             self.setup_artifacts_bucket()
+            timing_breakdown["S3 bucket setup"] = time.time() - step_start
 
             # Get AWS account ID (needed for ECR placeholder)
             if not self.account_id:
@@ -2615,54 +2922,104 @@ except Exception as e:
                 self.account_id = self.sts_client.get_caller_identity()["Account"]
 
             # Perform smart rebuild detection and cache management
+            step_start = time.time()
             components_needing_rebuild = self.smart_rebuild_detection()
+            timing_breakdown["Smart rebuild detection"] = time.time() - step_start
 
             # Start UI validation early in parallel
+            step_start = time.time()
             ui_validation_future, ui_executor = self.start_ui_validation_parallel()
+            timing_breakdown["Start UI validation"] = time.time() - step_start
 
             # clear component cache
+            step_start = time.time()
             for comp_info in components_needing_rebuild:
                 if comp_info["component"] != "lib":  # lib doesnt have sam build
                     self.clear_component_cache(comp_info["component"])
+            timing_breakdown["Clear component cache"] = time.time() - step_start
 
-            # Build lib package for parallel-safe SAM builds
-            # The wheel is needed whenever main template needs rebuilding (regardless of lib changes)
-            # to avoid race conditions when multiple Lambda functions install from ./lib/idp_common_pkg
-            main_needs_rebuild = any(
-                item["component"] == "main" for item in components_needing_rebuild
-            )
-            if main_needs_rebuild or self._is_lib_changed:
-                self.build_lib_package()
+            # Build Lambda layers if lib has changed, otherwise discover existing layers
+            if self._is_lib_changed:
+                step_start = time.time()
+                self._layer_arns = self.build_all_lambda_layers()
+                timing_breakdown["Build & upload Lambda layers"] = (
+                    time.time() - step_start
+                )
+            else:
+                # Discover existing layer zips to get their names for template replacement
+                self._layer_arns = self._discover_existing_layer_zips()
+
+                # If discovery failed to find layers, force rebuild
+                if not self._layer_arns or len(self._layer_arns) < 3:
+                    self.console.print(
+                        "[yellow]⚠️  Layer discovery incomplete - forcing layer rebuild[/yellow]"
+                    )
+                    self._layer_arns = self.build_all_lambda_layers()
 
             # Build patterns and options with smart detection
             self.console.print(
                 "[bold cyan]Building components with smart dependency detection...[/bold cyan]"
             )
-            start_time = time.time()
+            concurrent_build_start = time.time()
 
             # Determine optimal number of workers
             if self.max_workers is None:
-                # Auto-detect: typically CPU count or a bit less, capped at 4
-                self.max_workers = min(4, (os.cpu_count() or 1) + 1)
+                # Auto-detect: SAM builds are I/O bound, so use 2x CPU count, capped at 8
+                cpu_count = os.cpu_count() or 4
+                self.max_workers = min(cpu_count * 2, 8)
                 self.console.print(
-                    f"[green]Auto-detected {self.max_workers} concurrent workers[/green]"
+                    f"[green]Auto-detected {self.max_workers} concurrent workers (CPUs: {cpu_count})[/green]"
                 )
 
-            # Build and push Pattern-2 container images FIRST if Pattern-2 needs rebuilding
-            # This MUST happen before SAM build/package since the images need to exist
-            # Pattern-2 Docker images are now built during CloudFormation deployment via CodeBuild
-            # No pre-build required - CodeBuild will download source from S3 and build images
+            # All pattern Docker images (Pattern-1, Pattern-2, Pattern-3) are built during CloudFormation deployment via CodeBuild
+            # CodeBuild will download source from S3 and build images - no pre-build required
             self.console.print(
-                "\n[cyan]ℹ️  Pattern-2 Docker images will be built during stack deployment via CodeBuild[/cyan]"
+                "\n[cyan]ℹ️  Pattern Docker images (Pattern-1/2/3) will be built during stack deployment via CodeBuild[/cyan]"
             )
 
-            # Build patterns with smart detection
-            self.console.print("\n[bold yellow]📦 Building Patterns[/bold yellow]")
-            patterns_start = time.time()
-            patterns_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "patterns", max_workers=self.max_workers
+            # Build nested and patterns concurrently (no dependencies on each other)
+            self.console.print(
+                "\n[bold yellow]🚀 Building Nested Stacks and Patterns Concurrently[/bold yellow]"
             )
-            patterns_time = time.time() - patterns_start
+
+            # Submit both category builds concurrently
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=2
+            ) as category_executor:
+                # Submit builds for both categories
+                nested_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "nested",
+                    self.max_workers,
+                )
+                patterns_future = category_executor.submit(
+                    self.build_components_with_smart_detection,
+                    components_needing_rebuild,
+                    "patterns",
+                    self.max_workers,
+                )
+
+                # Wait for both categories to complete and collect results
+                nested_start = time.time()
+                nested_success = nested_future.result()
+                nested_time = time.time() - nested_start
+
+                patterns_start = time.time()
+                patterns_success = patterns_future.result()
+                patterns_time = time.time() - patterns_start
+
+            # Check if any category failed
+            if not nested_success:
+                self.print_error_summary()
+                self.console.print(
+                    "[red]❌ Error: Failed to build one or more nested stacks[/red]"
+                )
+                if not self.verbose:
+                    self.console.print(
+                        "[dim]Use --verbose flag for detailed error information[/dim]"
+                    )
+                sys.exit(1)
 
             if not patterns_success:
                 self.print_error_summary()
@@ -2675,38 +3032,26 @@ except Exception as e:
                     )
                 sys.exit(1)
 
-            # Build options with smart detection
-            self.console.print("\n[bold yellow]⚙️  Building Options[/bold yellow]")
-            options_start = time.time()
-            options_success = self.build_components_with_smart_detection(
-                components_needing_rebuild, "options", max_workers=self.max_workers
-            )
-            options_time = time.time() - options_start
-
-            if not options_success:
-                self.print_error_summary()
-                self.console.print(
-                    "[red]❌ Error: Failed to build one or more options[/red]"
-                )
-                if not self.verbose:
-                    self.console.print(
-                        "[dim]Use --verbose flag for detailed error information[/dim]"
-                    )
-                sys.exit(1)
-
-            total_build_time = time.time() - start_time
+            total_build_time = time.time() - concurrent_build_start
+            timing_breakdown["Concurrent builds (nested + patterns)"] = total_build_time
             self.console.print(
-                f"\n[bold green]✅ Smart build completed in {total_build_time:.2f}s[/bold green]"
+                f"\n[bold green]✅ Concurrent build completed in {total_build_time:.2f}s[/bold green]"
             )
+            self.console.print(f"   [dim]• Nested: {nested_time:.2f}s[/dim]")
             self.console.print(f"   [dim]• Patterns: {patterns_time:.2f}s[/dim]")
-            self.console.print(f"   [dim]• Options: {options_time:.2f}s[/dim]")
+            self.console.print(
+                f"   [dim]• Wall-clock time saved by concurrency: {max(nested_time, patterns_time) - total_build_time:.2f}s[/dim]"
+            )
 
             if components_needing_rebuild:
                 # Upload configuration library
+                step_start = time.time()
                 self.upload_config_library()
+                timing_breakdown["Upload config library"] = time.time() - step_start
 
             # Wait for UI validation to complete if it was started
             if ui_validation_future:
+                step_start = time.time()
                 try:
                     self.console.print(
                         "[cyan]⏳ Waiting for UI validation to complete...[/cyan]"
@@ -2721,20 +3066,30 @@ except Exception as e:
                     sys.exit(1)
                 finally:
                     ui_executor.shutdown(wait=True)
+                timing_breakdown["UI validation (wait)"] = time.time() - step_start
 
             # Package UI and start validation in parallel if needed
+            step_start = time.time()
             webui_zipfile = self.package_ui()
+            timing_breakdown["Package UI"] = time.time() - step_start
 
             # Package Pattern-1 source for CodeBuild Docker builds
+            step_start = time.time()
             pattern1_source_zipfile = self.package_pattern1_source()
+            timing_breakdown["Package Pattern-1 source"] = time.time() - step_start
 
             # Package Pattern-2 source for CodeBuild Docker builds
+            step_start = time.time()
             pattern2_source_zipfile = self.package_pattern2_source()
+            timing_breakdown["Package Pattern-2 source"] = time.time() - step_start
 
             # Package Pattern-3 source for CodeBuild Docker builds
+            step_start = time.time()
             pattern3_source_zipfile = self.package_pattern3_source()
+            timing_breakdown["Package Pattern-3 source"] = time.time() - step_start
 
             # Build main template
+            step_start = time.time()
             self.build_main_template(
                 webui_zipfile,
                 pattern1_source_zipfile,
@@ -2742,18 +3097,61 @@ except Exception as e:
                 pattern3_source_zipfile,
                 components_needing_rebuild,
             )
+            timing_breakdown["Build & upload main template"] = time.time() - step_start
 
-            # Validate Lambda builds for idp_common inclusion (after all builds complete)
-            self.validate_lambda_builds()
+            # Validate CloudFormation templates with cfn-lint (after all templates are built/packaged)
+            step_start = time.time()
+            if not self._validate_cfn_lint():
+                raise Exception("CloudFormation linting validation failed")
+            timing_breakdown["CloudFormation linting"] = time.time() - step_start
 
             # All builds completed successfully if we reach here
             self.console.print("[green]✅ All builds completed successfully[/green]")
 
             # Update checksum for components needing rebuild upon success
+            step_start = time.time()
             self.update_component_checksum(components_needing_rebuild)
+            timing_breakdown["Update checksums"] = time.time() - step_start
 
             # Print outputs
+            step_start = time.time()
             self.print_outputs()
+            timing_breakdown["Print outputs"] = time.time() - step_start
+
+            # Calculate total time
+            total_time = time.time() - overall_start_time
+
+            # Print timing breakdown - show top 4 steps and "Other"
+            self.console.print("\n[bold cyan]⏱️  Timing Breakdown:[/bold cyan]")
+            self.console.print("=" * 60)
+
+            # Sort by duration (longest first)
+            sorted_steps = sorted(
+                timing_breakdown.items(), key=lambda x: x[1], reverse=True
+            )
+
+            # Show top 4 steps
+            top_steps = sorted_steps[:4]
+            for step_name, duration in top_steps:
+                percentage = (duration / total_time * 100) if total_time > 0 else 0
+                self.console.print(
+                    f"  • {step_name:<40} {duration:>6.2f}s ({percentage:>5.1f}%)"
+                )
+
+            # Combine remaining steps as "Other"
+            if len(sorted_steps) > 4:
+                other_time = sum(duration for _, duration in sorted_steps[4:])
+                other_percentage = (
+                    (other_time / total_time * 100) if total_time > 0 else 0
+                )
+                self.console.print(
+                    f"  • {'Other':<40} {other_time:>6.2f}s ({other_percentage:>5.1f}%)"
+                )
+
+            self.console.print("=" * 60)
+            self.console.print(
+                f"  [bold green]TOTAL TIME: {total_time:.2f}s ({total_time / 60:.1f} minutes)[/bold green]"
+            )
 
             self.console.print("\n[bold green]✅ Done![/bold green]")
 

@@ -6,6 +6,7 @@ const GET_TEST_SETS = `
     getTestSets {
       id
       name
+      description
       filePattern
       fileCount
       status

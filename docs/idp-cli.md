@@ -203,15 +203,30 @@ idp-cli delete [OPTIONS]
 The `--force-delete-all` flag performs a comprehensive cleanup AFTER CloudFormation deletion completes:
 
 1. **CloudFormation Deletion Phase**: Standard stack deletion
-2. **Analysis Phase**: Identifies resources with DELETE_SKIPPED or retained status
-3. **Cleanup Phase**: Deletes remaining resources in order:
+2. **Additional Resource Cleanup Phase** (happens with `--wait` on all deletions and always with `--force-delete-all`): Removes stack-specific resources not tracked by CloudFormation:
+   - CloudWatch Log Groups (Lambda functions, Glue crawlers)
+   - AppSync APIs and their log groups
+   - CloudFront distributions (two-phase cleanup - initiates disable, takes 15-20 minutes to propagate globally)
+   - CloudFront Response Headers Policies (from previously deleted stacks)
+   - IAM custom policies and permissions boundaries
+   - CloudWatch Logs resource policies
+3. **Retained Resource Cleanup Phase** (only with `--force-delete-all`): Deletes remaining resources in order:
    - DynamoDB tables (disables PITR, then deletes)
    - CloudWatch Log Groups (matching stack name pattern)
    - S3 buckets (regular buckets first, LoggingBucket last)
 
-**Resources Deleted by --force-delete-all:**
+**Resources Always Cleaned Up (with `--wait` or `--force-delete-all`):**
+- IAM custom policies (containing stack name)
+- IAM permissions boundary policies
+- CloudFront response header policies (custom)
+- CloudWatch Logs resource policies (stack-specific)
+- AppSync log groups
+- Additional log groups containing stack name
+- Gracefully handles missing/already-deleted resources
+
+**Resources Deleted Only by --force-delete-all:**
 - All DynamoDB tables from stack
-- All CloudWatch Log Groups (including nested stack logs)
+- All CloudWatch Log Groups (retained by CloudFormation)
 - All S3 buckets including LoggingBucket
 - Handles nested stack resources automatically
 
@@ -332,16 +347,25 @@ idp-cli run-inference [OPTIONS]
 - `--manifest`: Path to manifest file (CSV or JSON)
 - `--dir`: Local directory containing documents
 - `--s3-uri`: S3 URI in InputBucket
+- `--test-set`: Test set ID from test set bucket
 
 **Options:**
 - `--stack-name` (required): CloudFormation stack name
-- `--batch-id`: Custom batch ID (auto-generated if omitted)
+- `--batch-id`: Custom batch ID (auto-generated if omitted, ignored with --test-set)
 - `--batch-prefix`: Prefix for auto-generated batch ID (default: `cli-batch`)
 - `--file-pattern`: File pattern for directory/S3 scanning (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
+- `--number-of-files`: Limit number of files to process
 - `--monitor`: Monitor progress until completion
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--region`: AWS region (optional)
+
+**Test Set Integration:**
+For test runs to appear properly in the Test Studio UI, use either:
+- `--test-set`: Process test set directly by ID (recommended for test sets)
+- `--manifest`: Use manifest file with populated baseline_source column for evaluation tracking
+
+Other options (`--dir`, `--s3-uri`) are for general document processing but won't integrate with test studio tracking.
 
 **Examples:**
 
@@ -356,6 +380,26 @@ idp-cli run-inference \
 idp-cli run-inference \
     --stack-name my-stack \
     --manifest documents-with-baselines.csv \
+    --monitor
+
+# Process from manifest with limited files
+idp-cli run-inference \
+    --stack-name my-stack \
+    --manifest documents-with-baselines.csv \
+    --number-of-files 10 \
+    --monitor
+
+# Process test set (integrates with Test Studio UI - use test set ID)
+idp-cli run-inference \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --monitor
+
+# Process test set with limited files for quick testing
+idp-cli run-inference \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --number-of-files 5 \
     --monitor
 
 # Process S3 URI
@@ -622,7 +666,7 @@ idp-cli download-results \
 
 ### `generate-manifest`
 
-Generate a manifest file from directory or S3 URI.
+Generate a manifest file from directory or S3 URI, or create a test set in the test set bucket.
 
 **Usage:**
 ```bash
@@ -634,10 +678,13 @@ idp-cli generate-manifest [OPTIONS]
   - `--dir`: Local directory to scan
   - `--s3-uri`: S3 URI to scan
 - `--baseline-dir`: Baseline directory for automatic matching (only with --dir)
-- `--output` (required): Output manifest file path (CSV)
+- `--output`: Output manifest file path (CSV) - optional when using --test-set
 - `--file-pattern`: File pattern (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
 - `--region`: AWS region (optional)
+- **Test Set Creation:**
+  - `--test-set`: Test set name - creates folder in test set bucket and uploads files
+  - `--stack-name`: CloudFormation stack name (required with --test-set)
 
 **Examples:**
 
@@ -652,6 +699,41 @@ idp-cli generate-manifest \
     --dir ./documents/ \
     --baseline-dir ./validated-baselines/ \
     --output manifest-with-baselines.csv
+
+# Create test set and upload files (no manifest needed - use test set name)
+idp-cli generate-manifest \
+    --dir ./documents/ \
+    --baseline-dir ./baselines/ \
+    --test-set "fcc example test" \
+    --stack-name IDP
+
+# Create test set with manifest output
+idp-cli generate-manifest \
+    --dir ./documents/ \
+    --baseline-dir ./baselines/ \
+    --test-set "fcc example test" \
+    --stack-name IDP \
+    --output test-manifest.csv
+```
+
+**Test Set Creation:**
+When using `--test-set`, the command:
+1. Requires `--stack-name`, `--baseline-dir`, and `--dir`
+2. Uploads input files to `s3://test-set-bucket/{test-set-id}/input/`
+3. Uploads baseline files to `s3://test-set-bucket/{test-set-id}/baseline/`
+4. Creates proper test set structure for evaluation workflows
+5. Test set will be auto-detected by the Test Studio UI
+
+Process the created test set:
+```bash
+# Using test set ID (from UI or after creation)
+idp-cli run-inference --stack-name IDP --test-set fcc-example-test --monitor
+
+# Or using S3 URI to process input files directly
+idp-cli run-inference --stack-name IDP --s3-uri s3://test-set-bucket/fcc-example-test/input/
+
+# Or using manifest if generated
+idp-cli run-inference --stack-name IDP --manifest test-manifest.csv
 ```
 
 ---

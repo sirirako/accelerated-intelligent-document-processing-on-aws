@@ -110,23 +110,10 @@ Parameters:
     Description: >-
       (Optional) ARN of an existing IAM Permissions Boundary policy to attach to all IAM roles.
       Required by some organizations with Service Control Policies (SCPs).
-      Format: arn:${AWS::Partition}:iam::account-id:policy/policy-name
+      Format: arn:partition:iam::account-id:policy/policy-name
       Leave blank if no Permissions Boundary is required.
     AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
-
-  EnableHITL:
-    Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: "Enable Human In The Loop (A2I) for document review"
-
-  SageMakerA2IReviewPortalURL:
-    Type: String
-    Default: ""
-    Description: "SageMaker A2I Review Portal URL for HITL workflows"
 
   EnableECRImageScanning:
     Type: String
@@ -155,7 +142,6 @@ Conditions:
   HasGuardrailConfig: !And [!Not [!Equals [!Ref BedrockGuardrailId, ""]], !Not [!Equals [!Ref BedrockGuardrailVersion, ""]]]
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
-  IsHITLEnabled: !Equals [!Ref EnableHITL, "true"]
   IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
 
 Resources:
@@ -256,9 +242,6 @@ Resources:
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
-    DependsOn:
-      - DockerBuildRole
-      - ECRRepository
     Properties:
       Name: !Sub "${AWS::StackName}-docker-build"
       Description: !Sub >-
@@ -393,9 +376,6 @@ Resources:
 
   DockerBuildRun:
     Type: Custom::CodeBuildRun
-    DependsOn:
-      - DockerBuildProject
-      - CodeBuildTrigger
     Properties:
       ServiceToken: !GetAtt CodeBuildTrigger.Arn
       BuildProjectName: !Ref DockerBuildProject
@@ -415,7 +395,6 @@ Resources:
     Type: Custom::ECRRepositoryCleanup
     DependsOn:
       - DockerBuildRun
-      - ECRRepository
     Properties:
       ServiceToken: !GetAtt CodeBuildTrigger.Arn
       RepositoryName: !Ref ECRRepository
@@ -906,7 +885,7 @@ Resources:
                 order: 7
               custom_prompt_lambda_arn:
                 type: string
-                description: "(Optional) ARN of a Lambda function to generate custom extraction prompts. Function name must start with 'GENAIIDP-'. If not provided, default prompts will be used. The Lambda function receives the complete config, prompt placeholders, default task prompt content, and serialized document, and returns custom system_prompt and task_prompt_content. Example: arn:${AWS::Partition}:lambda:us-east-1:123456789012:function:GENAIIDP-my-extractor"
+                description: "(Optional) ARN of a Lambda function to generate custom extraction prompts. Function name must start with 'GENAIIDP-'. If not provided, default prompts will be used. The Lambda function receives the complete config, prompt placeholders, default task prompt content, and serialized document, and returns custom system_prompt and task_prompt_content. Example: arn:partition:lambda:us-east-1:123456789012:function:GENAIIDP-my-extractor"
                 order: 8
           assessment:
             order: 4

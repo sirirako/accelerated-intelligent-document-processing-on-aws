@@ -13,12 +13,13 @@ https://github.com/user-attachments/assets/7c5adf30-8d5c-4292-93b0-0149506322c7
 
 ## Pre-Deployed Test Sets
 
-The accelerator automatically deploys **two benchmark datasets** from HuggingFace as ready-to-use test sets during stack deployment:
+The accelerator automatically deploys **three benchmark datasets** from HuggingFace as ready-to-use test sets during stack deployment:
 
 1. **RealKIE-FCC-Verified**: 75 FCC invoice documents
 2. **OmniAI-OCR-Benchmark**: 293 diverse document images across 9 formats
+3. **RVL-CDIP-N-MP-Packets**: 500 multi-page packets with 13 document types
 
-Both datasets are deployed automatically with zero manual steps required.
+All datasets are deployed automatically with zero manual steps required.
 
 ---
 
@@ -109,11 +110,15 @@ Both datasets share these deployment characteristics:
 - **Smart Updates**: Skips re-download on stack updates unless version changes
 - **Single Public Source**: Everything from HuggingFace - fully reproducible anywhere
 
+- **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads PDFs and metadata)
+- **Stack Updates**: Near-instant (skips if version unchanged)
+>>>>>>> develop
+- **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
 ### Deployment Time
 
-<<<<<<< HEAD
-- **First Deployment**: Adds ~10-15 minutes to stack deployment (downloads both datasets)
+- **First Deployment**: Adds ~15-20 minutes to stack deployment (downloads all three datasets)
 - **Stack Updates**: Near-instant (skips if versions unchanged)
+- **Version Updates**: Re-downloads and re-processes when DatasetVersion changes
 =======
 - **First Deployment**: Adds ~5-10 minutes to stack deployment (downloads PDFs and metadata)
 - **Stack Updates**: Near-instant (skips if version unchanged)
@@ -122,12 +127,13 @@ Both datasets share these deployment characteristics:
 
 ### Usage
 
-Both test sets are immediately available after stack deployment:
+All test sets are immediately available after stack deployment:
 
 1. Navigate to **Test Executions** tab
 2. Select the test set from the **Select Test Set** dropdown:
    - "RealKIE-FCC-Verified" for invoice extraction testing
    - "OmniAI-OCR-Benchmark" for multi-format document testing
+   - "RVL-CDIP-N-MP-Packets" for document splitting and classification testing
 3. Enter a description in the **Context** field
 4. Click **Run Test** to start processing
 5. Monitor progress and view results when complete
@@ -142,7 +148,98 @@ Both test sets are immediately available after stack deployment:
 - Evaluating extraction on complex nested schemas
 - Benchmarking multi-format document processing pipelines
 
-## Architecture
+**RVL-CDIP-N-MP-Packets** is ideal for:
+- Evaluating document splitting and classification accuracy
+- Testing multi-document packet processing capabilities
+- Benchmarking page-level classification across diverse document types
+- Assessing document boundary detection in complex packets
+**OmniAI-OCR-Benchmark** is ideal for:
+- Testing classification across diverse document types
+- Evaluating extraction on complex nested schemas
+- Benchmarking multi-format document processing pipelines
+
+---
+
+### RVL-CDIP-N-MP-Packets
+
+**Source**: https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp
+
+This dataset contains 500 multi-page packet PDFs created by combining pages from 13 different document types. Each packet contains multiple subdocuments of different types to test classification and document splitting capabilities.
+
+#### Document Types
+
+The dataset includes 13 document types spanning common business and administrative documents:
+- **invoice**, **email**, **form**, **letter**, **memo**, **resume**
+- **budget**, **news article**, **scientific publication**, **specification**
+- **questionnaire**, **handwritten**, **language** (non-English documents)
+
+#### Packet Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total Packets | 500 |
+| Total Pages | 7,330 |
+| Total Sections | 2,027 |
+| Avg Pages/Packet | 14.7 |
+| Avg Sections/Packet | 4.1 |
+
+#### Deployment Details
+
+During stack deployment, the system automatically:
+
+1. **Downloads Dataset** from HuggingFace (data.tar.gz containing source PDFs)
+2. **Creates Packet PDFs** by merging pages from source documents based on bundled manifest
+3. **Uploads Packets** to `s3://TestSetBucket/rvl-cdip-n-mp/input/`
+4. **Generates Ground Truth** with document class and page split information
+5. **Uploads Baselines** to `s3://TestSetBucket/rvl-cdip-n-mp/baseline/`
+6. **Registers Test Set** in DynamoDB with metadata and document type distribution
+
+#### Key Features
+
+- **Multi-Document Packets**: Each PDF contains 2-10 distinct documents of different types
+- **Splitting Evaluation**: Tests ability to correctly split multi-document packets into individual sections
+- **Classification Diversity**: 13 document types provide comprehensive classification testing
+- **Variable Page Counts**: Packets range from 5 to 20 pages with varying complexity
+- **Ground Truth Included**: Complete page-level classification and splitting information
+
+#### Corresponding Config
+
+Use with: `config_library/pattern-2/rvl-cdip/config.yaml` or `config_library/pattern-3/rvl-cdip/config.yaml`
+
+#### Evaluation Metrics
+
+This test set enables evaluation of:
+- **Page-Level Classification**: Accuracy of classifying each page to correct document type
+- **Document Splitting**: Accuracy of identifying document boundaries within packets
+- **Split Order**: Accuracy of maintaining correct page order within each split section
+
+**RVL-CDIP-N-MP-Packets** is ideal for:
+- Evaluating document splitting and classification accuracy
+- Testing multi-document packet processing capabilities
+- Benchmarking page-level classification across diverse document types
+- Assessing document boundary detection in complex packets
+
+---
+
+### Common Features
+
+Both datasets share these deployment characteristics:
+**OmniAI-OCR-Benchmark** is ideal for:
+- Testing classification across diverse document types
+- Evaluating extraction on complex nested schemas
+- Benchmarking multi-format document processing pipelines
+
+**RVL-CDIP-N-MP-Packets** is ideal for:
+- Evaluating document splitting and classification accuracy
+- Testing multi-document packet processing capabilities
+- Benchmarking page-level classification across diverse document types
+- Assessing document boundary detection in complex packets
+
+---
+
+### Common Features
+
+All datasets share these deployment characteristics:
 
 ### Backend Components
 
@@ -227,7 +324,9 @@ components/
 1. **Pattern-based**: Define file patterns (e.g., `*.pdf`) with bucket type selection
    - **Input Bucket**: Scan main processing bucket for matching files
    - **Test Set Bucket**: Scan dedicated test set bucket for matching files
+   - **Description**: Optional description field to document the test set purpose
 2. **Zip Upload**: Upload zip containing `input/` and `baseline/` folders
+   - **Description**: Optional description field to document the test set purpose
 3. **Direct Upload**: Files uploaded directly to TestSetBucket are auto-detected
 
 ### File Structure Requirements
@@ -256,9 +355,11 @@ my-test-set/
 
 ### Running Tests
 1. Select test set from dropdown
-2. Click "Run Test" (single test execution only)
-3. Monitor progress via TestRunnerStatus
-4. View results in integrated listing
+2. **Optional**: Enter number of files to limit processing (useful for quick testing)
+3. **Optional**: Add context description for the test run
+4. Click "Run Test" (single test execution only)
+5. Monitor progress via TestRunnerStatus
+6. View results in integrated listing
 
 ### Test States
 - **QUEUED**: File copying jobs queued in SQS
@@ -277,12 +378,14 @@ my-test-set/
 ### Test Set Management
 - Reusable collections with file patterns across multiple buckets
 - Dual bucket support (Input Bucket and Test Set Bucket)
+- Optional description field for documenting test set purpose
 - Zip upload with automatic extraction
 - Direct upload detection via dual polling
 - File structure validation with error reporting
 
 ### Test Execution
 - Single test concurrency prevention
+- Optional file count limiting for quick testing
 - Real-time status monitoring
 - Global state persistence across navigation
 - SQS-based asynchronous processing

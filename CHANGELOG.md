@@ -5,6 +5,121 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.11]
+
+### Added
+
+- **Built-in Human-in-the-Loop (HITL) Review System**
+  - Replaced Amazon SageMaker A2I (Augmented AI) with a built-in HITL review system integrated directly into the Web UI
+  - **Persona-Based Access Control**: 
+    - **Admin**: Full access to all documents, can skip reviews, release review locks, and manage users
+    - **Reviewer**: Access limited to documents pending HITL review, can claim and complete section reviews
+  - **Review Workflow Features**:
+    - Start Review button to claim document ownership and prevent concurrent edits
+    - Section-level review with inline JSON editing and visual document viewer
+    - Mark Section Review Complete to approve individual sections
+    - Skip All Reviews (Admin only) to bypass pending reviews and continue workflow
+    - Release Review to unlock document for other reviewers
+  - **Real-time Status Updates**: HITL Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
+  - See [Human-in-the-Loop Review Documentation](./docs/human-review.md) for detailed workflow information
+  - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver futher improvements to human review capabilities with the ability to update document classification, extraction, and resubmit for incremental processing as part of a holistic approach to huiman reviews.
+- **User Management**
+  - New User Management page for Admin users to create and manage additional Admin & Reviewer accounts
+  - Cognito user groups (Admin, Reviewer) for role-based access control
+  - Automatic user synchronization with Cognito
+
+- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
+  - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
+  - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
+  - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing
+  - **Packet Statistics**: 7,330 total pages across 2,027 document sections with average of 14.7 pages and 4.1 sections per packet
+  - **Ground Truth Included**: Page-level classification and document boundary information for each packet. Extraction ground truth is not included.
+  - **Evaluation Capabilities**: Enables testing of page-level classification accuracy, document splitting accuracy, and split order preservation. Does NOT enable testing of extraction accuracy since there is no extraction ground truth for this data set
+  - Test set available in Test Studio UI alongside RealKIE-FCC-Verified and OmniAI-OCR-Benchmark datasets
+  - Corresponding configs available in Configuration Library
+  - Ideal for evaluating document splitting and classification accuracy in complex multi-document scenarios
+
+
+### Changed
+
+- **HITL Configuration**
+  - HITL is now disabled by default in the configuration
+  - Users must explicitly enable HITL in the Configuration page (Assessment & HITL Configuration section) to trigger human review workflows
+  - `hitl_enabled` setting controls whether documents with low confidence trigger HITL review
+
+### Removed
+
+- **Amazon SageMaker A2I Resources**
+  - Removed SageMaker A2I Flow Definition, Human Task UI, and Workteam resources
+  - Removed A2I-related Lambda functions (`create_a2i_resources`, `get-workforce-url`)
+  - Removed `EnableHITL` and `PrivateWorkteamArn` CloudFormation parameters
+
+
+### Changed
+
+- **Lambda Layers Architecture for Improved Build Efficiency**
+  - Replaced bundled `idp_common` package dependencies in individual Lambda functions with three shared Lambda Layers
+  - **Three Specialized Layers**:
+    - `base` layer: Core functionality with docs_service and image extras
+    - `reporting` layer: Reporting and analytics dependencies
+    - `agents` layer: Agent-related dependencies
+  - **Key Benefits**:
+    - Reduced SAM build times by eliminating redundant dependency installation across 50+ Lambda functions
+    - Layer content-based hashing ensures layers are only rebuilt when actual contents change
+    - Automatic removal of Lambda runtime packages (boto3, botocore, etc.) reduces layer sizes by ~100MB
+    - Layer zips cached locally and in S3, skipping uploads when content hasn't changed
+  - **Build System Integration**: publish.py automatically builds, hashes, and uploads layers before SAM builds
+
+- **Enhanced publish.py Performance and Logging**
+  - **Consistent Logging Helpers**: Added 8 standardized logging methods (`log_phase`, `log_task`, `log_detail`, `log_success`, `log_cached`, `log_warning`, `log_error`) for uniform output formatting with colored icons and thread prefixes
+  - **Timed S3 Uploads**: Added `upload_to_s3_with_timer()` helper with spinner animation, elapsed time display, and optimized `TransferConfig` for multi-threaded multipart uploads
+  - **AWS CLI Config Library Sync**: Replaced boto3 ThreadPoolExecutor-based config library upload (~60 lines) with `aws s3 sync` command for built-in concurrency, delta sync (skip unchanged files), and simpler code
+  - **Timing Breakdown Summary**: End-of-build summary shows top 4 time-consuming steps and percentages for build optimization insights
+  - **Phase Headers**: Major build phases now display with clear `═══` separator lines and emojis for visual clarity
+
+- **AppSync Resolvers Extracted to Nested Stack for Improved Template Modularity**
+  - Refactored main CloudFormation template by extracting 130 AppSync resources into new nested stack architecture
+  - **Extracted Components**:
+    - Created `nested/appsync/template.yaml` containing GraphQLSchema, AppSyncServiceRole, Lambda resolver functions, LogGroups, DataSources, and Resolvers
+    - Moved related Lambda functions from `src/lambda/` to `nested/appsync/src/lambda/` with colocated template definitions
+    - Relocated GraphQL schema from `src/api/` to `nested/appsync/src/api/`
+  - **Main Template Optimization**: Reduced resource count by keeping only core infrastructure (GraphQLApi, GraphQLApiLogGroup, AppSyncCwlRole, WAF resources, background worker functions)
+  - **Build System Integration**: Updated `publish.py` to build nested stack in parallel with patterns
+  - **Impact**: Main template now more manageable and faster to navigate, nested stack enables modular development of AppSync resources, parallel builds reduce overall build time
+
+- **Consolidated Nested Stack Directory Structure**
+  - Moved `options/bda-lending-project` and `options/bedrockkb` into `nested/` directory for simplified project organization
+  - All CloudFormation nested stacks now located in single `nested/` directory alongside `appsync`, `bda-lending-project`, and `bedrockkb`
+  - Updated build system to build only two categories concurrently (nested + patterns) instead of three (nested + patterns + options)
+  - **Breaking Change**: Directory paths changed - `options/` → `nested/`. Existing work-in-progress branches will have merge conflicts in directory structure.
+
+
+### Fixed
+
+- **Fixed page_indices Reset Bug in Multi-Section Documents**
+  - Fixed issue where all sections in document packets had page_indices starting from 0 instead of their actual position in the original document by pre-calculating indices during classification with access to global minimum page ID and storing in section.attributes for extraction step to use
+
+- **Metering Table Added Requests**
+  - Added requests count to bedrock metering data to track API request metrics
+  
+- **IDP CLI Stack Parameter Preservation During Updates**
+  - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+
+
+### Upgrade Notes
+
+- **⚠️ IMPORTANT: Upgrading from v0.4.11 or earlier**
+  - **Complete all pending HITL workflows before upgrading**: Any documents waiting in SageMaker A2I human review loops will be orphaned as A2I resources are deleted during the upgrade
+  - **Re-enable HITL after upgrade**: If you previously had `EnableHITL=true` CloudFormation parameter, you must now enable HITL through the Configuration page in the Web UI (Assessment & HITL Configuration → Enable HITL)
+  - **User migration**: Existing Cognito users will need to be assigned to Admin or Reviewer groups for HITL access 
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.11.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.11.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.11.yaml`
+
+
+
 ## [0.4.10]
 
 ### Added
@@ -1060,7 +1175,7 @@ SPDX-License-Identifier: MIT-0
 - **Lending Package Configuration Support for Pattern-2**
   - Added new `lending-package-sample` configuration to Pattern-2, providing comprehensive support for lending and financial document processing workflows
   - New default configuration for Pattern-2 stack deployments, optimized for loan applications, mortgage processing, and financial verification documents
-  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip-package-sample` for the `Pattern2Configuration` parameter when deploying or updating stacks
+  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip` for the `Pattern2Configuration` parameter when deploying or updating stacks
 
 - **Text Confidence View for Document Pages**
   - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field

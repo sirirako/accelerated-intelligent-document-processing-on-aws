@@ -1,18 +1,19 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-from idp_common.config.configuration_manager import ConfigurationManager  # type: ignore[import-untyped]
-from pydantic import ValidationError
 import json
 import logging
 import os
-from decimal import Decimal
 from typing import Any, Dict, Union
 
 import boto3
 import cfnresponse  # type: ignore[import-untyped]
 import yaml
 from botocore.exceptions import ClientError
+from idp_common.config.configuration_manager import (
+    ConfigurationManager,  # type: ignore[import-untyped]
+)
+from pydantic import ValidationError
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -267,6 +268,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             logger.info(
                                 f"Updated extraction model to: {properties['CustomExtractionModelARN']}"
                             )
+
                 configurations["Default"] = resolved_default
 
             # Process Custom configuration if provided and not empty

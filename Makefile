@@ -140,3 +140,29 @@ fastcommit: fastlint
 	git add . && \
 	git commit -am "$${COMMIT_MESSAGE}" && \
 	git push
+
+# DSR (Deliverable Security Review) targets
+dsr-setup:
+	@echo "Setting up DSR tool..."
+	python3 scripts/dsr/setup.py
+
+dsr-scan:
+	@echo "Running DSR security scan..."
+	python3 scripts/dsr/run.py
+
+dsr-fix:
+	@echo "Running DSR interactive fix..."
+	python3 scripts/dsr/fix.py
+
+dsr:
+	@if [ ! -f .dsr/dsr ]; then \
+		echo "DSR not found, running setup..."; \
+		$(MAKE) dsr-setup; \
+	fi
+	@$(MAKE) dsr-scan
+	@echo ""
+	@echo "Do you want to run DSR fix? (y/N):"
+	@read answer && \
+	if [ "$$answer" = "y" ] || [ "$$answer" = "Y" ]; then \
+		$(MAKE) dsr-fix; \
+	fi

@@ -17,6 +17,7 @@ import {
   Modal,
   Textarea,
   FormField,
+  Input,
   Select,
   CollectionPreferences,
   ExpandableSection,
@@ -347,6 +348,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
+  const [reRunNumberOfFiles, setReRunNumberOfFiles] = useState('');
   const [testSetFileCount, setTestSetFileCount] = useState(null);
   const [testSetStatus, setTestSetStatus] = useState(null);
   const [testSetFilePattern, setTestSetFilePattern] = useState(null);
@@ -619,12 +621,26 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       return;
     }
 
+    // Validate numberOfFiles if provided
+    if (reRunNumberOfFiles.trim()) {
+      const numFiles = parseInt(reRunNumberOfFiles.trim(), 10);
+      if (isNaN(numFiles) || numFiles <= 0) {
+        console.error('Invalid numberOfFiles value');
+        return;
+      }
+      if (numFiles > testSetFileCount) {
+        console.error(`numberOfFiles (${numFiles}) exceeds test set file count (${testSetFileCount})`);
+        return;
+      }
+    }
+
     setReRunLoading(true);
 
     try {
       const input = {
         testSetId: testSetId,
         ...(reRunContext && { context: reRunContext }),
+        ...(reRunNumberOfFiles.trim() && { numberOfFiles: parseInt(reRunNumberOfFiles.trim(), 10) }),
       };
 
       console.log('About to call GraphQL with input:', input);
@@ -643,6 +659,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         addTestRun(newTestRun.testRunId, newTestRun.testSetName, reRunContext, newTestRun.filesCount);
         setShowReRunModal(false);
         setReRunContext('');
+        setReRunNumberOfFiles('');
         // Navigate to test executions tab
         window.location.hash = '#/test-studio?tab=executions';
       } else {
@@ -1033,6 +1050,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         onDismiss={() => {
           setShowReRunModal(false);
           setReRunContext('');
+          setReRunNumberOfFiles('');
         }}
         header="Re-Run Test"
         footer={
@@ -1043,6 +1061,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                 onClick={() => {
                   setShowReRunModal(false);
                   setReRunContext('');
+                  setReRunNumberOfFiles('');
                 }}
               >
                 Cancel
@@ -1063,6 +1082,35 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             <strong>Files:</strong>{' '}
             {testSetStatus === 'NOT_FOUND' ? 'Test set deleted' : testSetFileCount !== null ? `${testSetFileCount} files` : 'Loading...'}
           </Box>
+          <FormField label="Number of Files" description={`Optional: Limit the number of files to process (max: ${testSetFileCount || 0})`}>
+            <Input
+              value={reRunNumberOfFiles}
+              onChange={({ detail }) => {
+                const value = detail.value;
+
+                // Allow empty value
+                if (value === '') {
+                  setReRunNumberOfFiles('');
+                  return;
+                }
+
+                // Only allow digits (reject any non-digit characters)
+                if (!/^\d+$/.test(value)) {
+                  return; // Don't update state if invalid characters
+                }
+
+                // Check range
+                const num = parseInt(value, 10);
+                if (num > 0 && num <= (testSetFileCount || 0)) {
+                  setReRunNumberOfFiles(value);
+                }
+                // If number is too large, don't update the state (prevents typing)
+              }}
+              placeholder={`Enter 1-${testSetFileCount || 0}`}
+              type="text"
+              inputMode="numeric"
+            />
+          </FormField>
           <FormField label="Context" description="Optional context information for this test run">
             <Textarea
               value={reRunContext}

@@ -6,6 +6,9 @@ model.tar.gz
 .checksums/
 .build_checksum
 .lib_checksum
+
+# Build artifacts - backup files from publish.py
+*.pre-build-backup
 .vscode/
 .DS_Store
 dist/
@@ -18,15 +21,11 @@ __pycache__
 *.code-workspace
 .ruff_cache
 .kiro
-rvl_cdip_*
 notebooks/examples/data
 .idea/
 .dsr/
 *tmp-dev-assets*
 scratch/
-
-# Service tier implementation artifacts
-service_tier_*.md
 
 # Node.js / npm
 node_modules/
@@ -40,3 +39,8 @@ pyrightconfig.temp.json
 .venv/
 .venv-*/
 venv/
+
+#Temp notebook data
+output/*
+*.log
+dataset

@@ -83,14 +83,43 @@ class StackDeployer:
             else:
                 template_param = {"TemplateBody": template_body}
 
-        # Convert parameters dict to CloudFormation format
-        cfn_parameters = [
-            {"ParameterKey": k, "ParameterValue": v}
-            for k, v in (parameters or {}).items()
-        ]
-
         # Check if stack exists
         stack_exists = self._stack_exists(stack_name)
+
+        # Build CloudFormation parameters based on operation type
+        if stack_exists:
+            # For UPDATE: Use UsePreviousValue for parameters not explicitly provided
+            current_params = self._get_stack_parameters(stack_name)
+            cfn_parameters = []
+
+            # First, handle all existing parameters
+            for param_key in current_params.keys():
+                if param_key in (parameters or {}):
+                    # User provided new value
+                    cfn_parameters.append(
+                        {
+                            "ParameterKey": param_key,
+                            "ParameterValue": parameters[param_key],
+                        }
+                    )
+                else:
+                    # Use previous value
+                    cfn_parameters.append(
+                        {"ParameterKey": param_key, "UsePreviousValue": True}
+                    )
+
+            # Then, add any new parameters not in current stack
+            for param_key, param_value in (parameters or {}).items():
+                if param_key not in current_params:
+                    cfn_parameters.append(
+                        {"ParameterKey": param_key, "ParameterValue": param_value}
+                    )
+        else:
+            # For CREATE: Use only provided parameters
+            cfn_parameters = [
+                {"ParameterKey": k, "ParameterValue": v}
+                for k, v in (parameters or {}).items()
+            ]
 
         # Prepare common parameters
         common_params = {
@@ -184,6 +213,40 @@ class StackDeployer:
             if "does not exist" in str(e):
                 return False
             raise
+
+    def _get_stack_parameters(self, stack_name: str) -> Dict[str, str]:
+        """
+        Get current parameter values from existing stack
+
+        Args:
+            stack_name: Name of the stack
+
+        Returns:
+            Dictionary mapping parameter keys to their current values
+        """
+        try:
+            response = self.cfn.describe_stacks(StackName=stack_name)
+            stacks = response.get("Stacks", [])
+
+            if not stacks:
+                return {}
+
+            stack = stacks[0]
+            parameters = stack.get("Parameters", [])
+
+            # Build dictionary of current parameter values
+            param_dict = {}
+            for param in parameters:
+                key = param.get("ParameterKey")
+                value = param.get("ParameterValue")
+                if key:
+                    param_dict[key] = value
+
+            return param_dict
+
+        except Exception as e:
+            logger.warning(f"Could not get stack parameters: {e}")
+            return {}
 
     def _wait_for_completion(self, stack_name: str, operation: str) -> Dict:
         """
@@ -393,6 +456,10 @@ class StackDeployer:
                 # Ensure stack_id is preserved after wait
                 result["stack_id"] = stack_id
 
+                # Clean up additional stack-specific resources after stack deletion completes
+                logger.info("Cleaning up additional stack-specific resources...")
+                self._cleanup_additional_resources(stack_name)
+
             return result
 
         except Exception as e:
@@ -456,6 +523,13 @@ class StackDeployer:
                 logger.info(f"Emptied bucket: {bucket_name}")
 
             except Exception as e:
+                # Handle missing buckets gracefully - if bucket doesn't exist, it's already "empty"
+                if "NoSuchBucket" in str(e):
+                    logger.warning(
+                        f"Bucket {bucket_name} does not exist, skipping empty operation"
+                    )
+                    continue
+
                 logger.error(f"Error emptying bucket {bucket_name}: {e}")
                 raise Exception(
                     f"Failed to empty bucket {bucket_name}. You may need to empty it manually."
@@ -961,6 +1035,9 @@ class StackDeployer:
         # Get resources that weren't deleted by CloudFormation
         retained = self.get_retained_resources_after_deletion(stack_identifier)
 
+        # Always clean up additional stack-specific resources
+        self._cleanup_additional_resources(stack_identifier)
+
         # Extract stack name from identifier (handle both stack name and stack ARN/ID)
         # Stack ARN format: arn:aws:cloudformation:region:account:stack/stack-name/guid
         stack_name = stack_identifier
@@ -1207,6 +1284,307 @@ class StackDeployer:
         except Exception as e:
             logger.error(f"Error deleting bucket {bucket_name}: {e}")
             raise
+
+    def _cleanup_additional_resources(self, stack_identifier: str) -> None:
+        """Clean up additional resources not tracked by CloudFormation"""
+        import json
+        import os
+
+        # Extract stack name from identifier
+        stack_name = stack_identifier
+        if stack_identifier.startswith("arn:"):
+            stack_name = stack_identifier.split("/")[1]
+
+        logger.info(f"Cleaning up additional resources for: {stack_name}")
+
+        # Set AWS retry configuration to handle throttling
+        os.environ["AWS_MAX_ATTEMPTS"] = "10"
+        os.environ["AWS_RETRY_MODE"] = "adaptive"
+
+        try:
+            # Clean up additional log groups that might not be caught by standard cleanup
+            logs_client = boto3.client("logs", region_name=self.region)
+            try:
+                response = logs_client.describe_log_groups()
+                for log_group in response.get("logGroups", []):
+                    log_group_name = log_group.get("logGroupName", "")
+                    # Only match exact patterns for this stack
+                    if log_group_name.startswith(
+                        f"/{stack_name}-"
+                    ) or log_group_name.startswith(
+                        f"/aws-glue/crawlers-role/{stack_name}-"
+                    ):
+                        logs_client.delete_log_group(logGroupName=log_group_name)
+                        logger.info(f"Deleted additional log group: {log_group_name}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up additional log groups: {e}")
+
+            # Clean up AppSync log groups
+            try:
+                appsync_client = boto3.client("appsync", region_name=self.region)
+                response = appsync_client.list_graphql_apis()
+                for api in response.get("graphqlApis", []):
+                    api_name = api.get("name", "")
+                    # Only match exact stack API patterns
+                    if api_name == f"{stack_name}-api" or (
+                        api_name.startswith(f"{stack_name}-p")
+                        and api_name.endswith("-api")
+                    ):
+                        api_id = api.get("apiId")
+                        if api_id:
+                            appsync_log_group = f"/aws/appsync/apis/{api_id}"
+                            try:
+                                logs_client.delete_log_group(
+                                    logGroupName=appsync_log_group
+                                )
+                                logger.info(
+                                    f"Deleted AppSync log group: {appsync_log_group}"
+                                )
+                            except logs_client.exceptions.ResourceNotFoundException:
+                                pass
+            except Exception as e:
+                logger.warning(f"Failed to clean up AppSync log groups: {e}")
+
+            # Check if permissions boundary was created as part of stack
+            iam_client = boto3.client("iam", region_name=self.region)
+            boundary_name = f"{stack_name}-PermissionsBoundary"
+            try:
+                sts_client = boto3.client("sts", region_name=self.region)
+                account_id = sts_client.get_caller_identity()["Account"]
+                iam_client.delete_policy(
+                    PolicyArn=f"arn:aws:iam::{account_id}:policy/{boundary_name}"
+                )
+                logger.info(f"Deleted permissions boundary: {boundary_name}")
+            except iam_client.exceptions.NoSuchEntityException:
+                pass
+
+            # Clean up CloudWatch Logs Resource Policy entries
+            try:
+                response = logs_client.describe_resource_policies()
+                for policy in response.get("resourcePolicies", []):
+                    if policy.get("policyName") == "AWSLogDeliveryWrite20150319":
+                        policy_doc = json.loads(policy.get("policyDocument", "{}"))
+                        original_count = len(policy_doc.get("Statement", []))
+
+                        policy_doc["Statement"] = [
+                            stmt
+                            for stmt in policy_doc.get("Statement", [])
+                            if f"/aws/vendedlogs/states/{stack_name}-"
+                            not in stmt.get("Resource", "")
+                        ]
+
+                        new_count = len(policy_doc.get("Statement", []))
+                        if new_count < original_count:
+                            logs_client.put_resource_policy(
+                                policyName="AWSLogDeliveryWrite20150319",
+                                policyDocument=json.dumps(policy_doc),
+                            )
+                            logger.info(
+                                f"Removed {original_count - new_count} CloudWatch Logs policy entries"
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to clean up CloudWatch Logs policy: {e}")
+
+            # Clean up stack-specific CloudWatch Logs Resource Policies
+            try:
+                response = logs_client.describe_resource_policies()
+                for policy in response.get("resourcePolicies", []):
+                    policy_name = policy.get("policyName", "")
+                    if policy_name.startswith(f"{stack_name}-"):
+                        logs_client.delete_resource_policy(policyName=policy_name)
+                        logger.info(f"Deleted resource policy: {policy_name}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to delete stack-specific resource policies: {e}"
+                )
+
+            # Clean up CloudFront Distributions
+            try:
+                cloudfront_client = boto3.client("cloudfront")
+                response = cloudfront_client.list_distributions()
+
+                # Phase 1: Delete previously disabled distributions from any stack
+                for distribution in response.get("DistributionList", {}).get(
+                    "Items", []
+                ):
+                    comment = distribution.get("Comment", "")
+                    if comment.startswith("Web app cloudfront distribution "):
+                        distribution_id = distribution["Id"]
+
+                        # Check if it's disabled and ready for deletion
+                        if distribution.get(
+                            "Status"
+                        ) == "Deployed" and not distribution.get("Enabled", True):
+                            config_response = cloudfront_client.get_distribution(
+                                Id=distribution_id
+                            )
+                            etag = config_response["ETag"]
+
+                            logger.info(
+                                f"Deleting previously disabled distribution: {distribution_id}"
+                            )
+                            cloudfront_client.delete_distribution(
+                                Id=distribution_id, IfMatch=etag
+                            )
+
+                # Phase 2: Disable current stack's distribution for future cleanup
+                for distribution in response.get("DistributionList", {}).get(
+                    "Items", []
+                ):
+                    comment = distribution.get("Comment", "")
+                    if comment == f"Web app cloudfront distribution {stack_name}":
+                        distribution_id = distribution["Id"]
+                        logger.info(f"Found CloudFront distribution: {distribution_id}")
+
+                        # Get current config with ETag
+                        config_response = cloudfront_client.get_distribution(
+                            Id=distribution_id
+                        )
+                        etag = config_response["ETag"]
+                        config = config_response["Distribution"]["DistributionConfig"]
+
+                        if config.get("Enabled", False):
+                            logger.info(
+                                f"Disabling distribution for future cleanup: {distribution_id}"
+                            )
+                            config["Enabled"] = False
+                            cloudfront_client.update_distribution(
+                                Id=distribution_id,
+                                DistributionConfig=config,
+                                IfMatch=etag,
+                            )
+                        else:
+                            # Already disabled, delete immediately
+                            logger.info(
+                                f"Deleting already disabled distribution: {distribution_id}"
+                            )
+                            cloudfront_client.delete_distribution(
+                                Id=distribution_id, IfMatch=etag
+                            )
+
+            except Exception as e:
+                logger.warning(f"Failed to cleanup CloudFront distributions: {e}")
+
+            # Clean up CloudFront Response Headers Policies
+            try:
+                cloudfront_client = boto3.client("cloudfront")
+                response = cloudfront_client.list_response_headers_policies()
+
+                # Helper function to check stack state
+                def get_stack_state(check_stack_name: str) -> str:
+                    """Get stack state: 'ACTIVE', 'MISSING', or 'INCONSISTENT'"""
+                    try:
+                        cf_response = self.cfn.describe_stacks(
+                            StackName=check_stack_name
+                        )
+                        stacks = cf_response.get("Stacks", [])
+
+                        if not stacks:
+                            return "MISSING"
+                        else:
+                            stack_status = stacks[0].get("StackStatus", "")
+                            if stack_status in [
+                                "CREATE_COMPLETE",
+                                "UPDATE_COMPLETE",
+                                "UPDATE_ROLLBACK_COMPLETE",
+                            ]:
+                                return "ACTIVE"
+                            elif stack_status in [
+                                "DELETE_COMPLETE",
+                                "DELETE_FAILED",
+                                "CREATE_FAILED",
+                                "ROLLBACK_COMPLETE",
+                                "ROLLBACK_FAILED",
+                                "UPDATE_ROLLBACK_FAILED",
+                            ]:
+                                return "INCONSISTENT"
+                            else:
+                                # In progress states - consider active for safety
+                                return "ACTIVE"
+
+                    except self.cfn.exceptions.ClientError as e:
+                        if "does not exist" in str(e):
+                            return "MISSING"
+                        else:
+                            # Unknown error - be conservative
+                            return "ACTIVE"
+                    except Exception:
+                        # Unknown error - be conservative
+                        return "ACTIVE"
+
+                def is_resource_orphaned(check_stack_name: str) -> bool:
+                    """Check if resource is orphaned based on stack state"""
+                    if not check_stack_name:
+                        return False  # Can't determine - be safe
+
+                    state = get_stack_state(check_stack_name)
+                    return state in ["MISSING", "INCONSISTENT"]
+
+                # Delete policies from orphaned stacks only
+                for policy in response.get("ResponseHeadersPolicyList", {}).get(
+                    "Items", []
+                ):
+                    if policy["Type"] == "custom":
+                        policy_name = policy["ResponseHeadersPolicy"][
+                            "ResponseHeadersPolicyConfig"
+                        ]["Name"]
+                        policy_id = policy["ResponseHeadersPolicy"]["Id"]
+
+                        # Check if it's an IDP policy
+                        if policy_name.endswith("-security-headers-policy"):
+                            # Extract stack name from policy name
+                            policy_stack_name = policy_name.replace(
+                                "-security-headers-policy", ""
+                            )
+
+                            # Skip current stack's policy (can't delete while distribution exists)
+                            if policy_stack_name == stack_name:
+                                logger.info(
+                                    f"Skipping current stack's policy: {policy_name}"
+                                )
+                                continue
+
+                            # Only delete if from orphaned stack
+                            if is_resource_orphaned(policy_stack_name):
+                                try:
+                                    cloudfront_client.delete_response_headers_policy(
+                                        Id=policy_id
+                                    )
+                                    logger.info(
+                                        f"Deleted orphaned CloudFront Response Headers Policy: {policy_name} (stack: {policy_stack_name})"
+                                    )
+                                except Exception as policy_error:
+                                    logger.warning(
+                                        f"Failed to delete CloudFront policy {policy_name}: {policy_error}"
+                                    )
+                            else:
+                                logger.info(
+                                    f"Skipping active stack's policy: {policy_name} (stack: {policy_stack_name})"
+                                )
+
+            except Exception as e:
+                logger.warning(f"Failed to cleanup CloudFront policies: {e}")
+
+            # Clean up IAM custom policies
+            try:
+                response = iam_client.list_policies(Scope="Local")
+                for policy in response.get("Policies", []):
+                    policy_name = policy.get("PolicyName", "")
+                    # Only match policies that start with stack name
+                    if policy_name.startswith(f"{stack_name}-"):
+                        policy_arn = policy.get("Arn")
+                        try:
+                            iam_client.delete_policy(PolicyArn=policy_arn)
+                            logger.info(f"Deleted IAM custom policy: {policy_name}")
+                        except Exception as policy_error:
+                            logger.warning(
+                                f"Failed to delete IAM policy {policy_name}: {policy_error}"
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to cleanup IAM custom policies: {e}")
+
+        except Exception as e:
+            logger.warning(f"Additional resource cleanup failed: {e}")
 
 
 def is_local_file_path(path: str) -> bool:

@@ -17,6 +17,9 @@ except ImportError:
 # Import Lambda metering utility
 from .lambda_metering import calculate_lambda_metering
 
+# Import settings helper utilities
+from .settings_helper import get_settings, get_setting, clear_cache
+
 logger = logging.getLogger(__name__)
 
 # Common backoff constants

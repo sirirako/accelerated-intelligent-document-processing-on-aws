@@ -122,6 +122,8 @@ extraction:
     review_agent_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
   custom_prompt_lambda_arn: null
 assessment:
+  hitl_enabled: false
+  default_confidence_threshold: '0.8'
   enabled: false
   model: us.amazon.nova-lite-v1:0
   system_prompt: 'You are a document analysis assessment expert. Your role is to evaluate
@@ -193,7 +195,6 @@ assessment:
   top_p: 0.1
   top_k: 5
   max_tokens: 10000
-  default_confidence_threshold: 0.8
   validation_enabled: false
   image:
     target_width: null
