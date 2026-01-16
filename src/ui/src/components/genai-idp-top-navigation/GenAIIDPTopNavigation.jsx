@@ -1,11 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
-import { Box, Button, Modal, SpaceBetween, TopNavigation } from '@cloudscape-design/components';
+import { Box, Button, Modal, SpaceBetween, TopNavigation, Badge } from '@cloudscape-design/components';
 import { signOut } from 'aws-amplify/auth';
 import { ConsoleLogger } from 'aws-amplify/utils';
 
 import useAppContext from '../../contexts/app';
+import useUserRole from '../../hooks/use-user-role';
 
 const logger = new ConsoleLogger('TopNavigation');
 
@@ -47,8 +48,21 @@ const SignOutModal = ({ visible, setVisible }) => {
 
 const GenAIIDPTopNavigation = () => {
   const { user } = useAppContext();
+  const { isAdmin, isReviewer, loading: roleLoading } = useUserRole();
   const userId = user?.username || 'user';
   const [isSignOutModalVisible, setIsSignOutModalVisiblesetVisible] = useState(false);
+
+  // Determine role display
+  const getRoleDisplay = () => {
+    if (roleLoading) return '';
+    if (isAdmin) return 'Admin';
+    if (isReviewer) return 'Reviewer';
+    return '';
+  };
+
+  const roleDisplay = getRoleDisplay();
+  const userDisplayText = roleDisplay ? `${userId} (${roleDisplay})` : userId;
+
   return (
     <>
       <div id="top-navigation" style={{ position: 'sticky', top: 0, zIndex: 1002 }}>
@@ -58,8 +72,15 @@ const GenAIIDPTopNavigation = () => {
           utilities={[
             {
               type: 'menu-dropdown',
-              text: userId,
-              description: userId,
+              text: userDisplayText,
+              description: roleDisplay ? (
+                <SpaceBetween direction="horizontal" size="xs">
+                  <span>{userId}</span>
+                  <Badge color={isAdmin ? 'blue' : 'grey'}>{roleDisplay}</Badge>
+                </SpaceBetween>
+              ) : (
+                userId
+              ),
               iconName: 'user-profile',
               items: [
                 {

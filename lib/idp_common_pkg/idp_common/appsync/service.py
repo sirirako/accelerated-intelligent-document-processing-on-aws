@@ -201,11 +201,8 @@ class DocumentAppSyncService:
                 if latest_hitl.review_portal_url:
                     input_data["HITLReviewURL"] = latest_hitl.review_portal_url
 
-                # Determine HITL status - simple logic
-                if latest_hitl.hitl_completed:
-                    input_data["HITLStatus"] = "COMPLETED"
-                elif latest_hitl.hitl_triggered:
-                    input_data["HITLStatus"] = "IN_PROGRESS"
+                # NOTE: Do NOT set HITLStatus here - it's managed by complete_section_review Lambda
+                # Setting it here would overwrite "Completed" or "Skipped" status set during review
 
         # Add trace_id if available
         if document.trace_id:

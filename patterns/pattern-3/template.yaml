@@ -115,19 +115,6 @@ Parameters:
     AllowedPattern: "^(|arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)$"
     ConstraintDescription: Must be empty or a valid IAM policy ARN
 
-  EnableHITL:
-    Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: "Enable Human In The Loop (A2I) for document review"
-
-  SageMakerA2IReviewPortalURL:
-    Type: String
-    Default: ""
-    Description: "SageMaker A2I Review Portal URL for HITL workflows"
-
   EnableECRImageScanning:
     Type: String
     Default: 'true'

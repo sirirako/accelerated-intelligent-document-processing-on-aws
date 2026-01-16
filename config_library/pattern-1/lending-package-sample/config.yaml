@@ -3,6 +3,7 @@
 
 notes: Processing configuration in BDA project.
 assessment:
+  hitl_enabled: false
   default_confidence_threshold: '0.8'
 summarization:
   enabled: true

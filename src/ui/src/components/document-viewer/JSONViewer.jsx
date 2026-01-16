@@ -9,6 +9,7 @@ import { ConsoleLogger } from 'aws-amplify/utils';
 import { Editor } from '@monaco-editor/react';
 import getFileContents from '../../graphql/queries/getFileContents';
 import uploadDocument from '../../graphql/queries/uploadDocument';
+import completeSectionReviewMutation from '../../graphql/mutations/completeSectionReview';
 import { getFieldHighlightInfo, getFieldConfidenceInfo } from '../common/confidence-alerts-utils';
 // Lazy load VisualEditorModal for better performance
 const VisualEditorModal = React.lazy(() => import('./VisualEditorModal'));
@@ -391,7 +392,7 @@ const TextEditorView = ({ fileContent, onChange, isReadOnly, fileType }) => {
   );
 };
 
-const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = 'text', sectionData }) => {
+const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = 'text', sectionData, onReviewComplete }) => {
   const [isValid, setIsValid] = useState(true);
   const [jsonData, setJsonData] = useState(null);
   const [viewMode, setViewMode] = useState(fileType === 'markdown' ? 'markdown' : 'form');
@@ -516,6 +517,7 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
             onChange={handleFormChange}
             isReadOnly={isReadOnly}
             sectionData={memoizedSectionData}
+            onReviewComplete={onReviewComplete}
           />
         </Suspense>
       )}
@@ -523,7 +525,7 @@ const FileEditorView = ({ fileContent, onChange, isReadOnly = true, fileType = '
   );
 };
 
-const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sectionData, onOpen, onClose }) => {
+const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sectionData, onOpen, onClose, onReviewComplete, disabled }) => {
   const [fileContent, setFileContent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -663,7 +665,7 @@ const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sect
   return (
     <Box className="w-full">
       {!fileContent && (
-        <Button onClick={fetchContent} loading={isLoading} disabled={isLoading}>
+        <Button onClick={fetchContent} loading={isLoading} disabled={isLoading || disabled}>
           {buttonText}
         </Button>
       )}
@@ -697,6 +699,7 @@ const JSONViewer = ({ fileUri, fileType = 'text', buttonText = 'View File', sect
               isReadOnly={false}
               fileType={fileType}
               sectionData={sectionData}
+              onReviewComplete={onReviewComplete}
             />
           </div>
         </SpaceBetween>

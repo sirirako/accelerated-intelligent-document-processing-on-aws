@@ -3,6 +3,8 @@
 
 notes: Criteria validation configuration for healthcare/insurance prior authorization
 assessment:
+  hitl_enabled: false
+  default_confidence_threshold: '0.8'
   enabled: true
   validation_enabled: false
 criteria_validation:

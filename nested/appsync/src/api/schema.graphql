@@ -25,6 +25,14 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   ExpiresAfter: AWSTimestamp
   HITLStatus: String
   HITLReviewURL: String
+  HITLTriggered: Boolean
+  HITLCompleted: Boolean
+  HITLSectionsPending: [String]
+  HITLSectionsCompleted: [String]
+  HITLSectionsSkipped: [String]
+  HITLReviewOwner: String
+  HITLReviewOwnerEmail: String
+  HITLReviewHistory: AWSJSON
   TraceId: String
 }
 
@@ -63,6 +71,21 @@ type DocumentListItem implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   ExpiresAfter: AWSTimestamp
   HITLStatus: String
   HITLReviewURL: String
+  HITLTriggered: Boolean
+  HITLCompleted: Boolean
+}
+
+# User Management Types
+type User @aws_cognito_user_pools {
+  userId: ID!
+  email: String!
+  persona: String!
+  status: String
+  createdAt: AWSDateTime
+}
+
+type UserList @aws_cognito_user_pools {
+  users: [User]
 }
 
 type ValidationError @aws_cognito_user_pools @aws_iam {
@@ -189,6 +212,14 @@ input UpdateDocumentInput {
   SummaryReportUri: String
   HITLStatus: String
   HITLReviewURL: String
+  HITLTriggered: Boolean
+  HITLCompleted: Boolean
+  HITLSectionsPending: [String]
+  HITLSectionsCompleted: [String]
+  HITLSectionsSkipped: [String]
+  HITLReviewOwner: String
+  HITLReviewOwnerEmail: String
+  HITLReviewHistory: AWSJSON
   TraceId: String
 }
 
@@ -501,6 +532,14 @@ type Mutation {
   addTestSet(name: String!, description: String, filePattern: String!, bucketType: String!, fileCount: Int!): TestSet @aws_cognito_user_pools
   addTestSetFromUpload(input: TestSetUploadInput!): TestSetUploadResponse @aws_cognito_user_pools
   deleteTestSets(testSetIds: [String!]!): Boolean! @aws_cognito_user_pools
+  # User Management
+  createUser(email: String!, persona: String!): User @aws_cognito_user_pools
+  deleteUser(userId: ID!): Boolean @aws_cognito_user_pools
+  # HITL Section Review
+  completeSectionReview(objectKey: String!, sectionId: String!, editedData: AWSJSON): Document @aws_cognito_user_pools
+  skipAllSectionsReview(objectKey: String!): Document @aws_cognito_user_pools
+  claimReview(objectKey: String!): Document @aws_cognito_user_pools
+  releaseReview(objectKey: String!): Document @aws_cognito_user_pools
 }
 
 type Query @aws_cognito_user_pools @aws_iam {
@@ -551,12 +590,16 @@ type Query @aws_cognito_user_pools @aws_iam {
     configName: String!
     fileName: String!
   ): ConfigurationLibraryFileResponse @aws_cognito_user_pools
+  # User Management
+  listUsers: UserList @aws_cognito_user_pools
+  # HITL Pending Reviews
+  listPendingReviewDocuments: DocumentList @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
   onCreateDocument: CreateDocumentOutput
     @aws_subscribe(mutations: ["createDocument"])
-  onUpdateDocument: Document @aws_subscribe(mutations: ["updateDocument"])
+  onUpdateDocument: Document @aws_subscribe(mutations: ["updateDocument", "completeSectionReview", "skipAllSectionsReview", "claimReview", "releaseReview"])
   onAgentJobComplete(jobId: ID!): Boolean
     @aws_subscribe(mutations: ["updateAgentJobStatus"])
   onDiscoveryJobStatusChange(jobId: ID!): DiscoveryJob

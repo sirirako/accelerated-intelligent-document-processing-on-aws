@@ -46,6 +46,25 @@ def handler(event, context):
         working_bucket = os.environ.get('WORKING_BUCKET')
         document = Document.load_document(document_data, working_bucket, logger)
         
+        # Sync HITL completion status from DynamoDB if HITL was triggered
+        if document.hitl_metadata:
+            try:
+                import boto3
+                tracking_table = os.environ.get('TRACKING_TABLE_NAME')
+                if tracking_table:
+                    dynamodb = boto3.resource('dynamodb')
+                    table = dynamodb.Table(tracking_table)
+                    response = table.get_item(Key={'PK': f'doc#{document.input_key}', 'SK': 'none'})
+                    if 'Item' in response:
+                        hitl_completed = response['Item'].get('HITLCompleted', False)
+                        if hitl_completed and document.hitl_metadata:
+                            # Update all hitl_metadata entries with completed status
+                            for hitl_meta in document.hitl_metadata:
+                                hitl_meta.hitl_completed = True
+                            logger.info(f"Synced HITL completion status from DynamoDB: {hitl_completed}")
+            except Exception as e:
+                logger.warning(f"Failed to sync HITL status from DynamoDB: {str(e)}")
+        
         # Update document status to SUMMARIZING
         document.status = Status.SUMMARIZING
         document_service = create_document_service()

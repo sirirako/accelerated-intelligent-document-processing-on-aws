@@ -39,6 +39,12 @@ export default gql`
       ExpiresAfter
       HITLStatus
       HITLReviewURL
+      HITLSectionsPending
+      HITLSectionsCompleted
+      HITLSectionsSkipped
+      HITLReviewOwner
+      HITLReviewOwnerEmail
+      HITLReviewHistory
     }
   }
 `;

@@ -125,15 +125,6 @@ Parameters:
   SourceZipfile:
     Type: String
     Description: "Name of the Pattern-1 source code zipfile in S3"
-    
-  EnableHITL:
-    Type: String
-    Default: "true"
-    Description: "Enable Human In The Loop?"
-    
-  SageMakerA2IReviewPortalURL:
-    Type: String
-    Description: "SageMaker A2I Review Portal URL for HITL tasks"
 
   BedrockModelId:
     Type: String
@@ -482,11 +473,17 @@ Resources:
             type: object
             sectionLabel: Assessment & HITL Configuration
             properties:
+              hitl_enabled:
+                type: boolean
+                description: Enable Human-in-the-Loop (HITL) review for low confidence extractions
+                default: false
+                order: 0
               default_confidence_threshold:
                 type: number
-                description: HITL Confidence Threshold (0.0-1.0) - Documents with confidence below this threshold will be sent for Human In The Loop review
+                description: Confidence Threshold (0.0-1.0) - Documents with confidence below this threshold will trigger HITL review and show confidence alerts
                 minimum: 0.0
                 maximum: 1.0
+                default: 0.8
                 order: 1
           summarization:
             order: 4
@@ -1096,9 +1093,6 @@ Resources:
         - "processresults-function"
         - "summarization-function"
         - "evaluation-function"
-        - "hitl-wait-function"
-        - "hitl-status-update-function"
-        - "hitl-process-function"
 
   EcrRepositoryCleanup:
     Type: Custom::ECRRepositoryCleanup
@@ -1132,11 +1126,8 @@ Resources:
       DefinitionSubstitutions:
         InvokeBDALambdaArn: !GetAtt InvokeBDAFunction.Arn
         ProcessResultsLambdaArn: !GetAtt ProcessResultsFunction.Arn
-        HITLWaitFunctionArn: !GetAtt HITLWaitFunction.Arn
-        HITLStatusUpdateFunctionArn: !GetAtt HITLStatusUpdateFunction.Arn
         SummarizationLambdaArn: !GetAtt SummarizationFunction.Arn
         EvaluationLambdaArn: !GetAtt EvaluationFunction.Arn
-        EnableHITL: !Ref EnableHITL
         OutputBucket: !Ref OutputBucket
         WorkingBucket: !Ref WorkingBucket
         BDAProjectArn: !Ref BDAProjectArn
@@ -1154,10 +1145,6 @@ Resources:
             FunctionName: !Ref ProcessResultsFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref SummarizationFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref HITLWaitFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref HITLStatusUpdateFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref EvaluationFunction
         - CloudWatchLogsFullAccess
@@ -1271,11 +1258,9 @@ Resources:
           APPSYNC_API_URL: !Ref AppSyncApiUrl
           TRACKING_TABLE: !Ref TrackingTable
           DOCUMENT_TRACKING_MODE: !If [HasAppSyncApi, 'appsync', 'dynamodb']
-          ENABLE_HITL: !Ref EnableHITL
           DB_NAME: !Ref BDAMetadataTable
           BDA_PROJECT_ARN: !Ref BDAProjectArn
           WORKING_BUCKET: !Ref WorkingBucket
-          SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
           CONFIGURATION_TABLE_NAME: !Ref ConfigurationTable
       LoggingConfig:
         LogGroup: !Ref ProcessResultsFunctionLogGroup
@@ -1314,10 +1299,6 @@ Resources:
               Resource: 
                 - !Sub "${AppSyncApiArn}/types/Mutation/*"
             - !Ref AWS::NoValue
-          - Effect: Allow
-            Action:
-              - sagemaker:StartHumanLoop
-            Resource: !Sub "arn:${AWS::Partition}:sagemaker:*:*:flow-definition/*"
           - Effect: Allow
             Action:
               - ssm:GetParameter
@@ -1653,258 +1634,6 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKeyArn
-  
-  #EventBridge Rule to check Human In the Loop Status change
-  HITLEventRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Description: 'Rule for SageMaker A2I HumanLoop Status Change'
-      EventPattern:
-        detail-type:
-          - 'SageMaker A2I HumanLoop Status Change'
-        source:
-          - 'aws.sagemaker'
-        detail:
-          humanLoopStatus:
-            - 'Completed'
-            - 'Failed'
-            - 'Stopped'
-      State: 'ENABLED'
-      Targets:
-        - Arn: !GetAtt HITLProcessLambdaFunction.Arn
-          Id: 'HITLProcessLambdaTarget'
-
-  HITLProcessLambdaLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
-      LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLProcessLambdaFunction"
-      RetentionInDays: !Ref LogRetentionDays
-
-  HITLProcessLambdaFunction:
-    DependsOn: DockerBuildRun
-    Type: AWS::Serverless::Function
-    Metadata:
-      SkipBuild: True
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W58
-            reason: "Lambda function has CloudWatch Logs permissions via AWSLambdaBasicExecutionRole managed policy"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      PackageType: Image
-      ImageUri: !Sub "${ECRRepository.RepositoryUri}:hitl-process-function-${ImageVersion}"
-      Architectures:
-        - arm64
-      Timeout: 300
-      LoggingConfig:
-        LogGroup: !Ref HITLProcessLambdaLogGroup
-      Role: !GetAtt HITLProcessLambdaRole.Arn
-      Environment:
-        Variables:
-          DYNAMODB_TABLE: !Ref BDAMetadataTable
-          TRACKING_TABLE: !Ref TrackingTable
-          LOG_LEVEL: !Ref LogLevel
-
-  HITLProcessLambdaRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: !Sub "lambda.${AWS::URLSuffix}"
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      Policies:
-        - PolicyName: HITLProcessLambdaPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:PutItem
-                  - dynamodb:GetItem
-                  - dynamodb:GetRecords
-                  - dynamodb:UpdateItem
-                  - dynamodb:UpdateTable
-                  - dynamodb:DeleteItem
-                  - dynamodb:Scan
-                  - dynamodb:Query
-                Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${BDAMetadataTable}'
-              - Effect: Allow
-                Action:
-                  - dynamodb:PutItem
-                  - dynamodb:GetItem
-                  - dynamodb:GetRecords
-                  - dynamodb:UpdateItem
-                  - dynamodb:UpdateTable
-                  - dynamodb:DeleteItem
-                  - dynamodb:Scan
-                  - dynamodb:Query
-                Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTable}'
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}"
-                  - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::${WorkingBucket}"
-                  - !Sub "arn:${AWS::Partition}:s3:::${WorkingBucket}/*"
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:GetBucketLocation
-                  - s3:GetObject
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}"
-                  - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}/*"
-              - Effect: Allow
-                Action: 
-                  - states:SendTaskSuccess
-                  - states:SendTaskFailure
-                Resource: !GetAtt DocumentProcessingStateMachine.Arn
-              - Effect: Allow
-                Action:
-                  - kms:Encrypt
-                  - kms:Decrypt
-                  - kms:ReEncrypt*
-                  - kms:GenerateDataKey*
-                  - kms:DescribeKey
-                Resource: !Ref CustomerManagedEncryptionKeyArn
-
-  HITLWaitFunction:
-    DependsOn: DockerBuildRun
-    Type: AWS::Serverless::Function
-    Metadata:
-      SkipBuild: True
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: "Cloudwatch does not support resource-level permissions"
-          - id: W89
-            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
-          - id: W92
-            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      PackageType: Image
-      ImageUri: !Sub "${ECRRepository.RepositoryUri}:hitl-wait-function-${ImageVersion}"
-      Architectures:
-        - arm64
-      Timeout: 60
-      MemorySize: 256
-      Environment:
-        Variables:
-          TRACKING_TABLE: !Ref TrackingTable
-          DYNAMODB_TABLE: !Ref BDAMetadataTable
-          LOG_LEVEL: !Ref LogLevel
-          SAGEMAKER_A2I_REVIEW_PORTAL_URL: !Ref SageMakerA2IReviewPortalURL
-          WORKING_BUCKET: !Ref WorkingBucket
-      LoggingConfig:
-        LogGroup: !Ref HITLWaitFunctionLogGroup
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TrackingTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref BDAMetadataTable
-        - S3ReadPolicy:
-            BucketName: !Ref WorkingBucket
-        - Statement:
-          - Effect: Allow
-            Action:
-              - kms:Decrypt
-            Resource: !Ref CustomerManagedEncryptionKeyArn
-          - Effect: Allow
-            Action: cloudwatch:PutMetricData
-            Resource: '*'
-  
-  HITLWaitFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
-      LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLWaitFunction"
-      RetentionInDays: !Ref LogRetentionDays
-
-  HITLStatusUpdateFunction:
-    DependsOn: DockerBuildRun
-    Type: AWS::Serverless::Function
-    Metadata:
-      SkipBuild: True
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: "Cloudwatch does not support resource-level permissions"
-          - id: W89
-            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
-          - id: W92
-            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
-          - id: W58
-            reason: "Lambda function has CloudWatch Logs permissions via AWSLambdaBasicExecutionRole managed policy"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for EventBridge triggered function as it handles A2I status updates"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
-      PackageType: Image
-      ImageUri: !Sub "${ECRRepository.RepositoryUri}:hitl-status-update-function-${ImageVersion}"
-      Architectures:
-        - arm64
-      Timeout: 300
-      MemorySize: 512
-      Environment:
-        Variables:
-          LOG_LEVEL: !Ref LogLevel
-          WORKING_BUCKET: !Ref WorkingBucket
-      LoggingConfig:
-        LogGroup: !Ref HITLStatusUpdateFunctionLogGroup
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - S3CrudPolicy:
-            BucketName: !Ref WorkingBucket
-        - Statement:
-          - Effect: Allow
-            Action:
-              - kms:Encrypt
-              - kms:Decrypt
-              - kms:ReEncrypt*
-              - kms:GenerateDataKey*
-              - kms:DescribeKey
-            Resource: !Ref CustomerManagedEncryptionKeyArn
-
-  HITLStatusUpdateFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
-      LogGroupName: !Sub "/${AWS::StackName}/lambda/HITLStatusUpdateFunction"
-      RetentionInDays: !Ref LogRetentionDays
-
-  #Event Bridge permissions to invoke Lambda function during HITL change 
-  EventBridgeInvokeLambdaPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref HITLProcessLambdaFunction
-      Action: 'lambda:InvokeFunction'
-      Principal: !Sub "events.${AWS::URLSuffix}"
-      SourceArn: !GetAtt HITLEventRule.Arn
-
 
   Dashboard:
     Type: AWS::CloudWatch::Dashboard
@@ -2321,9 +2050,6 @@ Outputs:
         - !Ref ProcessResultsFunctionLogGroup
         - !Ref SummarizationFunctionLogGroup
         - !Ref BDACompletionFunctionLogGroup
-        - !Ref HITLProcessLambdaLogGroup
-        - !Ref HITLWaitFunctionLogGroup
-        - !Ref HITLStatusUpdateFunctionLogGroup
         - !Ref StateMachineLogGroup
 
   DashboardName:

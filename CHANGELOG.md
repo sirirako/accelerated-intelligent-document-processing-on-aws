@@ -3,7 +3,51 @@ SPDX-License-Identifier: MIT-0
 
 # Changelog
 
-## [Unreleased]
+## [0.4.11]
+
+### Added
+
+- **Built-in Human-in-the-Loop (HITL) Review System**
+  - Replaced Amazon SageMaker A2I (Augmented AI) with a built-in HITL review system integrated directly into the Web UI
+  - **Persona-Based Access Control**: 
+    - **Admin**: Full access to all documents, can skip reviews, release review locks, and manage users
+    - **Reviewer**: Access limited to documents pending HITL review, can claim and complete section reviews
+  - **Review Workflow Features**:
+    - Start Review button to claim document ownership and prevent concurrent edits
+    - Section-level review with inline JSON editing and visual document viewer
+    - Mark Section Review Complete to approve individual sections
+    - Skip All Reviews (Admin only) to bypass pending reviews and continue workflow
+    - Release Review to unlock document for other reviewers
+  - **Real-time Status Updates**: HITL Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
+  - **Confidence-Based Triggering**: HITL automatically triggered when extraction confidence falls below configured threshold
+  - See [Human-in-the-Loop Review Documentation](./docs/human-review.md) for detailed workflow information
+  - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver more sophisticated review capabilities with the ability to update document classification, extraction, and resubmit in a single integrated approach.
+
+- **User Management for HITL Personas**
+  - New User Management page for Admin users to create and manage Reviewer accounts
+  - Cognito user groups (Admin, Reviewer) for role-based access control
+  - Automatic user synchronization between Cognito and application
+
+### Changed
+
+- **HITL Configuration**
+  - HITL is now disabled by default in the configuration
+  - Users must explicitly enable HITL in the Configuration page (Assessment & HITL Configuration section) to trigger human review workflows
+  - `hitl_enabled` setting controls whether documents with low confidence trigger HITL review
+
+### Removed
+
+- **Amazon SageMaker A2I Resources**
+  - Removed SageMaker A2I Flow Definition, Human Task UI, and Workteam resources
+  - Removed A2I-related Lambda functions (`create_a2i_resources`, `get-workforce-url`)
+  - Removed `EnableHITL` and `PrivateWorkteamArn` CloudFormation parameters
+
+### Upgrade Notes
+
+- **⚠️ IMPORTANT: Upgrading from v0.4.11 or earlier**
+  - **Complete all pending HITL workflows before upgrading**: Any documents waiting in SageMaker A2I human review loops will be orphaned as A2I resources are deleted during the upgrade
+  - **Re-enable HITL after upgrade**: If you previously had `EnableHITL=true` CloudFormation parameter, you must now enable HITL through the Configuration page in the Web UI (Assessment & HITL Configuration → Enable HITL)
+  - **User migration**: Existing Cognito users will need to be assigned to Admin or Reviewer groups for HITL access 
 
 ### Added
 
