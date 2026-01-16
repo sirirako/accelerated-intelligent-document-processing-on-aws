@@ -1,5 +1,5 @@
 {
-    "Comment": "Data Automation Async Workflow with Step Functions-managed HITL Integration",
+    "Comment": "Data Automation Async Workflow with Built-in Review Integration",
     "StartAt": "InvokeDataAutomation",
     "States": {
         "InvokeDataAutomation": {
@@ -77,7 +77,7 @@
             "Choices": [
                 {
                     "Variable": "$.Result.hitl_triggered",
-                    "StringEquals": "true",
+                    "BooleanEquals": true,
                     "Next": "HITLReview"
                 }
             ],
@@ -87,46 +87,14 @@
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "FunctionName": "${HITLWaitFunctionArn}",
+                "FunctionName": "${ProcessResultsLambdaArn}",
                 "Payload": {
                     "taskToken.$": "$$.Task.Token",
-                    "Payload.$": "$"
+                    "action": "wait_for_hitl",
+                    "document.$": "$.Result.document"
                 }
             },
-            "ResultPath": "$.HITLWaitResult",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Lambda.ServiceException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 2,
-                    "MaxAttempts": 10,
-                    "BackoffRate": 2
-                }
-            ],
-            "Catch": [
-                {
-                    "ErrorEquals": ["HITLFailedException"],
-                    "Next": "HITLFailState"
-                }
-            ],
-            "Next": "HITLStatusUpdate"
-        },
-        "HITLStatusUpdate": {
-            "Type": "Task",
-            "Resource": "${HITLStatusUpdateFunctionArn}",
-            "Parameters": {
-                "document.$": "$.Result.document",
-                "HITLWaitResult.$": "$.HITLWaitResult"
-            },
-            "ResultPath": "$.HITLStatusResult",
+            "ResultPath": "$.HITLResult",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -211,11 +179,6 @@
             "Type": "Fail",
             "Cause": "Data Automation Job Failed",
             "Error": "JobFailedException"
-        },
-        "HITLFailState": {
-            "Type": "Fail",
-            "Cause": "Human In The Loop Review Failed",
-            "Error": "HITLFailedException"
         }
     }
 }

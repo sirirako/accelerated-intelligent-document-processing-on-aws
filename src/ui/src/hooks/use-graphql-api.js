@@ -155,7 +155,17 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
         const data = subscriptionData?.data;
         const documentUpdateEvent = data?.onUpdateDocument;
         if (documentUpdateEvent?.ObjectKey) {
-          setDocumentsDeduped([documentUpdateEvent]);
+          // Fetch full document details to ensure we have complete data
+          try {
+            const documentValues = await getDocumentDetailsFromIds([documentUpdateEvent.ObjectKey]);
+            if (documentValues && documentValues.length > 0) {
+              setDocumentsDeduped(documentValues);
+            }
+          } catch (error) {
+            logger.error('Error fetching document details after update:', error);
+            // Fallback to subscription data if fetch fails
+            setDocumentsDeduped([documentUpdateEvent]);
+          }
         }
       },
       error: (error) => {

@@ -1,12 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import React, { useEffect, useState } from 'react';
-import { Table, Pagination, TextFilter } from '@cloudscape-design/components';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Table, Pagination, TextFilter, Box, SpaceBetween } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
 import { ConsoleLogger } from 'aws-amplify/utils';
+import { generateClient } from 'aws-amplify/api';
+import { fetchAuthSession } from 'aws-amplify/auth';
+import { useNavigate } from 'react-router-dom';
 
 import useDocumentsContext from '../../contexts/documents';
 import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
 
 import mapDocumentsAttributes from '../common/map-document-attributes';
 import { paginationLabels } from '../common/labels';
@@ -15,6 +19,8 @@ import { exportToExcel } from '../common/download-func';
 import DeleteDocumentModal from '../common/DeleteDocumentModal';
 import ReprocessDocumentModal from '../common/ReprocessDocumentModal';
 import AbortWorkflowModal from '../common/AbortWorkflowModal';
+import claimReviewMutation from '../../graphql/mutations/claimReview';
+import releaseReviewMutation from '../../graphql/mutations/releaseReview';
 
 import {
   DocumentsPreferences,
@@ -38,7 +44,23 @@ const DocumentList = () => {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isReprocessModalVisible, setIsReprocessModalVisible] = useState(false);
   const [isAbortModalVisible, setIsAbortModalVisible] = useState(false);
+  const [currentUsername, setCurrentUsername] = useState('');
   const { settings } = useSettingsContext();
+  const { isReviewer, isAdmin } = useUserRole();
+  const navigate = useNavigate();
+
+  // Get current username on mount
+  useEffect(() => {
+    const getUsername = async () => {
+      try {
+        const session = await fetchAuthSession();
+        setCurrentUsername(session?.tokens?.idToken?.payload?.['cognito:username'] || '');
+      } catch (e) {
+        logger.error('Error getting username', e);
+      }
+    };
+    getUsername();
+  }, []);
 
   const {
     documents,
@@ -56,12 +78,48 @@ const DocumentList = () => {
 
   const [preferences, setPreferences] = useLocalStorage('documents-list-preferences', DEFAULT_PREFERENCES);
 
+  // Filter documents for reviewers - show only pending HITL reviews (not completed/skipped)
+  const filteredDocumentList = useMemo(() => {
+    if (isReviewer && !isAdmin) {
+      return documentList.filter((doc) => {
+        // Must have HITL triggered
+        if (!doc.hitlTriggered) return false;
+        // Exclude completed or skipped reviews
+        if (doc.hitlCompleted) return false;
+        if (doc.hitlStatus?.toLowerCase() === 'skipped') return false;
+        if (doc.hitlStatus?.toLowerCase() === 'completed') return false;
+        // Show if unassigned or assigned to current user
+        return !doc.hitlReviewOwner || doc.hitlReviewOwner === currentUsername;
+      });
+    }
+    return documentList;
+  }, [documentList, isReviewer, isAdmin, currentUsername]);
+
+  // Custom empty state for reviewers
+  const emptyState = useMemo(() => {
+    if (isReviewer && !isAdmin) {
+      return (
+        <Box margin={{ vertical: 'xs' }} textAlign="center" color="inherit">
+          <SpaceBetween size="xxs">
+            <div>
+              <b>No pending reviews</b>
+              <Box variant="p" color="inherit">
+                There are no documents waiting for your review at this time.
+              </Box>
+            </div>
+          </SpaceBetween>
+        </Box>
+      );
+    }
+    return <TableEmptyState resourceName="Document" />;
+  }, [isReviewer, isAdmin]);
+
   // prettier-ignore
   const {
     items, actions, filteredItemsCount, collectionProps, filterProps, paginationProps,
-  } = useCollection(documentList, {
+  } = useCollection(filteredDocumentList, {
     filtering: {
-      empty: <TableEmptyState resourceName="Document" />,
+      empty: emptyState,
       noMatch: <TableNoMatchState onClearFilter={() => actions.setFiltering('')} />,
     },
     pagination: { pageSize: preferences.pageSize },
@@ -128,6 +186,81 @@ const DocumentList = () => {
     actions.setSelectedItems([]);
   };
 
+  const handleClaimReview = async () => {
+    const client = generateClient();
+    const selectedItems = collectionProps.selectedItems;
+    const isSingleSelection = selectedItems.length === 1;
+
+    // Claim reviews for all selected documents
+    for (const item of selectedItems) {
+      try {
+        const result = await client.graphql({
+          query: claimReviewMutation,
+          variables: { objectKey: item.objectKey },
+        });
+        logger.debug('Claimed review for', item.objectKey, result);
+
+        // Update the document in the list immediately
+        setDocumentList((prevList) =>
+          prevList.map((doc) =>
+            doc.objectKey === item.objectKey
+              ? {
+                  ...doc,
+                  hitlReviewOwner: result.data.claimReview.HITLReviewOwner,
+                  hitlReviewOwnerEmail: result.data.claimReview.HITLReviewOwnerEmail,
+                  hitlStatus: result.data.claimReview.HITLStatus,
+                }
+              : doc,
+          ),
+        );
+      } catch (e) {
+        logger.error('Error claiming review', e);
+      }
+    }
+
+    // Clear selection
+    actions.setSelectedItems([]);
+
+    // If single document selected, navigate to document details
+    if (isSingleSelection) {
+      const documentId = selectedItems[0].objectKey;
+      logger.debug('Navigating to document details:', documentId);
+      navigate(`/documents/${encodeURIComponent(documentId)}`);
+    }
+  };
+
+  const handleReleaseReview = async () => {
+    const client = generateClient();
+    for (const item of collectionProps.selectedItems) {
+      try {
+        const result = await client.graphql({
+          query: releaseReviewMutation,
+          variables: { objectKey: item.objectKey },
+        });
+        logger.debug('Released review for', item.objectKey, result);
+
+        // Update the document in the list immediately
+        setDocumentList((prevList) =>
+          prevList.map((doc) =>
+            doc.objectKey === item.objectKey
+              ? {
+                  ...doc,
+                  hitlReviewOwner: null,
+                  hitlReviewOwnerEmail: null,
+                  hitlStatus: result.data.releaseReview.HITLStatus,
+                }
+              : doc,
+          ),
+        );
+      } catch (e) {
+        logger.error('Error releasing review', e);
+      }
+    }
+
+    // Clear selection
+    actions.setSelectedItems([]);
+  };
+
   /* eslint-disable react/jsx-props-no-spreading */
   return (
     <>
@@ -138,18 +271,20 @@ const DocumentList = () => {
             resourceName="Documents"
             documents={documents}
             selectedItems={collectionProps.selectedItems}
-            totalItems={documentList}
+            totalItems={filteredDocumentList}
             updateTools={() => setToolsOpen(true)}
             loading={isDocumentsListLoading}
             setIsLoading={setIsDocumentsListLoading}
             periodsToLoad={periodsToLoad}
             setPeriodsToLoad={setPeriodsToLoad}
             getDocumentDetailsFromIds={getDocumentDetailsFromIds}
-            downloadToExcel={() => exportToExcel(documentList, 'Document-List')}
-            onReprocess={() => setIsReprocessModalVisible(true)}
-            onDelete={() => setIsDeleteModalVisible(true)}
-            onAbort={() => setIsAbortModalVisible(true)}
-            // eslint-disable-next-line max-len, prettier/prettier
+            downloadToExcel={() => exportToExcel(filteredDocumentList, 'Document-List')}
+            onReprocess={isReviewer && !isAdmin ? null : () => setIsReprocessModalVisible(true)}
+            onDelete={isReviewer && !isAdmin ? null : () => setIsDeleteModalVisible(true)}
+            onAbort={isReviewer && !isAdmin ? null : () => setIsAbortModalVisible(true)}
+            onClaimReview={isReviewer ? handleClaimReview : null}
+            onReleaseReview={isAdmin ? handleReleaseReview : null}
+            currentUsername={currentUsername}
           />
         }
         columnDefinitions={COLUMN_DEFINITIONS_MAIN}

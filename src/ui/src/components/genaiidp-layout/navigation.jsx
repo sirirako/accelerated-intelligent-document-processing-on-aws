@@ -1,9 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { React } from 'react';
+import { React, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SideNavigation } from '@cloudscape-design/components';
 import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
 
 import {
   DOCUMENTS_PATH,
@@ -14,11 +15,14 @@ import {
   CONFIGURATION_PATH,
   PRICING_PATH,
   DISCOVERY_PATH,
+  USER_MANAGEMENT_PATH,
   AGENT_CHAT_PATH,
 } from '../../routes/constants';
 
 export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
-export const documentsNavItems = [
+
+// Full navigation items for Admin users
+export const adminNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
   { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
@@ -30,6 +34,7 @@ export const documentsNavItems = [
       { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
       { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
       { type: 'link', text: 'View/Edit Pricing', href: `#${PRICING_PATH}` },
+      { type: 'link', text: 'User Management', href: `#${USER_MANAGEMENT_PATH}` },
     ],
   },
   {
@@ -60,25 +65,35 @@ export const documentsNavItems = [
   },
 ];
 
+// Limited navigation items for Reviewer users
+export const reviewerNavItems = [{ type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` }];
+
+// Keep for backward compatibility
+export const documentsNavItems = adminNavItems;
+
 const defaultOnFollowHandler = (ev) => {
-  // Prevent navigation for deployment info items (make them non-clickable)
   if (ev.detail.href === '#deployment-info') {
     ev.preventDefault();
     return;
   }
-  // XXX keep the locked href for our demo pages
-  // ev.preventDefault();
   console.log(ev);
 };
 
 /* eslint-disable react/prop-types */
-const Navigation = ({ header = documentsNavHeader, items = documentsNavItems, onFollowHandler = defaultOnFollowHandler }) => {
+const Navigation = ({ header = documentsNavHeader, items, onFollowHandler = defaultOnFollowHandler }) => {
   const location = useLocation();
   const path = location.pathname;
   let activeHref = `#${DEFAULT_PATH}`;
   const { settings } = useSettingsContext() || {};
+  const { isReviewer, isAdmin } = useUserRole();
 
-  // Determine active link based on current path, most specific routes first
+  // Select navigation items based on user role
+  const baseItems = useMemo(() => {
+    if (items) return items;
+    return isReviewer && !isAdmin ? reviewerNavItems : adminNavItems;
+  }, [items, isReviewer, isAdmin]);
+
+  // Determine active link based on current path
   if (path.includes(PRICING_PATH)) {
     activeHref = `#${PRICING_PATH}`;
   } else if (path.includes(CONFIGURATION_PATH)) {
@@ -86,62 +101,39 @@ const Navigation = ({ header = documentsNavHeader, items = documentsNavItems, on
   } else if (path.includes(DOCUMENTS_KB_QUERY_PATH)) {
     activeHref = `#${DOCUMENTS_KB_QUERY_PATH}`;
   } else if (path.includes(TEST_STUDIO_PATH)) {
-    // Handle Test Studio sub-navigation
     const urlParams = new URLSearchParams(location.search);
     const tab = urlParams.get('tab');
-    if (tab) {
-      activeHref = `#${TEST_STUDIO_PATH}?tab=${tab}`;
-    } else {
-      activeHref = `#${TEST_STUDIO_PATH}?tab=sets`;
-    }
+    activeHref = tab ? `#${TEST_STUDIO_PATH}?tab=${tab}` : `#${TEST_STUDIO_PATH}?tab=sets`;
   } else if (path.includes(UPLOAD_DOCUMENT_PATH)) {
     activeHref = `#${UPLOAD_DOCUMENT_PATH}`;
   } else if (path.includes(DISCOVERY_PATH)) {
     activeHref = `#${DISCOVERY_PATH}`;
+  } else if (path.includes(USER_MANAGEMENT_PATH)) {
+    activeHref = `#${USER_MANAGEMENT_PATH}`;
   } else if (path.includes(DOCUMENTS_PATH)) {
     activeHref = `#${DOCUMENTS_PATH}`;
   } else if (path === AGENT_CHAT_PATH) {
     activeHref = `#${AGENT_CHAT_PATH}`;
   }
 
-  // Create a copy of the items array to add the deployment info
-  const navigationItems = [...(items || documentsNavItems)];
+  // Create navigation items with deployment info
+  const navigationItems = [...baseItems];
 
-  // Add deployment info section if version, stack name, or build datetime is available
   if (settings?.Version || settings?.StackName || settings?.BuildDateTime || settings?.IDPPattern) {
     const deploymentInfoItems = [];
 
     if (settings?.StackName) {
-      deploymentInfoItems.push({
-        type: 'link',
-        text: `Stack Name: ${settings.StackName}`,
-        href: '#stackname',
-      });
+      deploymentInfoItems.push({ type: 'link', text: `Stack Name: ${settings.StackName}`, href: '#stackname' });
     }
-
     if (settings?.Version) {
-      deploymentInfoItems.push({
-        type: 'link',
-        text: `Version: ${settings.Version}`,
-        href: '#version',
-      });
+      deploymentInfoItems.push({ type: 'link', text: `Version: ${settings.Version}`, href: '#version' });
     }
-
     if (settings?.BuildDateTime) {
-      deploymentInfoItems.push({
-        type: 'link',
-        text: `Build: ${settings.BuildDateTime}`,
-        href: '#builddatetime',
-      });
+      deploymentInfoItems.push({ type: 'link', text: `Build: ${settings.BuildDateTime}`, href: '#builddatetime' });
     }
-
     if (settings?.IDPPattern) {
       const pattern = settings.IDPPattern.split(' ')[0];
-      deploymentInfoItems.push({
-        type: 'link',
-        text: `Pattern: ${pattern}`,
-        href: '#idppattern',
-      });
+      deploymentInfoItems.push({ type: 'link', text: `Pattern: ${pattern}`, href: '#idppattern' });
     }
 
     navigationItems.push({

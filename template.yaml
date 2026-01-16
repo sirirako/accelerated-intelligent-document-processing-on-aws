@@ -169,29 +169,6 @@ Parameters:
     Description: >-
       Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
 
-  # HITL (A2I) Configuration
-
-  EnableHITL:
-    Type: String
-    AllowedValues:
-      - true
-      - false
-    Default: false
-    Description: Enable Human In The Loop configuration to invoke HITL (SageMaker A2I) if the extraction confidence is less than configured threshold (applies to Pattern-1)
-
-  ExistingPrivateWorkforceArn:
-    Type: String
-    Default: ""
-    AllowedPattern: "^$|^arn:aws[a-z-]*:sagemaker:[a-z0-9-]+:[0-9]{12}:workteam/private-crowd/.+$"
-    Description: >-
-      ARN of an existing SageMaker private workforce workteam to use for Human In The Loop (HITL). 
-      If you do not have existing Private workteam and leave it blank then solution will create one. 
-      REQUIRED when deploying multiple patterns with HITL enabled, as only one private workteam can exist per AWS account.
-      If you already have a GenAI-IDP deployment with HITL enabled, provide the existing workteam ARN here.
-      Leave empty for first-time HITL deployment to create a new private workteam automatically.
-      Find the ARN in your existing stack's CloudFormation outputs under 'PrivateWorkteamArn'.
-      Format: arn:partition:sagemaker:region:account-id:workteam/private-crowd/workteam-name
-
   # Evaluation
   EvaluationBaselineBucketName:
     Type: String
@@ -473,12 +450,6 @@ Conditions:
     ]
 
   # HITL and Private Workforce conditions
-  IsHITLEnabled: !Equals [ !Ref EnableHITL, "true" ]
-  ShouldCreatePrivateWorkteam:
-    !And [
-      !Condition IsHITLEnabled,
-      !Equals [ !Ref ExistingPrivateWorkforceArn, "" ],
-    ]
   # General rules
   ShouldAllowSignUpEmailDomain:
     !Not [ !Equals [ !Ref AllowedSignUpEmailDomain, "" ] ]
@@ -504,7 +475,6 @@ Metadata:
   cfn-lint:
     config:
       ignore_checks:
-        - E2015  # AllowedPattern with empty string default for ExistingPrivateWorkforceArn
         - W1030  # ARN pattern matching when Ref resolves to empty string
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -537,11 +507,6 @@ Metadata:
           default: "Custom Configuration"
         Parameters:
           - CustomConfigPath
-      - Label:
-          default: "HITL (A2I) Configuration"
-        Parameters:
-          - EnableHITL
-          - ExistingPrivateWorkforceArn
       - Label:
           default: "Evaluation"
         Parameters:
@@ -602,10 +567,6 @@ Metadata:
         default: "Pattern2 - Custom Extraction Model ARN"
       Pattern1Configuration:
         default: "Pattern1 - Configuration Preset"
-      EnableHITL:
-        default: "Enable Human In The Loop"
-      ExistingPrivateWorkforceArn:
-        default: "Existing Private Workforce ARN"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
       Pattern3UDOPModelArtifactPath:
@@ -1264,7 +1225,6 @@ Resources:
         ConfigurationTable: !Ref ConfigurationTable
         AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
         AppSyncApiArn: !GetAtt GraphQLApi.Arn
-        EnableHITL: !Ref EnableHITL
         ConfigurationDefaultS3Uri: !If
           - HasCustomConfigPath
           - !Ref CustomConfigPath
@@ -1279,10 +1239,6 @@ Resources:
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
         EnableXRayTracing: !Ref EnableXRayTracing
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-        SageMakerA2IReviewPortalURL: !If
-          - IsHITLEnabled
-          - !GetAtt WorkforceURLResource.PortalURL
-          - ""
         ReportingBucket: !If
           - ShouldCreateReportingBucket
           - !Ref ReportingBucket
@@ -1337,11 +1293,6 @@ Resources:
                   ConfigPath,
                 ]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        EnableHITL: !Ref EnableHITL
-        SageMakerA2IReviewPortalURL: !If
-          - IsHITLEnabled
-          - !GetAtt WorkforceURLResource.PortalURL
-          - ""
         EnableXRayTracing: !Ref EnableXRayTracing
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         ImageVersion: "<PATTERN2_IMAGE_VERSION>"
@@ -1398,11 +1349,6 @@ Resources:
                   ConfigPath,
                 ]
         ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        EnableHITL: !Ref EnableHITL
-        SageMakerA2IReviewPortalURL: !If
-          - IsHITLEnabled
-          - !GetAtt WorkforceURLResource.PortalURL
-          - ""
         EnableXRayTracing: !Ref EnableXRayTracing
         PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
         ReportingBucket: !If
@@ -3355,6 +3301,7 @@ Resources:
           - ShouldCreateDocumentKnowledgeBase
           - !GetAtt DOCUMENTKB.Outputs.KnowledgeBaseID
           - ""
+        AllowedSignUpEmailDomains: !Ref AllowedSignUpEmailDomain
     UpdateReplacePolicy: Delete
     DeletionPolicy: Delete
 
@@ -4556,6 +4503,39 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
 
+  # DynamoDB table for HITL user management
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref CustomerManagedEncryptionKey
+
   # Secrets Manager secret for External MCP Agent credentials
   ExternalMCPAgentsSecret:
     Type: AWS::SecretsManager::Secret
@@ -5369,6 +5349,14 @@ Resources:
       Precedence: 0
       UserPoolId: !Ref UserPool
 
+  ReviewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Document Reviewers for HITL
+      GroupName: Reviewer
+      Precedence: 1
+      UserPoolId: !Ref UserPool
+
   AdminUserToGroupAttachment:
     Type: AWS::Cognito::UserPoolUserToGroupAttachment
     Properties:
@@ -5445,402 +5433,6 @@ Resources:
       Principal: !Sub "cognito-idp.${AWS::URLSuffix}"
       SourceAccount: !Ref AWS::AccountId
       SourceArn: !GetAtt UserPool.Arn
-
-  ##########################################################################
-  # HITL resource deployment (SageMaker A2I)
-  ##########################################################################
-
-  # Cognito user pool client with generate secret as true (HITL)
-  UserPoolClienta2i:
-    Type: AWS::Cognito::UserPoolClient
-    Condition: IsHITLEnabled
-    Properties:
-      ClientName:
-        Fn::Sub: ${AWS::StackName}-A2I-Client
-      GenerateSecret: true # pragma: allowlist secret - CloudFormation parameter, not actual secret
-      UserPoolId:
-        Ref: UserPool
-
-  #SageMaker A2I (HITL) Labelling workforce Private Work Team
-  PrivateWorkteam:
-    Type: AWS::SageMaker::Workteam
-    Condition: ShouldCreatePrivateWorkteam
-    Properties:
-      WorkteamName:
-        Fn::Sub: ${AWS::StackName}-Private-WorkTeam
-      Description: "Private workteam for working on A2I tasks"
-      MemberDefinitions:
-        - CognitoMemberDefinition:
-            CognitoUserPool:
-              Ref: UserPool
-            CognitoUserGroup:
-              Ref: AdminGroup
-            CognitoClientId:
-              Ref: UserPoolClienta2i
-
-  # Cognito Client Update with lambda function to resolve circular dependency with SageMaker A2I resources
-  CognitoClientUpdaterRole:
-    Type: AWS::IAM::Role
-    Condition: ShouldCreatePrivateWorkteam
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: "Write access required for Cognito client updates and SageMaker workteam integration - resource constraints not applicable for these service operations"
-    # checkov:skip=CKV_AWS_111: "Write access required for Cognito client updates and SageMaker workteam integration"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: !Sub "lambda.${AWS::URLSuffix}"
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Policies:
-        - PolicyName: CognitoClientUpdaterPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - cognito-idp:UpdateUserPoolClient
-                  - cognito-idp:DescribeUserPoolClient
-                  - sagemaker:DescribeWorkteam
-                Resource: "*"
-
-  CognitoClientUpdaterFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Condition: ShouldCreatePrivateWorkteam
-    Properties:
-      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
-      LogGroupName:
-        Fn::Sub: /${AWS::StackName}/lambda/CognitoClientUpdaterFunction
-      RetentionInDays:
-        Ref: LogRetentionDays
-
-  CognitoClientUpdaterFunction:
-    Type: AWS::Serverless::Function
-    Condition: ShouldCreatePrivateWorkteam
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W58
-            reason: "DLQ not required for Cfn Custom Resource function"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values like feature flags and non-sensitive settings"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Description: Update Cognito App Client with SageMaker GroundTruth Labelling WorkForce Private Work Team
-      CodeUri: src/lambda/cognito_updater_hitl
-      Handler: index.handler
-      Runtime: python3.12
-      Timeout: 300
-      MemorySize: 4096
-      LoggingConfig:
-        LogGroup: !Ref CognitoClientUpdaterFunctionLogGroup
-      Role: !GetAtt CognitoClientUpdaterRole.Arn
-      Environment:
-        Variables:
-          USER_POOL_ID:
-            Ref: UserPool
-          CLIENT_ID:
-            Ref: UserPoolClienta2i
-          WORKTEAM_NAME:
-            Fn::GetAtt: PrivateWorkteam.WorkteamName
-
-  CognitoClientCustomResource:
-    Type: Custom::CognitoClientUpdater
-    Condition: ShouldCreatePrivateWorkteam
-    DependsOn:
-      - PrivateWorkteam
-    Properties:
-      ServiceToken: !GetAtt CognitoClientUpdaterFunction.Arn
-      SourceCodeHash: <COGNITO_CLIENT_HASH_TOKEN>
-
-  ##########################################################################
-  # SageMaker A2I (HITL) Resources with Comprehensive Cleanup
-  #
-  # Resource Responsibilities:
-  # - CreateA2IResourcesLambda: Handles complete A2I lifecycle
-  #   * Create: Flow Definition and Human Task UI
-  #   * Update: Flow Definition and Human Task UI (delete old, create new)
-  #   * Delete: Flow Definition, Human Task UI, AND comprehensive workforce cleanup
-  #
-  # Benefits of Single Function Approach:
-  # - Simpler architecture with fewer resources
-  # - No inter-function dependencies
-  # - Comprehensive cleanup in single operation
-  # - Reduced complexity and maintenance overhead
-  ##########################################################################
-
-  # Separate role for SageMaker Flow Definition with minimal permissions
-  A2IFlowDefinitionRole:
-    Type: AWS::IAM::Role
-    Condition: IsHITLEnabled
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: !Sub "sagemaker.${AWS::URLSuffix}"
-            Action: sts:AssumeRole
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Policies:
-        - PolicyName: A2IFlowDefinitionAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:PutObject
-                Resource:
-                  - !Sub "${OutputBucket.Arn}/*"
-                  - !Sub "${InputBucket.Arn}/*"
-              - Effect: Allow
-                Action:
-                  - s3:GetBucketLocation
-                  - s3:ListBucket
-                Resource:
-                  - !GetAtt OutputBucket.Arn
-                  - !GetAtt InputBucket.Arn
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*"
-              - Effect: Allow
-                Action:
-                  - kms:Encrypt
-                  - kms:Decrypt
-                  - kms:ReEncrypt*
-                  - kms:GenerateDataKey*
-                  - kms:DescribeKey
-                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-
-  A2IHumanTaskUILambdaRole:
-    Type: AWS::IAM::Role
-    Condition: IsHITLEnabled
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W11
-            reason: "Role requires * resource access for SageMaker A2I operations as resource name is not available"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: !Sub "lambda.${AWS::URLSuffix}"
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Policies:
-        - PolicyName: SageMakerA2IAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sagemaker:CreateHumanTaskUi
-                  - sagemaker:DeleteHumanTaskUi
-                  - sagemaker:DescribeHumanTaskUi
-                  - sagemaker:CreateFlowDefinition
-                  - sagemaker:DeleteFlowDefinition
-                  - sagemaker:DescribeFlowDefinition
-                  - sagemaker:ListHumanLoops
-                  - sagemaker:StopHumanLoop
-                  - sagemaker:DescribeWorkteam
-                  - sagemaker:DeleteWorkteam
-                  - sagemaker:ListWorkforces
-                  - sagemaker:DescribeWorkforce
-                  - sagemaker:DeleteWorkforce
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
-                Resource: !GetAtt A2IFlowDefinitionRole.Arn
-        - PolicyName: S3Access
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:GetBucketLocation
-                  - s3:GetObject
-                Resource:
-                  - Fn::Sub: arn:${AWS::Partition}:s3:::${OutputBucket}
-                  - Fn::Sub: arn:${AWS::Partition}:s3:::${OutputBucket}/*
-                  - Fn::Sub: arn:${AWS::Partition}:s3:::${InputBucket}
-                  - Fn::Sub: arn:${AWS::Partition}:s3:::${InputBucket}/*
-        - PolicyName: LambdaSSMAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ssm:PutParameter
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/FlowDefinitionArn"
-        - PolicyName: KMSAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - kms:Encrypt
-                  - kms:Decrypt
-                  - kms:ReEncrypt*
-                  - kms:GenerateDataKey*
-                  - kms:DescribeKey
-                Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-        - PolicyName: CFNCustomAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::cloudformation-custom-resource-response-*"
-                  - !Sub "arn:${AWS::Partition}:s3:::cloudformation-custom-resource-response-*/*"
-
-  CreateA2IResourcesLambda:
-    Type: AWS::Serverless::Function
-    Condition: IsHITLEnabled
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-          - id: W58
-            reason: "DLQ not required for Cfn Custom Resource function"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      CodeUri: src/lambda/create_a2i_resources
-      Handler: index.handler
-      Role: !GetAtt A2IHumanTaskUILambdaRole.Arn
-      Runtime: python3.12
-      Timeout: 900 # 15 minutes - Increased timeout for enhanced deletion verification and wait logic
-      Environment:
-        Variables:
-          STACK_NAME: !Ref AWS::StackName
-          A2I_WORKTEAM_ARN: !If
-            - ShouldCreatePrivateWorkteam
-            - !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}"
-            - !Ref ExistingPrivateWorkforceArn
-          A2I_FLOW_DEFINITION_ROLE_ARN: !GetAtt A2IFlowDefinitionRole.Arn
-          BDA_OUTPUT_BUCKET: !Ref OutputBucket #Pass the IDP Output Bucket
-
-  A2IResourcesCustomResource:
-    Type: Custom::A2IResources
-    Condition: IsHITLEnabled
-    Properties:
-      ServiceToken:
-        Fn::GetAtt: CreateA2IResourcesLambda.Arn
-      StackName: !Ref AWS::StackName
-      SourceCodeHash: <A2I_RESOURCES_HASH_TOKEN>
-
-  GetWorkforceURLFunction:
-    Type: AWS::Serverless::Function
-    Condition: IsHITLEnabled
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W89
-            reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
-          - id: W92
-            reason: "Function does not require reserved concurrency as it scales based on demand"
-    # checkov:skip=CKV_AWS_116: "DLQ not required for Cfn Custom Resource function"
-    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
-    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
-    Properties:
-      PermissionsBoundary:
-        !If [
-          HasPermissionsBoundary,
-          !Ref PermissionsBoundaryArn,
-          !Ref AWS::NoValue,
-        ]
-      Handler: index.handler
-      Runtime: python3.12
-      CodeUri: src/lambda/get-workforce-url
-      Description: Lambda function to get the SageMaker Ground Truth workforce portal URL
-      MemorySize: 128
-      Timeout: 30
-      Environment:
-        Variables:
-          REGION:
-            Ref: AWS::Region
-          LOG_LEVEL: INFO
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - sagemaker:DescribeWorkteam
-              Resource: !If
-                - ShouldCreatePrivateWorkteam
-                - !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}"
-                - !Ref ExistingPrivateWorkforceArn
-
-  WorkforceURLResource:
-    Type: Custom::WorkforceURL
-    Condition: IsHITLEnabled
-    Properties:
-      ServiceToken:
-        Fn::GetAtt:
-          - GetWorkforceURLFunction
-          - Arn
-      WorkteamName: !If
-        - ShouldCreatePrivateWorkteam
-        - !GetAtt PrivateWorkteam.WorkteamName
-        - !Select [ 2, !Split [ "/", !Ref ExistingPrivateWorkforceArn ] ]
-      SourceCodeHash: <WORKFORCE_URL_HASH_TOKEN>
 
   ##########################################################################
   # AppSync GraphQL API
@@ -6919,31 +6511,276 @@ Resources:
       # previous version if build fails.
       CodeLocation: !Sub "arn:${AWS::Partition}:s3:::<ARTIFACT_BUCKET_TOKEN>/<ARTIFACT_PREFIX_TOKEN>/<WEBUI_ZIPFILE_TOKEN>"
 
+  ##########################################################################
+  # HITL User Management Lambda
+  ##########################################################################
+
+  UserManagementFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  UserManagementFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/user_management
+      Description: Lambda function for user management (create, delete, list users)
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          ADMIN_GROUP: !Ref AdminGroup
+          REVIEWER_GROUP: !Ref ReviewerGroup
+          USERS_TABLE_NAME: !Ref UsersTable
+          ALLOWED_SIGNUP_EMAIL_DOMAINS: !Ref AllowedSignUpEmailDomain
+      LoggingConfig:
+        LogGroup: !Ref UserManagementFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminDeleteUser
+                - cognito-idp:AdminAddUserToGroup
+                - cognito-idp:AdminRemoveUserFromGroup
+                - cognito-idp:AdminListGroupsForUser
+                - cognito-idp:ListUsers
+                - cognito-idp:ListUsersInGroup
+              Resource: !GetAtt UserPool.Arn
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  UserSyncFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  UserSyncFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for DynamoDB stream processing"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/user_sync
+      Description: Lambda function to sync DynamoDB user changes to Cognito
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          ADMIN_GROUP: !Ref AdminGroup
+          REVIEWER_GROUP: !Ref ReviewerGroup
+      LoggingConfig:
+        LogGroup: !Ref UserSyncFunctionLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminDeleteUser
+                - cognito-idp:AdminAddUserToGroup
+                - cognito-idp:AdminRemoveUserFromGroup
+              Resource: !GetAtt UserPool.Arn
+      Events:
+        DynamoDBStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt UsersTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 5
+
+  CompleteSectionReviewFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
+      RetentionInDays: !Ref LogRetentionDays
+
+  CompleteSectionReviewFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/complete_section_review
+      Description: Lambda function to mark HITL section review as complete
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          TRACKING_TABLE_NAME: !Ref TrackingTable
+          OUTPUT_BUCKET: !Ref OutputBucket
+      LoggingConfig:
+        LogGroup: !Ref CompleteSectionReviewFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTable
+        - S3CrudPolicy:
+            BucketName: !Ref OutputBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:GenerateDataKey
+              Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            - Effect: Allow
+              Action:
+                - states:SendTaskSuccess
+                - states:SendTaskFailure
+              Resource: "*"
+
+  HITLAppSyncServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "appsync.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: HITLLambdaInvoke
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt UserManagementFunction.Arn
+                  - !GetAtt CompleteSectionReviewFunction.Arn
+
+  UserManagementDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: UserManagementDataSource
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt HITLAppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt UserManagementFunction.Arn
+
+  CreateUserResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt UserManagementDataSource.Name
+      TypeName: Mutation
+      FieldName: createUser
+
+  DeleteUserResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt UserManagementDataSource.Name
+      TypeName: Mutation
+      FieldName: deleteUser
+
+  ListUsersResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt UserManagementDataSource.Name
+      TypeName: Query
+      FieldName: listUsers
+
+  CompleteSectionReviewDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: CompleteSectionReviewDataSource
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt HITLAppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt CompleteSectionReviewFunction.Arn
+
+  CompleteSectionReviewResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt CompleteSectionReviewDataSource.Name
+      TypeName: Mutation
+      FieldName: completeSectionReview
+
+  SkipAllSectionsReviewResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt CompleteSectionReviewDataSource.Name
+      TypeName: Mutation
+      FieldName: skipAllSectionsReview
+
+  ClaimReviewResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt CompleteSectionReviewDataSource.Name
+      TypeName: Mutation
+      FieldName: claimReview
+
+  ReleaseReviewResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: APPSYNCSTACK
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DataSourceName: !GetAtt CompleteSectionReviewDataSource.Name
+      TypeName: Mutation
+      FieldName: releaseReview
+
 Outputs:
   ApplicationWebURL:
     Description: Application Web URL
     Value: !Sub "https://${CloudFrontDistribution.DomainName}/"
-  SageMakerA2IReviewPortalURL:
-    Description: SageMaker HITL Review portal URL
-    Condition: IsHITLEnabled
-    Value:
-      Fn::GetAtt:
-        - WorkforceURLResource
-        - PortalURL
-  PrivateWorkteamArn:
-    Description: SageMaker A2I Private Workteam ARN (use this ARN when deploying additional patterns with HITL enabled)
-    Condition: IsHITLEnabled
-    Value: !If
-      - ShouldCreatePrivateWorkteam
-      - !Sub "arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/private-crowd/${PrivateWorkteam.WorkteamName}"
-      - !Ref ExistingPrivateWorkforceArn
-  LabelingConsoleURL:
-    Description: SageMaker Ground Truth console URL
-    Condition: IsHITLEnabled
-    Value:
-      Fn::GetAtt:
-        - WorkforceURLResource
-        - ConsoleURL
   S3InstallBucket:
     Description: Install S3 bucket name
     Value: !Ref InputBucket

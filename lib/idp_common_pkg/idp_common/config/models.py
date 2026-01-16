@@ -240,6 +240,10 @@ class AssessmentConfig(BaseModel):
     """Document assessment configuration"""
 
     enabled: bool = Field(default=True, description="Enable assessment")
+    hitl_enabled: bool = Field(
+        default=False,
+        description="Enable Human-in-the-Loop review for low confidence extractions",
+    )
     model: Optional[str] = Field(
         default=None, description="Bedrock model ID for assessment"
     )
@@ -315,13 +319,22 @@ Provide your assessment as a JSON object with this exact structure:
     top_p: float = Field(default=0.1, ge=0.0, le=1.0)
     top_k: float = Field(default=5.0, ge=0.0)
     max_tokens: int = Field(default=10000, gt=0)
-    default_confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    default_confidence_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Confidence threshold for assessment and HITL triggering",
+    )
     validation_enabled: bool = Field(default=False, description="Enable validation")
     image: ImageConfig = Field(default_factory=ImageConfig)
     granular: GranularAssessmentConfig = Field(default_factory=GranularAssessmentConfig)
 
     @field_validator(
-        "temperature", "top_p", "top_k", "default_confidence_threshold", mode="before"
+        "temperature",
+        "top_p",
+        "top_k",
+        "default_confidence_threshold",
+        mode="before",
     )
     @classmethod
     def parse_float(cls, v: Any) -> float:
@@ -1009,6 +1022,7 @@ class IDPConfig(BaseModel):
     criteria_types: Optional[List[str]] = Field(
         default=None, description="List of criteria types for validation"
     )
+    
     request_bucket: Optional[str] = Field(
         default=None, description="S3 bucket for user history/request data"
     )

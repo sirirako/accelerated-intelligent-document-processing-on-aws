@@ -179,40 +179,14 @@
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "FunctionName": "${HITLWaitFunctionArn}",
+                "FunctionName": "${ProcessResultsLambdaArn}",
                 "Payload": {
                     "taskToken.$": "$$.Task.Token",
-                    "Payload.$": "$"
+                    "action": "wait_for_hitl",
+                    "document.$": "$.Result.document"
                 }
             },
-            "ResultPath": "$.HITLWaitResult",
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Lambda.ServiceException",
-                        "Lambda.SdkClientException",
-                        "Lambda.TooManyRequestsException",
-                        "ServiceQuotaExceededException",
-                        "ThrottlingException",
-                        "ProvisionedThroughputExceededException",
-                        "RequestLimitExceeded",
-                        "ServiceUnavailableException"
-                    ],
-                    "IntervalSeconds": 2,
-                    "MaxAttempts": 10,
-                    "BackoffRate": 2
-                }
-            ],
-            "Next": "HITLStatusUpdate"
-        },
-        "HITLStatusUpdate": {
-            "Type": "Task",
-            "Resource": "${HITLStatusUpdateFunctionArn}",
-            "Parameters": {
-                "Result.$": "$.Result",
-                "HITLWaitResult.$": "$.HITLWaitResult"
-            },
-            "ResultPath": "$.HITLStatusResult",
+            "ResultPath": "$.HITLResult",
             "Retry": [
                 {
                     "ErrorEquals": [

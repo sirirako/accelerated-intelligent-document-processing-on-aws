@@ -1,39 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React from 'react';
-import { Link } from '@cloudscape-design/components';
+import { StatusIndicator } from '@cloudscape-design/components';
 
 /**
- * Shared function to render HITL (A2I) status consistently across all components
+ * Render HITL status consistently across all components
  * @param {Object} item - Document item with HITL fields
  * @returns {string|JSX.Element} - Rendered HITL status
  */
 export const renderHitlStatus = (item) => {
   if (!item.hitlTriggered) {
-    return 'N/A';
+    return <StatusIndicator type="stopped">N/A</StatusIndicator>;
   }
 
-  // Check for failed status first (handle both "Failed" and "FAILED")
-  if (item.hitlStatus && (item.hitlStatus.toLowerCase() === 'failed' || item.hitlStatus === 'Failed' || item.hitlStatus === 'FAILED')) {
-    return 'A2I Review Failed';
+  // Check for failed status
+  if (item.hitlStatus && item.hitlStatus.toLowerCase() === 'failed') {
+    return <StatusIndicator type="error">Review Failed</StatusIndicator>;
+  }
+
+  // Check for skipped status
+  if (item.hitlStatus && item.hitlStatus.toLowerCase() === 'skipped') {
+    return <StatusIndicator type="stopped">Review Skipped</StatusIndicator>;
   }
 
   // Check for completed status
   if (item.hitlCompleted || (item.hitlStatus && item.hitlStatus.toLowerCase() === 'completed')) {
-    return 'A2I Review Completed';
+    return <StatusIndicator type="success">Review Completed</StatusIndicator>;
   }
 
-  // If we have a review URL, show link
-  if (item.hitlReviewURL) {
-    return (
-      <Link href={item.hitlReviewURL} external>
-        A2I Review In Progress
-      </Link>
-    );
-  }
-
-  // If HITL is triggered but no URL, show "In Progress" without link
-  return 'A2I Review In Progress';
+  // HITL triggered but not completed - pending review
+  return <StatusIndicator type="pending">Pending Review</StatusIndicator>;
 };
 
 export default renderHitlStatus;
