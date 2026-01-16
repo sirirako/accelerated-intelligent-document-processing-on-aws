@@ -64,6 +64,7 @@ class GovCloudTemplateGenerator:
             'CognitoAuthorizedRole',
             'AdminUser',
             'AdminGroup',
+            'ReviewerGroup',  # HITL reviewer group - depends on UserPool
             'AdminUserToGroupAttachment',
             'GetDomain',  # This depends on Cognito UserPoolDomain - remove it
             'CognitoUserPoolEmailDomainVerifyFunction',
@@ -112,7 +113,30 @@ class GovCloudTemplateGenerator:
             'CreateA2IResourcesLambda',
             'A2IResourcesCustomResource',
             'GetWorkforceURLFunction',
-            'WorkforceURLResource'
+            'WorkforceURLResource',
+            # Additional HITL user management resources that depend on UserPool
+            'UsersTable',
+            'UserManagementFunctionLogGroup',
+            'UserManagementFunction',
+            'UserSyncFunctionLogGroup',
+            'UserSyncFunction',
+            'CompleteSectionReviewFunctionLogGroup',
+            'CompleteSectionReviewFunction',
+            'HITLAppSyncServiceRole',
+            'UserManagementDataSource',
+            'CreateUserResolver',
+            'DeleteUserResolver',
+            'ListUsersResolver',
+            'CompleteSectionReviewDataSource',
+            'CompleteSectionReviewResolver',
+            'SkipAllSectionsReviewResolver',
+            'ClaimReviewResolver',
+            'ReleaseReviewResolver'
+        }
+        
+        # Knowledge Base resources (not supported in GovCloud due to S3 Vectors service unavailability)
+        self.kb_resources = {
+            'DOCUMENTKB'  # Bedrock Knowledge Base nested stack
         }
         
         # Functions that are purely AppSync-dependent and should be removed for headless GovCloud deployment
@@ -296,7 +320,8 @@ class GovCloudTemplateGenerator:
             self.auth_resources | 
             self.waf_resources | 
             self.agent_resources |
-            self.hitl_resources
+            self.hitl_resources |
+            self.kb_resources
         )
         
         # Also collect conditions that will be removed for resource dependency checking
@@ -596,6 +621,32 @@ class GovCloudTemplateGenerator:
         
         resources = template.get('Resources', {})
         
+        # Fix GraphQLApi - remove Cognito auth configuration since UserPool is removed
+        # Note: GraphQLApi itself is NOT removed, but we need to clean its UserPoolConfig
+        if 'GraphQLApi' in resources:
+            graphql_api = resources['GraphQLApi']
+            if 'Properties' in graphql_api:
+                # Remove Cognito UserPool auth configuration
+                if 'UserPoolConfig' in graphql_api['Properties']:
+                    del graphql_api['Properties']['UserPoolConfig']
+                    self.logger.debug("Removed UserPoolConfig from GraphQLApi")
+                
+                # Update AuthenticationType to AWS_IAM since Cognito is removed
+                if 'AuthenticationType' in graphql_api['Properties']:
+                    graphql_api['Properties']['AuthenticationType'] = 'AWS_IAM'
+                    self.logger.debug("Changed GraphQLApi AuthenticationType to AWS_IAM")
+                
+                # Keep only IAM in AdditionalAuthenticationProviders if present
+                if 'AdditionalAuthenticationProviders' in graphql_api['Properties']:
+                    auth_providers = graphql_api['Properties']['AdditionalAuthenticationProviders']
+                    iam_providers = [p for p in auth_providers if p.get('AuthenticationType') == 'AWS_IAM']
+                    if iam_providers:
+                        graphql_api['Properties']['AdditionalAuthenticationProviders'] = iam_providers
+                    else:
+                        # If no IAM provider, remove the list entirely
+                        del graphql_api['Properties']['AdditionalAuthenticationProviders']
+                    self.logger.debug("Cleaned AdditionalAuthenticationProviders in GraphQLApi")
+        
         # Remove CloudFront policy statements from remaining resources
         template = self.clean_cloudfront_policy_statements(template)
         
@@ -775,6 +826,9 @@ class GovCloudTemplateGenerator:
             self.logger.warning("⚠️  Fixed ShouldUseDocumentKnowledgeBase condition reference")
             self.logger.warning("   Note: Knowledge Base functionality disabled for GovCloud compatibility")
         
+        # Re-fetch resources after potential yaml reload
+        resources = template.get('Resources', {})
+        
         # Clean up outputs that reference removed resources
         outputs = template.get('Outputs', {})
         outputs_to_clean = []
@@ -799,6 +853,31 @@ class GovCloudTemplateGenerator:
             if output_name in outputs:
                 del outputs[output_name]
                 self.logger.debug(f"Removed output {output_name} (references removed resource)")
+        
+        # Fix UpdateSettingsValues custom resource - remove DOCUMENTKB and removed parameter references
+        # Need to re-reference resources since template may have been reloaded above
+        resources = template.get('Resources', {})
+        if 'UpdateSettingsValues' in resources:
+            update_settings = resources['UpdateSettingsValues']
+            if 'Properties' in update_settings and 'SettingsKeyValuePairs' in update_settings['Properties']:
+                settings_kvp = update_settings['Properties']['SettingsKeyValuePairs']
+                
+                # Replace KnowledgeBaseId which uses !If with removed condition
+                # The structure is: Fn::If: [ShouldCreateDocumentKnowledgeBase, Fn::GetAtt: [DOCUMENTKB, Outputs.KnowledgeBaseID], '']
+                # We need to replace this entire structure with just an empty string
+                if 'KnowledgeBaseId' in settings_kvp:
+                    settings_kvp['KnowledgeBaseId'] = ''
+                    self.logger.debug("Replaced KnowledgeBaseId with empty string (removed DOCUMENTKB reference)")
+                
+                # Replace ShouldUseDocumentKnowledgeBase - set to False
+                if 'ShouldUseDocumentKnowledgeBase' in settings_kvp:
+                    settings_kvp['ShouldUseDocumentKnowledgeBase'] = False
+                    self.logger.debug("Set ShouldUseDocumentKnowledgeBase to False")
+                
+                # Remove AllowedSignUpEmailDomains since that parameter was removed
+                if 'AllowedSignUpEmailDomains' in settings_kvp:
+                    del settings_kvp['AllowedSignUpEmailDomains']
+                    self.logger.debug("Removed AllowedSignUpEmailDomains from UpdateSettingsValues (parameter removed)")
         
         return template
 
