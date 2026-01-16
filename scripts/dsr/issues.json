@@ -19846,7 +19846,7 @@
     "fix": "Create a unique IAM execution role for this Lambda function instead of sharing role GetAtt:StartIngestionJobFunctionRole with . Lambda functions should have a 1:1 relationship with IAM execution roles.",
     "priority": "HIGH",
     "check_id": "LAMBDA-012",
-    "status": "Suppressed"
+    "status": "reopened"
   },
   {
     "source": "Checkov",
@@ -23262,7 +23262,7 @@
     "fix": "Create a unique IAM execution role for this Lambda function instead of sharing role GetAtt:StartIngestionJobFunctionRole with . Lambda functions should have a 1:1 relationship with IAM execution roles.",
     "priority": "HIGH",
     "check_id": "LAMBDA-012",
-    "status": "Suppressed"
+    "status": "reopened"
   },
   {
     "source": "Checkov",
@@ -25090,7 +25090,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "Open"
+    "status": "reopened"
   },
   {
     "source": "Semgrep",
@@ -25100,7 +25100,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "Open"
+    "status": "reopened"
   },
   {
     "source": "Semgrep",
@@ -43085,11 +43085,12 @@
     "check_id": "CKV_AWS_163",
     "priority": "HIGH",
     "fix": "Enable ECR image scanning on push by setting 'ScanOnPush: true' in the ImageScanningConfiguration property of AWS::ECR::Repository resource. This automatically scans container images for vulnerabilities when they are pushed to the repository, enhancing container security.",
-    "status": "Open",
+    "status": "suppressed",
     "stack": "patterns-pattern-2-template",
     "resourceType": "ECR Repository",
     "resourceName": "ECRRepository",
-    "isCustomResource": false
+    "isCustomResource": false,
+    "suppressionReason": "This is a false-positive"
   },
   {
     "source": "security-matrix",
@@ -44214,8 +44215,9 @@
     "fix": "Configure CloudTrail to capture DynamoDB data plane events.",
     "priority": "HIGH",
     "check_id": "DDB-002",
-    "status": "Open",
-    "isCustomResource": false
+    "status": "suppressed",
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "security-matrix",
@@ -44226,8 +44228,9 @@
     "fix": "Configure CloudTrail to capture DynamoDB data plane events.",
     "priority": "HIGH",
     "check_id": "DDB-002",
-    "status": "Open",
-    "isCustomResource": false
+    "status": "suppressed",
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "security-matrix",
@@ -44238,8 +44241,9 @@
     "fix": "Configure CloudTrail to capture DynamoDB data plane events.",
     "priority": "HIGH",
     "check_id": "DDB-002",
-    "status": "Open",
-    "isCustomResource": false
+    "status": "suppressed",
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "security-matrix",
@@ -46222,7 +46226,8 @@
     "check_id": "B605",
     "priority": "High",
     "references": "https://bandit.readthedocs.io/en/1.9.2/plugins/b605_start_process_with_a_shell.html",
-    "status": "Open"
+    "status": "suppressed",
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "Semgrep",
@@ -51335,7 +51340,7 @@
     "check_id": "trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal",
     "priority": "MEDIUM",
     "references": "https://docs.python.org/3/library/tarfile.html#tarfile.TarFile.extractall",
-    "status": "Open"
+    "status": "resolved"
   },
   {
     "source": "Semgrep",
@@ -51345,7 +51350,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "resolved"
+    "status": "reopened"
   },
   {
     "source": "Semgrep",
@@ -51355,7 +51360,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "resolved"
+    "status": "reopened"
   },
   {
     "source": "Semgrep",
@@ -51365,7 +51370,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "resolved"
+    "status": "reopened"
   },
   {
     "source": "Semgrep",
@@ -51375,7 +51380,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "resolved"
+    "status": "reopened"
   },
   {
     "source": "Semgrep",
@@ -51455,7 +51460,7 @@
     "check_id": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
     "priority": "LOW",
     "references": "https://cwe.mitre.org/data/definitions/134.html",
-    "status": "Open"
+    "status": "resolved"
   },
   {
     "source": "Bandit",
@@ -51466,7 +51471,7 @@
     "check_id": "B110",
     "priority": "Low",
     "references": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
-    "status": "Open"
+    "status": "resolved"
   },
   {
     "source": "Bandit",
@@ -51477,7 +51482,7 @@
     "check_id": "B311",
     "priority": "Low",
     "references": "https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_calls.html#b311-random",
-    "status": "Open"
+    "status": "resolved"
   },
   {
     "source": "Bandit",
@@ -57621,7 +57626,7 @@
     "check_id": "B202",
     "priority": "High",
     "references": "https://bandit.readthedocs.io/en/1.9.2/plugins/b202_tarfile_unsafe_members.html",
-    "status": "Open"
+    "status": "fixed"
   },
   {
     "source": "Bandit",
@@ -58678,11 +58683,12 @@
     "check_id": "CKV_AWS_163",
     "priority": "HIGH",
     "fix": "Enable ECR image scanning on push by setting 'ScanOnPush: true' in the ImageScanningConfiguration property of AWS::ECR::Repository resource. This automatically scans container images for vulnerabilities when they are pushed to the repository, enhancing container security.",
-    "status": "Open",
+    "status": "suppressed",
     "stack": "patterns-pattern-1-template",
     "resourceType": "ECR Repository",
     "resourceName": "ECRRepository",
-    "isCustomResource": false
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "Checkov",
@@ -61450,11 +61456,12 @@
     "check_id": "CKV_AWS_163",
     "priority": "HIGH",
     "fix": "Enable ECR image scanning on push by setting 'ScanOnPush: true' in the ImageScanningConfiguration property of AWS::ECR::Repository resource. This automatically scans container images for vulnerabilities when they are pushed to the repository, enhancing container security.",
-    "status": "Open",
+    "status": "suppressed",
     "stack": "patterns-pattern-3-template",
     "resourceType": "ECR Repository",
     "resourceName": "ECRRepository",
-    "isCustomResource": false
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "Checkov",
@@ -63917,8 +63924,9 @@
     "fix": "Add TracingConfig property to the Lambda function configuration. For CloudFormation templates, ensure the Lambda function's exeuction role has the AWSXrayDaemonWriteAccess policy attached.",
     "priority": "HIGH",
     "check_id": "LAMBDA-004",
-    "status": "Open",
-    "isCustomResource": false
+    "status": "suppressed",
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "security-matrix",
@@ -63929,8 +63937,9 @@
     "fix": "Create CloudWatch alarms for the following Lambda metrics: Errors,Throttles,Duration,Invocations,ConcurrentExecutions,DeadLetterErrors. Configure alarm actions (e.g., SNS notifications) to assign an owner who will monitor and respond to incidents.",
     "priority": "HIGH",
     "check_id": "LAMBDA-011",
-    "status": "Open",
-    "isCustomResource": false
+    "status": "suppressed",
+    "isCustomResource": false,
+    "suppressionReason": "This is not required/permitted by the customer"
   },
   {
     "source": "Checkov",
@@ -64011,7 +64020,40 @@
     "fix": "Create a unique IAM execution role for this Lambda function instead of sharing role GetAtt:StartIngestionJobFunctionRole with . Lambda functions should have a 1:1 relationship with IAM execution roles.",
     "priority": "HIGH",
     "check_id": "LAMBDA-012",
-    "status": "Open",
+    "status": "reopened",
     "isCustomResource": false
+  },
+  {
+    "source": "Bandit",
+    "path": "idp_cli/idp_cli/deployer.py",
+    "line": 1236,
+    "issue": "Try, Except, Pass detected.",
+    "fix": "Replace bare `except: pass` blocks with specific exception handling. Either handle specific exceptions appropriately or use logging to record the exception details.",
+    "check_id": "B110",
+    "priority": "Low",
+    "references": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
+    "status": "Open"
+  },
+  {
+    "source": "Bandit",
+    "path": "idp_cli/idp_cli/deployer.py",
+    "line": 1659,
+    "issue": "Standard pseudo-random generators are not suitable for security/cryptographic purposes.",
+    "fix": "Replace `random` module with `secrets` module for cryptographic purposes. Use `secrets.randbelow()`, `secrets.token_bytes()`, or `secrets.token_hex()` for security-sensitive random values.",
+    "check_id": "B311",
+    "priority": "Low",
+    "references": "https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_calls.html#b311-random",
+    "status": "Open"
+  },
+  {
+    "source": "Bandit",
+    "path": "src/lambda/rvl_cdip_nmp_deployer/index.py",
+    "line": 221,
+    "issue": "Found tarfile.extractall(members=?) but couldn't identify the type of members. Check if the members were properly validated {'Other': 'safe_members'}).",
+    "fix": "Use `tarfile.extractall()` with member filtering or `tarfile.extract()` with path validation to prevent directory traversal attacks. Validate member paths before extraction.",
+    "check_id": "B202",
+    "priority": "Medium",
+    "references": "https://bandit.readthedocs.io/en/1.9.2/plugins/b202_tarfile_unsafe_members.html",
+    "status": "Open"
   }
 ]
