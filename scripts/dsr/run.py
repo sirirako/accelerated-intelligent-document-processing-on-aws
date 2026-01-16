@@ -29,7 +29,8 @@ def main():
     print("Running DSR scan...")
     
     # Always run DSR assess - it will be faster on subsequent runs
-    project_path = "/home/ec2-user/idp/genaiic-idp-accelerator"
+    project_path = str(project_root)
+    print(f"Using project path: {project_path}")
     
     if not run_command(f"./dsr assess -p {project_path} -l aws -y --no-license-update", cwd=dsr_dir):
         print("DSR scan failed")
