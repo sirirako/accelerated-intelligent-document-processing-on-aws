@@ -149,6 +149,78 @@ def load_manifest() -> Dict[str, Any]:
     return manifest
 
 
+def is_safe_tar_member(member: tarfile.TarInfo, extract_dir: Path) -> bool:
+    """
+    Validate that a tar member is safe to extract.
+    
+    Checks for:
+    - Absolute paths
+    - Path traversal attempts (using ..)
+    - Symbolic links pointing outside extraction directory
+    
+    Returns:
+        True if the member is safe to extract, False otherwise
+    """
+    # Reject absolute paths
+    if os.path.isabs(member.name):
+        logger.warning(f"Rejecting absolute path in tar: {member.name}")
+        return False
+    
+    # Normalize the path and check for traversal
+    # This handles cases like "foo/../../../etc/passwd"
+    target_path = os.path.normpath(os.path.join(extract_dir, member.name))
+    
+    # Ensure the target path is within the extraction directory
+    try:
+        # resolve() would follow symlinks, but we use normpath + comparison
+        # to check the path stays within extract_dir
+        extract_dir_str = str(extract_dir.resolve())
+        if not target_path.startswith(extract_dir_str + os.sep) and target_path != extract_dir_str:
+            logger.warning(f"Rejecting path traversal attempt in tar: {member.name}")
+            return False
+    except (ValueError, RuntimeError) as e:
+        logger.warning(f"Rejecting member due to path resolution error: {member.name}, {e}")
+        return False
+    
+    # Check symbolic links
+    if member.issym() or member.islnk():
+        # For symlinks, check if the link target would escape the extraction directory
+        if member.issym():
+            link_target = member.linkname
+            if os.path.isabs(link_target):
+                logger.warning(f"Rejecting symlink with absolute target: {member.name} -> {link_target}")
+                return False
+            
+            # Resolve the symlink target relative to its location
+            link_dir = os.path.dirname(target_path)
+            resolved_target = os.path.normpath(os.path.join(link_dir, link_target))
+            
+            if not resolved_target.startswith(extract_dir_str + os.sep) and resolved_target != extract_dir_str:
+                logger.warning(f"Rejecting symlink escaping extraction dir: {member.name} -> {link_target}")
+                return False
+    
+    return True
+
+
+def safe_extract_tar(tar: tarfile.TarFile, extract_dir: Path) -> None:
+    """
+    Safely extract tar members after validating each one.
+    
+    Args:
+        tar: Open tarfile object
+        extract_dir: Directory to extract to
+    """
+    safe_members = []
+    for member in tar.getmembers():
+        if is_safe_tar_member(member, extract_dir):
+            safe_members.append(member)
+        else:
+            logger.warning(f"Skipping unsafe tar member: {member.name}")
+    
+    logger.info(f"Extracting {len(safe_members)} safe members from tar archive")
+    tar.extractall(path=extract_dir, members=safe_members)
+
+
 def download_and_extract_dataset(extract_dir: Path) -> Path:
     """
     Download data.tar.gz from HuggingFace and extract to temporary directory.
@@ -168,7 +240,7 @@ def download_and_extract_dataset(extract_dir: Path) -> Path:
     
     logger.info(f"Extracting to: {extract_dir}")
     with tarfile.open(fileobj=tar_bytes, mode='r:gz') as tar:
-        tar.extractall(path=extract_dir)
+        safe_extract_tar(tar, extract_dir)
     
     # Find the assets directory - handle two common structures:
     # 1. Tar contains wrapper directory with doc type folders inside
