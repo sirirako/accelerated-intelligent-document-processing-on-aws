@@ -115,13 +115,23 @@ def extract_dsr(archive_path, dsr_dir):
     
     print(f"Extracting: {filename}")
     
+    success = False
     if filename.endswith(".tar.gz"):
-        return run_command(f"tar -xzf {filename}", cwd=dsr_dir)
+        success = run_command(f"tar -xzf {filename}", cwd=dsr_dir)
     elif filename.endswith(".zip"):
-        return run_command(f"unzip -o {filename}", cwd=dsr_dir)
+        success = run_command(f"unzip -o {filename}", cwd=dsr_dir)
+    else:
+        print(f"Unsupported archive format: {filename}")
+        return False
     
-    print(f"Unsupported archive format: {filename}")
-    return False
+    # Remove macOS quarantine attribute if on macOS
+    if success and platform.system().lower() == "darwin":
+        dsr_executable = dsr_dir / "dsr"
+        if dsr_executable.exists():
+            print("Removing macOS quarantine attribute...")
+            run_command(f"xattr -d com.apple.quarantine ./dsr", cwd=dsr_dir)
+    
+    return success
 
 
 def main():
