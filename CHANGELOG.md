@@ -3,6 +3,8 @@ SPDX-License-Identifier: MIT-0
 
 # Changelog
 
+## [Unreleased]
+
 ## [0.4.11]
 
 ### Added
@@ -19,14 +21,24 @@ SPDX-License-Identifier: MIT-0
     - Skip All Reviews (Admin only) to bypass pending reviews and continue workflow
     - Release Review to unlock document for other reviewers
   - **Real-time Status Updates**: HITL Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
-  - **Confidence-Based Triggering**: HITL automatically triggered when extraction confidence falls below configured threshold
   - See [Human-in-the-Loop Review Documentation](./docs/human-review.md) for detailed workflow information
-  - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver more sophisticated review capabilities with the ability to update document classification, extraction, and resubmit in a single integrated approach.
-
-- **User Management for HITL Personas**
-  - New User Management page for Admin users to create and manage Reviewer accounts
+  - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver futher improvements to human review capabilities with the ability to update document classification, extraction, and resubmit for incremental processing as part of a holistic approach to huiman reviews.
+- **User Management**
+  - New User Management page for Admin users to create and manage additional Admin & Reviewer accounts
   - Cognito user groups (Admin, Reviewer) for role-based access control
-  - Automatic user synchronization between Cognito and application
+  - Automatic user synchronization with Cognito
+
+- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
+  - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
+  - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
+  - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing
+  - **Packet Statistics**: 7,330 total pages across 2,027 document sections with average of 14.7 pages and 4.1 sections per packet
+  - **Ground Truth Included**: Page-level classification and document boundary information for each packet. Extraction ground truth is not included.
+  - **Evaluation Capabilities**: Enables testing of page-level classification accuracy, document splitting accuracy, and split order preservation. Does NOT enable testing of extraction accuracy since there is no extraction ground truth for this data set
+  - Test set available in Test Studio UI alongside RealKIE-FCC-Verified and OmniAI-OCR-Benchmark datasets
+  - Corresponding configs available in Configuration Library
+  - Ideal for evaluating document splitting and classification accuracy in complex multi-document scenarios
+
 
 ### Changed
 
@@ -42,25 +54,6 @@ SPDX-License-Identifier: MIT-0
   - Removed A2I-related Lambda functions (`create_a2i_resources`, `get-workforce-url`)
   - Removed `EnableHITL` and `PrivateWorkteamArn` CloudFormation parameters
 
-### Upgrade Notes
-
-- **⚠️ IMPORTANT: Upgrading from v0.4.11 or earlier**
-  - **Complete all pending HITL workflows before upgrading**: Any documents waiting in SageMaker A2I human review loops will be orphaned as A2I resources are deleted during the upgrade
-  - **Re-enable HITL after upgrade**: If you previously had `EnableHITL=true` CloudFormation parameter, you must now enable HITL through the Configuration page in the Web UI (Assessment & HITL Configuration → Enable HITL)
-  - **User migration**: Existing Cognito users will need to be assigned to Admin or Reviewer groups for HITL access 
-
-### Added
-
-- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
-  - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
-  - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
-  - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing
-  - **Packet Statistics**: 7,330 total pages across 2,027 document sections with average of 14.7 pages and 4.1 sections per packet
-  - **Ground Truth Included**: Page-level classification and document boundary information for each packet. Extraction ground truth is not included.
-  - **Evaluation Capabilities**: Enables testing of page-level classification accuracy, document splitting accuracy, and split order preservation. Does NOT enable testing of extraction accuracy since there is no extraction ground truth for this data set
-  - Test set available in Test Studio UI alongside RealKIE-FCC-Verified and OmniAI-OCR-Benchmark datasets
-  - Corresponding configs available in Configuration Library
-  - Ideal for evaluating document splitting and classification accuracy in complex multi-document scenarios
 
 ### Changed
 
@@ -100,6 +93,7 @@ SPDX-License-Identifier: MIT-0
   - Updated build system to build only two categories concurrently (nested + patterns) instead of three (nested + patterns + options)
   - **Breaking Change**: Directory paths changed - `options/` → `nested/`. Existing work-in-progress branches will have merge conflicts in directory structure.
 
+
 ### Fixed
 
 - **Fixed page_indices Reset Bug in Multi-Section Documents**
@@ -110,6 +104,21 @@ SPDX-License-Identifier: MIT-0
   
 - **IDP CLI Stack Parameter Preservation During Updates**
   - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+
+
+### Upgrade Notes
+
+- **⚠️ IMPORTANT: Upgrading from v0.4.11 or earlier**
+  - **Complete all pending HITL workflows before upgrading**: Any documents waiting in SageMaker A2I human review loops will be orphaned as A2I resources are deleted during the upgrade
+  - **Re-enable HITL after upgrade**: If you previously had `EnableHITL=true` CloudFormation parameter, you must now enable HITL through the Configuration page in the Web UI (Assessment & HITL Configuration → Enable HITL)
+  - **User migration**: Existing Cognito users will need to be assigned to Admin or Reviewer groups for HITL access 
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.11.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.11.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.11.yaml`
+
+
 
 ## [0.4.10]
 
