@@ -92,8 +92,33 @@ class StackDeployer:
             current_params = self._get_stack_parameters(stack_name)
             cfn_parameters = []
 
+            # Get valid parameters from the new template to detect deprecated parameters
+            # This prevents errors when updating to a template that has removed parameters
+            template_body_for_validation = template_param.get("TemplateBody")
+            template_url_for_validation = template_param.get("TemplateURL")
+            valid_template_params = self._get_template_parameters(
+                template_body=template_body_for_validation,
+                template_url=template_url_for_validation,
+            )
+
+            # Identify deprecated parameters (exist in stack but not in new template)
+            deprecated_params = set()
+            if (
+                valid_template_params
+            ):  # Only filter if we successfully got template params
+                deprecated_params = set(current_params.keys()) - valid_template_params
+                if deprecated_params:
+                    logger.warning(
+                        f"Dropping deprecated parameters not in new template: {deprecated_params}"
+                    )
+
             # First, handle all existing parameters
             for param_key in current_params.keys():
+                # Skip deprecated parameters that no longer exist in the new template
+                if param_key in deprecated_params:
+                    logger.info(f"Skipping deprecated parameter: {param_key}")
+                    continue
+
                 if param_key in (parameters or {}):
                     # User provided new value
                     cfn_parameters.append(
@@ -247,6 +272,50 @@ class StackDeployer:
         except Exception as e:
             logger.warning(f"Could not get stack parameters: {e}")
             return {}
+
+    def _get_template_parameters(
+        self,
+        template_body: Optional[str] = None,
+        template_url: Optional[str] = None,
+    ) -> set:
+        """
+        Get valid parameter keys from a CloudFormation template using validate_template API.
+
+        This is used to detect deprecated parameters that exist in an existing stack
+        but are no longer present in a new template version.
+
+        Args:
+            template_body: Template body string (optional)
+            template_url: Template URL in S3 (optional)
+
+        Returns:
+            Set of valid parameter keys in the template
+        """
+        try:
+            if template_url:
+                response = self.cfn.validate_template(TemplateURL=template_url)
+            elif template_body:
+                response = self.cfn.validate_template(TemplateBody=template_body)
+            else:
+                logger.warning("No template provided for parameter validation")
+                return set()
+
+            # Extract parameter keys from validation response
+            parameters = response.get("Parameters", [])
+            param_keys = {
+                param.get("ParameterKey")
+                for param in parameters
+                if param.get("ParameterKey")
+            }
+
+            logger.debug(f"Template has {len(param_keys)} parameters: {param_keys}")
+            return param_keys
+
+        except Exception as e:
+            logger.warning(f"Could not validate template parameters: {e}")
+            # Return empty set on error - this will cause all existing params to be preserved
+            # which maintains backward compatibility if validation fails
+            return set()
 
     def _wait_for_completion(self, stack_name: str, operation: str) -> Dict:
         """

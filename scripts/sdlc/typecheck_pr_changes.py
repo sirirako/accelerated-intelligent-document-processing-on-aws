@@ -8,14 +8,14 @@ This script enables incremental type checking for PRs by:
 4. Ensuring new code doesn't introduce type errors
 
 Usage:
-    python scripts/typecheck_pr_changes.py [target_branch]
+    python scripts/sdlc/typecheck_pr_changes.py [target_branch]
 
     target_branch: Branch to compare against (default: main)
 
 Examples:
-    python scripts/typecheck_pr_changes.py main
-    python scripts/typecheck_pr_changes.py develop
-    python scripts/typecheck_pr_changes.py origin/main
+    python scripts/sdlc/typecheck_pr_changes.py main
+    python scripts/sdlc/typecheck_pr_changes.py develop
+    python scripts/sdlc/typecheck_pr_changes.py origin/main
 """
 
 import json

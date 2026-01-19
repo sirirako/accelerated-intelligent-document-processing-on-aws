@@ -57,7 +57,7 @@ lint-cicd:
 # Validate AWS CodeBuild buildspec files
 validate-buildspec:
 	@echo "Validating buildspec files..."
-	@python3 scripts/validate_buildspec.py patterns/*/buildspec.yml || \
+	@python3 scripts/sdlc/validate_buildspec.py patterns/*/buildspec.yml || \
 		(echo -e "$(RED)ERROR: Buildspec validation failed!$(NC)" && exit 1)
 	@echo -e "$(GREEN)✅ All buildspec files are valid!$(NC)"
 
@@ -107,7 +107,7 @@ typecheck-stats:
 TARGET_BRANCH ?= main
 typecheck-pr:
 	@echo "Type checking changed files against $(TARGET_BRANCH)..."
-	python3 scripts/typecheck_pr_changes.py $(TARGET_BRANCH)
+	python3 scripts/sdlc/typecheck_pr_changes.py $(TARGET_BRANCH)
 
 
 ui-lint:

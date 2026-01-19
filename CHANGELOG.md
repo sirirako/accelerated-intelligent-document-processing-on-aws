@@ -5,6 +5,30 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **IDP CLI New Commands for Operations and Testing**
+  - Added `idp-cli load-test` command for throughput testing with configurable document rates (1-10,000/min) and dynamic schedule support via CSV files
+  - Added `idp-cli stop-workflows` command for batch workflow termination with interactive confirmation and dry-run mode
+  - Added `idp-cli remove-deleted-stack-resources` command for discovering and removing orphaned resources (CloudFront distributions, response header policies, CloudWatch log groups, AppSync APIs, IAM policies, S3 buckets, DynamoDB tables) left behind after IDP stacks are deleted, with multi-region stack discovery, interactive confirmation with "yes/skip all of type" options, and configurable `--check-stack-regions` option
+  - Comprehensive unit tests added for all new CLI modules
+
+### Changed
+
+- **Scripts Directory Reorganization**
+  - Consolidated development environment setup scripts into `scripts/setup/` subdirectory
+  - Moved CI/CD scripts (`codebuild_deployment.py`, `integration_test_deployment.py`, `validate_buildspec.py`, `typecheck_pr_changes.py`, `validate_service_role_permissions.py`) into `scripts/sdlc/` subdirectory
+  - Updated all references in `.gitlab-ci.yml`, `Makefile`, and documentation
+
+### Removed
+
+- **Obsolete Scripts Migrated to IDP CLI**
+  - Removed `simulate_load.py` and `simulate_dynamic_load.py` (replaced by `idp-cli load-test`)
+  - Removed `stop_workflows.sh` (replaced by `idp-cli stop-workflows`)
+  - Removed `cleanup_orphaned_resources.py` (replaced by `idp-cli remove-deleted-stack-resources`)
+  - Removed `lookup_file_status.sh` (replaced by `idp-cli status --document-id`)
+  - Removed unused utilities: `add_lambda_layers.py`, `test_layer_build.py`, `test_pip_extras.py`, `compare_json_files.py`, `benchmark_utils/`
+
 ## [0.4.11]
 
 ### Added

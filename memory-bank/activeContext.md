@@ -1,133 +1,89 @@
 # Active Context
 
-## Current Work Focus
-Lambda Layer x86_64 Platform Fix - COMPLETED
+## Current Focus
+Scripts directory cleanup and idp-cli enhancement completed.
 
-## Recent Fix: pydantic_core Architecture Mismatch (2026-01-07)
+## Recent Changes (January 2026)
 
-### Problem
-Lambda function `GetStepFunctionExecutionResolverFunction` (and potentially others) failed with:
+### Scripts Directory Reorganization
+1. **Created `scripts/setup/` subdirectory** - Moved all development environment setup scripts:
+   - `mac_setup.sh`
+   - `dev_setup_ubuntu.sh`
+   - `dev_setup_al2023.sh`
+   - `wsl_setup.sh`
+   - Added `README.md` documenting each script
+
+2. **Removed obsolete scripts**:
+   - `add_lambda_layers.py` - One-time migration script, already executed
+   - `test_layer_build.py` - Build testing no longer needed
+   - `test_pip_extras.py` - Pip extras testing completed
+
+3. **Created `scripts/README.md`** - Comprehensive documentation of all scripts and their purposes
+
+4. **Moved `dynamic_schedule.csv`** to `idp_cli/examples/load-test-schedule.csv`
+
+### New IDP CLI Commands
+Added three new operational commands to the CLI:
+
+1. **`idp-cli stop-workflows`** - Stop running workflows
+   - Purges SQS queue
+   - Stops Step Function executions
+   - Options: `--skip-purge`, `--skip-stop`
+
+2. **`idp-cli load-test`** - Load testing utility
+   - Copies files to input bucket at specified rates
+   - Supports constant rate or scheduled rates
+   - Options: `--rate`, `--duration`, `--schedule`
+
+3. **`idp-cli cleanup-orphaned`** - Clean up orphaned resources
+   - Delegates to existing `cleanup_orphaned_resources.py`
+   - Options: `--dry-run`, `--profile`
+
+### Documentation Updates
+- Updated `docs/idp-cli.md` with new commands documentation
+- Updated `scripts/README.md` with complete directory documentation
+- Added `scripts/setup/README.md` for setup scripts
+
+## Current Scripts Directory Structure
 ```
-[ERROR] Runtime.ImportModuleError: Unable to import module 'index': No module named 'pydantic_core._pydantic_core'
+scripts/
+├── setup/                     # Dev environment setup
+│   ├── README.md
+│   ├── dev_setup_al2023.sh
+│   ├── dev_setup_ubuntu.sh
+│   ├── mac_setup.sh
+│   └── wsl_setup.sh
+├── benchmark_utils/           # Benchmark utilities
+├── dsr/                       # DSR security scanning
+├── sdlc/                      # SDLC CI/CD templates
+├── README.md                  # Main documentation
+├── build_rvl_cdip_nmp_testset.py
+├── cleanup_orphaned_resources.py  # Used by CLI
+├── codebuild_deployment.py
+├── compare_json_files.py
+├── generate_govcloud_template.py
+├── integration_test_deployment.py
+├── lookup_file_status.sh      # Legacy (use idp-cli status)
+├── simulate_load.py           # Legacy (use idp-cli load-test)
+├── simulate_dynamic_load.py   # Legacy (use idp-cli load-test)
+├── stop_workflows.sh          # Legacy (use idp-cli stop-workflows)
+├── typecheck_pr_changes.py
+├── validate_buildspec.py
+├── README_validate_buildspec.md
+└── validate_service_role_permissions.py
 ```
-
-### Root Cause
-The `publish.py` script built Lambda layers using `pip install` without platform-specific flags. When running on ARM64 machines (e.g., M-series MacBooks), pip installed ARM64-compiled `.so` files for `pydantic_core`. These don't work on Lambda's x86_64 architecture.
-
-### Solution Applied
-Modified `publish.py` `build_lambda_layer()` method to use platform-specific pip install:
-```python
-cmd = [
-    sys.executable, "-m", "pip", "install", install_spec,
-    "--platform", "manylinux2014_x86_64",  # Force x86_64 wheels
-    "--implementation", "cp",
-    "--python-version", "312",
-    "--only-binary=:all:",  # Only use pre-built wheels
-    "-t", layer_python_dir,
-    "--upgrade",
-]
-```
-
-### To Deploy Fix
-1. Run `python3 publish.py <bucket> <prefix> <region> --clean-build` to rebuild layers
-2. Update the CloudFormation stack
-
-## Future Work: ARM64 Lambda Migration
-
-**Rationale**: ARM64 (Graviton2) Lambda functions are ~20% cheaper and often faster.
-
-**Work Required**:
-1. Audit all dependencies for ARM64 wheel availability (pydantic ✓, need to verify all)
-2. Update all Lambda function templates with `Architectures: [arm64]`
-3. Update Pattern-1/2/3 container build processes for ARM64
-4. Modify `publish.py` to build ARM64 layers instead
-5. Comprehensive testing across all functions
-
-**Status**: Tracked for future implementation
-
----
-
-## Previous Work Focus
-Centralized Pricing Configuration System - COMPLETED
-
-## Recent Changes
-
-### Pricing Configuration System Implementation (COMPLETED)
-
-Implemented a full centralized pricing configuration system that mirrors the existing Configuration UI pattern:
-
-#### Backend Changes:
-1. **Constants** (`lib/idp_common_pkg/idp_common/config/constants.py`):
-   - Added `CONFIG_TYPE_DEFAULT_PRICING = "DefaultPricing"` 
-   - Added `CONFIG_TYPE_CUSTOM_PRICING = "CustomPricing"`
-
-2. **ConfigurationManager** (`lib/idp_common_pkg/idp_common/config/configuration_manager.py`):
-   - Added `get_merged_pricing()` - returns DefaultPricing merged with CustomPricing deltas
-   - Added `save_custom_pricing(pricing_config)` - saves user overrides to CustomPricing
-   - Added `delete_custom_pricing()` - deletes CustomPricing (for restore to defaults)
-
-3. **update_configuration Lambda** (`src/lambda/update_configuration/index.py`):
-   - Changed to store pricing as "DefaultPricing" instead of "Pricing" at deployment time
-
-4. **configuration_resolver Lambda** (`src/lambda/configuration_resolver/index.py`):
-   - Updated `handle_get_pricing()` to return both `pricing` (merged) and `defaultPricing`
-   - `handle_update_pricing()` saves to CustomPricing (deltas only)
-   - `handle_restore_default_pricing()` deletes CustomPricing
-
-5. **GraphQL Schema** (`src/api/schema.graphql`):
-   - Added `defaultPricing: AWSJSON` field to PricingResponse type
-
-#### Frontend Changes:
-1. **GraphQL Queries**:
-   - `getPricing.js` - Updated to request `defaultPricing` field
-   - `restoreDefaultPricing.js` - NEW mutation for restore functionality
-
-2. **use-pricing.js Hook**:
-   - Added `defaultPricing` state
-   - Added `restoreDefaultPricing()` function
-   - Returns both `pricing` and `defaultPricing` for UI diff/restore features
-
-3. **PricingLayout.jsx** - Enhanced to match Configuration UI features:
-   - **Form/JSON/YAML Views** - Already existed
-   - **Import/Export** - Already existed
-   - **Changed field highlighting** - NEW: Shows "Modified" indicator with blue StatusIndicator
-   - **Restore default per field** - NEW: Popover with default value and "Reset to default" button
-   - **Restore All Defaults button** - NEW: Confirmation modal, disabled when no customizations
-
-## Design Pattern
-
-The pricing system follows the same DefaultPricing/CustomPricing pattern as configuration:
-- **DefaultPricing**: Full baseline stored at deployment time from `config_library/pricing.yaml`
-- **CustomPricing**: Only stores user overrides (deltas from default)
-- **Reset to default**: Simply DELETE CustomPricing record (no copy needed)
-- **Reading**: Backend merges DefaultPricing + CustomPricing and returns both for UI
-
-## Key Files Modified
-- `lib/idp_common_pkg/idp_common/config/constants.py`
-- `lib/idp_common_pkg/idp_common/config/configuration_manager.py`
-- `src/lambda/update_configuration/index.py`
-- `src/lambda/configuration_resolver/index.py`
-- `src/api/schema.graphql`
-- `src/ui/src/graphql/queries/getPricing.js`
-- `src/ui/src/graphql/queries/restoreDefaultPricing.js` (NEW)
-- `src/ui/src/hooks/use-pricing.js`
-- `src/ui/src/components/pricing-layout/PricingLayout.jsx`
-
-## UI Features Comparison
-
-| Feature | Configuration UI | Pricing UI |
-|---------|-----------------|------------|
-| Form View | ✅ | ✅ |
-| JSON View | ✅ | ✅ |
-| YAML View | ✅ | ✅ |
-| Import | ✅ | ✅ |
-| Export | ✅ | ✅ |
-| Changed field highlighting | ✅ | ✅ |
-| Restore default per field | ✅ | ✅ |
-| Restore All Defaults | ✅ | ✅ |
-| Save as Default | ✅ | N/A (not needed for pricing) |
-| Config Library | ✅ | N/A (not applicable) |
 
 ## Next Steps
-- None - Implementation complete
-- Ready for testing in deployed environment
+- Consider fully porting `cleanup_orphaned_resources.py` logic to CLI module
+- Remove legacy shell scripts once CLI commands are validated in production
+- Update setup documentation to reference new `scripts/setup/` location
+
+## Important Patterns
+- CLI commands delegate to existing scripts where complex logic already exists
+- New CLI modules follow existing patterns (StackInfo, BatchProcessor)
+- Rich console output for user-friendly CLI experience
+
+## Decisions Made
+- Keep legacy scripts temporarily as CLI wrappers (gradual migration)
+- Setup scripts grouped together for discoverability
+- Load test schedule moved to CLI examples for easy access

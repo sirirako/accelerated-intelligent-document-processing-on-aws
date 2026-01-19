@@ -32,6 +32,9 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [generate-manifest](#generate-manifest)
   - [validate-manifest](#validate-manifest)
   - [list-batches](#list-batches)
+  - [stop-workflows](#stop-workflows)
+  - [load-test](#load-test)
+  - [remove-deleted-stack-resources](#remove-deleted-stack-resources)
 - [Complete Evaluation Workflow](#complete-evaluation-workflow)
   - [Step 1: Deploy Your Stack](#step-1-deploy-your-stack)
   - [Step 2: Initial Processing from Local Directory](#step-2-initial-processing-from-local-directory)
@@ -117,6 +120,7 @@ idp-cli deploy [OPTIONS]
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**
+- `--from-code`: Deploy from local code by building with publish.py (path to project root)
 - `--template-url`: URL to CloudFormation template in S3 (optional, auto-selected based on region)
 - `--custom-config`: Path to local config file or S3 URI
 - `--max-concurrent`: Maximum concurrent workflows (default: 100)
@@ -125,8 +129,11 @@ idp-cli deploy [OPTIONS]
 - `--pattern-config`: Pattern-specific configuration preset (optional, distinct from --pattern)
 - `--parameters`: Additional parameters as `key=value,key2=value2`
 - `--wait`: Wait for stack operation to complete
+- `--no-rollback`: Disable rollback on stack creation failure
 - `--region`: AWS region (optional, auto-detected)
 - `--role-arn`: CloudFormation service role ARN (optional)
+
+**Note:** `--from-code` and `--template-url` are mutually exclusive. Use `--from-code` for development/testing from local source, or `--template-url` for production deployments.
 
 **Examples:**
 
@@ -167,6 +174,28 @@ idp-cli deploy \
     --admin-email user@example.com \
     --role-arn arn:aws:iam::123456789012:role/IDP-Cloudformation-Service-Role \
     --parameters "PermissionsBoundaryArn=arn:aws:iam::123456789012:policy/MyPermissionsBoundary" \
+    --wait
+
+# Deploy from local source code (for development/testing)
+idp-cli deploy \
+    --stack-name my-idp-dev \
+    --from-code . \
+    --pattern pattern-2 \
+    --admin-email user@example.com \
+    --wait
+
+# Update existing stack from local code changes
+idp-cli deploy \
+    --stack-name my-idp-dev \
+    --from-code . \
+    --wait
+
+# Deploy with rollback disabled (useful for debugging failed deployments)
+idp-cli deploy \
+    --stack-name my-idp \
+    --pattern pattern-2 \
+    --admin-email user@example.com \
+    --no-rollback \
     --wait
 ```
 
@@ -356,6 +385,8 @@ idp-cli run-inference [OPTIONS]
 - `--file-pattern`: File pattern for directory/S3 scanning (default: `*.pdf`)
 - `--recursive/--no-recursive`: Include subdirectories (default: recursive)
 - `--number-of-files`: Limit number of files to process
+- `--config`: Path to configuration YAML file (optional)
+- `--context`: Context description for test run (used with --test-set, e.g., "Model v2.1", "Production validation")
 - `--monitor`: Monitor progress until completion
 - `--refresh-interval`: Seconds between status checks (default: 5)
 - `--region`: AWS region (optional)
@@ -400,6 +431,13 @@ idp-cli run-inference \
     --stack-name my-stack \
     --test-set fcc-example-test \
     --number-of-files 5 \
+    --monitor
+
+# Process test set with custom context (for tracking in Test Studio)
+idp-cli run-inference \
+    --stack-name my-stack \
+    --test-set fcc-example-test \
+    --context "Model v2.1 - improved prompts" \
     --monitor
 
 # Process S3 URI
@@ -1231,6 +1269,170 @@ python check_accuracy.py ./ci-results/ --min-accuracy 0.90
 
 # Exit code 0 if passed, 1 if failed
 exit $?
+```
+
+---
+
+### `stop-workflows`
+
+Stop all running workflows for a stack. Useful for halting processing during development or when issues are detected.
+
+**Usage:**
+```bash
+idp-cli stop-workflows [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--skip-purge`: Skip purging the SQS queue
+- `--skip-stop`: Skip stopping Step Function executions
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Stop all workflows (purge queue + stop executions)
+idp-cli stop-workflows --stack-name my-stack
+
+# Only purge the queue (don't stop running executions)
+idp-cli stop-workflows --stack-name my-stack --skip-stop
+
+# Only stop executions (don't purge queue)
+idp-cli stop-workflows --stack-name my-stack --skip-purge
+```
+
+---
+
+### `load-test`
+
+Run load tests by copying files to the input bucket at specified rates.
+
+**Usage:**
+```bash
+idp-cli load-test [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--source-file` (required): Source file to copy (local path or s3://bucket/key)
+- `--rate`: Files per minute (default: 100)
+- `--duration`: Duration in minutes (default: 1)
+- `--schedule`: CSV schedule file (minute,count) - overrides --rate and --duration
+- `--dest-prefix`: Destination prefix in input bucket (default: load-test)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Constant rate: 100 files/minute for 5 minutes
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --duration 5
+
+# High volume: 2500 files/minute for 1 minute
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 2500
+
+# Use schedule file for variable rates
+idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --schedule schedule.csv
+
+# Use S3 source file
+idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
+```
+
+**Schedule File Format (CSV):**
+```csv
+minute,count
+1,100
+2,200
+3,500
+4,1000
+5,500
+```
+
+See `idp_cli/examples/load-test-schedule.csv` for a sample schedule file.
+
+---
+
+### `remove-deleted-stack-resources`
+
+Remove residual AWS resources left behind from deleted IDP CloudFormation stacks.
+
+**⚠️ CAUTION:** This command permanently deletes AWS resources. Always run with `--dry-run` first.
+
+**Usage:**
+```bash
+idp-cli remove-deleted-stack-resources [OPTIONS]
+```
+
+**How It Works:**
+
+This command safely identifies and removes ONLY resources belonging to IDP stacks that have been deleted:
+
+1. **Multi-region Stack Discovery** - Scans CloudFormation in multiple regions (us-east-1, us-west-2, eu-central-1 by default)
+2. **IDP Stack Identification** - Identifies IDP stacks by their Description ("AWS GenAI IDP Accelerator") or naming patterns (IDP-*, PATTERN1/2/3)
+3. **Active Stack Protection** - Tracks both ACTIVE and DELETED stacks; resources from active stacks are NEVER touched
+4. **Safe Cleanup** - Only targets resources belonging to stacks in DELETE_COMPLETE state
+
+**Safety Features:**
+- Resources from ACTIVE stacks are protected and skipped
+- Resources from UNKNOWN stacks (not verified as IDP) are skipped
+- Interactive confirmation for each resource (unless --yes)
+- Options: y=yes, n=no, a=yes to all of type, s=skip all of type
+- --dry-run mode shows exactly what would be deleted
+
+**Resources Cleaned:**
+- CloudFront distributions and response header policies
+- CloudWatch log groups  
+- AppSync APIs
+- IAM policies
+- CloudWatch Logs resource policy entries
+- S3 buckets (automatically emptied before deletion)
+- DynamoDB tables (PITR disabled before deletion)
+
+> **Note:** This command targets resources that remain in AWS after IDP stacks have already been deleted. These are typically resources with RetainOnDelete policies or non-empty S3 buckets that CloudFormation couldn't delete. All resources are identified by their naming pattern and verified against the deleted stack registry before deletion.
+
+**Options:**
+- `--region`: Primary AWS region for regional resources (default: us-west-2)
+- `--profile`: AWS profile to use
+- `--dry-run`: Preview changes without making them **(RECOMMENDED first step)**
+- `--yes`, `-y`: Auto-approve all deletions (skip confirmations)
+- `--check-stack-regions`: Comma-separated regions to check for stacks (default: us-east-1,us-west-2,eu-central-1)
+
+**Examples:**
+
+```bash
+# RECOMMENDED: Always dry-run first to see what would be deleted
+idp-cli remove-deleted-stack-resources --dry-run
+
+# Interactive cleanup with confirmations for each resource
+idp-cli remove-deleted-stack-resources
+
+# Use specific AWS profile
+idp-cli remove-deleted-stack-resources --profile my-profile
+
+# Auto-approve all deletions (USE WITH CAUTION)
+idp-cli remove-deleted-stack-resources --yes
+
+# Check additional regions for stacks
+idp-cli remove-deleted-stack-resources --check-stack-regions us-east-1,us-west-2,eu-central-1,eu-west-1
+```
+
+**CloudFront Two-Phase Cleanup:**
+
+CloudFront requires distributions to be disabled before deletion:
+1. **First run:** Disables orphaned distributions (you confirm each)
+2. **Wait 15-20 minutes** for CloudFront global propagation
+3. **Second run:** Deletes the previously disabled distributions
+
+**Interactive Confirmation:**
+
+```
+Delete orphaned CloudFront distribution?
+  Resource: E1H6W47Z36CQE2 (exists in AWS)
+  Originally from stack: IDP-P2-DevTest1
+  Stack status: DELETE_COMPLETE (stack no longer exists)
+  Stack was in region: us-west-2
+
+  Options: y=yes, n=no, a=yes to all CloudFront distribution, s=skip all CloudFront distribution
+Delete? [y/n/a/s]: 
 ```
 
 ---

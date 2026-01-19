@@ -12,8 +12,8 @@ Dependencies:
     PyYAML (install with: pip install pyyaml)
 
 Usage:
-    python3 scripts/validate_buildspec.py <path-to-buildspec.yml>
-    python3 scripts/validate_buildspec.py patterns/*/buildspec.yml
+    python3 scripts/sdlc/validate_buildspec.py <path-to-buildspec.yml>
+    python3 scripts/sdlc/validate_buildspec.py patterns/*/buildspec.yml
 
 Exit codes:
     0 - All buildspec files are valid

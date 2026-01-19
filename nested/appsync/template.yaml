@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: AppSync Resolvers Nested Stack - GraphQL Schema, DataSources, Resolvers, and Lambda Functions
+Description: AWS GenAI IDP Accelerator - AppSync Resolvers Nested Stack - GraphQL Schema, DataSources, Resolvers, and Lambda Functions
 
 Parameters:
   # Core AppSync resources from main template

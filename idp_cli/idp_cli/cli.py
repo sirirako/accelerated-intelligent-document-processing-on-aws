@@ -142,7 +142,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.4.11")
+@click.version_option(version="0.4.12")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -2188,6 +2188,368 @@ def _create_test_set_from_manifest(
     console.print(
         f"[green]✓ Test set '{test_set_name}' created with {len(df)} files[/green]"
     )
+
+
+@cli.command(name="stop-workflows")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--skip-purge",
+    is_flag=True,
+    help="Skip purging the SQS queue",
+)
+@click.option(
+    "--skip-stop",
+    is_flag=True,
+    help="Skip stopping Step Function executions",
+)
+@click.option("--region", help="AWS region (optional)")
+def stop_workflows(
+    stack_name: str,
+    skip_purge: bool,
+    skip_stop: bool,
+    region: Optional[str],
+):
+    """
+    Stop all running workflows for a stack
+
+    This command purges the SQS document queue and stops all running
+    Step Function executions. Use this to halt processing when needed.
+
+    Examples:
+
+      # Stop all workflows (purge queue + stop executions)
+      idp-cli stop-workflows --stack-name my-stack
+
+      # Only purge the queue
+      idp-cli stop-workflows --stack-name my-stack --skip-stop
+
+      # Only stop executions (don't purge queue)
+      idp-cli stop-workflows --stack-name my-stack --skip-purge
+    """
+    try:
+        from .stop_workflows import WorkflowStopper
+
+        console.print(
+            f"[bold blue]Stopping workflows for stack: {stack_name}[/bold blue]"
+        )
+        console.print()
+
+        stopper = WorkflowStopper(stack_name=stack_name, region=region)
+        results = stopper.stop_all(skip_purge=skip_purge, skip_stop=skip_stop)
+
+        # Show results
+        if results["executions_stopped"]:
+            exec_result = results["executions_stopped"]
+            if exec_result.get("error"):
+                console.print(f"[red]✗ Failed: {exec_result.get('error')}[/red]")
+                sys.exit(1)
+
+            console.print(
+                f"\n[green]✓ Stopped {exec_result['total_stopped']} executions[/green]"
+            )
+            if exec_result.get("total_failed", 0) > 0:
+                console.print(
+                    f"[yellow]  {exec_result['total_failed']} failed to stop[/yellow]"
+                )
+
+            # Show verification result
+            remaining = exec_result.get("remaining", 0)
+            if remaining > 0:
+                console.print(
+                    f"[red]⚠ Warning: {remaining} executions still running[/red]"
+                )
+                console.print(
+                    "[yellow]  New executions may have started during stop operation[/yellow]"
+                )
+                console.print(
+                    "[yellow]  Run command again to stop remaining executions[/yellow]"
+                )
+            else:
+                console.print(
+                    "[green]✓ Verified: No running executions remaining[/green]"
+                )
+
+        # Show documents aborted result
+        if results.get("documents_aborted"):
+            abort_result = results["documents_aborted"]
+            if abort_result.get("error"):
+                console.print(
+                    f"[yellow]⚠ Could not abort queued documents: {abort_result.get('error')}[/yellow]"
+                )
+            elif abort_result.get("documents_aborted", 0) > 0:
+                console.print(
+                    f"\n[green]✓ Updated {abort_result['documents_aborted']} queued documents to ABORTED status[/green]"
+                )
+
+    except Exception as e:
+        logger.error(f"Error stopping workflows: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="load-test")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--source-file",
+    required=True,
+    type=str,
+    help="Source file to copy (local path or s3://bucket/key)",
+)
+@click.option(
+    "--rate",
+    default=100,
+    type=int,
+    help="Files per minute (default: 100)",
+)
+@click.option(
+    "--duration",
+    default=1,
+    type=int,
+    help="Duration in minutes (default: 1)",
+)
+@click.option(
+    "--schedule",
+    type=click.Path(exists=True),
+    help="CSV schedule file (minute,count) - overrides --rate and --duration",
+)
+@click.option(
+    "--dest-prefix",
+    default="load-test",
+    help="Destination prefix in input bucket (default: load-test)",
+)
+@click.option("--region", help="AWS region (optional)")
+def load_test(
+    stack_name: str,
+    source_file: str,
+    rate: int,
+    duration: int,
+    schedule: Optional[str],
+    dest_prefix: str,
+    region: Optional[str],
+):
+    """
+    Run load test by copying files to input bucket
+
+    Use this to test system performance under load. The source file is copied
+    multiple times to the input bucket, triggering document processing.
+
+    Examples:
+
+      # Constant rate: 100 files/minute for 5 minutes
+      idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --duration 5
+
+      # High volume: 2500 files/minute for 1 minute
+      idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 2500
+
+      # Use schedule file for variable rates
+      idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --schedule schedule.csv
+
+      # Use S3 source file
+      idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
+
+    Schedule file format (CSV):
+      minute,count
+      1,100
+      2,200
+      3,500
+    """
+    try:
+        from .load_test import LoadTester
+
+        tester = LoadTester(stack_name=stack_name, region=region)
+
+        if schedule:
+            # Run scheduled load test
+            result = tester.run_scheduled_load(
+                source_file=source_file,
+                schedule_file=schedule,
+                dest_prefix=dest_prefix,
+            )
+        else:
+            # Run constant rate load test
+            result = tester.run_constant_load(
+                source_file=source_file,
+                rate=rate,
+                duration=duration,
+                dest_prefix=dest_prefix,
+            )
+
+        if not result["success"]:
+            console.print(f"[red]✗ Load test failed: {result.get('error')}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Error running load test: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="remove-deleted-stack-resources")
+@click.option(
+    "--region",
+    default="us-west-2",
+    help="Primary AWS region for regional resources like log groups (default: us-west-2)",
+)
+@click.option("--profile", help="AWS profile to use")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview changes without making them (RECOMMENDED first step)",
+)
+@click.option(
+    "--yes",
+    "-y",
+    "auto_approve",
+    is_flag=True,
+    help="Auto-approve all deletions (skip confirmations)",
+)
+@click.option(
+    "--check-stack-regions",
+    default="us-east-1,us-west-2,eu-central-1",
+    help="Comma-separated list of regions to check for IDP stacks (default: us-east-1,us-west-2,eu-central-1)",
+)
+def remove_residual_resources_from_deleted_stacks(
+    region: str,
+    profile: Optional[str],
+    dry_run: bool,
+    auto_approve: bool,
+    check_stack_regions: str,
+):
+    """
+    Remove residual AWS resources left behind from deleted IDP stacks
+
+    ⚠️  CAUTION: This command permanently deletes AWS resources.
+    Always run with --dry-run first to review what will be deleted.
+
+    WHAT THIS COMMAND DOES:
+    When IDP CloudFormation stacks are deleted, some resources may remain
+    (CloudFront distributions, IAM policies, log groups, etc.). This command
+    safely identifies and removes ONLY those residual resources.
+
+    HOW IT IDENTIFIES IDP RESOURCES:
+    1. Scans CloudFormation in multiple regions for IDP stacks
+    2. Identifies IDP stacks by their Description ("AWS GenAI IDP Accelerator")
+       or naming patterns (IDP-*, PATTERN1/2/3, etc.)
+    3. Tracks both ACTIVE stacks (protected) and DELETED stacks (cleanup targets)
+    4. Only targets resources that belong to stacks in DELETE_COMPLETE state
+    5. Resources from active stacks are NEVER touched
+
+    SAFETY FEATURES:
+    - Multi-region stack discovery (customizable with --check-stack-regions)
+    - Resources from ACTIVE stacks are protected and skipped
+    - Resources from UNKNOWN stacks (not verified as IDP) are skipped
+    - Interactive confirmation for each resource (unless --yes)
+    - Options: y=yes, n=no, a=yes to all of type, s=skip all of type
+    - --dry-run mode shows exactly what would be deleted
+
+    RESOURCES CLEANED UP:
+    - CloudFront distributions
+    - CloudFront response header policies
+    - CloudWatch log groups
+    - AppSync APIs
+    - IAM policies
+    - CloudWatch Logs resource policy entries
+
+    CLOUDFRONT TWO-PHASE CLEANUP:
+    CloudFront requires distributions to be disabled before deletion:
+    1. First run: Disables orphaned distributions
+    2. Wait 15-20 minutes for CloudFront propagation
+    3. Second run: Deletes the disabled distributions
+
+    Examples:
+
+      # RECOMMENDED: Always dry-run first
+      idp-cli remove-deleted-stack-resources --dry-run
+
+      # Interactive cleanup with confirmations
+      idp-cli remove-deleted-stack-resources
+
+      # Use specific AWS profile
+      idp-cli remove-deleted-stack-resources --profile my-profile
+
+      # Auto-approve all deletions (USE WITH CAUTION)
+      idp-cli remove-deleted-stack-resources --yes
+
+      # Check additional regions for stacks
+      idp-cli remove-deleted-stack-resources --check-stack-regions us-east-1,us-west-2,eu-central-1,eu-west-1
+    """
+    try:
+        from .cleanup_orphaned import OrphanedResourceCleanup
+
+        # Parse regions list
+        regions_list = [r.strip() for r in check_stack_regions.split(",")]
+
+        cleanup = OrphanedResourceCleanup(region=region, profile=profile)
+        results = cleanup.run_cleanup(
+            dry_run=dry_run, auto_approve=auto_approve, regions=regions_list
+        )
+
+        # Print summary
+        console.print()
+        console.print("[bold]CLEANUP SUMMARY[/bold]")
+        console.print("=" * 60)
+
+        has_errors = False
+        has_disabled = False
+
+        for resource_type, result in results.items():
+            resource_name = resource_type.upper().replace("_", " ")
+            console.print(f"\n[bold]{resource_name}:[/bold]")
+
+            if result.get("deleted"):
+                console.print(f"  [green]Deleted ({len(result['deleted'])}):[/green]")
+                for item in result["deleted"]:
+                    console.print(f"    - {item}")
+
+            if result.get("disabled"):
+                has_disabled = True
+                console.print(
+                    f"  [yellow]Disabled ({len(result['disabled'])}):[/yellow]"
+                )
+                for item in result["disabled"]:
+                    console.print(f"    - {item}")
+
+            if result.get("updated"):
+                console.print(f"  [cyan]Updated ({len(result['updated'])}):[/cyan]")
+                for item in result["updated"]:
+                    console.print(f"    - {item}")
+
+            if result.get("errors"):
+                has_errors = True
+                console.print(f"  [red]Errors ({len(result['errors'])}):[/red]")
+                for error in result["errors"]:
+                    console.print(f"    - {error}")
+
+            if not any(
+                result.get(key) for key in ["deleted", "disabled", "updated", "errors"]
+            ):
+                console.print("  No resources found")
+
+        # Show next steps if CloudFront distributions were disabled
+        if has_disabled:
+            console.print()
+            console.print("[bold yellow]NEXT STEPS[/bold yellow]")
+            console.print("=" * 60)
+            console.print(
+                "CloudFront distributions have been disabled and are deploying."
+            )
+            console.print("Wait 15-20 minutes, then re-run this command to:")
+            console.print("  • Delete the disabled distributions")
+            console.print("  • Retry failed policy deletions")
+            console.print()
+            console.print("Re-run command:")
+            console.print(
+                f"  [cyan]idp-cli remove-deleted-stack-resources --region {region}[/cyan]"
+            )
+            console.print("=" * 60)
+
+        if has_errors:
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Error cleaning up orphaned resources: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
 
 
 def main():
