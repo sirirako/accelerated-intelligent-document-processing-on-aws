@@ -111,18 +111,10 @@ class OrphanedResourceCleanup:
                 # List all stacks including deleted ones
                 paginator = cfn.get_paginator("list_stacks")
 
-                # Include both active and deleted stacks
-                for page in paginator.paginate(
-                    StackStatusFilter=[
-                        "CREATE_COMPLETE",
-                        "UPDATE_COMPLETE",
-                        "UPDATE_ROLLBACK_COMPLETE",
-                        "DELETE_COMPLETE",
-                        "DELETE_FAILED",
-                        "CREATE_FAILED",
-                        "ROLLBACK_COMPLETE",
-                    ]
-                ):
+                # Include all stacks - any non-DELETE_COMPLETE state means resources may exist
+                # We don't filter by status here to ensure we catch ALL stacks including
+                # those in transient states (DELETE_IN_PROGRESS, UPDATE_IN_PROGRESS, etc.)
+                for page in paginator.paginate():
                     for stack_summary in page.get("StackSummaries", []):
                         stack_name = stack_summary.get("StackName", "")
                         stack_id = stack_summary.get("StackId", "")
@@ -174,11 +166,13 @@ class OrphanedResourceCleanup:
                                 )
                                 if not already_active:
                                     self._deleted_stacks[stack_name] = stack_info
-                            elif stack_status in [
-                                "CREATE_COMPLETE",
-                                "UPDATE_COMPLETE",
-                                "UPDATE_ROLLBACK_COMPLETE",
-                            ]:
+                            else:
+                                # SAFETY: Any state that is NOT DELETE_COMPLETE means the stack
+                                # (and its resources) may still exist. This includes:
+                                # - Active states: CREATE_COMPLETE, UPDATE_COMPLETE, etc.
+                                # - Failed states: DELETE_FAILED, CREATE_FAILED (resources may exist!)
+                                # - Transient states: DELETE_IN_PROGRESS, UPDATE_IN_PROGRESS, etc.
+                                # We protect ALL of these to prevent accidental resource deletion.
                                 self._active_stacks[stack_name] = stack_info
 
             except Exception as e:
