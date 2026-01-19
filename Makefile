@@ -9,6 +9,42 @@ NC := \033[0m  # No Color
 # Default target - run both lint and test
 all: lint test
 
+# Install idp-cli and idp_common packages in development mode
+setup:
+	@echo "Installing idp_common package..."
+	pip install -e lib/idp_common_pkg
+	@echo "Installing idp-cli package..."
+	pip install -e idp_cli
+	@echo -e "$(GREEN)✅ Setup complete! idp-cli and idp_common are now installed.$(NC)"
+
+# Start the UI development server
+# Usage: make ui-start [STACK_NAME=<stack-name>]
+ui-start:
+	@if [ -n "$(STACK_NAME)" ]; then \
+		echo "Retrieving .env configuration from stack $(STACK_NAME)..."; \
+		ENV_CONTENT=$$(aws cloudformation describe-stacks \
+			--stack-name $(STACK_NAME) \
+			--query "Stacks[0].Outputs[?OutputKey=='WebUITestEnvFile'].OutputValue" \
+			--output text 2>/dev/null); \
+		if [ -z "$$ENV_CONTENT" ] || [ "$$ENV_CONTENT" = "None" ]; then \
+			echo -e "$(RED)ERROR: Could not retrieve WebUITestEnvFile from stack $(STACK_NAME)$(NC)"; \
+			echo -e "$(YELLOW)Make sure the stack exists and has completed deployment.$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$$ENV_CONTENT" > src/ui/.env; \
+		echo -e "$(GREEN)✅ Created src/ui/.env from stack outputs$(NC)"; \
+	fi
+	@if [ ! -f src/ui/.env ]; then \
+		echo -e "$(RED)ERROR: src/ui/.env not found$(NC)"; \
+		echo -e "$(YELLOW)Either provide STACK_NAME to auto-generate, or create .env manually.$(NC)"; \
+		echo -e "$(YELLOW)Usage: make ui-start STACK_NAME=<your-stack-name>$(NC)"; \
+		exit 1; \
+	fi
+	@echo "Installing UI dependencies..."
+	cd src/ui && npm ci --prefer-offline --no-audit
+	@echo "Starting UI development server..."
+	cd src/ui && npm run start
+
 # Run tests in idp_common_pkg and idp_cli directories
 test:
 	$(MAKE) -C lib/idp_common_pkg test
