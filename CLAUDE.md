@@ -309,9 +309,9 @@ Testing samples available in `samples/`:
 
 ## Validation Scripts
 
-- `scripts/validate_buildspec.py` - Validates CodeBuild buildspec files
-- `scripts/validate_service_role_permissions.py` - Verifies IAM service role permissions
-- `scripts/typecheck_pr_changes.py` - Type checks only changed files in PRs
+- `scripts/sdlc/validate_buildspec.py` - Validates CodeBuild buildspec files
+- `scripts/sdlc/validate_service_role_permissions.py` - Verifies IAM service role permissions
+- `scripts/sdlc/typecheck_pr_changes.py` - Type checks only changed files in PRs
 
 ## AWS Service Requirements
 

@@ -62,6 +62,9 @@ class StackInfo:
         resources["LookupFunctionName"] = outputs.get("LambdaLookupFunctionName", "")
         resources["StateMachineArn"] = outputs.get("StateMachineArn", "")
 
+        # Get DynamoDB table name (for document status tracking)
+        resources["DocumentsTable"] = self._get_table_name("TrackingTable")
+
         # Get settings parameter name
         resources["SettingsParameter"] = f"{self.stack_name}-Settings"
 
@@ -115,6 +118,21 @@ class StackInfo:
         except Exception as e:
             logger.error(f"Error getting queue URL: {e}")
             raise
+
+    def _get_table_name(self, logical_id: str) -> str:
+        """Get DynamoDB table name from stack resources"""
+        try:
+            paginator = self.cfn.get_paginator("list_stack_resources")
+
+            for page in paginator.paginate(StackName=self.stack_name):
+                for resource in page.get("StackResourceSummaries", []):
+                    if resource.get("LogicalResourceId") == logical_id:
+                        return resource.get("PhysicalResourceId", "")
+
+            return ""
+        except Exception as e:
+            logger.warning(f"Could not get table name for {logical_id}: {e}")
+            return ""
 
     def get_settings(self) -> Dict:
         """Get stack settings from SSM parameter"""

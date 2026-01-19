@@ -204,7 +204,7 @@ Resources:
                 - pip install rich || echo "Rich installation failed, using fallback formatting"
             build:
               commands:
-                - python3 scripts/codebuild_deployment.py
+                - python3 scripts/sdlc/codebuild_deployment.py
               finally:
                 - echo "Cleanup handled by codebuild deployment script"
 

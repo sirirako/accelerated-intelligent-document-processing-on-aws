@@ -31,13 +31,13 @@ pip install pyyaml
 ### Validate a single file
 
 ```bash
-python3 scripts/validate_buildspec.py patterns/pattern-2/buildspec.yml
+python3 scripts/sdlc/validate_buildspec.py patterns/pattern-2/buildspec.yml
 ```
 
 ### Validate multiple files with glob patterns
 
 ```bash
-python3 scripts/validate_buildspec.py patterns/*/buildspec.yml
+python3 scripts/sdlc/validate_buildspec.py patterns/*/buildspec.yml
 ```
 
 ### Using the Makefile target
@@ -130,7 +130,7 @@ This makes it suitable for use in CI/CD pipelines:
 
 ```yaml
 - name: Validate Buildspec
-  run: python3 scripts/validate_buildspec.py patterns/*/buildspec.yml
+  run: python3 scripts/sdlc/validate_buildspec.py patterns/*/buildspec.yml
 ```
 
 ## Limitations
@@ -161,7 +161,7 @@ Add to `.git/hooks/pre-commit`:
 
 ```bash
 #!/bin/bash
-python3 scripts/validate_buildspec.py patterns/*/buildspec.yml || exit 1
+python3 scripts/sdlc/validate_buildspec.py patterns/*/buildspec.yml || exit 1
 ```
 
 ## Troubleshooting
