@@ -7,6 +7,12 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **New Make Targets and Documentation**
+  - Added `make setup` target to install `idp-cli` and `idp_common` packages in development mode
+  - Added `make ui-start` target to start UI dev server with optional `STACK_NAME` parameter for auto-generating `.env` from stack outputs
+  - Documented all make targets in CONTRIBUTING.md including setup, lint, test, ui-start, commit, and DSR security scanning
+  - Added quick start section to `src/ui/README.md` for `make ui-start STACK_NAME=<name>` convenience target
+
 - **IDP CLI New Commands for Operations and Testing**
   - Added `idp-cli load-test` command for throughput testing with configurable document rates (1-10,000/min) and dynamic schedule support via CSV files
   - Added `idp-cli stop-workflows` command for batch workflow termination with interactive confirmation and dry-run mode
