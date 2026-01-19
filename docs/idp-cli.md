@@ -1357,6 +1357,8 @@ Remove residual AWS resources left behind from deleted IDP CloudFormation stacks
 
 **⚠️ CAUTION:** This command permanently deletes AWS resources. Always run with `--dry-run` first.
 
+> **Intended Use:** This command is designed for **development and test accounts** where IDP stacks are frequently created and deleted, and where the consequences of accidentally deleting resources or data are low. **Do not use this command in production accounts** where data retention is critical. For production cleanup, manually review and delete resources through the AWS Console.
+
 **Usage:**
 ```bash
 idp-cli remove-deleted-stack-resources [OPTIONS]
@@ -1434,6 +1436,16 @@ Delete orphaned CloudFront distribution?
   Options: y=yes, n=no, a=yes to all CloudFront distribution, s=skip all CloudFront distribution
 Delete? [y/n/a/s]: 
 ```
+
+**Important Limitation - 90-Day Window:**
+
+CloudFormation only retains deleted stack information for approximately 90 days. After this period, stacks in `DELETE_COMPLETE` status are removed from the CloudFormation API.
+
+This means:
+- Resources from stacks deleted **within the past 90 days** → Identified and offered for cleanup
+- Resources from stacks deleted **more than 90 days ago** → Not identified (silently skipped)
+
+**Best Practice:** Run `remove-deleted-stack-resources` promptly after deleting IDP stacks to ensure complete cleanup. For maximum effectiveness, run this command within 90 days of stack deletion.
 
 ---
 
