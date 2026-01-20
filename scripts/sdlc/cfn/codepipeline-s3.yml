@@ -146,6 +146,20 @@ Resources:
                   - 'ec2:DescribeSecurityGroups'
                   - 'sts:AssumeRole'
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:DescribeStackEvents'
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:CreatePolicy'
+                  - 'iam:DeletePolicy'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:PassRole'
+                Resource: '*'
 
   ArtifactBucket:
     Type: 'AWS::S3::Bucket'
