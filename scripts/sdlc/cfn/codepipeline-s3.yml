@@ -318,6 +318,22 @@ Resources:
             Resource: 
               - !Sub 'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
 
+  CodeBuildKMSPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: CreateCodeBuildRole
+    Properties:
+      PolicyName: CodeBuildKMSAccess
+      Roles: 
+        - !Ref CodeBuildRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: !If [CreateKMSKey, !GetAtt PipelineKMSKey.Arn, !Ref KMSKeyArn]
+
   # CloudWatch Events Rule to trigger pipeline on S3 changes
   PipelineTriggerRule:
     Type: AWS::Events::Rule
