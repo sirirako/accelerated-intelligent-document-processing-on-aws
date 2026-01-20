@@ -129,36 +129,41 @@ Resources:
             Principal:
               Service: codebuild.amazonaws.com
             Action: 'sts:AssumeRole'
-      # TODO: Adjust these rights as appropriate >>>
+      # PowerUserAccess + Limited IAM permissions for SDLC operations
       ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
-      # <<< TODO: Adjust these rights as appropriate
+        - 'arn:aws:iam::aws:policy/PowerUserAccess'
       Policies:
-        - PolicyName: CodeBuildPolicy
+        - PolicyName: LimitedIAMAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - 'ec2:DescribeAvailabilityZones'
-                  - 'ec2:DescribeVpcs'
-                  - 'ec2:DescribeSubnets'
-                  - 'ec2:DescribeSecurityGroups'
-                  - 'sts:AssumeRole'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - 'cloudformation:CreateStack'
-                  - 'cloudformation:DeleteStack'
-                  - 'cloudformation:DescribeStacks'
-                  - 'cloudformation:DescribeStackEvents'
-                  - 'iam:CreateRole'
-                  - 'iam:DeleteRole'
-                  - 'iam:CreatePolicy'
-                  - 'iam:DeletePolicy'
-                  - 'iam:AttachRolePolicy'
-                  - 'iam:DetachRolePolicy'
-                  - 'iam:PassRole'
+                  - iam:CreateInstanceProfile
+                  - iam:List*
+                  - iam:Untag*
+                  - iam:Tag*
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:DeletePolicy
+                  - iam:CreateRole
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:AddRoleToInstanceProfile
+                  - iam:PassRole
+                  - iam:Get*
+                  - iam:DetachRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:CreatePolicyVersion
+                  - iam:DeleteInstanceProfile
+                  - iam:DeleteRole
+                  - iam:UpdateRoleDescription
+                  - iam:CreatePolicy
+                  - iam:CreateServiceLinkedRole
+                  - iam:UpdateRole
+                  - iam:DeleteServiceLinkedRole
+                  - iam:DeletePolicyVersion
+                  - iam:SetDefaultPolicyVersion
+                  - iam:UpdateAssumeRolePolicy
                 Resource: '*'
 
   ArtifactBucket:
