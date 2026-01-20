@@ -34,6 +34,9 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Fixed AgentRequestHandler Missing Lambda Invoke Permission for Error Analyzer Agent**
+  - Fixed AccessDeniedException when clicking the Troubleshoot button in the Web UI
+
 - **Fixed sectionSplitting=disabled Incorrectly Classifying Documents Based on Blank Pages - [GitHub Issue #167](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/167)**
   - Fixed bug where documents with blank pages could be incorrectly classified as `"unclassifiable_blank_page"` when using `sectionSplitting: disabled`
   - **Root Cause**: Page classification results arrive in completion order (not page order) from ThreadPoolExecutor, so blank/simple pages that finish processing first would end up at index 0 and incorrectly determine the document classification
