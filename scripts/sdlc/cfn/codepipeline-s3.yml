@@ -13,7 +13,7 @@ Parameters:
   BucketName:
     Type: String
     Description: 'Name of the S3 bucket containing the deployment assets'
-    Default: genaiic-sdlc-sourcecode-YOUR_AWS_ACCOUNT-YOUR_REGION
+    Default: genaiic-sdlc-sourcecode-020432867916-us-east-1
   
   FileKey:
     Type: String
