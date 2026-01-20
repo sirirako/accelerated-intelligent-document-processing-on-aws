@@ -94,32 +94,37 @@ The system replaces the standard `{DOCUMENT_TEXT}` and `{DOCUMENT_IMAGE}` placeh
 
 **Text Context Structure:**
 ```xml
-<document-ocr-data>
-  For context, here is the OCR text for the page(s) immediately prior to the page you should classify:
-  <context-pages-before>
-  [OCR text from context pages before - combined if multiple pages]
-  </context-pages-before>
+For context, here is the OCR text for the page(s) immediately prior to the page you should classify:
+<context-pages-before>
+[OCR text from all context pages before - combined if multiple pages]
+</context-pages-before>
 
-  Here is the OCR text for the page to classify:
-  <current-page>
-  [OCR text for the page being classified]
-  </current-page>
-</document-ocr-data>
+Here is the OCR text for the page to classify:
+<current-page>
+[OCR text for the page being classified]
+</current-page>
+
+For context, here is the OCR text for the page(s) immediately after the page you should classify:
+<context-pages-after>
+[OCR text from all context pages after - combined if multiple pages]
+</context-pages-after>
 ```
 
 **Image Context Structure:**
 ```
-<document-image>
-  For context, here are the image(s) for the page(s) immediately prior to the page you should classify:
-  [Image 1 - context page before]
-  [Image 2 - context page before (if contextPagesCount >= 2)]
-  
-  Here is the image for the page to classify:
-  [Image - current page being classified]
-</document-image>
+For context, here are the image(s) for the page(s) immediately prior to the page you should classify:
+[Image 1 - context page before]
+[Image 2 - context page before (if contextPagesCount >= 2)]
+
+Here is the image for the page to classify:
+[Image - current page being classified]
+
+For context, here are the image(s) for the page(s) immediately after the page you should classify:
+[Image 1 - context page after]
+[Image 2 - context page after (if contextPagesCount >= 2)]
 ```
 
-**Note:** The context pages before and after are combined into their respective sections. The structure clearly indicates which content is for context versus which content should be classified.
+**Note:** Context pages are combined within their respective sections (before or after). The structure uses descriptive text labels and XML tags (`<context-pages-before>`, `<current-page>`, `<context-pages-after>`) to clearly indicate which content is for context versus which content should be classified.
 
 **Benefits:**
 

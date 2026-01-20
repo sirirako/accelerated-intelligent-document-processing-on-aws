@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT-0
   - Added `contextPagesCount` configuration option to include surrounding pages as context during page-level classification
   - **Key Features**: When classifying a page, the system can now include 1, 2, or more pages before and after the target page to provide additional context for better classification decisions
   - **Configuration**: Set `classification.contextPagesCount` to 0 (default, no context), 1 (1 page before/after), 2 (2 pages before/after), etc.
-  - **Enhanced Prompt Structure**: Context pages are clearly marked in prompts with XML tags (e.g., `<document-ocr-data-page-before>`, `<document-ocr-data>`, `<document-ocr-data-page-after>`)
+  - **Enhanced Prompt Structure**: Context pages are clearly marked in prompts with XML tags (e.g., `<context-pages-before>`, `<current-page>`, `<context-pages-after>`)
   - **Edge Handling**: At document boundaries, only available pages are included (first page has no "before" pages, last page has no "after" pages)
   - **Use Cases**: Improves boundary detection and classification accuracy for documents where individual pages lack sufficient context, multi-page forms with similar layouts, and cases where LLM boundary detection has been unreliable
   - **Considerations**: Increases token usage proportionally to the number of context pages included
