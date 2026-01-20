@@ -135,6 +135,29 @@ idp-cli deploy [OPTIONS]
 
 **Note:** `--from-code` and `--template-url` are mutually exclusive. Use `--from-code` for development/testing from local source, or `--template-url` for production deployments.
 
+**Auto-Monitoring for In-Progress Operations:**
+
+If you run `deploy` on a stack that already has an operation in progress (CREATE, UPDATE, ROLLBACK), the command automatically switches to monitoring mode instead of failing. This is useful if you forgot to use `--wait` on the initial deploy - simply run the same command again to monitor progress:
+
+```bash
+# First run without --wait starts the deployment
+$ idp-cli deploy --stack-name my-stack --pattern pattern-2 --admin-email user@example.com
+✓ Stack CREATE initiated successfully!
+
+# Second run - automatically monitors the in-progress operation
+$ idp-cli deploy --stack-name my-stack
+Stack 'my-stack' has an operation in progress
+Current status: CREATE_IN_PROGRESS
+
+Switching to monitoring mode...
+
+[Live progress display...]
+
+✓ Stack CREATE completed successfully!
+```
+
+Supported in-progress states: `CREATE_IN_PROGRESS`, `UPDATE_IN_PROGRESS`, `DELETE_IN_PROGRESS`, `ROLLBACK_IN_PROGRESS`, `UPDATE_ROLLBACK_IN_PROGRESS`, and cleanup states.
+
 **Examples:**
 
 ```bash
@@ -360,6 +383,60 @@ Stack 'test-stack' and all resources completely removed.
 - Includes resources from nested stacks automatically
 - Safe to run - only deletes resources that weren't deleted by CloudFormation
 - Progress bars show real-time deletion status
+
+**Auto-Monitoring for In-Progress Deletions:**
+
+If you run `delete` on a stack that already has a DELETE operation in progress, the command automatically switches to monitoring mode instead of failing. This is useful if you started a deletion without `--wait` - simply run the command again to monitor:
+
+```bash
+# First run without --wait starts the deletion
+$ idp-cli delete --stack-name test-stack --force --no-wait
+✓ Stack DELETE initiated successfully!
+
+# Second run - automatically monitors the in-progress deletion
+$ idp-cli delete --stack-name test-stack
+Stack 'test-stack' is already being deleted
+Current status: DELETE_IN_PROGRESS
+
+Switching to monitoring mode...
+
+[Live progress display...]
+
+✓ Stack deleted successfully!
+```
+
+**Canceling In-Progress Operations:**
+
+If a non-delete operation is in progress (CREATE, UPDATE), the delete command offers options to handle it:
+
+```bash
+$ idp-cli delete --stack-name test-stack
+Stack 'test-stack' has an operation in progress: CREATE_IN_PROGRESS
+
+Options:
+  1. Wait for CREATE to complete first
+  2. Cancel the CREATE and proceed with deletion
+
+Do you want to cancel the CREATE and delete the stack? [yes/no/wait]: _
+```
+
+- **yes**: Cancel the operation (if possible) and proceed with deletion
+- **no**: Exit without making changes
+- **wait**: Wait for the current operation to complete, then delete
+
+With `--force` flag, the command automatically cancels the operation and proceeds with deletion:
+
+```bash
+# Force mode - automatically cancels and deletes
+$ idp-cli delete --stack-name test-stack --force
+Force mode: Canceling operation and proceeding with deletion...
+
+✓ Stack reached stable state: ROLLBACK_COMPLETE
+
+Proceeding with stack deletion...
+```
+
+**Note:** CREATE operations cannot be cancelled directly - they must complete or roll back naturally. UPDATE operations can be cancelled immediately.
 
 ---
 

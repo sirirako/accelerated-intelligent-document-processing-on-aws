@@ -7,6 +7,12 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **IDP CLI Auto-Monitor for In-Progress Stack Operations**
+  - Enhanced `idp-cli deploy` and `idp-cli delete` commands to automatically detect in-progress CloudFormation operations
+  - **Smart Detection**: When running deploy/delete on a stack that's already creating, updating, deleting, or rolling back, the CLI automatically switches to monitoring mode instead of failing
+  - **Seamless UX**: If you forget to use `--wait` on the first run, simply run the same command again to monitor progress
+  - **Interactive Cancel for Delete**: When running `idp-cli delete` on a stack with CREATE or UPDATE in progress, offers option to cancel the current operation and proceed with deletion
+
 - **New Make Targets and Documentation**
   - Added `make setup` target to install `idp-cli` and `idp_common` packages in development mode
   - Added `make ui-start` target to start UI dev server with optional `STACK_NAME` parameter for auto-generating `.env` from stack outputs

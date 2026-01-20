@@ -199,7 +199,7 @@ def cli():
     help="Path to local config file or S3 URI (e.g., ./config.yaml or s3://bucket/config.yaml)",
 )
 @click.option("--parameters", help="Additional parameters as key=value,key2=value2")
-@click.option("--wait", is_flag=True, help="Wait for stack creation to complete")
+@click.option("--wait", is_flag=True, help="Wait for stack operation to complete")
 @click.option(
     "--no-rollback", is_flag=True, help="Disable rollback on stack creation failure"
 )
@@ -291,6 +291,64 @@ def deploy(
 
         # Initialize deployer
         deployer = StackDeployer(region=region)
+
+        # Check if stack has an operation in progress
+        in_progress = deployer.get_stack_operation_in_progress(stack_name)
+        if in_progress:
+            # Stack has an operation in progress - switch to monitoring mode
+            operation = in_progress["operation"]
+            status = in_progress["status"]
+
+            console.print(
+                f"[bold yellow]Stack '{stack_name}' has an operation in progress[/bold yellow]"
+            )
+            console.print(f"Current status: [cyan]{status}[/cyan]")
+            console.print()
+            console.print("[bold]Switching to monitoring mode...[/bold]")
+            console.print()
+
+            # Monitor the existing operation
+            result = deployer.monitor_stack_progress(stack_name, operation)
+
+            # Show results
+            is_success = result.get("success", False)
+
+            if is_success:
+                console.print(
+                    f"\n[green]✓ Stack {result['operation']} completed successfully![/green]\n"
+                )
+
+                # Show outputs for non-delete operations
+                if operation != "DELETE":
+                    outputs = result.get("outputs", {})
+                    if outputs:
+                        console.print("[bold]Important Outputs:[/bold]")
+                        console.print(
+                            f"  Application URL: [cyan]{outputs.get('ApplicationWebURL', 'N/A')}[/cyan]"
+                        )
+                        console.print(
+                            f"  Input Bucket: {outputs.get('S3InputBucketName', 'N/A')}"
+                        )
+                        console.print(
+                            f"  Output Bucket: {outputs.get('S3OutputBucketName', 'N/A')}"
+                        )
+                        console.print()
+
+                console.print("[bold]Next Steps:[/bold]")
+                console.print("1. Check your email for temporary admin password")
+                console.print("2. Enable Bedrock model access (see README)")
+                console.print("3. Process documents:")
+                console.print(
+                    f"   [cyan]idp-cli run-inference --stack-name {stack_name} --manifest docs.csv[/cyan]"
+                )
+                console.print()
+            else:
+                console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
+                console.print(f"Status: {result.get('status')}")
+                console.print(f"Error: {result.get('error', 'Unknown')}")
+                sys.exit(1)
+
+            return  # Exit after monitoring
 
         # Check if stack exists
         stack_exists = deployer._stack_exists(stack_name)
@@ -455,9 +513,9 @@ def deploy(
     help="Force delete ALL remaining resources after CloudFormation deletion (S3 buckets, CloudWatch logs, DynamoDB tables). This cannot be undone.",
 )
 @click.option(
-    "--wait/--no-wait",
-    default=True,
-    help="Wait for deletion to complete (default: wait)",
+    "--wait",
+    is_flag=True,
+    help="Wait for deletion to complete (same as deploy)",
 )
 @click.option("--region", help="AWS region (optional)")
 def delete(
@@ -491,11 +549,124 @@ def delete(
       # Force delete ALL remaining resources (S3, logs, DynamoDB)
       idp-cli delete --stack-name test-stack --force-delete-all --force
 
-      # Delete without waiting for completion
-      idp-cli delete --stack-name test-stack --force --no-wait
+      # Wait for deletion to complete
+      idp-cli delete --stack-name test-stack --force --wait
     """
     try:
         deployer = StackDeployer(region=region)
+
+        # Check if stack has an operation in progress
+        in_progress = deployer.get_stack_operation_in_progress(stack_name)
+        if in_progress:
+            operation = in_progress["operation"]
+            status = in_progress["status"]
+
+            if operation == "DELETE":
+                # Delete already in progress - monitor it
+                console.print(
+                    f"[bold yellow]Stack '{stack_name}' is already being deleted[/bold yellow]"
+                )
+                console.print(f"Current status: [cyan]{status}[/cyan]")
+                console.print()
+                console.print("[bold]Switching to monitoring mode...[/bold]")
+                console.print()
+
+                # Monitor the deletion
+                result = deployer.monitor_stack_progress(stack_name, "DELETE")
+
+                if result.get("success"):
+                    console.print("\n[green]✓ Stack deleted successfully![/green]")
+                    console.print(f"Stack: {stack_name}")
+                    console.print(f"Status: {result.get('status')}")
+                else:
+                    console.print("\n[red]✗ Stack deletion failed![/red]")
+                    console.print(f"Status: {result.get('status')}")
+                    console.print(f"Error: {result.get('error', 'Unknown')}")
+                    sys.exit(1)
+
+                return  # Exit after monitoring
+            else:
+                # Non-delete operation in progress (CREATE/UPDATE) - offer to cancel and delete
+                console.print(
+                    f"[bold yellow]Stack '{stack_name}' has an operation in progress: {status}[/bold yellow]"
+                )
+                console.print()
+
+                if not force:
+                    console.print("[bold]Options:[/bold]")
+                    console.print(
+                        f"  \\[Y] Cancel the {operation} and proceed with deletion (default)"
+                    )
+                    console.print(
+                        f"  \\[w] Wait for {operation} to complete first, then delete"
+                    )
+                    console.print("  \\[n] Abort - do not delete")
+                    console.print()
+                    console.print("Choose \\[Y/w/n]: ", end="")
+                    response = input().strip().lower()
+                    if not response:
+                        response = "y"
+
+                    if response in ["n", "no"]:
+                        console.print("[yellow]Deletion cancelled[/yellow]")
+                        sys.exit(0)
+                    elif response in ["w", "wait"]:
+                        console.print()
+                        console.print(
+                            f"[bold]Waiting for {operation} to complete...[/bold]"
+                        )
+                        console.print()
+
+                        # Monitor the current operation
+                        result = deployer.monitor_stack_progress(stack_name, operation)
+
+                        if not result.get("success"):
+                            console.print(f"\n[red]✗ {operation} failed![/red]")
+                            console.print(f"Status: {result.get('status')}")
+                            # Continue to deletion - user may still want to delete failed stack
+                        else:
+                            console.print(f"\n[green]✓ {operation} completed![/green]")
+
+                        # Now proceed with deletion (fall through to normal deletion flow)
+                        console.print()
+                        console.print("[bold]Proceeding with stack deletion...[/bold]")
+                        console.print()
+                    else:  # yes - cancel and delete
+                        console.print()
+                        # CloudFormation allows deleting a stack even during CREATE_IN_PROGRESS
+                        # It will stop creating resources and start deleting what was created
+                        console.print(
+                            f"[bold yellow]Deleting stack (will cancel {operation} in progress)...[/bold yellow]"
+                        )
+                else:
+                    # Force mode - automatically cancel and delete
+                    console.print(
+                        "[bold yellow]Force mode: Canceling operation and proceeding with deletion...[/bold yellow]"
+                    )
+                    console.print()
+
+                    if operation == "UPDATE":
+                        cancel_result = deployer.cancel_update_stack(stack_name)
+                        if not cancel_result.get("success"):
+                            console.print(
+                                f"[yellow]Warning: Could not cancel update: {cancel_result.get('error')}[/yellow]"
+                            )
+
+                    # Wait for stable state
+                    stable_result = deployer.wait_for_stable_state(
+                        stack_name, timeout_seconds=1200
+                    )
+
+                    if not stable_result.get("success"):
+                        console.print(
+                            f"[red]✗ Timeout waiting for stable state: {stable_result.get('error')}[/red]"
+                        )
+                        sys.exit(1)
+
+                    console.print(
+                        f"[green]✓ Stack reached stable state: {stable_result.get('status')}[/green]"
+                    )
+                    console.print()
 
         # Check if stack exists
         if not deployer._stack_exists(stack_name):

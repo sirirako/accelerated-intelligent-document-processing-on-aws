@@ -239,6 +239,308 @@ class StackDeployer:
                 return False
             raise
 
+    def _get_stack_status(self, stack_name: str) -> Optional[str]:
+        """
+        Get current stack status
+
+        Args:
+            stack_name: Stack name
+
+        Returns:
+            Stack status string or None if stack doesn't exist
+        """
+        try:
+            response = self.cfn.describe_stacks(StackName=stack_name)
+            stacks = response.get("Stacks", [])
+            if stacks:
+                return stacks[0].get("StackStatus")
+            return None
+        except self.cfn.exceptions.ClientError as e:
+            if "does not exist" in str(e):
+                return None
+            raise
+
+    def get_stack_operation_in_progress(
+        self, stack_name: str
+    ) -> Optional[Dict[str, str]]:
+        """
+        Check if stack has an operation in progress
+
+        Args:
+            stack_name: Stack name
+
+        Returns:
+            Dictionary with 'operation' and 'status' if in progress, None otherwise
+            Operation can be: CREATE, UPDATE, DELETE
+        """
+        status = self._get_stack_status(stack_name)
+        if not status:
+            return None
+
+        # Map status to operation type
+        in_progress_states = {
+            # CREATE operations
+            "CREATE_IN_PROGRESS": "CREATE",
+            "ROLLBACK_IN_PROGRESS": "CREATE",  # Rollback during create
+            # UPDATE operations
+            "UPDATE_IN_PROGRESS": "UPDATE",
+            "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS": "UPDATE",
+            "UPDATE_ROLLBACK_IN_PROGRESS": "UPDATE",
+            "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS": "UPDATE",
+            # DELETE operations
+            "DELETE_IN_PROGRESS": "DELETE",
+        }
+
+        if status in in_progress_states:
+            return {"operation": in_progress_states[status], "status": status}
+
+        return None
+
+    def cancel_update_stack(self, stack_name: str) -> Dict:
+        """
+        Cancel an in-progress stack update
+
+        This can only be called when a stack is in UPDATE_IN_PROGRESS status.
+        After cancellation, the stack returns to UPDATE_ROLLBACK_IN_PROGRESS
+        and then UPDATE_ROLLBACK_COMPLETE.
+
+        Args:
+            stack_name: Stack name
+
+        Returns:
+            Dictionary with result
+        """
+        logger.info(f"Canceling update for stack: {stack_name}")
+
+        try:
+            self.cfn.cancel_update_stack(StackName=stack_name)
+            return {
+                "success": True,
+                "message": f"Update cancellation initiated for {stack_name}",
+            }
+        except Exception as e:
+            logger.error(f"Error canceling stack update: {e}")
+            return {"success": False, "error": str(e)}
+
+    def wait_for_stable_state(
+        self, stack_name: str, timeout_seconds: int = 600
+    ) -> Dict:
+        """
+        Wait for stack to reach a stable (non-in-progress) state
+
+        Args:
+            stack_name: Stack name
+            timeout_seconds: Maximum time to wait
+
+        Returns:
+            Dictionary with final status
+        """
+        from rich.console import Console
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        console = Console()
+        logger.info(f"Waiting for stack {stack_name} to reach stable state...")
+
+        stable_states = [
+            "CREATE_COMPLETE",
+            "CREATE_FAILED",
+            "ROLLBACK_COMPLETE",
+            "ROLLBACK_FAILED",
+            "UPDATE_COMPLETE",
+            "UPDATE_FAILED",
+            "UPDATE_ROLLBACK_COMPLETE",
+            "UPDATE_ROLLBACK_FAILED",
+            "DELETE_COMPLETE",
+            "DELETE_FAILED",
+        ]
+
+        start_time = time.time()
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Waiting for stable state: {stack_name}", total=None
+            )
+
+            while True:
+                elapsed = time.time() - start_time
+                if elapsed > timeout_seconds:
+                    return {
+                        "success": False,
+                        "error": f"Timeout after {timeout_seconds}s",
+                        "status": "TIMEOUT",
+                    }
+
+                try:
+                    status = self._get_stack_status(stack_name)
+
+                    if status is None:
+                        # Stack doesn't exist (deleted)
+                        return {
+                            "success": True,
+                            "status": "DELETE_COMPLETE",
+                            "message": "Stack no longer exists",
+                        }
+
+                    progress.update(
+                        task,
+                        description=f"[cyan]Current status: {status} ({int(elapsed)}s)",
+                    )
+
+                    if status in stable_states:
+                        return {
+                            "success": True,
+                            "status": status,
+                            "message": f"Stack reached stable state: {status}",
+                        }
+
+                    time.sleep(10)
+
+                except Exception as e:
+                    if "does not exist" in str(e):
+                        return {
+                            "success": True,
+                            "status": "DELETE_COMPLETE",
+                            "message": "Stack no longer exists",
+                        }
+                    logger.error(f"Error checking stack status: {e}")
+                    raise
+
+    def monitor_stack_progress(self, stack_name: str, operation: str) -> Dict:
+        """
+        Monitor an in-progress stack operation until completion
+
+        This function monitors any stack operation (CREATE, UPDATE, DELETE)
+        and returns when the operation completes or fails.
+
+        Args:
+            stack_name: Stack name
+            operation: Operation type (CREATE, UPDATE, DELETE)
+
+        Returns:
+            Dictionary with final status
+        """
+        from rich.console import Console
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        console = Console()
+        logger.info(f"Monitoring {operation} operation for stack: {stack_name}")
+
+        # Define completion statuses for each operation type
+        complete_statuses = {
+            "CREATE": [
+                "CREATE_COMPLETE",
+                "CREATE_FAILED",
+                "ROLLBACK_COMPLETE",
+                "ROLLBACK_FAILED",
+            ],
+            "UPDATE": [
+                "UPDATE_COMPLETE",
+                "UPDATE_FAILED",
+                "UPDATE_ROLLBACK_COMPLETE",
+                "UPDATE_ROLLBACK_FAILED",
+            ],
+            "DELETE": [
+                "DELETE_COMPLETE",
+                "DELETE_FAILED",
+            ],
+        }
+
+        success_statuses = {
+            "CREATE": ["CREATE_COMPLETE"],
+            "UPDATE": ["UPDATE_COMPLETE"],
+            "DELETE": ["DELETE_COMPLETE"],
+        }
+
+        target_statuses = complete_statuses.get(operation, [])
+        success_set = success_statuses.get(operation, [])
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Monitoring {operation}: {stack_name}", total=None
+            )
+            last_event_time = None
+
+            while True:
+                try:
+                    # For DELETE, handle the case where stack is completely gone
+                    if operation == "DELETE":
+                        try:
+                            response = self.cfn.describe_stacks(StackName=stack_name)
+                            stacks = response.get("Stacks", [])
+                        except self.cfn.exceptions.ClientError as e:
+                            if "does not exist" in str(e):
+                                # Stack deleted successfully
+                                return {
+                                    "stack_name": stack_name,
+                                    "operation": operation,
+                                    "status": "DELETE_COMPLETE",
+                                    "success": True,
+                                }
+                            raise
+                    else:
+                        response = self.cfn.describe_stacks(StackName=stack_name)
+                        stacks = response.get("Stacks", [])
+
+                    if not stacks:
+                        if operation == "DELETE":
+                            return {
+                                "stack_name": stack_name,
+                                "operation": operation,
+                                "status": "DELETE_COMPLETE",
+                                "success": True,
+                            }
+                        raise ValueError(f"Stack {stack_name} not found")
+
+                    stack = stacks[0]
+                    status = stack.get("StackStatus", "")
+
+                    # Get recent events
+                    events = self.get_stack_events(stack_name, limit=5)
+                    if events and events[0]["timestamp"] != last_event_time:
+                        last_event_time = events[0]["timestamp"]
+                        # Show most recent event
+                        latest = events[0]
+                        resource = latest["resource"]
+                        resource_status = latest["status"]
+                        progress.update(
+                            task,
+                            description=f"[cyan]{operation}: {resource} - {resource_status}",
+                        )
+
+                    if status in target_statuses:
+                        # Operation complete
+                        is_success = status in success_set
+
+                        result = {
+                            "stack_name": stack_name,
+                            "operation": operation,
+                            "status": status,
+                            "success": is_success,
+                            "outputs": self._get_stack_outputs(stack)
+                            if is_success and operation != "DELETE"
+                            else {},
+                        }
+
+                        if not is_success:
+                            result["error"] = self._get_stack_failure_reason(stack_name)
+
+                        return result
+
+                    # Wait before next check
+                    time.sleep(10)
+
+                except Exception as e:
+                    logger.error(f"Error monitoring stack: {e}")
+                    raise
+
     def _get_stack_parameters(self, stack_name: str) -> Dict[str, str]:
         """
         Get current parameter values from existing stack
