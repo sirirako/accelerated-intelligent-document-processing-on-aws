@@ -90,24 +90,36 @@ When `contextPagesCount` is set to a value greater than 0, the classification pr
 
 **Enhanced Prompt Structure:**
 
-The system replaces the standard `{DOCUMENT_TEXT}` and `{DOCUMENT_IMAGE}` placeholders with context-aware versions:
+The system replaces the standard `{DOCUMENT_TEXT}` and `{DOCUMENT_IMAGE}` placeholders with context-aware versions that clearly separate context pages from the page being classified:
 
+**Text Context Structure:**
 ```xml
-<!-- Text context for page 3 with contextPagesCount=1 -->
-<document-ocr-data-page-before page="2">
-[OCR text from page 2]
-</document-ocr-data-page-before>
+<document-ocr-data>
+  For context, here is the OCR text for the page(s) immediately prior to the page you should classify:
+  <context-pages-before>
+  [OCR text from context pages before - combined if multiple pages]
+  </context-pages-before>
 
-<document-ocr-data page="3">
-[OCR text from page 3 - the page being classified]
+  Here is the OCR text for the page to classify:
+  <current-page>
+  [OCR text for the page being classified]
+  </current-page>
 </document-ocr-data>
-
-<document-ocr-data-page-after page="4">
-[OCR text from page 4]
-</document-ocr-data-page-after>
-
-<!-- Images follow the same pattern with before/after tags -->
 ```
+
+**Image Context Structure:**
+```
+<document-image>
+  For context, here are the image(s) for the page(s) immediately prior to the page you should classify:
+  [Image 1 - context page before]
+  [Image 2 - context page before (if contextPagesCount >= 2)]
+  
+  Here is the image for the page to classify:
+  [Image - current page being classified]
+</document-image>
+```
+
+**Note:** The context pages before and after are combined into their respective sections. The structure clearly indicates which content is for context versus which content should be classified.
 
 **Benefits:**
 
