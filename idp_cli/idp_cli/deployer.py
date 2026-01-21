@@ -1357,6 +1357,7 @@ class StackDeployer:
     def _cleanup_additional_resources(self, stack_identifier: str) -> None:
         """Clean up additional resources not tracked by CloudFormation"""
         import json
+        import os
 
         # Extract stack name from identifier
         stack_name = stack_identifier
