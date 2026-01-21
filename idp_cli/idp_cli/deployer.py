@@ -1365,6 +1365,10 @@ class StackDeployer:
 
         logger.info(f"Cleaning up additional resources for: {stack_name}")
 
+        # Set AWS retry configuration to handle throttling
+        os.environ["AWS_MAX_ATTEMPTS"] = "10"
+        os.environ["AWS_RETRY_MODE"] = "adaptive"
+
         try:
             # Clean up additional log groups that might not be caught by standard cleanup
             logs_client = boto3.client("logs", region_name=self.region)
