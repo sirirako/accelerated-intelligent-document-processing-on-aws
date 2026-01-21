@@ -10,10 +10,10 @@ Parameters:
     Description: 'Name of the CodePipeline'
     Default: genaiic-sdlc-deploy-pipeline
 
-  BucketName:
+  BucketNamePrefix:
     Type: String
-    Description: 'Name of the S3 bucket containing the deployment assets'
-    Default: genaiic-sdlc-sourcecode-020432867916-us-east-1
+    Description: 'Prefix for the S3 bucket name'
+    Default: genaiic-sdlc-sourcecode
   
   FileKey:
     Type: String
@@ -96,9 +96,9 @@ Resources:
                     - 's3:ListBucket'
                     - 's3:PutObject'
                   Resource:
-                    - !Sub 'arn:aws:s3:::${BucketName}/*'
+                    - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}/*'
                     - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
-                    - !Sub 'arn:aws:s3:::${BucketName}'
+                    - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
                     - !Sub 'arn:aws:s3:::${ArtifactBucket}'
                 - Effect: Allow
                   Action:
@@ -207,6 +207,9 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_LARGE
         Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: SOURCE_BUCKET
+            Value: !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -218,7 +221,7 @@ Resources:
               commands:
                 - n 22 && node --version || { echo "Node setup failed"; exit 1; }
                 - npm install -g npm@11 || { echo "npm upgrade failed"; exit 1; }
-                - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket genaiic-sdlc-sourcecode-${AWS_ACCOUNT_ID:-020432867916}-${AWS_DEFAULT_REGION:-us-east-1} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
+                - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket ${SOURCE_BUCKET} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
                 - cd lib/idp_common_pkg && pip install -e . && cd ../.. || { echo "IDP Common installation failed"; exit 1; }
                 - cd idp_cli && pip install -e . && cd .. || { echo "IDP CLI installation failed"; exit 1; }
                 - pip install rich || echo "Rich installation failed, using fallback formatting"
@@ -251,7 +254,7 @@ Resources:
                 Provider: S3
                 Version: '1'
               Configuration:
-                S3Bucket: !Ref BucketName
+                S3Bucket: !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
                 S3ObjectKey: !Ref FileKey
                 PollForSourceChanges: false
               OutputArtifacts:
@@ -289,13 +292,13 @@ Resources:
               - 's3:GetObjectVersion'
               - 's3:PutObject'
             Resource: 
-              - !Sub 'arn:aws:s3:::${BucketName}/*'
+              - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}/*'
               - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
           - Effect: Allow
             Action:
               - 's3:ListBucket'
             Resource: 
-              - !Sub 'arn:aws:s3:::${BucketName}'
+              - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
               - !Sub 'arn:aws:s3:::${ArtifactBucket}'
 
   CodeBuildLogsPolicy:
@@ -367,7 +370,7 @@ Resources:
         detail:
           bucket:
             name:
-              - !Ref BucketName
+              - !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
           object:
             key:
               - !Ref FileKey
