@@ -48,6 +48,12 @@ SPDX-License-Identifier: MIT-0
   - **Root Cause**: When the browser refreshes a URL containing `%2F` (encoded slash), it automatically decodes it to `/`. React Router's `:objectKey` parameter only captures a single path segment, so `folder/filename.pdf` was being split into multiple segments, causing a route mismatch
   - **Solution**: Changed the route from `path=":objectKey"` to `path="*"` (wildcard route) to capture the full remaining path including any embedded slashes, and updated `DocumentDetails` component to extract the document key from `params['*']`
 
+- **Improved UX Feedback for Delete, Reprocess, and Abort Modal Actions**
+  - Added loading state indicators to Delete, Reprocess, and Abort confirmation modals
+  - Action buttons now show a loading spinner when clicked, providing clear visual feedback that the action is in progress
+  - Cancel button and modal dismiss are disabled during operation to prevent accidental interruption
+  - Applies to both Document List (bulk operations) and Document Details (single document) pages
+
 - **Fixed Evaluation Failure for Documents with Truncated LLM Extraction Output**
   - Fixed evaluation service crash when extraction output contained unparsed `raw_output` instead of structured fields
   - **Root Cause**: When LLM extraction output is truncated (model hits max_tokens limit), the extraction service stores `{"raw_output": "..."}` which caused Pydantic validation errors during evaluation
