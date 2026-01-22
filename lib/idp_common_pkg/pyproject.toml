@@ -14,6 +14,10 @@ exclude = [
   "**build**",
 ]
 
+# Include YAML and MD files for system defaults configuration
+[tool.setuptools.package-data]
+"idp_common.config.system_defaults" = ["*.yaml", "*.md"]
+
 [project]
 name = "idp_common"
 version = "0.4.12"

@@ -6,6 +6,7 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import getConfigurationQuery from '../graphql/queries/getConfiguration';
 import updateConfigurationMutation from '../graphql/queries/updateConfiguration';
+import { deepMerge } from '../utils/configUtils';
 
 const client = generateClient();
 const logger = new ConsoleLogger('useConfiguration');
@@ -83,6 +84,36 @@ const setValueAtPath = (obj, path, value) => {
   }
 
   current[segments[segments.length - 1]] = value;
+  return result;
+};
+
+// Utility: Remove value at path from nested object (immutable)
+// Returns new object with the path removed, and cleans up empty parent objects
+const removeValueAtPath = (obj, path) => {
+  if (!obj || !path) return obj;
+  const segments = path.split(/[.[\]]+/).filter(Boolean);
+  const result = JSON.parse(JSON.stringify(obj)); // Deep clone
+
+  // Helper to remove empty parent objects recursively
+  const cleanupEmptyParents = (object, segs, depth = 0) => {
+    if (depth >= segs.length - 1) {
+      // At the target level, delete the key
+      delete object[segs[depth]];
+      return;
+    }
+
+    const segment = segs[depth];
+    if (!(segment in object)) return;
+
+    cleanupEmptyParents(object[segment], segs, depth + 1);
+
+    // If parent is now empty, delete it too
+    if (typeof object[segment] === 'object' && Object.keys(object[segment]).length === 0) {
+      delete object[segment];
+    }
+  };
+
+  cleanupEmptyParents(result, segments);
   return result;
 };
 
@@ -245,21 +276,28 @@ const useConfiguration = () => {
       setDefaultConfig(normalizedDefaultObj);
       setCustomConfig(normalizedCustomObj);
 
-      // IMPORTANT: Frontend only uses Custom config
-      // Backend ensures Custom is always populated (copies Default on first read)
-      // This way frontend always diffs against a complete config
-      const activeConfig = normalizedCustomObj;
+      // IMPORTANT: Frontend merges Default + Custom for display
+      // DESIGN PATTERN:
+      // - Default = full stack baseline (from deployment)
+      // - Custom = SPARSE DELTAS ONLY (only user-modified fields)
+      // - mergedConfig = Default deep-updated with Custom = what we display
+      //
+      // This design allows:
+      // - Stack upgrades to safely update Default without losing user customizations
+      // - Empty Custom = all defaults (clean reset capability)
+      // - User customizations survive stack deployments
+      const activeConfig = deepMerge(normalizedDefaultObj, normalizedCustomObj);
 
-      console.log('Active configuration (Custom only):', activeConfig);
+      logger.debug('Merged configuration (Default + Custom deltas):', activeConfig);
       // Double check the classification and extraction sections
       if (activeConfig.classification) {
-        console.log('Final classification data:', activeConfig.classification);
+        logger.debug('Final classification data:', activeConfig.classification);
       }
       if (activeConfig.extraction) {
-        console.log('Final extraction data:', activeConfig.extraction);
+        logger.debug('Final extraction data:', activeConfig.extraction);
       }
       if (activeConfig.classes) {
-        console.log('Final classes (JSON Schema) data:', activeConfig.classes);
+        logger.debug('Final classes (JSON Schema) data:', activeConfig.classes);
       }
       setMergedConfig(activeConfig);
     } catch (err) {
@@ -320,7 +358,8 @@ const useConfiguration = () => {
   };
 
   // Reset a specific configuration path back to default
-  // Frontend computes the new custom config and sends diff to backend
+  // DESIGN: Set the default value - backend auto-cleans matching defaults from Custom
+  // The strip_matching_defaults function on backend removes values matching Default
   const resetToDefault = async (path) => {
     if (!path || !customConfig || !defaultConfig) return false;
 
@@ -332,17 +371,15 @@ const useConfiguration = () => {
       const defaultValue = getValueAtPath(defaultConfig, path);
       logger.debug(`Default value at ${path}:`, defaultValue);
 
-      // Create new custom config with default value
-      const newCustomConfig = setValueAtPath(customConfig, path, defaultValue);
+      // Create a delta with the default value
+      // Backend will auto-clean this (strip_matching_defaults removes values that match Default)
+      const updatePayload = setValueAtPath({}, path, defaultValue);
+      logger.debug('Sending update payload (backend will auto-clean):', updatePayload);
 
-      // Compute diff between old and new custom config
-      const diff = getDiff(customConfig, newCustomConfig);
-      logger.debug('Computed diff:', diff);
-
-      // Send only the diff to backend
+      // Send the default value to backend
       const result = await client.graphql({
         query: updateConfigurationMutation,
-        variables: { customConfig: JSON.stringify(diff) },
+        variables: { customConfig: JSON.stringify(updatePayload) },
       });
 
       const response = result.data.updateConfiguration;
@@ -352,11 +389,16 @@ const useConfiguration = () => {
         throw new Error(errorMsg);
       }
 
-      logger.debug(`Successfully reset path ${path} to default`);
+      logger.debug(`Successfully reset path ${path} to default (backend auto-cleaned)`);
 
-      // Optimistic update: update local state immediately
+      // Optimistic update: remove the field from local custom config
+      // (Backend's auto-cleanup will have removed it since it matches Default)
+      const newCustomConfig = removeValueAtPath(customConfig, path);
+
+      // Update local state
       setCustomConfig(newCustomConfig);
-      setMergedConfig(newCustomConfig);
+      // mergedConfig = Default + Custom (with field removed, Default value shows)
+      setMergedConfig(deepMerge(defaultConfig, newCustomConfig));
 
       return true;
     } catch (err) {

@@ -2091,24 +2091,99 @@ def get_or_create_config_bucket(region: str) -> str:
 
 
 def upload_local_config(
-    file_path: str, region: str, stack_name: Optional[str] = None
+    file_path: str,
+    region: str,
+    stack_name: Optional[str] = None,
+    pattern: Optional[str] = None,
+    merge_with_defaults: bool = True,
 ) -> str:
     """
-    Upload local config file to temporary S3 bucket
+    Upload local config file to temporary S3 bucket.
+
+    If merge_with_defaults is True (default), the user's minimal config is merged
+    with system defaults before uploading. This allows users to specify only the
+    values they want to customize.
 
     Args:
         file_path: Path to local config file
         region: AWS region
         stack_name: CloudFormation stack name (unused, kept for compatibility)
+        pattern: Pattern to use for defaults (pattern-1, pattern-2, pattern-3).
+                 If not provided, attempts to auto-detect from config file.
+        merge_with_defaults: If True, merge user config with system defaults
 
     Returns:
         S3 URI of uploaded file
     """
+    import yaml
+
     # Validate file exists
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"Config file not found: {file_path}")
 
     logger.info(f"Uploading local config file: {file_path}")
+
+    # Load user config
+    with open(file_path, "r", encoding="utf-8") as f:
+        user_config = yaml.safe_load(f) or {}
+
+    # Merge with defaults if requested
+    if merge_with_defaults:
+        try:
+            from idp_common.config.merge_utils import merge_config_with_defaults
+
+            # Auto-detect pattern if not provided
+            if not pattern:
+                # Try to detect from config content
+                classification_method = user_config.get("classification", {}).get(
+                    "classificationMethod", ""
+                )
+                if classification_method == "bda":
+                    pattern = "pattern-1"
+                elif classification_method == "udop":
+                    pattern = "pattern-3"
+                else:
+                    # Default to pattern-2 (most common)
+                    pattern = "pattern-2"
+                logger.info(f"Auto-detected pattern: {pattern}")
+
+            logger.info(f"Merging user config with {pattern} system defaults...")
+            merged_config = merge_config_with_defaults(
+                user_config, pattern=pattern, validate=False
+            )
+
+            # Log merge summary
+            user_keys = set(user_config.keys())
+            logger.info(f"User config sections: {user_keys}")
+            logger.info(f"Merged config has {len(merged_config)} top-level sections")
+
+            # Use merged config for upload
+            config_to_upload = merged_config
+
+        except ImportError:
+            logger.warning(
+                "idp_common not available - uploading config without merging"
+            )
+            config_to_upload = user_config
+        except FileNotFoundError as e:
+            logger.warning(
+                f"System defaults not found - uploading config without merging: {e}"
+            )
+            config_to_upload = user_config
+        except Exception as e:
+            logger.warning(f"Failed to merge with defaults: {e}")
+            config_to_upload = user_config
+    else:
+        config_to_upload = user_config
+
+    # Convert back to YAML
+    config_yaml = yaml.dump(
+        config_to_upload,
+        default_flow_style=False,
+        sort_keys=False,
+        allow_unicode=True,
+        width=120,
+    )
 
     # Always use temp bucket
     bucket_name = get_or_create_config_bucket(region)
@@ -2123,10 +2198,12 @@ def upload_local_config(
     # Upload file
     s3 = boto3.client("s3", region_name=region)
     try:
-        with open(file_path, "rb") as f:
-            s3.put_object(
-                Bucket=bucket_name, Key=s3_key, Body=f, ServerSideEncryption="AES256"
-            )
+        s3.put_object(
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=config_yaml.encode("utf-8"),
+            ServerSideEncryption="AES256",
+        )
 
         # Return S3 URI
         s3_uri = f"s3://{bucket_name}/{s3_key}"

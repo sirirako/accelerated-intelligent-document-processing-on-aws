@@ -2723,6 +2723,600 @@ def remove_residual_resources_from_deleted_stacks(
         sys.exit(1)
 
 
+@cli.command(name="config-create")
+@click.option(
+    "--features",
+    default="min",
+    help="Feature set: 'min' (classification, extraction, classes), 'core' (adds ocr, assessment), 'all', or comma-separated list of sections",
+)
+@click.option(
+    "--pattern",
+    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    default="pattern-2",
+    help="Pattern to use for defaults (default: pattern-2)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output file path (default: stdout)",
+)
+@click.option(
+    "--include-prompts",
+    is_flag=True,
+    help="Include full prompt templates (default: stripped for readability)",
+)
+@click.option(
+    "--no-comments",
+    is_flag=True,
+    help="Omit explanatory header comments",
+)
+def config_create(
+    features: str,
+    pattern: str,
+    output: Optional[str],
+    include_prompts: bool,
+    no_comments: bool,
+):
+    """
+    Generate an IDP configuration template
+
+    Creates a YAML configuration file based on system defaults. Users only need
+    to customize the values they want to change - unspecified fields use defaults.
+
+    Feature sets:
+      min:  classification, extraction, classes (simplest)
+      core: min + ocr, assessment
+      all:  all sections with full defaults
+
+    Or specify a comma-separated list of sections:
+      --features "classification,extraction,summarization"
+
+    Examples:
+
+      # Generate minimal config to stdout
+      idp-cli config-create
+
+      # Generate minimal config for Pattern-1 (BDA)
+      idp-cli config-create --pattern pattern-1 --output config.yaml
+
+      # Generate full config with all sections
+      idp-cli config-create --features all --output full-config.yaml
+
+      # Include full prompts (verbose)
+      idp-cli config-create --features core --include-prompts --output config.yaml
+
+      # Custom section selection
+      idp-cli config-create --features "classification,extraction,summarization" --output config.yaml
+    """
+    try:
+        from idp_common.config.merge_utils import generate_config_template
+
+        # Parse features - could be a preset or comma-separated list
+        if "," in features:
+            feature_list = [f.strip() for f in features.split(",")]
+        else:
+            feature_list = features  # type: ignore
+
+        # Generate template
+        yaml_content = generate_config_template(
+            features=feature_list,
+            pattern=pattern,
+            include_prompts=include_prompts,
+            include_comments=not no_comments,
+        )
+
+        if output:
+            # Write to file
+            with open(output, "w", encoding="utf-8") as f:
+                f.write(yaml_content)
+            console.print(
+                f"[green]✓ Configuration template written to: {output}[/green]"
+            )
+            console.print()
+            console.print("[bold]Next steps:[/bold]")
+            console.print(f"  1. Edit {output} to add your document classes")
+            console.print(
+                f"  2. Validate: [cyan]idp-cli config-validate --config-file {output}[/cyan]"
+            )
+            console.print(
+                f"  3. Deploy: [cyan]idp-cli deploy --stack-name <name> --custom-config {output}[/cyan]"
+            )
+        else:
+            # Write to stdout
+            console.print(yaml_content)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]✗ Error: {e}[/red]")
+        console.print(
+            "[yellow]Tip: Run from the project root directory or set IDP_PROJECT_ROOT[/yellow]"
+        )
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error creating config: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="config-validate")
+@click.option(
+    "--config-file",
+    "-f",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to configuration file to validate",
+)
+@click.option(
+    "--pattern",
+    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    default="pattern-2",
+    help="Pattern to validate against (default: pattern-2)",
+)
+@click.option(
+    "--show-merged",
+    is_flag=True,
+    help="Show the full merged configuration",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Fail validation if config contains unknown or deprecated fields",
+)
+def config_validate(
+    config_file: str,
+    pattern: str,
+    show_merged: bool,
+    strict: bool,
+):
+    """
+    Validate a configuration file against system defaults
+
+    Checks that the configuration:
+      - Has valid YAML syntax
+      - Merges correctly with system defaults
+      - Passes Pydantic model validation
+      - Has valid model IDs and settings
+
+    Examples:
+
+      # Validate a config file
+      idp-cli config-validate --config-file ./my-config.yaml
+
+      # Validate against Pattern-1 defaults
+      idp-cli config-validate --config-file ./config.yaml --pattern pattern-1
+
+      # Show the full merged config
+      idp-cli config-validate --config-file ./config.yaml --show-merged
+
+      # Strict mode - fail if unknown/deprecated fields are present
+      idp-cli config-validate --config-file ./config.yaml --strict
+    """
+    try:
+        import yaml
+        from idp_common.config.merge_utils import load_yaml_file, validate_config
+
+        # Load the user's config
+        console.print(f"[bold blue]Validating: {config_file}[/bold blue]")
+        console.print(f"Pattern: {pattern}")
+        console.print()
+
+        try:
+            from pathlib import Path
+
+            user_config = load_yaml_file(Path(config_file))
+            console.print("[green]✓ YAML syntax valid[/green]")
+        except yaml.YAMLError as e:
+            console.print(f"[red]✗ YAML syntax error: {e}[/red]")
+            sys.exit(1)
+        except Exception as e:
+            console.print(f"[red]✗ Failed to load file: {e}[/red]")
+            sys.exit(1)
+
+        # Check for extra/deprecated fields before Pydantic validation
+        from idp_common.config.models import IDP_CONFIG_DEPRECATED_FIELDS, IDPConfig
+
+        defined_fields = set(IDPConfig.model_fields.keys())
+        user_fields = set(user_config.keys())
+        extra_fields = user_fields - defined_fields
+
+        deprecated_fields = extra_fields & IDP_CONFIG_DEPRECATED_FIELDS
+        unknown_fields = extra_fields - IDP_CONFIG_DEPRECATED_FIELDS
+
+        if deprecated_fields:
+            console.print(
+                f"[yellow]⚠ Deprecated fields found (will be ignored): {sorted(deprecated_fields)}[/yellow]"
+            )
+
+        if unknown_fields:
+            console.print(
+                f"[yellow]⚠ Unknown fields found (will be ignored): {sorted(unknown_fields)}[/yellow]"
+            )
+
+        if strict and extra_fields:
+            console.print()
+            console.print("[red]✗ Strict mode: config contains extra fields[/red]")
+            console.print(
+                "[yellow]Remove these fields or run without --strict[/yellow]"
+            )
+            sys.exit(1)
+
+        # Validate config
+        result = validate_config(user_config, pattern=pattern)
+
+        if result["valid"]:
+            console.print("[green]✓ Config merges with system defaults[/green]")
+            console.print("[green]✓ Pydantic validation passed[/green]")
+
+            # Show warnings
+            if result["warnings"]:
+                console.print()
+                console.print("[bold yellow]Warnings:[/bold yellow]")
+                for warning in result["warnings"]:
+                    console.print(f"  ⚠ {warning}")
+
+            # Check for document classes
+            classes = user_config.get("classes", [])
+            if classes:
+                console.print(
+                    f"[green]✓ {len(classes)} document class(es) defined[/green]"
+                )
+            else:
+                console.print(
+                    "[yellow]⚠ No document classes defined - add at least one[/yellow]"
+                )
+
+            console.print()
+            console.print("[bold green]Config is valid![/bold green]")
+
+            if show_merged:
+                console.print()
+                console.print("[bold]Merged configuration:[/bold]")
+                console.print("-" * 60)
+                merged_yaml = yaml.dump(
+                    result["merged_config"],
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
+                console.print(merged_yaml)
+
+        else:
+            console.print("[red]✗ Validation failed[/red]")
+            console.print()
+            for error in result["errors"]:
+                console.print(f"  [red]• {error}[/red]")
+            sys.exit(1)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]✗ Error: {e}[/red]")
+        console.print(
+            "[yellow]Tip: Run from the project root directory or set IDP_PROJECT_ROOT[/yellow]"
+        )
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error validating config: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="config-upload")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--config-file",
+    "-f",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to configuration file (YAML or JSON)",
+)
+@click.option(
+    "--validate/--no-validate",
+    default=True,
+    help="Validate config before uploading (default: validate)",
+)
+@click.option(
+    "--pattern",
+    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    help="Pattern for validation (auto-detected if not specified)",
+)
+@click.option("--region", help="AWS region (optional)")
+def config_upload(
+    stack_name: str,
+    config_file: str,
+    validate: bool,
+    pattern: Optional[str],
+    region: Optional[str],
+):
+    """
+    Upload a configuration file to a deployed IDP stack
+
+    Reads a local YAML or JSON configuration file and uploads it to the
+    stack's ConfigurationTable in DynamoDB. The config is merged with
+    system defaults just like configurations saved through the Web UI.
+
+    Examples:
+
+      # Upload config with validation
+      idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
+
+      # Skip validation (use with caution)
+      idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
+
+      # Explicit pattern for validation
+      idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
+    """
+    try:
+        import json
+
+        import boto3
+        import yaml
+
+        console.print(f"[bold blue]Uploading config to stack: {stack_name}[/bold blue]")
+        console.print(f"Config file: {config_file}")
+        console.print()
+
+        # Load the config file
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            if config_file.endswith(".json"):
+                user_config = json.loads(content)
+            else:
+                user_config = yaml.safe_load(content)
+
+            console.print("[green]✓ Config file loaded[/green]")
+        except Exception as e:
+            console.print(f"[red]✗ Failed to load config file: {e}[/red]")
+            sys.exit(1)
+
+        # Get ConfigurationTable from stack resources
+        cfn = boto3.client("cloudformation", region_name=region)
+
+        try:
+            paginator = cfn.get_paginator("list_stack_resources")
+            config_table = None
+            detected_pattern = None
+
+            for page in paginator.paginate(StackName=stack_name):
+                for resource in page.get("StackResourceSummaries", []):
+                    logical_id = resource.get("LogicalResourceId", "")
+                    if logical_id == "ConfigurationTable":
+                        config_table = resource.get("PhysicalResourceId")
+                    # Try to detect pattern from stack resources
+                    if "Pattern1" in logical_id:
+                        detected_pattern = "pattern-1"
+                    elif "Pattern2" in logical_id:
+                        detected_pattern = "pattern-2"
+                    elif "Pattern3" in logical_id:
+                        detected_pattern = "pattern-3"
+
+            if not config_table:
+                console.print("[red]✗ ConfigurationTable not found in stack[/red]")
+                sys.exit(1)
+
+            console.print(f"[dim]ConfigurationTable: {config_table}[/dim]")
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
+            sys.exit(1)
+
+        # Auto-detect pattern if not specified
+        if not pattern:
+            pattern = detected_pattern or "pattern-2"
+            console.print(f"[dim]Using pattern: {pattern}[/dim]")
+
+        # Validate if requested
+        if validate:
+            try:
+                from idp_common.config.merge_utils import validate_config
+
+                result = validate_config(user_config, pattern=pattern)
+
+                if result["valid"]:
+                    console.print("[green]✓ Config validation passed[/green]")
+                    if result["warnings"]:
+                        for warning in result["warnings"]:
+                            console.print(f"  [yellow]⚠ {warning}[/yellow]")
+                else:
+                    console.print("[red]✗ Config validation failed:[/red]")
+                    for error in result["errors"]:
+                        console.print(f"  [red]• {error}[/red]")
+                    console.print()
+                    console.print(
+                        "[yellow]Use --no-validate to skip validation (not recommended)[/yellow]"
+                    )
+                    sys.exit(1)
+            except ImportError:
+                console.print(
+                    "[yellow]⚠ Validation skipped - idp_common not available[/yellow]"
+                )
+
+        # Upload to DynamoDB using ConfigurationManager
+        try:
+            import os
+
+            from idp_common.config.configuration_manager import ConfigurationManager
+
+            # Set env var for ConfigurationManager to find the table
+            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
+
+            manager = ConfigurationManager()
+
+            # Convert to JSON string (the method expects JSON string or dict)
+            config_json = json.dumps(user_config)
+
+            success = manager.handle_update_custom_configuration(config_json)
+
+            if success:
+                console.print("[green]✓ Configuration uploaded successfully[/green]")
+                console.print()
+                console.print("[bold]Configuration is now active![/bold]")
+                console.print("New documents will use this configuration immediately.")
+            else:
+                console.print("[red]✗ Failed to upload configuration[/red]")
+                sys.exit(1)
+
+        except ImportError:
+            console.print("[red]✗ idp_common not installed[/red]")
+            console.print(
+                "[yellow]Install idp_common_pkg or run from project root[/yellow]"
+            )
+            sys.exit(1)
+        except Exception as e:
+            console.print(f"[red]✗ Failed to upload configuration: {e}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Error uploading config: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="config-download")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output file path (default: stdout)",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["full", "minimal"]),
+    default="full",
+    help="Output format: 'full' (complete config) or 'minimal' (only differences from defaults)",
+)
+@click.option(
+    "--pattern",
+    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    help="Pattern for minimal diff (auto-detected if not specified)",
+)
+@click.option("--region", help="AWS region (optional)")
+def config_download(
+    stack_name: str,
+    output: Optional[str],
+    output_format: str,
+    pattern: Optional[str],
+    region: Optional[str],
+):
+    """
+    Download configuration from a deployed IDP stack
+
+    Retrieves the current configuration from DynamoDB and optionally
+    shows only the values that differ from system defaults.
+
+    Examples:
+
+      # Download full config
+      idp-cli config-download --stack-name my-stack --output config.yaml
+
+      # Download minimal config (only customizations)
+      idp-cli config-download --stack-name my-stack --format minimal --output config.yaml
+
+      # Print to stdout
+      idp-cli config-download --stack-name my-stack
+    """
+    try:
+        import boto3
+        import yaml
+
+        console.print(
+            f"[bold blue]Downloading config from stack: {stack_name}[/bold blue]"
+        )
+
+        # Get ConfigurationTable by looking up stack resource
+        cfn = boto3.client("cloudformation", region_name=region)
+
+        try:
+            # List stack resources to find ConfigurationTable
+            paginator = cfn.get_paginator("list_stack_resources")
+            config_table = None
+
+            for page in paginator.paginate(StackName=stack_name):
+                for resource in page.get("StackResourceSummaries", []):
+                    if resource.get("LogicalResourceId") == "ConfigurationTable":
+                        config_table = resource.get("PhysicalResourceId")
+                        break
+                if config_table:
+                    break
+
+            if not config_table:
+                console.print(
+                    "[red]✗ ConfigurationTable not found in stack resources[/red]"
+                )
+                sys.exit(1)
+
+            console.print(f"[dim]Using table: {config_table}[/dim]")
+
+            # Use idp_common's ConfigurationReader
+            from idp_common.config import ConfigurationReader
+
+            reader = ConfigurationReader(table_name=config_table)
+            config_data = reader.get_merged_configuration(as_model=False)
+            console.print("[green]✓ Configuration retrieved[/green]")
+
+        except ImportError:
+            console.print(
+                "[red]✗ idp_common not installed - run from project root or install idp_common_pkg[/red]"
+            )
+            sys.exit(1)
+        except Exception as e:
+            console.print(f"[red]✗ Failed to get configuration: {e}[/red]")
+            sys.exit(1)
+
+        # For minimal format, compute diff from defaults
+        if output_format == "minimal":
+            from idp_common.config.merge_utils import (
+                get_diff_dict,
+                load_system_defaults,
+            )
+
+            # Auto-detect pattern if not specified
+            if not pattern:
+                # Try to detect from config or stack
+                classification_method = config_data.get("classification", {}).get(
+                    "classificationMethod", ""
+                )
+                if classification_method == "bda":
+                    pattern = "pattern-1"
+                elif classification_method == "udop":
+                    pattern = "pattern-3"
+                else:
+                    pattern = "pattern-2"
+                console.print(f"[dim]Auto-detected pattern: {pattern}[/dim]")
+
+            defaults = load_system_defaults(pattern)
+            config_data = get_diff_dict(defaults, config_data)
+            console.print(
+                f"[dim]Showing only differences from {pattern} defaults[/dim]"
+            )
+
+        # Convert to YAML
+        yaml_content = yaml.dump(
+            config_data,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            width=120,
+        )
+
+        if output:
+            with open(output, "w", encoding="utf-8") as f:
+                f.write(f"# Configuration downloaded from stack: {stack_name}\n")
+                f.write(f"# Format: {output_format}\n\n")
+                f.write(yaml_content)
+            console.print(f"[green]✓ Configuration saved to: {output}[/green]")
+        else:
+            console.print()
+            console.print(yaml_content)
+
+    except Exception as e:
+        logger.error(f"Error downloading config: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the CLI"""
     cli()
