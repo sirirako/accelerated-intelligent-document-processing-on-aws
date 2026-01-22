@@ -52,13 +52,6 @@ SPDX-License-Identifier: MIT-0
   - Added hover tooltips to all Document List toolbar buttons (Refresh, Download, Release Review, Abort, Reprocess, Delete) for better discoverability
   - Converted Abort, Reprocess, Delete, and Release Review buttons to icon-only display for a cleaner, more compact toolbar
   - Added `unlocked` icon to Release Review button to visually represent releasing a human review lock
-  - Reordered toolbar buttons with Release Review moved to far right position
-  - Standardized Reprocess button icon to `redo` across both Document List and Document Details pages for consistency
-  - Added `ariaLabel` attributes to all icon-only buttons for accessibility
-  - Added loading state indicators to Delete, Reprocess, and Abort confirmation modals
-  - Action buttons now show a loading spinner when clicked, providing clear visual feedback that the action is in progress
-  - Cancel button and modal dismiss are disabled during operation to prevent accidental interruption
-  - Applies to both Document List (bulk operations) and Document Details (single document) pages
 
 - **Fixed Evaluation Failure for Documents with Truncated LLM Extraction Output**
   - Fixed evaluation service crash when extraction output contained unparsed `raw_output` instead of structured fields
