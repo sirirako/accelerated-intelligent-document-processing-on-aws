@@ -43,6 +43,16 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Fixed Evaluation Failure for Documents with Truncated LLM Extraction Output**
+  - Fixed evaluation service crash when extraction output contained unparsed `raw_output` instead of structured fields
+  - **Root Cause**: When LLM extraction output is truncated (model hits max_tokens limit), the extraction service stores `{"raw_output": "..."}` which caused Pydantic validation errors during evaluation
+  - **Solution**: 
+    - Added `repair_truncated_json()` utility function that attempts to repair truncated JSON using multiple strategies (closing brackets, finding last complete element, extracting complete fields)
+    - Integrated JSON repair into extraction service - most truncated output is now automatically repaired
+    - Added detection of `raw_output` case in evaluation service with clear error messaging: "Extraction parsing failed... LLM output could not be parsed as valid JSON. This typically indicates truncated output (model hit max_tokens limit). Consider increasing max_tokens in extraction config."
+    - Added metadata fields (`output_truncated`, `output_repaired`, `repair_method`) to track truncation/repair status
+    - Enhanced evaluation service type coercion to provide appropriate defaults for required fields when LLM returns null values (prevents Pydantic validation errors like "Field required")
+
 - **Fixed AgentRequestHandler Missing Lambda Invoke Permission for Error Analyzer Agent**
   - Fixed AccessDeniedException when clicking the Troubleshoot button in the Web UI
 
