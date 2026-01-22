@@ -48,9 +48,13 @@ SPDX-License-Identifier: MIT-0
   - **Root Cause**: When the browser refreshes a URL containing `%2F` (encoded slash), it automatically decodes it to `/`. React Router's `:objectKey` parameter only captures a single path segment, so `folder/filename.pdf` was being split into multiple segments, causing a route mismatch
   - **Solution**: Changed the route from `path=":objectKey"` to `path="*"` (wildcard route) to capture the full remaining path including any embedded slashes, and updated `DocumentDetails` component to extract the document key from `params['*']`
 
-- **Improved UX for Document List Action Buttons**
-  - Added hover tooltips to Release Review, Abort, Reprocess, and Delete buttons for better discoverability
-  - Abort and Reprocess buttons now display as icon-only buttons (labels removed) for a cleaner, more compact toolbar
+- **Improved UX for Document List and Document Details Action Buttons**
+  - Added hover tooltips to all Document List toolbar buttons (Refresh, Download, Release Review, Abort, Reprocess, Delete) for better discoverability
+  - Converted Abort, Reprocess, Delete, and Release Review buttons to icon-only display for a cleaner, more compact toolbar
+  - Added `unlocked` icon to Release Review button to visually represent releasing a human review lock
+  - Reordered toolbar buttons with Release Review moved to far right position
+  - Standardized Reprocess button icon to `redo` across both Document List and Document Details pages for consistency
+  - Added `ariaLabel` attributes to all icon-only buttons for accessibility
   - Added loading state indicators to Delete, Reprocess, and Abort confirmation modals
   - Action buttons now show a loading spinner when clicked, providing clear visual feedback that the action is in progress
   - Cancel button and modal dismiss are disabled during operation to prevent accidental interruption
