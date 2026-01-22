@@ -43,6 +43,11 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Fixed Document Details Page Not Loading After Browser Refresh for Document IDs Containing Forward Slashes**
+  - Fixed issue where navigating to a document with a `/` in the Document ID (e.g., `folder/filename.pdf`) and then refreshing the browser would result in a blank page
+  - **Root Cause**: When the browser refreshes a URL containing `%2F` (encoded slash), it automatically decodes it to `/`. React Router's `:objectKey` parameter only captures a single path segment, so `folder/filename.pdf` was being split into multiple segments, causing a route mismatch
+  - **Solution**: Changed the route from `path=":objectKey"` to `path="*"` (wildcard route) to capture the full remaining path including any embedded slashes, and updated `DocumentDetails` component to extract the document key from `params['*']`
+
 - **Fixed Evaluation Failure for Documents with Truncated LLM Extraction Output**
   - Fixed evaluation service crash when extraction output contained unparsed `raw_output` instead of structured fields
   - **Root Cause**: When LLM extraction output is truncated (model hits max_tokens limit), the extraction service stores `{"raw_output": "..."}` which caused Pydantic validation errors during evaluation

@@ -23,7 +23,11 @@ const logger = new ConsoleLogger('documentDetails');
 const DocumentDetails = () => {
   const params = useParams();
   const navigate = useNavigate();
-  let { objectKey } = params;
+  
+  // Get the objectKey from the wildcard route parameter '*'
+  // This captures the full path including any embedded slashes (e.g., folder/filename.pdf)
+  let objectKey = params['*'];
+  
   // Ensure we properly decode the objectKey from the URL parameter
   // It may be already decoded or still encoded depending on browser behavior with refreshes
   try {
