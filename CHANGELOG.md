@@ -7,14 +7,20 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Page Context for Multimodal Page-Level Classification** - [GitHub Issue #150](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/150)
-  - Added `contextPagesCount` configuration option to include surrounding pages as context during page-level classification
-  - **Key Features**: When classifying a page, the system can now include 1, 2, or more pages before and after the target page to provide additional context for better classification decisions
-  - **Configuration**: Set `classification.contextPagesCount` to 0 (default, no context), 1 (1 page before/after), 2 (2 pages before/after), etc.
-  - **Enhanced Prompt Structure**: Context pages are clearly marked in prompts with XML tags (e.g., `<context-pages-before>`, `<current-page>`, `<context-pages-after>`)
-  - **Edge Handling**: At document boundaries, only available pages are included (first page has no "before" pages, last page has no "after" pages)
-  - **Use Cases**: Improves boundary detection and classification accuracy for documents where individual pages lack sufficient context, multi-page forms with similar layouts, and cases where LLM boundary detection has been unreliable
-  - **Considerations**: Increases token usage proportionally to the number of context pages included
+- **Modular System Defaults Architecture for Simplified Configuration**
+  - Introduced pattern-specific system default files (`lib/idp_common_pkg/idp_common/config/system_defaults/pattern-{1,2,3}.yaml`) that provide comprehensive default settings for OCR, classification, extraction, assessment, evaluation, summarization, discovery, and agents
+  - User configurations now only need to specify `notes`, `classes`, and any intentional overrides - all other settings inherit from system defaults
+  - Simplified all config_library configurations to minimal footprint (most now just 10-30 lines instead of hundreds)
+  - Updated all README files in config_library and docs/configuration.md with inheritance documentation
+  - **Benefits**: Simpler configs, automatic maintenance when defaults evolve, clearer visibility into customizations
+
+- **Increased Extraction max_tokens Default** - Increased default `max_tokens` for extraction from 10,000 to 65,535 (Nova 2 Lite model maximum) to reduce LLM output truncation on long documents
+
+- **IDP CLI Configuration Management Commands** - [GitHub Issue #87](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/87)
+  - `idp-cli config-create` - Generate IDP configuration template from system defaults with selectable feature sets
+  - `idp-cli config-validate` - Validate configuration file against system defaults and JSON schema
+  - `idp-cli config-download` - Download current configuration from a deployed stack
+  - `idp-cli config-upload` - Upload a local configuration file to a deployed stack's DynamoDB ConfigurationTable
 
 - **IDP CLI Auto-Monitor for In-Progress Stack Operations**
   - Enhanced `idp-cli deploy` and `idp-cli delete` commands to automatically detect in-progress CloudFormation operations

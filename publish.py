@@ -1701,9 +1701,19 @@ STDERR:
                     "<LAMBDA_HASH_TOKEN>": self.get_directory_checksum(
                         "./src/lambda/agentcore_gateway_manager"
                     )[:16],
-                    "<CONFIG_LIBRARY_HASH_TOKEN>": self.get_directory_checksum(
-                        "config_library"
-                    )[:16],
+                    # Include config_library + config processing code (Lambda, models, system defaults)
+                    # This ensures UpdateConfiguration custom resource re-runs when processing logic changes
+                    "<CONFIG_LIBRARY_HASH_TOKEN>": hashlib.sha256(
+                        (
+                            self.get_directory_checksum("config_library")
+                            + self.get_directory_checksum(
+                                "src/lambda/update_configuration"
+                            )
+                            + self.get_directory_checksum(
+                                "lib/idp_common_pkg/idp_common/config"
+                            )
+                        ).encode()
+                    ).hexdigest()[:16],
                     "<CONFIG_FILES_LIST_TOKEN>": config_files_json,
                     "<WORKFORCE_URL_HASH_TOKEN>": workforce_url_hash,
                     "<A2I_RESOURCES_HASH_TOKEN>": a2i_resources_hash,

@@ -35,6 +35,10 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [stop-workflows](#stop-workflows)
   - [load-test](#load-test)
   - [remove-deleted-stack-resources](#remove-deleted-stack-resources)
+  - [config-create](#config-create)
+  - [config-validate](#config-validate)
+  - [config-download](#config-download)
+  - [config-upload](#config-upload)
 - [Complete Evaluation Workflow](#complete-evaluation-workflow)
   - [Step 1: Deploy Your Stack](#step-1-deploy-your-stack)
   - [Step 2: Initial Processing from Local Directory](#step-2-initial-processing-from-local-directory)
@@ -1523,6 +1527,143 @@ This means:
 - Resources from stacks deleted **more than 90 days ago** → Not identified (silently skipped)
 
 **Best Practice:** Run `remove-deleted-stack-resources` promptly after deleting IDP stacks to ensure complete cleanup. For maximum effectiveness, run this command within 90 days of stack deletion.
+
+---
+
+### `config-create`
+
+Generate an IDP configuration template from system defaults.
+
+**Usage:**
+```bash
+idp-cli config-create [OPTIONS]
+```
+
+**Options:**
+- `--features`: Feature set (default: `min`)
+  - `min`: classification, extraction, classes only (simplest)
+  - `core`: min + ocr, assessment
+  - `all`: all sections with full defaults
+  - Or comma-separated list: `"classification,extraction,summarization"`
+- `--pattern`: Pattern to use for defaults (default: `pattern-2`)
+- `--output`, `-o`: Output file path (default: stdout)
+- `--include-prompts`: Include full prompt templates (default: stripped for readability)
+- `--no-comments`: Omit explanatory header comments
+
+**Examples:**
+
+```bash
+# Generate minimal config to stdout
+idp-cli config-create
+
+# Generate minimal config for Pattern-1
+idp-cli config-create --pattern pattern-1 --output config.yaml
+
+# Generate full config with all sections
+idp-cli config-create --features all --output full-config.yaml
+
+# Custom section selection
+idp-cli config-create --features "classification,extraction,summarization" --output config.yaml
+```
+
+---
+
+### `config-validate`
+
+Validate a configuration file against system defaults and Pydantic models.
+
+**Usage:**
+```bash
+idp-cli config-validate [OPTIONS]
+```
+
+**Options:**
+- `--custom-config` (required): Path to configuration file to validate
+- `--pattern`: Pattern to validate against (default: `pattern-2`)
+- `--show-merged`: Show the full merged configuration
+
+**Examples:**
+
+```bash
+# Validate a config file
+idp-cli config-validate --custom-config ./my-config.yaml
+
+# Validate against Pattern-1 defaults
+idp-cli config-validate --custom-config ./config.yaml --pattern pattern-1
+
+# Show full merged config
+idp-cli config-validate --custom-config ./config.yaml --show-merged
+```
+
+---
+
+### `config-download`
+
+Download configuration from a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-download [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--output`, `-o`: Output file path (default: stdout)
+- `--format`: Output format - `full` (default) or `minimal` (only differences from defaults)
+- `--pattern`: Pattern for minimal diff (auto-detected if not specified)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Download full config
+idp-cli config-download --stack-name my-stack --output config.yaml
+
+# Download minimal config (only customizations)
+idp-cli config-download --stack-name my-stack --format minimal --output config.yaml
+
+# Print to stdout
+idp-cli config-download --stack-name my-stack
+```
+
+---
+
+### `config-upload`
+
+Upload a configuration file to a deployed IDP stack.
+
+**Usage:**
+```bash
+idp-cli config-upload [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--config-file`, `-f` (required): Path to configuration file (YAML or JSON)
+- `--validate/--no-validate`: Validate config before uploading (default: validate)
+- `--pattern`: Pattern for validation (auto-detected if not specified)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# Upload config with validation
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
+
+# Skip validation (use with caution)
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
+
+# Explicit pattern for validation
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --pattern pattern-2
+```
+
+**What Happens:**
+1. Loads and parses your YAML or JSON config file
+2. Validates against system defaults (unless `--no-validate`)
+3. Uploads to the stack's ConfigurationTable in DynamoDB
+4. Configuration is immediately active for new document processing
+
+This uses the same mechanism as the Web UI "Save Configuration" button.
 
 ---
 
