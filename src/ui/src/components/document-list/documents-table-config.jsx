@@ -232,10 +232,22 @@ export const DocumentsCommonHeader = ({
             {`Load: ${periodText}`}
           </ButtonDropdown>
           <span title="Refresh document list">
-            <Button iconName="refresh" variant="normal" loading={props.loading} onClick={() => props.setIsLoading(true)} ariaLabel="Refresh" />
+            <Button
+              iconName="refresh"
+              variant="normal"
+              loading={props.loading}
+              onClick={() => props.setIsLoading(true)}
+              ariaLabel="Refresh"
+            />
           </span>
           <span title="Download document list to Excel">
-            <Button iconName="download" variant="normal" loading={props.loading} onClick={() => props.downloadToExcel()} ariaLabel="Download" />
+            <Button
+              iconName="download"
+              variant="normal"
+              loading={props.loading}
+              onClick={() => props.downloadToExcel()}
+              ariaLabel="Download"
+            />
           </span>
           {onClaimReview && (
             <Button variant="primary" disabled={!hasClaimableItems} onClick={onClaimReview}>
@@ -259,7 +271,13 @@ export const DocumentsCommonHeader = ({
           )}
           {onReleaseReview && (
             <span title="Release review lock on selected documents">
-              <Button iconName="unlocked" variant="normal" disabled={!hasReleasableItems} onClick={onReleaseReview} ariaLabel="Release Review" />
+              <Button
+                iconName="unlocked"
+                variant="normal"
+                disabled={!hasReleasableItems}
+                onClick={onReleaseReview}
+                ariaLabel="Release Review"
+              />
             </span>
           )}
         </SpaceBetween>
