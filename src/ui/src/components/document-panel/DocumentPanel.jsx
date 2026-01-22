@@ -590,7 +590,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
                   </Button>
                 )}
                 {onReprocess && (
-                  <Button iconName="arrow-right" variant="normal" onClick={onReprocess}>
+                  <Button iconName="redo" variant="normal" onClick={onReprocess}>
                     Reprocess
                   </Button>
                 )}
