@@ -101,7 +101,9 @@ class HitlMetadata:
     hitl_triggered: bool = False
     page_array: List[str] = field(default_factory=list)
     review_portal_url: Optional[str] = None  # Added field for review portal URL
-    hitl_completed: bool = False  # Added field to track completion status
+    hitl_completed: Optional[bool] = (
+        None  # None = unknown, True = completed, False = in progress
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert HITL metadata to dictionary representation."""
@@ -133,9 +135,7 @@ class HitlMetadata:
             review_portal_url=data.get(
                 "review_portal_url"
             ),  # Fix: Include review portal URL
-            hitl_completed=data.get(
-                "hitl_completed", False
-            ),  # Fix: Include completion status
+            hitl_completed=data.get("hitl_completed"),  # None if not set
             page_array=data.get("page_array", []),
         )
 

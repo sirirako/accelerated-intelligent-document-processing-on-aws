@@ -17,10 +17,14 @@ import {
   Modal,
   Textarea,
   FormField,
+  Input,
   Select,
   CollectionPreferences,
   ExpandableSection,
+  RadioGroup,
 } from '@cloudscape-design/components';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import yaml from 'js-yaml';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
@@ -347,6 +351,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [reRunLoading, setReRunLoading] = useState(false);
   const [showReRunModal, setShowReRunModal] = useState(false);
   const [reRunContext, setReRunContext] = useState('');
+  const [reRunNumberOfFiles, setReRunNumberOfFiles] = useState('');
   const [testSetFileCount, setTestSetFileCount] = useState(null);
   const [testSetStatus, setTestSetStatus] = useState(null);
   const [testSetFilePattern, setTestSetFilePattern] = useState(null);
@@ -356,6 +361,11 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [selectedRangeData, setSelectedRangeData] = useState(null);
   const [lowestScoreCount, setLowestScoreCount] = useState({ label: '5', value: 5 });
+
+  // Config export modal state
+  const [showConfigExportModal, setShowConfigExportModal] = useState(false);
+  const [configExportFormat, setConfigExportFormat] = useState('json');
+  const [configExportFileName, setConfigExportFileName] = useState('');
 
   const getProgressMessage = (progressLevel) => {
     if (progressLevel <= 1) return 'Initializing test results...';
@@ -588,22 +598,103 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
     console.error('Error parsing breakdown data:', e);
   }
 
-  const downloadConfig = () => {
+  // Helper function to get merged config from results.config
+  // The config may be stored as a JSON string (possibly double-stringified) with {Default: {...}, Custom: {...}} or already merged
+  const getMergedConfig = (config) => {
+    if (!config) return null;
+
+    // Parse if it's a string (may be double-stringified)
+    let parsedConfig = config;
+    while (typeof parsedConfig === 'string') {
+      try {
+        parsedConfig = JSON.parse(parsedConfig);
+      } catch (e) {
+        console.error('Failed to parse config string:', e);
+        return null;
+      }
+    }
+
+    // Deep merge helper function
+    const deepMerge = (target, source) => {
+      const output = { ...target };
+      if (source && typeof source === 'object' && !Array.isArray(source)) {
+        Object.keys(source).forEach((key) => {
+          if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+            if (target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+              output[key] = deepMerge(target[key], source[key]);
+            } else {
+              output[key] = { ...source[key] };
+            }
+          } else {
+            output[key] = source[key];
+          }
+        });
+      }
+      return output;
+    };
+
+    // If config has Default and Custom properties, merge them
+    if (parsedConfig && parsedConfig.Default && typeof parsedConfig.Default === 'object') {
+      const defaultConfig = parsedConfig.Default;
+      const customConfig = parsedConfig.Custom || {};
+
+      console.log('Merging Default and Custom configs');
+      return deepMerge(defaultConfig, customConfig);
+    }
+
+    // Config is already in merged format
+    console.log('Config already in merged format or no Default/Custom found');
+    return parsedConfig;
+  };
+
+  // Open config export modal
+  const openConfigExportModal = () => {
     if (!results?.config) {
       console.error('No config data available');
       return;
     }
+    // Set default filename based on testRunId
+    setConfigExportFileName(`test-run-${results.testRunId}-config`);
+    setConfigExportFormat('json');
+    setShowConfigExportModal(true);
+  };
 
-    const configData = JSON.stringify(results.config, null, 2);
-    const blob = new Blob([configData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `test-run-${results.testRunId}-config.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  // Handle config export
+  const handleConfigExport = () => {
+    try {
+      const mergedConfig = getMergedConfig(results.config);
+      if (!mergedConfig) {
+        console.error('No config data available');
+        return;
+      }
+
+      let content;
+      let mimeType;
+      let fileExtension;
+
+      if (configExportFormat === 'yaml') {
+        content = yaml.dump(mergedConfig);
+        mimeType = 'text/yaml';
+        fileExtension = 'yaml';
+      } else {
+        content = JSON.stringify(mergedConfig, null, 2);
+        mimeType = 'application/json';
+        fileExtension = 'json';
+      }
+
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${configExportFileName}.${fileExtension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setShowConfigExportModal(false);
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
   };
 
   const handleReRun = async () => {
@@ -619,12 +710,26 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
       return;
     }
 
+    // Validate numberOfFiles if provided
+    if (reRunNumberOfFiles.trim()) {
+      const numFiles = parseInt(reRunNumberOfFiles.trim(), 10);
+      if (isNaN(numFiles) || numFiles <= 0) {
+        console.error('Invalid numberOfFiles value');
+        return;
+      }
+      if (numFiles > testSetFileCount) {
+        console.error(`numberOfFiles (${numFiles}) exceeds test set file count (${testSetFileCount})`);
+        return;
+      }
+    }
+
     setReRunLoading(true);
 
     try {
       const input = {
         testSetId: testSetId,
         ...(reRunContext && { context: reRunContext }),
+        ...(reRunNumberOfFiles.trim() && { numberOfFiles: parseInt(reRunNumberOfFiles.trim(), 10) }),
       };
 
       console.log('About to call GraphQL with input:', input);
@@ -643,6 +748,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         addTestRun(newTestRun.testRunId, newTestRun.testSetName, reRunContext, newTestRun.filesCount);
         setShowReRunModal(false);
         setReRunContext('');
+        setReRunNumberOfFiles('');
         // Navigate to test executions tab
         window.location.hash = '#/test-studio?tab=executions';
       } else {
@@ -674,7 +780,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   ) : null;
 
   const configButton = (
-    <Button onClick={downloadConfig} iconName="download">
+    <Button onClick={openConfigExportModal} iconName="download">
       Config
     </Button>
   );
@@ -1033,6 +1139,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         onDismiss={() => {
           setShowReRunModal(false);
           setReRunContext('');
+          setReRunNumberOfFiles('');
         }}
         header="Re-Run Test"
         footer={
@@ -1043,6 +1150,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
                 onClick={() => {
                   setShowReRunModal(false);
                   setReRunContext('');
+                  setReRunNumberOfFiles('');
                 }}
               >
                 Cancel
@@ -1063,6 +1171,35 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             <strong>Files:</strong>{' '}
             {testSetStatus === 'NOT_FOUND' ? 'Test set deleted' : testSetFileCount !== null ? `${testSetFileCount} files` : 'Loading...'}
           </Box>
+          <FormField label="Number of Files" description={`Optional: Limit the number of files to process (max: ${testSetFileCount || 0})`}>
+            <Input
+              value={reRunNumberOfFiles}
+              onChange={({ detail }) => {
+                const value = detail.value;
+
+                // Allow empty value
+                if (value === '') {
+                  setReRunNumberOfFiles('');
+                  return;
+                }
+
+                // Only allow digits (reject any non-digit characters)
+                if (!/^\d+$/.test(value)) {
+                  return; // Don't update state if invalid characters
+                }
+
+                // Check range
+                const num = parseInt(value, 10);
+                if (num > 0 && num <= (testSetFileCount || 0)) {
+                  setReRunNumberOfFiles(value);
+                }
+                // If number is too large, don't update the state (prevents typing)
+              }}
+              placeholder={`Enter 1-${testSetFileCount || 0}`}
+              type="text"
+              inputMode="numeric"
+            />
+          </FormField>
           <FormField label="Context" description="Optional context information for this test run">
             <Textarea
               value={reRunContext}
@@ -1115,6 +1252,44 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             <Box>No documents found in this range</Box>
           )}
         </Box>
+      </Modal>
+
+      <Modal
+        visible={showConfigExportModal}
+        onDismiss={() => setShowConfigExportModal(false)}
+        header="Export Configuration"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowConfigExportModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleConfigExport}>
+                Export
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="l">
+          <FormField label="File format">
+            <RadioGroup
+              value={configExportFormat}
+              onChange={({ detail }) => setConfigExportFormat(detail.value)}
+              items={[
+                { value: 'json', label: 'JSON' },
+                { value: 'yaml', label: 'YAML' },
+              ]}
+            />
+          </FormField>
+          <FormField label="File name">
+            <Input
+              value={configExportFileName}
+              onChange={({ detail }) => setConfigExportFileName(detail.value)}
+              placeholder="configuration"
+            />
+          </FormField>
+        </SpaceBetween>
       </Modal>
     </Container>
   );

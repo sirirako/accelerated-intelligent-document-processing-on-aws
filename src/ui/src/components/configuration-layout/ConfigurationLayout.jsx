@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Container,
   Header,
@@ -33,6 +33,35 @@ import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
 
 const client = generateClient();
 const logger = new ConsoleLogger('ConfigurationLayout');
+
+// Utility function to check if two values are numerically equivalent
+// Handles cases where 5 and 5.0, or "5" and 5 should be considered equal
+const areNumericValuesEqual = (val1, val2) => {
+  // If both are numbers, direct comparison
+  if (typeof val1 === 'number' && typeof val2 === 'number') {
+    return val1 === val2;
+  }
+
+  // Try to parse both as numbers
+  const num1 = typeof val1 === 'number' ? val1 : parseFloat(val1);
+  const num2 = typeof val2 === 'number' ? val2 : parseFloat(val2);
+
+  // Both must be valid numbers for numeric comparison
+  if (!Number.isNaN(num1) && !Number.isNaN(num2)) {
+    return num1 === num2;
+  }
+
+  return false;
+};
+
+// Check if a value could be interpreted as a number
+const isNumericValue = (val) => {
+  if (typeof val === 'number') return true;
+  if (typeof val === 'string' && val.trim() !== '') {
+    return !Number.isNaN(parseFloat(val)) && isFinite(val);
+  }
+  return false;
+};
 
 const ConfigurationLayout = () => {
   const {
@@ -77,6 +106,9 @@ const ConfigurationLayout = () => {
   const [readmeContent, setReadmeContent] = useState('');
   const [libraryLoading, setLibraryLoading] = useState(false);
 
+  // ConfigBuilder tab state - lifted up to preserve across refreshes
+  const [configBuilderActiveTab, setConfigBuilderActiveTab] = useState('configuration');
+
   // BDA/IDP Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
@@ -84,6 +116,15 @@ const ConfigurationLayout = () => {
   const [syncError, setSyncError] = useState(null);
 
   const editorRef = useRef(null);
+
+  // Compute whether there are unsaved changes by comparing formValues with mergedConfig
+  const hasUnsavedChanges = useMemo(() => {
+    if (!mergedConfig || !formValues || Object.keys(formValues).length === 0) {
+      return false;
+    }
+    // Deep comparison using JSON serialization
+    return JSON.stringify(formValues) !== JSON.stringify(mergedConfig);
+  }, [formValues, mergedConfig]);
 
   // Hooks for configuration library
   const { listConfigurations, getFile } = useConfigurationLibrary();
@@ -699,7 +740,26 @@ const ConfigurationLayout = () => {
           return allResults;
         }
 
-        // Handle primitive values
+        // Handle primitive values - use numeric equivalence for numbers
+        // This prevents false positives when Pydantic converts int to float (5 vs 5.0)
+        if (isNumericValue(current) && isNumericValue(defaultObj)) {
+          // Use numeric comparison for values that can be interpreted as numbers
+          if (!areNumericValuesEqual(current, defaultObj)) {
+            console.log(`DEBUG: Numeric difference detected at path '${path}':`, {
+              // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+              current,
+              currentType: typeof current,
+              defaultObj,
+              defaultType: typeof defaultObj,
+            });
+            const result = { [path]: current };
+            return result;
+          }
+          // Numerically equal, no difference
+          return newResult;
+        }
+
+        // Non-numeric primitive comparison
         if (current !== defaultObj) {
           console.log(`DEBUG: Primitive difference detected at path '${path}':`, {
             // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
@@ -729,16 +789,17 @@ const ConfigurationLayout = () => {
         configToSave = { ...mergedConfigToSave, saveAsDefault: true };
         console.log('Saving merged config as new Default:', configToSave);
       } else {
-        // CRITICAL: Compare formValues against customConfig (what we loaded)
-        // This ensures we only send actual changes as the diff
+        // CRITICAL: Compare formValues against mergedConfig (what user SEES and EDITS from)
+        // mergedConfig = Default + Custom (the complete config displayed to user)
+        // This ensures we only send actual user changes as the diff
         // Backend will merge this diff into existing Custom, preserving all other fields
-        console.log('DEBUG: About to compare formValues with customConfig:', {
+        console.log('DEBUG: About to compare formValues with mergedConfig:', {
           formValues,
-          customConfig,
+          mergedConfig,
           granularInFormValues: formValues?.assessment?.granular,
-          granularInCustomConfig: customConfig?.assessment?.granular,
+          granularInMergedConfig: mergedConfig?.assessment?.granular,
         });
-        const differences = compareWithDefault(formValues, customConfig);
+        const differences = compareWithDefault(formValues, mergedConfig);
         console.log('DEBUG: Differences found by compareWithDefault:', differences);
 
         // Flatten path results into a proper object structure - revised to avoid ESLint errors
@@ -822,11 +883,16 @@ const ConfigurationLayout = () => {
         const builtObject = buildObjectFromPaths(differences);
         console.log('DEBUG: Built object from paths:', builtObject);
 
-        // CRITICAL: Always include the current document schema (classes) if it exists OR is explicitly empty
-        // This ensures empty arrays are saved (to wipe all classes) and prevents schema loss
+        // Include classes ONLY if they changed from mergedConfig (what user sees)
+        // This prevents unnecessarily sending the entire classes array on every save
         if (formValues.classes && Array.isArray(formValues.classes)) {
-          builtObject.classes = formValues.classes;
-          console.log('DEBUG: Including document schema (classes) in save:', formValues.classes);
+          const classesChanged = JSON.stringify(formValues.classes) !== JSON.stringify(mergedConfig?.classes);
+          if (classesChanged) {
+            builtObject.classes = formValues.classes;
+            console.log('DEBUG: Including modified document schema (classes) in save:', formValues.classes);
+          } else {
+            console.log('DEBUG: Classes unchanged, not including in save');
+          }
         }
 
         // CRITICAL: If there are no differences AND no schema changes, don't send update to backend
@@ -912,6 +978,8 @@ const ConfigurationLayout = () => {
       if (success) {
         setSaveSuccess(true);
         setShowResetModal(false);
+        // Refresh to show the restored default configuration
+        await fetchConfiguration();
       } else {
         setSaveError('Failed to reset configuration. Please try again.');
       }
@@ -1009,7 +1077,7 @@ const ConfigurationLayout = () => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         setImportError(null);
         const content = e.target.result;
@@ -1023,13 +1091,22 @@ const ConfigurationLayout = () => {
             setPendingImportConfig(importedConfig);
             setShowMigrationModal(true);
           } else {
-            // Modern format - load directly into form
-            if (importedConfig.classes) {
-              setExtractionSchema(importedConfig.classes);
+            // Modern format - auto-save and refresh to get merged config with system defaults
+            // Use replaceCustom flag to replace existing Custom entirely (not merge)
+            setIsSaving(true);
+            try {
+              const success = await updateConfiguration({ ...importedConfig, replaceCustom: true });
+              if (success) {
+                await fetchConfiguration();
+                setSaveSuccess(true);
+              } else {
+                setImportError('Failed to import configuration');
+              }
+            } catch (err) {
+              setImportError(`Import failed: ${err.message}`);
+            } finally {
+              setIsSaving(false);
             }
-            handleFormChange(importedConfig);
-            setSaveSuccess(false);
-            setSaveError(null);
           }
         } else {
           setImportError('Invalid configuration file format');
@@ -1154,15 +1231,22 @@ const ConfigurationLayout = () => {
           setPendingImportConfig(importedConfig);
           setShowMigrationModal(true);
         } else {
-          if (importedConfig.classes) {
-            setExtractionSchema(importedConfig.classes);
+          // Modern format - auto-save and refresh to get merged config with system defaults
+          // Use replaceCustom flag to replace existing Custom entirely (not merge)
+          setIsSaving(true);
+          try {
+            const success = await updateConfiguration({ ...importedConfig, replaceCustom: true });
+            if (success) {
+              await fetchConfiguration();
+              setSaveSuccess(true);
+            } else {
+              setImportError('Failed to import configuration');
+            }
+          } catch (importErr) {
+            setImportError(`Import failed: ${importErr.message}`);
+          } finally {
+            setIsSaving(false);
           }
-          handleFormChange(importedConfig);
-          setSaveSuccess(false);
-          setSaveError(null);
-          setImportSuccess(true);
-          // Auto-dismiss after 3 seconds
-          setTimeout(() => setImportSuccess(false), 3000);
         }
       } else {
         setImportError('Invalid configuration format');
@@ -1468,6 +1552,9 @@ const ConfigurationLayout = () => {
                   Import
                 </Button>
                 <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
+                <Button variant="normal" onClick={() => fetchConfiguration()} loading={refreshing} iconName="refresh">
+                  Refresh
+                </Button>
                 {isPattern1 && (
                   <Button variant="normal" onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
                     Sync BDA/IDP
@@ -1479,7 +1566,12 @@ const ConfigurationLayout = () => {
                 <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)}>
                   Save as default
                 </Button>
-                <Button variant="primary" onClick={() => handleSave(false)} loading={isSaving}>
+                <Button
+                  variant="primary"
+                  onClick={() => handleSave(false)}
+                  loading={isSaving}
+                  disabled={!hasUnsavedChanges || validationErrors.length > 0}
+                >
                   Save changes
                 </Button>
               </SpaceBetween>
@@ -1586,6 +1678,8 @@ const ConfigurationLayout = () => {
                   onResetToDefault={resetToDefault}
                   onChange={handleFormChange}
                   extractionSchema={extractionSchema}
+                  activeTabId={configBuilderActiveTab}
+                  onTabChange={setConfigBuilderActiveTab}
                   onSchemaChange={(schemaData, isDirty) => {
                     setExtractionSchema(schemaData);
                     if (isDirty) {

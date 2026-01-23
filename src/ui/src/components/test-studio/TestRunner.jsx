@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Textarea } from '@cloudscape-design/components';
+import { Container, Header, SpaceBetween, Button, FormField, Select, Alert, Textarea, Input } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
@@ -15,6 +15,7 @@ const logger = new ConsoleLogger('TestRunner');
 const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
   const [testSets, setTestSets] = useState([]);
   const [selectedTestSet, setSelectedTestSet] = useState(null);
+  const [numberOfFiles, setNumberOfFiles] = useState('');
   const [context, setContext] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,11 +44,30 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
       return;
     }
 
+    // Get the selected test set data to validate numberOfFiles
+    const testSetData = testSets.find((ts) => ts.id === selectedTestSet.value);
+    const maxFiles = testSetData?.fileCount || 0;
+
+    let filesToProcess = maxFiles;
+    if (numberOfFiles.trim()) {
+      const numFiles = parseInt(numberOfFiles.trim(), 10);
+      if (isNaN(numFiles) || numFiles <= 0) {
+        setError('Number of files must be a positive integer');
+        return;
+      }
+      if (numFiles > maxFiles) {
+        setError(`Number of files cannot exceed ${maxFiles} (total files in test set)`);
+        return;
+      }
+      filesToProcess = numFiles;
+    }
+
     setLoading(true);
     try {
       const input = {
         testSetId: selectedTestSet.value,
         ...(context && { context }),
+        ...(numberOfFiles.trim() && { numberOfFiles: parseInt(numberOfFiles.trim(), 10) }),
       };
       console.log('TestRunner: Starting test run with input:', input);
 
@@ -127,10 +147,54 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
         <FormField label="Select Test Set" description="Choose an existing test set to run">
           <Select
             selectedOption={selectedTestSet}
-            onChange={({ detail }) => setSelectedTestSet(detail.selectedOption)}
+            onChange={({ detail }) => {
+              setSelectedTestSet(detail.selectedOption);
+              setNumberOfFiles(''); // Reset numberOfFiles when test set changes
+            }}
             options={testSetOptions}
             placeholder="Choose a test set..."
             empty="No test sets available"
+          />
+        </FormField>
+
+        <FormField
+          label="Number of Files"
+          description={`Optional: Limit the number of files to process (max: ${
+            selectedTestSet ? testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount || 0 : 0
+          })`}
+        >
+          <Input
+            value={numberOfFiles}
+            onChange={({ detail }) => {
+              const value = detail.value;
+              const maxFiles = selectedTestSet ? testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount || 0 : 0;
+
+              // Allow empty value
+              if (value === '') {
+                setNumberOfFiles('');
+                return;
+              }
+
+              // Only allow digits (reject any non-digit characters)
+              if (!/^\d+$/.test(value)) {
+                return; // Don't update state if invalid characters
+              }
+
+              // Check range
+              const num = parseInt(value, 10);
+              if (num > 0 && num <= maxFiles) {
+                setNumberOfFiles(value);
+              }
+              // If number is too large, don't update the state (prevents typing)
+            }}
+            placeholder={
+              selectedTestSet
+                ? `Enter 1-${testSets.find((ts) => ts.id === selectedTestSet.value)?.fileCount || 0}`
+                : 'Select a test set first'
+            }
+            disabled={!selectedTestSet}
+            type="text"
+            inputMode="numeric"
           />
         </FormField>
 

@@ -5,6 +5,236 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+
+## [0.4.11]
+
+### Added
+
+- **IDP SDK - Python SDK for Programmatic Document Processing**
+  - New `idp_sdk` Python package (`lib/idp_sdk/`) providing a native Python interface for IDP operations
+  - **IDPClient Class**: Wraps `idp-cli` commands with Pythonic methods for seamless integration into Python applications
+  - **Key Methods**: `run_inference()`, `rerun_inference()`, `download_results()`, `status()`, `deploy()`, `delete()`, `delete_documents()`, `validate_manifest()`, `generate_manifest()`, `config_create()`, `config_validate()`, `config_download()`, `config_upload()`
+  - **Pydantic Response Models**: Type-safe response objects (`BatchResult`, `ManifestResult`, `ValidationResult`, `ConfigCreateResult`, `ConfigValidationResult`) with proper Pydantic v2 compatibility
+  - **Lambda Integration Example**: Complete SAM template and handler demonstrating SDK usage in AWS Lambda functions
+  - **Documentation**: SDK reference guide (`docs/idp-sdk.md`) with CLI command mapping, usage examples, and Lambda patterns
+  - **Easy Installation**: `pip install -e lib/idp_sdk` or `make setup` installs SDK with all dependencies
+  - **Use Cases**: CI/CD pipelines, Lambda functions, automated workflows, custom integrations, and programmatic batch processing
+
+- **Relocated idp-cli to lib/idp_cli_pkg/**
+  - Moved `idp_cli/` directory to `lib/idp_cli_pkg/` to co-locate with other library packages
+  - Updated all documentation and Makefile targets for new location
+
+- **Modular System Defaults Architecture for Simplified Configuration**
+  - Introduced pattern-specific system default files (`lib/idp_common_pkg/idp_common/config/system_defaults/pattern-{1,2,3}.yaml`) that provide default settings for OCR, classification, extraction, assessment, evaluation, summarization, discovery, and agents
+  - User configurations now only need to specify `notes`, `classes`, and any intentional overrides - all other settings inherit from system defaults
+  - Simplified all config_library configurations to minimal footprint (most now just 10-30 lines instead of hundreds)
+  - Updated all README files in config_library and docs/configuration.md with inheritance documentation
+  - **Benefits**: Simpler configs, automatic maintenance when defaults evolve, clearer visibility into customizations
+
+- **Increased Extraction max_tokens Default** - Increased default `max_tokens` for extraction from 10,000 to 65,535 (Nova 2 Lite model maximum) to reduce LLM output truncation on long documents
+
+- **IDP CLI Configuration Management Commands** - [GitHub Issue #87](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/87)
+  - `idp-cli config-create` - Generate IDP configuration template from system defaults with selectable feature sets
+  - `idp-cli config-validate` - Validate configuration file against system defaults and JSON schema
+  - `idp-cli config-download` - Download current configuration from a deployed stack
+  - `idp-cli config-upload` - Upload a local configuration file to a deployed stack's DynamoDB ConfigurationTable
+
+- **IDP CLI Auto-Monitor for In-Progress Stack Operations**
+  - Enhanced `idp-cli deploy` and `idp-cli delete` commands to automatically detect in-progress CloudFormation operations
+  - **Smart Detection**: When running deploy/delete on a stack that's already creating, updating, deleting, or rolling back, the CLI automatically switches to monitoring mode instead of failing
+  - **Seamless UX**: If you forget to use `--wait` on the first run, simply run the same command again to monitor progress
+  - **Interactive Cancel for Delete**: When running `idp-cli delete` on a stack with CREATE or UPDATE in progress, offers option to cancel the current operation and proceed with deletion
+
+- **New Make Targets and Documentation**
+  - Added `make setup` target to install `idp-cli` and `idp_common` packages in development mode
+  - Added `make ui-start` target to start UI dev server with optional `STACK_NAME` parameter for auto-generating `.env` from stack outputs
+  - Documented all make targets in CONTRIBUTING.md including setup, lint, test, ui-start, commit, and DSR security scanning
+
+- **IDP CLI New Commands for Operations and Testing**
+  - Added `idp-cli load-test` command for throughput testing with configurable document rates (1-10,000/min) and dynamic schedule support via CSV files
+  - Added `idp-cli stop-workflows` command for batch workflow termination with interactive confirmation and dry-run mode
+  - Added `idp-cli delete-documents` command for removing documents and all associated data from the IDP system
+  - Added `idp-cli remove-deleted-stack-resources` command for discovering and removing orphaned resources (CloudFront distributions, response header policies, CloudWatch log groups, AppSync APIs, IAM policies, S3 buckets, DynamoDB tables) left behind after IDP stacks are deleted, with multi-region stack discovery, interactive confirmation with "yes/skip all of type" options, and configurable `--check-stack-regions` option
+  - Comprehensive unit tests added for all new CLI modules
+
+
+### Changed
+
+- **Scripts Directory Reorganization**
+  - Consolidated development environment setup scripts into `scripts/setup/` subdirectory
+  - Moved CI/CD scripts (`codebuild_deployment.py`, `integration_test_deployment.py`, `validate_buildspec.py`, `typecheck_pr_changes.py`, `validate_service_role_permissions.py`) into `scripts/sdlc/` subdirectory
+  - Updated all references in `.gitlab-ci.yml`, `Makefile`, and documentation
+
+### Fixed
+
+- **Fixed Document Details Page Not Loading After Browser Refresh for Document IDs Containing Forward Slashes**
+  - Fixed issue where navigating to a document with a `/` in the Document ID (e.g., `folder/filename.pdf`) and then refreshing the browser would result in a blank page
+  - **Root Cause**: When the browser refreshes a URL containing `%2F` (encoded slash), it automatically decodes it to `/`. React Router's `:objectKey` parameter only captures a single path segment, so `folder/filename.pdf` was being split into multiple segments, causing a route mismatch
+  - **Solution**: Changed the route from `path=":objectKey"` to `path="*"` (wildcard route) to capture the full remaining path including any embedded slashes, and updated `DocumentDetails` component to extract the document key from `params['*']`
+
+- **Improved UX for Document List and Document Details Action Buttons**
+  - Added hover tooltips to all Document List toolbar buttons (Refresh, Download, Release Review, Abort, Reprocess, Delete) for better discoverability
+  - Converted Abort, Reprocess, Delete, and Release Review buttons to icon-only display for a cleaner, more compact toolbar
+  - Added `unlocked` icon to Release Review button to visually represent releasing a human review lock
+
+- **Fixed Evaluation Failure for Documents with Truncated LLM Extraction Output**
+  - Fixed evaluation service crash when extraction output contained unparsed `raw_output` instead of structured fields
+  - **Root Cause**: When LLM extraction output is truncated (model hits max_tokens limit), the extraction service stores `{"raw_output": "..."}` which caused Pydantic validation errors during evaluation
+  - **Solution**: 
+    - Added `repair_truncated_json()` utility function that attempts to repair truncated JSON using multiple strategies (closing brackets, finding last complete element, extracting complete fields)
+    - Integrated JSON repair into extraction service - most truncated output is now automatically repaired
+    - Added detection of `raw_output` case in evaluation service with clear error messaging: "Extraction parsing failed... LLM output could not be parsed as valid JSON. This typically indicates truncated output (model hit max_tokens limit). Consider increasing max_tokens in extraction config."
+    - Added metadata fields (`output_truncated`, `output_repaired`, `repair_method`) to track truncation/repair status
+    - Enhanced evaluation service type coercion to provide appropriate defaults for required fields when LLM returns null values (prevents Pydantic validation errors like "Field required")
+
+- **Fixed AgentRequestHandler Missing Lambda Invoke Permission for Error Analyzer Agent**
+  - Fixed AccessDeniedException when clicking the Troubleshoot button in the Web UI
+
+- **Fixed sectionSplitting=disabled Incorrectly Classifying Documents Based on Blank Pages - [GitHub Issue #167](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/167)**
+  - Fixed bug where documents with blank pages could be incorrectly classified as `"unclassifiable_blank_page"` when using `sectionSplitting: disabled`
+  - **Root Cause**: Page classification results arrive in completion order (not page order) from ThreadPoolExecutor, so blank/simple pages that finish processing first would end up at index 0 and incorrectly determine the document classification
+  - **Solution**: Implemented majority voting strategy that:
+    - Uses config-defined classes to determine voting eligibility (only pages matching valid document types from configuration can vote)
+    - Automatically excludes any classification not in the config (blank pages, errors, LLM hallucinations)
+    - Uses majority voting - most common valid classification wins
+    - Uses first page's classification as tie-breaker for determinism
+    - Falls back to first page's classification when all pages are unclassifiable
+  - **Benefits**: Config-driven approach automatically adapts to any defined document classes without hardcoding exclusion lists
+  - Updated documentation in `docs/classification.md` explaining the voting behavior
+
+- **Test Results Config Export Not Properly Merging or Formatting**
+  - Fixed issue where config export was downloading raw JSON with separate Default/Custom entries instead of merged config
+
+### Removed
+
+- **Obsolete Scripts Migrated to IDP CLI**
+  - Removed `simulate_load.py` and `simulate_dynamic_load.py` (replaced by `idp-cli load-test`)
+  - Removed `stop_workflows.sh` (replaced by `idp-cli stop-workflows`)
+  - Removed `cleanup_orphaned_resources.py` (replaced by `idp-cli remove-deleted-stack-resources`)
+  - Removed `lookup_file_status.sh` (replaced by `idp-cli status --document-id`)
+  - Removed unused utilities: `add_lambda_layers.py`, `test_layer_build.py`, `test_pip_extras.py`, `compare_json_files.py`, `benchmark_utils/`
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.12.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.12.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.12.yaml`
+
+
+## [0.4.11]
+
+### Added
+
+- **Built-in Human-in-the-Loop (HITL) Review System**
+  - Replaced Amazon SageMaker A2I (Augmented AI) with a built-in HITL review system integrated directly into the Web UI
+  - **Persona-Based Access Control**: 
+    - **Admin**: Full access to all documents, can skip reviews, release review locks, and manage users
+    - **Reviewer**: Access limited to documents pending HITL review, can claim and complete section reviews
+  - **Review Workflow Features**:
+    - Start Review button to claim document ownership and prevent concurrent edits
+    - Section-level review with inline JSON editing and visual document viewer
+    - Mark Section Review Complete to approve individual sections
+    - Skip All Reviews (Admin only) to bypass pending reviews and continue workflow
+    - Release Review to unlock document for other reviewers
+  - **Real-time Status Updates**: HITL Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
+  - See [Human-in-the-Loop Review Documentation](./docs/human-review.md) for detailed workflow information
+  - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver futher improvements to human review capabilities with the ability to update document classification, extraction, and resubmit for incremental processing as part of a holistic approach to huiman reviews.
+- **User Management**
+  - New User Management page for Admin users to create and manage additional Admin & Reviewer accounts
+  - Cognito user groups (Admin, Reviewer) for role-based access control
+  - Automatic user synchronization with Cognito
+
+- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
+  - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
+  - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
+  - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing
+  - **Packet Statistics**: 7,330 total pages across 2,027 document sections with average of 14.7 pages and 4.1 sections per packet
+  - **Ground Truth Included**: Page-level classification and document boundary information for each packet. Extraction ground truth is not included.
+  - **Evaluation Capabilities**: Enables testing of page-level classification accuracy, document splitting accuracy, and split order preservation. Does NOT enable testing of extraction accuracy since there is no extraction ground truth for this data set
+  - Test set available in Test Studio UI alongside RealKIE-FCC-Verified and OmniAI-OCR-Benchmark datasets
+  - Corresponding configs available in Configuration Library
+  - Ideal for evaluating document splitting and classification accuracy in complex multi-document scenarios
+
+
+### Changed
+
+- **HITL Configuration**
+  - HITL is now disabled by default in the configuration
+  - Users must explicitly enable HITL in the Configuration page (Assessment & HITL Configuration section) to trigger human review workflows
+  - `hitl_enabled` setting controls whether documents with low confidence trigger HITL review
+
+### Removed
+
+- **Amazon SageMaker A2I Resources**
+  - Removed SageMaker A2I Flow Definition, Human Task UI, and Workteam resources
+  - Removed A2I-related Lambda functions (`create_a2i_resources`, `get-workforce-url`)
+  - Removed `EnableHITL` and `PrivateWorkteamArn` CloudFormation parameters
+
+
+### Changed
+
+- **Lambda Layers Architecture for Improved Build Efficiency**
+  - Replaced bundled `idp_common` package dependencies in individual Lambda functions with three shared Lambda Layers
+  - **Three Specialized Layers**:
+    - `base` layer: Core functionality with docs_service and image extras
+    - `reporting` layer: Reporting and analytics dependencies
+    - `agents` layer: Agent-related dependencies
+  - **Key Benefits**:
+    - Reduced SAM build times by eliminating redundant dependency installation across 50+ Lambda functions
+    - Layer content-based hashing ensures layers are only rebuilt when actual contents change
+    - Automatic removal of Lambda runtime packages (boto3, botocore, etc.) reduces layer sizes by ~100MB
+    - Layer zips cached locally and in S3, skipping uploads when content hasn't changed
+  - **Build System Integration**: publish.py automatically builds, hashes, and uploads layers before SAM builds
+
+- **Enhanced publish.py Performance and Logging**
+  - **Consistent Logging Helpers**: Added 8 standardized logging methods (`log_phase`, `log_task`, `log_detail`, `log_success`, `log_cached`, `log_warning`, `log_error`) for uniform output formatting with colored icons and thread prefixes
+  - **Timed S3 Uploads**: Added `upload_to_s3_with_timer()` helper with spinner animation, elapsed time display, and optimized `TransferConfig` for multi-threaded multipart uploads
+  - **AWS CLI Config Library Sync**: Replaced boto3 ThreadPoolExecutor-based config library upload (~60 lines) with `aws s3 sync` command for built-in concurrency, delta sync (skip unchanged files), and simpler code
+  - **Timing Breakdown Summary**: End-of-build summary shows top 4 time-consuming steps and percentages for build optimization insights
+  - **Phase Headers**: Major build phases now display with clear `═══` separator lines and emojis for visual clarity
+
+- **AppSync Resolvers Extracted to Nested Stack for Improved Template Modularity**
+  - Refactored main CloudFormation template by extracting 130 AppSync resources into new nested stack architecture
+  - **Extracted Components**:
+    - Created `nested/appsync/template.yaml` containing GraphQLSchema, AppSyncServiceRole, Lambda resolver functions, LogGroups, DataSources, and Resolvers
+    - Moved related Lambda functions from `src/lambda/` to `nested/appsync/src/lambda/` with colocated template definitions
+    - Relocated GraphQL schema from `src/api/` to `nested/appsync/src/api/`
+  - **Main Template Optimization**: Reduced resource count by keeping only core infrastructure (GraphQLApi, GraphQLApiLogGroup, AppSyncCwlRole, WAF resources, background worker functions)
+  - **Build System Integration**: Updated `publish.py` to build nested stack in parallel with patterns
+  - **Impact**: Main template now more manageable and faster to navigate, nested stack enables modular development of AppSync resources, parallel builds reduce overall build time
+
+- **Consolidated Nested Stack Directory Structure**
+  - Moved `options/bda-lending-project` and `options/bedrockkb` into `nested/` directory for simplified project organization
+  - All CloudFormation nested stacks now located in single `nested/` directory alongside `appsync`, `bda-lending-project`, and `bedrockkb`
+  - Updated build system to build only two categories concurrently (nested + patterns) instead of three (nested + patterns + options)
+  - **Breaking Change**: Directory paths changed - `options/` → `nested/`. Existing work-in-progress branches will have merge conflicts in directory structure.
+
+
+### Fixed
+
+- **Fixed page_indices Reset Bug in Multi-Section Documents**
+  - Fixed issue where all sections in document packets had page_indices starting from 0 instead of their actual position in the original document by pre-calculating indices during classification with access to global minimum page ID and storing in section.attributes for extraction step to use
+
+- **Metering Table Added Requests**
+  - Added requests count to bedrock metering data to track API request metrics
+  
+- **IDP CLI Stack Parameter Preservation During Updates**
+  - Fixed bug where `idp-cli deploy` command was resetting ALL stack parameters to their default values during updates, even when users only intended to change specific parameters
+
+
+### Upgrade Notes
+
+- **⚠️ IMPORTANT: Upgrading from v0.4.11 or earlier**
+  - **Complete all pending HITL workflows before upgrading**: Any documents waiting in SageMaker A2I human review loops will be orphaned as A2I resources are deleted during the upgrade
+  - **Re-enable HITL after upgrade**: If you previously had `EnableHITL=true` CloudFormation parameter, you must now enable HITL through the Configuration page in the Web UI (Assessment & HITL Configuration → Enable HITL)
+  - **User migration**: Existing Cognito users will need to be assigned to Admin or Reviewer groups for HITL access 
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.11.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.11.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.11.yaml`
+
+
+
 ## [0.4.10]
 
 ### Added
@@ -1060,7 +1290,7 @@ SPDX-License-Identifier: MIT-0
 - **Lending Package Configuration Support for Pattern-2**
   - Added new `lending-package-sample` configuration to Pattern-2, providing comprehensive support for lending and financial document processing workflows
   - New default configuration for Pattern-2 stack deployments, optimized for loan applications, mortgage processing, and financial verification documents
-  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip-package-sample` for the `Pattern2Configuration` parameter when deploying or updating stacks
+  - Previous `rvl-cdip-sample` configuration remains available by selecting `rvl-cdip` for the `Pattern2Configuration` parameter when deploying or updating stacks
 
 - **Text Confidence View for Document Pages**
   - Added support for displaying OCR text confidence data through new `TextConfidenceUri` field

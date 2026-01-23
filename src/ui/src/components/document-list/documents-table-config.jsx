@@ -31,10 +31,17 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
   {
     id: 'hitlStatus',
-    header: 'HITL (A2I) Status',
+    header: 'HITL Status',
     cell: (item) => renderHitlStatus(item),
     sortingField: 'hitlStatus',
     width: 150,
+  },
+  {
+    id: 'hitlReviewOwner',
+    header: 'Review Owner',
+    cell: (item) => item.hitlReviewOwnerEmail || item.hitlReviewOwner || '-',
+    sortingField: 'hitlReviewOwner',
+    width: 180,
   },
   {
     id: 'initialEventTime',
@@ -74,7 +81,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
 ];
 
-export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[3]; // initialEventTime
+export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[4]; // initialEventTime (index changed)
 
 export const SELECTION_LABELS = {
   itemSelectionLabel: (data, row) => `select ${row.objectKey}`,
@@ -94,7 +101,8 @@ const VISIBLE_CONTENT_OPTIONS = [
     options: [
       { id: 'objectKey', label: 'Document ID', editable: false },
       { id: 'objectStatus', label: 'Status' },
-      { id: 'hitlStatus', label: 'HITL (A2I) Status' },
+      { id: 'hitlStatus', label: 'HITL Status' },
+      { id: 'hitlReviewOwner', label: 'Review Owner' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
@@ -108,6 +116,7 @@ const VISIBLE_CONTENT = [
   'objectKey',
   'objectStatus',
   'hitlStatus',
+  'hitlReviewOwner',
   'initialEventTime',
   'completionTime',
   'duration',
@@ -185,7 +194,17 @@ const ABORTABLE_STATUSES = [
   'EVALUATING',
 ];
 
-export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItems = [], onDelete, onReprocess, onAbort, ...props }) => {
+export const DocumentsCommonHeader = ({
+  resourceName = 'Documents',
+  selectedItems = [],
+  onDelete,
+  onReprocess,
+  onAbort,
+  onClaimReview,
+  onReleaseReview,
+  currentUsername,
+  ...props
+}) => {
   const onPeriodToLoadChange = ({ detail }) => {
     const { id } = detail;
     const shardCount = TIME_PERIOD_DROPDOWN_CONFIG[id].count;
@@ -199,6 +218,10 @@ export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItem
   const hasSelectedItems = selectedItems.length > 0;
   // Check if any selected items can be aborted
   const hasAbortableItems = selectedItems.some((item) => ABORTABLE_STATUSES.includes(item.objectStatus));
+  // Check if any selected items can be claimed (pending HITL and not owned)
+  const hasClaimableItems = selectedItems.some((item) => item.hitlTriggered && !item.hitlCompleted && !item.hitlReviewOwner);
+  // Check if any selected items can be released (HITL in progress and owned by someone)
+  const hasReleasableItems = selectedItems.some((item) => item.hitlReviewOwner && item.objectStatus === 'HITL_IN_PROGRESS');
 
   return (
     <TableHeader
@@ -208,19 +231,55 @@ export const DocumentsCommonHeader = ({ resourceName = 'Documents', selectedItem
           <ButtonDropdown loading={props.loading} onItemClick={onPeriodToLoadChange} items={TIME_PERIOD_DROPDOWN_ITEMS}>
             {`Load: ${periodText}`}
           </ButtonDropdown>
-          <Button iconName="refresh" variant="normal" loading={props.loading} onClick={() => props.setIsLoading(true)} />
-          <Button iconName="download" variant="normal" loading={props.loading} onClick={() => props.downloadToExcel()} />
-          {onAbort && (
-            <Button iconName="status-stopped" variant="normal" disabled={!hasAbortableItems} onClick={onAbort}>
-              Abort
+          <span title="Refresh document list">
+            <Button
+              iconName="refresh"
+              variant="normal"
+              loading={props.loading}
+              onClick={() => props.setIsLoading(true)}
+              ariaLabel="Refresh"
+            />
+          </span>
+          <span title="Download document list to Excel">
+            <Button
+              iconName="download"
+              variant="normal"
+              loading={props.loading}
+              onClick={() => props.downloadToExcel()}
+              ariaLabel="Download"
+            />
+          </span>
+          {onClaimReview && (
+            <Button variant="primary" disabled={!hasClaimableItems} onClick={onClaimReview}>
+              Start Review
             </Button>
+          )}
+          {onAbort && (
+            <span title="Abort processing for selected documents">
+              <Button iconName="status-stopped" variant="normal" disabled={!hasAbortableItems} onClick={onAbort} ariaLabel="Abort" />
+            </span>
           )}
           {onReprocess && (
-            <Button iconName="arrow-right" variant="normal" disabled={!hasSelectedItems} onClick={onReprocess}>
-              Reprocess
-            </Button>
+            <span title="Reprocess selected documents">
+              <Button iconName="redo" variant="normal" disabled={!hasSelectedItems} onClick={onReprocess} ariaLabel="Reprocess" />
+            </span>
           )}
-          {onDelete && <Button iconName="remove" variant="normal" disabled={!hasSelectedItems} onClick={onDelete} />}
+          {onDelete && (
+            <span title="Delete selected documents">
+              <Button iconName="remove" variant="normal" disabled={!hasSelectedItems} onClick={onDelete} ariaLabel="Delete" />
+            </span>
+          )}
+          {onReleaseReview && (
+            <span title="Release review lock on selected documents">
+              <Button
+                iconName="unlocked"
+                variant="normal"
+                disabled={!hasReleasableItems}
+                onClick={onReleaseReview}
+                ariaLabel="Release Review"
+              />
+            </span>
+          )}
         </SpaceBetween>
       }
       {...props}

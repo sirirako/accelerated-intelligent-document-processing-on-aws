@@ -6,6 +6,7 @@ import { ConsoleLogger } from 'aws-amplify/utils';
 
 import useDocumentsContext from '../../contexts/documents';
 import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
 
 import mapDocumentsAttributes from '../common/map-document-attributes';
 import DeleteDocumentModal from '../common/DeleteDocumentModal';
@@ -22,7 +23,11 @@ const logger = new ConsoleLogger('documentDetails');
 const DocumentDetails = () => {
   const params = useParams();
   const navigate = useNavigate();
-  let { objectKey } = params;
+
+  // Get the objectKey from the wildcard route parameter '*'
+  // This captures the full path including any embedded slashes (e.g., folder/filename.pdf)
+  let objectKey = params['*'];
+
   // Ensure we properly decode the objectKey from the URL parameter
   // It may be already decoded or still encoded depending on browser behavior with refreshes
   try {
@@ -34,11 +39,16 @@ const DocumentDetails = () => {
 
   const { documents, getDocumentDetailsFromIds, setToolsOpen, deleteDocuments, reprocessDocuments, abortWorkflows } = useDocumentsContext();
   const { settings } = useSettingsContext();
+  const { isReviewer, isAdmin } = useUserRole();
+  const isReviewerOnly = isReviewer && !isAdmin;
 
   const [document, setDocument] = useState(null);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isReprocessModalVisible, setIsReprocessModalVisible] = useState(false);
   const [isAbortModalVisible, setIsAbortModalVisible] = useState(false);
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+  const [isReprocessLoading, setIsReprocessLoading] = useState(false);
+  const [isAbortLoading, setIsAbortLoading] = useState(false);
 
   const sendInitDocumentRequests = async () => {
     const response = await getDocumentDetailsFromIds([objectKey]);
@@ -86,11 +96,16 @@ const DocumentDetails = () => {
   const handleDeleteConfirm = async () => {
     logger.debug('Deleting document', objectKey);
 
-    const result = await deleteDocuments([objectKey]);
-    logger.debug('Delete result', result);
+    setIsDeleteLoading(true);
+    try {
+      const result = await deleteDocuments([objectKey]);
+      logger.debug('Delete result', result);
 
-    // Navigate back to document list
-    navigate(DOCUMENTS_PATH);
+      // Navigate back to document list
+      navigate(DOCUMENTS_PATH);
+    } finally {
+      setIsDeleteLoading(false);
+    }
   };
 
   // Function to show delete modal
@@ -106,10 +121,15 @@ const DocumentDetails = () => {
   // Function to handle reprocess confirmation
   const handleReprocessConfirm = async () => {
     logger.debug('Reprocessing document', objectKey);
-    const result = await reprocessDocuments([objectKey]);
-    logger.debug('Reprocess result', result);
-    // Close the modal
-    setIsReprocessModalVisible(false);
+    setIsReprocessLoading(true);
+    try {
+      const result = await reprocessDocuments([objectKey]);
+      logger.debug('Reprocess result', result);
+      // Close the modal
+      setIsReprocessModalVisible(false);
+    } finally {
+      setIsReprocessLoading(false);
+    }
   };
 
   // Function to show abort modal
@@ -121,10 +141,15 @@ const DocumentDetails = () => {
   const handleAbortConfirm = async (abortableItems) => {
     const keys = abortableItems.map((item) => item.objectKey);
     logger.debug('Aborting workflow', keys);
-    const result = await abortWorkflows(keys);
-    logger.debug('Abort result', result);
-    // Close the modal
-    setIsAbortModalVisible(false);
+    setIsAbortLoading(true);
+    try {
+      const result = await abortWorkflows(keys);
+      logger.debug('Abort result', result);
+      // Close the modal
+      setIsAbortModalVisible(false);
+    } finally {
+      setIsAbortLoading(false);
+    }
   };
 
   return (
@@ -134,9 +159,9 @@ const DocumentDetails = () => {
           item={document}
           setToolsOpen={setToolsOpen}
           getDocumentDetailsFromIds={getDocumentDetailsFromIds}
-          onDelete={handleDeleteClick}
-          onReprocess={handleReprocessClick}
-          onAbort={handleAbortClick}
+          onDelete={isReviewerOnly ? null : handleDeleteClick}
+          onReprocess={isReviewerOnly ? null : handleReprocessClick}
+          onAbort={isReviewerOnly ? null : handleAbortClick}
         />
       )}
 
@@ -145,6 +170,7 @@ const DocumentDetails = () => {
         onDismiss={() => setIsDeleteModalVisible(false)}
         onConfirm={handleDeleteConfirm}
         selectedItems={document ? [document] : []}
+        isLoading={isDeleteLoading}
       />
 
       <ReprocessDocumentModal
@@ -152,6 +178,7 @@ const DocumentDetails = () => {
         onDismiss={() => setIsReprocessModalVisible(false)}
         onConfirm={handleReprocessConfirm}
         selectedItems={document ? [document] : []}
+        isLoading={isReprocessLoading}
       />
 
       <AbortWorkflowModal
@@ -159,6 +186,7 @@ const DocumentDetails = () => {
         onDismiss={() => setIsAbortModalVisible(false)}
         onConfirm={handleAbortConfirm}
         selectedItems={document ? [document] : []}
+        isLoading={isAbortLoading}
       />
     </>
   );

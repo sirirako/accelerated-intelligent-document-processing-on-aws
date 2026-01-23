@@ -20,6 +20,7 @@ import DocumentsQueryLayout from '../document-kb-query-layout';
 import DocumentsAgentsLayout from '../document-agents-layout/DocumentsAgentsLayout';
 import UploadDocumentPanel from '../upload-document';
 import DiscoveryPanel from '../discovery/DiscoveryPanel';
+import UserManagementLayout from '../user-management/UserManagementLayout';
 import { appLayoutLabels } from '../common/labels';
 
 import Navigation from './navigation';
@@ -123,7 +124,8 @@ const GenAIIDPLayout = ({ children }) => {
               <Route path="pricing" element={<PricingLayout />} />
               <Route path="upload" element={<UploadDocumentPanel />} />
               <Route path="discovery" element={<DiscoveryPanel />} />
-              <Route path=":objectKey" element={<DocumentDetails />} />
+              <Route path="users" element={<UserManagementLayout />} />
+              <Route path="*" element={<DocumentDetails />} />
             </Routes>
           )
         }

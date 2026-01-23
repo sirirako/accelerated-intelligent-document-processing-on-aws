@@ -46,6 +46,22 @@ const mapDocumentsAttributes = (documents) => {
       HITLReviewURL: hitlReviewURL,
     } = item;
 
+    // Extract HITL sections arrays
+    const hitlSectionsPending = item.HITLSectionsPending || [];
+    const hitlSectionsCompleted = item.HITLSectionsCompleted || [];
+    const hitlSectionsSkipped = item.HITLSectionsSkipped || [];
+    const hitlReviewOwner = item.HITLReviewOwner || '';
+    const hitlReviewOwnerEmail = item.HITLReviewOwnerEmail || '';
+    // HITLReviewHistory comes as AWSJSON (string), parse if needed
+    let hitlReviewHistory = item.HITLReviewHistory || [];
+    if (typeof hitlReviewHistory === 'string') {
+      try {
+        hitlReviewHistory = JSON.parse(hitlReviewHistory);
+      } catch (e) {
+        hitlReviewHistory = [];
+      }
+    }
+
     const formatDate = (timestamp) => {
       return timestamp && timestamp !== '0' ? new Date(timestamp).toISOString() : '';
     };
@@ -106,6 +122,12 @@ const mapDocumentsAttributes = (documents) => {
       hitlReviewURL,
       hitlCompleted,
       hitlStatus: getHitlStatus(hitlStatus),
+      hitlSectionsPending,
+      hitlSectionsCompleted,
+      hitlSectionsSkipped,
+      hitlReviewOwner,
+      hitlReviewOwnerEmail,
+      hitlReviewHistory,
     };
 
     console.log('mapped-document-attributes', mapping);

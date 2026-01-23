@@ -14,6 +14,7 @@ import {
   ExpandableSection,
   StatusIndicator,
 } from '@cloudscape-design/components';
+import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import './DocumentPanel.css';
 import DocumentViewers from '../document-viewers/DocumentViewers';
@@ -22,13 +23,16 @@ import PagesPanel from '../pages-panel';
 import ChatPanel from '../chat-panel';
 import useConfiguration from '../../hooks/use-configuration';
 import usePricing from '../../hooks/use-pricing';
+import useUserRole from '../../hooks/use-user-role';
 import { getDocumentConfidenceAlertCount } from '../common/confidence-alerts-utils';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
 import StepFunctionFlowViewer from '../step-function-flow/StepFunctionFlowViewer';
 import TroubleshootModal from './TroubleshootModal';
+import claimReviewMutation from '../../graphql/mutations/claimReview';
 // Uncomment the line below to enable debugging
 // import { debugDocumentStructure } from '../common/debug-utils';
 
+const client = generateClient();
 const logger = new ConsoleLogger('DocumentPanel');
 
 // Component to display confidence alerts count only
@@ -418,9 +422,18 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
-              <strong>HITL (A2I) Status</strong>
+              <strong>HITL Status</strong>
             </Box>
             <div>{renderHitlStatus(item)}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>Review Owner</strong>
+            </Box>
+            <div>{item.hitlReviewOwnerEmail || item.hitlReviewOwner || '-'}</div>
           </div>
         </SpaceBetween>
 
@@ -469,16 +482,63 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
   const [isTroubleshootModalVisible, setIsTroubleshootModalVisible] = useState(false);
   // State for tracking troubleshoot jobs per document
   const [troubleshootJobs, setTroubleshootJobs] = useState({});
+  // State for Start Review button
+  const [isClaimingReview, setIsClaimingReview] = useState(false);
+  // Local state for document item to enable real-time updates
+  const [localItem, setLocalItem] = useState(item);
+
+  // Update local item when prop changes
+  useEffect(() => {
+    setLocalItem(item);
+  }, [item]);
 
   // Fetch configuration for dynamic confidence threshold
   const { mergedConfig } = useConfiguration();
+  const { isReviewer } = useUserRole();
 
   // Check if document can be aborted
-  const canAbort = ABORTABLE_STATUSES.includes(item?.objectStatus);
+  const canAbort = ABORTABLE_STATUSES.includes(localItem?.objectStatus);
+
+  // Check if Start Review button should be shown
+  const hasReviewOwner = localItem?.hitlReviewOwner || localItem?.hitlReviewOwnerEmail;
+  const hitlTriggered = localItem?.hitlTriggered && !localItem?.hitlCompleted;
+  const showStartReview = isReviewer && hitlTriggered && !hasReviewOwner;
+
+  // Handle Start Review button click
+  const handleStartReview = async () => {
+    setIsClaimingReview(true);
+    try {
+      const result = await client.graphql({
+        query: claimReviewMutation,
+        variables: { objectKey: localItem.objectKey },
+      });
+
+      logger.info('Review claimed successfully:', result);
+
+      // Update local item immediately with the response data
+      const claimedData = result.data.claimReview;
+      setLocalItem((prev) => ({
+        ...prev,
+        hitlReviewOwner: claimedData.HITLReviewOwner,
+        hitlReviewOwnerEmail: claimedData.HITLReviewOwnerEmail,
+        hitlStatus: claimedData.HITLStatus,
+      }));
+
+      // Also refresh document details in the background
+      if (getDocumentDetailsFromIds) {
+        await getDocumentDetailsFromIds([localItem.objectKey]);
+      }
+    } catch (error) {
+      logger.error('Failed to claim review:', error);
+      alert(`Failed to start review: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsClaimingReview(false);
+    }
+  };
 
   // Create enhanced item with configuration
   const enhancedItem = {
-    ...item,
+    ...localItem,
     mergedConfig,
   };
 
@@ -490,23 +550,34 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
             variant="h2"
             actions={
               <SpaceBetween direction="horizontal" size="xs">
+                {showStartReview && (
+                  <Button
+                    iconName="user-profile"
+                    variant="primary"
+                    onClick={handleStartReview}
+                    loading={isClaimingReview}
+                    disabled={isClaimingReview}
+                  >
+                    Start Review
+                  </Button>
+                )}
                 <Button
                   iconName="gen-ai"
                   variant="normal"
                   onClick={() => {
-                    logger.info('Opening troubleshoot modal for document:', item.objectKey);
+                    logger.info('Opening troubleshoot modal for document:', localItem.objectKey);
                     setIsTroubleshootModalVisible(true);
                   }}
                 >
                   Troubleshoot
                 </Button>
-                {item?.executionArn && (
+                {localItem?.executionArn && (
                   <Button
                     iconName="status-positive"
                     variant={isFlowViewerVisible ? 'primary' : 'normal'}
                     onClick={() => {
-                      console.log('Execution ARN:', item.executionArn);
-                      logger.info('Opening flow viewer with execution ARN:', item.executionArn);
+                      console.log('Execution ARN:', localItem.executionArn);
+                      logger.info('Opening flow viewer with execution ARN:', localItem.executionArn);
                       setIsFlowViewerVisible(true);
                     }}
                   >
@@ -519,7 +590,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
                   </Button>
                 )}
                 {onReprocess && (
-                  <Button iconName="arrow-right" variant="normal" onClick={onReprocess}>
+                  <Button iconName="redo" variant="normal" onClick={onReprocess}>
                     Reprocess
                   </Button>
                 )}
@@ -538,22 +609,32 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         <SpaceBetween size="l">
           <DocumentAttributes item={enhancedItem} setToolsOpen={setToolsOpen} getDocumentDetailsFromIds={getDocumentDetailsFromIds} />
 
-          {item.metering && (
+          {localItem.metering && (
             <div>
-              <MeteringExpandableSection meteringData={item.metering} documentItem={item} />
+              <MeteringExpandableSection meteringData={localItem.metering} documentItem={localItem} />
             </div>
           )}
         </SpaceBetween>
       </Container>
-      <DocumentViewers objectKey={item.objectKey} evaluationReportUri={item.evaluationReportUri} summaryReportUri={item.summaryReportUri} />
-      <SectionsPanel sections={item.sections} pages={item.pages} documentItem={item} mergedConfig={mergedConfig} />
-      <PagesPanel pages={item.pages} documentItem={item} />
-      <ChatPanel objectKey={item.objectKey} />
+      <DocumentViewers
+        objectKey={localItem.objectKey}
+        evaluationReportUri={localItem.evaluationReportUri}
+        summaryReportUri={localItem.summaryReportUri}
+      />
+      <SectionsPanel
+        sections={localItem.sections}
+        pages={localItem.pages}
+        documentItem={localItem}
+        mergedConfig={mergedConfig}
+        onDocumentUpdate={setLocalItem}
+      />
+      <PagesPanel pages={localItem.pages} documentItem={localItem} />
+      <ChatPanel objectKey={localItem.objectKey} />
 
       {/* Step Function Flow Viewer */}
-      {item?.executionArn && (
+      {localItem?.executionArn && (
         <StepFunctionFlowViewer
-          executionArn={item.executionArn}
+          executionArn={localItem.executionArn}
           visible={isFlowViewerVisible}
           onDismiss={() => setIsFlowViewerVisible(false)}
           mergedConfig={mergedConfig}
@@ -564,12 +645,12 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
       <TroubleshootModal
         visible={isTroubleshootModalVisible}
         onDismiss={() => setIsTroubleshootModalVisible(false)}
-        documentItem={item}
-        existingJob={troubleshootJobs[item?.objectKey]}
+        documentItem={localItem}
+        existingJob={troubleshootJobs[localItem?.objectKey]}
         onJobUpdate={(jobData) => {
           setTroubleshootJobs((prev) => ({
             ...prev,
-            [item.objectKey]: jobData,
+            [localItem.objectKey]: jobData,
           }));
         }}
       />
