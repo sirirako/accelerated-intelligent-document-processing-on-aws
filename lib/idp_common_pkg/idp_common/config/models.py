@@ -159,9 +159,9 @@ class ClassificationConfig(BaseModel):
     top_p: float = Field(default=0.1, ge=0.0, le=1.0)
     top_k: float = Field(default=5.0, ge=0.0)
     max_tokens: int = Field(default=4096, gt=0)
-    maxPagesForClassification: int = Field(
-        default=0,
-        description="Max pages to use for classification. 0 or negative = ALL pages, positive = limit to N pages",
+    maxPagesForClassification: str = Field(
+        default="ALL",
+        description="Max pages to use for classification. 'ALL' = all pages, or a number to limit to N pages",
     )
     classificationMethod: str = Field(default="multimodalPageLevelClassification")
     sectionSplitting: str = Field(
@@ -193,13 +193,26 @@ class ClassificationConfig(BaseModel):
 
     @field_validator("maxPagesForClassification", mode="before")
     @classmethod
-    def parse_max_pages(cls, v: Any) -> int:
-        """Parse maxPagesForClassification - can be int or 'ALL' string (converted to 0)"""
+    def parse_max_pages(cls, v: Any) -> str:
+        """Parse maxPagesForClassification - accepts 'ALL' or numeric string/int.
+        
+        Converts legacy value of 0 to 'ALL' for backward compatibility.
+        Returns string to match UI schema enum: ['ALL', '1', '2', '3', '5', '10']
+        """
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "ALL"
+        if isinstance(v, (int, float)):
+            # Convert legacy 0 to "ALL" for backward compatibility
+            if v <= 0:
+                return "ALL"
+            return str(int(v))
         if isinstance(v, str):
-            if v.upper() == "ALL":
-                return 0  # 0 means ALL pages
-            return int(v) if v else 0
-        return int(v)
+            v_upper = v.strip().upper()
+            # "ALL" or legacy "0" both mean all pages
+            if v_upper == "ALL" or v_upper == "0":
+                return "ALL"
+            return v.strip()
+        return str(v)
 
     @field_validator("sectionSplitting", mode="before")
     @classmethod
