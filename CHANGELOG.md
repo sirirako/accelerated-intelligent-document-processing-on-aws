@@ -5,10 +5,26 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.11]
+
 ### Added
 
+- **IDP SDK - Python SDK for Programmatic Document Processing**
+  - New `idp_sdk` Python package (`lib/idp_sdk/`) providing a native Python interface for IDP operations
+  - **IDPClient Class**: Wraps `idp-cli` commands with Pythonic methods for seamless integration into Python applications
+  - **Key Methods**: `run_inference()`, `rerun_inference()`, `download_results()`, `status()`, `deploy()`, `delete()`, `delete_documents()`, `validate_manifest()`, `generate_manifest()`, `config_create()`, `config_validate()`, `config_download()`, `config_upload()`
+  - **Pydantic Response Models**: Type-safe response objects (`BatchResult`, `ManifestResult`, `ValidationResult`, `ConfigCreateResult`, `ConfigValidationResult`) with proper Pydantic v2 compatibility
+  - **Lambda Integration Example**: Complete SAM template and handler demonstrating SDK usage in AWS Lambda functions
+  - **Documentation**: SDK reference guide (`docs/idp-sdk.md`) with CLI command mapping, usage examples, and Lambda patterns
+  - **Easy Installation**: `pip install -e lib/idp_sdk` or `make setup` installs SDK with all dependencies
+  - **Use Cases**: CI/CD pipelines, Lambda functions, automated workflows, custom integrations, and programmatic batch processing
+
+- **Relocated idp-cli to lib/idp_cli_pkg/**
+  - Moved `idp_cli/` directory to `lib/idp_cli_pkg/` to co-locate with other library packages
+  - Updated all documentation and Makefile targets for new location
+
 - **Modular System Defaults Architecture for Simplified Configuration**
-  - Introduced pattern-specific system default files (`lib/idp_common_pkg/idp_common/config/system_defaults/pattern-{1,2,3}.yaml`) that provide comprehensive default settings for OCR, classification, extraction, assessment, evaluation, summarization, discovery, and agents
+  - Introduced pattern-specific system default files (`lib/idp_common_pkg/idp_common/config/system_defaults/pattern-{1,2,3}.yaml`) that provide default settings for OCR, classification, extraction, assessment, evaluation, summarization, discovery, and agents
   - User configurations now only need to specify `notes`, `classes`, and any intentional overrides - all other settings inherit from system defaults
   - Simplified all config_library configurations to minimal footprint (most now just 10-30 lines instead of hundreds)
   - Updated all README files in config_library and docs/configuration.md with inheritance documentation
@@ -32,13 +48,14 @@ SPDX-License-Identifier: MIT-0
   - Added `make setup` target to install `idp-cli` and `idp_common` packages in development mode
   - Added `make ui-start` target to start UI dev server with optional `STACK_NAME` parameter for auto-generating `.env` from stack outputs
   - Documented all make targets in CONTRIBUTING.md including setup, lint, test, ui-start, commit, and DSR security scanning
-  - Added quick start section to `src/ui/README.md` for `make ui-start STACK_NAME=<name>` convenience target
 
 - **IDP CLI New Commands for Operations and Testing**
   - Added `idp-cli load-test` command for throughput testing with configurable document rates (1-10,000/min) and dynamic schedule support via CSV files
   - Added `idp-cli stop-workflows` command for batch workflow termination with interactive confirmation and dry-run mode
+  - Added `idp-cli delete-documents` command for removing documents and all associated data from the IDP system
   - Added `idp-cli remove-deleted-stack-resources` command for discovering and removing orphaned resources (CloudFront distributions, response header policies, CloudWatch log groups, AppSync APIs, IAM policies, S3 buckets, DynamoDB tables) left behind after IDP stacks are deleted, with multi-region stack discovery, interactive confirmation with "yes/skip all of type" options, and configurable `--check-stack-regions` option
   - Comprehensive unit tests added for all new CLI modules
+
 
 ### Changed
 
@@ -92,6 +109,12 @@ SPDX-License-Identifier: MIT-0
   - Removed `cleanup_orphaned_resources.py` (replaced by `idp-cli remove-deleted-stack-resources`)
   - Removed `lookup_file_status.sh` (replaced by `idp-cli status --document-id`)
   - Removed unused utilities: `add_lambda_layers.py`, `test_layer_build.py`, `test_pip_extras.py`, `compare_json_files.py`, `benchmark_utils/`
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.12.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.12.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.12.yaml`
+
 
 ## [0.4.11]
 

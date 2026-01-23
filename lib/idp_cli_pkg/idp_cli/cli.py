@@ -878,6 +878,211 @@ def delete(
         sys.exit(1)
 
 
+@cli.command(name="delete-documents")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--document-ids",
+    help="Comma-separated list of document IDs (S3 object keys) to delete",
+)
+@click.option(
+    "--batch-id",
+    help="Delete all documents in this batch (alternative to --document-ids)",
+)
+@click.option(
+    "--status-filter",
+    type=click.Choice(["FAILED", "COMPLETED", "PROCESSING", "QUEUED"]),
+    help="Only delete documents with this status (use with --batch-id)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be deleted without actually deleting",
+)
+@click.option(
+    "--force",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+@click.option("--region", help="AWS region (optional)")
+def delete_documents_cmd(
+    stack_name: str,
+    document_ids: Optional[str],
+    batch_id: Optional[str],
+    status_filter: Optional[str],
+    dry_run: bool,
+    force: bool,
+    region: Optional[str],
+):
+    """
+    Delete documents and all associated data from the IDP system
+
+    Permanently deletes documents including:
+    - Source files from input bucket
+    - Processed outputs from output bucket
+    - DynamoDB tracking records
+    - List entries in tracking table
+
+    ⚠️  WARNING: This action cannot be undone.
+
+    Examples:
+
+      # Delete specific documents by ID
+      idp-cli delete-documents --stack-name my-stack \\
+          --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf"
+
+      # Delete all documents in a batch
+      idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123
+
+      # Delete only failed documents in a batch
+      idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --status-filter FAILED
+
+      # Dry run to see what would be deleted
+      idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --dry-run
+
+      # Force delete without confirmation
+      idp-cli delete-documents --stack-name my-stack --document-ids "batch-123/doc1.pdf" --force
+    """
+    try:
+        import boto3
+        from idp_common.delete_documents import delete_documents, get_documents_by_batch
+
+        # Validate input
+        if not document_ids and not batch_id:
+            console.print(
+                "[red]✗ Error: Must specify either --document-ids or --batch-id[/red]"
+            )
+            sys.exit(1)
+
+        if document_ids and batch_id:
+            console.print(
+                "[red]✗ Error: Cannot specify both --document-ids and --batch-id[/red]"
+            )
+            sys.exit(1)
+
+        # Get stack resources
+        from .stack_info import StackInfo
+
+        console.print(f"[bold blue]Connecting to stack: {stack_name}[/bold blue]")
+        stack_info = StackInfo(stack_name, region)
+        resources = stack_info.get_resources()
+
+        input_bucket = resources.get("InputBucket")
+        output_bucket = resources.get("OutputBucket")
+        tracking_table_name = resources.get("DocumentsTable")
+
+        if not all([input_bucket, output_bucket, tracking_table_name]):
+            console.print("[red]✗ Error: Could not find required stack resources[/red]")
+            console.print(f"  InputBucket: {input_bucket}")
+            console.print(f"  OutputBucket: {output_bucket}")
+            console.print(f"  DocumentsTable: {tracking_table_name}")
+            sys.exit(1)
+
+        # Initialize AWS clients
+        dynamodb = boto3.resource("dynamodb", region_name=region)
+        s3_client = boto3.client("s3", region_name=region)
+        tracking_table = dynamodb.Table(tracking_table_name)
+
+        # Get document list
+        if document_ids:
+            doc_list = [d.strip() for d in document_ids.split(",")]
+            console.print(f"Selected {len(doc_list)} document(s) for deletion")
+        else:
+            console.print(
+                f"[bold blue]Getting documents for batch: {batch_id}[/bold blue]"
+            )
+            doc_list = get_documents_by_batch(
+                tracking_table=tracking_table,
+                batch_id=batch_id,
+                status_filter=status_filter,
+            )
+            if not doc_list:
+                console.print(
+                    f"[yellow]No documents found for batch: {batch_id}[/yellow]"
+                )
+                if status_filter:
+                    console.print(
+                        f"[yellow]  (with status filter: {status_filter})[/yellow]"
+                    )
+                sys.exit(0)
+            console.print(f"Found {len(doc_list)} document(s) in batch")
+            if status_filter:
+                console.print(f"  (filtered by status: {status_filter})")
+
+        # Show what will be deleted
+        console.print()
+        if dry_run:
+            console.print(
+                "[bold yellow]DRY RUN - No changes will be made[/bold yellow]"
+            )
+        console.print("[bold red]⚠️  Documents to be deleted:[/bold red]")
+        console.print("━" * 60)
+        for doc in doc_list[:10]:  # Show first 10
+            console.print(f"  • {doc}")
+        if len(doc_list) > 10:
+            console.print(f"  ... and {len(doc_list) - 10} more")
+        console.print("━" * 60)
+        console.print()
+
+        # Confirm unless --force or --dry-run
+        if not force and not dry_run:
+            response = click.confirm(
+                f"Delete {len(doc_list)} document(s) permanently?",
+                default=False,
+            )
+            if not response:
+                console.print("[yellow]Deletion cancelled[/yellow]")
+                return
+
+        # Perform deletion
+        console.print()
+        with console.status(f"[bold red]Deleting {len(doc_list)} document(s)..."):
+            result = delete_documents(
+                object_keys=doc_list,
+                tracking_table=tracking_table,
+                s3_client=s3_client,
+                input_bucket=input_bucket,
+                output_bucket=output_bucket,
+                dry_run=dry_run,
+                continue_on_error=True,
+            )
+
+        # Show results
+        console.print()
+        if dry_run:
+            console.print("[bold yellow]DRY RUN COMPLETE[/bold yellow]")
+            console.print(f"Would delete {result['total_count']} document(s)")
+        elif result["success"]:
+            console.print(
+                f"[green]✓ Successfully deleted {result['deleted_count']} document(s)[/green]"
+            )
+        else:
+            console.print(
+                f"[yellow]⚠ Deleted {result['deleted_count']}/{result['total_count']} document(s)[/yellow]"
+            )
+            console.print(f"[red]  {result['failed_count']} failed[/red]")
+
+        # Show details for failures
+        if result.get("results"):
+            failures = [r for r in result["results"] if not r.get("success")]
+            if failures and not dry_run:
+                console.print()
+                console.print("[bold red]Failed deletions:[/bold red]")
+                for f in failures[:5]:
+                    console.print(f"  • {f['object_key']}")
+                    for err in f.get("errors", []):
+                        console.print(f"    [red]{err}[/red]")
+                if len(failures) > 5:
+                    console.print(f"  ... and {len(failures) - 5} more failures")
+
+        console.print()
+
+    except Exception as e:
+        logger.error(f"Error deleting documents: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
 @cli.command()
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
 @click.option(

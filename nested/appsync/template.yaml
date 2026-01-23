@@ -1420,6 +1420,8 @@ Resources:
       Description: Lambda function to delete documents via GraphQL API
       MemorySize: 512
       Timeout: 60
+      Layers:
+        - !Ref IDPCommonBaseLayerArn
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
