@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+
 ## [0.4.11]
 
 ### Added
@@ -100,6 +101,9 @@ SPDX-License-Identifier: MIT-0
     - Falls back to first page's classification when all pages are unclassifiable
   - **Benefits**: Config-driven approach automatically adapts to any defined document classes without hardcoding exclusion lists
   - Updated documentation in `docs/classification.md` explaining the voting behavior
+
+- **Test Results Config Export Not Properly Merging or Formatting**
+  - Fixed issue where config export was downloading raw JSON with separate Default/Custom entries instead of merged config
 
 ### Removed
 
