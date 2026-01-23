@@ -29,6 +29,7 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [rerun-inference](#rerun-inference)
   - [status](#status)
   - [download-results](#download-results)
+  - [delete-documents](#delete-documents)
   - [generate-manifest](#generate-manifest)
   - [validate-manifest](#validate-manifest)
   - [list-batches](#list-batches)
@@ -65,14 +66,14 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 ### Install from source
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pip install -e .
 ```
 
 ### Install with test dependencies
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pip install -e ".[test]"
 ```
 
@@ -783,6 +784,94 @@ idp-cli download-results \
 
 ---
 
+### `delete-documents`
+
+Delete documents and all associated data from the IDP system.
+
+**⚠️ WARNING:** This action cannot be undone.
+
+**Usage:**
+```bash
+idp-cli delete-documents [OPTIONS]
+```
+
+**Document Selection (choose ONE):**
+- `--document-ids`: Comma-separated list of document IDs (S3 object keys) to delete
+- `--batch-id`: Delete all documents in this batch
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--status-filter`: Only delete documents with this status (use with --batch-id)
+  - Options: `FAILED`, `COMPLETED`, `PROCESSING`, `QUEUED`
+- `--dry-run`: Show what would be deleted without actually deleting
+- `--force`, `-y`: Skip confirmation prompt
+- `--region`: AWS region (optional)
+
+**What Gets Deleted:**
+- Source files from input bucket
+- Processed outputs from output bucket
+- DynamoDB tracking records
+- List entries in tracking table
+
+**Examples:**
+
+```bash
+# Delete specific documents by ID
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf"
+
+# Delete all documents in a batch
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --batch-id cli-batch-20250123
+
+# Delete only failed documents in a batch
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --batch-id cli-batch-20250123 \
+    --status-filter FAILED
+
+# Dry run to see what would be deleted
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --batch-id cli-batch-20250123 \
+    --dry-run
+
+# Force delete without confirmation
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --document-ids "batch-123/doc1.pdf" \
+    --force
+```
+
+**Output Example:**
+```
+Connecting to stack: my-stack
+Getting documents for batch: cli-batch-20250123
+Found 15 document(s) in batch
+  (filtered by status: FAILED)
+
+⚠️  Documents to be deleted:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • cli-batch-20250123/doc1.pdf
+  • cli-batch-20250123/doc2.pdf
+  • cli-batch-20250123/doc3.pdf
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Delete 3 document(s) permanently? [y/N]: y
+
+✓ Successfully deleted 3 document(s)
+```
+
+**Use Cases:**
+- Clean up failed documents after fixing issues
+- Remove test documents from a batch
+- Free up storage by removing old processed documents
+- Prepare for reprocessing by removing previous results
+
+---
+
 ### `generate-manifest`
 
 Generate a manifest file from directory or S3 URI, or create a test set in the test set bucket.
@@ -1428,7 +1517,7 @@ minute,count
 5,500
 ```
 
-See `idp_cli/examples/load-test-schedule.csv` for a sample schedule file.
+See `lib/idp_cli_pkg/examples/load-test-schedule.csv` for a sample schedule file.
 
 ---
 
@@ -1730,7 +1819,7 @@ aws logs tail /aws/lambda/<LookupFunctionName> --follow
 Run the test suite:
 
 ```bash
-cd idp_cli
+cd lib/idp_cli_pkg
 pytest
 ```
 
