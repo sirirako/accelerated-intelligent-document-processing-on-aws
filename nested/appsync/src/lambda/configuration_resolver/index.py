@@ -576,43 +576,7 @@ def handle_get_config_versions(manager):
     Returns list of all available configuration versions
     """
     try:
-        versions = []
-        
-        # Get all configuration items from DynamoDB
-        response = manager.table.scan(
-            ProjectionExpression="Configuration, CreatedAt, Description, IsActive"
-        )
-        
-        for item in response.get('Items', []):
-            config_key = item.get('Configuration', {}).get('S', '')
-            
-            # Skip non-version items (Schema, pricing, etc.)
-            if config_key in ['Schema', 'DefaultPricing', 'CustomPricing']:
-                continue
-                
-            # Handle versioned configurations (v0, v1, v2, etc.)
-            if config_key.startswith('v') and config_key[1:].isdigit():
-                versions.append({
-                    "versionId": config_key,
-                    "isActive": item.get('IsActive', {}).get('BOOL', False),
-                    "createdAt": item.get('CreatedAt', {}).get('S'),
-                    "description": item.get('Description', {}).get('S', f"Configuration version {config_key}")
-                })
-            # Handle legacy Default/Custom (fallback for incomplete migrations)
-            elif config_key == 'Default':
-                versions.append({
-                    "versionId": "v0",
-                    "isActive": item.get('IsActive', {}).get('BOOL', True),
-                    "createdAt": item.get('CreatedAt', {}).get('S'),
-                    "description": "System default configuration (v0)"
-                })
-            elif config_key == 'Custom':
-                versions.append({
-                    "versionId": "v1", 
-                    "isActive": item.get('IsActive', {}).get('BOOL', False),
-                    "createdAt": item.get('CreatedAt', {}).get('S'),
-                    "description": "User customized configuration (v1)"
-                })
+        versions = manager.list_config_versions()
         
         return {
             "success": True,
@@ -748,30 +712,22 @@ def handle_set_active_version(manager, version_id):
                 },
             }
         
-        # Get all versions and update IsActive flags
-        response = manager.table.scan(
-            ProjectionExpression="Configuration"
-        )
+        # Set the version as active
+        success = manager.set_active_version(version_id)
         
-        for item in response.get('Items', []):
-            config_key = item.get('Configuration', {}).get('S', '')
-            
-            # Skip non-version items
-            if config_key in ['Schema', 'DefaultPricing', 'CustomPricing']:
-                continue
-                
-            # Update IsActive flag
-            is_active = (config_key == version_id)
-            manager.table.update_item(
-                Key={'Configuration': config_key},
-                UpdateExpression='SET IsActive = :active',
-                ExpressionAttributeValues={':active': is_active}
-            )
-        
-        return {
-            "success": True,
-            "message": f"Configuration version {version_id} set as active",
-        }
+        if success:
+            return {
+                "success": True,
+                "message": f"Configuration version {version_id} set as active",
+            }
+        else:
+            return {
+                "success": False,
+                "error": {
+                    "type": "Error",
+                    "message": f"Failed to set version {version_id} as active",
+                },
+            }
         
     except Exception as e:
         logger.error(f"Error in setActiveVersion: {str(e)}")
@@ -802,22 +758,8 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
                 },
             }
         
-        # Get all existing versions to find the next version number
-        response = manager.table.scan(
-            ProjectionExpression="Configuration"
-        )
-        
-        max_version = -1
-        for item in response.get('Items', []):
-            config_key = item.get('Configuration', {}).get('S', '')
-            
-            # Check for versioned configurations (v0, v1, v2, etc.)
-            if config_key.startswith('v') and config_key[1:].isdigit():
-                version_num = int(config_key[1:])
-                max_version = max(max_version, version_num)
-        
-        # Generate next version ID
-        next_version = f"v{max_version + 1}"
+        # Get next version ID
+        next_version = manager.get_next_version_id()
         timestamp = datetime.datetime.utcnow().isoformat() + "Z"
         
         # Parse configuration
@@ -826,7 +768,7 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
         else:
             config_data = configuration
         
-        # Prepare metadata separately
+        # Prepare metadata
         metadata = {
             "is_active": set_as_active,
             "created_at": timestamp,
@@ -838,19 +780,7 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
         
         # If setting as active, deactivate other versions
         if set_as_active:
-            for item in response.get('Items', []):
-                config_key = item.get('Configuration', {}).get('S', '')
-                
-                # Skip non-version items and the new version
-                if config_key in ['Schema', 'DefaultPricing', 'CustomPricing'] or config_key == next_version:
-                    continue
-                    
-                # Deactivate other versions
-                manager.table.update_item(
-                    Key={'Configuration': config_key},
-                    UpdateExpression='SET IsActive = :active',
-                    ExpressionAttributeValues={':active': False}
-                )
+            manager.set_active_version(next_version)
         
         return {
             "success": True,

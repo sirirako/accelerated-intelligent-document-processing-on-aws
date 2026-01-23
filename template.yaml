@@ -3052,8 +3052,12 @@ Resources:
       KeySchema:
         - AttributeName: Configuration
           KeyType: HASH
+        - AttributeName: Version
+          KeyType: RANGE
       AttributeDefinitions:
         - AttributeName: Configuration
+          AttributeType: S
+        - AttributeName: Version
           AttributeType: S
       SSESpecification:
         SSEEnabled: true

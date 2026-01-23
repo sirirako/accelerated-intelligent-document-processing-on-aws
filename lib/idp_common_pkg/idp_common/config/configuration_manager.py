@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-import boto3
 import json
-import os
-from typing import Dict, Any, Optional, Union
-from botocore.exceptions import ClientError
 import logging
+import os
+from typing import Any, Dict, List, Optional, Union
 
-from .models import IDPConfig, SchemaConfig, PricingConfig, ConfigurationRecord
-from .merge_utils import deep_update, get_diff_dict
+import boto3
+from botocore.exceptions import ClientError
+
 from .constants import (
-    CONFIG_TYPE_SCHEMA,
-    CONFIG_TYPE_DEFAULT,
     CONFIG_TYPE_CUSTOM,
-    CONFIG_TYPE_DEFAULT_PRICING,
     CONFIG_TYPE_CUSTOM_PRICING,
-    VALID_CONFIG_TYPES,
+    CONFIG_TYPE_DEFAULT,
+    CONFIG_TYPE_DEFAULT_PRICING,
 )
+from .merge_utils import deep_update, get_diff_dict
+from .models import ConfigurationRecord, IDPConfig, PricingConfig, SchemaConfig
 
 logger = logging.getLogger(__name__)
 
@@ -65,35 +64,46 @@ class ConfigurationManager:
         logger.info(f"ConfigurationManager initialized with table: {table_name}")
 
     def get_configuration(
-        self, config_type: str
+        self, config_type: str, version: Optional[str] = None
     ) -> Optional[Union[SchemaConfig, IDPConfig, PricingConfig]]:
         """
         Retrieve configuration from DynamoDB.
 
-        This method:
-        1. Reads the DynamoDB item
-        2. Deserializes into ConfigurationRecord (auto-migrates legacy format)
-        3. Checks if migration occurred and persists if needed
-        4. Returns SchemaConfig for Schema type, PricingConfig for Pricing, IDPConfig for Default/Custom
-
         Args:
-            config_type: Configuration type (Schema, Default, Custom, Pricing)
+            config_type: Configuration type ("Config", "Schema", "Pricing", or legacy "Default"/"Custom")
+            version: Version identifier for Config type only (v0, v1, v2, etc.). 
+                    If None for Config type, returns active version.
+                    Ignored for Schema/Pricing types.
 
         Returns:
-            SchemaConfig for Schema type, PricingConfig for Pricing, IDPConfig for Default/Custom, or None if not found
-
-        Raises:
-            ClientError: If DynamoDB operation fails
+            SchemaConfig for Schema type, PricingConfig for Pricing, IDPConfig for Config/versions, or None if not found
         """
         try:
-            record = self._read_record(config_type)
-            if record is None:
-                logger.info(f"Configuration not found: {config_type}")
+            # Handle legacy config types and map to new system
+            if config_type in ("Default", "Custom"):
+                config_type = "Config"
+                # For legacy requests, get active version (ignore version parameter)
+                version = None
+            
+            # Map config types to composite key format
+            if config_type == "Config":
+                if version:
+                    # Get specific version
+                    record = self._read_record("Config", version)
+                else:
+                    # Get active version
+                    record = self._get_active_config_version()
+            elif config_type == "Schema":
+                record = self._read_record("Schema", "")
+            elif config_type == "Pricing":
+                record = self._read_record("Pricing", "")
+            else:
+                logger.warning(f"Unknown configuration type: {config_type}")
                 return None
-
-            # Note: ConfigurationRecord.from_dynamodb_item() auto-migrates legacy format
-            # We don't need to check for migration separately - it's already done
-            # If we want to persist the migration, we can optionally do so here
+                
+            if record is None:
+                logger.info(f"Configuration not found: {config_type}" + (f"/{version}" if version else ""))
+                return None
 
             return record.config
 
@@ -146,60 +156,64 @@ class ConfigurationManager:
         self,
         config_type: str,
         config: Union[SchemaConfig, IDPConfig, PricingConfig, Dict[str, Any]],
+        version: Optional[str] = None,
+        description: Optional[str] = None,
         skip_sync: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Save configuration to DynamoDB.
+        Save configuration to DynamoDB using composite key structure.
 
-        This method:
-        1. Converts dict to appropriate config type if needed
-        2. If saving Default, syncs Custom to preserve user customizations (unless skip_sync=True)
-        3. Creates ConfigurationRecord
-        4. Serializes to DynamoDB item
-        5. Writes to DynamoDB
-        
         Args:
-            config_type: Configuration type (Schema, Default, Custom, DefaultPricing, CustomPricing)
-            config: SchemaConfig, IDPConfig, PricingConfig model, or dict (dict will be converted to appropriate type)
-            skip_sync: If True, skip automatic Custom sync when saving Default (used for save-as-default)
+            config_type: Configuration type ("Config", "Schema", "Pricing")
+            config: SchemaConfig, IDPConfig, PricingConfig model, or dict
+            version: Version identifier for Config type only (v0, v1, v2, etc.). 
+                    If None for Config type, saves to active version.
+                    Ignored for Schema/Pricing types.
+            description: Version description
+            skip_sync: If True, skip automatic sync when updating Config versions
+            metadata: Optional metadata (created_at, updated_at only)
+
+        Note: Use activate_version() to control which version is active.
+
+        Example:
+            save_configuration("Config", idp_config, version="v1", description="User config")
+            activate_version("v1")  # Separate activation step
 
         Raises:
             ClientError: If DynamoDB operation fails
         """
-        # Convert dict to appropriate config type if needed (for backward compatibility)
+        # Convert dict to appropriate config type if needed
         if isinstance(config, dict):
-            if config_type == CONFIG_TYPE_SCHEMA:
+            if config_type == "Schema":
                 config = SchemaConfig(**config)
-            elif config_type in (CONFIG_TYPE_DEFAULT_PRICING, CONFIG_TYPE_CUSTOM_PRICING):
+            elif config_type == "Pricing":
                 config = PricingConfig(**config)
             else:
                 config = IDPConfig(**config)
 
-        # If updating Default, sync Custom to preserve user customizations
-        # Skip sync if this is a "save as default" operation where Custom will be deleted
-        if (
-            config_type == CONFIG_TYPE_DEFAULT
-            and not skip_sync
-            and isinstance(config, IDPConfig)
-        ):
-            old_default = self.get_configuration(CONFIG_TYPE_DEFAULT)
-            old_custom = self.get_configuration(CONFIG_TYPE_CUSTOM)
-
-            if (
-                old_default
-                and old_custom
-                and isinstance(old_default, IDPConfig)
-                and isinstance(old_custom, IDPConfig)
-            ):
-                logger.info(
-                    "Syncing Custom config with new Default while preserving user customizations"
-                )
-                new_custom = self.sync_custom_with_new_default(
-                    old_default, config, old_custom
-                )
-                # Save the synced custom config
-                self.save_configuration(CONFIG_TYPE_CUSTOM, new_custom, skip_sync=True)
+        # For Config type, determine version
+        if config_type == "Config":
+            if version is None:
+                # Get active version to update
+                active_record = self._get_active_config_version()
+                if active_record:
+                    version = active_record.version
+                else:
+                    # No active version exists, default to v0
+                    version = "v0"
+            
+            # If updating v0 (baseline), sync all other versions
+            if version == "v0" and not skip_sync and isinstance(config, IDPConfig):
+                self._sync_all_versions_with_new_baseline(config)
+            
+            configuration_type = "Config"
+        elif config_type == "Schema":
+            configuration_type, version = "Schema", ""
+        elif config_type == "Pricing":
+            configuration_type, version = "Pricing", ""
+        else:
+            raise ValueError(f"Unknown configuration type: {config_type}")
 
         # Create record with metadata
         from .models import ConfigMetadata
@@ -208,39 +222,165 @@ class ConfigurationManager:
         if metadata:
             config_metadata = ConfigMetadata(**metadata)
         
-        # Map configuration type for discriminated union
-        if config_type == CONFIG_TYPE_SCHEMA:
-            discriminator_type = "Schema"
-        elif config_type in (CONFIG_TYPE_DEFAULT_PRICING, CONFIG_TYPE_CUSTOM_PRICING):
-            discriminator_type = config_type  # "DefaultPricing" or "CustomPricing"
-        else:
-            # All version strings (v0, v1, etc.) use "Config" for discrimination
-            discriminator_type = "Config"
-            
         record = ConfigurationRecord(
-            configuration_type=discriminator_type, 
+            configuration_type=configuration_type,
+            version=version,
+            is_active=None,  # Activation controlled by activate_version() only
+            description=description,
             config=config,
             metadata=config_metadata
         )
 
-        # Write to DynamoDB with original config_type as key
-        self._write_record(record, config_type)
+        # Write to DynamoDB
+        self._write_record(record, f"{config_type}/{version}" if version else config_type)
+
+    def activate_version(self, version: str) -> None:
+        """
+        Activate a specific Config version and deactivate all others.
+        
+        Args:
+            version: Version to activate (v0, v1, v2, etc.)
+            
+        Raises:
+            ValueError: If version doesn't exist
+            ClientError: If DynamoDB operation fails
+        """
+        # First, verify the version exists
+        target_record = self._read_record("Config", version)
+        if not target_record:
+            raise ValueError(f"Config version {version} not found")
+        
+        # Query all Config versions
+        try:
+            response = self.table.query(
+                KeyConditionExpression="Configuration = :config_type",
+                ExpressionAttributeValues={":config_type": "Config"}
+            )
+            
+            # Update all versions
+            for item in response.get('Items', []):
+                item_version = item.get('Version', '')
+                should_be_active = (item_version == version)
+                
+                # Update is_active field
+                self.table.update_item(
+                    Key={
+                        "Configuration": "Config",
+                        "Version": item_version
+                    },
+                    UpdateExpression="SET IsActive = :active",
+                    ExpressionAttributeValues={":active": should_be_active}
+                )
+            
+            logger.info(f"Activated Config version {version}")
+            
+        except ClientError as e:
+            logger.error(f"Error activating version {version}: {e}")
+            raise
+
+    def list_config_versions(self) -> List[Dict[str, Any]]:
+        """
+        List all configuration versions.
+        
+        Returns:
+            List of version info dicts with versionId, isActive, createdAt, updatedAt, description
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="Configuration = :config_type",
+                ExpressionAttributeValues={":config_type": "Config"},
+                ProjectionExpression="Version, IsActive, CreatedAt, UpdatedAt, Description"
+            )
+            
+            versions = []
+            for item in response.get('Items', []):
+                versions.append({
+                    "versionId": item.get('Version', ''),
+                    "isActive": item.get('IsActive'),  # Can be None, True, or False
+                    "createdAt": item.get('CreatedAt'),
+                    "updatedAt": item.get('UpdatedAt'),
+                    "description": item.get('Description', f"Configuration version {item.get('Version', '')}")
+                })
+            
+            return versions
+            
+        except ClientError as e:
+            logger.error(f"Error listing config versions: {e}")
+            return []
+
+    def get_next_version_id(self) -> str:
+        """
+        Get the next available version ID.
+        
+        Returns:
+            Next version ID (e.g., "v2" if v0, v1 exist)
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="Configuration = :config_type",
+                ExpressionAttributeValues={":config_type": "Config"},
+                ProjectionExpression="Version"
+            )
+            
+            max_version = -1
+            for item in response.get('Items', []):
+                version = item.get('Version', '')
+                if version.startswith('v') and version[1:].isdigit():
+                    version_num = int(version[1:])
+                    max_version = max(max_version, version_num)
+            
+            return f"v{max_version + 1}"
+            
+        except ClientError as e:
+            logger.error(f"Error getting next version ID: {e}")
+            return "v0"
 
         
 
-    def delete_configuration(self, config_type: str) -> None:
+    def delete_configuration(self, config_type: str, version: Optional[str] = None) -> None:
         """
-        Delete configuration from DynamoDB.
+        Delete configuration from DynamoDB using composite key.
 
         Args:
-            config_type: Configuration type to delete
+            config_type: Configuration type ("Config", "Schema", "Pricing")
+            version: Version identifier for Config type only (v0, v1, v2, etc.). 
+                    Required for Config type, ignored for Schema/Pricing types.
 
         Raises:
             ClientError: If DynamoDB operation fails
+            ValueError: If version is required but not provided
         """
         try:
-            self.table.delete_item(Key={"Configuration": config_type})
-            logger.info(f"Deleted configuration: {config_type}")
+            # Handle legacy config types
+            if config_type in ("Default", "Custom"):
+                config_type = "Config"
+                version = "v0" if config_type == "Default" else "v1"
+
+            # Map config types to composite key format
+            if config_type == "Config":
+                if version is None:
+                    raise ValueError("Version is required for Config type")
+                
+                # Check if trying to delete active version
+                record = self._read_record("Config", version)
+                if record and record.is_active:
+                    raise ValueError(f"Cannot delete active version {version}. Activate another version first.")
+                
+                configuration_type, version_key = "Config", version
+            elif config_type == "Schema":
+                configuration_type, version_key = "Schema", ""
+            elif config_type == "Pricing":
+                configuration_type, version_key = "Pricing", ""
+            else:
+                raise ValueError(f"Unknown configuration type: {config_type}")
+
+            self.table.delete_item(
+                Key={
+                    "Configuration": configuration_type,
+                    "Version": version_key
+                }
+            )
+            logger.info(f"Deleted configuration: {config_type}" + (f"/{version}" if version else ""))
         except ClientError as e:
             logger.error(f"Error deleting configuration {config_type}: {e}")
             raise
@@ -349,7 +489,7 @@ class ConfigurationManager:
             raise
 
     def handle_update_custom_configuration(
-        self, custom_config: Union[str, Dict[str, Any], IDPConfig]
+        self, custom_config: Union[str, Dict[str, Any], IDPConfig], version_id: Optional[str] = None
     ) -> bool:
         """
         Handle the updateConfiguration GraphQL mutation.
@@ -357,11 +497,12 @@ class ConfigurationManager:
         This method:
         1. Parses the input (JSON string, dict, or IDPConfig)
         2. Validates that config is not empty (prevents data loss)
-        3. Checks for saveAsDefault flag
-        4. Either updates Custom or merges into Default
+        3. Merges diff into existing configuration
+        4. Saves updated configuration
         
         Args:
             custom_config: Configuration as JSON string, dict, or IDPConfig
+            version_id: Version to update (v0, v1, v2, etc.). If None, updates active version.
 
         Returns:
             True on success
@@ -391,80 +532,134 @@ class ConfigurationManager:
                 "Cannot update with empty configuration. Frontend should not send empty diffs."
             )
 
-        # Extract special flags
-        save_as_default = config_dict.pop("saveAsDefault", False)
-        reset_to_default = config_dict.pop("resetToDefault", False)
-        
-        # Remove legacy pricing field if present (now stored separately as DefaultPricing/CustomPricing)
-        # This handles imported configs that may have old embedded pricing
+        # Remove legacy pricing field if present (now stored separately as Pricing type)
         config_dict.pop("pricing", None)
 
-        # Handle reset to default - delete Custom entirely
-        # On next getConfiguration, the auto-copy logic will repopulate Custom from Default
-        if reset_to_default:
-            logger.info("Resetting Custom configuration by deleting it")
-            self.delete_configuration(CONFIG_TYPE_CUSTOM)
-            logger.info(
-                "Custom configuration deleted, will be repopulated from Default on next read"
-            )
-            return True
-
-        # Convert to IDPConfig
+        # Convert to IDPConfig for validation
         config = IDPConfig(**config_dict)
 
-        if save_as_default:
-            # Save as Default: Replace Default with the received config (current Custom state)
-            # Frontend sends the complete merged Custom config
-            # This becomes the new baseline for all users
-            # Skip sync since we're about to delete Custom anyway
-            self.save_configuration(CONFIG_TYPE_DEFAULT, config, skip_sync=True)
+        # Get existing configuration to merge with
+        existing_config = self.get_configuration("Config", version_id)
+        if not existing_config or not isinstance(existing_config, IDPConfig):
+            # Fallback: If version doesn't exist, use v0 as base
+            logger.warning(f"Version {version_id} not found, using v0 as base")
+            existing_config = self.get_configuration("Config", "v0") or IDPConfig()
 
-            # Delete Custom since it's now the same as Default
-            self.delete_configuration(CONFIG_TYPE_CUSTOM)
+        # Apply the diff to existing config (deep update to handle nested objects)
+        existing_dict = existing_config.model_dump(mode="python")
+        update_dict = config.model_dump(mode="python", exclude_unset=True)
+        deep_update(existing_dict, update_dict)
+        merged_config = IDPConfig(**existing_dict)
 
-            logger.info("Saved current Custom as new Default and cleared Custom")
-        else:
-            # Normal custom config update - merge diff into existing Custom
-            # Data Flow: Frontend sends diff, we merge into existing Custom
-            # Note: Custom should always exist (getConfiguration copies Default on first read)
-            existing_custom = self.get_configuration(CONFIG_TYPE_CUSTOM)
-            if not existing_custom or not existing_custom.model_dump(
-                exclude_unset=True
-            ):
-                # Fallback: If Custom is somehow empty, use Default as base
-                # This should rarely happen due to auto-copy in getConfiguration
-                logger.warning(
-                    "Custom config is empty during update, using Default as base"
-                )
-                existing_custom = (
-                    self.get_configuration(CONFIG_TYPE_DEFAULT) or IDPConfig()
-                )
-
-            # Apply the diff to existing Custom (deep update to handle nested objects)
-            existing_dict = existing_custom.model_dump(mode="python")
-            update_dict = config.model_dump(mode="python", exclude_unset=True)
-            deep_update(existing_dict, update_dict)
-            merged_custom = IDPConfig(**existing_dict)
-
-            # Save updated Custom configuration
-            self.save_configuration(CONFIG_TYPE_CUSTOM, merged_custom)
-            logger.info("Updated Custom configuration by merging diff")
+        # Save updated configuration
+        self.save_configuration("Config", merged_config, version=version_id)
+        logger.info(f"Updated Config version {version_id or 'active'} by merging diff")
 
         return True
 
     # ===== Private Methods =====
 
-    def _read_record(self, config_type: str) -> Optional[ConfigurationRecord]:
+    def _sync_all_versions_with_new_baseline(self, new_baseline: IDPConfig) -> None:
         """
-        Read ConfigurationRecord from DynamoDB.
+        Sync all Config versions (v1, v2, v3, ...) with new v0 baseline.
+        
+        For each version > v0:
+        1. Get old v0 and the version config
+        2. Calculate what the user customized (diff between version and old v0)
+        3. Apply those customizations to new baseline
+        4. Save the synced version
+        
+        Args:
+            new_baseline: The new v0 configuration
+        """
+        try:
+            # Get old v0 for comparison
+            old_baseline = self.get_configuration("Config", "v0")
+            if not old_baseline or not isinstance(old_baseline, IDPConfig):
+                logger.info("No existing v0 to sync from")
+                return
+            
+            # Query all Config versions
+            response = self.table.query(
+                KeyConditionExpression="Configuration = :config_type",
+                ExpressionAttributeValues={":config_type": "Config"}
+            )
+            
+            # Sync each version > v0
+            for item in response.get('Items', []):
+                version = item.get('Version', '')
+                if version and version != "v0":
+                    # Get the current version config
+                    current_version = self.get_configuration("Config", version)
+                    if current_version and isinstance(current_version, IDPConfig):
+                        logger.info(f"Syncing version {version} with new v0 baseline")
+                        
+                        # Calculate user customizations and apply to new baseline
+                        synced_config = self.sync_custom_with_new_default(
+                            old_baseline, new_baseline, current_version
+                        )
+                        
+                        # Save the synced version (skip_sync=True to avoid recursion)
+                        self.save_configuration(
+                            "Config", 
+                            synced_config, 
+                            version=version, 
+                            skip_sync=True
+                        )
+            
+        except ClientError as e:
+            logger.error(f"Error syncing versions with new baseline: {e}")
+            raise
+
+    def _get_active_config_version(self) -> Optional[ConfigurationRecord]:
+        """
+        Get the active Config version (where is_active=True).
+        
+        Returns:
+            ConfigurationRecord with is_active=True, or None if not found
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="Configuration = :config_type",
+                FilterExpression="IsActive = :active",
+                ExpressionAttributeValues={
+                    ":config_type": "Config",
+                    ":active": True
+                }
+            )
+            
+            items = response.get('Items', [])
+            if not items:
+                logger.info("No active Config version found")
+                return None
+            
+            if len(items) > 1:
+                logger.warning(f"Multiple active Config versions found: {len(items)}")
+            
+            # Return the first active version found
+            return ConfigurationRecord.from_dynamodb_item(items[0])
+            
+        except ClientError as e:
+            logger.error(f"Error querying for active Config version: {e}")
+            return None
+
+    def _read_record(self, configuration_type: str, version: str) -> Optional[ConfigurationRecord]:
+        """
+        Read ConfigurationRecord from DynamoDB using composite key.
 
         Args:
-            config_type: Configuration type to read
+            configuration_type: Configuration type (Config, Schema, Pricing)
+            version: Version identifier (v0, v1, v2, ... or "" for Schema/Pricing)
 
         Returns:
             ConfigurationRecord or None if not found
         """
-        response = self.table.get_item(Key={"Configuration": config_type})
+        response = self.table.get_item(
+            Key={
+                "Configuration": configuration_type,
+                "Version": version
+            }
+        )
         item = response.get("Item")
 
         if item is None:
@@ -472,16 +667,15 @@ class ConfigurationManager:
 
         return ConfigurationRecord.from_dynamodb_item(item)
 
-    def _write_record(self, record: ConfigurationRecord, key: Optional[str] = None) -> None:
+    def _write_record(self, record: ConfigurationRecord, identifier: Optional[str] = None) -> None:
         """
-        Write ConfigurationRecord to DynamoDB.
+        Write ConfigurationRecord to DynamoDB using composite key.
 
         Args:
             record: ConfigurationRecord to write
-            key: Optional custom key to use instead of record.configuration_type
+            identifier: Optional identifier for logging (e.g., "v1", "Schema")
         """
         item = record.to_dynamodb_item()
-        if key:
-            item["Configuration"] = key
         self.table.put_item(Item=item)
-        logger.info(f"Saved configuration: {key or record.configuration_type}")
+        log_id = identifier or f"{record.configuration_type}/{record.version}"
+        logger.info(f"Saved configuration: {log_id}")
