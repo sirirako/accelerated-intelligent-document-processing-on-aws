@@ -34,6 +34,35 @@ import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
 const client = generateClient();
 const logger = new ConsoleLogger('ConfigurationLayout');
 
+// Utility function to check if two values are numerically equivalent
+// Handles cases where 5 and 5.0, or "5" and 5 should be considered equal
+const areNumericValuesEqual = (val1, val2) => {
+  // If both are numbers, direct comparison
+  if (typeof val1 === 'number' && typeof val2 === 'number') {
+    return val1 === val2;
+  }
+
+  // Try to parse both as numbers
+  const num1 = typeof val1 === 'number' ? val1 : parseFloat(val1);
+  const num2 = typeof val2 === 'number' ? val2 : parseFloat(val2);
+
+  // Both must be valid numbers for numeric comparison
+  if (!Number.isNaN(num1) && !Number.isNaN(num2)) {
+    return num1 === num2;
+  }
+
+  return false;
+};
+
+// Check if a value could be interpreted as a number
+const isNumericValue = (val) => {
+  if (typeof val === 'number') return true;
+  if (typeof val === 'string' && val.trim() !== '') {
+    return !Number.isNaN(parseFloat(val)) && isFinite(val);
+  }
+  return false;
+};
+
 const ConfigurationLayout = () => {
   const {
     schema,
@@ -711,7 +740,26 @@ const ConfigurationLayout = () => {
           return allResults;
         }
 
-        // Handle primitive values
+        // Handle primitive values - use numeric equivalence for numbers
+        // This prevents false positives when Pydantic converts int to float (5 vs 5.0)
+        if (isNumericValue(current) && isNumericValue(defaultObj)) {
+          // Use numeric comparison for values that can be interpreted as numbers
+          if (!areNumericValuesEqual(current, defaultObj)) {
+            console.log(`DEBUG: Numeric difference detected at path '${path}':`, {
+              // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+              current,
+              currentType: typeof current,
+              defaultObj,
+              defaultType: typeof defaultObj,
+            });
+            const result = { [path]: current };
+            return result;
+          }
+          // Numerically equal, no difference
+          return newResult;
+        }
+
+        // Non-numeric primitive comparison
         if (current !== defaultObj) {
           console.log(`DEBUG: Primitive difference detected at path '${path}':`, {
             // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data

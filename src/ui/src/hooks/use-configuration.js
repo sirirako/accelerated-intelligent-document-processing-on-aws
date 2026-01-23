@@ -11,6 +11,35 @@ import { deepMerge } from '../utils/configUtils';
 const client = generateClient();
 const logger = new ConsoleLogger('useConfiguration');
 
+// Utility function to check if two values are numerically equivalent
+// Handles cases where 5 and 5.0, or "5" and 5 should be considered equal
+const areNumericValuesEqual = (val1, val2) => {
+  // If both are numbers, direct comparison
+  if (typeof val1 === 'number' && typeof val2 === 'number') {
+    return val1 === val2;
+  }
+
+  // Try to parse both as numbers
+  const num1 = typeof val1 === 'number' ? val1 : parseFloat(val1);
+  const num2 = typeof val2 === 'number' ? val2 : parseFloat(val2);
+
+  // Both must be valid numbers for numeric comparison
+  if (!Number.isNaN(num1) && !Number.isNaN(num2)) {
+    return num1 === num2;
+  }
+
+  return false;
+};
+
+// Check if a value could be interpreted as a number
+const isNumericValue = (val) => {
+  if (typeof val === 'number') return true;
+  if (typeof val === 'string' && val.trim() !== '') {
+    return !Number.isNaN(parseFloat(val)) && isFinite(val);
+  }
+  return false;
+};
+
 // Utility function to normalize boolean values from strings
 const normalizeBooleans = (obj, schema) => {
   if (!obj || !schema) return obj;
@@ -480,7 +509,13 @@ const useConfiguration = () => {
         return JSON.stringify(customValue) !== JSON.stringify(defaultValue);
       }
 
-      // Simple value comparison
+      // Check for numeric equivalence (handles 5 vs 5.0, "5" vs 5, etc.)
+      // This prevents false positives when Pydantic converts int to float
+      if (customValueExists && isNumericValue(customValue) && isNumericValue(defaultValue)) {
+        return !areNumericValuesEqual(customValue, defaultValue);
+      }
+
+      // Simple value comparison for non-numeric values
       return customValueExists && customValue !== defaultValue;
     } catch (err) {
       logger.error(`Error in isCustomized for path: ${path}`, err);
