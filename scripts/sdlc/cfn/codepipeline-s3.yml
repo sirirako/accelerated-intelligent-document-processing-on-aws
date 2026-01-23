@@ -40,6 +40,7 @@ Resources:
     Condition: CreateKMSKey
     Properties:
       Description: 'KMS key for CodePipeline artifact encryption'
+      EnableKeyRotation: true
       KeyPolicy:
         Version: '2012-10-17'
         Statement:
@@ -182,6 +183,14 @@ Resources:
         rules_to_suppress:
           - id: S3-001
             reason: "This is a temporary deployment artifact bucket; access logging not required"
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-S2
+            reason: "Internal SDLC artifact bucket with public access already blocked"
+          - id: AwsSolutions-S5
+            reason: "Internal SDLC artifact bucket not used with CloudFront"
+          - id: AwsSolutions-S10
+            reason: "Internal SDLC artifact bucket - SSL enforced at CodePipeline level"
     Properties:
       VersioningConfiguration:
         Status: Enabled
