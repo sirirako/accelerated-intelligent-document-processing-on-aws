@@ -252,7 +252,7 @@ class TestClassesDiscoveryIntegration:
         service_with_mocks._mock_table.put_item.assert_called_once()
         put_item_args = service_with_mocks._mock_table.put_item.call_args[1]
 
-        assert put_item_args["Item"]["Configuration"] == "Config"
+        assert put_item_args["Item"]["Configuration"] == "Config#v1"
         classes = put_item_args["Item"]["classes"]
         assert len(classes) == 1
 

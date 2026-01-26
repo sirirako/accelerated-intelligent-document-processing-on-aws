@@ -79,14 +79,14 @@ class ConfigurationManager:
             SchemaConfig for Schema type, PricingConfig for Pricing, IDPConfig for Config/versions, or None if not found
         """
         try:
-            # Handle legacy config types and map to new system
-            if config_type in ("Default", "Custom"):
-                config_type = "Config"
-                # For legacy requests, get active version (ignore version parameter)
-                version = None
-            
-            # Map config types to composite key format
-            if config_type == "Config":
+            # Handle legacy config types - return actual legacy records
+            if config_type == "Default":
+                # Return legacy Default record directly
+                record = self._read_record("Default", "")
+            elif config_type == "Custom":
+                # Return legacy Custom record directly
+                record = self._read_record("Custom", "")
+            elif config_type == "Config":
                 if version:
                     # Get specific version
                     record = self._read_record("Config", version)
@@ -192,6 +192,16 @@ class ConfigurationManager:
             else:
                 config = IDPConfig(**config)
 
+        # Handle legacy config types
+        if config_type == "Default":
+            config_type = "Config"
+            if version is None:
+                version = "v0"
+        elif config_type == "Custom":
+            config_type = "Config"
+            if version is None:
+                version = "v1"
+
         # For Config type, determine version
         if config_type == "Config":
             if version is None:
@@ -232,7 +242,7 @@ class ConfigurationManager:
         )
 
         # Write to DynamoDB
-        self._write_record(record, f"{config_type}/{version}" if version else config_type)
+        self._write_record(record, f"Config#{version}" if config_type == "Config" and version else config_type)
 
     def activate_version(self, version: str) -> None:
         """
@@ -250,27 +260,26 @@ class ConfigurationManager:
         if not target_record:
             raise ValueError(f"Config version {version} not found")
         
-        # Query all Config versions
+        # Scan for all Config# versions
         try:
-            response = self.table.query(
-                KeyConditionExpression="Configuration = :config_type",
-                ExpressionAttributeValues={":config_type": "Config"}
+            response = self.table.scan(
+                FilterExpression="begins_with(Configuration, :config_prefix)",
+                ExpressionAttributeValues={":config_prefix": "Config#"}
             )
             
             # Update all versions
             for item in response.get('Items', []):
-                item_version = item.get('Version', '')
-                should_be_active = (item_version == version)
-                
-                # Update is_active field
-                self.table.update_item(
-                    Key={
-                        "Configuration": "Config",
-                        "Version": item_version
-                    },
-                    UpdateExpression="SET IsActive = :active",
-                    ExpressionAttributeValues={":active": should_be_active}
-                )
+                config_key = item.get('Configuration', '')
+                if "#" in config_key:
+                    _, item_version = config_key.split("#", 1)
+                    should_be_active = (item_version == version)
+                    
+                    # Update is_active field
+                    self.table.update_item(
+                        Key={"Configuration": config_key},
+                        UpdateExpression="SET IsActive = :active",
+                        ExpressionAttributeValues={":active": should_be_active}
+                    )
             
             logger.info(f"Activated Config version {version}")
             
@@ -286,21 +295,24 @@ class ConfigurationManager:
             List of version info dicts with versionId, isActive, createdAt, updatedAt, description
         """
         try:
-            response = self.table.query(
-                KeyConditionExpression="Configuration = :config_type",
-                ExpressionAttributeValues={":config_type": "Config"},
-                ProjectionExpression="Version, IsActive, CreatedAt, UpdatedAt, Description"
+            response = self.table.scan(
+                FilterExpression="begins_with(Configuration, :config_prefix)",
+                ExpressionAttributeValues={":config_prefix": "Config#"},
+                ProjectionExpression="Configuration, IsActive, CreatedAt, UpdatedAt, Description"
             )
             
             versions = []
             for item in response.get('Items', []):
-                versions.append({
-                    "versionId": item.get('Version', ''),
-                    "isActive": item.get('IsActive'),  # Can be None, True, or False
-                    "createdAt": item.get('CreatedAt'),
-                    "updatedAt": item.get('UpdatedAt'),
-                    "description": item.get('Description', f"Configuration version {item.get('Version', '')}")
-                })
+                config_key = item.get('Configuration', '')
+                if "#" in config_key:
+                    _, version_id = config_key.split("#", 1)
+                    versions.append({
+                        "versionId": version_id,
+                        "isActive": item.get('IsActive'),  # Can be None, True, or False
+                        "createdAt": item.get('CreatedAt'),
+                        "updatedAt": item.get('UpdatedAt'),
+                        "description": item.get('Description', f"Configuration version {version_id}")
+                    })
             
             return versions
             
@@ -315,19 +327,28 @@ class ConfigurationManager:
         Returns:
             Next version ID (e.g., "v2" if v0, v1 exist)
         """
+    def get_next_version_id(self) -> str:
+        """
+        Get the next available version ID.
+        
+        Returns:
+            Next version ID (e.g., "v2" if v0, v1 exist)
+        """
         try:
-            response = self.table.query(
-                KeyConditionExpression="Configuration = :config_type",
-                ExpressionAttributeValues={":config_type": "Config"},
-                ProjectionExpression="Version"
+            response = self.table.scan(
+                FilterExpression="begins_with(Configuration, :config_prefix)",
+                ExpressionAttributeValues={":config_prefix": "Config#"},
+                ProjectionExpression="Configuration"
             )
             
             max_version = -1
             for item in response.get('Items', []):
-                version = item.get('Version', '')
-                if version.startswith('v') and version[1:].isdigit():
-                    version_num = int(version[1:])
-                    max_version = max(max_version, version_num)
+                config_key = item.get('Configuration', '')
+                if "#" in config_key:
+                    _, version = config_key.split("#", 1)
+                    if version.startswith('v') and version[1:].isdigit():
+                        version_num = int(version[1:])
+                        max_version = max(max_version, version_num)
             
             return f"v{max_version + 1}"
             
@@ -339,10 +360,10 @@ class ConfigurationManager:
 
     def delete_configuration(self, config_type: str, version: Optional[str] = None) -> None:
         """
-        Delete configuration from DynamoDB using composite key.
+        Delete configuration from DynamoDB using single key.
 
         Args:
-            config_type: Configuration type ("Config", "Schema", "Pricing")
+            config_type: Configuration type ("Config", "Schema", "Pricing", or legacy "Default"/"Custom")
             version: Version identifier for Config type only (v0, v1, v2, etc.). 
                     Required for Config type, ignored for Schema/Pricing types.
 
@@ -352,12 +373,13 @@ class ConfigurationManager:
         """
         try:
             # Handle legacy config types
-            if config_type in ("Default", "Custom"):
-                config_type = "Config"
-                version = "v0" if config_type == "Default" else "v1"
-
-            # Map config types to composite key format
-            if config_type == "Config":
+            if config_type == "Default":
+                # Delete legacy Default directly
+                key = "Default"
+            elif config_type == "Custom":
+                # Delete legacy Custom directly
+                key = "Custom"
+            elif config_type == "Config":
                 if version is None:
                     raise ValueError("Version is required for Config type")
                 
@@ -366,20 +388,13 @@ class ConfigurationManager:
                 if record and record.is_active:
                     raise ValueError(f"Cannot delete active version {version}. Activate another version first.")
                 
-                configuration_type, version_key = "Config", version
-            elif config_type == "Schema":
-                configuration_type, version_key = "Schema", ""
-            elif config_type == "Pricing":
-                configuration_type, version_key = "Pricing", ""
+                key = f"Config#{version}"
+            elif config_type in ("Schema", "Pricing"):
+                key = config_type
             else:
                 raise ValueError(f"Unknown configuration type: {config_type}")
 
-            self.table.delete_item(
-                Key={
-                    "Configuration": configuration_type,
-                    "Version": version_key
-                }
-            )
+            self.table.delete_item(Key={"Configuration": key})
             logger.info(f"Deleted configuration: {config_type}" + (f"/{version}" if version else ""))
         except ClientError as e:
             logger.error(f"Error deleting configuration {config_type}: {e}")
@@ -619,11 +634,11 @@ class ConfigurationManager:
             ConfigurationRecord with is_active=True, or None if not found
         """
         try:
-            response = self.table.query(
-                KeyConditionExpression="Configuration = :config_type",
-                FilterExpression="IsActive = :active",
+            # Scan for Config# keys with IsActive=True
+            response = self.table.scan(
+                FilterExpression="begins_with(Configuration, :config_prefix) AND IsActive = :active",
                 ExpressionAttributeValues={
-                    ":config_type": "Config",
+                    ":config_prefix": "Config#",
                     ":active": True
                 }
             )
@@ -640,26 +655,27 @@ class ConfigurationManager:
             return ConfigurationRecord.from_dynamodb_item(items[0])
             
         except ClientError as e:
-            logger.error(f"Error querying for active Config version: {e}")
+            logger.error(f"Error scanning for active Config version: {e}")
             return None
 
-    def _read_record(self, configuration_type: str, version: str) -> Optional[ConfigurationRecord]:
+    def _read_record(self, configuration_type: str, version: str = "") -> Optional[ConfigurationRecord]:
         """
-        Read ConfigurationRecord from DynamoDB using composite key.
+        Read ConfigurationRecord from DynamoDB using single key.
 
         Args:
             configuration_type: Configuration type (Config, Schema, Pricing)
-            version: Version identifier (v0, v1, v2, ... or "" for Schema/Pricing)
+            version: Version identifier for Config type (v0, v1, v2, ...) or "" for Schema/Pricing
 
         Returns:
             ConfigurationRecord or None if not found
         """
-        response = self.table.get_item(
-            Key={
-                "Configuration": configuration_type,
-                "Version": version
-            }
-        )
+        # Generate single key
+        if configuration_type == "Config" and version:
+            key = f"Config#{version}"
+        else:
+            key = configuration_type
+            
+        response = self.table.get_item(Key={"Configuration": key})
         item = response.get("Item")
 
         if item is None:
@@ -669,7 +685,7 @@ class ConfigurationManager:
 
     def _write_record(self, record: ConfigurationRecord, identifier: Optional[str] = None) -> None:
         """
-        Write ConfigurationRecord to DynamoDB using composite key.
+        Write ConfigurationRecord to DynamoDB using single key.
 
         Args:
             record: ConfigurationRecord to write
@@ -677,5 +693,13 @@ class ConfigurationManager:
         """
         item = record.to_dynamodb_item()
         self.table.put_item(Item=item)
-        log_id = identifier or f"{record.configuration_type}/{record.version}"
+        
+        # Generate log identifier
+        if identifier:
+            log_id = identifier
+        elif record.configuration_type == "Config" and record.version:
+            log_id = f"Config#{record.version}"
+        else:
+            log_id = record.configuration_type
+            
         logger.info(f"Saved configuration: {log_id}")
