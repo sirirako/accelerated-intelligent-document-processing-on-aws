@@ -4,7 +4,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 import boto3
 import cfnresponse  # type: ignore[import-untyped]
@@ -13,13 +13,7 @@ from botocore.exceptions import ClientError
 from idp_common.config.configuration_manager import (
     ConfigurationManager,  # type: ignore[import-untyped]
 )
-from idp_common.config.models import (
-    ConfigMetadata,
-    ConfigurationRecord,
-    IDPConfig,
-    PricingConfig,
-    SchemaConfig,
-)
+from idp_common.config.merge_utils import merge_config_with_defaults
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -194,217 +188,70 @@ def swap_model_ids(data: Any, region_type: str) -> Any:
 
 
 
-def backup_existing_records(config_bucket: str, table_name: str) -> Optional[str]:
-    """Backup existing configuration records to S3 before table recreation."""
-    import json
-    from datetime import datetime
+def detect_pattern_from_config(config: Dict[str, Any]) -> str:
+    """
+    Auto-detect the IDP pattern from config content.
+    
+    Args:
+        config: Configuration dictionary
+        
+    Returns:
+        Pattern name (pattern-1, pattern-2, or pattern-3)
+    """
+    # Check classification method
+    classification_method = config.get("classification", {}).get("classificationMethod", "")
+    
+    if classification_method == "bda":
+        return "pattern-1"
+    elif classification_method == "udop":
+        return "pattern-3"
+    else:
+        # Default to pattern-2 (most common - Textract + Bedrock LLM)
+        return "pattern-2"
 
-    import boto3
+
+def merge_custom_with_defaults(
+    custom_config: Dict[str, Any],
+    pattern: str = None,
+) -> Dict[str, Any]:
+    """
+    Merge a minimal custom config with system defaults.
+    
+    This allows users to provide only the fields they want to customize,
+    with all other fields populated from system defaults.
+    
+    Args:
+        custom_config: User's custom configuration (may be partial)
+        pattern: Pattern to use for defaults. If None, auto-detected.
+        
+    Returns:
+        Complete configuration with defaults applied
+    """
+    # Auto-detect pattern if not provided
+    if pattern is None:
+        pattern = detect_pattern_from_config(custom_config)
+        logger.info(f"Auto-detected pattern: {pattern}")
     
     try:
-        logger.info(f"Starting backup of existing records from table: {table_name}")
-        dynamodb = boto3.resource("dynamodb")
-        s3_client = boto3.client("s3")
-        table = dynamodb.Table(table_name)
+        # Merge with system defaults
+        merged = merge_config_with_defaults(custom_config, pattern=pattern, validate=False)
         
-        # Scan existing records
-        logger.info("Scanning DynamoDB table for existing records...")
-        response = table.scan()
-        items = response.get("Items", [])
+        # Log merge summary
+        user_keys = set(custom_config.keys())
+        merged_keys = set(merged.keys())
+        logger.info(f"Merged custom config: user provided {len(user_keys)} sections, merged has {len(merged_keys)} sections")
+        logger.info(f"User-provided sections: {user_keys}")
         
-        if not items:
-            logger.info("No existing records found to backup")
-            return None
-            
-        logger.info(f"Found {len(items)} records to backup")
-        for item in items:
-            config_type = item.get("Configuration", "Unknown")
-            logger.debug(f"Backing up record: {config_type}")
-            
-        # Create backup with timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        backup_key = f"config_backup/backup_{timestamp}.json"
+        return merged
         
-        # Save to S3
-        backup_data = {
-            "timestamp": timestamp,
-            "table_name": table_name,
-            "record_count": len(items),
-            "records": items
-        }
-        
-        logger.info(f"Uploading backup to S3: s3://{config_bucket}/{backup_key}")
-        s3_client.put_object(
-            Bucket=config_bucket,
-            Key=backup_key,
-            Body=json.dumps(backup_data, default=str),
-            ContentType="application/json"
-        )
-        
-        logger.info(f"Successfully backed up {len(items)} records to s3://{config_bucket}/{backup_key}")
-        return backup_key
-        
+    except FileNotFoundError as e:
+        # System defaults not available in Lambda - return config as-is
+        logger.warning(f"System defaults not available, using config as-is: {e}")
+        return custom_config
     except Exception as e:
-        logger.error(f"Failed to backup existing records from {table_name}: {e}")
-        return None
-
-
-def restore_from_backup(config_bucket: str, manager: ConfigurationManager) -> bool:
-    """Restore configuration records from S3 backup with new composite key format."""
-    import json
-    from datetime import datetime
-
-    import boto3
-    
-    try:
-        logger.info(f"Starting restore from backup in bucket: {config_bucket}")
-        s3_client = boto3.client("s3")
-        
-        # Find latest backup
-        logger.info("Searching for latest backup file...")
-        response = s3_client.list_objects_v2(
-            Bucket=config_bucket,
-            Prefix="config_backup/backup_"
-        )
-        
-        if "Contents" not in response:
-            logger.info("No backup found to restore")
-            return False
-            
-        # Get latest backup
-        latest_backup = max(response["Contents"], key=lambda x: x["LastModified"])
-        backup_key = latest_backup["Key"]
-        logger.info(f"Found latest backup: s3://{config_bucket}/{backup_key}")
-        
-        # Read backup data
-        logger.info("Reading backup data from S3...")
-        response = s3_client.get_object(Bucket=config_bucket, Key=backup_key)
-        backup_data = json.loads(response["Body"].read().decode("utf-8"))
-        
-        records = backup_data.get("records", [])
-        if not records:
-            logger.info("No records in backup to restore")
-            return False
-            
-        logger.info(f"Backup contains {len(records)} records from {backup_data.get('timestamp', 'unknown time')}")
-        
-        # Restore records with new composite key format
-        timestamp = datetime.utcnow().isoformat() + "Z"
-        
-        # Collect Default and Custom records for comparison
-        default_record = None
-        custom_record = None
-        other_records = []
-        
-        logger.info("Analyzing backup records...")
-        for record in records:
-            config_type = record.get("Configuration")
-            logger.debug(f"Processing record type: {config_type}")
-            if config_type == "Default":
-                default_record = record
-                logger.info("Found Default configuration in backup")
-            elif config_type == "Custom":
-                custom_record = record
-                logger.info("Found Custom configuration in backup")
-            else:
-                other_records.append(record)
-                logger.debug(f"Found other record type: {config_type}")
-        
-        # Handle Default and Custom with deduplication logic
-        if default_record and custom_record:
-            logger.info("Both Default and Custom found - comparing configurations...")
-            # Compare configurations using the same logic as sync_custom_with_new_default
-            from idp_common.config.merge_utils import get_diff_dict
-            
-            default_config = {k: v for k, v in default_record.items() 
-                             if k not in ("Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description")}
-            custom_config = {k: v for k, v in custom_record.items() 
-                            if k not in ("Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description")}
-            
-            # Check if there are any differences between Default and Custom
-            differences = get_diff_dict(default_config, custom_config)
-            
-            if not differences:
-                # Identical - only create v0 (active)
-                logger.info("Default and Custom are identical - creating single v0 version")
-                config_data = {k: v for k, v in default_record.items() if k != "Configuration"}
-                config_data["config_type"] = "Config"
-                config = IDPConfig(**config_data)
-                
-                manager.save_configuration("Config", config, version="v0", description="System default configuration (v0)")
-                manager.activate_version("v0")
-                logger.info("Successfully restored as Config/v0 (active)")
-            else:
-                # Different - create both v0 (inactive) and v1 (active)
-                logger.info("Default and Custom are different - creating v0 and v1 versions")
-                
-                # v0 (Default)
-                config_data = {k: v for k, v in default_record.items() if k != "Configuration"}
-                config_data["config_type"] = "Config"
-                config = IDPConfig(**config_data)
-                manager.save_configuration("Config", config, version="v0", description="System default configuration (v0)")
-                logger.info("Created Config/v0 from Default")
-                
-                # v1 (Custom) - active
-                config_data = {k: v for k, v in custom_record.items() if k != "Configuration"}
-                config_data["config_type"] = "Config"
-                config = IDPConfig(**config_data)
-                manager.save_configuration("Config", config, version="v1", description="User customized configuration (v1)")
-                manager.activate_version("v1")
-                logger.info("Created Config/v1 from Custom (active)")
-                
-        elif default_record:
-            # Only Default exists - create v0 (active)
-            logger.info("Only Default found - creating v0 version")
-            config_data = {k: v for k, v in default_record.items() if k != "Configuration"}
-            config_data["config_type"] = "Config"
-            config = IDPConfig(**config_data)
-            
-            manager.save_configuration("Config", config, version="v0", description="System default configuration (v0)")
-            manager.activate_version("v0")
-            logger.info("Successfully restored Default as Config/v0 (active)")
-            
-        elif custom_record:
-            # Only Custom exists - create v1 (active)
-            logger.info("Only Custom found - creating v1 version")
-            config_data = {k: v for k, v in custom_record.items() if k != "Configuration"}
-            config_data["config_type"] = "Config"
-            config = IDPConfig(**config_data)
-            
-            manager.save_configuration("Config", config, version="v1", description="User customized configuration (v1)")
-            manager.activate_version("v1")
-            logger.info("Successfully restored Custom as Config/v1 (active)")
-        
-        # Handle other record types (Schema, Pricing)
-        logger.info(f"Processing {len(other_records)} other record types...")
-        for record in other_records:
-            config_type = record.get("Configuration")
-            logger.debug(f"Restoring {config_type} configuration")
-            
-            if config_type == "Schema":
-                # Schema → Schema/"" 
-                config_data = {k: v for k, v in record.items() if k != "Configuration"}
-                config_data["config_type"] = "Schema"
-                config = SchemaConfig(**config_data)
-                
-                manager.save_configuration("Schema", config)
-                logger.info("Restored Schema configuration")
-                
-            elif config_type in ("DefaultPricing", "CustomPricing"):
-                # Pricing → Pricing/""
-                config_data = {k: v for k, v in record.items() if k != "Configuration"}
-                config_data["config_type"] = config_type
-                config = PricingConfig(**config_data)
-                
-                manager.save_configuration("Pricing", config)
-                logger.info(f"Restored {config_type} as Pricing configuration")
-        
-        logger.info(f"Successfully restored {len(records)} records from backup with migration to versioned format")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to restore from backup: {e}")
-        return False
+        # Any other error - log and return original config
+        logger.warning(f"Error merging with defaults, using config as-is: {e}")
+        return custom_config
 
 
 def generate_physical_id(stack_id: str, logical_id: str) -> str:
@@ -447,99 +294,44 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         manager = ConfigurationManager()
 
         if request_type in ["Create", "Update"]:
-            # BACKUP PHASE: Save existing data before potential table recreation
-            # During CloudFormation updates, the DynamoDB table may be recreated (e.g., if table
-            # properties change, encryption settings change, or resource replacement is triggered).
-            # Table recreation destroys all data, so we backup to S3 first.
-            config_bucket = properties.get("ConfigurationBucket")
-            if config_bucket and request_type == "Update":
-                backup_key = backup_existing_records(config_bucket, manager.table_name)
-                if backup_key:
-                    logger.info(f"Configuration backup created: {backup_key}")
-            
-            # CLOUDFORMATION PROCESSING PHASE: 
-            # At this point, CloudFormation may recreate the DynamoDB table if needed.
-            # The ConfigurationManager will connect to the table (existing or newly created).
-            # If table was recreated, it will be empty and we need to restore data.
-            
-            # RESTORE PHASE: Reload data from backup if table was recreated
-            # The restore function detects if the table is empty and restores from S3 backup.
-            # During restore, old Default/Custom format is converted to new v0/v1 versioned format.
-            restored_from_backup = False
-            if config_bucket:
-                restored_from_backup = restore_from_backup(config_bucket, manager)
-                if restored_from_backup:
-                    logger.info("Successfully restored configurations from backup")
-            
-            # Handle migration and versioning only if NOT restored from backup
-            if not restored_from_backup:
-                if request_type == "Create":
-                    # New stack - create v0 from Default configuration
-                    logger.info("New stack deployment - will create v0 from Default configuration")
-                    
-                elif request_type == "Update":
-                    # Existing stack - migrate Default/Custom to v0/v1 versioning
+            # For Update: Migrate existing Default/Custom to versioned format first
+            if request_type == "Update":
+                # Migrate existing Default/Custom records with simple activation
+                migrated_custom = False
+                
+                try:
+                    existing_default = manager.get_configuration("Default")
+                    if existing_default:
+                        logger.info("Found existing Default - migrating to Config#v0")
+                        manager.save_configuration("Config", existing_default, version="v0", description="System default configuration (v0) - migrated from Default")
+                        manager.delete_configuration("Default")
+                        logger.info("Migrated Default to Config#v0")
+                except Exception as e:
+                    logger.debug(f"No Default to migrate: {e}")
+                
+                try:
+                    existing_custom = manager.get_configuration("Custom")
+                    if existing_custom:
+                        logger.info("Found existing Custom - migrating to Config#v1")
+                        manager.save_configuration("Config", existing_custom, version="v1", description="User customized configuration (v1) - migrated from Custom")
+                        manager.delete_configuration("Custom")
+                        migrated_custom = True
+                        logger.info("Migrated Custom to Config#v1")
+                except Exception as e:
+                    logger.debug(f"No Custom to migrate: {e}")
+                
+                # Simple activation: Custom (v1) if present, else Default (v0)
+                if migrated_custom:
+                    manager.activate_version("v1")
+                    logger.info("Activated v1 (migrated Custom)")
+                else:
                     try:
-                        # Check for existing Default and Custom configurations using old format
-                        # During migration, we need to read the old single-key records directly
-                        old_default = None
-                        old_custom = None
-                        
-                        try:
-                            # Try to read old Default record directly
-                            response = manager.table.get_item(Key={"Configuration": "Default"})
-                            if "Item" in response:
-                                old_default_data = {k: v for k, v in response["Item"].items() if k != "Configuration"}
-                                old_default_data["config_type"] = "Config"
-                                old_default = IDPConfig(**old_default_data)
-                                logger.info("Found existing Default configuration")
-                        except Exception as e:
-                            logger.debug(f"No Default configuration found: {e}")
-                        
-                        try:
-                            # Try to read old Custom record directly  
-                            response = manager.table.get_item(Key={"Configuration": "Custom"})
-                            if "Item" in response:
-                                old_custom_data = {k: v for k, v in response["Item"].items() if k != "Configuration"}
-                                old_custom_data["config_type"] = "Config"
-                                old_custom = IDPConfig(**old_custom_data)
-                                logger.info("Found existing Custom configuration")
-                        except Exception as e:
-                            logger.debug(f"No Custom configuration found: {e}")
-                        
-                        if old_default:
-                            if old_custom:
-                                # Both exist - compare using same logic as configuration manager
-                                from idp_common.config.merge_utils import get_diff_dict
-                                
-                                default_data = old_default.model_dump(mode="python", exclude={"config_type"})
-                                custom_data = old_custom.model_dump(mode="python", exclude={"config_type"})
-                                
-                                # Check if there are any differences between Default and Custom
-                                differences = get_diff_dict(default_data, custom_data)
-                                
-                                if not differences:
-                                    # Identical - create only v0 (active)
-                                    manager.save_configuration("Config", old_default, version="v0", description="System default configuration (v0)")
-                                    manager.activate_version("v0")
-                                    logger.info("Default and Custom are identical - created v0 as active")
-                                else:
-                                    # Different - create both v0 and v1
-                                    manager.save_configuration("Config", old_default, version="v0", description="System default configuration (v0)")
-                                    manager.save_configuration("Config", old_custom, version="v1", description="User customized configuration (v1)")
-                                    manager.activate_version("v1")
-                                    logger.info("Default and Custom are different - created v0 and v1 (v1 active)")
-                            else:
-                                # Only Default exists - create v0 as active
-                                manager.save_configuration("Config", old_default, version="v0", description="System default configuration (v0)")
-                                manager.activate_version("v0")
-                                logger.info("Only Default exists - created v0 as active")
-                        
-                    except Exception as e:
-                        logger.warning(f"Failed to migrate existing configurations: {e}")
-            else:
-                logger.info("Skipping migration logic - configurations already restored from backup")
-            
+                        if manager.get_configuration("Config", "v0"):
+                            manager.activate_version("v0")
+                            logger.info("Activated v0 (migrated Default)")
+                    except Exception:
+                        pass
+
             # Collect all configurations to process
             configurations = {}
             
@@ -549,11 +341,18 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 # Filter models based on region
                 if region_type in ["us", "eu"]:
                     resolved_schema = filter_models_by_region(resolved_schema, region_type)
-                configurations["Schema"] = {"Schema": resolved_schema}
+                configurations["Schema"] = resolved_schema
 
-            # Process Default configuration
+            # Process Default configuration -> save as v0
             if "Default" in properties:
                 resolved_default = resolve_content(properties["Default"])
+                
+                # Merge minimal config with system defaults
+                # This allows config.yaml files to only specify what they want to customize
+                if isinstance(resolved_default, dict):
+                    logger.info("Merging default config with system defaults...")
+                    resolved_default = merge_custom_with_defaults(resolved_default)
+                
                 # Apply custom model ARNs if provided
                 if isinstance(resolved_default, dict):
                     # Replace classification model if CustomClassificationModelARN is provided and not empty
@@ -582,9 +381,9 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                                 f"Updated extraction model to: {properties['CustomExtractionModelARN']}"
                             )
 
-                configurations["Default"] = resolved_default
+                configurations["v0"] = resolved_default
 
-            # Process Custom configuration if provided and not empty
+            # Process Custom configuration -> save as v1
             if (
                 "Custom" in properties
                 and properties["Custom"].get("Info") != "Custom inference settings"
@@ -593,7 +392,26 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 # Remove legacy pricing field if present (now stored separately as DefaultPricing)
                 if isinstance(resolved_custom, dict):
                     resolved_custom.pop("pricing", None)
-                configurations["Custom"] = resolved_custom
+                    
+                    # Merge minimal custom config with system defaults
+                    # This allows users to provide only customized fields
+                    logger.info("Merging custom config with system defaults...")
+                    resolved_custom = merge_custom_with_defaults(resolved_custom)
+                    
+                configurations["v1"] = resolved_custom
+
+            # Process additional versioned configurations (v2, v3, v4, etc.) - no activation
+            for key, value in properties.items():
+                if key.startswith("v") and key[1:].isdigit() and key not in ["v0", "v1"]:
+                    version_id = key
+                    resolved_config = resolve_content(value)
+                    
+                    # Merge with system defaults
+                    if isinstance(resolved_config, dict):
+                        logger.info(f"Merging {version_id} config with system defaults...")
+                        resolved_config = merge_custom_with_defaults(resolved_config)
+                    
+                    configurations[version_id] = resolved_config
 
             # Process DefaultPricing configuration if provided
             if "DefaultPricing" in properties:
@@ -608,17 +426,28 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 configurations = swap_model_ids(configurations, region_type)
                 logger.info(f"Applied model swapping for {region_type} region to all configurations")
 
-            # Save all configurations
+            # Save all configurations (no activation changes)
             for config_name, config_data in configurations.items():
-                if config_name == "Default" and request_type == "Create":
-                    # For new stacks, save Default as v0 with versioning
-                    manager.save_configuration("Config", config_data, version="v0", description="System default configuration (v0)")
-                    manager.activate_version("v0")
-                    logger.info("Created v0 from Default configuration for new stack")
+                if config_name.startswith("v") and config_name[1:].isdigit():
+                    # Save versioned configuration
+                    version_id = config_name
+                    description = f"Configuration {version_id}"
+                    if version_id == "v0":
+                        description = "System default configuration (v0)"
+                    elif version_id == "v1":
+                        description = "User customized configuration (v1)"
+                    
+                    manager.save_configuration("Config", config_data, version=version_id, description=description)
+                    logger.info(f"Saved Config {version_id}")
                 else:
-                    # Save other configurations (Schema, DefaultPricing) normally
+                    # Save non-versioned configurations (Schema, DefaultPricing)
                     manager.save_configuration(config_name, config_data)
                     logger.info(f"Updated {config_name} configuration")
+
+            # For Create: Activate v0 (Default)
+            if request_type == "Create" and "v0" in configurations:
+                manager.activate_version("v0")
+                logger.info("Activated v0 (Create operation)")
 
             cfnresponse.send(
                 event,

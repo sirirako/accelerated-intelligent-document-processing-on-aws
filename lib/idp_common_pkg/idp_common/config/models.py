@@ -1080,15 +1080,14 @@ class ConfigMetadata(BaseModel):
 
 class ConfigurationRecord(BaseModel):
     """
-    DynamoDB storage model for IDP configurations with composite key.
+    DynamoDB storage model for IDP configurations with single key.
 
-    Uses composite key structure:
-    - Partition Key: Configuration (Config, Schema, Pricing)  
-    - Sort Key: Version (v0, v1, v2, ...)
+    Uses single key structure:
+    - Key: Configuration (Config#v0, Config#v1, Schema, Pricing)
     """
 
     configuration_type: str = Field(description="Configuration type (Config, Schema, Pricing)")
-    version: str = Field(description="Version identifier (v0, v1, v2, ... for Config; '' for Schema/Pricing)")
+    version: str = Field(default="", description="Version identifier (v0, v1, v2, ... for Config; '' for Schema/Pricing)")
     is_active: Optional[bool] = Field(default=None, description="Whether this version is active")
     description: Optional[str] = Field(default=None, description="Version description")
     config: Annotated[
@@ -1098,19 +1097,18 @@ class ConfigurationRecord(BaseModel):
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """
-        Convert to DynamoDB item format with composite key.
+        Convert to DynamoDB item format with single key.
 
         This method:
         1. Exports config as a Python dict
         2. Removes the config_type discriminator (not needed in DynamoDB)
         3. Stringifies values (preserving booleans, converting numbers to strings)
-        4. Adds the Configuration partition key and Version sort key
+        4. Adds the Configuration key (Config#v0, Config#v1, Schema, Pricing)
         5. Adds is_active and description as separate DynamoDB columns
 
         Returns:
             Dict suitable for DynamoDB put_item() with:
-            - Configuration: str (partition key)
-            - Version: str (sort key)
+            - Configuration: str (single key: Config#v0, Config#v1, Schema, Pricing)
             - IsActive: bool (if not None)
             - Description: str (if not None)
             - All config fields stringified (except booleans)
@@ -1124,10 +1122,14 @@ class ConfigurationRecord(BaseModel):
         # Stringify values (preserve booleans, convert numbers to strings)
         stringified = self._stringify_values(config_dict)
 
-        # Build DynamoDB item with composite key
+        # Build DynamoDB item with single key
+        if self.configuration_type == "Config" and self.version:
+            key = f"Config#{self.version}"
+        else:
+            key = self.configuration_type
+            
         item = {
-            "Configuration": self.configuration_type,
-            "Version": self.version,
+            "Configuration": key,
             **stringified
         }
         
@@ -1153,7 +1155,7 @@ class ConfigurationRecord(BaseModel):
         Create ConfigurationRecord from DynamoDB item.
 
         This method:
-        1. Extracts the Configuration key
+        1. Extracts the Configuration key and parses version if needed
         2. Removes DynamoDB metadata
         3. Auto-migrates legacy format if needed
         4. Validates into IDPConfig (Pydantic handles type conversions)
@@ -1171,14 +1173,18 @@ class ConfigurationRecord(BaseModel):
 
         logger = logging.getLogger(__name__)
 
-        # Extract configuration type and version
-        config_type = item.get("Configuration")
-        version = item.get("Version", "")  # Default to empty string if missing
-        if not config_type:
+        # Extract configuration key
+        config_key = item.get("Configuration")
+        if not config_key:
             raise ValueError("DynamoDB item missing 'Configuration' key")
         
-        # Convert None to empty string for Schema/Pricing
-        if version is None:
+        # Parse configuration type and version from single key
+        if "#" in config_key:
+            # Versioned format: Config#v0, Config#v1, etc.
+            config_type, version = config_key.split("#", 1)
+        else:
+            # Non-versioned format: Schema, Pricing, Default, Custom
+            config_type = config_key
             version = ""
 
         # Extract record-level fields
@@ -1187,10 +1193,15 @@ class ConfigurationRecord(BaseModel):
 
         # Remove DynamoDB keys and metadata
         config_data = {k: v for k, v in item.items() 
-                      if k not in ("Configuration", "Version", "IsActive", "CreatedAt", "UpdatedAt", "Description")}
+                      if k not in ("Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description")}
 
         # Set config_type discriminator based on configuration type
-        config_data["config_type"] = config_type
+        if config_type in ("Default", "Custom"):
+            # Legacy format - treat as Config
+            config_data["config_type"] = "Config"
+            config_type = "Config"
+        else:
+            config_data["config_type"] = config_type
 
         # Auto-migrate legacy format if needed
         if config_data.get("classes"):
@@ -1198,7 +1209,7 @@ class ConfigurationRecord(BaseModel):
 
             if is_legacy_format(config_data["classes"]):
                 logger.info(
-                    f"Migrating {config_type}/{version} configuration to JSON Schema format"
+                    f"Migrating {config_key} configuration to JSON Schema format"
                 )
                 config_data["classes"] = migrate_legacy_to_schema(
                     config_data["classes"]
@@ -1206,7 +1217,7 @@ class ConfigurationRecord(BaseModel):
 
         # Remove legacy pricing field (now stored separately as Pricing type)
         if config_data.get("pricing") is not None and config_type in ("Config", "Default", "Custom"):
-            logger.info(f"Removing legacy pricing field from {config_type}/{version} configuration")
+            logger.info(f"Removing legacy pricing field from {config_key} configuration")
             config_data.pop("pricing", None)
 
         # Build metadata from timestamps

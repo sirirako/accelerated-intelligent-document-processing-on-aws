@@ -262,8 +262,8 @@ class TestConfigurationManagerSync:
 
         dynamodb.create_table(  # type: ignore[attr-defined]
             TableName=table_name,
-            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "Configuration", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "Configuration", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
 
@@ -282,16 +282,15 @@ class TestConfigurationManagerSync:
             with patch.object(manager, "_write_record") as mock_write:
                 manager.save_configuration("Default", new_default)
 
-            # Should have written BOTH Default and synced Custom
-            assert mock_write.call_count == 2
+            # Should have written only the Default as Config#v0 (no automatic sync in versioning system)
+            assert mock_write.call_count == 1
 
-            # First call is for Custom (synced), second is for Default
-            # Get the Custom config that was saved
-            custom_call = mock_write.call_args_list[0]
-            saved_custom = custom_call[0][0].config
-
-            # User's temperature should be preserved
-            assert saved_custom.extraction.temperature == 0.8
+            # Verify it was saved as Config#v0
+            call_args = mock_write.call_args_list[0]
+            saved_record = call_args[0][0]  # First argument is the ConfigurationRecord
+            
+            # Verify the new Default was saved with correct temperature
+            assert saved_record.config.extraction.temperature == 0.5
 
     @mock_aws
     def test_save_custom_does_not_trigger_sync(self):
@@ -302,8 +301,8 @@ class TestConfigurationManagerSync:
 
         dynamodb.create_table(  # type: ignore[attr-defined]
             TableName=table_name,
-            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "Configuration", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "Configuration", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
 
