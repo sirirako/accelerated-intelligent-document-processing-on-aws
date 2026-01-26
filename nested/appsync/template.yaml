@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: AppSync Resolvers Nested Stack - GraphQL Schema, DataSources, Resolvers, and Lambda Functions
+Description: AWS GenAI IDP Accelerator - AppSync Resolvers Nested Stack - GraphQL Schema, DataSources, Resolvers, and Lambda Functions
 
 Parameters:
   # Core AppSync resources from main template
@@ -700,8 +700,10 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AgentTableName
-        - LambdaInvokePolicy:
-            FunctionName: !Ref AgentProcessorFunctionArn
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Ref AgentProcessorFunctionArn
         - Statement:
             - Effect: Allow
               Action:
@@ -1459,6 +1461,8 @@ Resources:
       Description: Lambda function to delete documents via GraphQL API
       MemorySize: 512
       Timeout: 60
+      Layers:
+        - !Ref IDPCommonBaseLayerArn
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel

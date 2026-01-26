@@ -1,133 +1,235 @@
 # Active Context
 
 ## Current Work Focus
-Lambda Layer x86_64 Platform Fix - COMPLETED
 
-## Recent Fix: pydantic_core Architecture Mismatch (2026-01-07)
+### Default/Custom Configuration Design Pattern (CRITICAL)
+**Date:** January 22, 2026
+**Status:** Fixing implementation to match original design intent
 
-### Problem
-Lambda function `GetStepFunctionExecutionResolverFunction` (and potentially others) failed with:
+#### Design Intent
+
+The configuration system uses a **sparse delta pattern** for storing user customizations:
+
+```mermaid
+flowchart TD
+    subgraph "DynamoDB Storage"
+        D[Default Item<br>Stack baseline - FULL config]
+        C[Custom Item<br>User deltas ONLY - sparse]
+    end
+    
+    subgraph "Stack Updates"
+        SU[CDK/CloudFormation] -->|"Update Default ONLY"| D
+        SU -.->|"NEVER touch"| C
+    end
+    
+    subgraph "UI Operations"
+        D --> M{Merge}
+        C --> M
+        M --> UI[Display merged config]
+        UI -->|"Save field change"| C
+        UI -->|"Restore field default"| RC[Remove from Custom]
+        UI -->|"Restore all defaults"| EC[Empty Custom entirely]
+        UI -->|"Save as default"| SAD[Save merged → Default<br>Empty Custom]
+    end
+    
+    subgraph "Runtime Processing"
+        D --> RM{Merge}
+        C --> RM
+        RM --> RT[get_merged_configuration]
+    end
 ```
-[ERROR] Runtime.ImportModuleError: Unable to import module 'index': No module named 'pydantic_core._pydantic_core'
-```
 
-### Root Cause
-The `publish.py` script built Lambda layers using `pip install` without platform-specific flags. When running on ARM64 machines (e.g., M-series MacBooks), pip installed ARM64-compiled `.so` files for `pydantic_core`. These don't work on Lambda's x86_64 architecture.
+#### Key Principles
 
-### Solution Applied
-Modified `publish.py` `build_lambda_layer()` method to use platform-specific pip install:
+1. **Default Item**: 
+   - Contains complete stack baseline configuration
+   - Created at deployment time (config_library + system_defaults merge)
+   - Updated ONLY by stack deployments (CDK/CloudFormation)
+   - NEVER modified by user UI actions (except "Save as default")
+
+2. **Custom Item**:
+   - Contains ONLY user-modified fields (sparse delta)
+   - Empty initially (no values = use all defaults)
+   - NEVER touched by stack updates
+   - User customizations survive stack upgrades
+
+3. **UI Operations**:
+   - **Display**: Merge(Default + Custom) - show combined config
+   - **Save change**: Write only changed field to Custom
+   - **Restore field**: Remove specific field from Custom
+   - **Restore all**: Empty/delete Custom item entirely
+   - **Save as default**: Save merged → Default, then empty Custom
+
+4. **Runtime Processing**:
+   - Always use `get_merged_configuration()` for actual processing
+   - Never use raw Custom (it's incomplete)
+
+5. **getConfiguration API Response**:
+   - Returns `{Schema, Default, Custom}` separately
+   - Custom should return RAW deltas (not Pydantic-filled)
+   - Frontend handles display merging
+
+#### Why This Matters
+
+- **Stack upgrades can safely update Default** without losing user customizations
+- **Diff detection works** because Custom only has what user changed
+- **Empty Custom = all defaults** - clean reset capability
+- **Pydantic defaults must NOT fill Custom** - would break delta pattern
+
+#### Anti-patterns to AVOID
+
+❌ Auto-copying Default → Custom when Custom is empty
+❌ Using Pydantic validation on Custom (fills in defaults)
+❌ Returning "full" Custom config from getConfiguration API
+❌ Modifying Default item from UI (except "Save as default")
+
+### GitHub Issue #87 - System Defaults Configuration ✅
+**Issue:** Simplify configuration management with system defaults
+**Date:** January 20, 2026
+
+## Recent Changes (January 20, 2026)
+
+### Implemented System Defaults and Config CLI Commands
+
+#### Part 1: System Defaults YAML Structure ✅
+
+Created `config_library/system_defaults/` with:
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `base.yaml` | ~280 | Common defaults shared across all patterns |
+| `pattern-1.yaml` | ~150 | BDA-specific defaults (null OCR/classification/extraction models) |
+| `pattern-2.yaml` | ~550 | Full Bedrock LLM defaults with complete prompt templates |
+| `pattern-3.yaml` | ~130 | UDOP fine-tuned model defaults |
+| `README.md` | ~110 | Documentation for the defaults system |
+
+Key Design Decisions:
+- `_inherits: base.yaml` - Pattern files declare inheritance
+- Complete prompts only in pattern-2.yaml (most commonly used)
+- `enabled: false` for optional features (summarization, evaluation)
+- Pattern-specific models use `null` when BDA/UDOP handle internally
+
+#### Part 2: Merge Utilities ✅
+
+Extended `lib/idp_common_pkg/idp_common/config/merge_utils.py`:
+
 ```python
-cmd = [
-    sys.executable, "-m", "pip", "install", install_spec,
-    "--platform", "manylinux2014_x86_64",  # Force x86_64 wheels
-    "--implementation", "cp",
-    "--python-version", "312",
-    "--only-binary=:all:",  # Only use pre-built wheels
-    "-t", layer_python_dir,
-    "--upgrade",
-]
+# Key functions added:
+load_system_defaults(pattern: str) -> Dict[str, Any]
+merge_config_with_defaults(user_config, pattern, validate=False) -> Dict[str, Any]
+generate_config_template(features, pattern, include_prompts=False) -> str
+validate_config(config, pattern) -> Dict[str, Any]
 ```
 
-### To Deploy Fix
-1. Run `python3 publish.py <bucket> <prefix> <region> --clean-build` to rebuild layers
-2. Update the CloudFormation stack
+#### Part 3: CLI Commands ✅
 
-## Future Work: ARM64 Lambda Migration
+Added to `idp_cli/idp_cli/cli.py`:
 
-**Rationale**: ARM64 (Graviton2) Lambda functions are ~20% cheaper and often faster.
+```bash
+# Generate minimal config template
+idp-cli create-config --features min --pattern pattern-2 --output config.yaml
 
-**Work Required**:
-1. Audit all dependencies for ARM64 wheel availability (pydantic ✓, need to verify all)
-2. Update all Lambda function templates with `Architectures: [arm64]`
-3. Update Pattern-1/2/3 container build processes for ARM64
-4. Modify `publish.py` to build ARM64 layers instead
-5. Comprehensive testing across all functions
+# Validate config file
+idp-cli validate-config --custom-config ./config.yaml
 
-**Status**: Tracked for future implementation
+# Download config from deployed stack (full or minimal diff)
+idp-cli download-config --stack-name my-stack --output config.yaml --format minimal
+```
 
----
+#### Part 4: Deploy Integration ✅
 
-## Previous Work Focus
-Centralized Pricing Configuration System - COMPLETED
+Updated `idp_cli/idp_cli/deployer.py`:
+- `upload_local_config()` now merges user config with system defaults before upload
+- Auto-detects pattern from config content (classification method)
+- Falls back gracefully if idp_common not available
 
-## Recent Changes
+### User Workflow Now
 
-### Pricing Configuration System Implementation (COMPLETED)
+**Before (600+ line config required):**
+```yaml
+notes: "..."
+ocr:
+  backend: "textract"
+  features:
+    - name: LAYOUT
+  # ... 50 more lines
+classification:
+  model: "..."
+  # ... 100 more lines
+# etc...
+```
 
-Implemented a full centralized pricing configuration system that mirrors the existing Configuration UI pattern:
+**After (20 line minimal config):**
+```yaml
+notes: "My lending package config"
 
-#### Backend Changes:
-1. **Constants** (`lib/idp_common_pkg/idp_common/config/constants.py`):
-   - Added `CONFIG_TYPE_DEFAULT_PRICING = "DefaultPricing"` 
-   - Added `CONFIG_TYPE_CUSTOM_PRICING = "CustomPricing"`
+classification:
+  model: us.amazon.nova-2-lite-v1:0
 
-2. **ConfigurationManager** (`lib/idp_common_pkg/idp_common/config/configuration_manager.py`):
-   - Added `get_merged_pricing()` - returns DefaultPricing merged with CustomPricing deltas
-   - Added `save_custom_pricing(pricing_config)` - saves user overrides to CustomPricing
-   - Added `delete_custom_pricing()` - deletes CustomPricing (for restore to defaults)
+extraction:
+  model: us.amazon.nova-2-lite-v1:0
 
-3. **update_configuration Lambda** (`src/lambda/update_configuration/index.py`):
-   - Changed to store pricing as "DefaultPricing" instead of "Pricing" at deployment time
+classes:
+  - $id: W2
+    type: object
+    x-aws-idp-document-type: W2 Tax Form
+    properties:
+      employer_name:
+        type: string
+```
 
-4. **configuration_resolver Lambda** (`src/lambda/configuration_resolver/index.py`):
-   - Updated `handle_get_pricing()` to return both `pricing` (merged) and `defaultPricing`
-   - `handle_update_pricing()` saves to CustomPricing (deltas only)
-   - `handle_restore_default_pricing()` deletes CustomPricing
+## File Structure
 
-5. **GraphQL Schema** (`src/api/schema.graphql`):
-   - Added `defaultPricing: AWSJSON` field to PricingResponse type
+```
+config_library/
+└── system_defaults/
+    ├── README.md
+    ├── base.yaml         # Common defaults
+    ├── pattern-1.yaml    # BDA defaults
+    ├── pattern-2.yaml    # Bedrock LLM defaults
+    └── pattern-3.yaml    # UDOP defaults
 
-#### Frontend Changes:
-1. **GraphQL Queries**:
-   - `getPricing.js` - Updated to request `defaultPricing` field
-   - `restoreDefaultPricing.js` - NEW mutation for restore functionality
+lib/idp_common_pkg/idp_common/config/
+└── merge_utils.py        # Extended with system defaults functions
 
-2. **use-pricing.js Hook**:
-   - Added `defaultPricing` state
-   - Added `restoreDefaultPricing()` function
-   - Returns both `pricing` and `defaultPricing` for UI diff/restore features
-
-3. **PricingLayout.jsx** - Enhanced to match Configuration UI features:
-   - **Form/JSON/YAML Views** - Already existed
-   - **Import/Export** - Already existed
-   - **Changed field highlighting** - NEW: Shows "Modified" indicator with blue StatusIndicator
-   - **Restore default per field** - NEW: Popover with default value and "Reset to default" button
-   - **Restore All Defaults button** - NEW: Confirmation modal, disabled when no customizations
-
-## Design Pattern
-
-The pricing system follows the same DefaultPricing/CustomPricing pattern as configuration:
-- **DefaultPricing**: Full baseline stored at deployment time from `config_library/pricing.yaml`
-- **CustomPricing**: Only stores user overrides (deltas from default)
-- **Reset to default**: Simply DELETE CustomPricing record (no copy needed)
-- **Reading**: Backend merges DefaultPricing + CustomPricing and returns both for UI
-
-## Key Files Modified
-- `lib/idp_common_pkg/idp_common/config/constants.py`
-- `lib/idp_common_pkg/idp_common/config/configuration_manager.py`
-- `src/lambda/update_configuration/index.py`
-- `src/lambda/configuration_resolver/index.py`
-- `src/api/schema.graphql`
-- `src/ui/src/graphql/queries/getPricing.js`
-- `src/ui/src/graphql/queries/restoreDefaultPricing.js` (NEW)
-- `src/ui/src/hooks/use-pricing.js`
-- `src/ui/src/components/pricing-layout/PricingLayout.jsx`
-
-## UI Features Comparison
-
-| Feature | Configuration UI | Pricing UI |
-|---------|-----------------|------------|
-| Form View | ✅ | ✅ |
-| JSON View | ✅ | ✅ |
-| YAML View | ✅ | ✅ |
-| Import | ✅ | ✅ |
-| Export | ✅ | ✅ |
-| Changed field highlighting | ✅ | ✅ |
-| Restore default per field | ✅ | ✅ |
-| Restore All Defaults | ✅ | ✅ |
-| Save as Default | ✅ | N/A (not needed for pricing) |
-| Config Library | ✅ | N/A (not applicable) |
+idp_cli/idp_cli/
+├── cli.py                # Added create-config, validate-config, download-config
+└── deployer.py           # Updated upload_local_config() for merge
+```
 
 ## Next Steps
-- None - Implementation complete
-- Ready for testing in deployed environment
+
+1. **Documentation Updates**
+   - Update `docs/configuration.md` with minimal config examples
+   - Add `idp-cli config` section to `docs/idp-cli.md`
+
+2. **Testing**
+   - Test `create-config` command output
+   - Test `validate-config` with valid/invalid configs
+   - Test deploy with minimal config file
+   - Test `download-config --format minimal` diff calculation
+
+3. **Optional Enhancements**
+   - Add `idp-cli deploy-config` for fast config-only updates (DynamoDB direct write)
+   - Add `--pattern` option to `deploy` command for explicit pattern selection
+
+## Important Patterns and Preferences
+
+### Configuration Merge Priority
+1. User's custom config (highest)
+2. Pattern-specific defaults (pattern-X.yaml)
+3. Base defaults (base.yaml)
+4. Pydantic model defaults (lowest)
+
+### Auto-Detection Logic
+Pattern is auto-detected from config:
+- `classificationMethod: "bda"` → pattern-1
+- `classificationMethod: "udop"` → pattern-3
+- Default → pattern-2
+
+## Learnings and Project Insights
+
+1. **YAML inheritance via `_inherits` key**: Useful for documentation but handled programmatically
+2. **Prompt templates are large**: Pattern-2 prompts alone are 200+ lines
+3. **Graceful fallback is important**: Deploy should work even if idp_common not installed
+4. **Classes are always required**: Users must always specify document classes - no default

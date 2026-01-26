@@ -225,6 +225,7 @@ Resources:
     Type: AWS::ECR::Repository
     # checkov:skip=CKV_AWS_51: "Mutable tags allowed for workflow flexibility and version updates."
     Properties:
+      # checkov:skip=CKV_AWS_163: "ECR scanning controlled by parameter for environment-specific deployment requirements"
       ImageScanningConfiguration:
         ScanOnPush: !If [IsECRImageScanningEnabled, true, false]
       EncryptionConfiguration:
@@ -247,12 +248,13 @@ Resources:
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
+    # cdk-nag suppress: AwsSolutions-CB5 - Privileged mode required for Docker image builds
     Properties:
       Name: !Sub "${AWS::StackName}-docker-build"
       Description: !Sub >-
         Pattern-2 Docker image builder for GenAIIDP stack - ${AWS::StackName}
       ServiceRole: !GetAtt DockerBuildRole.Arn
-      EncryptionKey: alias/aws/s3
+      EncryptionKey: !Ref CustomerManagedEncryptionKeyArn
       Artifacts:
         Type: NO_ARTIFACTS
       Source:
@@ -883,6 +885,14 @@ Resources:
                 enum: ["disabled", "page", "llm_determined"]
                 default: "llm_determined"
                 order: 3.5
+              contextPagesCount:
+                type: integer
+                description: "Number of surrounding pages to include as context for multi-modal page-level classification. Value of 0 means no additional context (default). Value of 1 includes 1 page before and after. Value of 2 includes 2 pages before and after. Only applies to multimodalPageLevelClassification method."
+                minimum: 0
+                maximum: 5
+                default: 0
+                order: 3.6
+                dependsOn: { field: "classificationMethod", value: "multimodalPageLevelClassification" }
               temperature:
                 type: number
                 minimum: 0

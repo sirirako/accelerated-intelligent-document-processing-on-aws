@@ -109,7 +109,7 @@ For batch processing, automation, or evaluation workflows:
 
 ```bash
 # Install CLI
-cd idp_cli && pip install -e .
+cd lib/idp_cli_pkg && pip install -e .
 
 # Process documents
 idp-cli run-inference \

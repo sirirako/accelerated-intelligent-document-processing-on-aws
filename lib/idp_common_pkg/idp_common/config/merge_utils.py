@@ -32,6 +32,24 @@ logger = logging.getLogger(__name__)
 # Valid pattern names
 VALID_PATTERNS = ["pattern-1", "pattern-2", "pattern-3"]
 
+# Feature sets for create-config command
+FEATURE_SETS = {
+    "min": ["classification", "extraction", "classes"],
+    "core": ["ocr", "classification", "extraction", "assessment", "classes"],
+    "all": [
+        "ocr",
+        "classification",
+        "extraction",
+        "assessment",
+        "summarization",
+        "criteria_validation",
+        "evaluation",
+        "discovery",
+        "agents",
+        "classes",
+    ],
+}
+
 
 def deep_update(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -53,6 +71,98 @@ def deep_update(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any
         else:
             target[key] = deepcopy(value)
     return target
+
+
+def apply_delta_with_deletions(target: Dict[str, Any], delta: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Apply delta to target with null values treated as deletions.
+    
+    This is used for sparse delta updates where:
+    - null values in delta mean "delete this field from target"
+    - Other values are merged/updated normally
+    - Empty parent objects are cleaned up after deletions
+    
+    Args:
+        target: Target dictionary to update (modified in place)
+        delta: Delta dictionary with updates (null = delete)
+        
+    Returns:
+        Updated target dictionary (modified in place)
+    """
+    keys_to_delete = []
+    
+    for key, value in delta.items():
+        if value is None:
+            # null means delete this key
+            keys_to_delete.append(key)
+        elif isinstance(value, dict) and key in target and isinstance(target[key], dict):
+            # Recurse into nested dicts
+            apply_delta_with_deletions(target[key], value)
+            # Clean up empty parent after deletions
+            if len(target[key]) == 0:
+                keys_to_delete.append(key)
+        else:
+            # Normal update
+            target[key] = deepcopy(value)
+    
+    # Delete keys marked for deletion
+    for key in keys_to_delete:
+        if key in target:
+            del target[key]
+    
+    return target
+
+
+def strip_matching_defaults(
+    custom_dict: Dict[str, Any], 
+    default_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Remove fields from custom_dict that match their default_dict equivalents.
+    
+    This implements "auto-cleanup" for the sparse delta pattern:
+    - If a Custom value equals its Default counterpart, remove it from Custom
+    - When Custom doesn't have a field, Default is used (by design)
+    - This keeps Custom minimal (only true customizations)
+    
+    Benefits:
+    - Self-healing: automatically cleans up redundant entries
+    - Simpler frontend: just send values, backend optimizes
+    - Resilient: works even if someone manually edits DynamoDB
+    
+    Args:
+        custom_dict: Custom config dictionary (modified in place)
+        default_dict: Default config dictionary (read-only reference)
+        
+    Returns:
+        Modified custom_dict with matching defaults removed
+        
+    Example:
+        custom = {"classification": {"model": "nova-lite", "temperature": 0.0}}
+        default = {"classification": {"model": "nova-lite", "temperature": 0.5}}
+        # Result: {"classification": {"temperature": 0.0}}  
+        # (model removed because it matches default)
+    """
+    keys_to_remove = []
+    
+    for key, custom_value in list(custom_dict.items()):
+        default_value = default_dict.get(key)
+        
+        if isinstance(custom_value, dict) and isinstance(default_value, dict):
+            # Recurse into nested dicts
+            strip_matching_defaults(custom_value, default_value)
+            # Remove empty dicts after cleanup
+            if len(custom_value) == 0:
+                keys_to_remove.append(key)
+        elif custom_value == default_value:
+            # Value matches default - remove it (not needed in Custom)
+            keys_to_remove.append(key)
+    
+    # Remove matching/empty keys
+    for key in keys_to_remove:
+        del custom_dict[key]
+    
+    return custom_dict
 
 
 def get_diff_dict(base: Dict[str, Any], modified: Dict[str, Any]) -> Dict[str, Any]:
@@ -323,5 +433,175 @@ def merge_config_with_defaults(
         from idp_common.config.models import IDPConfig
 
         IDPConfig.model_validate(result)
+
+    return result
+
+
+def generate_config_template(
+    features: Union[str, List[str]] = "min",
+    pattern: str = "pattern-2",
+    include_prompts: bool = False,
+    include_comments: bool = True,
+) -> str:
+    """
+    Generate a configuration template YAML string.
+
+    Args:
+        features: Feature set name ("min", "core", "all") or list of section names
+        pattern: Pattern to base the template on
+        include_prompts: If True, include full prompt templates
+        include_comments: If True, include helpful comments
+
+    Returns:
+        YAML string for the configuration template
+    """
+    # Determine which sections to include
+    if isinstance(features, str):
+        if features not in FEATURE_SETS:
+            raise ValueError(
+                f"Invalid feature set '{features}'. Valid: {list(FEATURE_SETS.keys())}"
+            )
+        sections = FEATURE_SETS[features]
+    else:
+        sections = features
+
+    # Load full defaults
+    defaults = load_system_defaults(pattern)
+
+    # Build template with only requested sections
+    template: Dict[str, Any] = {}
+
+    # Always include notes
+    template["notes"] = "My IDP Configuration - customize as needed"
+
+    for section in sections:
+        if section in defaults:
+            section_data = deepcopy(defaults[section])
+
+            # Optionally strip prompts for cleaner output
+            if not include_prompts:
+                section_data = _strip_prompts(section_data)
+
+            template[section] = section_data
+
+    # Add disabled flags for sections not in the template
+    if features == "min":
+        template["summarization"] = {"enabled": False}
+        template["assessment"] = {"enabled": False}
+        template["evaluation"] = {"enabled": False}
+
+    # Convert to YAML
+    yaml_str = yaml.dump(
+        template,
+        default_flow_style=False,
+        sort_keys=False,
+        allow_unicode=True,
+        width=120,
+    )
+
+    # Add header comments if requested
+    if include_comments:
+        header = f"""# IDP Configuration Template
+# Generated for: {pattern}
+# Feature set: {features}
+#
+# This is a minimal configuration - unspecified fields use system defaults.
+# Edit only the values you need to customize.
+#
+# Documentation: https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/blob/main/docs/configuration.md
+
+"""
+        yaml_str = header + yaml_str
+
+    return yaml_str
+
+
+def _strip_prompts(data: Any) -> Any:
+    """
+    Recursively strip prompt fields from a config section.
+
+    Replaces long prompt strings with placeholder comments.
+    """
+    if isinstance(data, dict):
+        result = {}
+        for key, value in data.items():
+            if key in ("system_prompt", "task_prompt", "user_prompt"):
+                # Replace prompts with placeholder
+                if value and len(str(value)) > 50:
+                    result[key] = "# Uses system default prompt"
+                else:
+                    result[key] = value
+            else:
+                result[key] = _strip_prompts(value)
+        return result
+    elif isinstance(data, list):
+        return [_strip_prompts(item) for item in data]
+    else:
+        return data
+
+
+def validate_config(
+    config: Dict[str, Any],
+    pattern: str = "pattern-2",
+) -> Dict[str, Any]:
+    """
+    Validate a configuration against system defaults and Pydantic models.
+
+    Args:
+        config: Configuration dictionary to validate
+        pattern: Pattern to validate against
+
+    Returns:
+        Dictionary with validation results:
+        - valid: bool - whether config is valid
+        - errors: List[str] - validation errors if any
+        - warnings: List[str] - validation warnings
+        - merged_config: Dict - the merged config (if valid)
+    """
+    result = {
+        "valid": True,
+        "errors": [],
+        "warnings": [],
+        "merged_config": None,
+    }
+
+    # Check pattern is valid
+    if pattern not in VALID_PATTERNS:
+        result["valid"] = False
+        result["errors"].append(
+            f"Invalid pattern '{pattern}'. Valid patterns: {VALID_PATTERNS}"
+        )
+        return result
+
+    # Try to merge with defaults
+    try:
+        merged = merge_config_with_defaults(config, pattern, validate=False)
+        result["merged_config"] = merged
+    except Exception as e:
+        result["valid"] = False
+        result["errors"].append(f"Failed to merge with defaults: {str(e)}")
+        return result
+
+    # Validate with Pydantic
+    try:
+        from idp_common.config.models import IDPConfig
+
+        IDPConfig.model_validate(merged)
+    except Exception as e:
+        result["valid"] = False
+        result["errors"].append(f"Pydantic validation failed: {str(e)}")
+        return result
+
+    # Check for common issues (warnings)
+    if not config.get("classes"):
+        result["warnings"].append(
+            "No document classes defined - you must add at least one class"
+        )
+
+    assessment = merged.get("assessment", {})
+    if assessment.get("granular", {}).get("enabled") and not assessment.get("enabled"):
+        result["warnings"].append(
+            "assessment.granular.enabled=true but assessment.enabled=false - granular assessment won't run"
+        )
 
     return result
