@@ -65,7 +65,9 @@ Deploy the generated template to GovCloud using the AWS CloudFormation console (
 ```bash
 aws cloudformation deploy \
   --template-file .aws-sam/idp-govcloud.yaml \
-  --stack-name my-idp-govcloud-stack \
+  --s3-bucket <S3BUCKET> \
+  --s3-prefix idp-headless \
+  --stack-name my-idp-headless-stack \
   --region us-gov-west-1 \
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides \
