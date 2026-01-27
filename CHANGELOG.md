@@ -5,6 +5,17 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Visual Document Editor Enhancements**
+  - **Improved Navigation Controls**: Mouse wheel zoom (no modifier key required) and click-and-drag panning for intuitive document image exploration
+  - **Inline Field Editing with S3 Save**: Edit prediction values directly in the visual editor with change tracking, edit history, and direct S3 persistence
+  - **Evaluation Baseline Editing**: Edit baseline (expected) values directly in the editor when evaluation data is available, with dedicated save/discard controls and independent change tracking from predictions
+  - **Tabbed Interface**: New tabs for Visual Editor (form-based), JSON Editor (raw JSON with section filtering), and Revision History (audit trail with timestamps and field-level diffs)
+  - **Smart Filtering**: Filter to show only low-confidence fields or evaluation mismatches; collapsible tree navigation with Expand/Collapse All controls
+  - **Evaluation Comparison Mode**: Side-by-side predicted vs expected values with match indicators (✓/⚠), evaluation scores, and LLM-generated comparison reasons
+  - **Section Navigation**: Previous/Next buttons to navigate between document sections without closing the editor
+
 
 ## [0.4.12]
 
