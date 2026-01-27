@@ -254,6 +254,24 @@ The visual editor provides a comprehensive review experience with a modern tabbe
 - Separate save/discard controls for baseline edits
 - Side-by-side comparison of predicted vs expected values
 
+**Save & Reprocess Workflow**
+
+After making edits to predictions or baselines, you can trigger reprocessing to re-run downstream steps with the updated data:
+
+1. **Save Your Edits**: Click "Save Changes" to persist prediction edits or "Save Baseline" to persist baseline edits to S3
+2. **Trigger Reprocessing**: After saving, click the "Reprocess" button (or use the document toolbar "Reprocess" action)
+3. **Automatic Pipeline Execution**: The document automatically transitions through processing stages:
+   - `SUMMARIZING` → Re-generates document summary using updated extraction data
+   - `EVALUATING` → Re-runs evaluation comparing updated predictions against baselines
+   - `COMPLETE` → Processing finished with updated results
+4. **View Updated Results**: Once complete, the evaluation scores and comparison results reflect your edits
+
+**Key Benefits of Save & Reprocess:**
+- **Iterative Refinement**: Make corrections and immediately see how they affect evaluation scores
+- **Baseline Correction**: Fix ground truth errors and re-evaluate without re-uploading documents
+- **Prompt Tuning Workflow**: Edit predictions to match desired output, save as baseline, then use for prompt improvement
+- **Quality Assurance**: Verify that corrections properly resolve evaluation mismatches
+
 #### Smart Filtering
 
 - **Low Confidence Filter**: Toggle to show only fields with confidence scores below threshold
