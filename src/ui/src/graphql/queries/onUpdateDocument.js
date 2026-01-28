@@ -45,6 +45,7 @@ export default gql`
       HITLReviewOwner
       HITLReviewOwnerEmail
       HITLReviewHistory
+      ConfigVersion
       TraceId
     }
   }

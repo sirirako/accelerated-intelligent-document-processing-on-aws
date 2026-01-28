@@ -140,6 +140,20 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         message_data = json.loads(message)
         document = Document.load_document(message_data, working_bucket, logger)
         object_key = document.input_key
+        # Extract config version from object key pattern: filename.pdf.v22
+        if '.v' in object_key:
+            parts = object_key.rsplit('.v', 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                clean_object_key = parts[0]
+                config_version = f"v{parts[1]}"
+                document.config_version = config_version
+                document.input_key = clean_object_key
+                logger.info(f"Extracted config version {config_version} from {object_key}")
+            else:
+                document.config_version = None
+        else:
+            document.config_version = None
+        
         logger.info(f"Processing message {message_id} for object {object_key}")
 
         # Check if document has been aborted before starting workflow

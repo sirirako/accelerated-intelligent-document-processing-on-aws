@@ -47,8 +47,8 @@ def handler(event, context):
         timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
         test_run_id = f"{test_set['name']}-{timestamp}"
         
-        # Capture current config
-        config = _capture_config(config_table)
+        # Capture config for the specified version or current active config
+        config = _capture_config(config_table, config_version)
         
         # Store initial test run metadata
         _store_test_run_metadata(tracking_table, test_run_id, test_set_id, test_set['name'], config, [], test_context, files_to_process, config_version)
@@ -107,18 +107,37 @@ def _get_test_set(tracking_table, test_set_id):
         logger.error(f"Error getting test set {test_set_id}: {e}")
         return None
 
-def _capture_config(config_table):
-    """Capture current configuration"""
+def _capture_config(config_table, config_version=None):
+    """Capture configuration - specific version or current active config"""
     table = dynamodb.Table(config_table)  # type: ignore[attr-defined]
     
     config = {}
-    for config_type in ['Schema', 'Default', 'Custom']:
-        try:
-            response = table.get_item(Key={'Configuration': config_type})
+    
+    # Get Config (versioned) - this is what's used for comparisons
+    try:
+        if config_version:
+            # Get specific config version
+            key = f"Config#{config_version}"
+            response = table.get_item(Key={'Configuration': key})
             if 'Item' in response:
-                config[config_type] = response['Item']
-        except Exception as e:
-            logger.warning(f"Could not retrieve {config_type} config: {e}")
+                config['Config'] = response['Item']
+            else:
+                logger.warning(f"Config version {config_version} not found")
+        else:
+            # Get active config version - scan for is_active=True
+            scan_response = table.scan(
+                FilterExpression="begins_with(Configuration, :config_prefix) AND IsActive = :active",
+                ExpressionAttributeValues={
+                    ":config_prefix": "Config#",
+                    ":active": True
+                }
+            )
+            items = scan_response.get('Items', [])
+            if items:
+                config['Config'] = items[0]
+            
+    except Exception as e:
+        logger.warning(f"Could not retrieve Config: {e}")
     
     return config
 

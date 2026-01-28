@@ -66,6 +66,13 @@ export const COLUMN_DEFINITIONS_MAIN = [
     width: 150,
   },
   {
+    id: 'configVersion',
+    header: 'Config Version',
+    cell: (item) => item.configVersion || 'N/A',
+    sortingField: 'configVersion',
+    width: 120,
+  },
+  {
     id: 'evaluationStatus',
     header: 'Evaluation',
     cell: (item) => item.evaluationStatus || 'N/A',
@@ -106,6 +113,7 @@ const VISIBLE_CONTENT_OPTIONS = [
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
+      { id: 'configVersion', label: 'Config Version' },
       { id: 'evaluationStatus', label: 'Evaluation' },
       { id: 'confidenceAlertCount', label: 'Confidence Alerts' },
     ],
@@ -120,6 +128,7 @@ const VISIBLE_CONTENT = [
   'initialEventTime',
   'completionTime',
   'duration',
+  'configVersion',
   'evaluationStatus',
   'confidenceAlertCount',
 ];

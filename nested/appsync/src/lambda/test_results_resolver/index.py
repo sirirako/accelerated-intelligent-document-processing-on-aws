@@ -335,7 +335,8 @@ def get_test_runs(time_period_hours=2):
             'failedFiles': status_result.get('failedFiles') if status_result else item.get('FailedFiles', 0),
             'createdAt': _format_datetime(item.get('CreatedAt')),
             'completedAt': _format_datetime(item.get('CompletedAt')),
-            'context': item.get('Context')
+            'context': item.get('Context'),
+            'configVersion': item.get('ConfigVersion')
         })
     
     # Sort by createdAt descending (most recent first)

@@ -112,7 +112,13 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
       }
 
       logger.info('Test run started:', result.data.startTestRun);
-      onTestStart(result.data.startTestRun.testRunId, result.data.startTestRun.testSetName, context, result.data.startTestRun.filesCount);
+      onTestStart(
+        result.data.startTestRun.testRunId,
+        result.data.startTestRun.testSetName,
+        context,
+        result.data.startTestRun.filesCount,
+        selectedVersion?.value,
+      );
       setError('');
     } catch (err) {
       logger.error('Failed to start test run:', err);

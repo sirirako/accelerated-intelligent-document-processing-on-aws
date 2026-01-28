@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT-0
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import {
   Container,
   Header,
@@ -18,6 +19,7 @@ import {
   RadioGroup,
   Icon,
   Badge,
+  Table,
 } from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
@@ -32,9 +34,198 @@ import ConfigBuilder from './ConfigBuilder';
 import ConfigurationVersionsTable from './ConfigurationVersionsTable';
 import { deepMerge } from '../../utils/configUtils';
 import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
+import getConfigVersionQuery from '../../graphql/queries/getConfigVersion';
 
 const client = generateClient();
 const logger = new ConsoleLogger('ConfigurationLayout');
+
+// Compare Versions Content Component
+const CompareVersionsContent = ({ selectedVersions, versions }) => {
+  const [versionData, setVersionData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('differences');
+
+  useEffect(() => {
+    const fetchVersionsData = async () => {
+      setLoading(true);
+      const data = {};
+
+      try {
+        for (const versionId of selectedVersions) {
+          const result = await client.graphql({
+            query: getConfigVersionQuery,
+            variables: { versionId },
+          });
+
+          if (result.data.getConfigVersion.success) {
+            const versionInfo = versions.find((v) => v.versionId === versionId);
+            data[versionId] = {
+              configuration: JSON.parse(result.data.getConfigVersion.Configuration || '{}'),
+              isActive: versionInfo?.isActive || false,
+            };
+          }
+        }
+        setVersionData(data);
+      } catch (error) {
+        logger.error('Error fetching versions:', error);
+        // Set empty data to prevent blank page
+        setVersionData({});
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (selectedVersions.length > 0) {
+      fetchVersionsData();
+    } else {
+      setLoading(false);
+    }
+  }, [selectedVersions, versions]);
+
+  const formatContent = (config, format) => {
+    try {
+      if (format === 'yaml') {
+        return yaml.dump(config, { indent: 2, lineWidth: -1 });
+      }
+      return JSON.stringify(config, null, 2);
+    } catch (err) {
+      return `Error formatting: ${err.message}`;
+    }
+  };
+
+  // Function to find differences between configurations
+  const findDifferences = () => {
+    const differences = [];
+    const allPaths = new Set();
+
+    // Get all possible paths from all versions
+    const getAllPaths = (obj, prefix = '') => {
+      Object.keys(obj || {}).forEach((key) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        allPaths.add(path);
+        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+          getAllPaths(obj[key], path);
+        }
+      });
+    };
+
+    selectedVersions.forEach((versionId) => {
+      getAllPaths(versionData[versionId]?.configuration);
+    });
+
+    // Filter out parent paths if child paths exist
+    const filteredPaths = Array.from(allPaths).filter((path) => {
+      // Check if any other path starts with this path + "."
+      return !Array.from(allPaths).some((otherPath) => otherPath !== path && otherPath.startsWith(path + '.'));
+    });
+
+    // Check each filtered path for differences
+    filteredPaths.forEach((path) => {
+      const values = {};
+
+      selectedVersions.forEach((versionId) => {
+        const value = getValueByPath(versionData[versionId]?.configuration, path);
+        values[versionId] = value;
+      });
+
+      // Check if values are different
+      const uniqueValues = new Set(Object.values(values).map((v) => JSON.stringify(v)));
+      if (uniqueValues.size > 1) {
+        differences.push({ path, values });
+      }
+    });
+
+    return differences;
+  };
+
+  // Helper function to get value by dot notation path
+  const getValueByPath = (obj, path) => {
+    return path.split('.').reduce((current, key) => {
+      return current && current[key] !== undefined ? current[key] : undefined;
+    }, obj);
+  };
+
+  const renderDifferencesTable = () => {
+    const differences = findDifferences();
+
+    if (differences.length === 0) {
+      return (
+        <Box textAlign="center" padding="l">
+          <Box variant="h3">No differences found</Box>
+          <Box>All selected versions have identical configurations.</Box>
+        </Box>
+      );
+    }
+
+    const totalColumns = selectedVersions.length + 1; // +1 for field path column
+    const columnWidth = Math.floor(100 / totalColumns);
+
+    const columnDefinitions = [
+      {
+        id: 'field',
+        header: 'Field Path',
+        cell: (item) => <Box variant="code">{item.path}</Box>,
+        sortingField: 'path',
+        isRowHeader: true,
+        width: `${columnWidth}%`,
+      },
+      ...selectedVersions.map((versionId) => ({
+        id: versionId,
+        header: `${versionId} ${versionData[versionId]?.isActive ? '(Active)' : ''}`,
+        cell: (item) => {
+          const value = item.values[versionId];
+          return (
+            <Box variant="code" fontSize="body-s">
+              {value === undefined ? '(undefined)' : JSON.stringify(value)}
+            </Box>
+          );
+        },
+        width: `${columnWidth}%`,
+      })),
+    ];
+
+    return (
+      <Table
+        columnDefinitions={columnDefinitions}
+        items={differences}
+        resizableColumns
+        variant="borderless"
+        header={<Header variant="h3">Config Differences ({differences.length} fields)</Header>}
+        empty={
+          <Box margin={{ vertical: 'xs' }} textAlign="center" color="inherit">
+            <SpaceBetween size="m">
+              <b>No differences found</b>
+              <Box variant="p" color="inherit">
+                All selected versions have identical configurations.
+              </Box>
+            </SpaceBetween>
+          </Box>
+        }
+      />
+    );
+  };
+
+  if (loading) {
+    return (
+      <Box textAlign="center" padding="l">
+        <Spinner size="large" />
+        <Box padding="s">Loading versions...</Box>
+      </Box>
+    );
+  }
+
+  return <SpaceBetween size="m">{renderDifferencesTable()}</SpaceBetween>;
+};
+
+CompareVersionsContent.propTypes = {
+  selectedVersions: PropTypes.arrayOf(PropTypes.string).isRequired,
+  versions: PropTypes.arrayOf(
+    PropTypes.shape({
+      versionId: PropTypes.string.isRequired,
+      isActive: PropTypes.bool,
+    }),
+  ).isRequired,
+};
 
 // Utility function to check if two values are numerically equivalent
 const areNumericValuesEqual = (val1, val2) => {
@@ -75,6 +266,12 @@ const ConfigurationLayout = () => {
   const [defaultVersionData, setDefaultVersionData] = useState(null); // v0 for comparison
   const [loadingVersion, setLoadingVersion] = useState(false);
 
+  // Compare versions state
+  const [selectedVersionsForCompare, setSelectedVersionsForCompare] = useState([]);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [versionsToDelete, setVersionsToDelete] = useState([]);
+
   // Configuration editing state (from develop branch)
   const [formValues, setFormValues] = useState({});
   const [jsonContent, setJsonContent] = useState('');
@@ -89,7 +286,7 @@ const ConfigurationLayout = () => {
   const [showSaveAsNewModal, setShowSaveAsNewModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
@@ -121,7 +318,9 @@ const ConfigurationLayout = () => {
   const handleVersionSelect = async (versionId) => {
     try {
       setLoadingVersion(true);
+      setSaveError(null); // Clear any previous errors
       console.log('Loading version:', versionId);
+
       const versionData = await fetchVersion(versionId);
       console.log('Version data received:', versionData);
 
@@ -133,6 +332,7 @@ const ConfigurationLayout = () => {
           } catch (parseError) {
             console.error('Error parsing configuration JSON:', parseError);
             setSaveError('Invalid configuration data format');
+            setLoadingVersion(false);
             return;
           }
         } else {
@@ -209,6 +409,72 @@ const ConfigurationLayout = () => {
     setYamlContent('');
     setSaveError(null);
     setSaveSuccess(false);
+  };
+
+  // Handle bulk activate version
+  const handleBulkActivateVersion = async (versionId) => {
+    try {
+      await setActiveVersion(versionId);
+      setSaveSuccess(true);
+      await fetchVersions();
+      // Clear selection after activation
+      setSelectedVersionsForCompare([]);
+    } catch (error) {
+      console.error('Activate error:', error);
+      setSaveError(`Failed to activate version: ${error.message}`);
+    }
+  };
+
+  // Handle bulk delete versions - show confirmation dialog
+  const handleBulkDeleteVersions = async (versionIds) => {
+    setVersionsToDelete(versionIds);
+    setShowBulkDeleteModal(true);
+  };
+
+  // Confirm delete versions
+  const confirmDeleteVersions = async () => {
+    try {
+      for (const versionId of versionsToDelete) {
+        await deleteVersion(versionId);
+      }
+      setSaveSuccess(true);
+      await fetchVersions();
+
+      // Clear selection after deletion
+      setSelectedVersionsForCompare([]);
+
+      // If the currently selected version was deleted, clear it
+      if (selectedVersion && versionsToDelete.includes(selectedVersion)) {
+        setSelectedVersion(null);
+        setSelectedVersionData(null);
+        setFormValues({});
+        setJsonContent('');
+        setYamlContent('');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      setSaveError(`Failed to delete versions: ${error.message}`);
+    } finally {
+      setShowBulkDeleteModal(false);
+      setVersionsToDelete([]);
+    }
+  };
+
+  // Handle version comparison
+  const handleCompareVersions = () => {
+    if (selectedVersionsForCompare.length < 2) {
+      return;
+    }
+    setShowCompareModal(true);
+  };
+
+  // Handle version selection for comparison
+  const handleVersionSelectForCompare = (versionId, selected) => {
+    if (selected) {
+      setSelectedVersionsForCompare((prev) => [...prev, versionId]);
+    } else {
+      setSelectedVersionsForCompare((prev) => prev.filter((v) => v !== versionId));
+    }
   };
 
   // Handle save current version
@@ -486,7 +752,16 @@ const ConfigurationLayout = () => {
       <SpaceBetween size="l">
         {/* Versions Table */}
         <Container header={<Header variant="h2">Configuration Versions</Header>}>
-          <ConfigurationVersionsTable versions={versions} loading={versionsLoading} onVersionSelect={handleVersionSelect} />
+          <ConfigurationVersionsTable
+            versions={versions}
+            loading={versionsLoading}
+            onVersionSelect={handleVersionSelect}
+            selectedVersionsForCompare={selectedVersionsForCompare}
+            onVersionSelectForCompare={handleVersionSelectForCompare}
+            onCompareVersions={handleCompareVersions}
+            onActivateVersion={handleBulkActivateVersion}
+            onDeleteVersions={handleBulkDeleteVersions}
+          />
         </Container>
 
         {/* Loading state for selected version */}
@@ -520,19 +795,10 @@ const ConfigurationLayout = () => {
                     <Button onClick={handleImportClick}>Import</Button>
                     <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
                     <Button onClick={() => window.location.reload()}>Refresh</Button>
-                    <Button onClick={() => setShowActivateModal(true)} disabled={!selectedVersion || selectedVersionData?.isActive}>
-                      Activate
-                    </Button>
                     <Button onClick={() => setShowResetModal(true)} disabled={selectedVersion === 'v0'}>
                       Restore default (All)
                     </Button>
                     <Button onClick={() => setShowSaveAsNewModal(true)}>Save as Version</Button>
-                    <Button
-                      onClick={() => setShowDeleteModal(true)}
-                      disabled={!selectedVersion || selectedVersion === 'v0' || selectedVersionData?.isActive}
-                    >
-                      Delete Version
-                    </Button>
                     <Button
                       variant={hasUnsavedChanges ? 'primary' : 'normal'}
                       onClick={handleSave}
@@ -687,52 +953,6 @@ const ConfigurationLayout = () => {
         </FormField>
       </Modal>
 
-      {/* Activate Version Modal */}
-      <Modal
-        visible={showActivateModal}
-        onDismiss={() => setShowActivateModal(false)}
-        header="Activate Version"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowActivateModal(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleActivateVersion} loading={isSaving}>
-                Activate
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <Box variant="span">
-          Are you sure you want to activate version {selectedVersion}? This will make it the active configuration for document processing.
-        </Box>
-      </Modal>
-
-      {/* Delete Version Modal */}
-      <Modal
-        visible={showDeleteModal}
-        onDismiss={() => setShowDeleteModal(false)}
-        header="Delete Version"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowDeleteModal(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleDeleteVersion} loading={isSaving}>
-                Delete
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <Box variant="span">
-          Are you sure you want to delete version <Box variant="strong">{selectedVersion}</Box>? This action cannot be undone.
-        </Box>
-      </Modal>
-
       {/* Reset to Default Modal */}
       <Modal
         visible={showResetModal}
@@ -808,6 +1028,47 @@ const ConfigurationLayout = () => {
           <Button variant="primary" onClick={handleLocalFileImport} iconName="upload" fullWidth>
             Import from Local File
           </Button>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Compare Versions Modal */}
+      <Modal
+        visible={showCompareModal}
+        onDismiss={() => setShowCompareModal(false)}
+        size="max"
+        header="Compare Configuration Versions"
+        footer={
+          <Box float="right">
+            <Button onClick={() => setShowCompareModal(false)}>Close</Button>
+          </Box>
+        }
+      >
+        <CompareVersionsContent selectedVersions={selectedVersionsForCompare} versions={versions} />
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        visible={showBulkDeleteModal}
+        onDismiss={() => setShowBulkDeleteModal(false)}
+        size="medium"
+        header="Confirm Delete"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button onClick={() => setShowBulkDeleteModal(false)}>Cancel</Button>
+              <Button variant="primary" onClick={confirmDeleteVersions}>
+                Delete {versionsToDelete.length} Version{versionsToDelete.length > 1 ? 's' : ''}
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Box>Are you sure you want to delete the following configuration version{versionsToDelete.length > 1 ? 's' : ''}?</Box>
+          <Box>
+            <strong>Versions to delete:</strong> {versionsToDelete.join(', ')}
+          </Box>
+          <Alert type="warning">This action cannot be undone. The configuration versions will be permanently deleted.</Alert>
         </SpaceBetween>
       </Modal>
     </>

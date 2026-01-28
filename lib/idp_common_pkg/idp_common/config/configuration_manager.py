@@ -21,7 +21,7 @@ from .constants import (
     VALID_CONFIG_TYPES,
 )
 from .merge_utils import deep_update, get_diff_dict, apply_delta_with_deletions, strip_matching_defaults
-from .models import ConfigurationRecord, IDPConfig, PricingConfig, SchemaConfig
+from .models import ConfigurationRecord, IDPConfig, PricingConfig, SchemaConfig, ConfigMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -321,9 +321,26 @@ class ConfigurationManager:
                     # No active version exists, default to v0
                     version = "v0"
             
-            # Check if this version already exists to preserve is_active status
+            # Check if this version already exists to preserve is_active status and metadata
             existing_record = self._read_record("Config", version)
             is_active_status = existing_record.is_active if existing_record else False
+            
+            # Simple metadata handling
+            import datetime
+            timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+            
+            if existing_record:
+                # Existing config - preserve created_at, update updated_at
+                metadata = {
+                    "created_at": existing_record.metadata.created_at if existing_record.metadata else timestamp,
+                    "updated_at": timestamp
+                }
+            else:
+                # New config - set both timestamps
+                metadata = {
+                    "created_at": timestamp,
+                    "updated_at": timestamp
+                }
             
             # If updating v0 (baseline), sync all other versions
             if version == "v0" and not skip_sync and isinstance(config, IDPConfig):
@@ -336,8 +353,6 @@ class ConfigurationManager:
             is_active_status = None  # Non-Config types don't use is_active
 
         # Create record with metadata
-        from .models import ConfigMetadata
-        
         config_metadata = None
         if metadata:
             config_metadata = ConfigMetadata(**metadata)

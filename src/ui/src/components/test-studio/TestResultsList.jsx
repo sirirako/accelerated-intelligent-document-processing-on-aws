@@ -157,6 +157,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
         createdAt: run.startTime.toISOString(),
         completedAt: null,
         context: run.context || 'N/A',
+        configVersion: run.configVersion || null,
       }));
 
       // Filter out completed runs that match active run IDs to avoid duplicates

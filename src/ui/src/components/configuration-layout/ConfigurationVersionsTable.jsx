@@ -1,17 +1,60 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React from 'react';
+import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { Table, Box, SpaceBetween, Badge, Link } from '@cloudscape-design/components';
+import { Table, Box, SpaceBetween, Badge, Link, Button, Header } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
 
-const ConfigurationVersionsTable = ({ versions = [], loading = false, onVersionSelect }) => {
+const ConfigurationVersionsTable = ({
+  versions = [],
+  loading = false,
+  onVersionSelect,
+  selectedVersionsForCompare = [],
+  onVersionSelectForCompare,
+  onCompareVersions,
+  onActivateVersion,
+  onDeleteVersions,
+}) => {
   // Log the versions data to console for debugging
   console.log('ConfigurationVersionsTable - versions data:', versions);
   console.log('ConfigurationVersionsTable - loading:', loading);
 
   const columnDefinitions = [
+    {
+      id: 'select',
+      header: (
+        <input
+          type="checkbox"
+          checked={selectedVersionsForCompare.length === versions.length && versions.length > 0}
+          onChange={(e) => {
+            if (e.target.checked) {
+              // Select all versions
+              const allVersionIds = versions.map((v) => v.versionId);
+              allVersionIds.forEach((versionId) => {
+                if (!selectedVersionsForCompare.includes(versionId)) {
+                  onVersionSelectForCompare?.(versionId, true);
+                }
+              });
+            } else {
+              // Deselect all versions
+              selectedVersionsForCompare.forEach((versionId) => {
+                onVersionSelectForCompare?.(versionId, false);
+              });
+            }
+          }}
+          title="Select/Deselect All"
+        />
+      ),
+      cell: (item) => (
+        <input
+          type="checkbox"
+          checked={selectedVersionsForCompare.includes(item.versionId)}
+          onChange={(e) => onVersionSelectForCompare?.(item.versionId, e.target.checked)}
+        />
+      ),
+      width: 80,
+    },
     {
       id: 'versionId',
       header: 'Version ID',
@@ -80,7 +123,39 @@ const ConfigurationVersionsTable = ({ versions = [], loading = false, onVersionS
           </SpaceBetween>
         </Box>
       }
-      header={<Box variant="h2">Configuration Versions ({versions.length})</Box>}
+      header={
+        <Header
+          variant="h2"
+          actions={
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button onClick={onCompareVersions} disabled={selectedVersionsForCompare.length < 2}>
+                Compare Selected ({selectedVersionsForCompare.length})
+              </Button>
+              <Button
+                onClick={() => onActivateVersion?.(selectedVersionsForCompare[0])}
+                disabled={
+                  selectedVersionsForCompare.length !== 1 || versions.find((v) => v.versionId === selectedVersionsForCompare[0])?.isActive
+                }
+              >
+                Activate
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => onDeleteVersions?.(selectedVersionsForCompare)}
+                disabled={
+                  selectedVersionsForCompare.length === 0 ||
+                  selectedVersionsForCompare.includes('v0') ||
+                  selectedVersionsForCompare.some((vId) => versions.find((v) => v.versionId === vId)?.isActive)
+                }
+              >
+                Delete Selected ({selectedVersionsForCompare.length})
+              </Button>
+            </SpaceBetween>
+          }
+        >
+          Configuration Versions ({versions.length})
+        </Header>
+      }
     />
   );
 };
@@ -97,6 +172,11 @@ ConfigurationVersionsTable.propTypes = {
   ),
   loading: PropTypes.bool,
   onVersionSelect: PropTypes.func,
+  selectedVersionsForCompare: PropTypes.arrayOf(PropTypes.string),
+  onVersionSelectForCompare: PropTypes.func,
+  onCompareVersions: PropTypes.func,
+  onActivateVersion: PropTypes.func,
+  onDeleteVersions: PropTypes.func,
 };
 
 export default ConfigurationVersionsTable;

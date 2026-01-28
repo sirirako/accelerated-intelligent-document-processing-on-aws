@@ -64,6 +64,10 @@ def handler(event, context):
         else:
             object_key = sanitized_file_name
         
+        # Append version to filename if provided
+        if version:
+            object_key = f"{object_key}.{version}"
+        
         # Generate a presigned POST URL for uploading
         logger.info(f"Generating presigned POST data for: {object_key} with content type: {content_type}")
         
@@ -73,12 +77,6 @@ def handler(event, context):
             ['content-length-range', 1, 104857600],  # 1 Byte to 100 MB
             {'Content-Type': content_type}
         ]
-        
-        # Add version metadata if provided
-        if version:
-            fields['x-amz-meta-config-version'] = version
-            conditions.append({'x-amz-meta-config-version': version})
-            logger.info(f"Adding config version metadata: {version}")
         
         presigned_post = s3_client.generate_presigned_post(
             Bucket=bucket_name,

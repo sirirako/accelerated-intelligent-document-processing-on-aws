@@ -472,15 +472,13 @@ class BatchProcessor:
             # Standardized: batch_id/filename
             s3_key = f"{batch_id}/{filename}"
 
-        # Upload file with metadata
-        input_bucket = self.resources["InputBucket"]
-        extra_args = {}
+        # Append config version to filename if specified
         if config_version:
-            extra_args["Metadata"] = {"config-version": config_version}
+            s3_key = f"{s3_key}.{config_version}"
 
-        self.s3.upload_file(
-            Filename=local_path, Bucket=input_bucket, Key=s3_key, ExtraArgs=extra_args
-        )
+        # Upload file
+        input_bucket = self.resources["InputBucket"]
+        self.s3.upload_file(Filename=local_path, Bucket=input_bucket, Key=s3_key)
 
         return s3_key
 

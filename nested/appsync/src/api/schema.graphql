@@ -189,6 +189,7 @@ input CreateDocumentInput {
   InitialEventTime: AWSDateTime
   QueuedTime: AWSDateTime
   ExpiresAfter: AWSTimestamp
+  ConfigVersion: String
   TraceId: String
 }
 
@@ -234,6 +235,7 @@ input UpdateDocumentInput {
   HITLReviewOwner: String
   HITLReviewOwnerEmail: String
   HITLReviewHistory: AWSJSON
+  ConfigVersion: String
   TraceId: String
 }
 
