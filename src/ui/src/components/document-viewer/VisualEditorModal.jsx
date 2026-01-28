@@ -303,8 +303,23 @@ const FormFieldRenderer = memo(
     const shouldFilterConfidence = filterMode === 'confidence-alerts';
     
     const hasMismatchInSubtree = shouldFilterEval ? hasEvalMismatchInTree(value, baselineValue, evaluationResults, sectionId) : true;
+    
+    // When checking for confidence alerts in a subtree, we need to include the current fieldKey in the path
+    // so that the recursive check can properly navigate the explainability data structure.
+    // Without this, paths like "ServiceInformation.[1].Charges" would incorrectly try to navigate
+    // explainabilityData[1] instead of explainabilityData.ServiceInformation[1]
+    // However:
+    // 1. For array items, fieldKey is a display string like "[1]" which shouldn't be added to the path
+    //    because the numeric index is already present in the path from the parent's recursive call.
+    // 2. For primitive/leaf fields, don't add fieldKey because hasConfidenceAlertInTree uses fieldKey
+    //    separately when calling getFieldConfidenceInfo - adding it would cause duplication.
+    const isArrayItemDisplay = fieldKey.startsWith('[') && fieldKey.endsWith(']');
+    const isPrimitiveValue = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null;
+    const pathForAlertCheck = structuralKeys.includes(fieldKey) || isArrayItemDisplay || isPrimitiveValue
+      ? filteredPath 
+      : [...filteredPath, fieldKey];
     const hasConfidenceAlertInSubtree = shouldFilterConfidence
-      ? hasConfidenceAlertInTree(value, filteredPath, explainabilityInfo, mergedConfig)
+      ? hasConfidenceAlertInTree(value, pathForAlertCheck, explainabilityInfo, mergedConfig)
       : true;
     
     // If filter is active and no matches in subtree, hide this field (except root)

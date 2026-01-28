@@ -7,6 +7,10 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Confidence Alerts Mismatch for JSON Schema `$ref` Properties**
+  - Fixed issue where confidence alerts in UI showed incorrect counts (all with confidence=0) that didn't match the actual extraction confidence scores in explainability_info JSON
+  - **Root Cause**: Properties using JSON Schema `$ref` references were being incorrectly classified as "simple" types instead of "group" (object) types, causing false positive alerts
+
 - **Configuration Import Float Type Error for DynamoDB**
   - Fixed "Float types are not supported. Use Decimal types instead" error when importing configuration files via CLI (`idp-cli config-upload`) or Web UI
 
