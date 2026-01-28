@@ -297,8 +297,9 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         if request_type in ["Create", "Update"]:
             # For Update: Migrate existing Default/Custom to versioned format first
             if request_type == "Update":
-                # Migrate existing Default/Custom records with simple activation
+                # Migrate existing Default/Custom records with activation only during migration
                 migrated_custom = False
+                migrated_default = False
                 
                 try:
                     existing_default = manager.get_configuration("Default")
@@ -306,6 +307,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                         logger.info("Found existing Default - migrating to Config#v0")
                         manager.save_configuration("Config", existing_default, version="v0", description="System default configuration (v0) - migrated from Default")
                         manager.delete_configuration("Default")
+                        migrated_default = True
                         logger.info("Migrated Default to Config#v0")
                 except Exception as e:
                     logger.debug(f"No Default to migrate: {e}")
@@ -321,17 +323,14 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 except Exception as e:
                     logger.debug(f"No Custom to migrate: {e}")
                 
-                # Simple activation: Custom (v1) if present, else Default (v0)
+                # Only change activation during actual migration
                 if migrated_custom:
                     manager.activate_version("v1")
                     logger.info("Activated v1 (migrated Custom)")
-                else:
-                    try:
-                        if manager.get_configuration("Config", "v0"):
-                            manager.activate_version("v0")
-                            logger.info("Activated v0 (migrated Default)")
-                    except Exception:
-                        pass
+                elif migrated_default:
+                    manager.activate_version("v0")
+                    logger.info("Activated v0 (migrated Default)")
+                # If no migration occurred, preserve existing active version (no action needed)
 
             # Collect all configurations to process
             configurations = {}

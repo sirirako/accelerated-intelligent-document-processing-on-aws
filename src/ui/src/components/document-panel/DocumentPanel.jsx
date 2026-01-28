@@ -355,7 +355,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
 const DocumentAttributes = ({ item }) => {
   return (
     <Container>
-      <ColumnLayout columns={7} variant="text-grid">
+      <ColumnLayout columns={8} variant="text-grid">
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
@@ -398,6 +398,15 @@ const DocumentAttributes = ({ item }) => {
               <strong>Duration</strong>
             </Box>
             <div>{item.duration}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>Config Version</strong>
+            </Box>
+            <div>{item.configVersion || 'N/A'}</div>
           </div>
         </SpaceBetween>
 

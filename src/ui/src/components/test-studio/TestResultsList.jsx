@@ -182,10 +182,12 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
 
   const downloadToExcel = () => {
     // Convert test runs data to CSV format
-    const headers = ['Test Run ID', 'Test Set', 'Status', 'Files Count', 'Created At', 'Completed At'];
+    const headers = ['Test Run ID', 'Test Set', 'Context', 'Config Version', 'Status', 'Files Count', 'Created At', 'Completed At'];
     const csvData = testRuns.map((run) => [
       run.testRunId,
       run.testSetName || '',
+      run.context || '',
+      run.configVersion || '',
       run.status,
       run.filesCount || 0,
       run.createdAt || '',
@@ -290,6 +292,7 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
         }
       />
       <Table
+        resizableColumns
         items={items}
         selectedItems={selectedItems}
         onSelectionChange={({ detail }) => setSelectedItems(detail.selectedItems)}
@@ -319,6 +322,13 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
             cell: getContextCell,
             sortingField: 'context',
             width: 300,
+          },
+          {
+            id: 'configVersion',
+            header: 'Config Version',
+            cell: (item) => item.configVersion || 'N/A',
+            sortingField: 'configVersion',
+            width: 120,
           },
           {
             id: 'status',

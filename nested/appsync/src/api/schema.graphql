@@ -33,6 +33,7 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   HITLReviewOwner: String
   HITLReviewOwnerEmail: String
   HITLReviewHistory: AWSJSON
+  ConfigVersion: String
   TraceId: String
 }
 

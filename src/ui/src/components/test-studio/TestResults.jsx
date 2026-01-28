@@ -834,7 +834,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
         )}
 
         {/* Key Metrics */}
-        <ColumnLayout columns={5} variant="text-grid">
+        <ColumnLayout columns={6} variant="text-grid">
           <Box>
             <Box variant="awsui-key-label">Total Cost</Box>
             <Box fontSize="heading-l">
@@ -842,7 +842,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Average Confidence</Box>
+            <Box variant="awsui-key-label">Avg Confidence</Box>
             <Box fontSize="heading-l">
               {results.averageConfidence !== null && results.averageConfidence !== undefined
                 ? `${(results.averageConfidence * 100).toFixed(1)}%`
@@ -850,13 +850,13 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Average Accuracy</Box>
+            <Box variant="awsui-key-label">Avg Accuracy</Box>
             <Box fontSize="heading-l">
               {results.overallAccuracy !== null && results.overallAccuracy !== undefined ? results.overallAccuracy.toFixed(3) : 'N/A'}
             </Box>
           </Box>
           <Box>
-            <Box variant="awsui-key-label">Average Weighted Overall Score</Box>
+            <Box variant="awsui-key-label">Avg Weighted Score</Box>
             <Box fontSize="heading-l">{averageWeightedScore !== null ? averageWeightedScore.toFixed(3) : 'N/A'}</Box>
           </Box>
           <Box>

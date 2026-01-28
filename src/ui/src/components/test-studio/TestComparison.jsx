@@ -306,7 +306,6 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
           return 'N/A';
         }),
       ],
-      ['Config Version', ...Object.values(completeTestRuns).map((run) => run.configVersion || 'N/A')],
     ];
 
     // Add cost breakdown rows
@@ -702,6 +701,12 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                   metric: 'Context',
                   ...Object.fromEntries(
                     Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.context || 'N/A']),
+                  ),
+                },
+                {
+                  metric: 'Config Version',
+                  ...Object.fromEntries(
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.configVersion || 'N/A']),
                   ),
                 },
                 {
