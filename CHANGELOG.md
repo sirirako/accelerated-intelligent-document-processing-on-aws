@@ -9,8 +9,7 @@ SPDX-License-Identifier: MIT-0
 
 - **Configuration Import Float Type Error for DynamoDB**
   - Fixed "Float types are not supported. Use Decimal types instead" error when importing configuration files via CLI (`idp-cli config-upload`) or Web UI
-  - **Root Cause**: `save_raw_configuration` method in `ConfigurationManager` was writing raw Python dicts containing `float` values directly to DynamoDB, which rejects native Python `float` types
-  - **Solution**: Added `_stringify_values()` conversion to convert floats to strings before DynamoDB write, matching the behavior of `save_configuration` method
+
 
 ### Added
 
