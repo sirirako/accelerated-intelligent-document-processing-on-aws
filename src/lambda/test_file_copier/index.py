@@ -130,15 +130,17 @@ def _copy_files_to_bucket(source_bucket, source_prefix, dest_bucket, dest_prefix
         try:
             source_key = f"{source_prefix}{filename}"
             dest_key = f"{dest_prefix}{filename}"
-            if config_version:
-                dest_key = f"{dest_key}.{config_version}"
             
-            # Copy file
+            # Copy file with config version as S3 metadata instead of filename suffix
             copy_args = {
                 'CopySource': {'Bucket': source_bucket, 'Key': source_key},
                 'Bucket': dest_bucket,
                 'Key': dest_key
             }
+            
+            if config_version:
+                copy_args['Metadata'] = {'config-version': config_version}
+                copy_args['MetadataDirective'] = 'REPLACE'
             
             s3.copy_object(**copy_args)
             

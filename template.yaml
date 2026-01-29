@@ -3427,9 +3427,14 @@ Resources:
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           DATA_RETENTION_IN_DAYS: !Ref DataRetentionInDays
           OUTPUT_BUCKET: !Ref OutputBucket
+          CONFIG_TABLE: !Ref ConfigurationTable
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt DocumentQueue.QueueName
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
         - Statement:
             - Effect: Allow
               Action:

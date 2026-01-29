@@ -472,13 +472,21 @@ class BatchProcessor:
             # Standardized: batch_id/filename
             s3_key = f"{batch_id}/{filename}"
 
-        # Append config version to filename if specified
-        if config_version:
-            s3_key = f"{s3_key}.{config_version}"
-
-        # Upload file
+        # Upload file with config version as S3 metadata instead of filename suffix
         input_bucket = self.resources["InputBucket"]
-        self.s3.upload_file(Filename=local_path, Bucket=input_bucket, Key=s3_key)
+
+        if config_version:
+            # Use put_object with metadata for config version
+            with open(local_path, "rb") as file_data:
+                self.s3.put_object(
+                    Bucket=input_bucket,
+                    Key=s3_key,
+                    Body=file_data,
+                    Metadata={"config-version": config_version},
+                )
+        else:
+            # Use upload_file for files without config version
+            self.s3.upload_file(Filename=local_path, Bucket=input_bucket, Key=s3_key)
 
         return s3_key
 
@@ -495,13 +503,16 @@ class BatchProcessor:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         return f"{prefix}-{timestamp}"
 
-    def _copy_s3_file(self, doc: Dict, batch_id: str) -> str:
+    def _copy_s3_file(
+        self, doc: Dict, batch_id: str, config_version: Optional[str] = None
+    ) -> str:
         """
         Copy file from any S3 location to InputBucket
 
         Args:
             doc: Document specification with S3 URI
             batch_id: Batch identifier
+            config_version: Optional config version to add as metadata
 
         Returns:
             S3 key in InputBucket
@@ -521,11 +532,17 @@ class BatchProcessor:
         # Construct destination key: batch_id/filename
         dest_key = f"{batch_id}/{filename}"
 
-        # Copy object
+        # Copy object with config version metadata if provided
         input_bucket = self.resources["InputBucket"]
         copy_source = {"Bucket": source_bucket, "Key": source_key}
 
-        self.s3.copy_object(CopySource=copy_source, Bucket=input_bucket, Key=dest_key)
+        copy_args = {"CopySource": copy_source, "Bucket": input_bucket, "Key": dest_key}
+
+        if config_version:
+            copy_args["Metadata"] = {"config-version": config_version}
+            copy_args["MetadataDirective"] = "REPLACE"
+
+        self.s3.copy_object(**copy_args)
 
         return dest_key
 

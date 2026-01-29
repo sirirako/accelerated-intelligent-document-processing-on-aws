@@ -569,7 +569,7 @@ def _get_test_run_config(test_run_id):
     return convert_decimals(config)
 
 def _build_config_comparison(configs):
-    """Build configuration differences - compare Custom configs, fallback to Default"""
+    """Build configuration differences - compare actual Config structure"""
     if not configs or len(configs) < 2:
         return None
     
@@ -587,7 +587,13 @@ def _build_config_comparison(configs):
     def get_all_paths(dictionary, prefix=""):
         """Get all nested paths from dictionary"""
         paths = []
+        ignored_fields = {'UpdatedAt', 'Description', 'CreatedAt', 'IsActive', 'Configuration'}
+        
         for key, value in dictionary.items():
+            # Skip ignored metadata fields
+            if key in ignored_fields:
+                continue
+                
             current_path = f"{prefix}.{key}" if prefix else key
             if isinstance(value, dict):
                 paths.extend(get_all_paths(value, current_path))
@@ -597,19 +603,11 @@ def _build_config_comparison(configs):
     
     # Get all possible configuration paths from all configs
     all_paths = set()
-    default_config = {}
     
     for config_item in configs:
         config = config_item['config']
-        custom = config.get('Custom', {})
-        default = config.get('Default', {})
-        
-        all_paths.update(get_all_paths(custom))
-        all_paths.update(get_all_paths(default))
-        
-        # Use first config's default as reference
-        if not default_config:
-            default_config = default
+        actual_config = config.get('Config', {})
+        all_paths.update(get_all_paths(actual_config))
     
     differences = []
     for path in all_paths:
@@ -617,17 +615,13 @@ def _build_config_comparison(configs):
         has_differences = False
         first_value = None
         
-        # Get effective values for each test run
+        # Get values for each test run
         for config_item in configs:
             test_run_id = config_item['testRunId']
             config = config_item['config']
-            custom = config.get('Custom', {})
-            default = config.get('Default', {})
+            actual_config = config.get('Config', {})
             
-            # Get effective value (Custom overrides Default)
-            value = get_nested_value(custom, path)
-            if value is None:
-                value = get_nested_value(default, path)
+            value = get_nested_value(actual_config, path)
             
             if value is not None:
                 # Normalize the value for comparison
