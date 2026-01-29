@@ -284,8 +284,13 @@ const ConfigurationLayout = () => {
   const [viewMode, setViewMode] = useState('form');
   const [showResetModal, setShowResetModal] = useState(false);
   const [showSaveAsNewModal, setShowSaveAsNewModal] = useState(false);
+  const [showSaveAsNewConfirmationModal, setShowSaveAsNewConfirmationModal] = useState(false);
+  const [newlyCreatedVersionId, setNewlyCreatedVersionId] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
+  const [showActivateConfirmationModal, setShowActivateConfirmationModal] = useState(false);
+  const [activatedVersionId, setActivatedVersionId] = useState('');
+  const [versionToActivate, setVersionToActivate] = useState('');
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState('configuration');
@@ -413,15 +418,26 @@ const ConfigurationLayout = () => {
 
   // Handle bulk activate version
   const handleBulkActivateVersion = async (versionId) => {
+    setVersionToActivate(versionId);
+    setShowActivateModal(true);
+  };
+
+  // Confirm activate version
+  const confirmActivateVersion = async () => {
     try {
-      await setActiveVersion(versionId);
+      await setActiveVersion(versionToActivate);
       setSaveSuccess(true);
+      setShowActivateModal(false);
+      // Show success confirmation dialog
+      setShowActivateConfirmationModal(true);
+      setActivatedVersionId(versionToActivate);
       await fetchVersions();
       // Clear selection after activation
       setSelectedVersionsForCompare([]);
     } catch (error) {
       console.error('Activate error:', error);
       setSaveError(`Failed to activate version: ${error.message}`);
+      setShowActivateModal(false);
     }
   };
 
@@ -501,12 +517,16 @@ const ConfigurationLayout = () => {
     setSaveSuccess(false);
 
     try {
-      await saveAsNewVersion(formValues, newVersionDescription || `New version based on ${selectedVersion}`);
+      const result = await saveAsNewVersion(formValues, newVersionDescription || `New version based on ${selectedVersion}`);
       setSaveSuccess(true);
       setShowSaveAsNewModal(false);
       setNewVersionDescription('');
+      // Show confirmation dialog
+      setShowSaveAsNewConfirmationModal(true);
+      // Store the new version ID for the confirmation dialog
+      setNewlyCreatedVersionId(result?.versionId || 'Unknown');
       // Refresh versions list
-      // TODO: Refresh versions
+      await fetchVersions();
     } catch (error) {
       console.error('Save as new error:', error);
       setSaveError(error.message || 'Failed to save as new version');
@@ -524,6 +544,9 @@ const ConfigurationLayout = () => {
       await setActiveVersion(selectedVersion);
       setSaveSuccess(true);
       setShowActivateModal(false);
+      // Show confirmation dialog
+      setShowActivateConfirmationModal(true);
+      setActivatedVersionId(selectedVersion);
       // Refresh versions list to update active status
       await fetchVersions();
       // Update version data to reflect active status
@@ -1069,6 +1092,85 @@ const ConfigurationLayout = () => {
             <strong>Versions to delete:</strong> {versionsToDelete.join(', ')}
           </Box>
           <Alert type="warning">This action cannot be undone. The configuration versions will be permanently deleted.</Alert>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Save as New Version Confirmation Modal */}
+      <Modal
+        visible={showSaveAsNewConfirmationModal}
+        onDismiss={() => setShowSaveAsNewConfirmationModal(false)}
+        size="medium"
+        header="Version Created Successfully"
+        footer={
+          <Box float="right">
+            <Button variant="primary" onClick={() => setShowSaveAsNewConfirmationModal(false)}>
+              OK
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Alert type="success">
+            <Box>
+              <Icon name="status-positive" /> New configuration version has been created successfully!
+            </Box>
+          </Alert>
+          <Box>
+            <strong>Version ID:</strong> {newlyCreatedVersionId}
+          </Box>
+          <Box>The new version is now available in the configuration versions table above.</Box>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Activate Version Confirmation Modal */}
+      <Modal
+        visible={showActivateModal}
+        onDismiss={() => setShowActivateModal(false)}
+        size="medium"
+        header="Confirm Activation"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button onClick={() => setShowActivateModal(false)}>Cancel</Button>
+              <Button variant="primary" onClick={confirmActivateVersion}>
+                Activate Version
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Box>
+            Are you sure you want to activate version <strong>{versionToActivate}</strong>?
+          </Box>
+          <Alert type="info">This version will become the active configuration used for all new document processing.</Alert>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Activate Version Success Modal */}
+      <Modal
+        visible={showActivateConfirmationModal}
+        onDismiss={() => setShowActivateConfirmationModal(false)}
+        size="medium"
+        header="Version Activated Successfully"
+        footer={
+          <Box float="right">
+            <Button variant="primary" onClick={() => setShowActivateConfirmationModal(false)}>
+              OK
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Alert type="success">
+            <Box>
+              <Icon name="status-positive" /> Configuration version has been activated successfully!
+            </Box>
+          </Alert>
+          <Box>
+            <strong>Active Version:</strong> {activatedVersionId}
+          </Box>
+          <Box>This version is now being used for all new document processing.</Box>
         </SpaceBetween>
       </Modal>
     </>

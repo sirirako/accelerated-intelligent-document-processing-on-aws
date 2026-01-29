@@ -775,6 +775,7 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
             "success": True,
             "message": f"Configuration saved as {next_version}" + 
                       (" and set as active" if set_as_active else ""),
+            "versionId": next_version,
         }
         
     except Exception as e:

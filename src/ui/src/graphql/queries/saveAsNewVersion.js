@@ -7,6 +7,7 @@ export default gql`
     saveAsNewVersion(configuration: $configuration, description: $description, setAsActive: $setAsActive) {
       success
       message
+      versionId
       error {
         type
         message

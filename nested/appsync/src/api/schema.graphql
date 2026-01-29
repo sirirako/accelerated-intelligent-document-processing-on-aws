@@ -125,6 +125,7 @@ type ConfigurationVersionsResponse @aws_cognito_user_pools @aws_iam {
 type UpdateConfigurationResponse @aws_cognito_user_pools @aws_iam {
   success: Boolean!
   message: String
+  versionId: String
   error: ConfigurationError
 }
 
