@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Section-Level DynamoDB Updates for Parallel Processing Optimization**
+  - Added lightweight `updateDocumentStatus` mutation for status-only updates (~500 bytes vs ~100KB full document)
+  - Added atomic `updateDocumentSection` mutation for individual section updates using `SET Sections[index] = :value`
+  - **Scalability**: Eliminates DynamoDB throttling for very large documents by avoiding full-document read-modify-write cycles
+  - **Real-time Updates**: Both new mutations now trigger `onUpdateDocument` subscription for UI synchronization
+  - **Pattern-2/3 Integration**: Extraction and assessment functions now use section-level updates instead of full document rewrites
+
 ### Fixed
 
 - **Confidence Alerts Mismatch for JSON Schema `$ref` Properties**

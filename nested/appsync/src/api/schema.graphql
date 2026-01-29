@@ -223,6 +223,21 @@ input UpdateDocumentInput {
   TraceId: String
 }
 
+# Lightweight status-only update input for minimal DynamoDB WCU usage
+input UpdateDocumentStatusInput {
+  ObjectKey: ID!
+  ObjectStatus: String!
+  WorkflowExecutionArn: String
+  WorkflowStatus: String
+}
+
+# Section-level update input for atomic section updates within Map operations
+input UpdateDocumentSectionInput {
+  ObjectKey: ID!
+  SectionIndex: Int!
+  Section: SectionInput!
+}
+
 input SectionInput {
   Id: String
   PageIds: [Int]
@@ -470,6 +485,10 @@ type MessageContent {
 type Mutation {
   createDocument(input: CreateDocumentInput!): CreateDocumentOutput @aws_iam
   updateDocument(input: UpdateDocumentInput!): Document @aws_iam
+  # Lightweight status-only update for minimal DynamoDB WCU usage during processing
+  updateDocumentStatus(input: UpdateDocumentStatusInput!): Document @aws_iam
+  # Atomic section-level update for parallel Map operations (extraction/assessment)
+  updateDocumentSection(input: UpdateDocumentSectionInput!): Document @aws_iam
   deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
   updateConfiguration(customConfig: AWSJSON!): UpdateConfigurationResponse
     @aws_cognito_user_pools
@@ -599,7 +618,7 @@ type Query @aws_cognito_user_pools @aws_iam {
 type Subscription @aws_cognito_user_pools @aws_iam {
   onCreateDocument: CreateDocumentOutput
     @aws_subscribe(mutations: ["createDocument"])
-  onUpdateDocument: Document @aws_subscribe(mutations: ["updateDocument", "completeSectionReview", "skipAllSectionsReview", "claimReview", "releaseReview"])
+  onUpdateDocument: Document @aws_subscribe(mutations: ["updateDocument", "updateDocumentStatus", "updateDocumentSection", "completeSectionReview", "skipAllSectionsReview", "claimReview", "releaseReview"])
   onAgentJobComplete(jobId: ID!): Boolean
     @aws_subscribe(mutations: ["updateAgentJobStatus"])
   onDiscoveryJobStatusChange(jobId: ID!): DiscoveryJob
