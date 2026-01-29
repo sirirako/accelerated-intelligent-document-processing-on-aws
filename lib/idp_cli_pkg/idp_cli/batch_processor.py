@@ -477,6 +477,7 @@ class BatchProcessor:
 
         if config_version:
             # Use put_object with metadata for config version
+            logger.info(f"Adding config-version metadata: {config_version} to {s3_key}")
             with open(local_path, "rb") as file_data:
                 self.s3.put_object(
                     Bucket=input_bucket,
@@ -485,6 +486,9 @@ class BatchProcessor:
                     Metadata={"config-version": config_version},
                 )
         else:
+            logger.info(
+                f"No config version specified, uploading without metadata to {s3_key}"
+            )
             # Use upload_file for files without config version
             self.s3.upload_file(Filename=local_path, Bucket=input_bucket, Key=s3_key)
 
@@ -541,6 +545,11 @@ class BatchProcessor:
         if config_version:
             copy_args["Metadata"] = {"config-version": config_version}
             copy_args["MetadataDirective"] = "REPLACE"
+            logger.info(
+                f"Adding config-version metadata: {config_version} to copied file {dest_key}"
+            )
+        else:
+            logger.info(f"No config version specified for copied file {dest_key}")
 
         self.s3.copy_object(**copy_args)
 

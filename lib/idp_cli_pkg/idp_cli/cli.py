@@ -1435,7 +1435,13 @@ def run_inference(
         with console.status("[bold green]Processing batch..."):
             if test_set:
                 batch_result = _process_test_set(
-                    stack_name, test_set, context, region, processor, number_of_files
+                    stack_name,
+                    test_set,
+                    context,
+                    region,
+                    processor,
+                    number_of_files,
+                    config_version,
                 )
             elif manifest:
                 # Check if manifest has baselines for test studio integration
@@ -1456,6 +1462,7 @@ def run_inference(
                         region,
                         processor,
                         number_of_files,
+                        config_version,
                     )
                 else:
                     # Normal manifest processing without test studio
@@ -2262,6 +2269,7 @@ def _process_test_set(
     region: Optional[str],
     processor,
     number_of_files: Optional[int] = None,
+    config_version: Optional[str] = None,
 ):
     """Common function to process test sets"""
     # Auto-detect test set using test_set_resolver lambda
@@ -2269,7 +2277,13 @@ def _process_test_set(
 
     # Invoke test runner lambda
     test_run_result = _invoke_test_runner(
-        stack_name, test_set_name, context, region, processor.resources, number_of_files
+        stack_name,
+        test_set_name,
+        context,
+        region,
+        processor.resources,
+        number_of_files,
+        config_version,
     )
     batch_id = test_run_result["testRunId"]
 
@@ -2362,6 +2376,7 @@ def _invoke_test_runner(
     region: Optional[str],
     resources: dict,
     number_of_files: Optional[int] = None,
+    config_version: Optional[str] = None,
 ):
     """Invoke test runner lambda to start test set processing"""
     import json
@@ -2406,6 +2421,10 @@ def _invoke_test_runner(
     # Add numberOfFiles if provided
     if number_of_files is not None:
         payload["arguments"]["input"]["numberOfFiles"] = number_of_files
+
+    # Add configVersion if provided
+    if config_version:
+        payload["arguments"]["input"]["configVersion"] = config_version
 
     console.print(f"[bold blue]Starting test run for test set: {test_set}[/bold blue]")
     if number_of_files:

@@ -365,9 +365,12 @@ class Document:
             s3_client = boto3.client("s3")
             response = s3_client.head_object(Bucket=input_bucket, Key=input_key)
             metadata = response.get("Metadata", {})
+            logger.info(f"S3 metadata for {input_key}: {metadata}")
             config_version = metadata.get("config-version")
             if config_version:
                 logger.info(f"Found config version in S3 metadata: {config_version}")
+            else:
+                logger.info(f"No config-version found in metadata for {input_key}")
         except Exception as e:
             logger.warning(f"Could not read S3 metadata for {input_key}: {e}")
 
