@@ -11,10 +11,10 @@ SPDX-License-Identifier: MIT-0
   - Added Rule Validation module enabling automated validation of extracted document data against configurable business rules and compliance criteria
   - **Key Capabilities**: Validate documents against any domain-specific compliance requirements (healthcare, financial, legal, insurance, manufacturing), customizable pass/fail criteria adaptable to industry needs, concurrent processing with intelligent chunking for large documents
   - **Dual Output Formats**: JSON for programmatic integration and Markdown for human review
-  - **Integration**: Seamlessly integrated into Pattern-2 workflow with AWS Step Functions parallel processing
+  - **Integration**: Integrated into Pattern-2 workflow with AWS Step Functions parallel processing
   - **Example Use Cases**: Healthcare prior authorization validation, loan application compliance checking, contract clause verification, claims validation, quality control
   - **Configuration**: Fully configurable via `rule_validation` settings including custom recommendation options, model selection, and processing limits
-  - **Documentation**: Complete guide in `docs/rule-validation.md` with sample healthcare implementation in `config_library/pattern-2/rule-validation/`
+  - **Documentation**: Complete guide in `docs/rule-validation.md` 
 
 - **Section-Level DynamoDB Updates for Parallel Processing Optimization**
   - Added lightweight `updateDocumentStatus` mutation for status-only updates (~500 bytes vs ~100KB full document)
