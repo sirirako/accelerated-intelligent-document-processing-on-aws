@@ -5,7 +5,20 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Section-Level DynamoDB Updates for Parallel Processing Optimization**
+  - Added lightweight `updateDocumentStatus` mutation for status-only updates (~500 bytes vs ~100KB full document)
+  - Added atomic `updateDocumentSection` mutation for individual section updates using `SET Sections[index] = :value`
+  - **Scalability**: Eliminates DynamoDB throttling for very large documents by avoiding full-document read-modify-write cycles
+  - **Real-time Updates**: Both new mutations now trigger `onUpdateDocument` subscription for UI synchronization
+  - **Pattern-2/3 Integration**: Extraction and assessment functions now use section-level updates instead of full document rewrites
+
 ### Fixed
+
+- **Evaluation Failure for Schemas with Empty Nested Objects** - Fixed evaluation failing with "field_definitions must contain at least one field" error when document schemas contain nested objects with empty properties (e.g., `AccidentInformation: {type: object, properties: {}}`). Empty object properties are now automatically filtered during schema processing.
+
+- **Evaluation Report Section Ordering** - Fixed document sections in evaluation markdown reports iterating in alphabetical order (1, 10, 11, 2, 3) instead of numerical order (1, 2, 3, 10, 11) by implementing natural sorting for section IDs
 
 - **Confidence Alerts Mismatch for JSON Schema `$ref` Properties**
   - Fixed issue where confidence alerts in UI showed incorrect counts (all with confidence=0) that didn't match the actual extraction confidence scores in explainability_info JSON
