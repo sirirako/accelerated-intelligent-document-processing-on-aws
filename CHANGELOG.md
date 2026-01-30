@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.13]
+
 ### Added
 
 - **Rule Validation for Automated Compliance Assessment**
@@ -16,13 +18,6 @@ SPDX-License-Identifier: MIT-0
   - **Configuration**: Fully configurable via `rule_validation` settings including custom recommendation options, model selection, and processing limits
   - **Documentation**: Complete guide in `docs/rule-validation.md` 
 
-- **Section-Level DynamoDB Updates for Parallel Processing Optimization**
-  - Added lightweight `updateDocumentStatus` mutation for status-only updates (~500 bytes vs ~100KB full document)
-  - Added atomic `updateDocumentSection` mutation for individual section updates using `SET Sections[index] = :value`
-  - **Scalability**: Eliminates DynamoDB throttling for very large documents by avoiding full-document read-modify-write cycles
-  - **Real-time Updates**: Both new mutations now trigger `onUpdateDocument` subscription for UI synchronization
-  - **Pattern-2/3 Integration**: Extraction and assessment functions now use section-level updates instead of full document rewrites
-
 - **Visual Document Editor Enhancements**
   - **Improved Navigation Controls**: Mouse wheel zoom (no modifier key required) and click-and-drag panning for intuitive document image exploration
   - **Inline Field Editing with S3 Save**: Edit prediction values directly in the visual editor with change tracking, edit history, and direct S3 persistence
@@ -32,6 +27,14 @@ SPDX-License-Identifier: MIT-0
   - **Smart Filtering**: Filter to show only low-confidence fields or evaluation mismatches; collapsible tree navigation with Expand/Collapse All controls
   - **Evaluation Comparison Mode**: Side-by-side predicted vs expected values with match indicators (✓/⚠), evaluation scores, and LLM-generated comparison reasons
   - **Section Navigation**: Previous/Next buttons to navigate between document sections without closing the editor
+
+- **Section-Level DynamoDB Updates for Parallel Processing Optimization**
+  - Added lightweight `updateDocumentStatus` mutation for status-only updates (~500 bytes vs ~100KB full document)
+  - Added atomic `updateDocumentSection` mutation for individual section updates using `SET Sections[index] = :value`
+  - **Scalability**: Eliminates DynamoDB throttling for very large documents by avoiding full-document read-modify-write cycles
+  - **Real-time Updates**: Both new mutations now trigger `onUpdateDocument` subscription for UI synchronization
+  - **Pattern-2/3 Integration**: Extraction and assessment functions now use section-level updates instead of full document rewrites
+
 
 ### Fixed
 
@@ -48,6 +51,10 @@ SPDX-License-Identifier: MIT-0
 - **Configuration Import Float Type Error for DynamoDB**
   - Fixed "Float types are not supported. Use Decimal types instead" error when importing configuration files via CLI (`idp-cli config-upload`) or Web UI
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.13.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.13.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.13.yaml`
 
 ## [0.4.12]
 
