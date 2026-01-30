@@ -5,16 +5,102 @@ SPDX-License-Identifier: MIT-0
 
 ## Overview
 
-The Rule Validation feature provides automated validation of extracted document information against predefined business rules and compliance criteria using LLM-based evaluation. This feature enables organizations to automate rule-based assessment for any domain-specific compliance requirements, regulatory workflows, or business logic validation.
+Rule Validation automatically checks if your documents meet specific business rules and compliance requirements. It uses AI to evaluate documents against predefined criteria, making it useful for any industry that needs to validate documents against policies or regulations.
 
-**Example Use Cases:**
-- Healthcare: Prior authorization validation, medical coding compliance (NCCI rules)
-- Financial Services: Loan application validation, compliance checking
-- Legal: Contract clause verification, regulatory compliance
-- Insurance: Claims validation, policy compliance
+**Common Uses:**
+- Healthcare: Checking prior authorizations, validating medical coding rules
+- Financial Services: Verifying loan applications, checking compliance
+- Legal: Reviewing contract clauses, ensuring regulatory compliance
+- Insurance: Validating claims, checking policy compliance
 - Manufacturing: Quality control checks, specification compliance
 
-The included healthcare examples demonstrate the feature's capabilities, but the framework is fully customizable for any industry or use case.
+The healthcare examples we provide show what's possible, but you can customize this for any industry.
+
+## Getting Started
+
+### How to Enable Rule Validation
+
+Rule Validation is available in **Pattern 2**. You can enable it in two ways:
+
+**Option 1: During Stack Deployment**
+- When deploying the CloudFormation stack, select Pattern 2
+- In the configuration dropdown, select **rule-validation**
+- The stack deploys with rule validation enabled
+
+**Option 2: Import After Deployment**
+- Open the IDP-ACC Web UI
+- Navigate to Configuration → Import
+- Select **rule-validation** from the Config Library
+- Toggle on Rule Validation
+
+### Two-Step Process for Any Industry
+
+Rule validation works for any industry using this two-step process:
+
+#### Step 1: Extract Rules from Your Policy Documents (Optional)
+
+**What you need:**
+- A policy document containing your rules (PDF format)
+  - Examples: compliance manuals, regulatory guidelines, coding policies, underwriting rules
+
+**How to do it:**
+1. **Enable Rule Extraction**
+   - Option A: Deploy stack with Pattern 2, select **rule-extraction** configuration
+   - Option B: Import **rule-extraction** from Config Library in the UI
+
+2. **Upload Your Policy Document**
+   - Click "Upload Document" in the Web UI
+   - Select your policy document
+   - System automatically extracts structured rules
+
+3. **Review and Export Rules**
+   - View extracted rule types and individual rules
+   - Review for accuracy
+   - Copy the rules you want to use for validation
+
+**Skip this step if:** You already have your rules in a structured format.
+
+#### Step 2: Validate Your Documents Against Rules
+
+**What you need:**
+- Rules to validate against (from Step 1 or your own structured rules)
+- Documents to validate (PDF format)
+  - Examples: applications, claims, authorization requests, contracts
+
+**How to do it:**
+1. **Enable Rule Validation**
+   - Option A: Deploy stack with Pattern 2, select **rule-validation** configuration
+   - Option B: Import **rule-validation** from Config Library in the UI
+
+2. **Configure Document Schema**
+   - Go to Configuration → **Document Schema** tab
+   - Define your document sections (e.g., Applicant Info, Financial Data, Supporting Docs)
+   - Specify what attributes to extract from each section
+   - These extracted attributes provide context to the AI for better validation
+
+3. **Configure Rule Schema**
+   - Go to Configuration → **Rule Schema** tab
+   - Paste the rules from Step 1 (or your own rules)
+   - Organize into rule types
+   - Add detailed descriptions for each rule
+
+4. **Upload and Process Documents**
+   - Upload documents to validate
+   - System automatically processes and validates against your rules
+   - View results showing Pass/Fail for each rule with detailed reasoning
+
+**Coming Soon**: We're working on combining both steps into a single unified application.
+
+### Quick Start with Healthcare Example
+
+Want to see it in action first? We provide a complete healthcare example with sample documents and pre-configured rules. See the [Healthcare Example](#healthcare-prior-authorization-example) section below for step-by-step instructions using:
+- **Sample prior authorization document**: `samples/rule-validation/respiratory_pa_packet.pdf`
+  - Synthetic multi-page respiratory therapy prior authorization request
+  - Contains multiple sections: patient information, clinical information, evidence documents, operative logs, and claims data
+- **Sample NCCI policy manual**: `samples/rule-validation/NCCI Medicare Policy Manual.pdf`
+  - Source: [CMS NCCI Policy Manual Chapter 5 (2024)](https://www.cms.gov/files/document/medicare-ncci-policy-manual-2024-chapter-5.pdf)
+  - Contains medical coding rules and guidelines
+- Pre-configured rule extraction and validation configs
 
 ## Key Features
 
@@ -443,15 +529,34 @@ For detailed API documentation, see the [Rule Validation Module README](../lib/i
 
 ## Examples
 
-### Healthcare Compliance Example
+### Healthcare Prior Authorization Example
 
-The solution includes a complete healthcare prior authorization example demonstrating the feature's capabilities. See the configuration at:
-`config_library/pattern-2/rule-validation/config.yaml`
+We provide a complete healthcare example demonstrating prior authorization validation against NCCI medical coding rules.
+
+**Sample Documents:**
+- **Prior Authorization Document**: `samples/rule-validation/respiratory_pa_packet.pdf`
+  - Synthetic multi-page respiratory therapy prior authorization request
+  - Contains multiple sections:
+    - Patient Information (demographics, insurance details)
+    - Clinical Information (diagnoses, medical history)
+    - Evidence Documents (supporting clinical documentation)
+    - Operative Logs (procedure details, CPT codes)
+    - Claims Data (billing information, service dates)
+  
+- **NCCI Policy Manual**: `samples/rule-validation/NCCI Medicare Policy Manual.pdf`
+  - National Correct Coding Initiative policy reference
+  - Source: [CMS NCCI Policy Manual Chapter 5 (2024)](https://www.cms.gov/files/document/medicare-ncci-policy-manual-2024-chapter-5.pdf)
+  - Contains medical coding rules, bundling guidelines, and compliance requirements
+
+**Configuration Files:**
+- **Step 1 - Rule Extraction**: `config_library/pattern-2/rule-extraction/config.yaml`
+- **Step 2 - Rule Validation**: `config_library/pattern-2/rule-validation/config.yaml`
 
 This example includes:
 - NCCI coding rules
 - Global period validation
 - Same-day service rules
+- Bundling and component service rules
 - Prior authorization document classes
 
 **Note**: This is a reference implementation. You can replace these rules with your own domain-specific requirements.
