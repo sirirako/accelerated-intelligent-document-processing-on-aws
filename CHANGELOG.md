@@ -16,6 +16,10 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Evaluation Failure for Schemas with Empty Nested Objects** - Fixed evaluation failing with "field_definitions must contain at least one field" error when document schemas contain nested objects with empty properties (e.g., `AccidentInformation: {type: object, properties: {}}`). Empty object properties are now automatically filtered during schema processing.
+
+- **Evaluation Report Section Ordering** - Fixed document sections in evaluation markdown reports iterating in alphabetical order (1, 10, 11, 2, 3) instead of numerical order (1, 2, 3, 10, 11) by implementing natural sorting for section IDs
+
 - **Confidence Alerts Mismatch for JSON Schema `$ref` Properties**
   - Fixed issue where confidence alerts in UI showed incorrect counts (all with confidence=0) that didn't match the actual extraction confidence scores in explainability_info JSON
   - **Root Cause**: Properties using JSON Schema `$ref` references were being incorrectly classified as "simple" types instead of "group" (object) types, causing false positive alerts
