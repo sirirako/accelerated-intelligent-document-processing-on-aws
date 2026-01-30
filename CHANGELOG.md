@@ -14,7 +14,19 @@ SPDX-License-Identifier: MIT-0
   - **Real-time Updates**: Both new mutations now trigger `onUpdateDocument` subscription for UI synchronization
   - **Pattern-2/3 Integration**: Extraction and assessment functions now use section-level updates instead of full document rewrites
 
+- **Visual Document Editor Enhancements**
+  - **Improved Navigation Controls**: Mouse wheel zoom (no modifier key required) and click-and-drag panning for intuitive document image exploration
+  - **Inline Field Editing with S3 Save**: Edit prediction values directly in the visual editor with change tracking, edit history, and direct S3 persistence
+  - **Evaluation Baseline Editing**: Edit baseline (expected) values directly in the editor when evaluation data is available, with dedicated save/discard controls and independent change tracking from predictions
+  - **Save & Reprocess Workflow**: After saving edits to predictions or baselines, trigger reprocessing to re-run summarization and evaluation with updated data; document automatically transitions through SUMMARIZING → EVALUATING → COMPLETE statuses
+  - **Tabbed Interface**: New tabs for Visual Editor (form-based), JSON Editor (raw JSON with section filtering), and Revision History (audit trail with timestamps and field-level diffs)
+  - **Smart Filtering**: Filter to show only low-confidence fields or evaluation mismatches; collapsible tree navigation with Expand/Collapse All controls
+  - **Evaluation Comparison Mode**: Side-by-side predicted vs expected values with match indicators (✓/⚠), evaluation scores, and LLM-generated comparison reasons
+  - **Section Navigation**: Previous/Next buttons to navigate between document sections without closing the editor
+
 ### Fixed
+
+- **Visual Editor Confidence Alerts Filter Not Showing Null Fields** - Fixed issue where the "Confidence Alerts Only" filter in the Document Details visual editor was not displaying fields with `null` values, even when they had low confidence scores in `explainability_info`. The filter now properly detects and shows all low-confidence fields regardless of their value type.
 
 - **Evaluation Failure for Schemas with Empty Nested Objects** - Fixed evaluation failing with "field_definitions must contain at least one field" error when document schemas contain nested objects with empty properties (e.g., `AccidentInformation: {type: object, properties: {}}`). Empty object properties are now automatically filtered during schema processing.
 
@@ -26,19 +38,6 @@ SPDX-License-Identifier: MIT-0
 
 - **Configuration Import Float Type Error for DynamoDB**
   - Fixed "Float types are not supported. Use Decimal types instead" error when importing configuration files via CLI (`idp-cli config-upload`) or Web UI
-
-
-### Added
-
-- **Visual Document Editor Enhancements**
-  - **Improved Navigation Controls**: Mouse wheel zoom (no modifier key required) and click-and-drag panning for intuitive document image exploration
-  - **Inline Field Editing with S3 Save**: Edit prediction values directly in the visual editor with change tracking, edit history, and direct S3 persistence
-  - **Evaluation Baseline Editing**: Edit baseline (expected) values directly in the editor when evaluation data is available, with dedicated save/discard controls and independent change tracking from predictions
-  - **Save & Reprocess Workflow**: After saving edits to predictions or baselines, trigger reprocessing to re-run summarization and evaluation with updated data; document automatically transitions through SUMMARIZING → EVALUATING → COMPLETE statuses
-  - **Tabbed Interface**: New tabs for Visual Editor (form-based), JSON Editor (raw JSON with section filtering), and Revision History (audit trail with timestamps and field-level diffs)
-  - **Smart Filtering**: Filter to show only low-confidence fields or evaluation mismatches; collapsible tree navigation with Expand/Collapse All controls
-  - **Evaluation Comparison Mode**: Side-by-side predicted vs expected values with match indicators (✓/⚠), evaluation scores, and LLM-generated comparison reasons
-  - **Section Navigation**: Previous/Next buttons to navigate between document sections without closing the editor
 
 
 ## [0.4.12]

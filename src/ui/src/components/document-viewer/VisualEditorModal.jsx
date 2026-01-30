@@ -201,6 +201,15 @@ const FormFieldRenderer = memo(
     
     // Helper to check if a value has confidence alerts (recursively)
     const hasConfidenceAlertInTree = (val, currentFilteredPath, explainInfo, config) => {
+      // Handle null/undefined values - they can still have low confidence in explainability_info
+      if (val === null || val === undefined) {
+        const fieldInfo = getFieldConfidenceInfo(fieldKey, explainInfo, currentFilteredPath, config);
+        if (fieldInfo.hasConfidenceInfo && fieldInfo.displayMode === 'with-threshold' && !fieldInfo.isAboveThreshold) {
+          return true;
+        }
+        return false;
+      }
+      
       // For primitives, check if this field has low confidence
       if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
         const fieldInfo = getFieldConfidenceInfo(fieldKey, explainInfo, currentFilteredPath, config);
@@ -230,6 +239,15 @@ const FormFieldRenderer = memo(
     
     // Deep helper that takes fieldKey as parameter
     const hasConfidenceAlertInTreeDeep = (val, fKey, currentFilteredPath, explainInfo, config) => {
+      // Handle null/undefined values - they can still have low confidence in explainability_info
+      if (val === null || val === undefined) {
+        const fieldInfo = getFieldConfidenceInfo(fKey, explainInfo, currentFilteredPath.slice(0, -1), config);
+        if (fieldInfo.hasConfidenceInfo && fieldInfo.displayMode === 'with-threshold' && !fieldInfo.isAboveThreshold) {
+          return true;
+        }
+        return false;
+      }
+      
       if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
         const fieldInfo = getFieldConfidenceInfo(fKey, explainInfo, currentFilteredPath.slice(0, -1), config);
         if (fieldInfo.hasConfidenceInfo && fieldInfo.displayMode === 'with-threshold' && !fieldInfo.isAboveThreshold) {
