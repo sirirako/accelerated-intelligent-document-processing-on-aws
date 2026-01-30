@@ -157,6 +157,9 @@ const ConfigurationLayout = () => {
   // Helper function to check if Pattern-1 is selected
   const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
 
+  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
+  const isPattern2 = settings?.IDPPattern?.includes('Pattern2');
+
   // Initialize form values from merged config
   useEffect(() => {
     if (mergedConfig) {
@@ -1703,6 +1706,7 @@ const ConfigurationLayout = () => {
                   extractionSchema={extractionSchema}
                   activeTabId={configBuilderActiveTab}
                   onTabChange={setConfigBuilderActiveTab}
+                  showRuleSchema={isPattern2}
                   onSchemaChange={(schemaData, isDirty) => {
                     setExtractionSchema(schemaData);
                     if (isDirty) {
