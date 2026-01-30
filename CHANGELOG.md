@@ -35,6 +35,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Visual Editor Confidence Alerts Filter Not Showing Null Fields** - Fixed issue where the "Confidence Alerts Only" filter in the Document Details visual editor was not displaying fields with `null` values, even when they had low confidence scores in `explainability_info`. The filter now properly detects and shows all low-confidence fields regardless of their value type.
+
 - **Evaluation Failure for Schemas with Empty Nested Objects** - Fixed evaluation failing with "field_definitions must contain at least one field" error when document schemas contain nested objects with empty properties (e.g., `AccidentInformation: {type: object, properties: {}}`). Empty object properties are now automatically filtered during schema processing.
 
 - **Evaluation Report Section Ordering** - Fixed document sections in evaluation markdown reports iterating in alphabetical order (1, 10, 11, 2, 3) instead of numerical order (1, 2, 3, 10, 11) by implementing natural sorting for section IDs
