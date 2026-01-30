@@ -734,24 +734,73 @@ class PricingConfig(BaseModel):
         return self.model_dump(mode="python")
 
 
-class CriteriaValidationConfig(BaseModel):
-    """Criteria validation configuration"""
+class FactExtractionConfig(BaseModel):
+    """Fact extraction configuration for rule validation"""
 
     model: str = Field(
         default="us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-        description="Bedrock model ID for criteria validation",
+        description="Bedrock model ID for fact extraction",
     )
-    system_prompt: str = Field(default="", description="System prompt")
-    task_prompt: str = Field(default="", description="Task prompt")
+    system_prompt: str = Field(default="", description="System prompt for fact extraction")
+    task_prompt: str = Field(default="", description="Task prompt for fact extraction")
     temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     top_p: float = Field(default=0.01, ge=0.0, le=1.0)
     top_k: float = Field(default=20.0, ge=0.0)
     max_tokens: int = Field(default=4096, gt=0)
+
+    @field_validator("temperature", "top_p", "top_k", mode="before")
+    @classmethod
+    def parse_float(cls, v: Any) -> float:
+        if isinstance(v, str):
+            return float(v) if v else 0.0
+        return float(v)
+
+    @field_validator("max_tokens", mode="before")
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
+class RuleValidationOrchestratorConfig(BaseModel):
+    """Rule validation summarization configuration"""
+
+    model: str = Field(
+        default="us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+        description="Bedrock model ID for rule validation summarization",
+    )
+    system_prompt: str = Field(default="", description="System prompt for summarization")
+    task_prompt: str = Field(default="", description="Task prompt for summarization")
+    temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    top_p: float = Field(default=0.01, ge=0.0, le=1.0)
+    top_k: float = Field(default=20.0, ge=0.0)
+    max_tokens: int = Field(default=4096, gt=0)
+
+    @field_validator("temperature", "top_p", "top_k", mode="before")
+    @classmethod
+    def parse_float(cls, v: Any) -> float:
+        if isinstance(v, str):
+            return float(v) if v else 0.0
+        return float(v)
+
+    @field_validator("max_tokens", mode="before")
+    @classmethod
+    def parse_int(cls, v: Any) -> int:
+        if isinstance(v, str):
+            return int(v) if v else 0
+        return int(v)
+
+
+class RuleValidationConfig(BaseModel):
+    """Rule validation configuration"""
+
+    enabled: bool = Field(default=True, description="Enable rule validation")
     semaphore: int = Field(
-        default=3, gt=0, description="Number of concurrent API calls"
+        default=5, gt=0, description="Number of concurrent API calls"
     )
     max_chunk_size: int = Field(
-        default=180000, gt=0, description="Maximum tokens per chunk"
+        default=8000, gt=0, description="Maximum tokens per chunk"
     )
     token_size: int = Field(default=4, gt=0, description="Average characters per token")
     overlap_percentage: int = Field(
@@ -760,17 +809,20 @@ class CriteriaValidationConfig(BaseModel):
     response_prefix: str = Field(
         default="<response>", description="Response prefix marker"
     )
-
-    @field_validator("temperature", "top_p", "top_k", mode="before")
-    @classmethod
-    def parse_float(cls, v: Any) -> float:
-        """Parse float from string or number"""
-        if isinstance(v, str):
-            return float(v) if v else 0.0
-        return float(v)
+    recommendation_options: Optional[str] = Field(
+        default=None, description="Available recommendation options"
+    )
+    extraction_results: Optional[Dict[str, Any]] = Field(
+        default=None, description="Extraction results to include in rule validation prompts"
+    )
+    fact_extraction: Optional[FactExtractionConfig] = Field(
+        default=None, description="Configuration for fact extraction step"
+    )
+    rule_validation_orchestrator: Optional[RuleValidationOrchestratorConfig] = Field(
+        default=None, description="Configuration for rule validation summarization"
+    )
 
     @field_validator(
-        "max_tokens",
         "semaphore",
         "max_chunk_size",
         "token_size",
@@ -976,15 +1028,20 @@ class IDPConfig(BaseModel):
         ),
         description="Summarization configuration",
     )
-    criteria_validation: CriteriaValidationConfig = Field(
-        default_factory=CriteriaValidationConfig,
-        description="Criteria validation configuration",
+    rule_validation: RuleValidationConfig = Field(
+        default_factory=lambda: RuleValidationConfig(
+            model="us.anthropic.claude-3-5-sonnet-20240620-v1:0"
+        ),
+        description="Rule validation configuration",
     )
     agents: AgentsConfig = Field(
         default_factory=AgentsConfig, description="Agents configuration"
     )
     classes: List[Dict[str, Any]] = Field(
         default_factory=list, description="Document class definitions (JSON Schema)"
+    )
+    rule_classes: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Rule class definitions for rule validation (JSON Schema)"
     )
     discovery: DiscoveryConfig = Field(
         default_factory=DiscoveryConfig, description="Discovery configuration"
@@ -996,6 +1053,14 @@ class IDPConfig(BaseModel):
     # Pricing configuration (optional - loaded separately but can be merged for convenience)
     pricing: Optional[List[PricingEntry]] = Field(
         default=None, description="Pricing entries (optional - usually loaded from PricingConfig)"
+    )
+
+    # Rule validation specific fields (used in pattern-2/rule-validation)
+    summary: Optional[Dict[str, Any]] = Field(
+        default=None, description="Summary configuration for rule validation"
+    )
+    rule_types: Optional[List[str]] = Field(
+        default=None, description="List of rule types for validation"
     )
 
 
@@ -1184,6 +1249,18 @@ class ConfigurationRecord(BaseModel):
                 )
                 config_data["classes"] = migrate_legacy_to_schema(
                     config_data["classes"]
+                )
+
+        # Auto-migrate legacy format for rule_classes if needed
+        if config_data.get("rule_classes"):
+            from .migration import is_legacy_format, migrate_legacy_to_schema
+
+            if is_legacy_format(config_data["rule_classes"]):
+                logger.info(
+                    f"Migrating {config_type} rule_classes to JSON Schema format"
+                )
+                config_data["rule_classes"] = migrate_legacy_to_schema(
+                    config_data["rule_classes"]
                 )
 
         # Remove legacy pricing field (now stored separately as DefaultPricing/CustomPricing)

@@ -40,7 +40,6 @@ SPDX-License-Identifier: MIT-0
   - **Evaluation Comparison Mode**: Side-by-side predicted vs expected values with match indicators (✓/⚠), evaluation scores, and LLM-generated comparison reasons
   - **Section Navigation**: Previous/Next buttons to navigate between document sections without closing the editor
 
-
 ## [0.4.12]
 
 ### Added

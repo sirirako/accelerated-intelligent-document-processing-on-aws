@@ -620,6 +620,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         objectKey={localItem.objectKey}
         evaluationReportUri={localItem.evaluationReportUri}
         summaryReportUri={localItem.summaryReportUri}
+        ruleValidationResultUri={localItem.ruleValidationResultUri}
       />
       <SectionsPanel
         sections={localItem.sections}

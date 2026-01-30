@@ -198,6 +198,15 @@ class DocumentAppSyncService:
         if document.summary_report_uri:
             input_data["SummaryReportUri"] = document.summary_report_uri
 
+        # Add rule validation result URI if available
+        if (
+            document.rule_validation_result
+            and document.rule_validation_result.output_uri
+        ):
+            input_data["RuleValidationResultUri"] = (
+                document.rule_validation_result.output_uri
+            )
+
         # Add HITL fields if available from hitl_metadata
         if document.hitl_metadata:
             # Get the most recent HITL metadata entry
@@ -239,6 +248,15 @@ class DocumentAppSyncService:
             summary_report_uri=appsync_data.get("SummaryReportUri"),
             trace_id=appsync_data.get("TraceId"),
         )
+
+        # Handle rule validation result URI if present
+        rule_validation_uri = appsync_data.get("RuleValidationResultUri")
+        if rule_validation_uri:
+            from idp_common.models import RuleValidationResult
+
+            doc.rule_validation_result = RuleValidationResult(
+                request_id=doc.id or "", output_uri=rule_validation_uri
+            )
 
         # Handle HITL fields - create HITL metadata if HITL fields are present
         hitl_status = appsync_data.get("HITLStatus")

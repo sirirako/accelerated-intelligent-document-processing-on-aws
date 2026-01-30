@@ -1016,3 +1016,5 @@ classes:
       description: Employee schedules
       items:
         $ref: '#/$defs/Employee'
+rule_validation:
+  enabled: false
