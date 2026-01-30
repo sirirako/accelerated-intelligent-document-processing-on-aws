@@ -87,3 +87,5 @@ classes:
         x-aws-idp-evaluation-method: FUZZY
     required:
       - Account Number
+rule_validation:
+  enabled: false

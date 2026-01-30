@@ -22,6 +22,7 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   EvaluationReportUri: String
   EvaluationStatus: String
   SummaryReportUri: String
+  RuleValidationResultUri: String
   ExpiresAfter: AWSTimestamp
   HITLStatus: String
   HITLReviewURL: String
@@ -210,6 +211,7 @@ input UpdateDocumentInput {
   EvaluationReportUri: String
   EvaluationStatus: String
   SummaryReportUri: String
+  RuleValidationResultUri: String
   HITLStatus: String
   HITLReviewURL: String
   HITLTriggered: Boolean
