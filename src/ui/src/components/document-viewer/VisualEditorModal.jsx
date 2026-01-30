@@ -724,12 +724,40 @@ const FormFieldRenderer = memo(
             }}
             role="button"
             tabIndex={0}
-            style={{ cursor: geometry ? 'pointer' : 'default' }}
+            style={{ 
+              cursor: geometry ? 'pointer' : 'default',
+              backgroundColor: hasMismatch && !hasLocalEdit ? 'rgba(255, 153, 0, 0.05)' : 'transparent',
+              padding: '4px',
+              borderRadius: '4px',
+              borderLeft: hasMismatch && !hasLocalEdit ? '3px solid #ff9900' : '3px solid transparent',
+            }}
           >
             <FormField
               label={
                 <Box>
-                  {fieldKey}:
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <span>{fieldKey}:</span>
+                    {isPredictionChanged && (
+                      <Box color="text-status-info" fontSize="body-s" fontWeight="bold">
+                        ✏️ Edited
+                      </Box>
+                    )}
+                    {isBaselineChanged && !isPredictionChanged && (
+                      <Box color="text-status-warning" fontSize="body-s" fontWeight="bold">
+                        ✏️ Baseline Edited
+                      </Box>
+                    )}
+                    {hasMismatch && !hasLocalEdit && (
+                      <Box color="text-status-warning" fontSize="body-s" fontWeight="bold">
+                        ⚠ Mismatch
+                      </Box>
+                    )}
+                    {!hasMismatch && !hasLocalEdit && showComparison && baselineValue !== null && (
+                      <Box color="text-status-success" fontSize="body-s">
+                        ✓ Match
+                      </Box>
+                    )}
+                  </SpaceBetween>
                   {confidenceInfo.hasConfidenceInfo && (
                     <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
                       {confidenceInfo.displayMode === 'with-threshold'
@@ -739,36 +767,106 @@ const FormFieldRenderer = memo(
                         : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
                     </Box>
                   )}
+                  {showComparison && evalScore !== undefined && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={hasMismatch ? 'text-status-warning' : 'text-status-success'}>
+                      {`Eval Score: ${(evalScore * 100).toFixed(1)}%`}
+                      {evalReason && ` - ${evalReason}`}
+                    </Box>
+                  )}
                 </Box>
               }
             >
-              {isReadOnly ? (
-                <div 
-                  style={{ 
-                    backgroundColor: '#e9ebed',
-                    border: '1px solid #d5dbdb',
-                    borderRadius: '4px',
-                    minHeight: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    color: '#16191f',
-                    padding: '4px 8px',
-                    fontSize: '14px',
-                  }}
-                >
-                  {String(value)}
-                </div>
-              ) : (
-                <Input
-                  type="number"
-                  value={String(value)}
-                  onChange={({ detail }) => {
-                    const numValue = Number(detail.value);
-                    onChange(Number.isNaN(numValue) ? 0 : numValue);
-                  }}
-                  onFocus={handleFocus}
-                />
-              )}
+              <SpaceBetween size="xxs">
+                <Box onClick={handleClick} style={{ cursor: 'pointer' }}>
+                  <SpaceBetween direction="horizontal" size="xxs">
+                    <Box fontSize="body-s" color="text-body-secondary">Predicted:</Box>
+                    {isPredictionChanged && (
+                      <Box fontSize="body-s" color="text-status-info" fontWeight="bold">✏️</Box>
+                    )}
+                  </SpaceBetween>
+                  <div style={{ 
+                    pointerEvents: isReadOnly ? 'none' : 'auto',
+                    borderLeft: isPredictionChanged ? '3px solid #0073bb' : '3px solid transparent',
+                    paddingLeft: '4px',
+                    backgroundColor: isPredictionChanged ? 'rgba(0, 115, 187, 0.08)' : 'transparent',
+                    borderRadius: '2px',
+                  }}>
+                    {isReadOnly ? (
+                      <div 
+                        style={{ 
+                          backgroundColor: '#e9ebed',
+                          border: '1px solid #d5dbdb',
+                          borderRadius: '4px',
+                          minHeight: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#16191f',
+                          padding: '4px 8px',
+                          fontSize: '14px',
+                        }}
+                      >
+                        {String(value)}
+                      </div>
+                    ) : (
+                      <Input
+                        type="number"
+                        value={String(value)}
+                        onChange={({ detail }) => {
+                          const numValue = Number(detail.value);
+                          onChange(Number.isNaN(numValue) ? 0 : numValue);
+                        }}
+                        onFocus={handleFocus}
+                      />
+                    )}
+                  </div>
+                </Box>
+                {showComparison && baselineValue !== null && (
+                  <Box onClick={handleClick} style={{ cursor: 'pointer' }}>
+                    <SpaceBetween direction="horizontal" size="xxs">
+                      <Box fontSize="body-s" color="text-body-secondary">Expected (baseline):</Box>
+                      {isBaselineChanged && (
+                        <Box fontSize="body-s" color="text-status-warning" fontWeight="bold">✏️</Box>
+                      )}
+                    </SpaceBetween>
+                    <div style={{ 
+                      pointerEvents: isReadOnly ? 'none' : 'auto',
+                      borderLeft: isBaselineChanged ? '3px solid #ff9900' : '3px solid transparent',
+                      paddingLeft: '4px',
+                      backgroundColor: isBaselineChanged ? 'rgba(255, 153, 0, 0.08)' : 'transparent',
+                      borderRadius: '2px',
+                    }}>
+                      {isReadOnly ? (
+                        <div 
+                          style={{ 
+                            backgroundColor: '#e9ebed',
+                            border: '1px solid #d5dbdb',
+                            borderRadius: '4px',
+                            minHeight: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#16191f',
+                            padding: '4px 8px',
+                            fontSize: '14px',
+                          }}
+                        >
+                          {String(baselineValue ?? '')}
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          value={String(baselineValue ?? '')}
+                          onChange={({ detail }) => {
+                            if (onBaselineChange) {
+                              const numValue = Number(detail.value);
+                              onBaselineChange(Number.isNaN(numValue) ? 0 : numValue);
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
+                  </Box>
+                )}
+              </SpaceBetween>
             </FormField>
           </div>
         );
@@ -786,12 +884,40 @@ const FormFieldRenderer = memo(
             }}
             role="button"
             tabIndex={0}
-            style={{ cursor: geometry ? 'pointer' : 'default' }}
+            style={{ 
+              cursor: geometry ? 'pointer' : 'default',
+              backgroundColor: hasMismatch && !hasLocalEdit ? 'rgba(255, 153, 0, 0.05)' : 'transparent',
+              padding: '4px',
+              borderRadius: '4px',
+              borderLeft: hasMismatch && !hasLocalEdit ? '3px solid #ff9900' : '3px solid transparent',
+            }}
           >
             <FormField
               label={
                 <Box>
-                  {fieldKey}:
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <span>{fieldKey}:</span>
+                    {isPredictionChanged && (
+                      <Box color="text-status-info" fontSize="body-s" fontWeight="bold">
+                        ✏️ Edited
+                      </Box>
+                    )}
+                    {isBaselineChanged && !isPredictionChanged && (
+                      <Box color="text-status-warning" fontSize="body-s" fontWeight="bold">
+                        ✏️ Baseline Edited
+                      </Box>
+                    )}
+                    {hasMismatch && !hasLocalEdit && (
+                      <Box color="text-status-warning" fontSize="body-s" fontWeight="bold">
+                        ⚠ Mismatch
+                      </Box>
+                    )}
+                    {!hasMismatch && !hasLocalEdit && showComparison && baselineValue !== null && (
+                      <Box color="text-status-success" fontSize="body-s">
+                        ✓ Match
+                      </Box>
+                    )}
+                  </SpaceBetween>
                   {confidenceInfo.hasConfidenceInfo && (
                     <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
                       {confidenceInfo.displayMode === 'with-threshold'
@@ -801,34 +927,104 @@ const FormFieldRenderer = memo(
                         : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
                     </Box>
                   )}
+                  {showComparison && evalScore !== undefined && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={hasMismatch ? 'text-status-warning' : 'text-status-success'}>
+                      {`Eval Score: ${(evalScore * 100).toFixed(1)}%`}
+                      {evalReason && ` - ${evalReason}`}
+                    </Box>
+                  )}
                 </Box>
               }
             >
-              {isReadOnly ? (
-                <div 
-                  style={{ 
-                    backgroundColor: '#e9ebed',
-                    border: '1px solid #d5dbdb',
-                    borderRadius: '4px',
-                    minHeight: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    color: '#16191f',
-                    padding: '4px 8px',
-                    fontSize: '14px',
-                  }}
-                >
-                  {String(value)}
-                </div>
-              ) : (
-                <Checkbox
-                  checked={Boolean(value)}
-                  onChange={({ detail }) => onChange(detail.checked)}
-                  onFocus={handleFocus}
-                >
-                  {String(value)}
-                </Checkbox>
-              )}
+              <SpaceBetween size="xxs">
+                <Box onClick={handleClick} style={{ cursor: 'pointer' }}>
+                  <SpaceBetween direction="horizontal" size="xxs">
+                    <Box fontSize="body-s" color="text-body-secondary">Predicted:</Box>
+                    {isPredictionChanged && (
+                      <Box fontSize="body-s" color="text-status-info" fontWeight="bold">✏️</Box>
+                    )}
+                  </SpaceBetween>
+                  <div style={{ 
+                    pointerEvents: isReadOnly ? 'none' : 'auto',
+                    borderLeft: isPredictionChanged ? '3px solid #0073bb' : '3px solid transparent',
+                    paddingLeft: '4px',
+                    backgroundColor: isPredictionChanged ? 'rgba(0, 115, 187, 0.08)' : 'transparent',
+                    borderRadius: '2px',
+                  }}>
+                    {isReadOnly ? (
+                      <div 
+                        style={{ 
+                          backgroundColor: '#e9ebed',
+                          border: '1px solid #d5dbdb',
+                          borderRadius: '4px',
+                          minHeight: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#16191f',
+                          padding: '4px 8px',
+                          fontSize: '14px',
+                        }}
+                      >
+                        {String(value)}
+                      </div>
+                    ) : (
+                      <Checkbox
+                        checked={Boolean(value)}
+                        onChange={({ detail }) => onChange(detail.checked)}
+                        onFocus={handleFocus}
+                      >
+                        {String(value)}
+                      </Checkbox>
+                    )}
+                  </div>
+                </Box>
+                {showComparison && baselineValue !== null && (
+                  <Box onClick={handleClick} style={{ cursor: 'pointer' }}>
+                    <SpaceBetween direction="horizontal" size="xxs">
+                      <Box fontSize="body-s" color="text-body-secondary">Expected (baseline):</Box>
+                      {isBaselineChanged && (
+                        <Box fontSize="body-s" color="text-status-warning" fontWeight="bold">✏️</Box>
+                      )}
+                    </SpaceBetween>
+                    <div style={{ 
+                      pointerEvents: isReadOnly ? 'none' : 'auto',
+                      borderLeft: isBaselineChanged ? '3px solid #ff9900' : '3px solid transparent',
+                      paddingLeft: '4px',
+                      backgroundColor: isBaselineChanged ? 'rgba(255, 153, 0, 0.08)' : 'transparent',
+                      borderRadius: '2px',
+                    }}>
+                      {isReadOnly ? (
+                        <div 
+                          style={{ 
+                            backgroundColor: '#e9ebed',
+                            border: '1px solid #d5dbdb',
+                            borderRadius: '4px',
+                            minHeight: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#16191f',
+                            padding: '4px 8px',
+                            fontSize: '14px',
+                          }}
+                        >
+                          {String(baselineValue ?? '')}
+                        </div>
+                      ) : (
+                        <Checkbox
+                          checked={Boolean(baselineValue)}
+                          onChange={({ detail }) => {
+                            if (onBaselineChange) {
+                              onBaselineChange(detail.checked);
+                            }
+                          }}
+                        >
+                          {String(baselineValue ?? '')}
+                        </Checkbox>
+                      )}
+                    </div>
+                  </Box>
+                )}
+              </SpaceBetween>
             </FormField>
           </div>
         );
@@ -1014,6 +1210,114 @@ const FormFieldRenderer = memo(
               </Box>
             )}
           </Box>
+        );
+
+      case 'null':
+        // Handle null values - support both simple display and comparison mode
+        return (
+          <div
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={(e) => e.key === 'Enter' && handleClick(e)}
+            role="button"
+            tabIndex={0}
+            style={{ 
+              cursor: geometry ? 'pointer' : 'default',
+              backgroundColor: showComparison && baselineValue !== null ? 'rgba(255, 153, 0, 0.05)' : 'transparent',
+              padding: '4px',
+              borderRadius: '4px',
+              borderLeft: showComparison && baselineValue !== null ? '3px solid #ff9900' : '3px solid transparent',
+            }}
+          >
+            <FormField
+              label={
+                <Box>
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <span>{fieldKey}:</span>
+                    {showComparison && baselineValue !== null && (
+                      <Box color="text-status-warning" fontSize="body-s" fontWeight="bold">
+                        ⚠ Mismatch
+                      </Box>
+                    )}
+                    {showComparison && baselineValue === null && (
+                      <Box color="text-status-success" fontSize="body-s">
+                        ✓ Match
+                      </Box>
+                    )}
+                  </SpaceBetween>
+                  {confidenceInfo.hasConfidenceInfo && (
+                    <Box fontSize="body-s" padding={{ top: 'xxxs' }} color={confidenceColor} style={confidenceStyle}>
+                      {confidenceInfo.displayMode === 'with-threshold'
+                        ? `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}% / Threshold: ${(
+                            confidenceInfo.confidenceThreshold * 100
+                          ).toFixed(1)}%`
+                        : `Confidence: ${(confidenceInfo.confidence * 100).toFixed(1)}%`}
+                    </Box>
+                  )}
+                </Box>
+              }
+            >
+              {showComparison ? (
+                <SpaceBetween size="xxs">
+                  <Box onClick={handleClick} style={{ cursor: 'pointer' }}>
+                    <Box fontSize="body-s" color="text-body-secondary">Predicted:</Box>
+                    <div 
+                      style={{ 
+                        backgroundColor: '#e9ebed',
+                        border: '1px solid #d5dbdb',
+                        borderRadius: '4px',
+                        minHeight: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontStyle: 'italic',
+                        color: '#545b64',
+                        padding: '4px 8px',
+                        fontSize: '14px',
+                      }}
+                    >
+                      null
+                    </div>
+                  </Box>
+                  <Box onClick={handleClick} style={{ cursor: 'pointer' }}>
+                    <Box fontSize="body-s" color="text-body-secondary">Expected (baseline):</Box>
+                    <div 
+                      style={{ 
+                        backgroundColor: '#e9ebed',
+                        border: '1px solid #d5dbdb',
+                        borderRadius: '4px',
+                        minHeight: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontStyle: baselineValue === null ? 'italic' : 'normal',
+                        color: baselineValue === null ? '#545b64' : '#16191f',
+                        padding: '4px 8px',
+                        fontSize: '14px',
+                      }}
+                    >
+                      {baselineValue === null ? 'null' : String(baselineValue)}
+                    </div>
+                  </Box>
+                </SpaceBetween>
+              ) : (
+                <div 
+                  style={{ 
+                    backgroundColor: '#e9ebed',
+                    border: '1px solid #d5dbdb',
+                    borderRadius: '4px',
+                    minHeight: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontStyle: 'italic',
+                    color: '#545b64',
+                    padding: '4px 8px',
+                    fontSize: '14px',
+                  }}
+                >
+                  null
+                </div>
+              )}
+            </FormField>
+          </div>
         );
 
       case 'array': {
