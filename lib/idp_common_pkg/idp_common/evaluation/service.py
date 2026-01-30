@@ -1411,16 +1411,37 @@ class EvaluationService:
             return section_result
 
         except ValueError as ve:
-            # Schema configuration missing - this is a configuration issue
+            # Schema configuration error - determine specific cause for better messaging
+            error_message = str(ve)
             logger.error(
-                f"Configuration error for section {section.section_id}: {str(ve)}",
+                f"Configuration error for section {section.section_id}: {error_message}",
                 exc_info=True,
             )
-            failure_reason = (
-                f"No schema configuration found for document class: {class_name}. "
-                f"Cannot evaluate without configuration or baseline data. "
-                f"Please add configuration for this document class or provide baseline data."
-            )
+
+            # Check for specific known error patterns
+            if "field_definitions must contain at least one field" in error_message:
+                # This happens when a nested object has empty properties: {}
+                # Extract the field name from the error message if possible
+                import re
+
+                field_match = re.search(r"Error in field '([^']+)'", error_message)
+                field_name = field_match.group(1) if field_match else "unknown"
+
+                failure_reason = (
+                    f"Schema error for document class '{class_name}': "
+                    f"Nested object '{field_name}' has no properties defined. "
+                    f"Stickler requires at least one field in nested objects. "
+                    f"Either add properties to '{field_name}' in your schema or remove it entirely."
+                )
+            elif "No schema configuration found" in error_message:
+                failure_reason = (
+                    f"No schema configuration found for document class: {class_name}. "
+                    f"Cannot evaluate without configuration or baseline data. "
+                    f"Please add configuration for this document class or provide baseline data."
+                )
+            else:
+                # Generic schema/configuration error
+                failure_reason = f"Schema configuration error for document class '{class_name}': {error_message}"
 
             return SectionEvaluationResult(
                 section_id=section.section_id,
@@ -1734,7 +1755,17 @@ class EvaluationService:
                         )
 
             # Sort section results by section_id for consistent output
-            section_results.sort(key=lambda x: x.section_id)
+            # Use natural sorting to handle numeric section IDs correctly (1, 2, 10 vs 1, 10, 2)
+            def natural_sort_key(x):
+                """Extract numeric parts for natural sorting."""
+                import re
+
+                # Split section_id into text and numeric parts
+                parts = re.split(r"(\d+)", x.section_id)
+                # Convert numeric parts to integers for proper numerical sorting
+                return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+            section_results.sort(key=natural_sort_key)
 
             # Calculate overall metrics
             overall_metrics = calculate_metrics(
