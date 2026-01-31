@@ -94,6 +94,7 @@ const ConfigurationLayout = () => {
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
   const [extractionSchema, setExtractionSchema] = useState(null);
+  const [ruleSchema, setRuleSchema] = useState(null);
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [pendingImportConfig, setPendingImportConfig] = useState(null);
 
@@ -156,6 +157,9 @@ const ConfigurationLayout = () => {
   // Helper function to check if Pattern-1 is selected
   const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
 
+  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
+  const isPattern2 = settings?.IDPPattern?.includes('Pattern2');
+
   // Initialize form values from merged config
   useEffect(() => {
     if (mergedConfig) {
@@ -168,6 +172,11 @@ const ConfigurationLayout = () => {
       // Initialize extraction schema from config (stored in classes field)
       if (mergedConfig.classes) {
         setExtractionSchema(mergedConfig.classes);
+      }
+
+      // Initialize rule schema from config (stored in rule_classes field)
+      if (mergedConfig.rule_classes) {
+        setRuleSchema(mergedConfig.rule_classes);
       }
 
       // Set both JSON and YAML content
@@ -292,11 +301,11 @@ const ConfigurationLayout = () => {
           // Skip validation if value is undefined (already handled by required check)
           if (value === undefined) return;
 
-          // Skip deep validation for classes field - it has its own complex JSON Schema structure
-          // Just check it's an array if present
-          if (key === 'classes') {
+          // Skip deep validation for classes and rule_classes fields - they have their own complex JSON Schema structure
+          // Just check they're arrays if present
+          if (key === 'classes' || key === 'rule_classes') {
             if (!Array.isArray(value)) {
-              errors.push({ message: `Field 'classes' must be an array` });
+              errors.push({ message: `Field '${key}' must be an array` });
             }
             return;
           }
@@ -895,6 +904,20 @@ const ConfigurationLayout = () => {
           }
         }
 
+        // CRITICAL: Always include the current rule schema (rule_classes) if it exists OR is explicitly empty
+        // This ensures empty arrays are saved (to wipe all rule classes) and prevents schema loss
+        if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
+          builtObject.rule_classes = formValues.rule_classes;
+          console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
+        }
+
+        // CRITICAL: Always include the current rule schema (rule_classes) if it exists OR is explicitly empty
+        // This ensures empty arrays are saved (to wipe all rule classes) and prevents schema loss
+        if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
+          builtObject.rule_classes = formValues.rule_classes;
+          console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
+        }
+
         // CRITICAL: If there are no differences AND no schema changes, don't send update to backend
         // This prevents unnecessary API calls and potential data issues
         if (Object.keys(builtObject).length === 0) {
@@ -1097,6 +1120,9 @@ const ConfigurationLayout = () => {
             try {
               const success = await updateConfiguration({ ...importedConfig, replaceCustom: true });
               if (success) {
+                if (importedConfig.rule_classes) {
+                  setRuleSchema(importedConfig.rule_classes);
+                }
                 await fetchConfiguration();
                 setSaveSuccess(true);
               } else {
@@ -1680,6 +1706,7 @@ const ConfigurationLayout = () => {
                   extractionSchema={extractionSchema}
                   activeTabId={configBuilderActiveTab}
                   onTabChange={setConfigBuilderActiveTab}
+                  showRuleSchema={isPattern2}
                   onSchemaChange={(schemaData, isDirty) => {
                     setExtractionSchema(schemaData);
                     if (isDirty) {
@@ -1703,7 +1730,35 @@ const ConfigurationLayout = () => {
                   }}
                   onSchemaValidate={(valid, errors) => {
                     if (!valid) {
-                      setValidationErrors(errors.map((e) => ({ message: `Schema: ${e.path} - ${e.message}` })));
+                      setValidationErrors(errors.map((e) => ({ message: `Document Schema: ${e.path} - ${e.message}` })));
+                    } else {
+                      setValidationErrors([]);
+                    }
+                  }}
+                  ruleSchema={ruleSchema}
+                  onRuleSchemaChange={(schemaData, isDirty) => {
+                    setRuleSchema(schemaData);
+                    if (isDirty) {
+                      const updatedConfig = { ...formValues };
+                      // CRITICAL: Always set rule_classes, even if empty array
+                      if (schemaData === null) {
+                        updatedConfig.rule_classes = [];
+                      } else if (Array.isArray(schemaData)) {
+                        // Store as 'rule_classes' field with JSON Schema content
+                        updatedConfig.rule_classes = schemaData;
+                      }
+                      setFormValues(updatedConfig);
+                      setJsonContent(JSON.stringify(updatedConfig, null, 2));
+                      try {
+                        setYamlContent(yaml.dump(updatedConfig));
+                      } catch (e) {
+                        console.error('Error converting to YAML:', e);
+                      }
+                    }
+                  }}
+                  onRuleSchemaValidate={(valid, errors) => {
+                    if (!valid) {
+                      setValidationErrors(errors.map((e) => ({ message: `Rule Schema: ${e.path} - ${e.message}` })));
                     } else {
                       setValidationErrors([]);
                     }

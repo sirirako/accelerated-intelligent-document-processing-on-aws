@@ -5,6 +5,56 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.4.13]
+
+### Added
+
+- **Rule Validation for Automated Compliance Assessment**
+  - Added Rule Validation module enabling automated validation of extracted document data against configurable business rules and compliance criteria
+  - **Key Capabilities**: Validate documents against any domain-specific compliance requirements (healthcare, financial, legal, insurance, manufacturing), customizable pass/fail criteria adaptable to industry needs, concurrent processing with intelligent chunking for large documents
+  - **Dual Output Formats**: JSON for programmatic integration and Markdown for human review
+  - **Integration**: Integrated into Pattern-2 workflow with AWS Step Functions parallel processing
+  - **Example Use Cases**: Healthcare prior authorization validation, loan application compliance checking, contract clause verification, claims validation, quality control
+  - **Configuration**: Fully configurable via `rule_validation` settings including custom recommendation options, model selection, and processing limits
+  - **Documentation**: Complete guide in `docs/rule-validation.md` 
+
+- **Visual Document Editor Enhancements**
+  - **Improved Navigation Controls**: Mouse wheel zoom (no modifier key required) and click-and-drag panning for intuitive document image exploration
+  - **Inline Field Editing with S3 Save**: Edit prediction values directly in the visual editor with change tracking, edit history, and direct S3 persistence
+  - **Evaluation Baseline Editing**: Edit baseline (expected) values directly in the editor when evaluation data is available, with dedicated save/discard controls and independent change tracking from predictions
+  - **Save & Reprocess Workflow**: After saving edits to predictions or baselines, trigger reprocessing to re-run summarization and evaluation with updated data; document automatically transitions through SUMMARIZING → EVALUATING → COMPLETE statuses
+  - **Tabbed Interface**: New tabs for Visual Editor (form-based), JSON Editor (raw JSON with section filtering), and Revision History (audit trail with timestamps and field-level diffs)
+  - **Smart Filtering**: Filter to show only low-confidence fields or evaluation mismatches; collapsible tree navigation with Expand/Collapse All controls
+  - **Evaluation Comparison Mode**: Side-by-side predicted vs expected values with match indicators (✓/⚠), evaluation scores, and LLM-generated comparison reasons
+  - **Section Navigation**: Previous/Next buttons to navigate between document sections without closing the editor
+
+- **Section-Level DynamoDB Updates for Parallel Processing Optimization**
+  - Added lightweight `updateDocumentStatus` mutation for status-only updates (~500 bytes vs ~100KB full document)
+  - Added atomic `updateDocumentSection` mutation for individual section updates using `SET Sections[index] = :value`
+  - **Scalability**: Eliminates DynamoDB throttling for very large documents by avoiding full-document read-modify-write cycles
+  - **Real-time Updates**: Both new mutations now trigger `onUpdateDocument` subscription for UI synchronization
+  - **Pattern-2/3 Integration**: Extraction and assessment functions now use section-level updates instead of full document rewrites
+
+
+### Fixed
+
+- **Visual Editor Confidence Alerts Filter Not Showing Null Fields** - Fixed issue where the "Confidence Alerts Only" filter in the Document Details visual editor was not displaying fields with `null` values, even when they had low confidence scores in `explainability_info`. The filter now properly detects and shows all low-confidence fields regardless of their value type.
+
+- **Evaluation Failure for Schemas with Empty Nested Objects** - Fixed evaluation failing with "field_definitions must contain at least one field" error when document schemas contain nested objects with empty properties (e.g., `AccidentInformation: {type: object, properties: {}}`). Empty object properties are now automatically filtered during schema processing.
+
+- **Evaluation Report Section Ordering** - Fixed document sections in evaluation markdown reports iterating in alphabetical order (1, 10, 11, 2, 3) instead of numerical order (1, 2, 3, 10, 11) by implementing natural sorting for section IDs
+
+- **Confidence Alerts Mismatch for JSON Schema `$ref` Properties**
+  - Fixed issue where confidence alerts in UI showed incorrect counts (all with confidence=0) that didn't match the actual extraction confidence scores in explainability_info JSON
+  - **Root Cause**: Properties using JSON Schema `$ref` references were being incorrectly classified as "simple" types instead of "group" (object) types, causing false positive alerts
+
+- **Configuration Import Float Type Error for DynamoDB**
+  - Fixed "Float types are not supported. Use Decimal types instead" error when importing configuration files via CLI (`idp-cli config-upload`) or Web UI
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.13.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.13.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.13.yaml`
 
 ## [0.4.12]
 
