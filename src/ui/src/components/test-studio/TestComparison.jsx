@@ -14,15 +14,19 @@ import {
   Select,
   CollectionPreferences,
   ExpandableSection,
+  Link,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 import COMPARE_TEST_RUNS from '../../graphql/queries/compareTestRuns';
 import TestStudioHeader from './TestStudioHeader';
 import useLocalStorage from '../common/local-storage';
+import useConfigurationVersions from '../../hooks/use-configuration-versions';
+import { formatConfigVersionLink, formatConfigVersionText } from './utils/configVersionUtils';
 
 const client = generateClient();
 
 const TestComparison = ({ preSelectedTestRunIds = [] }) => {
+  const { versions } = useConfigurationVersions();
   const [comparisonData, setComparisonData] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [currentAttempt, setCurrentAttempt] = useState(1);
@@ -257,7 +261,7 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
     const performanceRows = [
       ['Test Set', ...Object.values(completeTestRuns).map((run) => run.testSetName || 'N/A')],
       ['Context', ...Object.values(completeTestRuns).map((run) => run.context || 'N/A')],
-      ['Config Version', ...Object.values(completeTestRuns).map((run) => run.configVersion || 'N/A')],
+      ['Config Version', ...Object.values(completeTestRuns).map((run) => formatConfigVersionText(run.configVersion, versions))],
       ['Files Processed', ...Object.values(completeTestRuns).map((run) => run.filesCount || 'N/A')],
       ['Files Completed', ...Object.values(completeTestRuns).map((run) => run.completedFiles || 'N/A')],
       ['Files Failed', ...Object.values(completeTestRuns).map((run) => run.failedFiles || 'N/A')],
@@ -706,7 +710,10 @@ const TestComparison = ({ preSelectedTestRunIds = [] }) => {
                 {
                   metric: 'Config Version',
                   ...Object.fromEntries(
-                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [testRunId, testRun.configVersion || 'N/A']),
+                    Object.entries(completeTestRuns).map(([testRunId, testRun]) => [
+                      testRunId,
+                      formatConfigVersionLink(testRun.configVersion, versions),
+                    ]),
                   ),
                 },
                 {

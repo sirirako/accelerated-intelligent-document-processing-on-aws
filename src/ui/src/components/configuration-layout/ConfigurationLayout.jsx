@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { useLocation } from 'react-router-dom';
 import {
   Container,
   Header,
@@ -260,6 +261,9 @@ const ConfigurationLayout = () => {
     deleteVersion,
   } = useConfigurationVersions();
 
+  // URL parameter handling
+  const location = useLocation();
+
   // Version selection state
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [selectedVersionData, setSelectedVersionData] = useState(null);
@@ -284,7 +288,8 @@ const ConfigurationLayout = () => {
   const [viewMode, setViewMode] = useState('form');
   const [showResetModal, setShowResetModal] = useState(false);
   const [showSaveAsNewModal, setShowSaveAsNewModal] = useState(false);
-  const [showSaveAsNewConfirmationModal, setShowSaveAsNewConfirmationModal] = useState(false);
+  const [showVersionConfirmationModal, setShowVersionConfirmationModal] = useState(false);
+  const [confirmationModalType, setConfirmationModalType] = useState(''); // 'save' or 'import'
   const [newlyCreatedVersionId, setNewlyCreatedVersionId] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
@@ -292,6 +297,8 @@ const ConfigurationLayout = () => {
   const [activatedVersionId, setActivatedVersionId] = useState('');
   const [versionToActivate, setVersionToActivate] = useState('');
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false);
+  const [deletedVersionsDisplay, setDeletedVersionsDisplay] = useState('');
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState('configuration');
   const [importError, setImportError] = useState(null);
@@ -300,6 +307,8 @@ const ConfigurationLayout = () => {
 
   // Configuration Library state
   const [showImportSourceModal, setShowImportSourceModal] = useState(false);
+  const [showImportAsNewVersionModal, setShowImportAsNewVersionModal] = useState(false);
+  const [importedConfigForNewVersion, setImportedConfigForNewVersion] = useState(null);
   const [showLibraryBrowserModal, setShowLibraryBrowserModal] = useState(false);
   const [showReadmeModal, setShowReadmeModal] = useState(false);
   const [libraryConfigs, setLibraryConfigs] = useState([]);
@@ -311,13 +320,134 @@ const ConfigurationLayout = () => {
   const { listConfigurations, getFile } = useConfigurationLibrary();
   const { settings } = useSettingsContext();
 
-  // Check if current version has unsaved changes
+  // BDA/IDP Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
+  const [syncError, setSyncError] = useState(null);
+
+  // Helper function to check if Pattern-1 is selected
+  const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
+
+  // Validate the current content based on view mode
+  const validateCurrentContent = () => {
+    try {
+      if (viewMode === 'json') {
+        JSON.parse(jsonContent);
+        return [];
+      }
+      if (viewMode === 'yaml') {
+        yaml.load(yamlContent);
+        return [];
+      }
+      return [];
+    } catch (e) {
+      return [{ message: `Invalid ${viewMode.toUpperCase()}: ${e.message}` }];
+    }
+  };
+
+  // Format JSON in editor
+  const formatJson = () => {
+    if (editorRef.current && viewMode === 'json') {
+      editorRef.current.getAction('editor.action.formatDocument').run();
+    }
+  };
+
+  // Format YAML in editor
+  const formatYaml = () => {
+    if (editorRef.current && viewMode === 'yaml') {
+      editorRef.current.getAction('editor.action.formatDocument').run();
+    }
+  };
+
+  // Handle form value changes and sync with editors
+  const handleFormChange = (newValues) => {
+    setFormValues(newValues);
+    try {
+      const jsonString = JSON.stringify(newValues, null, 2);
+      setJsonContent(jsonString);
+      const yamlString = yaml.dump(newValues);
+      setYamlContent(yamlString);
+    } catch (e) {
+      console.error('Error converting form values:', e);
+    }
+  };
+
+  // Create merged config (similar to develop branch)
+  const mergedConfig = useMemo(() => {
+    if (!selectedVersionData) return null;
+
+    if (selectedVersion === 'v0' || !defaultVersionData) {
+      // For v0 or when v0 isn't loaded, use the selected version directly
+      return selectedVersionData.configuration;
+    } else {
+      // Merge v0 (defaults) with selected version (overrides)
+      return {
+        ...defaultVersionData.configuration,
+        ...selectedVersionData.configuration,
+      };
+    }
+  }, [selectedVersionData, defaultVersionData, selectedVersion]);
+
+  // Check if current version has unsaved changes (same as develop branch)
   const hasUnsavedChanges = useMemo(() => {
-    if (!selectedVersionData || !formValues || Object.keys(formValues).length === 0) {
+    if (!mergedConfig || !formValues || Object.keys(formValues).length === 0) {
       return false;
     }
-    return JSON.stringify(formValues) !== JSON.stringify(selectedVersionData.configuration);
-  }, [formValues, selectedVersionData]);
+    // Deep comparison using JSON serialization
+    return JSON.stringify(formValues) !== JSON.stringify(mergedConfig);
+  }, [formValues, mergedConfig]);
+
+  // Handler for BDA/IDP sync
+  const handleSyncBdaIdp = async () => {
+    setIsSyncing(true);
+    setSyncSuccess(false);
+    setSyncSuccessMessage('');
+    setSyncError(null);
+
+    try {
+      logger.debug('Starting BDA/IDP sync...');
+
+      const result = await client.graphql({
+        query: syncBdaIdpMutation,
+      });
+
+      logger.debug('Sync API response:', result);
+
+      const response = result.data.syncBdaIdp;
+
+      if (response.success) {
+        setSyncSuccess(true);
+        setSyncSuccessMessage(response.message || 'Document classes have been synchronized with BDA blueprints.');
+
+        // If there are partial failures, also show the error details
+        if (response.error && response.error.type === 'PARTIAL_SYNC_ERROR') {
+          setTimeout(() => {
+            setSyncError(response.error.message);
+          }, 100);
+        }
+
+        // Refresh current version to show any new classes
+        if (selectedVersion) {
+          await handleVersionSelect(selectedVersion);
+        }
+        setTimeout(() => {
+          setSyncSuccess(false);
+          setSyncSuccessMessage('');
+        }, 5000);
+        logger.debug('BDA/IDP sync completed successfully');
+      } else {
+        const errorMsg = response.error?.message || response.message || 'Sync operation failed';
+        setSyncError(errorMsg);
+        logger.error('Sync failed:', errorMsg);
+      }
+    } catch (err) {
+      logger.error('Sync error:', err);
+      setSyncError(`Sync failed: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Handle version selection
   const handleVersionSelect = async (versionId) => {
@@ -379,7 +509,11 @@ const ConfigurationLayout = () => {
         console.log('State set - formValues:', config);
 
         if (config.classes) {
+          console.log('Setting extractionSchema with classes:', config.classes);
           setExtractionSchema(config.classes);
+        } else {
+          console.log('No classes found in config, setting extractionSchema to empty array');
+          setExtractionSchema([]);
         }
 
         // Update editor content
@@ -405,6 +539,28 @@ const ConfigurationLayout = () => {
     }
   };
 
+  // Handle URL parameters to auto-select version
+  useEffect(() => {
+    // Handle hash-based routing - extract search params from hash
+    const hash = window.location.hash;
+    const searchParamsMatch = hash.match(/\?(.+)$/);
+
+    if (searchParamsMatch) {
+      const searchParams = new URLSearchParams(searchParamsMatch[1]);
+      const versionParam = searchParams.get('version');
+
+      if (versionParam && versions.length > 0) {
+        // Check if the version exists in the versions list
+        const versionExists = versions.find((v) => v.versionId === versionParam);
+        if (versionExists) {
+          console.log('Auto-selecting version from URL:', versionParam);
+          // Auto-select the version from URL parameter
+          handleVersionSelect(versionParam);
+        }
+      }
+    }
+  }, [versions]);
+
   // Handle back to versions list (now just clears selection)
   const handleBackToVersions = () => {
     setSelectedVersion(null);
@@ -412,6 +568,7 @@ const ConfigurationLayout = () => {
     setFormValues({});
     setJsonContent('');
     setYamlContent('');
+    setExtractionSchema(null);
     setSaveError(null);
     setSaveSuccess(false);
   };
@@ -430,7 +587,10 @@ const ConfigurationLayout = () => {
       setShowActivateModal(false);
       // Show success confirmation dialog
       setShowActivateConfirmationModal(true);
-      setActivatedVersionId(versionToActivate);
+      // Find version description and format display
+      const versionData = versions.find((v) => v.versionId === versionToActivate);
+      const versionDisplay = versionData?.description ? `${versionToActivate} (${versionData.description})` : versionToActivate;
+      setActivatedVersionId(versionDisplay);
       await fetchVersions();
       // Clear selection after activation
       setSelectedVersionsForCompare([]);
@@ -438,6 +598,69 @@ const ConfigurationLayout = () => {
       console.error('Activate error:', error);
       setSaveError(`Failed to activate version: ${error.message}`);
       setShowActivateModal(false);
+    }
+  };
+
+  // Handle import as new version
+  const handleImportAsNewVersion = () => {
+    setShowImportAsNewVersionModal(true);
+  };
+
+  // Handle file import for new version
+  const handleImportFileForNewVersion = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target.result;
+        let config;
+
+        if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
+          config = yaml.load(content);
+        } else {
+          config = JSON.parse(content);
+        }
+
+        setImportedConfigForNewVersion(config);
+      } catch (error) {
+        setSaveError(`Failed to parse ${file.name}: ${error.message}`);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // Reset file input
+  };
+
+  // Handle creating new version from imported config
+  const handleCreateVersionFromImport = async () => {
+    if (!importedConfigForNewVersion) {
+      setSaveError('Please import a configuration file');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const description = newVersionDescription.trim() || 'New imported version';
+      const result = await saveAsNewVersion(importedConfigForNewVersion, description);
+      setShowImportAsNewVersionModal(false);
+      setImportedConfigForNewVersion(null);
+      setNewVersionDescription('');
+      setSaveSuccess(true);
+      // Show confirmation dialog
+      setShowVersionConfirmationModal(true);
+      setConfirmationModalType('import');
+      // Store the new version ID and description for the confirmation dialog
+      setNewlyCreatedVersionId(`${result?.versionId || 'Unknown'} (${description})`);
+      // Refresh versions list
+      await fetchVersions();
+    } catch (error) {
+      console.error('Create version error:', error);
+      setSaveError(error.message || 'Failed to create version from imported configuration');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -450,10 +673,15 @@ const ConfigurationLayout = () => {
   // Confirm delete versions
   const confirmDeleteVersions = async () => {
     try {
+      // Format deleted versions with descriptions for display
+      const deletedVersionsWithDesc = versionsToDelete.map((versionId) => {
+        const versionData = versions.find((v) => v.versionId === versionId);
+        return versionData?.description ? `${versionId} (${versionData.description})` : versionId;
+      });
+
       for (const versionId of versionsToDelete) {
         await deleteVersion(versionId);
       }
-      setSaveSuccess(true);
       await fetchVersions();
 
       // Clear selection after deletion
@@ -467,6 +695,10 @@ const ConfigurationLayout = () => {
         setJsonContent('');
         setYamlContent('');
       }
+
+      // Show success confirmation
+      setDeletedVersionsDisplay(deletedVersionsWithDesc.join(', '));
+      setShowDeleteSuccessModal(true);
     } catch (error) {
       console.error('Delete error:', error);
       setSaveError(`Failed to delete versions: ${error.message}`);
@@ -495,6 +727,14 @@ const ConfigurationLayout = () => {
 
   // Handle save current version
   const handleSave = async () => {
+    // Validate content before saving
+    const currentErrors = validateCurrentContent();
+    if (currentErrors.length > 0) {
+      setValidationErrors(currentErrors);
+      setSaveError('Cannot save: Configuration contains validation errors');
+      return;
+    }
+
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
@@ -522,9 +762,10 @@ const ConfigurationLayout = () => {
       setShowSaveAsNewModal(false);
       setNewVersionDescription('');
       // Show confirmation dialog
-      setShowSaveAsNewConfirmationModal(true);
-      // Store the new version ID for the confirmation dialog
-      setNewlyCreatedVersionId(result?.versionId || 'Unknown');
+      setShowVersionConfirmationModal(true);
+      setConfirmationModalType('save');
+      // Store the new version ID and description for the confirmation dialog
+      setNewlyCreatedVersionId(`${result?.versionId || 'Unknown'} (${newVersionDescription || `New version based on ${selectedVersion}`})`);
       // Refresh versions list
       await fetchVersions();
     } catch (error) {
@@ -546,7 +787,10 @@ const ConfigurationLayout = () => {
       setShowActivateModal(false);
       // Show confirmation dialog
       setShowActivateConfirmationModal(true);
-      setActivatedVersionId(selectedVersion);
+      // Find version description and format display
+      const versionData = versions.find((v) => v.versionId === selectedVersion);
+      const versionDisplay = versionData?.description ? `${selectedVersion} (${versionData.description})` : selectedVersion;
+      setActivatedVersionId(versionDisplay);
       // Refresh versions list to update active status
       await fetchVersions();
       // Update version data to reflect active status
@@ -784,6 +1028,7 @@ const ConfigurationLayout = () => {
             onCompareVersions={handleCompareVersions}
             onActivateVersion={handleBulkActivateVersion}
             onDeleteVersions={handleBulkDeleteVersions}
+            onImportAsNewVersion={handleImportAsNewVersion}
           />
         </Container>
 
@@ -814,10 +1059,49 @@ const ConfigurationLayout = () => {
                         { id: 'yaml', text: 'YAML View' },
                       ]}
                     />
-                    <Button onClick={() => setShowExportModal(true)}>Export</Button>
+                    {viewMode === 'json' && (
+                      <Button onClick={formatJson} iconName="file">
+                        Format JSON
+                      </Button>
+                    )}
+                    {viewMode === 'yaml' && (
+                      <Button onClick={formatYaml} iconName="file">
+                        Format YAML
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => {
+                        // Set default filename based on selected version
+                        if (selectedVersionData) {
+                          const versionId = selectedVersionData.versionId || selectedVersion;
+                          // Get description from versions array, not selectedVersionData
+                          const versionFromList = versions.find((v) => v.versionId === versionId);
+                          const description = versionFromList?.description;
+                          let filename = description ? `${versionId}_${description}` : versionId;
+                          // Sanitize filename: remove/replace special characters and spaces, clean up multiple underscores
+                          filename = filename
+                            .replace(/[^a-zA-Z0-9._]/g, '_') // Replace special chars with underscore
+                            .replace(/_+/g, '_') // Replace multiple underscores with single
+                            .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+                          setExportFileName(filename);
+                          // Small delay to ensure state updates before modal opens
+                          setTimeout(() => setShowExportModal(true), 10);
+                        } else {
+                          setExportFileName('configuration');
+                          setTimeout(() => setShowExportModal(true), 10);
+                        }
+                      }}
+                    >
+                      Export
+                    </Button>
                     <Button onClick={handleImportClick}>Import</Button>
                     <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
                     <Button onClick={() => window.location.reload()}>Refresh</Button>
+                    {isPattern1 && (
+                      <Button onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
+                        Sync BDA/IDP
+                      </Button>
+                    )}
                     <Button onClick={() => setShowResetModal(true)} disabled={selectedVersion === 'v0'}>
                       Restore default (All)
                     </Button>
@@ -833,7 +1117,11 @@ const ConfigurationLayout = () => {
                   </SpaceBetween>
                 }
               >
-                Configuration Version ({selectedVersion})
+                Configuration Version (
+                {(() => {
+                  const versionFromList = versions.find((v) => v.versionId === selectedVersion);
+                  return versionFromList?.description ? `${selectedVersion}) - ${versionFromList.description}` : `${selectedVersion})`;
+                })()}
               </Header>
             }
           >
@@ -844,9 +1132,62 @@ const ConfigurationLayout = () => {
                   Configuration saved successfully!
                 </Alert>
               )}
+              {syncSuccess && (
+                <Alert
+                  type="success"
+                  dismissible
+                  onDismiss={() => {
+                    setSyncSuccess(false);
+                    setSyncSuccessMessage('');
+                  }}
+                  header="BDA/IDP sync completed successfully"
+                >
+                  {syncSuccessMessage}
+                </Alert>
+              )}
               {saveError && (
                 <Alert type="error" dismissible onDismiss={() => setSaveError(null)}>
                   {saveError}
+                </Alert>
+              )}
+              {validationErrors.length > 0 && (
+                <Alert type="error" dismissible onDismiss={() => setValidationErrors([])}>
+                  <SpaceBetween size="s">
+                    <div>Configuration validation errors:</div>
+                    <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                      {validationErrors.map((error, index) => (
+                        <li
+                          key={`validation-error-${error.message.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`}
+                          style={{ marginBottom: '4px' }}
+                        >
+                          {error.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </SpaceBetween>
+                </Alert>
+              )}
+              {syncError && (
+                <Alert type="error" dismissible onDismiss={() => setSyncError(null)} header="BDA/IDP sync error">
+                  <SpaceBetween size="s">
+                    {syncError.includes('Failed to sync classes:') ? (
+                      <div>
+                        <div>The following document classes failed to synchronize:</div>
+                        <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                          {syncError
+                            .replace('Failed to sync classes: ', '')
+                            .split(', ')
+                            .map((classError) => (
+                              <li key={`sync-error-${classError.replace(/[^a-zA-Z0-9]/g, '-')}`} style={{ marginBottom: '4px' }}>
+                                {classError}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div>{syncError}</div>
+                    )}
+                  </SpaceBetween>
                 </Alert>
               )}
 
@@ -862,13 +1203,12 @@ const ConfigurationLayout = () => {
                     ),
                   }}
                   formValues={formValues}
-                  onChange={setFormValues}
+                  onChange={handleFormChange}
                   extractionSchema={extractionSchema}
                   isCustomized={isCustomized}
                   onResetToDefault={handleFieldResetToDefault}
                   onSchemaChange={(schemaData, isDirty) => {
                     setExtractionSchema(schemaData);
-                    setHasUnsavedChanges(isDirty);
                   }}
                 />
               )}
@@ -1089,21 +1429,27 @@ const ConfigurationLayout = () => {
         <SpaceBetween size="m">
           <Box>Are you sure you want to delete the following configuration version{versionsToDelete.length > 1 ? 's' : ''}?</Box>
           <Box>
-            <strong>Versions to delete:</strong> {versionsToDelete.join(', ')}
+            <strong>Versions to delete:</strong>{' '}
+            {versionsToDelete
+              .map((versionId) => {
+                const versionData = versions.find((v) => v.versionId === versionId);
+                return versionData?.description ? `${versionId} (${versionData.description})` : versionId;
+              })
+              .join(', ')}
           </Box>
           <Alert type="warning">This action cannot be undone. The configuration versions will be permanently deleted.</Alert>
         </SpaceBetween>
       </Modal>
 
-      {/* Save as New Version Confirmation Modal */}
+      {/* Version Creation Confirmation Modal */}
       <Modal
-        visible={showSaveAsNewConfirmationModal}
-        onDismiss={() => setShowSaveAsNewConfirmationModal(false)}
+        visible={showVersionConfirmationModal}
+        onDismiss={() => setShowVersionConfirmationModal(false)}
         size="medium"
-        header="Version Created Successfully"
+        header={confirmationModalType === 'import' ? 'Version Imported Successfully' : 'Version Created Successfully'}
         footer={
           <Box float="right">
-            <Button variant="primary" onClick={() => setShowSaveAsNewConfirmationModal(false)}>
+            <Button variant="primary" onClick={() => setShowVersionConfirmationModal(false)}>
               OK
             </Button>
           </Box>
@@ -1112,13 +1458,20 @@ const ConfigurationLayout = () => {
         <SpaceBetween size="m">
           <Alert type="success">
             <Box>
-              <Icon name="status-positive" /> New configuration version has been created successfully!
+              <Icon name="status-positive" />{' '}
+              {confirmationModalType === 'import'
+                ? 'Configuration version has been imported and created successfully!'
+                : 'New configuration version has been created successfully!'}
             </Box>
           </Alert>
           <Box>
             <strong>Version ID:</strong> {newlyCreatedVersionId}
           </Box>
-          <Box>The new version is now available in the configuration versions table above.</Box>
+          <Box>
+            {confirmationModalType === 'import'
+              ? 'The imported configuration is now available in the configuration versions table above.'
+              : 'The new version is now available in the configuration versions table above.'}
+          </Box>
         </SpaceBetween>
       </Modal>
 
@@ -1141,7 +1494,14 @@ const ConfigurationLayout = () => {
       >
         <SpaceBetween size="m">
           <Box>
-            Are you sure you want to activate version <strong>{versionToActivate}</strong>?
+            Are you sure you want to activate version{' '}
+            <strong>
+              {(() => {
+                const versionData = versions.find((v) => v.versionId === versionToActivate);
+                return versionData?.description ? `${versionToActivate} (${versionData.description})` : versionToActivate;
+              })()}
+            </strong>
+            ?
           </Box>
           <Alert type="info">This version will become the active configuration used for all new document processing.</Alert>
         </SpaceBetween>
@@ -1171,6 +1531,89 @@ const ConfigurationLayout = () => {
             <strong>Active Version:</strong> {activatedVersionId}
           </Box>
           <Box>This version is now being used for all new document processing.</Box>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Import as New Version Modal */}
+      <Modal
+        visible={showImportAsNewVersionModal}
+        onDismiss={() => {
+          setShowImportAsNewVersionModal(false);
+          setImportedConfigForNewVersion(null);
+          setNewVersionDescription('');
+        }}
+        header="Import Configuration as New Version"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowImportAsNewVersionModal(false);
+                  setImportedConfigForNewVersion(null);
+                  setNewVersionDescription('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleCreateVersionFromImport} loading={isSaving} disabled={!importedConfigForNewVersion}>
+                Create Version
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <FormField label="Import Configuration File" description="Select a JSON or YAML configuration file">
+            <Button onClick={() => document.getElementById('import-new-version-file').click()}>Choose File</Button>
+            <input
+              id="import-new-version-file"
+              type="file"
+              accept=".json,.yaml,.yml"
+              style={{ display: 'none' }}
+              onChange={handleImportFileForNewVersion}
+            />
+            {importedConfigForNewVersion && (
+              <Box margin={{ top: 's' }}>
+                <Alert type="success">Configuration file imported successfully!</Alert>
+              </Box>
+            )}
+          </FormField>
+
+          <FormField label="Version Description (Optional)" description="Provide a description for this new configuration version">
+            <Input
+              value={newVersionDescription}
+              onChange={({ detail }) => setNewVersionDescription(detail.value)}
+              placeholder="New imported version"
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Delete Success Modal */}
+      <Modal
+        visible={showDeleteSuccessModal}
+        onDismiss={() => setShowDeleteSuccessModal(false)}
+        size="medium"
+        header="Versions Deleted Successfully"
+        footer={
+          <Box float="right">
+            <Button variant="primary" onClick={() => setShowDeleteSuccessModal(false)}>
+              OK
+            </Button>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          <Alert type="success">
+            <Box>
+              <Icon name="status-positive" /> Configuration versions have been deleted successfully!
+            </Box>
+          </Alert>
+          <Box>
+            <strong>Deleted Versions:</strong> {deletedVersionsDisplay}
+          </Box>
+          <Box>The versions have been permanently removed from the system.</Box>
         </SpaceBetween>
       </Modal>
     </>
