@@ -22,15 +22,18 @@ import {
   CollectionPreferences,
   ExpandableSection,
   RadioGroup,
+  Link,
 } from '@cloudscape-design/components';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUN from '../../graphql/queries/getTestResults';
 import START_TEST_RUN from '../../graphql/queries/startTestRun';
+import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import GET_TEST_SETS from '../../graphql/queries/getTestSets';
 import TestStudioHeader from './TestStudioHeader';
 import useAppContext from '../../contexts/app';
+import { formatConfigVersionLink } from './utils/configVersionUtils';
 
 const client = generateClient();
 
@@ -344,6 +347,7 @@ TestResultsPreferences.propTypes = {
 
 const TestResults = ({ testRunId, setSelectedTestRunId }) => {
   const { addTestRun } = useAppContext();
+  const { versions } = useConfigurationVersions();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -880,7 +884,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }) => {
           {results.configVersion && (
             <Box>
               <Box variant="awsui-key-label">Config Version</Box>
-              <Box fontSize="heading-l">{results.configVersion}</Box>
+              <Box fontSize="heading-l">{formatConfigVersionLink(results.configVersion, versions)}</Box>
             </Box>
           )}
         </ColumnLayout>

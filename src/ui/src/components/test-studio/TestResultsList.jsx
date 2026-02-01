@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilter, Flashbar } from '@cloudscape-design/components';
+import { Table, Button, SpaceBetween, ButtonDropdown, Pagination, Box, TextFilter, Flashbar, Link } from '@cloudscape-design/components';
 import { useCollection } from '@cloudscape-design/collection-hooks';
 import { generateClient } from 'aws-amplify/api';
 import GET_TEST_RUNS from '../../graphql/queries/getTestRuns';
@@ -11,6 +11,8 @@ import DeleteTestModal from './DeleteTestModal';
 import { paginationLabels } from '../common/labels';
 import TestRunnerStatus from './TestRunnerStatus';
 import { TableHeader } from '../common/table';
+import useConfigurationVersions from '../../hooks/use-configuration-versions';
+import { formatConfigVersionLink } from './utils/configVersionUtils';
 
 const client = generateClient();
 
@@ -79,6 +81,7 @@ TextCell.propTypes = {
 const TIME_PERIOD_STORAGE_KEY = 'testResultsTimePeriodHours';
 
 const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, setSelectedItems, activeTestRuns = [], onTestComplete }) => {
+  const { versions } = useConfigurationVersions();
   const [testRuns, setTestRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -318,18 +321,18 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
             width: 150,
           },
           {
-            id: 'context',
-            header: 'Context',
-            cell: getContextCell,
-            sortingField: 'context',
-            width: 300,
+            id: 'filesCount',
+            header: 'Files Count',
+            cell: (item) => item.filesCount,
+            sortingField: 'filesCount',
+            width: 100,
           },
           {
             id: 'configVersion',
             header: 'Config Version',
-            cell: (item) => item.configVersion || 'N/A',
+            cell: (item) => formatConfigVersionLink(item.configVersion, versions),
             sortingField: 'configVersion',
-            width: 120,
+            width: 150,
           },
           {
             id: 'status',
@@ -339,10 +342,11 @@ const TestResultsList = ({ timePeriodHours, setTimePeriodHours, selectedItems, s
             width: 200,
           },
           {
-            id: 'filesCount',
-            header: 'Files Count',
-            cell: (item) => item.filesCount,
-            sortingField: 'filesCount',
+            id: 'context',
+            header: 'Context',
+            cell: getContextCell,
+            sortingField: 'context',
+            width: 200,
           },
           {
             id: 'createdAt',

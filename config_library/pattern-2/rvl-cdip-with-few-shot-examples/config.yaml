@@ -914,5 +914,5 @@ classes:
               "transactions": [{"Date": "2/6/2020", "Description": "Food Purchase - AnyCompany Restaurant - 1194989245", "Amount": "-171"}]
         imagePath: >-
           config_library/pattern-2/rvl-cdip-package-sample-with-few-shot-examples/example-images/bank-statement-pages/
-
-
+rule_validation:
+  enabled: false

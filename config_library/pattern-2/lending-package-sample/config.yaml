@@ -707,3 +707,5 @@ classes:
       Auto Claims, Accidents, and Violations:
         $ref: "#/$defs/Auto Claims, Accidents, and Violations"
         x-aws-idp-evaluation-method: LLM
+rule_validation:
+  enabled: false

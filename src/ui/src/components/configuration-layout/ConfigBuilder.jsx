@@ -340,6 +340,10 @@ const ConfigBuilder = ({
   onSchemaValidate = null,
   activeTabId: controlledActiveTabId = 'configuration',
   onTabChange = null,
+  showRuleSchema = false,
+  ruleSchema = null,
+  onRuleSchemaChange = null,
+  onRuleSchemaValidate = null,
 }) => {
   // Track expanded state for all list items across the form - default to collapsed
   const [expandedItems, setExpandedItems] = useState({});
@@ -1470,6 +1474,25 @@ const ConfigBuilder = ({
               </Box>
             ),
           },
+          // Only show Rule Schema tab for Pattern2
+          ...(showRuleSchema
+            ? [
+                {
+                  id: 'rule-schema',
+                  label: 'Rule Schema',
+                  content: (
+                    <Box style={{ height: 'calc(70vh - 60px)' }}>
+                      <SchemaBuilder
+                        initialSchema={ruleSchema}
+                        onChange={onRuleSchemaChange}
+                        onValidate={onRuleSchemaValidate}
+                        isRuleSchema={true}
+                      />
+                    </Box>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
 
@@ -1556,6 +1579,10 @@ ConfigBuilder.propTypes = {
   onSchemaValidate: PropTypes.func,
   activeTabId: PropTypes.string,
   onTabChange: PropTypes.func,
+  showRuleSchema: PropTypes.bool,
+  ruleSchema: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  onRuleSchemaChange: PropTypes.func,
+  onRuleSchemaValidate: PropTypes.func,
 };
 
 export default ConfigBuilder;

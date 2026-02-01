@@ -15,6 +15,8 @@ import {
   StatusIndicator,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
+import useConfigurationVersions from '../../hooks/use-configuration-versions';
+import { formatConfigVersionLink } from '../test-studio/utils/configVersionUtils';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import './DocumentPanel.css';
 import DocumentViewers from '../document-viewers/DocumentViewers';
@@ -406,7 +408,7 @@ const DocumentAttributes = ({ item }) => {
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
               <strong>Config Version</strong>
             </Box>
-            <div>{item.configVersion || 'N/A'}</div>
+            <div>{formatConfigVersionLink(item.configVersion, versions)}</div>
           </div>
         </SpaceBetween>
 
@@ -483,6 +485,7 @@ const ABORTABLE_STATUSES = [
 ];
 
 export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, onDelete, onReprocess, onAbort }) => {
+  const { versions } = useConfigurationVersions();
   logger.debug('DocumentPanel item', item);
 
   // State for Step Function flow viewer
@@ -629,6 +632,7 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         objectKey={localItem.objectKey}
         evaluationReportUri={localItem.evaluationReportUri}
         summaryReportUri={localItem.summaryReportUri}
+        ruleValidationResultUri={localItem.ruleValidationResultUri}
       />
       <SectionsPanel
         sections={localItem.sections}

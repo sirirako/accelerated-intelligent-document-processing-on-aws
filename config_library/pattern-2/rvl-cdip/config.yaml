@@ -612,3 +612,5 @@ classes:
       Metadata:
         type: string
         description: Additional metadata, if any
+rule_validation:
+  enabled: false

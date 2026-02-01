@@ -6,11 +6,12 @@ import { Button, ButtonDropdown, CollectionPreferences, Link, SpaceBetween } fro
 import { TableHeader } from '../common/table';
 import { DOCUMENTS_PATH } from '../../routes/constants';
 import { renderHitlStatus } from '../common/hitl-status-renderer';
+import { formatConfigVersionLink } from '../test-studio/utils/configVersionUtils';
 
 export const KEY_COLUMN_ID = 'objectKey';
 export const UNIQUE_TRACK_ID = 'uniqueId';
 
-export const COLUMN_DEFINITIONS_MAIN = [
+export const COLUMN_DEFINITIONS_MAIN = (versions = []) => [
   {
     id: KEY_COLUMN_ID,
     header: 'Document ID',
@@ -68,9 +69,9 @@ export const COLUMN_DEFINITIONS_MAIN = [
   {
     id: 'configVersion',
     header: 'Config Version',
-    cell: (item) => item.configVersion || 'N/A',
+    cell: (item) => formatConfigVersionLink(item.configVersion, versions),
     sortingField: 'configVersion',
-    width: 120,
+    width: 150,
   },
   {
     id: 'evaluationStatus',
@@ -88,7 +89,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
 ];
 
-export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[4]; // initialEventTime (index changed)
+export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN()[4]; // initialEventTime (index changed)
 
 export const SELECTION_LABELS = {
   itemSelectionLabel: (data, row) => `select ${row.objectKey}`,

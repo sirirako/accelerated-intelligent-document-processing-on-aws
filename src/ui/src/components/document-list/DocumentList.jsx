@@ -34,12 +34,14 @@ import {
 } from './documents-table-config';
 
 import { getFilterCounterText, TableEmptyState, TableNoMatchState } from '../common/table';
+import useConfigurationVersions from '../../hooks/use-configuration-versions';
 
 import '@cloudscape-design/global-styles/index.css';
 
 const logger = new ConsoleLogger('DocumentList');
 
 const DocumentList = () => {
+  const { versions } = useConfigurationVersions();
   const [documentList, setDocumentList] = useState([]);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isReprocessModalVisible, setIsReprocessModalVisible] = useState(false);
@@ -305,7 +307,7 @@ const DocumentList = () => {
             currentUsername={currentUsername}
           />
         }
-        columnDefinitions={COLUMN_DEFINITIONS_MAIN}
+        columnDefinitions={COLUMN_DEFINITIONS_MAIN(versions)}
         items={items}
         loading={isDocumentsListLoading}
         loadingText="Loading documents"

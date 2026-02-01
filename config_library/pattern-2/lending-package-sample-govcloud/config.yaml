@@ -1198,4 +1198,5 @@ classes:
         $ref: "#/$defs/Primary Applicant Information"
         x-aws-idp-evaluation-method: LLM
     $id: Homeowners-Insurance-Application
-
+rule_validation:
+  enabled: false

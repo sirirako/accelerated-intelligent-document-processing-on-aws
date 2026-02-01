@@ -98,4 +98,5 @@ classes:
   - Advertiser
   - LineItems
   $id: Invoice
-
+rule_validation:
+  enabled: false
