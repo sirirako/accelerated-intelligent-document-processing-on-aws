@@ -354,7 +354,7 @@ const MeteringExpandableSection = ({ meteringData, documentItem }) => {
   );
 };
 
-const DocumentAttributes = ({ item }) => {
+const DocumentAttributes = ({ item, versions }) => {
   return (
     <Container>
       <ColumnLayout columns={8} variant="text-grid">
@@ -619,7 +619,12 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
         }
       >
         <SpaceBetween size="l">
-          <DocumentAttributes item={enhancedItem} setToolsOpen={setToolsOpen} getDocumentDetailsFromIds={getDocumentDetailsFromIds} />
+          <DocumentAttributes
+            item={enhancedItem}
+            versions={versions}
+            setToolsOpen={setToolsOpen}
+            getDocumentDetailsFromIds={getDocumentDetailsFromIds}
+          />
 
           {localItem.metering && (
             <div>

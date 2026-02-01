@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 import React from 'react';
-import { Link, Box } from '@cloudscape-design/components';
+import { Link } from '@cloudscape-design/components';
 
 /**
  * Format config version with clickable link and truncated description
@@ -22,12 +22,9 @@ export const formatConfigVersionLink = (configVersion, versions, maxDescLength =
         ? `${versionFromList.description.substring(0, maxDescLength)}...`
         : versionFromList.description;
     return (
-      <Link
-        href={`#/documents/config?version=${versionId}`}
-        title={`${versionId} (${versionFromList.description}) - Click to view configuration`}
-      >
-        {`${versionId} (${truncatedDesc})`}
-      </Link>
+      <span title={versionFromList.description}>
+        <Link href={`#/documents/config?version=${versionId}`}>{`${versionId} (${truncatedDesc})`}</Link>
+      </span>
     );
   }
 

@@ -57,7 +57,7 @@ class ConfigurationReader:
     ) -> Optional[Union[IDPConfig, SchemaConfig, PricingConfig]]: ...
 
     def get_configuration(
-        self, config_type: str, *, as_dict: bool = True
+        self, config_type: str, *, as_dict: bool = True, as_model: bool = False, version: Optional[str] = None
     ) -> Optional[Union[Dict[str, Any], IDPConfig, SchemaConfig, PricingConfig]]:
         """
         Retrieve a configuration item from DynamoDB with automatic migration
@@ -65,12 +65,18 @@ class ConfigurationReader:
         Args:
             config_type: The configuration type to retrieve ('Default' or 'Custom')
             as_dict: If True (default), return raw dictionary for backward compatibility
+            as_model: If True, return model object (overrides as_dict)
+            version: Optional version to retrieve
 
         Returns:
             Configuration dictionary if found (auto-migrated if needed), None otherwise
         """
+        # Handle parameter precedence: as_model overrides as_dict
+        if as_model:
+            as_dict = False
+        
         # ConfigurationManager now returns IDPConfig by default
-        idp_config = self.manager.get_configuration(config_type)
+        idp_config = self.manager.get_configuration(config_type, version=version)
 
         if idp_config is None:
             return None
