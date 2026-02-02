@@ -123,6 +123,41 @@ The role provides comprehensive access to **28 AWS services** required by all ID
 | Networking & CDN | 2 | CloudFront, EC2 (VPC) |
 | Scaling | 1 | Application Auto Scaling |
 
+### Complete Service List
+
+| Service | Access | Utility |
+|---------|--------|---------|
+| CloudFormation | Full Access | Full stack management |
+| IAM | Full Access | Complete role and policy management for IDP components |
+| Lambda | Full Access | Function creation and management |
+| Step Functions | Full Access | State machine orchestration |
+| CodeBuild | Full Access | Build automation for custom container images |
+| Bedrock | Full Access | Foundation models for document understanding |
+| Textract | Full Access | Document OCR and extraction capabilities |
+| SageMaker | Full Access | Custom ML model endpoints |
+| S3 | Full Access | Bucket and object management |
+| DynamoDB | Full Access | Table and data management |
+| ECR | Full Access | Container image registry |
+| API Gateway | Full Access | REST and HTTP API management |
+| AppSync | Full Access | GraphQL API management |
+| Cognito User Pools | Full Access | User authentication and management |
+| Cognito Identity | Full Access | Federated identity and temporary credentials |
+| KMS | Full Access | Encryption key management |
+| Secrets Manager | Full Access | Secure credential storage |
+| WAF v2 | Full Access | Web application firewall |
+| SNS | Full Access | Notification services |
+| SQS | Full Access | Message queue management |
+| EventBridge | Full Access | Event-driven workflow triggers |
+| EventBridge Scheduler | Full Access | Scheduled task management |
+| CloudWatch | Full Access | Metrics, alarms, and dashboards |
+| CloudWatch Logs | Full Access | Centralized logging |
+| Systems Manager (SSM) | Full Access | Parameter Store configuration |
+| Glue | Full Access | Data catalog and ETL jobs |
+| OpenSearch Serverless | Full Access | Vector search for embeddings |
+| CloudFront | Full Access | CDN for web hosting and API acceleration |
+| EC2 (VPC) | Limited Access | VPC, subnet, and security group management only |
+| Application Auto Scaling | Full Access | Auto-scaling for DynamoDB, Lambda, SageMaker |
+
 ---
 
 ### Detailed Service Breakdown
