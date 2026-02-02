@@ -12,6 +12,7 @@ This module provides utilities for:
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -605,3 +606,10 @@ def validate_config(
         )
 
     return result
+
+
+def slugify(text: str) -> str:
+    """Convert text to URL-safe slug"""
+    slug = re.sub(r'[^a-zA-Z0-9-]', '-', text.lower())
+    slug = re.sub(r'-+', '-', slug)
+    return slug.strip('-')

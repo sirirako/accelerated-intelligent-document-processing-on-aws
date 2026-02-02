@@ -227,6 +227,7 @@ class ConfigurationManager:
         config: Union[SchemaConfig, IDPConfig, PricingConfig, Dict[str, Any]],
         version: Optional[str] = None,
         description: Optional[str] = None,
+        version_name: Optional[str] = None,
         skip_sync: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -321,6 +322,7 @@ class ConfigurationManager:
         record = ConfigurationRecord(
             configuration_type=configuration_type,
             version=version,
+            version_name=version_name,
             is_active=is_active_status,  # Preserve existing active status or None for new
             description=description,
             config=config,
@@ -384,7 +386,7 @@ class ConfigurationManager:
             response = self.table.scan(
                 FilterExpression="begins_with(Configuration, :config_prefix)",
                 ExpressionAttributeValues={":config_prefix": "Config#"},
-                ProjectionExpression="Configuration, IsActive, CreatedAt, UpdatedAt, Description"
+                ProjectionExpression="Configuration, IsActive, CreatedAt, UpdatedAt, Description, VersionName"
             )
             
             versions = []
@@ -394,6 +396,7 @@ class ConfigurationManager:
                     _, version_id = config_key.split("#", 1)
                     versions.append({
                         "versionId": version_id,
+                        "versionName": item.get('VersionName'),
                         "isActive": item.get('IsActive'),  # Can be None, True, or False
                         "createdAt": item.get('CreatedAt'),
                         "updatedAt": item.get('UpdatedAt'),
@@ -406,35 +409,6 @@ class ConfigurationManager:
             logger.error(f"Error listing config versions: {e}")
             return []
 
-
-    def get_next_version_id(self) -> str:
-        """
-        Get the next available version ID.
-        
-        Returns:
-            Next version ID (e.g., "v2" if v0, v1 exist)
-        """
-        try:
-            response = self.table.scan(
-                FilterExpression="begins_with(Configuration, :config_prefix)",
-                ExpressionAttributeValues={":config_prefix": "Config#"},
-                ProjectionExpression="Configuration"
-            )
-            
-            max_version = -1
-            for item in response.get('Items', []):
-                config_key = item.get('Configuration', '')
-                if "#" in config_key:
-                    _, version = config_key.split("#", 1)
-                    if version.startswith('v') and version[1:].isdigit():
-                        version_num = int(version[1:])
-                        max_version = max(max_version, version_num)
-            
-            return f"v{max_version + 1}"
-            
-        except ClientError as e:
-            logger.error(f"Error getting next version ID: {e}")
-            return "v0"
 
         
 

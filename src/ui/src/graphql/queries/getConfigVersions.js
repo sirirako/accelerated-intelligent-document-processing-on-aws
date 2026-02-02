@@ -8,6 +8,7 @@ export default gql`
       success
       versions {
         versionId
+        versionName
         isActive
         createdAt
         updatedAt

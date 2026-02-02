@@ -119,14 +119,14 @@ const useConfigurationVersions = () => {
     }
   };
 
-  const saveAsNewVersion = async (configuration, description, setAsActive = false) => {
+  const saveAsNewVersion = async (configuration, versionName, description) => {
     try {
       const result = await client.graphql({
         query: saveAsNewVersionMutation,
         variables: {
           configuration: JSON.stringify(configuration),
+          versionName,
           description,
-          setAsActive,
         },
       });
       const response = result.data.saveAsNewVersion;

@@ -4,6 +4,7 @@
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Any, Dict, Union
 
@@ -24,6 +25,12 @@ logging.getLogger("idp_common.bedrock.client").setLevel(
 )
 
 s3_client = boto3.client("s3")
+
+def slugify(text: str) -> str:
+    """Convert text to URL-safe slug"""
+    slug = re.sub(r'[^a-zA-Z0-9-]', '-', text.lower())
+    slug = re.sub(r'-+', '-', slug)
+    return slug.strip('-')
 
 def fetch_content_from_s3(s3_uri: str) -> Union[Dict[str, Any], str]:
     """
@@ -304,32 +311,34 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 try:
                     existing_default = manager.get_configuration("Default")
                     if existing_default:
-                        logger.info("Found existing Default - migrating to Config#v0")
-                        manager.save_configuration("Config", existing_default, version="v0", description="System default configuration - migrated from Default")
+                        default_version = "default"
+                        logger.info(f"Found existing Default - migrating to Config#{default_version}")
+                        manager.save_configuration("Config", existing_default, version=default_version, description="System default configuration - migrated from Default", version_name="Default")
                         manager.delete_configuration("Default")
                         migrated_default = True
-                        logger.info("Migrated Default to Config#v0")
+                        logger.info(f"Migrated Default to Config#{default_version}")
                 except Exception as e:
                     logger.debug(f"No Default to migrate: {e}")
                 
                 try:
                     existing_custom = manager.get_configuration("Custom")
                     if existing_custom:
-                        logger.info("Found existing Custom - migrating to Config#v1")
-                        manager.save_configuration("Config", existing_custom, version="v1", description="User customized configuration (v1) - migrated from Custom")
+                        custom_version = "custom"
+                        logger.info(f"Found existing Custom - migrating to Config#{custom_version}")
+                        manager.save_configuration("Config", existing_custom, version=custom_version, description="User customized configuration - migrated from Custom", version_name="Custom")
                         manager.delete_configuration("Custom")
                         migrated_custom = True
-                        logger.info("Migrated Custom to Config#v1")
+                        logger.info(f"Migrated Custom to Config#{custom_version}")
                 except Exception as e:
                     logger.debug(f"No Custom to migrate: {e}")
                 
                 # Only change activation during actual migration
                 if migrated_custom:
-                    manager.activate_version("v1")
-                    logger.info("Activated v1 (migrated Custom)")
+                    manager.activate_version("custom")
+                    logger.info("Activated custom (migrated Custom)")
                 elif migrated_default:
-                    manager.activate_version("v0")
-                    logger.info("Activated v0 (migrated Default)")
+                    manager.activate_version("default")
+                    logger.info("Activated default (migrated Default)")
                 # If no migration occurred, preserve existing active version (no action needed)
 
             # Collect all configurations to process
@@ -343,7 +352,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     resolved_schema = filter_models_by_region(resolved_schema, region_type)
                 configurations["Schema"] = resolved_schema
 
-            # Process Default configuration -> save as v0
+            # Process Default configuration -> save with slugified name
             if "Default" in properties:
                 resolved_default = resolve_content(properties["Default"])
                 
@@ -381,9 +390,9 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                                 f"Updated extraction model to: {properties['CustomExtractionModelARN']}"
                             )
 
-                configurations["v0"] = resolved_default
+                configurations["default"] = {"config": resolved_default, "version_name": "Default"}
 
-            # Process Custom configuration -> save as v1
+            # Process Custom configuration -> save with slugified name
             if (
                 "Custom" in properties
                 and properties["Custom"].get("Info") != "Custom inference settings"
@@ -398,7 +407,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     logger.info("Merging custom config with system defaults...")
                     resolved_custom = merge_custom_with_defaults(resolved_custom)
                     
-                configurations["v1"] = resolved_custom
+                configurations["custom"] = {"config": resolved_custom, "version_name": "Custom"}
 
             # Process additional versioned configurations (v2, v3, v4, etc.) - no activation
             for key, value in properties.items():
@@ -428,15 +437,13 @@ def handler(event: Dict[str, Any], context: Any) -> None:
 
             # Save all configurations (no activation changes)
             current_time = datetime.utcnow().isoformat() + "Z"
-            for config_name, config_data in configurations.items():
-                if config_name.startswith("v") and config_name[1:].isdigit():
-                    # Save versioned configuration
-                    version_id = config_name
-                    description = f"Configuration {version_id}"
-                    if version_id == "v0":
-                        description = "System default configuration"
-                    elif version_id == "v1":
-                        description = "User customized configuration (v1)"
+            for config_name, config_info in configurations.items():
+                if isinstance(config_info, dict) and "config" in config_info:
+                    # New format with version_name
+                    config_data = config_info["config"]
+                    version_name = config_info["version_name"]
+                    version_id = slugify(version_name)
+                    description = f"Configuration: {version_name}"
                     
                     # Check if this version already exists
                     existing_config = None
@@ -446,13 +453,27 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                         pass
                     
                     if existing_config:
-                        # Update existing - only set updated_at
                         metadata = {"updated_at": current_time}
                     else:
-                        # Create new - set both created_at and updated_at
                         metadata = {"created_at": current_time, "updated_at": current_time}
                     
-                    manager.save_configuration("Config", config_data, version=version_id, description=description, metadata=metadata)
+                    manager.save_configuration("Config", config_data, version=version_id, description=description, version_name=version_name, metadata=metadata)
+                    logger.info(f"Saved Config {version_id} ({version_name})")
+                elif config_name in ["Schema", "DefaultPricing"]:
+                    # Non-versioned configurations
+                    existing_config = None
+                    try:
+                        existing_config = manager.get_configuration(config_name)
+                    except:
+                        pass
+                    
+                    if existing_config:
+                        metadata = {"updated_at": current_time}
+                    else:
+                        metadata = {"created_at": current_time, "updated_at": current_time}
+                    
+                    manager.save_configuration(config_name, config_info, metadata=metadata)
+                    logger.info(f"Updated {config_name} configuration")
                     logger.info(f"Saved Config {version_id}")
                 else:
                     # Save non-versioned configurations (Schema, DefaultPricing)
@@ -473,14 +494,14 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     manager.save_configuration(config_name, config_data, metadata=metadata)
                     logger.info(f"Updated {config_name} configuration")
 
-            # For Create: Activate v1 if Custom was provided, otherwise v0 if Default provided
+            # For Create: Activate custom if Custom was provided, otherwise default if Default provided
             if request_type == "Create":
-                if "Custom" in properties and "v1" in configurations:  # Custom was provided
-                    manager.activate_version("v1")
-                    logger.info("Activated v1 (Custom configuration)")
-                elif "v0" in configurations:  # Only Default provided (or Custom filtered out)
-                    manager.activate_version("v0")
-                    logger.info("Activated v0 (Default configuration)")
+                if "Custom" in properties and "custom" in configurations:
+                    manager.activate_version("custom")
+                    logger.info("Activated custom (Custom configuration)")
+                elif "default" in configurations:
+                    manager.activate_version("default")
+                    logger.info("Activated default (Default configuration)")
 
             cfnresponse.send(
                 event,

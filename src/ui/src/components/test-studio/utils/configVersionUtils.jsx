@@ -13,27 +13,14 @@ import { Link } from '@cloudscape-design/components';
 export const formatConfigVersionLink = (configVersion, versions, maxDescLength = 10) => {
   if (!configVersion) return 'N/A';
 
-  const versionId = configVersion;
-  const versionFromList = versions.find((v) => v.versionId === versionId);
+  const versionFromList = versions.find((v) => v.versionId === configVersion);
 
   // If version not found in current versions list, show as deleted
   if (!versionFromList) {
-    return <span style={{ textDecoration: 'line-through', color: '#687078' }}>{versionId}</span>;
+    return <span style={{ textDecoration: 'line-through', color: '#687078' }}>{configVersion}</span>;
   }
 
-  if (versionFromList.description) {
-    const truncatedDesc =
-      versionFromList.description.length > maxDescLength
-        ? `${versionFromList.description.substring(0, maxDescLength)}...`
-        : versionFromList.description;
-    return (
-      <span title={versionFromList.description}>
-        <Link href={`#/documents/config?version=${versionId}`}>{`${versionId} (${truncatedDesc})`}</Link>
-      </span>
-    );
-  }
-
-  return <Link href={`#/documents/config?version=${versionId}`}>{versionId}</Link>;
+  return <Link href={`#/documents/config?version=${configVersion}`}>{configVersion}</Link>;
 };
 
 /**
@@ -45,13 +32,12 @@ export const formatConfigVersionLink = (configVersion, versions, maxDescLength =
 export const formatConfigVersionText = (configVersion, versions) => {
   if (!configVersion) return 'N/A';
 
-  const versionId = configVersion;
-  const versionFromList = versions.find((v) => v.versionId === versionId);
+  const versionFromList = versions.find((v) => v.versionId === configVersion);
 
   // If version not found in current versions list, show as deleted
   if (!versionFromList) {
-    return `${versionId} (deleted)`;
+    return `${configVersion} (deleted)`;
   }
 
-  return versionFromList.description ? `${versionId} (${versionFromList.description})` : versionId;
+  return configVersion;
 };

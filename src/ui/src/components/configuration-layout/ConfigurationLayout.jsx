@@ -271,7 +271,7 @@ const ConfigurationLayout = () => {
   // Version selection state
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [selectedVersionData, setSelectedVersionData] = useState(null);
-  const [defaultVersionData, setDefaultVersionData] = useState(null); // v0 for comparison
+  const [defaultVersionData, setDefaultVersionData] = useState(null); // default version for comparison
   const [loadingVersion, setLoadingVersion] = useState(false);
 
   // Compare versions state
@@ -308,6 +308,7 @@ const ConfigurationLayout = () => {
   const [importError, setImportError] = useState(null);
   const [extractionSchema, setExtractionSchema] = useState(null);
   const [ruleSchema, setRuleSchema] = useState(null);
+  const [newVersionName, setNewVersionName] = useState('');
   const [newVersionDescription, setNewVersionDescription] = useState('');
   const [showEditDescriptionModal, setShowEditDescriptionModal] = useState(false);
   const [editingVersionId, setEditingVersionId] = useState('');
@@ -389,11 +390,11 @@ const ConfigurationLayout = () => {
   const mergedConfig = useMemo(() => {
     if (!selectedVersionData) return null;
 
-    if (selectedVersion === 'v0' || !defaultVersionData) {
-      // For v0 or when v0 isn't loaded, use the selected version directly
+    if (selectedVersion === 'default' || !defaultVersionData) {
+      // For default or when default isn't loaded, use the selected version directly
       return selectedVersionData.configuration;
     } else {
-      // Merge v0 (defaults) with selected version (overrides) using deepMerge
+      // Merge default (defaults) with selected version (overrides) using deepMerge
       return deepMerge(defaultVersionData.configuration, selectedVersionData.configuration);
     }
   }, [selectedVersionData, defaultVersionData, selectedVersion]);
@@ -496,21 +497,21 @@ const ConfigurationLayout = () => {
         setSaveSuccess(false);
         setSaveError(null);
 
-        // Load v0 for comparison if not already loaded and not selecting v0
-        if (versionId !== 'v0' && !defaultVersionData) {
+        // Load default for comparison if not already loaded and not selecting default
+        if (versionId !== 'default' && !defaultVersionData) {
           try {
-            const v0Data = await fetchVersion('v0');
-            if (v0Data && v0Data.configuration) {
-              let v0Config;
-              if (typeof v0Data.configuration === 'string') {
-                v0Config = JSON.parse(v0Data.configuration);
+            const defaultData = await fetchVersion('default');
+            if (defaultData && defaultData.configuration) {
+              let defaultConfig;
+              if (typeof defaultData.configuration === 'string') {
+                defaultConfig = JSON.parse(defaultData.configuration);
               } else {
-                v0Config = v0Data.configuration;
+                defaultConfig = defaultData.configuration;
               }
-              setDefaultVersionData({ ...v0Data, configuration: v0Config });
+              setDefaultVersionData({ ...defaultData, configuration: defaultConfig });
             }
           } catch (error) {
-            console.warn('Could not load v0 for comparison:', error);
+            console.warn('Could not load default for comparison:', error);
           }
         }
 
@@ -604,10 +605,7 @@ const ConfigurationLayout = () => {
       setShowActivateModal(false);
       // Show success confirmation dialog
       setShowActivateConfirmationModal(true);
-      // Find version description and format display
-      const versionData = versions.find((v) => v.versionId === versionToActivate);
-      const versionDisplay = versionData?.description ? `${versionToActivate} (${versionData.description})` : versionToActivate;
-      setActivatedVersionId(versionDisplay);
+      setActivatedVersionId(versionToActivate);
       await fetchVersions();
       // Clear selection after activation
       setSelectedVersionsForCompare([]);
@@ -640,22 +638,22 @@ const ConfigurationLayout = () => {
           config = JSON.parse(content);
         }
 
-        // Ensure v0 is loaded for merging
-        const v0Data = await ensureV0Loaded();
+        // Ensure default is loaded for merging
+        const defaultData = await ensureDefaultLoaded();
 
-        // Merge with v0 defaults to fill missing fields
+        // Merge with default defaults to fill missing fields
         let configToImport = config;
-        if (v0Data && v0Data.configuration) {
+        if (defaultData && defaultData.configuration) {
           configToImport = {
-            ...v0Data.configuration,
+            ...defaultData.configuration,
             ...config,
           };
         }
 
         setImportedConfigForNewVersion(configToImport);
-        // Set filename as default description
-        const fileName = file.name.replace(/\.(json|yaml|yml)$/i, '');
-        setNewVersionDescription(fileName);
+        // Set filename as default version name (without extension)
+        const nameWithoutExt = file.name.replace(/\.(json|yaml|yml)$/i, '');
+        setNewVersionName(nameWithoutExt);
       } catch (error) {
         setSaveError(`Failed to parse ${file.name}: ${error.message}`);
       }
@@ -675,16 +673,18 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      await ensureV0Loaded();
-      const description = newVersionDescription.trim() || 'New imported version';
-      const result = await saveAsNewVersion(importedConfigForNewVersion, description);
+      await ensureDefaultLoaded();
+      const versionName = newVersionName.trim() || 'New imported version';
+      const description = newVersionDescription.trim();
+      const result = await saveAsNewVersion(importedConfigForNewVersion, versionName, description);
       setShowImportAsNewVersionModal(false);
       setImportedConfigForNewVersion(null);
+      setNewVersionName('');
       setNewVersionDescription('');
       setSaveSuccess(true);
       setShowVersionConfirmationModal(true);
       setConfirmationModalType('import');
-      setNewlyCreatedVersionId(`${result?.versionId || 'Unknown'} (${description})`);
+      setNewlyCreatedVersionId(result?.versionId || 'Unknown');
       await fetchVersions();
     } catch (error) {
       console.error('Create version error:', error);
@@ -694,20 +694,20 @@ const ConfigurationLayout = () => {
     }
   };
 
-  // Helper function to ensure v0 is loaded
-  const ensureV0Loaded = async () => {
+  // Helper function to ensure default is loaded
+  const ensureDefaultLoaded = async () => {
     if (!defaultVersionData) {
-      const v0Response = await fetchVersion('v0');
-      if (v0Response && v0Response.configuration) {
-        let v0Config;
-        if (typeof v0Response.configuration === 'string') {
-          v0Config = JSON.parse(v0Response.configuration);
+      const defaultResponse = await fetchVersion('default');
+      if (defaultResponse && defaultResponse.configuration) {
+        let defaultConfig;
+        if (typeof defaultResponse.configuration === 'string') {
+          defaultConfig = JSON.parse(defaultResponse.configuration);
         } else {
-          v0Config = v0Response.configuration;
+          defaultConfig = defaultResponse.configuration;
         }
-        const v0Data = { ...v0Response, configuration: v0Config };
-        setDefaultVersionData(v0Data);
-        return v0Data;
+        const defaultData = { ...defaultResponse, configuration: defaultConfig };
+        setDefaultVersionData(defaultData);
+        return defaultData;
       }
     }
     return defaultVersionData;
@@ -741,11 +741,8 @@ const ConfigurationLayout = () => {
   // Confirm delete versions
   const confirmDeleteVersions = async () => {
     try {
-      // Format deleted versions with descriptions for display
-      const deletedVersionsWithDesc = versionsToDelete.map((versionId) => {
-        const versionData = versions.find((v) => v.versionId === versionId);
-        return versionData?.description ? `${versionId} (${versionData.description})` : versionId;
-      });
+      // Format deleted versions for display
+      const deletedVersionsWithDesc = versionsToDelete;
 
       for (const versionId of versionsToDelete) {
         await deleteVersion(versionId, true); // Skip refresh for each delete
@@ -826,15 +823,18 @@ const ConfigurationLayout = () => {
     setSaveSuccess(false);
 
     try {
-      const result = await saveAsNewVersion(formValues, newVersionDescription || `New version based on ${selectedVersion}`);
+      const versionName = newVersionName.trim() || `New version based on ${selectedVersion}`;
+      const description = newVersionDescription.trim();
+      const result = await saveAsNewVersion(formValues, versionName, description);
       setSaveSuccess(true);
       setShowSaveAsNewModal(false);
+      setNewVersionName('');
       setNewVersionDescription('');
       // Show confirmation dialog
       setShowVersionConfirmationModal(true);
       setConfirmationModalType('save');
       // Store the new version ID and description for the confirmation dialog
-      setNewlyCreatedVersionId(`${result?.versionId || 'Unknown'} (${newVersionDescription || `New version based on ${selectedVersion}`})`);
+      setNewlyCreatedVersionId(result?.versionId || 'Unknown');
       // Refresh versions list
       await fetchVersions();
     } catch (error) {
@@ -856,10 +856,7 @@ const ConfigurationLayout = () => {
       setShowActivateModal(false);
       // Show confirmation dialog
       setShowActivateConfirmationModal(true);
-      // Find version description and format display
-      const versionData = versions.find((v) => v.versionId === selectedVersion);
-      const versionDisplay = versionData?.description ? `${selectedVersion} (${versionData.description})` : selectedVersion;
-      setActivatedVersionId(versionDisplay);
+      setActivatedVersionId(selectedVersion);
       // Refresh versions list to update active status
       await fetchVersions();
       // Update version data to reflect active status
@@ -1131,9 +1128,9 @@ const ConfigurationLayout = () => {
           }
 
           setImportedConfigForNewVersion(configToImport);
-          // Use just the base name without path for description
+          // Use just the base name without path for version name
           const baseName = configName.split('/').pop();
-          setNewVersionDescription(baseName);
+          setNewVersionName(baseName);
           setShowLibraryBrowserModal(false);
         } else {
           setImportError('Invalid configuration file format');
@@ -1175,13 +1172,13 @@ const ConfigurationLayout = () => {
   // Handle reset to default
   // Handle field-level reset to default (for individual field restore buttons)
   const handleFieldResetToDefault = async (fieldPath) => {
-    // Can't reset v0 fields
-    if (selectedVersion === 'v0' || !defaultVersionData) {
+    // Can't reset default fields
+    if (selectedVersion === 'default' || !defaultVersionData) {
       return;
     }
 
     try {
-      // Get the default value from v0
+      // Get the default value from default version
       const defaultValue = getValueByPath(defaultVersionData.configuration, fieldPath);
 
       // Update only this field in formValues
@@ -1201,38 +1198,38 @@ const ConfigurationLayout = () => {
     }
   };
 
-  // Handle full reset to default (All) - resets entire configuration to v0
+  // Handle full reset to default (All) - resets entire configuration to default
   const handleResetToDefault = async () => {
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
 
     try {
-      // Can't reset v0 to itself
-      if (selectedVersion === 'v0') {
-        setSaveError('Cannot reset v0 (default) to itself');
+      // Can't reset default to itself
+      if (selectedVersion === 'default') {
+        setSaveError('Cannot reset default to itself');
         return;
       }
 
-      // Need v0 data to reset to
+      // Need default data to reset to
       if (!defaultVersionData) {
-        setSaveError('Default version (v0) not available for reset');
+        setSaveError('Default version not available for reset');
         return;
       }
 
-      // Reset current version to match v0
-      const v0Config = defaultVersionData.configuration;
+      // Reset current version to match default
+      const defaultConfig = defaultVersionData.configuration;
 
-      // Save the v0 configuration to the same version ID
-      await updateVersion(selectedVersion, v0Config);
+      // Save the default configuration to the same version ID
+      await updateVersion(selectedVersion, defaultConfig);
 
       // Update UI state
-      setFormValues(v0Config);
-      setJsonContent(JSON.stringify(v0Config, null, 2));
-      setYamlContent(yaml.dump(v0Config));
+      setFormValues(defaultConfig);
+      setJsonContent(JSON.stringify(defaultConfig, null, 2));
+      setYamlContent(yaml.dump(defaultConfig));
 
-      if (v0Config.classes) {
-        setExtractionSchema(v0Config.classes);
+      if (defaultConfig.classes) {
+        setExtractionSchema(defaultConfig.classes);
       }
 
       setSaveSuccess(true);
@@ -1272,14 +1269,14 @@ const ConfigurationLayout = () => {
     }, obj);
   };
 
-  // Check if a field is customized compared to v0 (default)
+  // Check if a field is customized compared to default
   const isCustomized = (path) => {
-    // Only show customization for versions other than v0
-    if (selectedVersion === 'v0' || !defaultVersionData) {
+    // Only show customization for versions other than default
+    if (selectedVersion === 'default' || !defaultVersionData) {
       return false;
     }
 
-    // Get value from current version and v0
+    // Get value from current version and default
     const currentValue = getValueByPath(formValues, path);
     const defaultValue = getValueByPath(defaultVersionData.configuration, path);
 
@@ -1377,15 +1374,15 @@ const ConfigurationLayout = () => {
                         Sync BDA/IDP
                       </Button>
                     )}
-                    <Button onClick={() => setShowResetModal(true)} disabled={selectedVersion === 'v0'}>
+                    <Button onClick={() => setShowResetModal(true)} disabled={selectedVersion === 'default'}>
                       Restore default (All)
                     </Button>
                     <Button
                       onClick={() => {
                         const currentVersionData = versions.find((v) => v.versionId === selectedVersion);
-                        const currentDescription = currentVersionData?.description;
-                        const defaultDescription = currentDescription ? `${currentDescription} - Copy` : `${selectedVersion} - Copy`;
-                        setNewVersionDescription(defaultDescription);
+                        const currentVersionName = currentVersionData?.versionName || currentVersionData?.versionId;
+                        const defaultVersionName = currentVersionName ? `${currentVersionName} - Copy` : `${selectedVersion} - Copy`;
+                        setNewVersionName(defaultVersionName);
                         setShowSaveAsNewModal(true);
                       }}
                     >
@@ -1395,18 +1392,14 @@ const ConfigurationLayout = () => {
                       variant={hasUnsavedChanges ? 'primary' : 'normal'}
                       onClick={handleSave}
                       loading={isSaving}
-                      disabled={!hasUnsavedChanges || selectedVersion === 'v0'}
+                      disabled={!hasUnsavedChanges || selectedVersion === 'default'}
                     >
                       Save Changes
                     </Button>
                   </SpaceBetween>
                 }
               >
-                Configuration Version (
-                {(() => {
-                  const versionFromList = versions.find((v) => v.versionId === selectedVersion);
-                  return versionFromList?.description ? `${selectedVersion}) - ${versionFromList.description}` : `${selectedVersion})`;
-                })()}
+                Configuration Version ({selectedVersion}
               </Header>
             }
           >
@@ -1611,15 +1604,22 @@ const ConfigurationLayout = () => {
           </Box>
         }
       >
-        <FormField label="Description">
+        <FormField label="Version Name" description="Enter a name for this configuration version">
+          <Input
+            value={newVersionName}
+            onChange={({ detail }) => setNewVersionName(detail.value)}
+            placeholder={(() => {
+              const currentVersionData = versions.find((v) => v.versionId === selectedVersion);
+              const currentVersionName = currentVersionData?.versionName || currentVersionData?.versionId;
+              return currentVersionName ? `${currentVersionName} - Copy` : `${selectedVersion} - Copy`;
+            })()}
+          />
+        </FormField>
+        <FormField label="Description (Optional)" description="Provide additional details about this version">
           <Input
             value={newVersionDescription}
             onChange={({ detail }) => setNewVersionDescription(detail.value)}
-            placeholder={(() => {
-              const currentVersionData = versions.find((v) => v.versionId === selectedVersion);
-              const currentDescription = currentVersionData?.description;
-              return currentDescription ? `${currentDescription} - Copy` : `${selectedVersion} - Copy`;
-            })()}
+            placeholder="Optional description"
           />
         </FormField>
       </Modal>
@@ -1740,13 +1740,7 @@ const ConfigurationLayout = () => {
         <SpaceBetween size="m">
           <Box>Are you sure you want to delete the following configuration version{versionsToDelete.length > 1 ? 's' : ''}?</Box>
           <Box>
-            <strong>Versions to delete:</strong>{' '}
-            {versionsToDelete
-              .map((versionId) => {
-                const versionData = versions.find((v) => v.versionId === versionId);
-                return versionData?.description ? `${versionId} (${versionData.description})` : versionId;
-              })
-              .join(', ')}
+            <strong>Versions to delete:</strong> {versionsToDelete.join(', ')}
           </Box>
           <Alert type="warning">This action cannot be undone. The configuration versions will be permanently deleted.</Alert>
         </SpaceBetween>
@@ -1805,14 +1799,7 @@ const ConfigurationLayout = () => {
       >
         <SpaceBetween size="m">
           <Box>
-            Are you sure you want to activate version{' '}
-            <strong>
-              {(() => {
-                const versionData = versions.find((v) => v.versionId === versionToActivate);
-                return versionData?.description ? `${versionToActivate} (${versionData.description})` : versionToActivate;
-              })()}
-            </strong>
-            ?
+            Are you sure you want to activate version <strong>{versionToActivate}</strong>?
           </Box>
           <Alert type="info">This version will become the active configuration used for all new document processing.</Alert>
         </SpaceBetween>
@@ -1878,6 +1865,7 @@ const ConfigurationLayout = () => {
         onDismiss={() => {
           setShowImportAsNewVersionModal(false);
           setImportedConfigForNewVersion(null);
+          setNewVersionName('');
           setNewVersionDescription('');
         }}
         header="Import Configuration as New Version"
@@ -1889,6 +1877,7 @@ const ConfigurationLayout = () => {
                 onClick={() => {
                   setShowImportAsNewVersionModal(false);
                   setImportedConfigForNewVersion(null);
+                  setNewVersionName('');
                   setNewVersionDescription('');
                 }}
               >
@@ -1930,11 +1919,15 @@ const ConfigurationLayout = () => {
             )}
           </FormField>
 
-          <FormField label="Version Description (Optional)" description="Provide a description for this new configuration version">
+          <FormField label="Version Name" description="Enter a name for this configuration version">
+            <Input value={newVersionName} onChange={({ detail }) => setNewVersionName(detail.value)} placeholder="Version name" />
+          </FormField>
+
+          <FormField label="Version Description (Optional)" description="Provide additional details about this version">
             <Input
               value={newVersionDescription}
               onChange={({ detail }) => setNewVersionDescription(detail.value)}
-              placeholder="New imported version"
+              placeholder="Optional description"
             />
           </FormField>
 

@@ -111,6 +111,7 @@ type ConfigurationResponse @aws_cognito_user_pools @aws_iam {
 
 type ConfigurationVersion @aws_cognito_user_pools @aws_iam {
   versionId: String!
+  versionName: String
   isActive: Boolean
   createdAt: AWSDateTime
   updatedAt: AWSDateTime
@@ -513,7 +514,7 @@ type Mutation {
   deleteDocument(objectKeys: [String!]!): Boolean! @aws_cognito_user_pools
   updateConfiguration(versionId: String!, customConfig: AWSJSON!, description: String): UpdateConfigurationResponse
   setActiveVersion(versionId: String!): UpdateConfigurationResponse
-  saveAsNewVersion(configuration: AWSJSON!, description: String, setAsActive: Boolean): UpdateConfigurationResponse
+  saveAsNewVersion(configuration: AWSJSON!, versionName: String!, description: String): UpdateConfigurationResponse
     @aws_cognito_user_pools
   deleteConfigVersion(versionId: String!): UpdateConfigurationResponse
     @aws_cognito_user_pools

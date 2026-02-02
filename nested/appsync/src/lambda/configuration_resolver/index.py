@@ -74,9 +74,9 @@ def handler(event, context):
         elif operation == "saveAsNewVersion":
             args = event["arguments"]
             configuration = args.get("configuration")
+            version_name = args.get("versionName")
             description = args.get("description")
-            set_as_active = args.get("setAsActive", False)
-            return handle_save_as_new_version(manager, configuration, description, set_as_active)
+            return handle_save_as_new_version(manager, configuration, version_name, description)
         elif operation == "deleteConfigVersion":
             args = event["arguments"]
             version_id = args.get("versionId")
@@ -731,14 +731,15 @@ def handle_set_active_version(manager, version_id):
         }
 
 
-def handle_save_as_new_version(manager, configuration, description, set_as_active):
+def handle_save_as_new_version(manager, configuration, version_name, description):
     """
     Handle the saveAsNewVersion GraphQL mutation
-    Creates a new version with auto-incremented version ID
+    Creates a new version with slugified version name
     """
     try:
         import json
         import datetime
+        from idp_common.config.merge_utils import slugify
         
         if not configuration:
             return {
@@ -749,8 +750,17 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
                 },
             }
         
-        # Get next version ID
-        next_version = manager.get_next_version_id()
+        if not version_name:
+            return {
+                "success": False,
+                "error": {
+                    "type": "ValidationError",
+                    "message": "versionName is required",
+                },
+            }
+        
+        # Generate version ID from version name
+        version_id = slugify(version_name)
         timestamp = datetime.datetime.utcnow().isoformat() + "Z"
         
         # Parse configuration
@@ -765,22 +775,24 @@ def handle_save_as_new_version(manager, configuration, description, set_as_activ
             "updated_at": timestamp,
         }
         
-        # Save new version
-        manager.save_configuration("Config", config_data, version=next_version, description=description or f"Configuration version {next_version}", metadata=metadata)
-        
-        # If setting as active, activate the version
-        if set_as_active:
-            manager.activate_version(next_version)
+        # Save new version (no activation)
+        manager.save_configuration("Config", config_data, version=version_id, description=description or f"Configuration: {version_name}", version_name=version_name, metadata=metadata)
         
         return {
             "success": True,
-            "message": f"Configuration saved as {next_version}" + 
-                      (" and set as active" if set_as_active else ""),
-            "versionId": next_version,
+            "message": f"Configuration saved as {version_name} ({version_id})",
+            "versionId": version_id,
         }
         
     except Exception as e:
         logger.error(f"Error in saveAsNewVersion: {str(e)}")
+        return {
+            "success": False,
+            "error": {
+                "type": "InternalError",
+                "message": str(e),
+            },
+        }
 def handle_delete_config_version(manager, version_id):
     """
     Handle the deleteConfigVersion GraphQL mutation
@@ -796,13 +808,13 @@ def handle_delete_config_version(manager, version_id):
                 },
             }
         
-        # Prevent deletion of v0 (system default)
-        if version_id == "v0":
+        # Prevent deletion of system default version
+        if version_id == "default":
             return {
                 "success": False,
                 "error": {
                     "type": "ValidationError",
-                    "message": "Cannot delete system default version v0",
+                    "message": "Cannot delete system default version",
                 },
             }
         

@@ -30,9 +30,7 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
       const activeVersion = versions.find((v) => v.isActive);
       if (activeVersion) {
         const versionOption = {
-          label: activeVersion.description
-            ? `${activeVersion.versionId} (${activeVersion.description}) - Active`
-            : `${activeVersion.versionId} - Active`,
+          label: `${activeVersion.versionName || activeVersion.versionId} (Active)`,
           value: activeVersion.versionId,
         };
         setSelectedVersion(versionOption);
@@ -205,13 +203,7 @@ const TestRunner = ({ onTestStart, onTestComplete, activeTestRuns }) => {
             selectedOption={selectedVersion}
             onChange={({ detail }) => setSelectedVersion(detail.selectedOption)}
             options={versions.map((version) => ({
-              label: version.description
-                ? version.isActive
-                  ? `${version.versionId} (${version.description}) - Active`
-                  : `${version.versionId} (${version.description})`
-                : version.isActive
-                ? `${version.versionId} - Active`
-                : version.versionId,
+              label: version.isActive ? `${version.versionName || version.versionId} (Active)` : version.versionName || version.versionId,
               value: version.versionId,
             }))}
             placeholder={versions.length === 0 ? 'Loading versions...' : 'Select configuration version'}

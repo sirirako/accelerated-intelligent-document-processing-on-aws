@@ -70,11 +70,21 @@ const ConfigurationVersionsTable = ({
         >
           <Box fontWeight={item.isActive ? 'bold' : 'normal'} color={item.isActive ? 'text-status-success' : 'inherit'}>
             {item.versionId}
-            {item.isActive ? ' (Active)' : ''}
           </Box>
         </Link>
       ),
       sortingField: 'versionId',
+    },
+    {
+      id: 'versionName',
+      header: 'Version Name',
+      cell: (item) => (
+        <Box fontWeight={item.isActive ? 'bold' : 'normal'} color={item.isActive ? 'text-status-success' : 'inherit'}>
+          {item.versionName || item.versionId}
+          {item.isActive ? ' (Active)' : ''}
+        </Box>
+      ),
+      sortingField: 'versionName',
     },
     {
       id: 'description',
@@ -179,8 +189,10 @@ const ConfigurationVersionsTable = ({
                 onClick={() => onDeleteVersions?.(selectedVersionsForCompare)}
                 disabled={
                   selectedVersionsForCompare.length === 0 ||
-                  selectedVersionsForCompare.includes('v0') ||
-                  selectedVersionsForCompare.some((vId) => versions.find((v) => v.versionId === vId)?.isActive)
+                  selectedVersionsForCompare.some((vId) => {
+                    const version = versions.find((v) => v.versionId === vId);
+                    return version?.isActive || vId === 'default';
+                  })
                 }
               >
                 Delete Selected ({selectedVersionsForCompare.length})
@@ -201,6 +213,7 @@ ConfigurationVersionsTable.propTypes = {
   versions: PropTypes.arrayOf(
     PropTypes.shape({
       versionId: PropTypes.string.isRequired,
+      versionName: PropTypes.string,
       isActive: PropTypes.bool,
       createdAt: PropTypes.string,
       updatedAt: PropTypes.string,
