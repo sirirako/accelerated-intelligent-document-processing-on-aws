@@ -1,7 +1,42 @@
 {
     "Comment": "Data Automation Async Workflow with Built-in Review Integration",
-    "StartAt": "InvokeDataAutomation",
+    "StartAt": "CheckExistingData",
     "States": {
+        "CheckExistingData": {
+            "Type": "Choice",
+            "Comment": "Check if document already has pages/sections data (reprocessing scenario)",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.document.num_pages",
+                            "NumericGreaterThan": 0
+                        },
+                        {
+                            "Variable": "$.document.sections[0]",
+                            "IsString": true
+                        }
+                    ],
+                    "Comment": "Document has existing data with string section IDs - skip BDA invocation",
+                    "Next": "ProcessResultsSkip"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.document.num_pages",
+                            "NumericGreaterThan": 0
+                        },
+                        {
+                            "Variable": "$.document.sections[0].section_id",
+                            "IsPresent": true
+                        }
+                    ],
+                    "Comment": "Document has existing data with section objects - skip BDA invocation",
+                    "Next": "ProcessResultsSkip"
+                }
+            ],
+            "Default": "InvokeDataAutomation"
+        },
         "InvokeDataAutomation": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
@@ -50,6 +85,37 @@
                 "execution_arn.$": "$$.Execution.Id",
                 "output_bucket": "${OutputBucket}",
                 "BDAResponse.$": "$.BDAResponse"
+            },
+            "ResultPath": "$.Result",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException",
+                        "ServiceQuotaExceededException",
+                        "ThrottlingException",
+                        "ProvisionedThroughputExceededException",
+                        "RequestLimitExceeded",
+                        "ServiceUnavailableException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 10,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "CheckHITLRequired"
+        },
+        "ProcessResultsSkip": {
+            "Type": "Task",
+            "Comment": "Process existing document data without BDA invocation (reprocessing scenario)",
+            "Resource": "${ProcessResultsLambdaArn}",
+            "Parameters": {
+                "execution_arn.$": "$$.Execution.Id",
+                "output_bucket": "${OutputBucket}",
+                "skip_bda": true,
+                "document.$": "$.document"
             },
             "ResultPath": "$.Result",
             "Retry": [
