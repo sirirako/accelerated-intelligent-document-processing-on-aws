@@ -524,7 +524,99 @@ const createColumnDefinitions = (
   ];
 };
 
-// Edit mode column definitions - expanded to use maximum available width
+// Pattern-1 edit mode column definitions - data-only editing (read-only section structure)
+const createPattern1EditColumnDefinitions = (
+  pages,
+  documentItem,
+  mergedConfig,
+  handleReviewComplete,
+  // Navigation params
+  allSections,
+  openViewerSectionIndex,
+  setOpenViewerSectionIndex,
+  onNavigateToSection,
+) => {
+  // Get completed sections from documentItem
+  const completedSections = documentItem?.hitlSectionsCompleted || [];
+
+  return [
+    {
+      id: 'id',
+      header: 'Section ID',
+      cell: (item) => <IdCell item={item} />,
+      sortingField: 'Id',
+      minWidth: 160,
+      width: 160,
+      isResizable: true,
+    },
+    {
+      id: 'class',
+      header: 'Class/Type',
+      cell: (item) => <ClassCell item={item} />,
+      sortingField: 'Class',
+      minWidth: 200,
+      width: 200,
+      isResizable: true,
+    },
+    {
+      id: 'pageIds',
+      header: 'Page IDs',
+      cell: (item) => <PageIdsCell item={item} />,
+      minWidth: 120,
+      width: 120,
+      isResizable: true,
+    },
+    {
+      id: 'confidenceAlerts',
+      header: 'Low Confidence Fields',
+      cell: (item) => <ConfidenceAlertsCell item={item} mergedConfig={mergedConfig} />,
+      minWidth: 140,
+      width: 140,
+      isResizable: true,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: (item) => {
+        // Find index of current item in allSections
+        const currentIndex = allSections?.findIndex((s) => s.Id === item.Id) ?? -1;
+        const isThisViewerOpen = openViewerSectionIndex === currentIndex;
+
+        return (
+          <SpaceBetween direction="horizontal" size="xs">
+            <FileViewer
+              fileUri={item.OutputJSONUri}
+              fileType="json"
+              buttonText="Edit Data"
+              sectionData={{
+                ...item,
+                pages,
+                documentItem,
+                mergedConfig,
+                isSectionCompleted: completedSections.includes(item.Id),
+                isReviewerOnly: false,
+              }}
+              onOpen={() => setOpenViewerSectionIndex(currentIndex)}
+              onClose={() => setOpenViewerSectionIndex(null)}
+              onReviewComplete={handleReviewComplete}
+              disabled={!item.OutputJSONUri}
+              isReadOnly={false}
+              allSections={allSections}
+              currentSectionIndex={currentIndex}
+              onNavigateToSection={onNavigateToSection}
+              isExternallyOpen={isThisViewerOpen}
+            />
+          </SpaceBetween>
+        );
+      },
+      minWidth: 200,
+      width: 200,
+      isResizable: true,
+    },
+  ];
+};
+
+// Edit mode column definitions for Pattern-2/3 - expanded to use maximum available width
 const createEditColumnDefinitions = (
   validationErrors,
   updateSection,
@@ -608,7 +700,6 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
   const [editedSections, setEditedSections] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showPattern1Modal, setShowPattern1Modal] = useState(false);
   const [showSkipAllModal, setShowSkipAllModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSkipping, setIsSkipping] = useState(false);
@@ -618,6 +709,12 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
   const { settings } = useSettingsContext();
   const { isReviewer, isAdmin } = useUserRole();
   const isReviewerOnly = isReviewer && !isAdmin;
+
+  // Check if current pattern is Pattern-1 (for data-only edit mode)
+  const isPattern1 = () => {
+    const pattern = settings?.IDPPattern;
+    return pattern && pattern.toLowerCase().includes('pattern1');
+  };
 
   // Check if document has pending HITL sections
   const hasPendingHITL = documentItem?.hitlTriggered && !documentItem?.hitlCompleted;
@@ -835,7 +932,8 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
 
         section.PageIds.forEach((pageId) => {
           // Check if page ID is valid (should be handled by parsing, but double-check)
-          if (!Number.isInteger(pageId) || pageId <= 0) {
+          // Note: BDA (Pattern-1) uses 0-based page indices, so we allow pageId >= 0
+          if (!Number.isInteger(pageId) || pageId < 0) {
             invalidPageIds.push(pageId);
           } else if (!availablePageIds.includes(pageId)) {
             // Check if page exists in document
@@ -851,11 +949,14 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
 
         // Add specific error messages for invalid page IDs
         if (invalidPageIds.length > 0) {
-          sectionErrors.push(`Invalid page IDs: ${invalidPageIds.join(', ')} (must be positive integers)`);
+          sectionErrors.push(`Invalid page IDs: ${invalidPageIds.join(', ')} (must be non-negative integers)`);
         }
 
         if (nonExistentPageIds.length > 0) {
-          sectionErrors.push(`Page IDs ${nonExistentPageIds.join(', ')} do not exist in this document (available: 1-${maxPageId})`);
+          const minPageId = availablePageIds.length > 0 ? Math.min(...availablePageIds) : 0;
+          sectionErrors.push(
+            `Page IDs ${nonExistentPageIds.join(', ')} do not exist in this document (available: ${minPageId}-${maxPageId})`,
+          );
         }
       }
 
@@ -995,19 +1096,11 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
     return false;
   };
 
-  // Check if current pattern is Pattern-1
-  const isPattern1 = () => {
-    const pattern = settings?.IDPPattern;
-    return pattern && pattern.toLowerCase().includes('pattern1');
-  };
-
   // Handle Edit Sections button click
+  // For Pattern-1: enters "data-only" edit mode (can edit data but not section structure)
+  // For Pattern-2/3: enters full edit mode (can edit data, section structure, add/delete sections)
   const handleEditSectionsClick = () => {
-    if (isPattern1()) {
-      setShowPattern1Modal(true);
-    } else {
-      setIsEditMode(true);
-    }
+    setIsEditMode(true);
   };
 
   // Handle save changes
@@ -1138,23 +1231,37 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
   const allSectionsForNav = isEditMode ? editedSections : sections || [];
 
   // Determine which columns and data to use
+  // Pattern-1: uses data-only edit mode (no section structure editing)
+  // Pattern-2/3: uses full edit mode with section structure editing
   const columnDefinitions = isEditMode
-    ? createEditColumnDefinitions(
-        validationErrors,
-        updateSection,
-        updateSectionId,
-        getAvailableClasses,
-        deleteSection,
-        pages,
-        documentItem,
-        mergedConfig,
-        handleReviewComplete,
-        // Navigation params for edit mode
-        allSectionsForNav,
-        openViewerSectionIndex,
-        setOpenViewerSectionIndex,
-        handleNavigateToSection,
-      )
+    ? isPattern1()
+      ? createPattern1EditColumnDefinitions(
+          pages,
+          documentItem,
+          mergedConfig,
+          handleReviewComplete,
+          // Navigation params for edit mode
+          allSectionsForNav,
+          openViewerSectionIndex,
+          setOpenViewerSectionIndex,
+          handleNavigateToSection,
+        )
+      : createEditColumnDefinitions(
+          validationErrors,
+          updateSection,
+          updateSectionId,
+          getAvailableClasses,
+          deleteSection,
+          pages,
+          documentItem,
+          mergedConfig,
+          handleReviewComplete,
+          // Navigation params for edit mode
+          allSectionsForNav,
+          openViewerSectionIndex,
+          setOpenViewerSectionIndex,
+          handleNavigateToSection,
+        )
     : createColumnDefinitions(
         pages,
         documentItem,
@@ -1198,17 +1305,20 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
                     <Button variant="link" onClick={cancelEdit} disabled={isProcessing}>
                       Cancel
                     </Button>
-                    <Button iconName="add-plus" onClick={addSection} disabled={isProcessing}>
-                      Add Section
-                    </Button>
+                    {/* Hide Add Section button for Pattern-1 (section structure managed by BDA) */}
+                    {!isPattern1() && (
+                      <Button iconName="add-plus" onClick={addSection} disabled={isProcessing}>
+                        Add Section
+                      </Button>
+                    )}
                     <Button
                       variant="primary"
                       iconName="external"
                       onClick={handleSaveChanges}
-                      disabled={hasValidationErrors || isProcessing}
+                      disabled={(hasValidationErrors && !isPattern1()) || isProcessing}
                       loading={isProcessing}
                     >
-                      Process Changes
+                      {isPattern1() ? 'Save and Reprocess' : 'Process Changes'}
                     </Button>
                   </>
                 )}
@@ -1307,66 +1417,13 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
                   <li>Update the document summary report</li>
                 </ul>
                 <Alert type="info">
-                  OCR, Classification, Extraction, and Assessment steps will be automatically skipped since existing data is preserved.
+                  {isPattern1()
+                    ? 'BDA (Bedrock Data Automation) processing will be automatically skipped since existing data is preserved.'
+                    : 'OCR, Classification, Extraction, and Assessment steps will be automatically skipped since existing data is preserved.'}
                 </Alert>
               </>
             );
           })()}
-        </SpaceBetween>
-      </Modal>
-
-      {/* Pattern-1 Information Modal */}
-      <Modal
-        onDismiss={() => setShowPattern1Modal(false)}
-        visible={showPattern1Modal}
-        footer={
-          <Box float="right">
-            <Button variant="primary" onClick={() => setShowPattern1Modal(false)}>
-              Got it
-            </Button>
-          </Box>
-        }
-        header="Edit Mode - Pattern-1"
-      >
-        <SpaceBetween size="m">
-          <Alert type="info" header="Feature Not Available for Pattern-1">
-            <Box>
-              The Edit Sections feature is currently available for <strong>Pattern-2</strong> and <strong>Pattern-3</strong> only.
-            </Box>
-          </Alert>
-
-          <Box>
-            <strong>Why is this different for Pattern-1?</strong>
-          </Box>
-
-          <Box>
-            Pattern-1 uses <strong>Bedrock Data Automation (BDA)</strong> which has its own section management approach that integrates
-            directly with Amazon Bedrock&apos;s document processing blueprints. Section boundaries are automatically determined by the BDA
-            service based on the document structure and configured blueprints.
-          </Box>
-
-          <Box>
-            <strong>Available alternatives for Pattern-1:</strong>
-          </Box>
-
-          <ul>
-            <li>
-              <strong>View/Edit Data</strong>: Use the &quot;View/Edit Data&quot; buttons to review and modify extracted information within
-              each section
-            </li>
-            <li>
-              <strong>Configuration</strong>: Adjust document classes and extraction rules in the Configuration tab
-            </li>
-            <li>
-              <strong>Reprocess Document</strong>: Use the &quot;Reprocess&quot; button to run the document through the pipeline again with
-              updated configuration
-            </li>
-          </ul>
-
-          <Box>
-            {/* eslint-disable-next-line max-len */}
-            For fine-grained section control, consider using <strong>Pattern-2</strong> or <strong>Pattern-3</strong> for future documents.
-          </Box>
         </SpaceBetween>
       </Modal>
 
