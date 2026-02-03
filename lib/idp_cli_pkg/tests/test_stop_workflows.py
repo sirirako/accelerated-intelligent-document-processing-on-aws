@@ -89,7 +89,6 @@ class TestWorkflowStopper:
     def test_purge_queue_error(self, mock_stack_info, mock_boto_clients):
         """Test purge queue handles errors"""
         from botocore.exceptions import ClientError
-
         from idp_cli.stop_workflows import WorkflowStopper
 
         mock_boto_clients["sqs"].purge_queue.side_effect = ClientError(
@@ -282,9 +281,8 @@ class TestAbortQueuedDocuments:
 
     def test_abort_updates_documents(self, mock_stack_info, mock_boto):
         """Test abort updates queued documents to ABORTED status"""
-        from idp_common.models import Status
-
         from idp_cli.stop_workflows import WorkflowStopper
+        from idp_common.models import Status
 
         with patch(
             "idp_cli.stop_workflows.DocumentDynamoDBService"
@@ -318,9 +316,8 @@ class TestAbortQueuedDocuments:
 
     def test_abort_handles_errors(self, mock_stack_info, mock_boto):
         """Test abort handles individual document errors gracefully"""
-        from idp_common.models import Status
-
         from idp_cli.stop_workflows import WorkflowStopper
+        from idp_common.models import Status
 
         with patch(
             "idp_cli.stop_workflows.DocumentDynamoDBService"
