@@ -6660,6 +6660,9 @@ Resources:
         Variables:
           TRACKING_TABLE_NAME: !Ref TrackingTable
           OUTPUT_BUCKET: !Ref OutputBucket
+          INPUT_BUCKET: !Ref InputBucket
+          WORKING_BUCKET: !Ref WorkingBucket
+          QUEUE_URL: !Ref DocumentQueue
       LoggingConfig:
         LogGroup: !Ref CompleteSectionReviewFunctionLogGroup
       Policies:
@@ -6667,17 +6670,16 @@ Resources:
             TableName: !Ref TrackingTable
         - S3CrudPolicy:
             BucketName: !Ref OutputBucket
+        - S3CrudPolicy:
+            BucketName: !Ref WorkingBucket
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt DocumentQueue.QueueName
         - Statement:
             - Effect: Allow
               Action:
                 - kms:Decrypt
                 - kms:GenerateDataKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
-            - Effect: Allow
-              Action:
-                - states:SendTaskSuccess
-                - states:SendTaskFailure
-              Resource: "*"
 
   HITLAppSyncServiceRole:
     Type: AWS::IAM::Role

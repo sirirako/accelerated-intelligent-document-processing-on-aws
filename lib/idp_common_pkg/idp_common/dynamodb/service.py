@@ -274,6 +274,22 @@ class DocumentDynamoDBService:
             expression_names["#TraceId"] = "TraceId"
             expression_values[":TraceId"] = document.trace_id
 
+        # Add HITL status fields if available
+        if document.hitl_status:
+            set_expressions.append("#HITLStatus = :HITLStatus")
+            expression_names["#HITLStatus"] = "HITLStatus"
+            expression_values[":HITLStatus"] = document.hitl_status
+        if document.hitl_sections_pending:
+            set_expressions.append("#HITLSectionsPending = :HITLSectionsPending")
+            expression_names["#HITLSectionsPending"] = "HITLSectionsPending"
+            expression_values[":HITLSectionsPending"] = document.hitl_sections_pending
+        if document.hitl_sections_completed:
+            set_expressions.append("#HITLSectionsCompleted = :HITLSectionsCompleted")
+            expression_names["#HITLSectionsCompleted"] = "HITLSectionsCompleted"
+            expression_values[":HITLSectionsCompleted"] = (
+                document.hitl_sections_completed
+            )
+
         update_expression = "SET " + ", ".join(set_expressions)
         # Convert any float values to Decimal for DynamoDB compatibility
         expression_values = convert_floats_to_decimal(expression_values)
@@ -381,6 +397,11 @@ class DocumentDynamoDBService:
                         confidence_threshold_alerts=confidence_threshold_alerts,
                     )
                 )
+
+        # Convert HITL status fields
+        doc.hitl_status = item.get("HITLStatus")
+        doc.hitl_sections_pending = item.get("HITLSectionsPending", [])
+        doc.hitl_sections_completed = item.get("HITLSectionsCompleted", [])
 
         return doc
 

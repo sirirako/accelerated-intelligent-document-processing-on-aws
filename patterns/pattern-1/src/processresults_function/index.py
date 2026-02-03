@@ -937,87 +937,19 @@ def process_segments(
     return document, overall_hitl_triggered
 
 
-def handle_hitl_wait(event):
-    """
-    Handle HITL wait action by storing the task token for later workflow continuation.
-
-    Args:
-        event: Event containing task token and document information
-
-    Returns:
-        Dict confirming HITL wait setup
-    """
-    task_token = event.get("taskToken")
-    document = event.get("document", {})
-    # Support document_id, input_key, and object_key for compatibility with compressed/uncompressed formats
-    object_key = (
-        document.get("document_id")
-        or document.get("input_key")
-        or document.get("object_key")
-    )
-
-    if not task_token or not object_key:
-        raise ValueError(
-            f"taskToken and document key are required for HITL wait. Got taskToken={bool(task_token)}, document keys={list(document.keys())}"
-        )
-
-    logger.info(f"Setting up HITL wait for document {object_key}")
-
-    try:
-        # Store the task token directly in DynamoDB
-        tracking_table = os.environ.get("TRACKING_TABLE_NAME") or os.environ.get(
-            "TRACKING_TABLE"
-        )
-        if not tracking_table:
-            raise ValueError(
-                "TRACKING_TABLE_NAME or TRACKING_TABLE environment variable not set"
-            )
-
-        dynamodb = boto3.resource("dynamodb")
-        table = dynamodb.Table(tracking_table)
-        table.update_item(
-            Key={"PK": f"doc#{object_key}", "SK": "none"},
-            UpdateExpression="SET HITLTaskToken = :token, HITLStatus = :status",
-            ExpressionAttributeValues={
-                ":token": task_token,
-                ":status": "WaitingForReview",
-            },
-        )
-
-        logger.info(
-            f"Task token stored for document {object_key}, workflow will wait for HITL completion"
-        )
-
-        # Return immediately - the workflow will wait for send_task_success
-        return {
-            "HITLWaitSetup": True,
-            "ObjectKey": object_key,
-            "Message": "Workflow waiting for HITL completion",
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to store task token for document {object_key}: {str(e)}")
-        raise
-
-
 def handler(event, context):
     """
     Process the BDA results and build a Document object with pages and sections.
     Can handle both single BDA response and arrays of BDA responses from blueprint changes.
-    Also handles HITL wait action to store task token for workflow continuation.
 
     Args:
-        event: Event containing BDA response information (single or array) or HITL wait action
+        event: Event containing BDA response information (single or array)
         context: Lambda context
 
     Returns:
-        Dict containing the processed document or HITL wait confirmation
+        Dict containing the processed document
     """
     logger.info(f"Processing event: {json.dumps(event)}")
-
-    # Check if this is a HITL wait action
-    if event.get("action") == "wait_for_hitl":
-        return handle_hitl_wait(event)
 
     config = get_config(as_model=True)
 
@@ -1035,6 +967,23 @@ def handler(event, context):
 
     # Extract required information from the first response
     first_response = bda_responses[0]
+    
+    # Handle skipped BDA case (HITL reprocessing)
+    if first_response.get("metadata", {}).get("skipped"):
+        logger.info("BDA was skipped - document already has extraction data (HITL reprocessing)")
+        working_bucket = first_response["metadata"]["working_bucket"]
+        document = Document.load_document(first_response.get("document", {}), working_bucket, logger)
+        
+        # Check if HITL review is needed
+        hitl_triggered = is_hitl_enabled() and any(
+            section.confidence_threshold_alerts for section in document.sections
+        )
+        
+        return {
+            "document": document.serialize_document(working_bucket, "processresults_skip", logger),
+            "hitl_triggered": hitl_triggered
+        }
+    
     output_bucket = first_response.get("output_bucket")
 
     # Handle different response formats
@@ -1238,48 +1187,16 @@ def handler(event, context):
         "BDAProject/bda/documents-standard": {"pages": standard_pages_count},
     }
 
-    # Update document status based on HITL requirement
-    if hitl_triggered:
-        # Set status to HITL_IN_PROGRESS when HITL is triggered
-        document.status = Status.HITL_IN_PROGRESS
-        logger.info(
-            f"Document requires human review, setting status to {document.status}"
-        )
-    else:
-        # Only mark as COMPLETED if no human review is needed
-        document.status = Status.COMPLETED
-        document.completion_time = datetime.datetime.now(
-            datetime.timezone.utc
-        ).isoformat()
-        logger.info(
-            f"Document processing complete, setting status to {document.status}"
-        )
-
-    document_service.update_document(document)
-
-    # Update HITLSectionsPending in DynamoDB if HITL is triggered
+    # Set HITL status on document model if HITL review is needed
     if hitl_triggered and document.sections:
-        try:
-            tracking_table = os.environ.get("TRACKING_TABLE_NAME")
-            if tracking_table:
-                hitl_sections_pending = [
-                    section.section_id for section in document.sections
-                ]
-                dynamodb = boto3.resource("dynamodb")
-                table = dynamodb.Table(tracking_table)
-                table.update_item(
-                    Key={"PK": f"doc#{document.input_key}", "SK": "none"},
-                    UpdateExpression="SET HITLSectionsPending = :pending, HITLSectionsCompleted = :completed",
-                    ExpressionAttributeValues={
-                        ":pending": hitl_sections_pending,
-                        ":completed": [],
-                    },
-                )
-                logger.info(
-                    f"Updated HITLSectionsPending for document {document.input_key}: {hitl_sections_pending}"
-                )
-        except Exception as e:
-            logger.error(f"Failed to update HITLSectionsPending: {str(e)}")
+        hitl_sections_pending = [section.section_id for section in document.sections]
+        document.hitl_status = "PendingReview"
+        document.hitl_sections_pending = hitl_sections_pending
+        document.hitl_sections_completed = []
+        logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
+
+    # Update document (includes HITL status)
+    document_service.update_document(document)
 
     # Prepare response using new serialization method
     # Use working bucket for document compression
