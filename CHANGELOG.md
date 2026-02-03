@@ -5,6 +5,17 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Pattern-1 Edit Mode with Data-Only Editing and Reprocessing**
+  - Added Edit Mode capability for Pattern-1 (BDA) stacks, enabling users to edit extraction data without modifying section structure
+  - **Data-Only Editing**: Click "Edit Mode" then use "Edit Data" buttons on each section to open the Visual Editor for modifying predictions and ground truth
+  - **Reprocessing Without BDA**: "Save and Reprocess" triggers evaluation and summarization steps without re-invoking Bedrock Data Automation (BDA)
+  - **Section Structure Protection**: Section structure (IDs, classes, page assignments) remains read-only as managed by BDA blueprints
+  - **Skip Logic Implementation**: State machine automatically detects existing pages/sections data and bypasses BDA invocation for reprocessing scenarios
+  - **Use Cases**: Correct extraction errors, add baseline data for evaluation comparison, re-run evaluation after data corrections, update document summaries
+
+
 ## [0.4.13]
 
 ### Added

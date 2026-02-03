@@ -1000,14 +1000,91 @@ def handle_hitl_wait(event):
         raise
 
 
+def handle_skip_bda(event, config):
+    """
+    Handle the skip_bda scenario where document already has pages/sections data.
+    This is used for reprocessing documents to re-run summarization and evaluation
+    without re-invoking BDA.
+
+    Args:
+        event: Event containing document data
+        config: Configuration object
+
+    Returns:
+        Dict containing the processed document ready for summarization/evaluation
+    """
+    logger.info("Handling skip_bda scenario - using existing document data")
+    
+    # Load the document from the event
+    working_bucket = os.environ.get("WORKING_BUCKET")
+    document = Document.load_document(event.get("document"), working_bucket, logger)
+    
+    # Update document status to POSTPROCESSING
+    document.status = Status.POSTPROCESSING
+    document.workflow_execution_arn = event.get("execution_arn")
+    
+    # Update document in AppSync
+    document_service = create_document_service()
+    logger.info(f"Updating document status to {document.status} for skip_bda scenario")
+    document_service.update_document(document)
+    
+    # Get confidence threshold from configuration for potential HITL checks
+    confidence_threshold = config.assessment.default_confidence_threshold
+    logger.info(f"Using confidence threshold: {confidence_threshold}")
+    
+    # Check if HITL should be triggered based on existing confidence alerts
+    hitl_triggered = False
+    if is_hitl_enabled():
+        # Check each section for confidence alerts below threshold
+        for section in document.sections:
+            alerts = section.confidence_threshold_alerts or []
+            if len(alerts) > 0:
+                logger.info(f"Section {section.section_id} has {len(alerts)} confidence alerts")
+                hitl_triggered = True
+                break
+    
+    logger.info(f"Skip BDA - hitl_triggered: {hitl_triggered}")
+    
+    # Update document status based on HITL requirement
+    if hitl_triggered:
+        document.status = Status.HITL_IN_PROGRESS
+        logger.info(f"Document requires human review, setting status to {document.status}")
+        document_service.update_document(document)
+    else:
+        # Don't update to COMPLETED here - let the workflow continue to Summarization/Evaluation
+        # The final status will be set after those steps complete
+        logger.info(f"Document will proceed to summarization/evaluation (skip_bda)")
+    
+    # Add metering information for skip scenario
+    document.metering = document.metering or {}
+    document.metering["BDAProject/bda/documents-skip"] = {"documents": 1}
+    
+    # Prepare response using serialization method
+    output_bucket = event.get("output_bucket") or os.environ.get("OUTPUT_BUCKET")
+    if not working_bucket:
+        logger.warning("WORKING_BUCKET not set, using output_bucket for compression")
+        working_bucket = output_bucket
+    
+    response = {
+        "document": document.serialize_document(working_bucket, "processresults_skip", logger),
+        "hitl_triggered": hitl_triggered,
+        "bda_response_count": 0,
+        "skip_bda": True
+    }
+    
+    logger.info(f"Skip BDA response: {json.dumps(response, default=str)}")
+    return response
+
+
 def handler(event, context):
     """
     Process the BDA results and build a Document object with pages and sections.
     Can handle both single BDA response and arrays of BDA responses from blueprint changes.
     Also handles HITL wait action to store task token for workflow continuation.
+    Also handles skip_bda scenario for reprocessing with existing document data.
 
     Args:
-        event: Event containing BDA response information (single or array) or HITL wait action
+        event: Event containing BDA response information (single or array) or HITL wait action or skip_bda flag
         context: Lambda context
 
     Returns:
@@ -1020,6 +1097,10 @@ def handler(event, context):
         return handle_hitl_wait(event)
 
     config = get_config(as_model=True)
+    
+    # Check if this is a skip_bda scenario (reprocessing with existing data)
+    if event.get("skip_bda"):
+        return handle_skip_bda(event, config)
 
     # Check if we have a single BDA response or an array of responses
     bda_responses = []
