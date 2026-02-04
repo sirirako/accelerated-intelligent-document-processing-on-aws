@@ -44,6 +44,13 @@ export const COLUMN_DEFINITIONS_MAIN = [
     width: 180,
   },
   {
+    id: 'hitlReviewedBy',
+    header: 'Reviewed By',
+    cell: (item) => item.hitlReviewedByEmail || item.hitlReviewedBy || '-',
+    sortingField: 'hitlReviewedBy',
+    width: 180,
+  },
+  {
     id: 'initialEventTime',
     header: 'Submitted',
     cell: (item) => item.initialEventTime,
@@ -103,6 +110,7 @@ const VISIBLE_CONTENT_OPTIONS = [
       { id: 'objectStatus', label: 'Status' },
       { id: 'hitlStatus', label: 'HITL Status' },
       { id: 'hitlReviewOwner', label: 'Review Owner' },
+      { id: 'hitlReviewedBy', label: 'Reviewed By' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
@@ -117,6 +125,7 @@ const VISIBLE_CONTENT = [
   'objectStatus',
   'hitlStatus',
   'hitlReviewOwner',
+  'hitlReviewedBy',
   'initialEventTime',
   'completionTime',
   'duration',
@@ -220,8 +229,8 @@ export const DocumentsCommonHeader = ({
   const hasAbortableItems = selectedItems.some((item) => ABORTABLE_STATUSES.includes(item.objectStatus));
   // Check if any selected items can be claimed (pending HITL and not owned)
   const hasClaimableItems = selectedItems.some((item) => item.hitlTriggered && !item.hitlCompleted && !item.hitlReviewOwner);
-  // Check if any selected items can be released (HITL in progress and owned by someone)
-  const hasReleasableItems = selectedItems.some((item) => item.hitlReviewOwner && item.objectStatus === 'HITL_IN_PROGRESS');
+  // Check if any selected items can be released (has review owner and HITL not completed)
+  const hasReleasableItems = selectedItems.some((item) => item.hitlReviewOwner && !item.hitlCompleted);
 
   return (
     <TableHeader

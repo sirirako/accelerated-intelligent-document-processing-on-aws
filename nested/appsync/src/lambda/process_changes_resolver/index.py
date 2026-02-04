@@ -70,6 +70,40 @@ def handler(event, context):
             
             logger.info(f"Found document: {document.id}")
             
+            # Mark HITL review as completed when processing changes
+            # This handles the case where user edits data and clicks "Process Changes"
+            if document.hitl_status and document.hitl_status not in ['Completed', 'Skipped']:
+                identity = event.get('identity', {})
+                username = identity.get('username', 'system')
+                user_email = identity.get('claims', {}).get('email', '')
+                
+                # Mark all pending sections as completed
+                pending_sections = document.hitl_sections_pending or []
+                completed_sections = list(document.hitl_sections_completed or [])
+                completed_sections.extend(pending_sections)
+                
+                document.hitl_status = 'Completed'
+                document.hitl_sections_pending = []
+                document.hitl_sections_completed = completed_sections
+                
+                # Update review fields in DynamoDB (not in document model)
+                # HITLReviewedBy tracks who completed the review via Process Changes
+                tracking_table = os.environ.get('TRACKING_TABLE')
+                if tracking_table:
+                    dynamodb_resource = boto3.resource('dynamodb')
+                    table = dynamodb_resource.Table(tracking_table)
+                    table.update_item(
+                        Key={"PK": f"doc#{object_key}", "SK": "none"},
+                        UpdateExpression="SET HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail, HITLCompleted = :completed",
+                        ExpressionAttributeValues={
+                            ":reviewedBy": username,
+                            ":reviewedByEmail": user_email,
+                            ":completed": True,
+                        },
+                    )
+                
+                logger.info(f"Marked HITL review as completed by {username} via Process Changes")
+            
         except Exception as e:
             logger.error(f"Error retrieving document {object_key}: {str(e)}")
             raise ValueError(f"Document {object_key} not found or error retrieving: {str(e)}")

@@ -28,6 +28,11 @@ export const renderHitlStatus = (item) => {
     return <StatusIndicator type="success">Review Completed</StatusIndicator>;
   }
 
+  // Check for in-progress status
+  if (item.hitlStatus && item.hitlStatus.toLowerCase() === 'inprogress') {
+    return <StatusIndicator type="in-progress">Review In Progress</StatusIndicator>;
+  }
+
   // HITL triggered but not completed - pending review
   return <StatusIndicator type="pending">Pending Review</StatusIndicator>;
 };

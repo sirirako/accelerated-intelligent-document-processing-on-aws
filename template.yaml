@@ -6661,6 +6661,7 @@ Resources:
       Environment:
         Variables:
           TRACKING_TABLE_NAME: !Ref TrackingTable
+          TRACKING_TABLE: !Ref TrackingTable
           OUTPUT_BUCKET: !Ref OutputBucket
           INPUT_BUCKET: !Ref InputBucket
           WORKING_BUCKET: !Ref WorkingBucket

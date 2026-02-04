@@ -9,8 +9,8 @@ import os
 from datetime import datetime, timezone
 
 import boto3
-from idp_common.models import Document, Status
 from idp_common.docs_service import create_document_service
+from idp_common.models import Status
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -21,37 +21,6 @@ sqs_client = boto3.client("sqs")
 
 TRACKING_TABLE_NAME = os.environ.get("TRACKING_TABLE_NAME", "")
 OUTPUT_BUCKET = os.environ.get("OUTPUT_BUCKET", "")
-
-
-def _document_to_response(document: Document, skipped: set = None) -> dict:
-    """Convert Document model to GraphQL response format."""
-    skipped = skipped or set()
-    sections = []
-    for s in document.sections:
-        sections.append({
-            "Id": s.section_id,
-            "DocumentType": s.document_type,
-            "StartPage": s.start_page,
-            "EndPage": s.end_page,
-            "OutputJSONUri": s.extraction_result_uri,
-        })
-    return {
-        "ObjectKey": document.input_key,
-        "ObjectStatus": document.status.value if document.status else "",
-        "InitialEventTime": document.initial_event_time or "",
-        "QueuedTime": document.queued_time or "",
-        "WorkflowStartTime": document.workflow_start_time or "",
-        "CompletionTime": document.completion_time or "",
-        "WorkflowExecutionArn": document.workflow_execution_arn or "",
-        "WorkflowStatus": document.workflow_status or "",
-        "PageCount": document.page_count or 0,
-        "Sections": sections,
-        "HITLStatus": document.hitl_status or "",
-        "HITLSectionsPending": document.hitl_sections_pending or [],
-        "HITLSectionsCompleted": document.hitl_sections_completed or [],
-        "HITLSectionsSkipped": list(skipped),
-        "TraceId": document.trace_id or "",
-    }
 
 
 def handler(event, context):
@@ -194,8 +163,8 @@ def complete_section_review(
     if all_completed:
         trigger_reprocessing(object_key)
 
-    # Return document data using document model
-    return _document_to_response(document, skipped)
+    # Return document data
+    return build_document_response(object_key)
 
 
 def save_edited_data_to_s3(s3_uri, edited_data):
@@ -330,11 +299,13 @@ def skip_all_sections_review(object_key, username="", user_email=""):
 
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},
-        UpdateExpression="SET HITLSectionsSkipped = :skipped, HITLReviewHistory = :history, HITLCompleted = :hitlCompleted",
+        UpdateExpression="SET HITLSectionsSkipped = :skipped, HITLReviewHistory = :history, HITLCompleted = :hitlCompleted, HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail",
         ExpressionAttributeValues={
             ":skipped": all_skipped,
             ":history": review_history,
             ":hitlCompleted": True,
+            ":reviewedBy": username or "unknown",
+            ":reviewedByEmail": user_email or "",
         },
     )
 
@@ -343,32 +314,41 @@ def skip_all_sections_review(object_key, username="", user_email=""):
     # Trigger reprocessing for summarization/evaluation
     trigger_reprocessing(object_key)
 
-    return _document_to_response(document, all_skipped)
+    return build_document_response(object_key)
 
 
 def claim_review(object_key, username="", user_email=""):
     """Claim a document for review (assigns reviewer as owner)."""
     logger.info(f"Claiming review for document {object_key} by {username}")
 
-    table = dynamodb.Table(TRACKING_TABLE_NAME)
-    response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
-
-    if "Item" not in response:
+    # Load document using document service to verify it exists
+    document_service = create_document_service(mode='dynamodb')
+    document = document_service.get_document(object_key)
+    
+    if not document:
         raise ValueError(f"Document {object_key} not found")
 
-    doc = response["Item"]
+    table = dynamodb.Table(TRACKING_TABLE_NAME)
+    response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
+    doc = response.get("Item", {})
     current_owner = doc.get("HITLReviewOwner", "")
 
     if current_owner and current_owner != username:
         raise ValueError(f"Document is already claimed by {current_owner}")
 
+    # Update HITL status and review owner directly in DynamoDB
+    # This avoids re-serializing metering data which could cause issues
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},
-        UpdateExpression="SET HITLReviewOwner = :owner, HITLReviewOwnerEmail = :email",
-        ExpressionAttributeValues={":owner": username, ":email": user_email},
+        UpdateExpression="SET HITLStatus = :status, HITLReviewOwner = :owner, HITLReviewOwnerEmail = :email",
+        ExpressionAttributeValues={
+            ":status": "InProgress",
+            ":owner": username,
+            ":email": user_email,
+        },
     )
 
-    logger.info(f"Review claimed for document {object_key} by {username}")
+    logger.info(f"Review claimed for document {object_key} by {username}, HITLStatus set to InProgress")
     return build_document_response(object_key)
 
 
@@ -376,25 +356,45 @@ def release_review(object_key, username="", user_email="", is_admin=False):
     """Release a document review (removes owner assignment)."""
     logger.info(f"Releasing review for document {object_key} by {username}")
 
-    table = dynamodb.Table(TRACKING_TABLE_NAME)
-    response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
-
-    if "Item" not in response:
+    # Load document using document service to verify it exists
+    document_service = create_document_service(mode='dynamodb')
+    document = document_service.get_document(object_key)
+    
+    if not document:
         raise ValueError(f"Document {object_key} not found")
 
-    doc = response["Item"]
+    table = dynamodb.Table(TRACKING_TABLE_NAME)
+    response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
+    doc = response.get("Item", {})
     current_owner = doc.get("HITLReviewOwner", "")
 
     if not is_admin and current_owner and current_owner != username:
         raise ValueError("Only the review owner or an admin can release this review")
 
+    # Update HITL status and remove review owner directly in DynamoDB
+    # This avoids re-serializing metering data which could cause issues
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},
-        UpdateExpression="REMOVE HITLReviewOwner, HITLReviewOwnerEmail",
+        UpdateExpression="SET HITLStatus = :status REMOVE HITLReviewOwner, HITLReviewOwnerEmail",
+        ExpressionAttributeValues={":status": "PendingReview"},
     )
 
-    logger.info(f"Review released for document {object_key}")
+    logger.info(f"Review released for document {object_key}, HITLStatus set to PendingReview")
     return build_document_response(object_key)
+
+
+def _convert_decimals(obj):
+    """Recursively convert Decimal values to int/float for JSON serialization."""
+    from decimal import Decimal
+    if isinstance(obj, Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    elif isinstance(obj, dict):
+        return {k: _convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_convert_decimals(i) for i in obj]
+    elif isinstance(obj, set):
+        return [_convert_decimals(i) for i in obj]
+    return obj
 
 
 def build_document_response(object_key):
@@ -403,7 +403,10 @@ def build_document_response(object_key):
     response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
     doc = response.get("Item", {})
 
-    return {
+    # Convert all Decimal values for JSON serialization
+    doc = _convert_decimals(doc)
+
+    result = {
         "ObjectKey": object_key,
         "ObjectStatus": doc.get("ObjectStatus", ""),
         "InitialEventTime": doc.get("InitialEventTime", ""),
@@ -426,6 +429,10 @@ def build_document_response(object_key):
         "HITLSectionsSkipped": doc.get("HITLSectionsSkipped", []),
         "HITLReviewOwner": doc.get("HITLReviewOwner", ""),
         "HITLReviewOwnerEmail": doc.get("HITLReviewOwnerEmail", ""),
+        "HITLReviewedBy": doc.get("HITLReviewedBy", ""),
+        "HITLReviewedByEmail": doc.get("HITLReviewedByEmail", ""),
         "HITLReviewHistory": doc.get("HITLReviewHistory", []),
         "TraceId": doc.get("TraceId", ""),
     }
+    # Final safety conversion to ensure no Decimals slip through
+    return _convert_decimals(result)

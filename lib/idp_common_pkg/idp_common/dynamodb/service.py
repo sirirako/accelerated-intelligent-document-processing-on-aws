@@ -249,7 +249,7 @@ class DocumentDynamoDBService:
         if document.metering:
             set_expressions.append("#Metering = :Metering")
             expression_names["#Metering"] = "Metering"
-            expression_values[":Metering"] = json.dumps(document.metering)
+            expression_values[":Metering"] = json.dumps(document.metering, default=str)
 
         # Add evaluation status & report if available
         if document.evaluation_status:

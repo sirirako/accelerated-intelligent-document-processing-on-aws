@@ -440,6 +440,15 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>Reviewed By</strong>
+            </Box>
+            <div>{item.hitlReviewedByEmail || item.hitlReviewedBy || '-'}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
               <strong>Confidence Alerts</strong>
             </Box>
             <ConfidenceAlertsSection sections={item.sections} mergedConfig={item.mergedConfig} />

@@ -53,6 +53,8 @@ const mapDocumentsAttributes = (documents) => {
     const hitlSectionsSkipped = item.HITLSectionsSkipped || [];
     const hitlReviewOwner = item.HITLReviewOwner || '';
     const hitlReviewOwnerEmail = item.HITLReviewOwnerEmail || '';
+    const hitlReviewedBy = item.HITLReviewedBy || '';
+    const hitlReviewedByEmail = item.HITLReviewedByEmail || '';
     // HITLReviewHistory comes as AWSJSON (string), parse if needed
     let hitlReviewHistory = item.HITLReviewHistory || [];
     if (typeof hitlReviewHistory === 'string') {
@@ -129,6 +131,8 @@ const mapDocumentsAttributes = (documents) => {
       hitlSectionsSkipped,
       hitlReviewOwner,
       hitlReviewOwnerEmail,
+      hitlReviewedBy,
+      hitlReviewedByEmail,
       hitlReviewHistory,
     };
 
