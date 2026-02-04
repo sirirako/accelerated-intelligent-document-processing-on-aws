@@ -13,7 +13,7 @@ import { Link } from '@cloudscape-design/components';
 export const formatConfigVersionLink = (configVersion, versions, maxDescLength = 10) => {
   if (!configVersion) return 'N/A';
 
-  const versionFromList = versions.find((v) => v.versionId === configVersion);
+  const versionFromList = versions.find((v) => v.versionName === configVersion);
 
   // If version not found in current versions list, show as deleted
   if (!versionFromList) {
@@ -32,7 +32,7 @@ export const formatConfigVersionLink = (configVersion, versions, maxDescLength =
 export const formatConfigVersionText = (configVersion, versions) => {
   if (!configVersion) return 'N/A';
 
-  const versionFromList = versions.find((v) => v.versionId === configVersion);
+  const versionFromList = versions.find((v) => v.versionName === configVersion);
 
   // If version not found in current versions list, show as deleted
   if (!versionFromList) {

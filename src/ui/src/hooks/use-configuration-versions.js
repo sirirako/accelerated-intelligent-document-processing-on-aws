@@ -74,15 +74,14 @@ const useConfigurationVersions = () => {
     }
   };
 
-  const updateVersion = async (versionId, configuration, description, versionName) => {
+  const updateVersion = async (versionName, configuration, description) => {
     try {
       const result = await client.graphql({
         query: updateConfigurationMutation,
         variables: {
-          versionId,
+          versionName,
           customConfig: JSON.stringify(configuration),
           description,
-          versionName,
         },
       });
       const response = result.data.updateConfiguration;

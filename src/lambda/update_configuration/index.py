@@ -4,7 +4,6 @@
 import json
 import logging
 import os
-import re
 from datetime import datetime
 from typing import Any, Dict, Union
 
@@ -405,19 +404,6 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     
                 configurations["custom"] = {"config": resolved_custom}
 
-            # Process additional versioned configurations (v2, v3, v4, etc.) - no activation
-            for key, value in properties.items():
-                if key.startswith("v") and key[1:].isdigit() and key not in ["v0", "v1"]:
-                    version = key
-                    resolved_config = resolve_content(value)
-                    
-                    # Merge with system defaults
-                    if isinstance(resolved_config, dict):
-                        logger.info(f"Merging {version} config with system defaults...")
-                        resolved_config = merge_custom_with_defaults(resolved_config)
-                    
-                    configurations[version] = resolved_config
-
             # Process DefaultPricing configuration if provided
             if "DefaultPricing" in properties:
                 resolved_pricing = resolve_content(properties["DefaultPricing"])
@@ -435,11 +421,9 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             current_time = datetime.utcnow().isoformat() + "Z"
             for config_name, config_info in configurations.items():
                 if isinstance(config_info, dict) and "config" in config_info:
-                    # New format with version_name
+                    # Versioned format - use config_name as version
                     config_data = config_info["config"]
-                    version_name = config_info["version_name"]
-                    version = version_name
-                    description = f"Configuration: {version_name}"
+                    version = config_name
                     
                     # Check if this version already exists
                     existing_config = None
@@ -450,10 +434,11 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     
                     if existing_config:
                         metadata = {"updated_at": current_time}
+                        manager.save_configuration("Config", config_data, version=version, metadata=metadata)
                     else:
                         metadata = {"created_at": current_time, "updated_at": current_time}
-                    
-                    manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
+                        description = "System default" if version == "default" else None
+                        manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
                     logger.info(f"Saved Config {version}")
                 elif config_name in ["Schema", "DefaultPricing"]:
                     # Non-versioned configurations

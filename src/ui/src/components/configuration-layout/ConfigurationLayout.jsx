@@ -614,7 +614,6 @@ const ConfigurationLayout = () => {
   const confirmActivateVersion = async () => {
     try {
       await setActiveVersion(versionToActivate);
-      setSaveSuccess(true);
       setShowActivateModal(false);
       // Show success confirmation dialog
       setShowActivateConfirmationModal(true);
@@ -694,7 +693,6 @@ const ConfigurationLayout = () => {
       setImportedConfigForNewVersion(null);
       setNewVersionName('');
       setNewVersionDescription('');
-      setSaveSuccess(true);
       setShowVersionConfirmationModal(true);
       setConfirmationModalType('import');
       setNewlyCreatedVersionId(result?.versionName || 'Unknown');
@@ -728,10 +726,8 @@ const ConfigurationLayout = () => {
 
   // Handle edit version
   const handleEditVersion = (versionToEdit) => {
-    const version = versions.find((v) => v.versionName === versionToEdit.versionName);
-    setEditingVersionId(versionToEdit.versionName);
-    setEditingDescription('');
     setEditingVersionName(versionToEdit.versionName);
+    setEditingDescription(versionToEdit.description || '');
     setEditingError(null); // Clear any previous errors
     setShowEditDescriptionModal(true);
   };
@@ -753,10 +749,10 @@ const ConfigurationLayout = () => {
       console.log('===============================');
 
       // Get the current configuration to preserve it
-      const currentConfig = await fetchVersion(editingVersionId);
+      const currentConfig = await fetchVersion(editingVersionName);
       const configData = JSON.parse(currentConfig.configuration);
 
-      await updateVersion(editingVersionId, configData, editingDescription, editingVersionName);
+      await updateVersion(editingVersionName, configData, editingDescription);
       setShowEditDescriptionModal(false);
       await fetchVersions();
     } catch (error) {
@@ -840,7 +836,7 @@ const ConfigurationLayout = () => {
     setSaveSuccess(false);
 
     try {
-      await updateVersion(selectedVersion, formValues);
+      await updateVersion(selectedVersion, formValues, selectedVersionData?.description);
       setSaveSuccess(true);
       await fetchVersions(); // Refresh the versions table
     } catch (error) {
@@ -872,6 +868,10 @@ const ConfigurationLayout = () => {
       setNewlyCreatedVersionId(result?.versionName || 'Unknown');
       // Refresh versions list
       await fetchVersions();
+      // Refresh the currently selected version data to show original data
+      if (selectedVersion) {
+        await handleVersionSelect(selectedVersion);
+      }
     } catch (error) {
       console.error('Save as new error:', error);
       setSaveError(error.message || 'Failed to save as new version');
@@ -887,7 +887,6 @@ const ConfigurationLayout = () => {
 
     try {
       await setActiveVersion(selectedVersion);
-      setSaveSuccess(true);
       setShowActivateModal(false);
       // Show confirmation dialog
       setShowActivateConfirmationModal(true);
@@ -970,14 +969,14 @@ const ConfigurationLayout = () => {
         const importedConfig = file.name.endsWith('.yaml') || file.name.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
 
         if (importedConfig && typeof importedConfig === 'object') {
-          // Ensure v0 is loaded for merging
-          const v0Data = await ensureV0Loaded();
+          // Ensure default is loaded for merging
+          const defaultData = await ensureDefaultLoaded();
 
-          // Merge with v0 defaults to fill missing fields
+          // Merge with default configuration to fill missing fields
           let configToImport = importedConfig;
-          if (v0Data && v0Data.configuration) {
+          if (defaultData && defaultData.configuration) {
             configToImport = {
-              ...v0Data.configuration,
+              ...defaultData.configuration,
               ...importedConfig,
             };
           }
@@ -1409,7 +1408,7 @@ const ConfigurationLayout = () => {
                       onClick={() => {
                         const currentVersionData = versions.find((v) => v.versionName === selectedVersion);
                         const currentVersionName = currentVersionData?.versionName || currentVersionData?.versionName;
-                        const defaultVersionName = currentVersionName ? `${currentVersionName} - Copy` : `${selectedVersion} - Copy`;
+                        const defaultVersionName = currentVersionName ? `${currentVersionName}_copy` : `${selectedVersion}_copy`;
                         setNewVersionName(defaultVersionName);
                         setShowSaveAsNewModal(true);
                       }}
@@ -1633,22 +1632,40 @@ const ConfigurationLayout = () => {
               <Button variant="link" onClick={() => setShowSaveAsNewModal(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleSaveAsNew} loading={isSaving}>
+              <Button
+                variant="primary"
+                onClick={handleSaveAsNew}
+                loading={isSaving}
+                disabled={
+                  !newVersionName.trim() ||
+                  !validateVersionName(newVersionName) ||
+                  (newVersionDescription && !validateDescription(newVersionDescription))
+                }
+              >
                 Save as New Version
               </Button>
             </SpaceBetween>
           </Box>
         }
       >
-        <FormField label="Version Name" description="Enter a name for this configuration version">
+        <FormField
+          label="Version Name"
+          description="Enter a name for this configuration version"
+          errorText={
+            newVersionName && !validateVersionName(newVersionName)
+              ? 'Version name can only contain letters, numbers, hyphens, and underscores (max 50 characters)'
+              : ''
+          }
+        >
           <Input
             value={newVersionName}
             onChange={({ detail }) => setNewVersionName(detail.value)}
             placeholder={(() => {
               const currentVersionData = versions.find((v) => v.versionName === selectedVersion);
               const currentVersionName = currentVersionData?.versionName || currentVersionData?.versionName;
-              return currentVersionName ? `${currentVersionName} - Copy` : `${selectedVersion} - Copy`;
+              return currentVersionName ? `${currentVersionName}_copy` : `${selectedVersion}_copy`;
             })()}
+            invalid={newVersionName && !validateVersionName(newVersionName)}
           />
         </FormField>
         <FormField label="Description (Optional)" description="Provide additional details about this version">
@@ -1898,24 +1915,6 @@ const ConfigurationLayout = () => {
               {editingError}
             </Alert>
           )}
-          <FormField
-            label="Version Name"
-            errorText={
-              editingVersionName && !validateVersionName(editingVersionName)
-                ? 'Version name can only contain letters, numbers, hyphens, and underscores (max 50 characters)'
-                : ''
-            }
-          >
-            <Input
-              value={editingVersionName}
-              onChange={({ detail }) => {
-                console.log('Version name changed to:', detail.value);
-                setEditingVersionName(detail.value);
-              }}
-              placeholder="Enter version name"
-              invalid={editingVersionName && !validateVersionName(editingVersionName)}
-            />
-          </FormField>
           <FormField
             label="Description"
             errorText={editingDescription && !validateDescription(editingDescription) ? 'Description cannot exceed 200 characters' : ''}

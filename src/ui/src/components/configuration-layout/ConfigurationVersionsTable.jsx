@@ -63,7 +63,7 @@ const ConfigurationVersionsTable = ({
       header: 'Version Name',
       cell: (item) => (
         <Box
-          fontWeight={item.isActive || item.versionName === currentlyOpenVersion ? 'bold' : 'normal'}
+          fontWeight={item.versionName === currentlyOpenVersion ? 'bold' : 'normal'}
           color={item.isActive ? 'text-status-success' : item.versionName === currentlyOpenVersion ? 'text-status-info' : 'inherit'}
         >
           <Link

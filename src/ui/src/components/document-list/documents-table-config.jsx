@@ -45,6 +45,13 @@ export const COLUMN_DEFINITIONS_MAIN = (versions = []) => [
     width: 180,
   },
   {
+    id: 'configVersion',
+    header: 'Config Version',
+    cell: (item) => formatConfigVersionLink(item.configVersion, versions),
+    sortingField: 'configVersion',
+    width: 150,
+  },
+  {
     id: 'initialEventTime',
     header: 'Submitted',
     cell: (item) => item.initialEventTime,
@@ -64,13 +71,6 @@ export const COLUMN_DEFINITIONS_MAIN = (versions = []) => [
     header: 'Duration',
     cell: (item) => item.duration,
     sortingField: 'duration',
-    width: 150,
-  },
-  {
-    id: 'configVersion',
-    header: 'Config Version',
-    cell: (item) => formatConfigVersionLink(item.configVersion, versions),
-    sortingField: 'configVersion',
     width: 150,
   },
   {

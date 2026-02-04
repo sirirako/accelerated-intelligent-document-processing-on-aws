@@ -683,7 +683,7 @@ def handle_update_configuration(manager, custom_config, version, description=Non
             }
         
         # Validate version name if provided
-        if version_name and not validate_version_name(version_name):
+        if version and not validate_version_name(version):
             return {
                 "success": False,
                 "error": {
@@ -703,7 +703,7 @@ def handle_update_configuration(manager, custom_config, version, description=Non
             }
         
         # Update the specific version
-        success = manager.handle_update_custom_configuration(custom_config, version, description, version_name)
+        success = manager.handle_update_custom_configuration(custom_config, version, description)
         
         return {
             "success": success,
@@ -832,7 +832,7 @@ def handle_save_as_new_version(manager, configuration, version_name, description
         }
         
         # Save new version (no activation)
-        manager.save_configuration("Config", config_data, version=version, description=description or f"Configuration: {version_name}", metadata=metadata)
+        manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
         
         return {
             "success": True,
