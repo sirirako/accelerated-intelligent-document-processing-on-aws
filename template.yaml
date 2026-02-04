@@ -6656,6 +6656,8 @@ Resources:
       Description: Lambda function to mark HITL section review as complete
       MemorySize: 512
       Timeout: 60
+      Layers:
+        - !Ref IDPCommonBaseLayer
       Environment:
         Variables:
           TRACKING_TABLE_NAME: !Ref TrackingTable
