@@ -1259,12 +1259,17 @@ def handler(event, context):
     }
 
     # Set Review Status on document model if HITL review is needed
+    # Only set to PendingReview if not already reviewed (preserve completed/skipped status on reprocess)
     if hitl_triggered and document.sections:
-        hitl_sections_pending = [section.section_id for section in document.sections]
-        document.hitl_status = "PendingReview"
-        document.hitl_sections_pending = hitl_sections_pending
-        document.hitl_sections_completed = []
-        logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
+        existing_status = document.hitl_status
+        if existing_status not in ("Review Completed", "Review Skipped", "Completed", "Skipped"):
+            hitl_sections_pending = [section.section_id for section in document.sections]
+            document.hitl_status = "PendingReview"
+            document.hitl_sections_pending = hitl_sections_pending
+            document.hitl_sections_completed = []
+            logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
+        else:
+            logger.info(f"Document already reviewed (status: {existing_status}), preserving HITL status on reprocess")
 
     # Update document (includes Review Status)
     document_service.update_document(document)

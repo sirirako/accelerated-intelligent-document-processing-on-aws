@@ -138,16 +138,21 @@ def handler(event, context):
             create_metadata_file(page.raw_text_uri, page.classification, "page")
 
     # Collect section IDs that need HITL review and update document model
+    # Only set to PendingReview if not already reviewed (preserve completed/skipped status on reprocess)
     hitl_sections_pending = []
     if hitl_triggered:
-        for section in document.sections:
-            if section.confidence_threshold_alerts:
-                hitl_sections_pending.append(section.section_id)
-        # Set Review Status on document model
-        document.hitl_status = "PendingReview"
-        document.hitl_sections_pending = hitl_sections_pending
-        document.hitl_sections_completed = []
-        logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
+        existing_status = document.hitl_status
+        if existing_status not in ("Review Completed", "Review Skipped", "Completed", "Skipped"):
+            for section in document.sections:
+                if section.confidence_threshold_alerts:
+                    hitl_sections_pending.append(section.section_id)
+            # Set Review Status on document model
+            document.hitl_status = "PendingReview"
+            document.hitl_sections_pending = hitl_sections_pending
+            document.hitl_sections_completed = []
+            logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
+        else:
+            logger.info(f"Document already reviewed (status: {existing_status}), preserving HITL status on reprocess")
 
     # Update final status in AppSync / Document Service (includes Review Status)
     logger.info(f"Updating document status to {document.status}")
