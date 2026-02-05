@@ -19,6 +19,7 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import useAppContext from '../../contexts/app';
 import useSettingsContext from '../../contexts/settings';
+import useUserRole from '../../hooks/use-user-role';
 import generateS3PresignedUrl from '../common/generate-s3-presigned-url';
 import PageTextEditorModal from './PageTextEditorModal';
 import processChanges from '../../graphql/queries/processChanges';
@@ -165,6 +166,12 @@ const PagesPanel = ({ pages, documentItem }) => {
 
   const { currentCredentials } = useAppContext();
   const { settings } = useSettingsContext();
+  const { isReviewer, isAdmin } = useUserRole();
+  const isReviewerOnly = isReviewer && !isAdmin;
+
+  // Edit Mode should be disabled for reviewers until they click Start Review (claim the document)
+  const hasReviewOwner = documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail;
+  const isEditModeDisabled = isReviewerOnly && !hasReviewOwner;
 
   const loadThumbnails = async () => {
     if (!pages) return;
@@ -418,7 +425,7 @@ const PagesPanel = ({ pages, documentItem }) => {
             actions={
               <SpaceBetween direction="horizontal" size="xs">
                 {!isEditMode ? (
-                  <Button variant="primary" iconName="edit" onClick={handleEditPagesClick}>
+                  <Button variant="primary" iconName="edit" onClick={handleEditPagesClick} disabled={isEditModeDisabled}>
                     Edit Mode
                   </Button>
                 ) : (

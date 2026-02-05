@@ -30,27 +30,6 @@ export const COLUMN_DEFINITIONS_MAIN = [
     width: 150,
   },
   {
-    id: 'hitlStatus',
-    header: 'Review Status',
-    cell: (item) => renderHitlStatus(item),
-    sortingField: 'hitlStatus',
-    width: 150,
-  },
-  {
-    id: 'hitlReviewOwner',
-    header: 'Review Owner',
-    cell: (item) => item.hitlReviewOwnerEmail || item.hitlReviewOwner || '-',
-    sortingField: 'hitlReviewOwner',
-    width: 180,
-  },
-  {
-    id: 'hitlReviewedBy',
-    header: 'Review Completed By',
-    cell: (item) => item.hitlReviewedByEmail || item.hitlReviewedBy || '-',
-    sortingField: 'hitlReviewedBy',
-    width: 180,
-  },
-  {
     id: 'initialEventTime',
     header: 'Submitted',
     cell: (item) => item.initialEventTime,
@@ -86,9 +65,30 @@ export const COLUMN_DEFINITIONS_MAIN = [
     sortingField: 'confidenceAlertCount',
     width: 150,
   },
+  {
+    id: 'hitlStatus',
+    header: 'Review Status',
+    cell: (item) => renderHitlStatus(item),
+    sortingField: 'hitlStatus',
+    width: 150,
+  },
+  {
+    id: 'hitlReviewOwner',
+    header: 'Review Owner',
+    cell: (item) => item.hitlReviewOwnerEmail || item.hitlReviewOwner || '-',
+    sortingField: 'hitlReviewOwner',
+    width: 180,
+  },
+  {
+    id: 'hitlReviewedBy',
+    header: 'Review Completed By',
+    cell: (item) => item.hitlReviewedByEmail || item.hitlReviewedBy || '-',
+    sortingField: 'hitlReviewedBy',
+    width: 180,
+  },
 ];
 
-export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[4]; // initialEventTime (index changed)
+export const DEFAULT_SORT_COLUMN = COLUMN_DEFINITIONS_MAIN[2]; // initialEventTime
 
 export const SELECTION_LABELS = {
   itemSelectionLabel: (data, row) => `select ${row.objectKey}`,
@@ -108,30 +108,19 @@ const VISIBLE_CONTENT_OPTIONS = [
     options: [
       { id: 'objectKey', label: 'Document ID', editable: false },
       { id: 'objectStatus', label: 'Status' },
-      { id: 'hitlStatus', label: 'Review Status' },
-      { id: 'hitlReviewOwner', label: 'Review Owner' },
-      { id: 'hitlReviewedBy', label: 'Review Completed By' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },
       { id: 'evaluationStatus', label: 'Evaluation' },
       { id: 'confidenceAlertCount', label: 'Confidence Alerts' },
+      { id: 'hitlStatus', label: 'Review Status' },
+      { id: 'hitlReviewOwner', label: 'Review Owner' },
+      { id: 'hitlReviewedBy', label: 'Review Completed By' },
     ],
   },
 ];
 
-const VISIBLE_CONTENT = [
-  'objectKey',
-  'objectStatus',
-  'hitlStatus',
-  'hitlReviewOwner',
-  'hitlReviewedBy',
-  'initialEventTime',
-  'completionTime',
-  'duration',
-  'evaluationStatus',
-  'confidenceAlertCount',
-];
+const VISIBLE_CONTENT = ['objectKey', 'objectStatus', 'initialEventTime', 'duration', 'confidenceAlertCount', 'hitlStatus'];
 
 export const DEFAULT_PREFERENCES = {
   pageSize: PAGE_SIZE_OPTIONS[0].value,
