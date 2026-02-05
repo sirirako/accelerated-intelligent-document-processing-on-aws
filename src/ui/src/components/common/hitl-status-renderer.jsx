@@ -4,9 +4,9 @@ import React from 'react';
 import { StatusIndicator } from '@cloudscape-design/components';
 
 /**
- * Render HITL status consistently across all components
+ * Render Review Status consistently across all components
  * @param {Object} item - Document item with HITL fields
- * @returns {string|JSX.Element} - Rendered HITL status
+ * @returns {string|JSX.Element} - Rendered Review Status
  */
 export const renderHitlStatus = (item) => {
   if (!item.hitlTriggered) {

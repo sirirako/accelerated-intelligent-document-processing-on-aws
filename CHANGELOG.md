@@ -32,7 +32,7 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **HITL Status Labels**: Renamed status values for consistency:
+- **Review Status Labels**: Renamed status values for consistency:
   - "Pending Review" → "Review Pending"
   - "Reviewed By" column → "Review Completed By"
 - **HITL Decoupled from Step Functions**: HITL review operations now update document status directly in DynamoDB without triggering workflow reprocessing, improving reliability and reducing unintended side effects
@@ -223,7 +223,7 @@ SPDX-License-Identifier: MIT-0
     - Mark Section Review Complete to approve individual sections
     - Skip All Reviews (Admin only) to bypass pending reviews and continue workflow
     - Release Review to unlock document for other reviewers
-  - **Real-time Status Updates**: HITL Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
+  - **Real-time Status Updates**: Review Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
   - See [Human-in-the-Loop Review Documentation](./docs/human-review.md) for detailed workflow information
   - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver futher improvements to human review capabilities with the ability to update document classification, extraction, and resubmit for incremental processing as part of a holistic approach to huiman reviews.
 - **User Management**

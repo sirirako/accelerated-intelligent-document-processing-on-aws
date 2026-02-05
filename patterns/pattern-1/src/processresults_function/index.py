@@ -1258,7 +1258,7 @@ def handler(event, context):
         "BDAProject/bda/documents-standard": {"pages": standard_pages_count},
     }
 
-    # Set HITL status on document model if HITL review is needed
+    # Set Review Status on document model if HITL review is needed
     if hitl_triggered and document.sections:
         hitl_sections_pending = [section.section_id for section in document.sections]
         document.hitl_status = "PendingReview"
@@ -1266,7 +1266,7 @@ def handler(event, context):
         document.hitl_sections_completed = []
         logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
 
-    # Update document (includes HITL status)
+    # Update document (includes Review Status)
     document_service.update_document(document)
 
     # Prepare response using new serialization method

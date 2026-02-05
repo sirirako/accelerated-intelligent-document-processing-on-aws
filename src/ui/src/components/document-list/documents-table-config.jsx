@@ -31,7 +31,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
   {
     id: 'hitlStatus',
-    header: 'HITL Status',
+    header: 'Review Status',
     cell: (item) => renderHitlStatus(item),
     sortingField: 'hitlStatus',
     width: 150,
@@ -108,7 +108,7 @@ const VISIBLE_CONTENT_OPTIONS = [
     options: [
       { id: 'objectKey', label: 'Document ID', editable: false },
       { id: 'objectStatus', label: 'Status' },
-      { id: 'hitlStatus', label: 'HITL Status' },
+      { id: 'hitlStatus', label: 'Review Status' },
       { id: 'hitlReviewOwner', label: 'Review Owner' },
       { id: 'hitlReviewedBy', label: 'Review Completed By' },
       { id: 'initialEventTime', label: 'Submitted' },

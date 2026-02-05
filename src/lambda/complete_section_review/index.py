@@ -116,13 +116,13 @@ def complete_section_review(
     all_completed = len(pending) == 0
     has_skipped = len(skipped) > 0
 
-    # Determine new HITL status
+    # Determine new Review Status
     if all_completed:
         new_hitl_status = "Skipped" if has_skipped else "Completed"
     else:
         new_hitl_status = "InProgress"
 
-    # Update document model with HITL status
+    # Update document model with Review Status
     document.hitl_status = new_hitl_status
     document.hitl_sections_pending = list(pending)
     document.hitl_sections_completed = list(completed)
@@ -327,7 +327,7 @@ def claim_review(object_key, username="", user_email=""):
     if current_owner and current_owner != username:
         raise ValueError(f"Document is already claimed by {current_owner}")
 
-    # Update HITL status and review owner directly in DynamoDB
+    # Update Review Status and review owner directly in DynamoDB
     # This avoids re-serializing metering data which could cause issues
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},
@@ -362,7 +362,7 @@ def release_review(object_key, username="", user_email="", is_admin=False):
     if not is_admin and current_owner and current_owner != username:
         raise ValueError("Only the review owner or an admin can release this review")
 
-    # Update HITL status and remove review owner directly in DynamoDB
+    # Update Review Status and remove review owner directly in DynamoDB
     # This avoids re-serializing metering data which could cause issues
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},

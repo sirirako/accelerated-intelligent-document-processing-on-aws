@@ -422,7 +422,7 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
-              <strong>HITL Status</strong>
+              <strong>Review Status</strong>
             </Box>
             <div>{renderHitlStatus(item)}</div>
           </div>

@@ -220,7 +220,7 @@ class DocumentAppSyncService:
                 if latest_hitl.review_portal_url:
                     input_data["HITLReviewURL"] = latest_hitl.review_portal_url
 
-        # Add HITL status fields from document model
+        # Add Review Status fields from document model
         if document.hitl_status:
             input_data["HITLStatus"] = document.hitl_status
         if document.hitl_sections_pending:

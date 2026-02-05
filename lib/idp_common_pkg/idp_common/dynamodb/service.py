@@ -274,7 +274,7 @@ class DocumentDynamoDBService:
             expression_names["#TraceId"] = "TraceId"
             expression_values[":TraceId"] = document.trace_id
 
-        # Add HITL status fields if available
+        # Add Review Status fields if available
         if document.hitl_status:
             set_expressions.append("#HITLStatus = :HITLStatus")
             expression_names["#HITLStatus"] = "HITLStatus"
@@ -398,7 +398,7 @@ class DocumentDynamoDBService:
                     )
                 )
 
-        # Convert HITL status fields
+        # Convert Review Status fields
         doc.hitl_status = item.get("HITLStatus")
         doc.hitl_sections_pending = item.get("HITLSectionsPending", [])
         doc.hitl_sections_completed = item.get("HITLSectionsCompleted", [])

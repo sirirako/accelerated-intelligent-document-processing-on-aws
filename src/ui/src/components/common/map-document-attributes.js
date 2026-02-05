@@ -3,7 +3,7 @@
 
 import { getDocumentConfidenceAlertCount } from './confidence-alerts-utils';
 
-// Helper function to determine HITL status without nested ternaries
+// Helper function to determine Review Status without nested ternaries
 const getHitlStatus = (status) => {
   if (!status || status === 'N/A') {
     return 'N/A';

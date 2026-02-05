@@ -134,7 +134,7 @@ The system automatically synchronizes users between Cognito and DynamoDB:
 
 ### Review Status Values
 
-Documents progress through the following HITL status values:
+Documents progress through the following Review Status values:
 
 | Status | Description |
 |--------|-------------|

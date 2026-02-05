@@ -352,7 +352,7 @@ class Document:
                 metadata.to_dict() for metadata in self.hitl_metadata
             ]
 
-        # Add HITL status fields
+        # Add Review Status fields
         if self.hitl_status:
             result["hitl_status"] = self.hitl_status
         if self.hitl_sections_pending:
@@ -430,7 +430,7 @@ class Document:
         for metadata_item in hitl_metadata_data:
             document.hitl_metadata.append(HitlMetadata.from_dict(metadata_item))
 
-        # Convert HITL status fields
+        # Convert Review Status fields
         document.hitl_status = data.get("hitl_status")
         document.hitl_sections_pending = data.get("hitl_sections_pending", [])
         document.hitl_sections_completed = data.get("hitl_sections_completed", [])

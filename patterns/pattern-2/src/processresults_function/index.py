@@ -143,13 +143,13 @@ def handler(event, context):
         for section in document.sections:
             if section.confidence_threshold_alerts:
                 hitl_sections_pending.append(section.section_id)
-        # Set HITL status on document model
+        # Set Review Status on document model
         document.hitl_status = "PendingReview"
         document.hitl_sections_pending = hitl_sections_pending
         document.hitl_sections_completed = []
         logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
 
-    # Update final status in AppSync / Document Service (includes HITL status)
+    # Update final status in AppSync / Document Service (includes Review Status)
     logger.info(f"Updating document status to {document.status}")
     document_service.update_document(document)
 
