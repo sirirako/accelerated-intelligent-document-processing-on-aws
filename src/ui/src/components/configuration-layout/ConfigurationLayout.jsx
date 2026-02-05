@@ -111,7 +111,7 @@ const ConfigurationLayout = () => {
   const [configBuilderActiveTab, setConfigBuilderActiveTab] = useState('configuration');
 
   // BDA/IDP Sync state
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncingDirection, setSyncingDirection] = useState(null); // Track which sync is running
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [syncError, setSyncError] = useState(null);
@@ -1015,17 +1015,19 @@ const ConfigurationLayout = () => {
   };
 
   // Handler for BDA/IDP sync
-  const handleSyncBdaIdp = async () => {
-    setIsSyncing(true);
+  // Handler for BDA/IDP sync with direction support
+  const handleSyncBdaIdp = async (direction = 'bidirectional') => {
+    setSyncingDirection(direction);
     setSyncSuccess(false);
     setSyncSuccessMessage('');
     setSyncError(null);
 
     try {
-      logger.debug('Starting BDA/IDP sync...');
+      logger.debug(`Starting BDA/IDP sync with direction: ${direction}...`);
 
       const result = await client.graphql({
         query: syncBdaIdpMutation,
+        variables: { direction },
       });
 
       logger.debug('Sync API response:', result);
@@ -1034,7 +1036,13 @@ const ConfigurationLayout = () => {
 
       if (response.success) {
         setSyncSuccess(true);
-        setSyncSuccessMessage(response.message || 'Document classes have been synchronized with BDA blueprints.');
+        const directionLabel =
+          {
+            bda_to_idp: 'from BDA to IDP',
+            idp_to_bda: 'from IDP to BDA',
+            bidirectional: 'bidirectionally',
+          }[direction] || direction;
+        setSyncSuccessMessage(response.message || `Document classes have been synchronized ${directionLabel}.`);
 
         // If there are partial failures, also show the error details
         if (response.error && response.error.type === 'PARTIAL_SYNC_ERROR') {
@@ -1046,10 +1054,16 @@ const ConfigurationLayout = () => {
 
         // Refresh configuration to show any new classes
         await fetchConfiguration();
-        setTimeout(() => {
-          setSyncSuccess(false);
-          setSyncSuccessMessage('');
-        }, 5000);
+
+        // Only auto-dismiss if there are no warnings in the message
+        // Warnings indicate BDA limitations that users should read
+        const hasWarnings = response.message?.includes('WARNING') || response.warnings?.length > 0;
+        if (!hasWarnings) {
+          setTimeout(() => {
+            setSyncSuccess(false);
+            setSyncSuccessMessage('');
+          }, 5000);
+        }
         logger.debug('BDA/IDP sync completed successfully');
       } else {
         const errorMsg = response.error?.message || response.message || 'Sync operation failed';
@@ -1060,7 +1074,7 @@ const ConfigurationLayout = () => {
       logger.error('Sync error:', err);
       setSyncError(`Sync failed: ${err.message}`);
     } finally {
-      setIsSyncing(false);
+      setSyncingDirection(null);
     }
   };
 
@@ -1582,9 +1596,14 @@ const ConfigurationLayout = () => {
                   Refresh
                 </Button>
                 {isPattern1 && (
-                  <Button variant="normal" onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
-                    Sync BDA/IDP
-                  </Button>
+                  <>
+                    <Button variant="normal" onClick={() => handleSyncBdaIdp('bda_to_idp')} loading={syncingDirection === 'bda_to_idp'}>
+                      Sync from BDA
+                    </Button>
+                    <Button variant="normal" onClick={() => handleSyncBdaIdp('idp_to_bda')} loading={syncingDirection === 'idp_to_bda'}>
+                      Sync to BDA
+                    </Button>
+                  </>
                 )}
                 <Button variant="normal" onClick={() => setShowResetModal(true)}>
                   Restore default (All)

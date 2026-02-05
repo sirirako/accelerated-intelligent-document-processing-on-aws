@@ -153,12 +153,14 @@ class OcrService:
                     # Explicit configuration provided - validate and use it
                     try:
                         self.resize_config = {
-                            "target_width": int(target_width)
-                            if target_width is not None
-                            else None,
-                            "target_height": int(target_height)
-                            if target_height is not None
-                            else None,
+                            "target_width": (
+                                int(target_width) if target_width is not None else None
+                            ),
+                            "target_height": (
+                                int(target_height)
+                                if target_height is not None
+                                else None
+                            ),
                         }
                         logger.info(
                             f"Using configured image sizing: {target_width}x{target_height}"
