@@ -360,7 +360,12 @@ def _is_valid_test_set_structure(s3_client, bucket, prefix):
         return False
 
 def _validate_test_set_files(s3_client, bucket, prefix):
-    """Validate that input and baseline files match"""
+    """Validate that input and baseline files match.
+    
+    Each input file must have a corresponding baseline folder with the exact same name
+    (including extension). For example, input file 'doc.png' requires baseline folder 'doc.png/'.
+    Any file extension is supported, and mixed extensions within a test set are allowed.
+    """
     try:
         input_files = set()
         baseline_files = set()
@@ -374,7 +379,7 @@ def _validate_test_set_files(s3_client, bucket, prefix):
                     filename = key.split('/')[-1]
                     input_files.add(filename)
         
-        # Get baseline folder names
+        # Get baseline folder names (first folder after /baseline/)
         for page in paginator.paginate(Bucket=bucket, Prefix=f"{prefix}/baseline/"):
             for obj in page.get('Contents', []):
                 key = obj['Key']
@@ -382,12 +387,10 @@ def _validate_test_set_files(s3_client, bucket, prefix):
                     # Extract folder name after /baseline/
                     parts = key.split(f"{prefix}/baseline/", 1)
                     if len(parts) == 2 and '/' in parts[1]:
-                        path_parts = parts[1].split('/')
-                        # Look for .pdf file in path
-                        for part in path_parts:
-                            if part.endswith('.pdf'):
-                                baseline_files.add(part)
-                                break
+                        # First path component is the baseline folder name
+                        folder_name = parts[1].split('/')[0]
+                        if folder_name:
+                            baseline_files.add(folder_name)
         
         # Validate matching
         if len(input_files) == 0:
