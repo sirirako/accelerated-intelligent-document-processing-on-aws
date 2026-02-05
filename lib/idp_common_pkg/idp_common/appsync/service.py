@@ -169,12 +169,16 @@ class DocumentAppSyncService:
 
                         alert_data = {
                             "attributeName": alert.get("attribute_name"),
-                            "confidence": float(confidence_value)
-                            if confidence_value is not None
-                            else None,
-                            "confidenceThreshold": float(confidence_threshold_value)
-                            if confidence_threshold_value is not None
-                            else None,
+                            "confidence": (
+                                float(confidence_value)
+                                if confidence_value is not None
+                                else None
+                            ),
+                            "confidenceThreshold": (
+                                float(confidence_threshold_value)
+                                if confidence_threshold_value is not None
+                                else None
+                            ),
                         }
                         alerts_data.append(alert_data)
                     section_data["ConfidenceThresholdAlerts"] = alerts_data

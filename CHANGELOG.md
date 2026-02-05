@@ -7,6 +7,13 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Enhanced BDA to IDP Sync for Pattern-1**
+  - Separate "Sync from BDA" and "Sync to BDA" buttons in the UI for explicit directional control instead of bidirectional-only sync
+  - Parallel blueprint processing for improved sync performance on configurations with many document classes
+  - Orphaned blueprint cleanup automatically detects and removes BDA blueprints no longer defined in IDP configuration
+  - Warning notifications for skipped properties due to BDA limitations (nested arrays/objects), with guidance to flatten schemas using top-level `$defs`
+  - AWS standard blueprint filtering prevents unintended modifications to AWS-managed blueprints
+
 - **Pattern-1 Edit Mode with Data-Only Editing and Reprocessing**
   - Added Edit Mode capability for Pattern-1 (BDA) stacks, enabling users to edit extraction data without modifying section structure
   - **Data-Only Editing**: Click "Edit Mode" then use "Edit Data" buttons on each section to open the Visual Editor for modifying predictions and ground truth

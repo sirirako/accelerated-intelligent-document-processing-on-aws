@@ -276,7 +276,7 @@ class DocumentDynamoDBService:
 
         update_expression = "SET " + ", ".join(set_expressions)
         # Convert any float values to Decimal for DynamoDB compatibility
-        expression_values = convert_floats_to_decimal(expression_values)
+        expression_values = convert_floats_to_decimal(expression_values)  # type: ignore[assignment]
 
         return update_expression, expression_names, expression_values
 
@@ -386,7 +386,7 @@ class DocumentDynamoDBService:
 
     def create_document(
         self, document: Document, expires_after: Optional[int] = None
-    ) -> str:
+    ) -> Optional[str]:
         """
         Create a new document in DynamoDB using a transaction.
 
@@ -534,9 +534,9 @@ class DocumentDynamoDBService:
 
         response = self.client.scan(
             filter_expression=filter_expression,
-            expression_attribute_values=expression_attribute_values
-            if expression_attribute_values
-            else None,
+            expression_attribute_values=(
+                expression_attribute_values if expression_attribute_values else None
+            ),
             limit=limit or 50,
             exclusive_start_key=exclusive_start_key,
         )

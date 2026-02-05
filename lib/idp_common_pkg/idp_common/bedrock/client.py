@@ -97,7 +97,7 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
-    "global.anthropic.claude-opus-4-5-20251101-v1:0"
+    "global.anthropic.claude-opus-4-5-20251101-v1:0",
 ]
 
 
@@ -254,9 +254,7 @@ class BedrockClient:
                 content_type = (
                     "text"
                     if "text" in item
-                    else "image"
-                    if "image" in item
-                    else "other"
+                    else "image" if "image" in item else "other"
                 )
                 logger.debug(
                     f"No cachepoint tags in {content_type} content, passing through unchanged"
