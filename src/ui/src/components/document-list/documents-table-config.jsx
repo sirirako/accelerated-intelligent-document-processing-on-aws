@@ -45,7 +45,7 @@ export const COLUMN_DEFINITIONS_MAIN = [
   },
   {
     id: 'hitlReviewedBy',
-    header: 'Reviewed By',
+    header: 'Review Completed By',
     cell: (item) => item.hitlReviewedByEmail || item.hitlReviewedBy || '-',
     sortingField: 'hitlReviewedBy',
     width: 180,
@@ -110,7 +110,7 @@ const VISIBLE_CONTENT_OPTIONS = [
       { id: 'objectStatus', label: 'Status' },
       { id: 'hitlStatus', label: 'HITL Status' },
       { id: 'hitlReviewOwner', label: 'Review Owner' },
-      { id: 'hitlReviewedBy', label: 'Reviewed By' },
+      { id: 'hitlReviewedBy', label: 'Review Completed By' },
       { id: 'initialEventTime', label: 'Submitted' },
       { id: 'completionTime', label: 'Completed' },
       { id: 'duration', label: 'Duration' },

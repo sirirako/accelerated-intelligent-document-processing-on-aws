@@ -255,37 +255,29 @@ def skip_all_sections_review(object_key, username="", user_email=""):
     """Skip all pending section reviews and mark document as complete (Admin only)."""
     logger.info(f"Skipping all sections review for document {object_key} by admin {username}")
 
-    # Load document using document service
+    # Load document using document service to verify it exists
     document_service = create_document_service(mode='dynamodb')
     document = document_service.get_document(object_key)
-    
+
     if not document:
         raise ValueError(f"Document {object_key} not found")
 
     completed = set(document.hitl_sections_completed or [])
-    
+
     # Get skipped from DynamoDB (not in document model)
     table = dynamodb.Table(TRACKING_TABLE_NAME)
     response = table.get_item(Key={"PK": f"doc#{object_key}", "SK": "none"})
     doc = response.get("Item", {})
     existing_skipped = set(doc.get("HITLSectionsSkipped", []) or [])
-    
+
     # Get all section IDs from the document
     all_section_ids = {section.section_id for section in document.sections if section.section_id}
-    
+
     # Sections to skip = all sections that are not already completed
     sections_to_skip = all_section_ids - completed - existing_skipped
     all_skipped = list(sections_to_skip | existing_skipped)
 
-    # Update document model with HITL status
-    document.hitl_status = "Skipped"
-    document.hitl_sections_pending = []
-    document.hitl_sections_completed = list(completed)
-    
-    # Update via document service
-    document_service.update_document(document)
-
-    # Update review-specific fields in DynamoDB (not in document model)
+    # Update review-specific fields directly in DynamoDB
     review_record = {
         "sectionId": "ALL_SKIPPED",
         "reviewedBy": username or "unknown",
@@ -299,8 +291,10 @@ def skip_all_sections_review(object_key, username="", user_email=""):
 
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},
-        UpdateExpression="SET HITLSectionsSkipped = :skipped, HITLReviewHistory = :history, HITLCompleted = :hitlCompleted, HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail",
+        UpdateExpression="SET HITLStatus = :status, HITLSectionsPending = :pending, HITLSectionsSkipped = :skipped, HITLReviewHistory = :history, HITLCompleted = :hitlCompleted, HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail",
         ExpressionAttributeValues={
+            ":status": "Review Skipped",
+            ":pending": [],
             ":skipped": all_skipped,
             ":history": review_history,
             ":hitlCompleted": True,
@@ -310,9 +304,6 @@ def skip_all_sections_review(object_key, username="", user_email=""):
     )
 
     logger.info(f"All sections skipped for document {object_key}. Skipped: {all_skipped}, Completed: {list(completed)}")
-
-    # Trigger reprocessing for summarization/evaluation
-    trigger_reprocessing(object_key)
 
     return build_document_response(object_key)
 
@@ -376,10 +367,10 @@ def release_review(object_key, username="", user_email="", is_admin=False):
     table.update_item(
         Key={"PK": f"doc#{object_key}", "SK": "none"},
         UpdateExpression="SET HITLStatus = :status REMOVE HITLReviewOwner, HITLReviewOwnerEmail",
-        ExpressionAttributeValues={":status": "PendingReview"},
+        ExpressionAttributeValues={":status": "Review Pending"},
     )
 
-    logger.info(f"Review released for document {object_key}, HITLStatus set to PendingReview")
+    logger.info(f"Review released for document {object_key}, HITLStatus set to Review Pending")
     return build_document_response(object_key)
 
 

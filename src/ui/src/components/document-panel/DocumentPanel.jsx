@@ -440,7 +440,7 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
-              <strong>Reviewed By</strong>
+              <strong>Review Completed By</strong>
             </Box>
             <div>{item.hitlReviewedByEmail || item.hitlReviewedBy || '-'}</div>
           </div>
