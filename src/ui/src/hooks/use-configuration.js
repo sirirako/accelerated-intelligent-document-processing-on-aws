@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import getConfigurationQuery from '../graphql/queries/getConfiguration';
+import getConfigVersionQuery from '../graphql/queries/getConfigVersion';
 import updateConfigurationMutation from '../graphql/queries/updateConfiguration';
 import { deepMerge } from '../utils/configUtils';
 
@@ -197,10 +197,10 @@ const getDiff = (oldConfig, newConfig) => {
   return diff;
 };
 
-const useConfiguration = () => {
+const useConfiguration = (versionName = 'default') => {
   const [schema, setSchema] = useState(null);
   const [defaultConfig, setDefaultConfig] = useState(null);
-  const [customConfig, setCustomConfig] = useState(null);
+  const [versionConfig, setVersionConfig] = useState(null);
   const [mergedConfig, setMergedConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -216,29 +216,32 @@ const useConfiguration = () => {
     setError(null);
     try {
       logger.debug('Fetching configuration...');
-      const result = await client.graphql({ query: getConfigurationQuery });
+      const result = await client.graphql({
+        query: getConfigVersionQuery,
+        variables: { versionName },
+      });
       logger.debug('API response:', result);
 
-      const response = result.data.getConfiguration;
+      const response = result.data.getConfigVersion;
 
       if (!response.success) {
         const errorMsg = response.error?.message || 'Failed to load configuration';
         throw new Error(errorMsg);
       }
 
-      const { Schema, Default, Custom } = response;
+      const { Schema, Default, Configuration } = response;
 
       // Log raw data types
       logger.debug('Raw data types:', {
         Schema: typeof Schema,
         Default: typeof Default,
-        Custom: typeof Custom,
+        Configuration: typeof Configuration,
       });
 
       // Enhanced parsing logic - handle both string and object types
       let schemaObj = Schema;
       let defaultObj = Default;
-      let customObj = Custom;
+      let versionObj = Configuration;
 
       // Parse schema if it's a string
       if (typeof Schema === 'string') {
@@ -268,24 +271,23 @@ const useConfiguration = () => {
         }
       }
 
-      // Parse custom config if it's a string and not null/empty
-      if (typeof Custom === 'string' && Custom) {
+      // Parse version config - should not be empty
+      if (typeof Configuration === 'string' && Configuration) {
         try {
-          customObj = JSON.parse(Custom);
-          logger.debug('Custom config parsed from string successfully');
+          versionObj = JSON.parse(Configuration);
+          logger.debug('Version config parsed from string successfully');
         } catch (e) {
-          logger.error('Error parsing custom config string:', e);
-          // Don't throw here, just log the error and use empty object
-          customObj = {};
+          logger.error('Error parsing version config string:', e);
+          throw new Error(`Failed to parse version configuration: ${e.message}`);
         }
-      } else if (!Custom) {
-        customObj = {};
+      } else if (!Configuration) {
+        throw new Error('Version configuration is empty or missing');
       }
 
       // Debug the parsed objects
       logger.debug('Parsed schema:', schemaObj);
       logger.debug('Parsed default config:', defaultObj);
-      logger.debug('Parsed custom config:', customObj);
+      logger.debug('Parsed version config:', versionObj);
 
       // Validate the parsed objects
       if (!schemaObj || typeof schemaObj !== 'object') {
@@ -298,12 +300,12 @@ const useConfiguration = () => {
 
       setSchema(schemaObj);
 
-      // Normalize boolean values in both default and custom configs
+      // Normalize boolean values in both default and version configs
       const normalizedDefaultObj = normalizeBooleans(defaultObj, schemaObj);
-      const normalizedCustomObj = normalizeBooleans(customObj, schemaObj);
+      const normalizedVersionObj = normalizeBooleans(versionObj, schemaObj);
 
       setDefaultConfig(normalizedDefaultObj);
-      setCustomConfig(normalizedCustomObj);
+      setVersionConfig(normalizedVersionObj);
 
       // IMPORTANT: Frontend merges Default + Custom for display
       // DESIGN PATTERN:
@@ -315,7 +317,7 @@ const useConfiguration = () => {
       // - Stack upgrades to safely update Default without losing user customizations
       // - Empty Custom = all defaults (clean reset capability)
       // - User customizations survive stack deployments
-      const activeConfig = deepMerge(normalizedDefaultObj, normalizedCustomObj);
+      const activeConfig = deepMerge(normalizedDefaultObj, normalizedVersionObj);
 
       logger.debug('Merged configuration (Default + Custom deltas):', activeConfig);
       // Double check the classification and extraction sections
@@ -390,7 +392,7 @@ const useConfiguration = () => {
   // DESIGN: Set the default value - backend auto-cleans matching defaults from Custom
   // The strip_matching_defaults function on backend removes values matching Default
   const resetToDefault = async (path) => {
-    if (!path || !customConfig || !defaultConfig) return false;
+    if (!path || !versionConfig || !defaultConfig) return false;
 
     setError(null);
     try {
@@ -420,14 +422,14 @@ const useConfiguration = () => {
 
       logger.debug(`Successfully reset path ${path} to default (backend auto-cleaned)`);
 
-      // Optimistic update: remove the field from local custom config
+      // Optimistic update: remove the field from local version config
       // (Backend's auto-cleanup will have removed it since it matches Default)
-      const newCustomConfig = removeValueAtPath(customConfig, path);
+      const newVersionConfig = removeValueAtPath(versionConfig, path);
 
       // Update local state
-      setCustomConfig(newCustomConfig);
-      // mergedConfig = Default + Custom (with field removed, Default value shows)
-      setMergedConfig(deepMerge(defaultConfig, newCustomConfig));
+      setVersionConfig(newVersionConfig);
+      // mergedConfig = Default + Version (with field removed, Default value shows)
+      setMergedConfig(deepMerge(defaultConfig, newVersionConfig));
 
       return true;
     } catch (err) {
@@ -444,7 +446,7 @@ const useConfiguration = () => {
 
   // Check if a value is customized or default
   const isCustomized = (path) => {
-    if (!customConfig || !path) {
+    if (!versionConfig || !path) {
       return false;
     }
 
@@ -462,61 +464,61 @@ const useConfiguration = () => {
         }, obj);
       };
 
-      // Get values from both custom and default configs
-      const customValue = getValueAtPathSegments(customConfig, pathSegments);
+      // Get values from both version and default configs
+      const versionValue = getValueAtPathSegments(versionConfig, pathSegments);
       const defaultValue = getValueAtPathSegments(defaultConfig, pathSegments);
 
-      // First check if the custom value exists
-      const customValueExists = customValue !== undefined;
+      // First check if the version value exists
+      const versionValueExists = versionValue !== undefined;
 
       // Special case for empty objects - they should count as not customized
       if (
-        customValueExists &&
-        typeof customValue === 'object' &&
-        customValue !== null &&
-        !Array.isArray(customValue) &&
-        Object.keys(customValue).length === 0
+        versionValueExists &&
+        typeof versionValue === 'object' &&
+        versionValue !== null &&
+        !Array.isArray(versionValue) &&
+        Object.keys(versionValue).length === 0
       ) {
         return false;
       }
 
       // Special case for arrays
-      if (customValueExists && Array.isArray(customValue)) {
+      if (versionValueExists && Array.isArray(versionValue)) {
         // Compare arrays for deep equality
         if (Array.isArray(defaultValue)) {
           // Different lengths means customized (including empty vs non-empty)
-          if (customValue.length !== defaultValue.length) return true;
+          if (versionValue.length !== defaultValue.length) return true;
 
           // Deep compare each element
-          for (let i = 0; i < customValue.length; i += 1) {
-            if (JSON.stringify(customValue[i]) !== JSON.stringify(defaultValue[i])) {
+          for (let i = 0; i < versionValue.length; i += 1) {
+            if (JSON.stringify(versionValue[i]) !== JSON.stringify(defaultValue[i])) {
               return true;
             }
           }
           return false; // Arrays are identical
         }
-        return true; // Custom is array, default isn't or is undefined
+        return true; // Version is array, default isn't or is undefined
       }
 
       // Deep compare objects
       if (
-        customValueExists &&
-        typeof customValue === 'object' &&
-        customValue !== null &&
+        versionValueExists &&
+        typeof versionValue === 'object' &&
+        versionValue !== null &&
         typeof defaultValue === 'object' &&
         defaultValue !== null
       ) {
-        return JSON.stringify(customValue) !== JSON.stringify(defaultValue);
+        return JSON.stringify(versionValue) !== JSON.stringify(defaultValue);
       }
 
       // Check for numeric equivalence (handles 5 vs 5.0, "5" vs 5, etc.)
       // This prevents false positives when Pydantic converts int to float
-      if (customValueExists && isNumericValue(customValue) && isNumericValue(defaultValue)) {
-        return !areNumericValuesEqual(customValue, defaultValue);
+      if (versionValueExists && isNumericValue(versionValue) && isNumericValue(defaultValue)) {
+        return !areNumericValuesEqual(versionValue, defaultValue);
       }
 
       // Simple value comparison for non-numeric values
-      return customValueExists && customValue !== defaultValue;
+      return versionValueExists && versionValue !== defaultValue;
     } catch (err) {
       logger.error(`Error in isCustomized for path: ${path}`, err);
       return false;
@@ -525,12 +527,12 @@ const useConfiguration = () => {
 
   useEffect(() => {
     fetchConfiguration();
-  }, []);
+  }, [versionName]); // Re-fetch when version changes
 
   return {
     schema,
     defaultConfig,
-    customConfig,
+    versionConfig,
     mergedConfig,
     loading,
     refreshing,

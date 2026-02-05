@@ -160,72 +160,6 @@ def handler(event, context):
         }
 
 
-def handle_get_configuration(manager):
-    """
-    Handle the getConfiguration GraphQL query
-    Returns Schema, Default, and Custom configuration items.
-    
-    DESIGN PATTERN (CRITICAL):
-    - Default: Full stack baseline (Pydantic validated)
-    - Custom: SPARSE DELTAS ONLY (raw from DynamoDB, NO Pydantic defaults!)
-    - Frontend merges Default + Custom for display
-    - Runtime uses get_configuration() for processing
-    
-    This design allows:
-    - Stack upgrades to safely update Default without losing user customizations
-    - Empty Custom = all defaults (clean reset)
-    - User customizations survive stack updates
-    
-    ANTI-PATTERNS TO AVOID:
-    - DO NOT auto-copy Default → Custom when Custom is empty
-    - DO NOT use Pydantic validation on Custom (fills in defaults)
-    """
-    try:
-        # Get Schema configuration (Pydantic validated - this is correct for Schema)
-        schema_config = manager.get_configuration(CONFIG_TYPE_SCHEMA)
-        if schema_config:
-            # Remove config_type discriminator before sending to frontend
-            schema_dict = schema_config.model_dump(
-                mode="python", exclude={"config_type"}
-            )
-        else:
-            schema_dict = {}
-
-        # Get Default configuration (Pydantic validated - full stack baseline)
-        default_config = manager.get_configuration(CONFIG_TYPE_DEFAULT)
-        if default_config and isinstance(default_config, IDPConfig):
-            default_dict = default_config.model_dump(
-                mode="python", exclude={"config_type"}
-            )
-        else:
-            default_dict = {}
-
-        # Get Custom configuration as RAW dict (NO Pydantic defaults!)
-        # This is critical for the sparse delta pattern to work correctly
-        custom_dict = manager.get_raw_configuration(CONFIG_TYPE_CUSTOM)
-        
-        # If Custom doesn't exist or is empty, return empty dict
-        # DO NOT auto-copy Default → Custom (this breaks the delta pattern)
-        if not custom_dict:
-            logger.info("Custom config is empty or not found - returning empty dict (expected behavior)")
-            custom_dict = {}
-
-        # Return all configurations as dicts (GraphQL requires JSON-serializable)
-        result = {
-            "success": True,
-            "Schema": schema_dict,
-            "Default": default_dict,
-            "Custom": custom_dict,
-        }
-
-        logger.info("Returning configuration (Default=full, Custom=deltas only)")
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in getConfiguration: {str(e)}")
-        raise e
-
-
 def handle_list_config_library(args):
     """
     List available configurations from S3 config_library for a specific pattern
@@ -614,7 +548,6 @@ def handle_get_config_versions(manager):
 def handle_get_config_version(manager, version):
     """
     Handle the getConfigVersion GraphQL query
-    Returns a specific configuration version
     """
     try:
         if not version:
@@ -626,17 +559,30 @@ def handle_get_config_version(manager, version):
                 },
             }
         
-        # Get schema (same for all versions)
+        # Get Schema configuration (Pydantic validated - this is correct for Schema)
         schema_config = manager.get_configuration(CONFIG_TYPE_SCHEMA)
         if schema_config:
-            schema_dict = schema_config.model_dump(mode="python", exclude={"config_type"})
+            # Remove config_type discriminator before sending to frontend
+            schema_dict = schema_config.model_dump(
+                mode="python", exclude={"config_type"}
+            )
         else:
             schema_dict = {}
+
+        # Get Default configuration (Pydantic validated - full stack baseline)
+        default_config = manager.get_configuration("Config", "default")
+        if default_config and isinstance(default_config, IDPConfig):
+            default_dict = default_config.model_dump(
+                mode="python", exclude={"config_type"}
+            )
+        else:
+            default_dict = {}
+
+        # Get the requested version as RAW dict (same logic as Custom in handle_get_configuration)
+        config_dict = manager.get_raw_configuration(f"Config#{version}")
         
-        # Get the requested version directly
-        config = manager.get_configuration("Config", version)
-        
-        if not config:
+        # If version doesn't exist or is empty, return empty dict
+        if not config_dict:
             return {
                 "success": False,
                 "error": {
@@ -644,28 +590,21 @@ def handle_get_config_version(manager, version):
                     "message": f"Configuration version '{version}' not found",
                 },
             }
-        
-        if isinstance(config, IDPConfig):
-            config_dict = config.model_dump(mode="python", exclude={"config_type"})
-        else:
-            config_dict = {}
-        
-        return {
+
+        # Return all configurations as dicts (same as handle_get_configuration)
+        result = {
             "success": True,
             "Schema": schema_dict,
-            "Configuration": config_dict
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in getConfigVersion: {str(e)}")
-        return {
-            "success": False,
-            "error": {
-                "type": "Error",
-                "message": f"Failed to get configuration version: {str(e)}",
-            },
+            "Default": default_dict,
+            "Configuration": config_dict,
         }
 
+        logger.info("Returning configuration (Default=full, Version=deltas only)")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in getConfigVersion: {str(e)}")
+        raise e
 
 def handle_update_configuration(manager, custom_config, version, description=None):
     """

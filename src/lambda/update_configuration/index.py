@@ -257,6 +257,152 @@ def merge_custom_with_defaults(
         return custom_config
 
 
+def save_configuration_bypass_manager(config_type: str, config_data: Any, version: str = None, description: str = None, metadata: Dict[str, str] = None) -> None:
+    """
+    Save configuration directly to DynamoDB bypassing ConfigurationManager.
+    Used when ConfigurationManager is unreliable (e.g., after migration from legacy format).
+    """
+    import boto3
+    from idp_common.config.models import SchemaConfig, IDPConfig, PricingConfig
+    
+    # Get table name from environment
+    table_name = os.environ.get('CONFIGURATION_TABLE_NAME')
+    if not table_name:
+        logger.error("CONFIGURATION_TABLE_NAME environment variable not set")
+        return
+    
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(table_name)
+    
+    # Convert dict to appropriate config type if needed (same logic as ConfigurationManager)
+    if isinstance(config_data, dict):
+        if config_type == "Schema":
+            config_data = SchemaConfig(**config_data)
+        elif config_type in ("DefaultPricing", "CustomPricing"):
+            config_data = PricingConfig(**config_data)
+        else:
+            config_data = IDPConfig(**config_data)
+    
+    # Get config as dict and stringify values (same as ConfigurationRecord.to_dynamodb_item)
+    config_dict = config_data.model_dump(mode="python")
+    config_dict.pop("config_type", None)  # Remove discriminator
+    stringified = _stringify_values(config_dict)
+    
+    # Create DynamoDB item with flattened config
+    item = {
+        'Configuration': f"{config_type}#{version}" if version else config_type,
+        **stringified
+    }
+    
+    if description:
+        item['Description'] = description
+    
+    if metadata:
+        if "created_at" in metadata:
+            item["CreatedAt"] = metadata["created_at"]
+        if "updated_at" in metadata:
+            item["UpdatedAt"] = metadata["updated_at"]
+    
+    table.put_item(Item=item)
+    logger.info(f"Saved {config_type}{f'#{version}' if version else ''} configuration bypassing ConfigurationManager")
+
+
+def _stringify_values(obj: Any) -> Any:
+    """
+    Recursively convert values to strings for DynamoDB storage.
+    Same logic as ConfigurationRecord._stringify_values
+    """
+    if obj is None:
+        return None
+    elif isinstance(obj, bool):
+        return obj
+    elif isinstance(obj, dict):
+        return {k: _stringify_values(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_stringify_values(item) for item in obj]
+    else:
+        return str(obj)
+
+
+def detect_and_migrate_legacy_format() -> bool:
+    """
+    Detect if legacy format exists by checking for 'Default' key and migrate to versioned format.
+    
+    Returns:
+        bool: True if migration was performed, False if no migration needed
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    # Get table name from environment
+    table_name = os.environ.get('CONFIGURATION_TABLE_NAME')
+    if not table_name:
+        logger.error("CONFIGURATION_TABLE_NAME environment variable not set")
+        return False
+    
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(table_name)
+    
+    try:
+        # Check for 'Default' key as indicator of legacy format
+        response = table.get_item(Key={'Configuration': 'Default'})
+        
+        if 'Item' not in response:
+            logger.info("No 'Default' key found, no legacy migration needed")
+            return False
+            
+        logger.info("Legacy 'Default' configuration detected, starting migration")
+        
+        # Check if Custom also exists
+        custom_response = table.get_item(Key={'Configuration': 'Custom'})
+        has_custom = 'Item' in custom_response
+        
+        current_time = datetime.utcnow().isoformat() + "Z"
+        
+        # Migrate Default
+        default_item = response['Item']
+        new_default_item = dict(default_item)
+        new_default_item['Configuration'] = 'Config#default'
+        new_default_item['IsActive'] = not has_custom  # Active only if no Custom exists
+        new_default_item['Description'] = 'Migrated from Default'
+        new_default_item['CreatedAt'] = current_time
+        new_default_item['UpdatedAt'] = current_time
+        
+        table.put_item(Item=new_default_item)
+        logger.info(f"Migrated Default -> Config#default (IsActive: {not has_custom})")
+        
+        # Delete old Default record
+        table.delete_item(Key={'Configuration': 'Default'})
+        logger.info("Deleted legacy Default record")
+        
+        # Migrate Custom if it exists
+        if has_custom:
+            custom_item = custom_response['Item']
+            new_custom_item = dict(custom_item)
+            new_custom_item['Configuration'] = 'Config#custom'
+            new_custom_item['IsActive'] = True  # Custom is active if it exists
+            new_custom_item['Description'] = 'Migrated from Custom'
+            new_custom_item['CreatedAt'] = current_time
+            new_custom_item['UpdatedAt'] = current_time
+            
+            table.put_item(Item=new_custom_item)
+            logger.info("Migrated Custom -> Config#custom (IsActive: True)")
+            
+            # Delete old Custom record
+            table.delete_item(Key={'Configuration': 'Custom'})
+            logger.info("Deleted legacy Custom record")
+        
+        logger.info("Legacy format migration completed successfully")
+        return True
+        
+    except ClientError as e:
+        logger.error(f"Error during migration: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during migration: {e}")
+        raise
+
+
 def generate_physical_id(stack_id: str, logical_id: str) -> str:
     """
     Generates a consistent physical ID for the custom resource
@@ -297,45 +443,13 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         manager = ConfigurationManager()
 
         if request_type in ["Create", "Update"]:
-            # For Update: Migrate existing Default/Custom to versioned format first
+            # Check for legacy migration on Update requests
+            migration_performed = False
             if request_type == "Update":
-                # Migrate existing Default/Custom records with activation only during migration
-                migrated_custom = False
-                migrated_default = False
-                
-                try:
-                    existing_default = manager.get_configuration("Default")
-                    if existing_default:
-                        default_version = "default"
-                        logger.info(f"Found existing Default - migrating to Config#{default_version}")
-                        manager.save_configuration("Config", existing_default, version=default_version, description="System default configuration - migrated from Default")
-                        manager.delete_configuration("Default")
-                        migrated_default = True
-                        logger.info(f"Migrated Default to Config#{default_version}")
-                except Exception as e:
-                    logger.debug(f"No Default to migrate: {e}")
-                
-                try:
-                    existing_custom = manager.get_configuration("Custom")
-                    if existing_custom:
-                        custom_version = "custom"
-                        logger.info(f"Found existing Custom - migrating to Config#{custom_version}")
-                        manager.save_configuration("Config", existing_custom, version=custom_version, description="User customized configuration - migrated from Custom")
-                        manager.delete_configuration("Custom")
-                        migrated_custom = True
-                        logger.info(f"Migrated Custom to Config#{custom_version}")
-                except Exception as e:
-                    logger.debug(f"No Custom to migrate: {e}")
-                
-                # Only change activation during actual migration
-                if migrated_custom:
-                    manager.activate_version("custom")
-                    logger.info("Activated custom (migrated Custom)")
-                elif migrated_default:
-                    manager.activate_version("default")
-                    logger.info("Activated default (migrated Default)")
-                # If no migration occurred, preserve existing active version (no action needed)
-
+                migration_performed = detect_and_migrate_legacy_format()
+                if migration_performed:
+                    logger.info("Legacy migration completed, using direct DynamoDB operations for remaining processing")
+            
             # Collect all configurations to process
             configurations = {}
             
@@ -417,7 +531,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 configurations = swap_model_ids(configurations, region_type)
                 logger.info(f"Applied model swapping for {region_type} region to all configurations")
 
-            # Save all configurations (no activation changes)
+            # Save all configurations
             current_time = datetime.utcnow().isoformat() + "Z"
             for config_name, config_info in configurations.items():
                 if isinstance(config_info, dict) and "config" in config_info:
@@ -425,55 +539,51 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                     config_data = config_info["config"]
                     version = config_name
                     
-                    # Check if this version already exists
-                    existing_config = None
-                    try:
-                        existing_config = manager.get_configuration("Config", version)
-                    except:
-                        pass
-                    
-                    if existing_config:
+                    if migration_performed:
+                        # Use direct DynamoDB operations when migration was performed
+                        # Only update timestamp since record already exists from migration
                         metadata = {"updated_at": current_time}
-                        manager.save_configuration("Config", config_data, version=version, metadata=metadata)
+                        save_configuration_bypass_manager("Config", config_data, version=version, metadata=metadata)
+                        logger.info(f"Updated Config {version} (bypass mode)")
                     else:
-                        metadata = {"created_at": current_time, "updated_at": current_time}
-                        description = "System default" if version == "default" else None
-                        manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
-                    logger.info(f"Saved Config {version}")
-                elif config_name in ["Schema", "DefaultPricing"]:
-                    # Non-versioned configurations
-                    existing_config = None
-                    try:
-                        existing_config = manager.get_configuration(config_name)
-                    except:
-                        pass
-                    
-                    if existing_config:
-                        metadata = {"updated_at": current_time}
-                    else:
-                        metadata = {"created_at": current_time, "updated_at": current_time}
-                    
-                    manager.save_configuration(config_name, config_info, metadata=metadata)
-                    logger.info(f"Updated {config_name} configuration")
+                        # Use ConfigurationManager for normal operations
+                        # Check if this version already exists
+                        existing_config = None
+                        try:
+                            existing_config = manager.get_configuration("Config", version)
+                        except:
+                            pass
+                        
+                        if existing_config:
+                            metadata = {"updated_at": current_time}
+                            manager.save_configuration("Config", config_data, version=version, metadata=metadata)
+                        else:
+                            metadata = {"created_at": current_time, "updated_at": current_time}
+                            description = "System default" if version == "default" else None
+                            manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
+                        logger.info(f"Saved Config {version}")
                 else:
-                    # Legacy format - config_name is the version name (default, custom, etc.)
-                    version = config_name
-                    description = f"Configuration: {config_name}"
-                    
-                    existing_config = None
-                    try:
-                        existing_config = manager.get_configuration("Config", version)
-                    except:
-                        pass
-                    
-                    if existing_config:
+                    # Non-versioned configurations (Schema, DefaultPricing)
+                    if migration_performed:
+                        # Use direct DynamoDB operations when migration was performed
                         metadata = {"updated_at": current_time}
+                        save_configuration_bypass_manager(config_name, config_info, metadata=metadata)
+                        logger.info(f"Updated {config_name} configuration (bypass mode)")
                     else:
-                        metadata = {"created_at": current_time, "updated_at": current_time}
-                    
-                    manager.save_configuration("Config", config_info, version=version, description=description, metadata=metadata)
-                    logger.info(f"Saved Config {version}")
-
+                        # Use ConfigurationManager for normal operations
+                        existing_config = None
+                        try:
+                            existing_config = manager.get_configuration(config_name)
+                        except:
+                            pass
+                        
+                        if existing_config:
+                            metadata = {"updated_at": current_time}
+                        else:
+                            metadata = {"created_at": current_time, "updated_at": current_time}
+                        
+                        manager.save_configuration(config_name, config_info, metadata=metadata)
+                        logger.info(f"Updated {config_name} configuration")
             # For Create: Activate custom if Custom was provided, otherwise default if Default provided
             if request_type == "Create":
                 if "Custom" in properties and "custom" in configurations:

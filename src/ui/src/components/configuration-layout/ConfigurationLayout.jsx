@@ -1,9 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import PropTypes from 'prop-types';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Container,
   Header,
@@ -18,234 +16,49 @@ import {
   FormField,
   Input,
   RadioGroup,
-  Icon,
-  Badge,
-  Table,
   ExpandableSection,
-  CodeEditor,
+  Table,
+  Icon,
 } from '@cloudscape-design/components';
 import Editor from '@monaco-editor/react';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import yaml from 'js-yaml';
-// eslint-disable-next-line import/no-extraneous-dependencies
-import ace from 'ace-builds';
 import ReactMarkdown from 'react-markdown';
 import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
-import { deepMerge } from '../../utils/configUtils';
 import useConfiguration from '../../hooks/use-configuration';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import useConfigurationLibrary from '../../hooks/use-configuration-library';
 import useSettingsContext from '../../contexts/settings';
 import ConfigBuilder from './ConfigBuilder';
 import ConfigurationVersionsTable from './ConfigurationVersionsTable';
+import { deepMerge } from '../../utils/configUtils';
 import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
-import getConfigVersionQuery from '../../graphql/queries/getConfigVersion';
 
 const client = generateClient();
 const logger = new ConsoleLogger('ConfigurationLayout');
 
-// Compare Versions Content Component
-const CompareVersionsContent = ({ selectedVersions, versions }) => {
-  const [versionData, setVersionData] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('differences');
-
-  useEffect(() => {
-    const fetchVersionsData = async () => {
-      setLoading(true);
-      const data = {};
-
-      try {
-        for (const versionName of selectedVersions) {
-          const result = await client.graphql({
-            query: getConfigVersionQuery,
-            variables: { versionName },
-          });
-
-          if (result.data.getConfigVersion.success) {
-            const versionInfo = versions.find((v) => v.versionName === versionName);
-            data[versionName] = {
-              configuration: JSON.parse(result.data.getConfigVersion.Configuration || '{}'),
-              isActive: versionInfo?.isActive || false,
-            };
-          }
-        }
-        setVersionData(data);
-      } catch (error) {
-        logger.error('Error fetching versions:', error);
-        // Set empty data to prevent blank page
-        setVersionData({});
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (selectedVersions.length > 0) {
-      fetchVersionsData();
-    } else {
-      setLoading(false);
-    }
-  }, [selectedVersions, versions]);
-
-  const formatContent = (config, format) => {
-    try {
-      if (format === 'yaml') {
-        return yaml.dump(config, { indent: 2, lineWidth: -1 });
-      }
-      return JSON.stringify(config, null, 2);
-    } catch (err) {
-      return `Error formatting: ${err.message}`;
-    }
-  };
-
-  // Function to find differences between configurations
-  const findDifferences = () => {
-    const differences = [];
-    const allPaths = new Set();
-
-    // Get all possible paths from all versions
-    const getAllPaths = (obj, prefix = '') => {
-      Object.keys(obj || {}).forEach((key) => {
-        const path = prefix ? `${prefix}.${key}` : key;
-        allPaths.add(path);
-        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-          getAllPaths(obj[key], path);
-        }
-      });
-    };
-
-    selectedVersions.forEach((versionName) => {
-      getAllPaths(versionData[versionName]?.configuration);
-    });
-
-    // Filter out parent paths if child paths exist
-    const filteredPaths = Array.from(allPaths).filter((path) => {
-      // Check if any other path starts with this path + "."
-      return !Array.from(allPaths).some((otherPath) => otherPath !== path && otherPath.startsWith(path + '.'));
-    });
-
-    // Check each filtered path for differences
-    filteredPaths.forEach((path) => {
-      const values = {};
-
-      selectedVersions.forEach((versionName) => {
-        const value = getValueByPath(versionData[versionName]?.configuration, path);
-        values[versionName] = value;
-      });
-
-      // Check if values are different
-      const uniqueValues = new Set(Object.values(values).map((v) => JSON.stringify(v)));
-      if (uniqueValues.size > 1) {
-        differences.push({ path, values });
-      }
-    });
-
-    return differences;
-  };
-
-  // Helper function to get value by dot notation path
-  const getValueByPath = (obj, path) => {
-    return path.split('.').reduce((current, key) => {
-      return current && current[key] !== undefined ? current[key] : undefined;
-    }, obj);
-  };
-
-  const renderDifferencesTable = () => {
-    const differences = findDifferences();
-
-    if (differences.length === 0) {
-      return (
-        <Box textAlign="center" padding="l">
-          <Box variant="h3">No differences found</Box>
-          <Box>All selected versions have identical configurations.</Box>
-        </Box>
-      );
-    }
-
-    const totalColumns = selectedVersions.length + 1; // +1 for field path column
-    const columnWidth = Math.floor(100 / totalColumns);
-
-    const columnDefinitions = [
-      {
-        id: 'field',
-        header: 'Field Path',
-        cell: (item) => <Box variant="code">{item.path}</Box>,
-        sortingField: 'path',
-        isRowHeader: true,
-        width: `${columnWidth}%`,
-      },
-      ...selectedVersions.map((versionName) => ({
-        id: versionName,
-        header: `${versionName} ${versionData[versionName]?.isActive ? '(Active)' : ''}`,
-        cell: (item) => {
-          const value = item.values[versionName];
-          return (
-            <Box variant="code" fontSize="body-s">
-              {value === undefined ? '(undefined)' : JSON.stringify(value)}
-            </Box>
-          );
-        },
-        width: `${columnWidth}%`,
-      })),
-    ];
-
-    return (
-      <Table
-        columnDefinitions={columnDefinitions}
-        items={differences}
-        resizableColumns
-        variant="borderless"
-        header={<Header variant="h3">Config Differences ({differences.length} fields)</Header>}
-        empty={
-          <Box margin={{ vertical: 'xs' }} textAlign="center" color="inherit">
-            <SpaceBetween size="m">
-              <b>No differences found</b>
-              <Box variant="p" color="inherit">
-                All selected versions have identical configurations.
-              </Box>
-            </SpaceBetween>
-          </Box>
-        }
-      />
-    );
-  };
-
-  if (loading) {
-    return (
-      <Box textAlign="center" padding="l">
-        <Spinner size="large" />
-        <Box padding="s">Loading versions...</Box>
-      </Box>
-    );
-  }
-
-  return <SpaceBetween size="m">{renderDifferencesTable()}</SpaceBetween>;
-};
-
-CompareVersionsContent.propTypes = {
-  selectedVersions: PropTypes.arrayOf(PropTypes.string).isRequired,
-  versions: PropTypes.arrayOf(
-    PropTypes.shape({
-      versionName: PropTypes.string.isRequired,
-      isActive: PropTypes.bool,
-    }),
-  ).isRequired,
-};
-
 // Utility function to check if two values are numerically equivalent
+// Handles cases where 5 and 5.0, or "5" and 5 should be considered equal
 const areNumericValuesEqual = (val1, val2) => {
+  // If both are numbers, direct comparison
   if (typeof val1 === 'number' && typeof val2 === 'number') {
     return val1 === val2;
   }
+
+  // Try to parse both as numbers
   const num1 = typeof val1 === 'number' ? val1 : parseFloat(val1);
   const num2 = typeof val2 === 'number' ? val2 : parseFloat(val2);
+
+  // Both must be valid numbers for numeric comparison
   if (!Number.isNaN(num1) && !Number.isNaN(num2)) {
     return num1 === num2;
   }
+
   return false;
 };
 
+// Check if a value could be interpreted as a number
 const isNumericValue = (val) => {
   if (typeof val === 'number') return true;
   if (typeof val === 'string' && val.trim() !== '') {
@@ -255,376 +68,74 @@ const isNumericValue = (val) => {
 };
 
 const ConfigurationLayout = () => {
+  // Version selection state - declare first
+  const [selectedVersionsForCompare, setSelectedVersionsForCompare] = useState([]);
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [versionsTableExpanded, setVersionsTableExpanded] = useState(false);
+
+  // Import as new version state
+  const [showImportAsNewVersionModal, setShowImportAsNewVersionModal] = useState(false);
+  const [importedConfigForNewVersion, setImportedConfigForNewVersion] = useState(null);
+  const [newVersionName, setNewVersionName] = useState('');
+  const [newVersionDescription, setNewVersionDescription] = useState('');
+
+  // Configuration Library state
+  const [showLibraryBrowserModal, setShowLibraryBrowserModal] = useState(false);
+  const [libraryConfigs, setLibraryConfigs] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  // Add versions hook for the table
   const {
     versions,
     loading: versionsLoading,
     fetchVersions,
-    fetchVersion,
-    saveAsNewVersion,
     setActiveVersion,
-    updateVersion,
     deleteVersion,
+    saveAsNewVersion,
   } = useConfigurationVersions();
 
-  // URL parameter handling
-  const location = useLocation();
+  // Get active version name
+  const activeVersionName = useMemo(() => {
+    const activeVersion = versions.find((v) => v.isActive);
+    return activeVersion?.versionName || 'default';
+  }, [versions]);
 
-  // Version selection state
-  const [selectedVersion, setSelectedVersion] = useState(null);
-  const [selectedVersionData, setSelectedVersionData] = useState(null);
-  const [defaultVersionData, setDefaultVersionData] = useState(null); // default version for comparison
-  const [loadingVersion, setLoadingVersion] = useState(false);
-
-  // Compare versions state
-  const [selectedVersionsForCompare, setSelectedVersionsForCompare] = useState([]);
-  const [showCompareModal, setShowCompareModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [versionsToDelete, setVersionsToDelete] = useState([]);
-
-  // Configuration editing state (from develop branch)
-  const [formValues, setFormValues] = useState({});
-  const [jsonContent, setJsonContent] = useState('');
-  const [yamlContent, setYamlContent] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [validationErrors, setValidationErrors] = useState([]);
-  const [viewMode, setViewMode] = useState('form');
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [showSaveAsNewModal, setShowSaveAsNewModal] = useState(false);
-  const [showVersionConfirmationModal, setShowVersionConfirmationModal] = useState(false);
-  const [confirmationModalType, setConfirmationModalType] = useState(''); // 'save' or 'import'
-  const [newlyCreatedVersionId, setNewlyCreatedVersionId] = useState('');
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [showActivateModal, setShowActivateModal] = useState(false);
-  const [showActivateConfirmationModal, setShowActivateConfirmationModal] = useState(false);
-  const [activatedVersionId, setActivatedVersionId] = useState('');
-  const [versionToActivate, setVersionToActivate] = useState('');
-  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
-  const [showBulkDeleteSuccessModal, setShowBulkDeleteSuccessModal] = useState(false);
-  const [deletedVersionsDisplay, setDeletedVersionsDisplay] = useState('');
-  const [exportFormat, setExportFormat] = useState('json');
-  const [exportFileName, setExportFileName] = useState('configuration');
-  const [importError, setImportError] = useState(null);
-  const [extractionSchema, setExtractionSchema] = useState(null);
-  const [ruleSchema, setRuleSchema] = useState(null);
-  const [newVersionName, setNewVersionName] = useState('');
-  const [newVersionDescription, setNewVersionDescription] = useState('');
-  const [showEditDescriptionModal, setShowEditDescriptionModal] = useState(false);
-  const [editingVersionId, setEditingVersionId] = useState('');
-  const [editingDescription, setEditingDescription] = useState('');
-  const [editingVersionName, setEditingVersionName] = useState('');
-  const [editingError, setEditingError] = useState(null);
-
-  // Configuration Library state
-  const [showImportSourceModal, setShowImportSourceModal] = useState(false);
-  const [showImportAsNewVersionModal, setShowImportAsNewVersionModal] = useState(false);
-  const [importedConfigForNewVersion, setImportedConfigForNewVersion] = useState(null);
-  const [showLibraryBrowserModal, setShowLibraryBrowserModal] = useState(false);
-  const [libraryImportContext, setLibraryImportContext] = useState('current'); // 'current' or 'new'
-  const [showReadmeModal, setShowReadmeModal] = useState(false);
-  const [libraryConfigs, setLibraryConfigs] = useState([]);
-  const [selectedLibraryConfig, setSelectedLibraryConfig] = useState(null);
-  const [readmeContent, setReadmeContent] = useState('');
-  const [libraryLoading, setLibraryLoading] = useState(false);
-
-  const editorRef = useRef(null);
-  const { listConfigurations, getFile } = useConfigurationLibrary();
-  const { settings } = useSettingsContext();
-
-  // BDA/IDP Sync state
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncSuccess, setSyncSuccess] = useState(false);
-  const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
-  const [syncError, setSyncError] = useState(null);
-
-  // Helper function to check if Pattern-1 is selected
-  const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
-
-  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
-  const isPattern2 = settings?.IDPPattern?.includes('Pattern2');
-
-  // Validation functions
-  const validateVersionName = (name) => /^[a-zA-Z0-9-_]+$/.test(name) && name.length <= 50;
-  const validateDescription = (desc) => desc.length <= 200;
-
-  // Validate the current content based on view mode
-  const validateCurrentContent = () => {
-    try {
-      if (viewMode === 'json') {
-        JSON.parse(jsonContent);
-        return [];
-      }
-      if (viewMode === 'yaml') {
-        yaml.load(yamlContent);
-        return [];
-      }
-      return [];
-    } catch (e) {
-      return [{ message: `Invalid ${viewMode.toUpperCase()}: ${e.message}` }];
-    }
-  };
-
-  // Format JSON in editor
-  const formatJson = () => {
-    if (editorRef.current && viewMode === 'json') {
-      editorRef.current.getAction('editor.action.formatDocument').run();
-    }
-  };
-
-  // Format YAML in editor
-  const formatYaml = () => {
-    if (editorRef.current && viewMode === 'yaml') {
-      editorRef.current.getAction('editor.action.formatDocument').run();
-    }
-  };
-
-  // Handle form value changes and sync with editors
-  const handleFormChange = useCallback((newValues) => {
-    setFormValues(newValues);
-    try {
-      const jsonString = JSON.stringify(newValues, null, 2);
-      setJsonContent(jsonString);
-      const yamlString = yaml.dump(newValues);
-      setYamlContent(yamlString);
-    } catch (e) {
-      console.error('Error converting form values:', e);
-    }
-  }, []);
-
-  // Create merged config (same pattern as develop branch)
-  const mergedConfig = useMemo(() => {
-    if (!selectedVersionData) return null;
-
-    if (selectedVersion === 'default' || !defaultVersionData) {
-      // For default or when default isn't loaded, use the selected version directly
-      return selectedVersionData.configuration;
-    } else {
-      // Merge default (defaults) with selected version (overrides) using deepMerge
-      return deepMerge(defaultVersionData.configuration, selectedVersionData.configuration);
-    }
-  }, [selectedVersionData, defaultVersionData, selectedVersion]);
-
-  // Check if current version has unsaved changes (same as develop branch)
-  const hasUnsavedChanges = useMemo(() => {
-    if (!mergedConfig || !formValues || Object.keys(formValues).length === 0) {
-      return false;
-    }
-    // Deep comparison using JSON serialization
-    return JSON.stringify(formValues) !== JSON.stringify(mergedConfig);
-  }, [formValues, mergedConfig]);
-
-  // Handler for BDA/IDP sync
-  const handleSyncBdaIdp = async () => {
-    setIsSyncing(true);
-    setSyncSuccess(false);
-    setSyncSuccessMessage('');
-    setSyncError(null);
-
-    try {
-      logger.debug('Starting BDA/IDP sync...');
-
-      const result = await client.graphql({
-        query: syncBdaIdpMutation,
-      });
-
-      logger.debug('Sync API response:', result);
-
-      const response = result.data.syncBdaIdp;
-
-      if (response.success) {
-        setSyncSuccess(true);
-        setSyncSuccessMessage(response.message || 'Document classes have been synchronized with BDA blueprints.');
-
-        // If there are partial failures, also show the error details
-        if (response.error && response.error.type === 'PARTIAL_SYNC_ERROR') {
-          setTimeout(() => {
-            setSyncError(response.error.message);
-          }, 100);
-        }
-
-        // Refresh current version to show any new classes
-        if (selectedVersion) {
-          await handleVersionSelect(selectedVersion);
-        }
-        setTimeout(() => {
-          setSyncSuccess(false);
-          setSyncSuccessMessage('');
-        }, 5000);
-        logger.debug('BDA/IDP sync completed successfully');
-      } else {
-        const errorMsg = response.error?.message || response.message || 'Sync operation failed';
-        setSyncError(errorMsg);
-        logger.error('Sync failed:', errorMsg);
-      }
-    } catch (err) {
-      logger.error('Sync error:', err);
-      setSyncError(`Sync failed: ${err.message}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  const {
+    schema,
+    mergedConfig,
+    defaultConfig,
+    versionConfig,
+    loading,
+    refreshing,
+    error,
+    updateConfiguration,
+    fetchConfiguration,
+    isCustomized,
+    resetToDefault,
+  } = useConfiguration(selectedVersion || activeVersionName); // Pass version to hook
 
   // Handle version selection
   const handleVersionSelect = async (versionName) => {
-    try {
-      setLoadingVersion(true);
-      setSaveError(null); // Clear any previous errors
-      console.log('Loading version:', versionName);
+    setSelectedVersion(versionName);
+    // TODO: Load selected version data into form
+  };
 
-      const versionData = await fetchVersion(versionName);
-      console.log('Version data received:', versionData);
-
-      if (versionData && versionData.configuration) {
-        let config;
-        if (typeof versionData.configuration === 'string') {
-          try {
-            config = JSON.parse(versionData.configuration);
-          } catch (parseError) {
-            console.error('Error parsing configuration JSON:', parseError);
-            setSaveError('Invalid configuration data format');
-            setLoadingVersion(false);
-            return;
-          }
-        } else {
-          config = versionData.configuration;
-        }
-
-        console.log('Parsed config:', config);
-
-        setSelectedVersion(versionName);
-        // Get the version data with isActive status from the versions list
-        const versionFromList = versions.find((v) => v.versionName === versionName);
-        const versionDataWithStatus = { ...versionData, isActive: versionFromList?.isActive };
-        setSelectedVersionData(versionDataWithStatus);
-        setFormValues(config);
-
-        // Reset any unsaved changes indicators when switching versions
-        setSaveSuccess(false);
-        setSaveError(null);
-
-        // Load default for comparison if not already loaded and not selecting default
-        if (versionName !== 'default' && !defaultVersionData) {
-          try {
-            const defaultData = await fetchVersion('default');
-            if (defaultData && defaultData.configuration) {
-              let defaultConfig;
-              if (typeof defaultData.configuration === 'string') {
-                defaultConfig = JSON.parse(defaultData.configuration);
-              } else {
-                defaultConfig = defaultData.configuration;
-              }
-              setDefaultVersionData({ ...defaultData, configuration: defaultConfig });
-            }
-          } catch (error) {
-            console.warn('Could not load default for comparison:', error);
-          }
-        }
-
-        console.log('State set - selectedVersion:', versionName);
-        console.log('State set - formValues:', config);
-
-        if (config.classes) {
-          console.log('Setting extractionSchema with classes:', config.classes);
-          setExtractionSchema(config.classes);
-        } else {
-          console.log('No classes found in config, setting extractionSchema to empty array');
-          setExtractionSchema([]);
-        }
-
-        // Initialize rule schema from config (stored in rule_classes field)
-        if (config.rule_classes) {
-          setRuleSchema(config.rule_classes);
-        } else {
-          setRuleSchema([]);
-        }
-
-        // Update editor content
-        const jsonString = JSON.stringify(config, null, 2);
-        setJsonContent(jsonString);
-
-        try {
-          const yamlString = yaml.dump(config);
-          setYamlContent(yamlString);
-        } catch (e) {
-          console.error('Error converting to YAML:', e);
-          setYamlContent('# Error converting to YAML');
-        }
-      } else {
-        console.error('No configuration data in version response:', versionData);
-        setSaveError('No configuration data found for this version');
-      }
-    } catch (err) {
-      console.error('Error loading version:', err);
-      setSaveError(`Failed to load version: ${err.message}`);
-    } finally {
-      setLoadingVersion(false);
+  // Handle version selection for comparison
+  const handleVersionSelectForCompare = (versionName, selected) => {
+    if (selected) {
+      setSelectedVersionsForCompare((prev) => [...prev, versionName]);
+    } else {
+      setSelectedVersionsForCompare((prev) => prev.filter((v) => v !== versionName));
     }
   };
 
-  // Handle URL parameters to auto-select version
-  useEffect(() => {
-    // Handle hash-based routing - extract search params from hash
-    const hash = window.location.hash;
-    const searchParamsMatch = hash.match(/\?(.+)$/);
-
-    if (searchParamsMatch) {
-      const searchParams = new URLSearchParams(searchParamsMatch[1]);
-      const versionParam = searchParams.get('version');
-
-      if (versionParam && versions.length > 0) {
-        // Check if the version exists in the versions list
-        const versionExists = versions.find((v) => v.versionName === versionParam);
-        if (versionExists) {
-          console.log('Auto-selecting version from URL:', versionParam);
-          // Auto-select the version from URL parameter
-          handleVersionSelect(versionParam);
-        }
-      }
-    } else if (versions.length > 0 && !selectedVersion) {
-      // Auto-open active version when no URL parameter is provided
-      const activeVersion = versions.find((v) => v.isActive);
-      if (activeVersion) {
-        console.log('Auto-opening active version:', activeVersion.versionName);
-        handleVersionSelect(activeVersion.versionName);
-      }
-    }
-  }, [versions]);
-
-  // Handle back to versions list (now just clears selection)
-  const handleBackToVersions = () => {
-    setSelectedVersion(null);
-    setSelectedVersionData(null);
-    setFormValues({});
-    setJsonContent('');
-    setYamlContent('');
-    setExtractionSchema(null);
-    setRuleSchema(null);
-    setSaveError(null);
-    setSaveSuccess(false);
-  };
-
-  // Handle bulk activate version
-  const handleBulkActivateVersion = async (versionName) => {
-    setVersionToActivate(versionName);
-    setShowActivateModal(true);
-  };
-
-  // Confirm activate version
-  const confirmActivateVersion = async () => {
+  // Handle activate version
+  const handleActivateVersion = async (versionName) => {
     try {
-      await setActiveVersion(versionToActivate);
-      setShowActivateModal(false);
-      // Show success confirmation dialog
-      setShowActivateConfirmationModal(true);
-      setActivatedVersionId(versionToActivate);
-      await fetchVersions();
-      // Clear selection after activation
-      setSelectedVersionsForCompare([]);
+      await setActiveVersion(versionName);
+      await fetchVersions(); // Refresh table
     } catch (error) {
-      console.error('Activate error:', error);
-      setSaveError(`Failed to activate version: ${error.message}`);
-      setShowActivateModal(false);
+      console.error('Failed to activate version:', error);
     }
   };
 
@@ -650,24 +161,12 @@ const ConfigurationLayout = () => {
           config = JSON.parse(content);
         }
 
-        // Ensure default is loaded for merging
-        const defaultData = await ensureDefaultLoaded();
-
-        // Merge with default defaults to fill missing fields
-        let configToImport = config;
-        if (defaultData && defaultData.configuration) {
-          configToImport = {
-            ...defaultData.configuration,
-            ...config,
-          };
-        }
-
-        setImportedConfigForNewVersion(configToImport);
+        setImportedConfigForNewVersion(config);
         // Set filename as default version name (without extension)
         const nameWithoutExt = file.name.replace(/\.(json|yaml|yml)$/i, '');
         setNewVersionName(nameWithoutExt);
       } catch (error) {
-        setSaveError(`Failed to parse ${file.name}: ${error.message}`);
+        console.error(`Failed to parse ${file.name}:`, error);
       }
     };
     reader.readAsText(file);
@@ -677,154 +176,625 @@ const ConfigurationLayout = () => {
   // Handle creating new version from imported config
   const handleCreateVersionFromImport = async () => {
     if (!importedConfigForNewVersion) {
-      setSaveError('Please import a configuration file');
       return;
     }
 
-    setIsSaving(true);
-    setSaveError(null);
-
     try {
-      await ensureDefaultLoaded();
       const versionName = newVersionName.trim() || 'New imported version';
       const description = newVersionDescription.trim();
-      const result = await saveAsNewVersion(importedConfigForNewVersion, versionName, description);
+      await saveAsNewVersion(importedConfigForNewVersion, versionName, description);
       setShowImportAsNewVersionModal(false);
       setImportedConfigForNewVersion(null);
       setNewVersionName('');
       setNewVersionDescription('');
-      setShowVersionConfirmationModal(true);
-      setConfirmationModalType('import');
-      setNewlyCreatedVersionId(result?.versionName || 'Unknown');
       await fetchVersions();
     } catch (error) {
       console.error('Create version error:', error);
-      setSaveError(error.message || 'Failed to create version from imported configuration');
+    }
+  };
+  // Handle config library import for new version
+  const handleConfigLibraryImport = async () => {
+    setLibraryLoading(true);
+
+    try {
+      // Determine pattern based on settings
+      const pattern = settings?.IDPPattern?.includes('Pattern1')
+        ? 'pattern-1'
+        : settings?.IDPPattern?.includes('Pattern3')
+        ? 'pattern-3'
+        : 'pattern-2';
+
+      const configs = await listConfigurations(pattern);
+      setLibraryConfigs(configs);
+      setShowLibraryBrowserModal(true);
+    } catch (error) {
+      console.error(`Failed to load configuration library: ${error.message}`);
     } finally {
-      setIsSaving(false);
+      setLibraryLoading(false);
     }
   };
 
-  // Helper function to ensure default is loaded
-  const ensureDefaultLoaded = async () => {
-    if (!defaultVersionData) {
-      const defaultResponse = await fetchVersion('default');
-      if (defaultResponse && defaultResponse.configuration) {
-        let defaultConfig;
-        if (typeof defaultResponse.configuration === 'string') {
-          defaultConfig = JSON.parse(defaultResponse.configuration);
-        } else {
-          defaultConfig = defaultResponse.configuration;
+  // Handle selecting a library configuration for new version
+  const handleLibraryConfigSelect = async (configName) => {
+    setLibraryLoading(true);
+
+    try {
+      // Determine pattern based on settings
+      const pattern = settings?.IDPPattern?.includes('Pattern1')
+        ? 'pattern-1'
+        : settings?.IDPPattern?.includes('Pattern3')
+        ? 'pattern-3'
+        : 'pattern-2';
+
+      const configFile = await getFile(pattern, configName, 'config.yaml');
+
+      if (configFile && configFile.content) {
+        // Parse YAML content
+        const importedConfig = yaml.load(configFile.content);
+
+        if (importedConfig && typeof importedConfig === 'object') {
+          setImportedConfigForNewVersion(importedConfig);
+          // Use just the base name without path for version name
+          const baseName = configName.split('/').pop();
+          setNewVersionName(baseName);
+          setShowLibraryBrowserModal(false);
         }
-        const defaultData = { ...defaultResponse, configuration: defaultConfig };
-        setDefaultVersionData(defaultData);
-        return defaultData;
       }
-    }
-    return defaultVersionData;
-  };
-
-  // Handle edit version
-  const handleEditVersion = (versionToEdit) => {
-    setEditingVersionName(versionToEdit.versionName);
-    setEditingDescription(versionToEdit.description || '');
-    setEditingError(null); // Clear any previous errors
-    setShowEditDescriptionModal(true);
-  };
-
-  const confirmEditDescription = async () => {
-    try {
-      setEditingError(null); // Clear any previous errors
-
-      // Console log what's in memory when user updates version
-      console.log('=== UPDATE VERSION DEBUG ===');
-      console.log('editingVersionId:', editingVersionId);
-      console.log('editingVersionName:', editingVersionName);
-      console.log('editingDescription:', editingDescription);
-      console.log('Current versions in memory:', versions);
-      console.log(
-        'Selected version being edited:',
-        versions.find((v) => v.versionName === editingVersionId),
-      );
-      console.log('===============================');
-
-      // Get the current configuration to preserve it
-      const currentConfig = await fetchVersion(editingVersionName);
-      const configData = JSON.parse(currentConfig.configuration);
-
-      await updateVersion(editingVersionName, configData, editingDescription);
-      setShowEditDescriptionModal(false);
-      await fetchVersions();
     } catch (error) {
-      console.error('Edit version error:', error);
-      setEditingError(error.message);
-      // Don't close the modal on error so user can see the error and try again
-    }
-  };
-
-  // Handle bulk delete versions - show confirmation dialog
-  const handleBulkDeleteVersions = async (versionNames) => {
-    setVersionsToDelete(versionNames);
-    setShowBulkDeleteModal(true);
-  };
-
-  // Confirm delete versions
-  const confirmDeleteVersions = async () => {
-    try {
-      // Format deleted versions for display
-      const deletedVersionsWithDesc = versionsToDelete;
-
-      for (const versionName of versionsToDelete) {
-        await deleteVersion(versionName, true); // Skip refresh for each delete
-      }
-
-      // Refresh once after all deletions
-      await fetchVersions();
-
-      // If the currently selected version was deleted, clear it
-      if (selectedVersion && versionsToDelete.includes(selectedVersion)) {
-        setSelectedVersion(null);
-        setSelectedVersionData(null);
-        setFormValues({});
-        setJsonContent('');
-        setYamlContent('');
-      }
-
-      // Show success confirmation
-      setDeletedVersionsDisplay(deletedVersionsWithDesc.join(', '));
-      setShowBulkDeleteSuccessModal(true);
-    } catch (error) {
-      console.error('Delete error:', error);
-      setSaveError(`Failed to delete versions: ${error.message}`);
+      console.error(`Failed to load configuration: ${error.message}`);
     } finally {
-      setShowBulkDeleteModal(false);
-      setVersionsToDelete([]);
-      // Clear selection after deletion
-      setSelectedVersionsForCompare([]);
+      setLibraryLoading(false);
     }
   };
 
-  // Handle version comparison
-  const handleCompareVersions = () => {
-    if (selectedVersionsForCompare.length < 2) {
-      return;
-    }
-    setShowCompareModal(true);
-  };
-
-  // Handle version selection for comparison
-  const handleVersionSelectForCompare = (versionName, selected) => {
-    if (selected) {
-      setSelectedVersionsForCompare((prev) => [...prev, versionName]);
-    } else {
-      setSelectedVersionsForCompare((prev) => prev.filter((v) => v !== versionName));
+  // Handle delete versions
+  const handleDeleteVersions = async (versionNames) => {
+    try {
+      for (const versionName of versionNames) {
+        await deleteVersion(versionName);
+      }
+      await fetchVersions(); // Refresh table
+      setSelectedVersionsForCompare([]); // Clear selection
+    } catch (error) {
+      console.error('Failed to delete versions:', error);
     }
   };
 
-  // Handle save current version
-  const handleSave = async () => {
+  const [formValues, setFormValues] = useState({});
+  const [jsonContent, setJsonContent] = useState('');
+  const [yamlContent, setYamlContent] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [viewMode, setViewMode] = useState('form'); // Form view as default
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showSaveAsDefaultModal, setShowSaveAsDefaultModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('json');
+  const [exportFileName, setExportFileName] = useState('configuration');
+  const [importError, setImportError] = useState(null);
+  const [extractionSchema, setExtractionSchema] = useState(null);
+  const [ruleSchema, setRuleSchema] = useState(null);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [pendingImportConfig, setPendingImportConfig] = useState(null);
+
+  // Configuration Library state
+  const [showImportSourceModal, setShowImportSourceModal] = useState(false);
+  const [showReadmeModal, setShowReadmeModal] = useState(false);
+  const [selectedLibraryConfig, setSelectedLibraryConfig] = useState(null);
+  const [readmeContent, setReadmeContent] = useState('');
+
+  // ConfigBuilder tab state - lifted up to preserve across refreshes
+  const [configBuilderActiveTab, setConfigBuilderActiveTab] = useState('configuration');
+
+  // BDA/IDP Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
+  const [syncError, setSyncError] = useState(null);
+
+  const editorRef = useRef(null);
+
+  // Compute whether there are unsaved changes by comparing formValues with mergedConfig
+  const hasUnsavedChanges = useMemo(() => {
+    if (!mergedConfig || !formValues || Object.keys(formValues).length === 0) {
+      return false;
+    }
+    // Deep comparison using JSON serialization
+    return JSON.stringify(formValues) !== JSON.stringify(mergedConfig);
+  }, [formValues, mergedConfig]);
+
+  // Hooks for configuration library
+  // Hooks for configuration library
+  const { listConfigurations, getFile } = useConfigurationLibrary();
+  const { settings } = useSettingsContext();
+
+  // Helper function to map IDPPattern to directory name
+  const getPatternDirectory = (idpPattern) => {
+    if (!idpPattern) return null;
+
+    // Extract pattern number from string like "Pattern1 - Description" or "Pattern2 - Description"
+    const match = idpPattern.match(/Pattern(\d+)/i);
+    if (match) {
+      return `pattern-${match[1]}`;
+    }
+
+    return null;
+  };
+
+  // Helper function to detect legacy format
+  const isLegacyFormat = (config) => {
+    if (!config || !config.classes || !Array.isArray(config.classes)) return false;
+    if (config.classes.length === 0) return false;
+
+    // Check if first class has legacy attributes format (array instead of object with properties)
+    const firstClass = config.classes[0];
+    return firstClass.attributes && Array.isArray(firstClass.attributes);
+  };
+
+  // Helper function to check if Pattern-1 is selected
+  const isPattern1 = settings?.IDPPattern?.includes('Pattern1');
+
+  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
+  const isPattern2 = settings?.IDPPattern?.includes('Pattern2');
+
+  // Validation functions
+  const validateVersionName = (name) => /^[a-zA-Z0-9-_]+$/.test(name) && name.length <= 50;
+  const validateDescription = (desc) => desc.length <= 200;
+
+  // Initialize form values from merged config
+  useEffect(() => {
+    if (mergedConfig) {
+      console.log('Setting form values from mergedConfig:', mergedConfig);
+
+      // Make a deep copy to ensure we're not dealing with references
+      const formData = JSON.parse(JSON.stringify(mergedConfig));
+      setFormValues(formData);
+
+      // Initialize extraction schema from config (stored in classes field)
+      if (mergedConfig.classes) {
+        setExtractionSchema(mergedConfig.classes);
+      }
+
+      // Initialize rule schema from config (stored in rule_classes field)
+      if (mergedConfig.rule_classes) {
+        setRuleSchema(mergedConfig.rule_classes);
+      }
+
+      // Set both JSON and YAML content
+      const jsonString = JSON.stringify(mergedConfig, null, 2);
+      setJsonContent(jsonString);
+
+      try {
+        const yamlString = yaml.dump(mergedConfig);
+        setYamlContent(yamlString);
+      } catch (e) {
+        console.error('Error converting to YAML:', e);
+        setYamlContent('# Error converting to YAML');
+      }
+    }
+  }, [mergedConfig]);
+
+  // Process schema to convert custom types to standard JSON Schema format
+  const processSchema = (inputSchema) => {
+    try {
+      const processedSchema = {
+        type: 'object',
+        properties: {},
+        required: inputSchema.required || [],
+      };
+
+      // Process schema properties to handle custom types like 'list'
+      if (inputSchema.properties) {
+        Object.entries(inputSchema.properties).forEach(([key, prop]) => {
+          // Convert 'list' type to proper JSON Schema array type (for backwards compatibility)
+          if (prop.type === 'list' || prop.type === 'array') {
+            processedSchema.properties[key] = {
+              type: 'array',
+              items: prop.items || {},
+            };
+
+            // Process nested items if they have custom types
+            if (prop.items && prop.items.type === 'object' && prop.items.properties) {
+              const itemProps = {};
+              Object.entries(prop.items.properties).forEach(([itemKey, itemProp]) => {
+                if (itemProp.type === 'list' || itemProp.type === 'array') {
+                  itemProps[itemKey] = {
+                    type: 'array',
+                    items: itemProp.items || {},
+                  };
+                } else if (itemProp.type === 'number' || itemProp.type === 'integer') {
+                  // For number types, we'll use a more flexible approach
+                  // Instead of using oneOf, we'll just use type: ["number", "string"]
+                  // This is more widely supported in JSON Schema implementations
+                  itemProps[itemKey] = {
+                    type: ['number', 'string'],
+                  };
+
+                  // Copy over any constraints
+                  if (itemProp.minimum !== undefined) {
+                    itemProps[itemKey].minimum = itemProp.minimum;
+                  }
+                  if (itemProp.maximum !== undefined) {
+                    itemProps[itemKey].maximum = itemProp.maximum;
+                  }
+                } else {
+                  itemProps[itemKey] = itemProp;
+                }
+              });
+              processedSchema.properties[key].items.properties = itemProps;
+              processedSchema.properties[key].items.required = prop.items.required || [];
+            }
+          } else if (prop.type === 'number' || prop.type === 'integer') {
+            // For number types, we'll use a more flexible approach
+            // Instead of using oneOf, we'll just use type: ["number", "string"]
+            // This is more widely supported in JSON Schema implementations
+            processedSchema.properties[key] = {
+              type: ['number', 'string'],
+            };
+
+            // Copy over any constraints
+            if (prop.minimum !== undefined) {
+              processedSchema.properties[key].minimum = prop.minimum;
+            }
+            if (prop.maximum !== undefined) {
+              processedSchema.properties[key].maximum = prop.maximum;
+            }
+          } else {
+            // For non-list types, keep the original schema
+            processedSchema.properties[key] = prop;
+          }
+        });
+      }
+
+      return processedSchema;
+    } catch (e) {
+      console.error('Error processing schema:', e);
+      return null;
+    }
+  };
+
+  // Validate YAML content against the schema
+  const validateYamlContent = (yamlString) => {
+    if (!schema) return [];
+
+    try {
+      // Convert YAML to JSON object
+      const parsedYaml = yaml.load(yamlString);
+      if (!parsedYaml) return [{ message: 'Empty or invalid YAML content' }];
+
+      // Perform schema validation manually
+      const errors = [];
+
+      // Check required fields
+      if (schema.required) {
+        schema.required.forEach((field) => {
+          if (parsedYaml[field] === undefined) {
+            errors.push({ message: `Required field '${field}' is missing` });
+          }
+        });
+      }
+
+      // Validate property types and constraints
+      if (schema.properties && parsedYaml) {
+        Object.entries(schema.properties).forEach(([key, prop]) => {
+          const value = parsedYaml[key];
+
+          // Skip validation if value is undefined (already handled by required check)
+          if (value === undefined) return;
+
+          // Skip deep validation for classes and rule_classes fields - they have their own complex JSON Schema structure
+          // Just check they're arrays if present
+          if (key === 'classes' || key === 'rule_classes') {
+            if (!Array.isArray(value)) {
+              errors.push({ message: `Field '${key}' must be an array` });
+            }
+            return;
+          }
+
+          // Type validation
+          if (prop.type === 'number' || prop.type === 'integer') {
+            // For YAML validation, we'll be more permissive
+            // We'll accept any string or number, but we'll still validate constraints
+            // if the value can be converted to a number
+            if (typeof value !== 'number' && typeof value !== 'string') {
+              errors.push({ message: `Field '${key}' must be a number or a string` });
+            } else {
+              // Try to convert to number for constraint validation
+              let numValue;
+              let isValidNumber = false;
+
+              if (typeof value === 'number') {
+                numValue = value;
+                isValidNumber = true;
+              } else if (typeof value === 'string') {
+                // Try to parse the string as a number
+                numValue = parseFloat(value);
+                isValidNumber = !Number.isNaN(numValue) && /^-?\d*\.?\d*$/.test(value);
+              }
+
+              // Only check constraints if it's a valid number
+              if (isValidNumber) {
+                if (prop.minimum !== undefined && numValue < prop.minimum) {
+                  errors.push({ message: `Field '${key}' must be at least ${prop.minimum}` });
+                }
+                if (prop.maximum !== undefined && numValue > prop.maximum) {
+                  errors.push({ message: `Field '${key}' must be at most ${prop.maximum}` });
+                }
+              }
+            }
+          } else if (prop.type === 'string') {
+            if (typeof value !== 'string') {
+              errors.push({ message: `Field '${key}' must be a string` });
+            } else {
+              // Check string constraints
+              if (prop.minLength !== undefined && value.length < prop.minLength) {
+                errors.push({ message: `Field '${key}' must be at least ${prop.minLength} characters` });
+              }
+              if (prop.maxLength !== undefined && value.length > prop.maxLength) {
+                errors.push({ message: `Field '${key}' must be at most ${prop.maxLength} characters` });
+              }
+              if (prop.pattern && !new RegExp(prop.pattern).test(value)) {
+                errors.push({ message: `Field '${key}' does not match required pattern` });
+              }
+            }
+          } else if (prop.type === 'boolean') {
+            if (typeof value !== 'boolean') {
+              errors.push({ message: `Field '${key}' must be a boolean` });
+            }
+          } else if (prop.type === 'array' || prop.type === 'list') {
+            if (!Array.isArray(value)) {
+              errors.push({ message: `Field '${key}' must be an array` });
+            } else {
+              // Check array constraints
+              if (prop.minItems !== undefined && value.length < prop.minItems) {
+                errors.push({ message: `Field '${key}' must have at least ${prop.minItems} items` });
+              }
+              if (prop.maxItems !== undefined && value.length > prop.maxItems) {
+                errors.push({ message: `Field '${key}' must have at most ${prop.maxItems} items` });
+              }
+
+              // Validate array items if schema is provided
+              if (prop.items && prop.items.type && value.length > 0) {
+                value.forEach((item, index) => {
+                  if (prop.items.type === 'object' && prop.items.properties) {
+                    // Validate object properties in array items
+                    Object.entries(prop.items.properties).forEach(([itemKey, itemProp]) => {
+                      const itemValue = item[itemKey];
+
+                      // Check if required
+                      if (prop.items.required && prop.items.required.includes(itemKey) && itemValue === undefined) {
+                        errors.push({ message: `Item ${index} in '${key}' is missing required field '${itemKey}'` });
+                      }
+
+                      // Type validation for item properties
+                      if (itemValue !== undefined) {
+                        if (itemProp.type === 'string' && typeof itemValue !== 'string') {
+                          errors.push({ message: `Field '${itemKey}' in item ${index} of '${key}' must be a string` });
+                        } else if (itemProp.type === 'number' || itemProp.type === 'integer') {
+                          // For YAML validation, we'll be more permissive
+                          if (typeof itemValue !== 'number' && typeof itemValue !== 'string') {
+                            errors.push({
+                              message: `Field '${itemKey}' in item ${index} of '${key}' must be a number or a string`,
+                            });
+                          } else {
+                            // Try to convert to number for constraint validation
+                            let numValue;
+                            let isValidNumber = false;
+
+                            if (typeof itemValue === 'number') {
+                              numValue = itemValue;
+                              isValidNumber = true;
+                            } else if (typeof itemValue === 'string') {
+                              // Try to parse the string as a number
+                              numValue = parseFloat(itemValue);
+                              isValidNumber = !Number.isNaN(numValue) && /^-?\d*\.?\d*$/.test(itemValue);
+                            }
+
+                            // Only check constraints if it's a valid number
+                            if (isValidNumber && itemProp.minimum !== undefined && numValue < itemProp.minimum) {
+                              errors.push({
+                                message: `Field '${itemKey}' in item ${index} of '${key}' must be ` + `at least ${itemProp.minimum}`,
+                              });
+                            }
+                            if (isValidNumber && itemProp.maximum !== undefined && numValue > itemProp.maximum) {
+                              errors.push({
+                                message: `Field '${itemKey}' in item ${index} of '${key}' must be ` + `at most ${itemProp.maximum}`,
+                              });
+                            }
+                          }
+                        } else if (itemProp.type === 'boolean' && typeof itemValue !== 'boolean') {
+                          errors.push({ message: `Field '${itemKey}' in item ${index} of '${key}' must be a boolean` });
+                        }
+                      }
+                    });
+                  } else if (prop.items.type === 'string' && typeof item !== 'string') {
+                    errors.push({ message: `Item ${index} in '${key}' must be a string` });
+                  } else if (prop.items.type === 'number' || prop.items.type === 'integer') {
+                    // For YAML validation, we'll be more permissive
+                    if (typeof item !== 'number' && typeof item !== 'string') {
+                      errors.push({
+                        message: `Item ${index} in '${key}' must be a number or a string`,
+                      });
+                    } else {
+                      // Try to convert to number for constraint validation
+                      let numValue;
+                      let isValidNumber = false;
+
+                      if (typeof item === 'number') {
+                        numValue = item;
+                        isValidNumber = true;
+                      } else if (typeof item === 'string') {
+                        // Try to parse the string as a number
+                        numValue = parseFloat(item);
+                        isValidNumber = !Number.isNaN(numValue) && /^-?\d*\.?\d*$/.test(item);
+                      }
+
+                      // Only check constraints if it's a valid number
+                      if (isValidNumber && prop.items.minimum !== undefined && numValue < prop.items.minimum) {
+                        errors.push({
+                          message: `Item ${index} in '${key}' must be at least ${prop.items.minimum}`,
+                        });
+                      }
+                      if (isValidNumber && prop.items.maximum !== undefined && numValue > prop.items.maximum) {
+                        errors.push({
+                          message: `Item ${index} in '${key}' must be at most ${prop.items.maximum}`,
+                        });
+                      }
+                    }
+                  } else if (prop.items.type === 'boolean' && typeof item !== 'boolean') {
+                    errors.push({ message: `Item ${index} in '${key}' must be a boolean` });
+                  }
+                });
+              }
+            }
+          } else if (prop.type === 'object') {
+            if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+              errors.push({ message: `Field '${key}' must be an object` });
+            } else if (prop.properties) {
+              // Validate nested object properties
+              Object.entries(prop.properties).forEach(([nestedKey]) => {
+                const nestedValue = value[nestedKey];
+
+                // Check if required
+                if (prop.required && prop.required.includes(nestedKey) && nestedValue === undefined) {
+                  errors.push({ message: `Object '${key}' is missing required field '${nestedKey}'` });
+                }
+              });
+            }
+          }
+
+          // Check enum values
+          if (prop.enum && !prop.enum.includes(value)) {
+            errors.push({ message: `Field '${key}' must be one of: ${prop.enum.join(', ')}` });
+          }
+        });
+      }
+
+      return errors;
+    } catch (e) {
+      return [{ message: `Invalid YAML: ${e.message}` }];
+    }
+  };
+
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    // Set up JSON schema validation if schema is available
+    if (schema) {
+      try {
+        // Process the schema once
+        const processedSchema = processSchema(schema);
+
+        if (processedSchema) {
+          // Create the JSON Schema configuration
+          const jsonSchema = {
+            uri: 'http://myserver/schema.json',
+            fileMatch: ['*'],
+            schema: processedSchema,
+          };
+
+          // Set the diagnostics options with the processed schema for JSON
+          monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+            validate: true,
+            schemas: [jsonSchema],
+            allowComments: false,
+            trailingCommas: 'error',
+          });
+
+          console.log('Processed JSON Schema:', processedSchema);
+
+          // For YAML, we'll use manual validation in the onChange handler
+          // since Monaco doesn't have built-in YAML schema validation
+          if (viewMode === 'yaml') {
+            // Initial validation of YAML content
+            const yamlErrors = validateYamlContent(yamlContent);
+            if (yamlErrors.length > 0) {
+              setValidationErrors(yamlErrors);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error setting up schema validation:', e);
+      }
+    }
+  };
+
+  // Handle changes in the JSON editor
+  const handleJsonEditorChange = (value) => {
+    setJsonContent(value);
+    try {
+      const parsedValue = JSON.parse(value);
+      setFormValues(parsedValue);
+
+      // Update YAML when JSON changes
+      try {
+        const yamlString = yaml.dump(parsedValue);
+        setYamlContent(yamlString);
+      } catch (yamlErr) {
+        console.error('Error converting to YAML:', yamlErr);
+      }
+
+      setValidationErrors([]);
+    } catch (e) {
+      setValidationErrors([{ message: `Invalid JSON: ${e.message}` }]);
+    }
+  };
+
+  // Handle changes in the YAML editor
+  const handleYamlEditorChange = (value) => {
+    setYamlContent(value);
+    try {
+      const parsedValue = yaml.load(value);
+      setFormValues(parsedValue);
+
+      // Update JSON when YAML changes
+      try {
+        const jsonString = JSON.stringify(parsedValue, null, 2);
+        setJsonContent(jsonString);
+      } catch (jsonErr) {
+        console.error('Error converting to JSON:', jsonErr);
+      }
+
+      // Validate YAML against schema
+      if (schema) {
+        const schemaErrors = validateYamlContent(value);
+        setValidationErrors(schemaErrors);
+      } else {
+        setValidationErrors([]);
+      }
+    } catch (e) {
+      setValidationErrors([{ message: `Invalid YAML: ${e.message}` }]);
+    }
+  };
+
+  // Validate the current content based on view mode
+  const validateCurrentContent = () => {
+    if (!schema) return [];
+
+    try {
+      if (viewMode === 'json') {
+        // For JSON, we rely on Monaco's built-in validation
+        // But we can do a basic parse check here
+        JSON.parse(jsonContent);
+        return [];
+      }
+      if (viewMode === 'yaml') {
+        // For YAML, use our custom validation
+        return validateYamlContent(yamlContent);
+      }
+      return [];
+    } catch (e) {
+      return [{ message: `Invalid ${viewMode.toUpperCase()}: ${e.message}` }];
+    }
+  };
+
+  const handleSave = async (saveAsDefault = false) => {
     // Validate content before saving
     const currentErrors = validateCurrentContent();
+
     if (currentErrors.length > 0) {
       setValidationErrors(currentErrors);
       setSaveError('Cannot save: Configuration contains validation errors');
@@ -832,98 +802,452 @@ const ConfigurationLayout = () => {
     }
 
     setIsSaving(true);
-    setSaveError(null);
     setSaveSuccess(false);
+    setSaveError(null);
 
     try {
-      await updateVersion(selectedVersion, formValues, selectedVersionData?.description);
-      setSaveSuccess(true);
-      await fetchVersions(); // Refresh the versions table
-    } catch (error) {
-      console.error('Save error:', error);
-      setSaveError(error.message || 'Failed to save configuration');
-    } finally {
-      setIsSaving(false);
-    }
-  };
+      // Simpler approach: Just compare the current form values with default values
+      // and only include differences in our version config
+      const versionConfigToSave = {};
 
-  // Handle save as new version
-  const handleSaveAsNew = async () => {
-    setIsSaving(true);
-    setSaveError(null);
-    setSaveSuccess(false);
+      // Helper function to compare values - returns a new object
+      const compareWithDefault = (current, defaultObj, path = '') => {
+        // Add debugging for granular assessment
+        if (path.includes('granular')) {
+          console.log(`DEBUG: compareWithDefault called with path '${path}':`, {
+            // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+            current,
+            currentType: typeof current,
+            defaultObj,
+            defaultType: typeof defaultObj,
+            currentIsNull: current === null,
+            currentIsUndefined: current === undefined,
+            defaultIsNull: defaultObj === null,
+            defaultIsUndefined: defaultObj === undefined,
+          });
+        }
 
-    try {
-      const versionName = newVersionName.trim() || `New version based on ${selectedVersion}`;
-      const description = newVersionDescription.trim();
-      const result = await saveAsNewVersion(formValues, versionName, description);
-      setSaveSuccess(true);
-      setShowSaveAsNewModal(false);
-      setNewVersionName('');
-      setNewVersionDescription('');
-      // Show confirmation dialog
-      setShowVersionConfirmationModal(true);
-      setConfirmationModalType('save');
-      // Store the new version ID and description for the confirmation dialog
-      setNewlyCreatedVersionId(result?.versionName || 'Unknown');
-      // Refresh versions list
-      await fetchVersions();
-      // Refresh the currently selected version data to show original data
-      if (selectedVersion) {
-        await handleVersionSelect(selectedVersion);
+        // Make a new result object each time to avoid mutation
+        const newResult = {};
+
+        // Skip comparison for null/undefined objects (but not false values!)
+        if (current === null || current === undefined || defaultObj === null || defaultObj === undefined) {
+          // If current exists but default doesn't, this is a customization
+          if (current !== null && current !== undefined && (defaultObj === null || defaultObj === undefined)) {
+            return { [path]: current };
+          }
+          return {};
+        }
+
+        // Handle different types
+        if (typeof current !== typeof defaultObj) {
+          return { [path]: current };
+        }
+
+        // Handle arrays
+        if (Array.isArray(current)) {
+          if (!Array.isArray(defaultObj)) {
+            return { [path]: current };
+          }
+
+          // Special case: if current array is empty but default is not empty,
+          // we need to explicitly save the empty array to override the default
+          if (current.length === 0 && defaultObj.length > 0) {
+            return { [path]: current };
+          }
+
+          // If lengths are different, arrays are different
+          if (current.length !== defaultObj.length) {
+            return { [path]: current };
+          }
+
+          // Check each array element
+          let isDifferent = false;
+          for (let i = 0; i < current.length; i += 1) {
+            // Use += 1 instead of ++
+            // For objects in arrays, recursively compare
+            if (typeof current[i] === 'object' && current[i] !== null && typeof defaultObj[i] === 'object' && defaultObj[i] !== null) {
+              const nestedPath = path ? `${path}[${i}]` : `[${i}]`;
+              const nestedDiff = compareWithDefault(current[i], defaultObj[i], nestedPath);
+
+              if (Object.keys(nestedDiff).length > 0) {
+                isDifferent = true;
+                // No need to continue, we know the array is different
+                break;
+              }
+            }
+            // For primitive values, direct compare
+            else if (JSON.stringify(current[i]) !== JSON.stringify(defaultObj[i])) {
+              isDifferent = true;
+              break;
+            }
+          }
+
+          if (isDifferent) {
+            return { [path]: current };
+          }
+          return {};
+        }
+
+        // Handle objects (non-arrays)
+        if (typeof current === 'object') {
+          const keys = new Set([...Object.keys(current), ...Object.keys(defaultObj)]);
+          let allResults = {};
+
+          keys.forEach((key) => {
+            const newPath = path ? `${path}.${key}` : key;
+
+            // Add debugging for granular assessment
+            if (newPath.includes('granular')) {
+              console.log(`DEBUG: Comparing object key '${key}' at path '${newPath}':`, {
+                // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+                currentValue: current[key],
+                defaultValue: defaultObj[key],
+                keyInCurrent: key in current,
+                keyInDefault: key in defaultObj,
+              });
+            }
+
+            // If key exists in current but not in default
+            if (!(key in defaultObj) && key in current) {
+              allResults = { ...allResults, [newPath]: current[key] };
+            }
+            // If key exists in both, compare recursively
+            else if (key in defaultObj && key in current) {
+              const nestedResults = compareWithDefault(current[key], defaultObj[key], newPath);
+
+              // Add debugging for granular assessment
+              if (newPath.includes('granular')) {
+                console.log(`DEBUG: Recursive call result for '${newPath}':`, {
+                  // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+                  nestedResults,
+                  nestedResultsKeys: Object.keys(nestedResults),
+                  nestedResultsLength: Object.keys(nestedResults).length,
+                });
+              }
+
+              allResults = { ...allResults, ...nestedResults };
+            }
+          });
+
+          return allResults;
+        }
+
+        // Handle primitive values - use numeric equivalence for numbers
+        // This prevents false positives when Pydantic converts int to float (5 vs 5.0)
+        if (isNumericValue(current) && isNumericValue(defaultObj)) {
+          // Use numeric comparison for values that can be interpreted as numbers
+          if (!areNumericValuesEqual(current, defaultObj)) {
+            console.log(`DEBUG: Numeric difference detected at path '${path}':`, {
+              // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+              current,
+              currentType: typeof current,
+              defaultObj,
+              defaultType: typeof defaultObj,
+            });
+            const result = { [path]: current };
+            return result;
+          }
+          // Numerically equal, no difference
+          return newResult;
+        }
+
+        // Non-numeric primitive comparison
+        if (current !== defaultObj) {
+          console.log(`DEBUG: Primitive difference detected at path '${path}':`, {
+            // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring - Debug logging with controlled internal data
+            current,
+            currentType: typeof current,
+            defaultObj,
+            defaultType: typeof defaultObj,
+            areEqual: current === defaultObj,
+            areStrictEqual: current !== defaultObj,
+          });
+          const result = { [path]: current };
+          console.log(`DEBUG: Returning primitive difference result:`, result);
+          return result;
+        }
+
+        return newResult;
+      };
+
+      let configToSave;
+
+      if (saveAsDefault) {
+        // When saving as default, merge form changes with complete Custom config
+        // This ensures we capture both:
+        // 1. User's form edits (formValues)
+        // 2. Fields not in form like notes, system_prompt, task_prompt (from versionConfig)
+        const mergedConfigToSave = deepMerge(versionConfig || {}, formValues);
+        configToSave = { ...mergedConfigToSave, saveAsDefault: true };
+        console.log('Saving merged config as new Default:', configToSave);
+      } else {
+        // CRITICAL: Compare formValues against mergedConfig (what user SEES and EDITS from)
+        // mergedConfig = Default + Custom (the complete config displayed to user)
+        // This ensures we only send actual user changes as the diff
+        // Backend will merge this diff into existing Custom, preserving all other fields
+        console.log('DEBUG: About to compare formValues with mergedConfig:', {
+          formValues,
+          mergedConfig,
+          granularInFormValues: formValues?.assessment?.granular,
+          granularInMergedConfig: mergedConfig?.assessment?.granular,
+        });
+        const differences = compareWithDefault(formValues, mergedConfig);
+        console.log('DEBUG: Differences found by compareWithDefault:', differences);
+
+        // Flatten path results into a proper object structure - revised to avoid ESLint errors
+        const buildObjectFromPaths = (paths) => {
+          // Create a fresh result object
+          const newResult = {};
+
+          Object.entries(paths).forEach(([path, value]) => {
+            if (!path) return; // Skip empty paths
+
+            // For paths with dots, build nested structure
+            if (path.includes('.') || path.includes('[')) {
+              // Handle array notation
+              if (path.includes('[')) {
+                // Arrays need special handling
+                // This is simplified - we'll include the whole array when it's customized
+                const arrayPath = path.split('[')[0];
+                if (!Object.prototype.hasOwnProperty.call(newResult, arrayPath)) {
+                  // Find the array in formValues
+                  const arrayValue = path.split('.').reduce((acc, part) => {
+                    if (!acc) return undefined;
+                    return acc[part.replace(/\[\d+\]$/, '')];
+                  }, formValues);
+
+                  if (arrayValue) {
+                    // Create a new object with this property
+                    Object.assign(newResult, { [arrayPath]: arrayValue });
+                  }
+                }
+              } else {
+                // Regular object paths
+                const parts = path.split('.');
+
+                // Build an object to merge
+                const objectToMerge = {};
+                let current = objectToMerge;
+
+                // Build nested structure without modifying existing objects
+                for (let i = 0; i < parts.length - 1; i += 1) {
+                  // Use += 1 instead of ++
+                  current[parts[i]] = {};
+                  current = current[parts[i]]; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop - Index from controlled array iteration
+                }
+
+                // Set the value at the final path - IMPORTANT: preserve boolean false values!
+                current[parts[parts.length - 1]] = value;
+
+                // Deep merge this into result
+                const deepMergeNested = (target, source) => {
+                  const output = { ...target };
+
+                  Object.keys(source).forEach((key) => {
+                    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                      if (target[key] && typeof target[key] === 'object') {
+                        output[key] = deepMergeNested(target[key], source[key]);
+                      } else {
+                        output[key] = { ...source[key] };
+                      }
+                    } else {
+                      // CRITICAL FIX: Always set the value, including boolean false
+                      output[key] = source[key];
+                    }
+                  });
+
+                  return output;
+                };
+
+                // Merge into result without modifying original objects
+                Object.assign(newResult, deepMergeNested(newResult, objectToMerge));
+              }
+            } else {
+              // For top-level values, create a new object with the property
+              Object.assign(newResult, { [path]: value });
+            }
+          });
+
+          return newResult;
+        };
+
+        // Convert the difference paths to a proper nested structure
+        const builtObject = buildObjectFromPaths(differences);
+        console.log('DEBUG: Built object from paths:', builtObject);
+
+        // Include classes ONLY if they changed from mergedConfig (what user sees)
+        // This prevents unnecessarily sending the entire classes array on every save
+        if (formValues.classes && Array.isArray(formValues.classes)) {
+          const classesChanged = JSON.stringify(formValues.classes) !== JSON.stringify(mergedConfig?.classes);
+          if (classesChanged) {
+            builtObject.classes = formValues.classes;
+            console.log('DEBUG: Including modified document schema (classes) in save:', formValues.classes);
+          } else {
+            console.log('DEBUG: Classes unchanged, not including in save');
+          }
+        }
+
+        // CRITICAL: Always include the current rule schema (rule_classes) if it exists OR is explicitly empty
+        // This ensures empty arrays are saved (to wipe all rule classes) and prevents schema loss
+        if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
+          builtObject.rule_classes = formValues.rule_classes;
+          console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
+        }
+
+        // CRITICAL: Always include the current rule schema (rule_classes) if it exists OR is explicitly empty
+        // This ensures empty arrays are saved (to wipe all rule classes) and prevents schema loss
+        if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
+          builtObject.rule_classes = formValues.rule_classes;
+          console.log('DEBUG: Including rule schema (rule_classes) in save:', formValues.rule_classes);
+        }
+
+        // CRITICAL: If there are no differences AND no schema changes, don't send update to backend
+        // This prevents unnecessary API calls and potential data issues
+        if (Object.keys(builtObject).length === 0) {
+          console.log('No changes detected, skipping save');
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+          return;
+        }
+
+        Object.assign(versionConfigToSave, builtObject);
+        configToSave = versionConfigToSave;
+        console.log('Saving customized config:', configToSave);
       }
-    } catch (error) {
-      console.error('Save as new error:', error);
-      setSaveError(error.message || 'Failed to save as new version');
+
+      const success = await updateConfiguration(configToSave);
+
+      if (success) {
+        setSaveSuccess(true);
+        if (saveAsDefault) {
+          setShowSaveAsDefaultModal(false);
+        }
+      } else {
+        setSaveError('Failed to save configuration. Please try again.');
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      setSaveError(`Error: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Handle activate version
-  const handleActivateVersion = async () => {
+  const handleFormChange = (newValues) => {
+    setFormValues(newValues);
+    try {
+      // Update both JSON and YAML content
+      const jsonString = JSON.stringify(newValues, null, 2);
+      setJsonContent(jsonString);
+
+      try {
+        const yamlString = yaml.dump(newValues);
+        setYamlContent(yamlString);
+      } catch (yamlErr) {
+        console.error('Error converting to YAML:', yamlErr);
+      }
+
+      setValidationErrors([]);
+    } catch (e) {
+      setValidationErrors([{ message: `Error converting form values to JSON: ${e.message}` }]);
+    }
+  };
+
+  const formatJson = () => {
+    if (editorRef.current && viewMode === 'json') {
+      editorRef.current.getAction('editor.action.formatDocument').run();
+    }
+  };
+
+  const formatYaml = () => {
+    if (editorRef.current && viewMode === 'yaml') {
+      editorRef.current.getAction('editor.action.formatDocument').run();
+
+      // Re-validate after formatting
+      setTimeout(() => {
+        const errors = validateYamlContent(yamlContent);
+        setValidationErrors(errors);
+      }, 100);
+    }
+  };
+
+  const handleResetAllToDefault = async () => {
     setIsSaving(true);
+    setSaveSuccess(false);
     setSaveError(null);
 
     try {
-      await setActiveVersion(selectedVersion);
-      setShowActivateModal(false);
-      // Show confirmation dialog
-      setShowActivateConfirmationModal(true);
-      setActivatedVersionId(selectedVersion);
-      // Refresh versions list to update active status
-      await fetchVersions();
-      // Update version data to reflect active status
-      setSelectedVersionData((prev) => ({ ...prev, isActive: true }));
-    } catch (error) {
-      console.error('Activate error:', error);
-      setSaveError(error.message || 'Failed to activate version');
+      // Reset custom configuration by sending a special reset flag
+      // Backend will clear Custom, and on next read it will copy Default -> Custom
+      const success = await updateConfiguration({ resetToDefault: true });
+
+      if (success) {
+        setSaveSuccess(true);
+        setShowResetModal(false);
+        // Refresh to show the restored default configuration
+        await fetchConfiguration();
+      } else {
+        setSaveError('Failed to reset configuration. Please try again.');
+      }
+    } catch (err) {
+      console.error('Reset error:', err);
+      setSaveError(`Error: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Handle delete version
-  const handleDeleteVersion = async () => {
-    setIsSaving(true);
-    setSaveError(null);
+  // Handler for BDA/IDP sync
+  const handleSyncBdaIdp = async () => {
+    setIsSyncing(true);
+    setSyncSuccess(false);
+    setSyncSuccessMessage('');
+    setSyncError(null);
 
     try {
-      await deleteVersion(selectedVersion);
-      setShowDeleteModal(false);
-      setSaveSuccess(true);
-      // Clear the selected version since it was deleted
-      setSelectedVersion(null);
-      setSelectedVersionData(null);
-    } catch (error) {
-      console.error('Delete error:', error);
-      setSaveError(error.message || 'Failed to delete version');
+      logger.debug('Starting BDA/IDP sync...');
+
+      const result = await client.graphql({
+        query: syncBdaIdpMutation,
+      });
+
+      logger.debug('Sync API response:', result);
+
+      const response = result.data.syncBdaIdp;
+
+      if (response.success) {
+        setSyncSuccess(true);
+        setSyncSuccessMessage(response.message || 'Document classes have been synchronized with BDA blueprints.');
+
+        // If there are partial failures, also show the error details
+        if (response.error && response.error.type === 'PARTIAL_SYNC_ERROR') {
+          // Show both success and error for partial failures
+          setTimeout(() => {
+            setSyncError(response.error.message);
+          }, 100); // Small delay to show success first
+        }
+
+        // Refresh configuration to show any new classes
+        await fetchConfiguration();
+        setTimeout(() => {
+          setSyncSuccess(false);
+          setSyncSuccessMessage('');
+        }, 5000);
+        logger.debug('BDA/IDP sync completed successfully');
+      } else {
+        const errorMsg = response.error?.message || response.message || 'Sync operation failed';
+        setSyncError(errorMsg);
+        logger.error('Sync failed:', errorMsg);
+      }
+    } catch (err) {
+      logger.error('Sync error:', err);
+      setSyncError(`Sync failed: ${err.message}`);
     } finally {
-      setIsSaving(false);
+      setIsSyncing(false);
     }
   };
 
-  // Handle export
   const handleExport = () => {
     try {
       let content;
@@ -931,11 +1255,11 @@ const ConfigurationLayout = () => {
       let fileExtension;
 
       if (exportFormat === 'yaml') {
-        content = yamlContent;
+        content = yaml.dump(mergedConfig);
         mimeType = 'text/yaml';
         fileExtension = 'yaml';
       } else {
-        content = jsonContent;
+        content = JSON.stringify(mergedConfig, null, 2);
         mimeType = 'application/json';
         fileExtension = 'json';
       }
@@ -955,8 +1279,7 @@ const ConfigurationLayout = () => {
     }
   };
 
-  // Handle import
-  const handleImport = async (event) => {
+  const handleImport = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -969,26 +1292,31 @@ const ConfigurationLayout = () => {
         const importedConfig = file.name.endsWith('.yaml') || file.name.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
 
         if (importedConfig && typeof importedConfig === 'object') {
-          // Ensure default is loaded for merging
-          const defaultData = await ensureDefaultLoaded();
-
-          // Merge with default configuration to fill missing fields
-          let configToImport = importedConfig;
-          if (defaultData && defaultData.configuration) {
-            configToImport = {
-              ...defaultData.configuration,
-              ...importedConfig,
-            };
-          }
-
-          setFormValues(configToImport);
-          setJsonContent(JSON.stringify(configToImport, null, 2));
-          setYamlContent(yaml.dump(configToImport));
-          if (configToImport.classes) {
-            setExtractionSchema(configToImport.classes);
-          }
-          if (configToImport.rule_classes) {
-            setRuleSchema(configToImport.rule_classes);
+          // Check if config is in legacy format
+          if (isLegacyFormat(importedConfig)) {
+            // Show migration modal and store config for later
+            setPendingImportConfig(importedConfig);
+            setShowMigrationModal(true);
+          } else {
+            // Modern format - auto-save and refresh to get merged config with system defaults
+            // Use replaceCustom flag to replace existing Custom entirely (not merge)
+            setIsSaving(true);
+            try {
+              const success = await updateConfiguration({ ...importedConfig, replaceCustom: true });
+              if (success) {
+                if (importedConfig.rule_classes) {
+                  setRuleSchema(importedConfig.rule_classes);
+                }
+                await fetchConfiguration();
+                setSaveSuccess(true);
+              } else {
+                setImportError('Failed to import configuration');
+              }
+            } catch (err) {
+              setImportError(`Import failed: ${err.message}`);
+            } finally {
+              setIsSaving(false);
+            }
           }
         } else {
           setImportError('Invalid configuration file format');
@@ -998,10 +1326,40 @@ const ConfigurationLayout = () => {
       }
     };
     reader.readAsText(file);
+    // Clear the input value to allow re-importing the same file
     event.target.value = '';
   };
 
-  // Handler for Import button click
+  const handleMigrationConfirm = async () => {
+    if (!pendingImportConfig) return;
+
+    setIsSaving(true);
+    try {
+      // Send to backend for migration, then reload to get migrated version
+      const success = await updateConfiguration(pendingImportConfig);
+
+      if (success) {
+        await fetchConfiguration();
+        setShowMigrationModal(false);
+        setPendingImportConfig(null);
+      } else {
+        setImportError('Failed to import configuration');
+        setShowMigrationModal(false);
+      }
+    } catch (err) {
+      setImportError(`Import failed: ${err.message}`);
+      setShowMigrationModal(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMigrationCancel = () => {
+    setShowMigrationModal(false);
+    setPendingImportConfig(null);
+  };
+
+  // Handler for Import button click - show source selection modal
   const handleImportClick = () => {
     setShowImportSourceModal(true);
   };
@@ -1012,695 +1370,219 @@ const ConfigurationLayout = () => {
     document.getElementById('import-file').click();
   };
 
-  // Handler for config library import for current version
-  const handleConfigLibraryImportForCurrentVersion = async () => {
+  // Handler for library import
+  const handleLibraryImport = async () => {
     setShowImportSourceModal(false);
-    setLibraryImportContext('current');
     setLibraryLoading(true);
 
     try {
-      // Determine pattern based on settings
-      const pattern = settings?.IDPPattern?.includes('Pattern1')
-        ? 'pattern-1'
-        : settings?.IDPPattern?.includes('Pattern3')
-        ? 'pattern-3'
-        : 'pattern-2';
+      const patternDir = getPatternDirectory(settings?.IDPPattern);
+      if (!patternDir) {
+        setImportError('Pattern not configured in settings');
+        setLibraryLoading(false);
+        return;
+      }
 
-      const configs = await listConfigurations(pattern);
+      const configs = await listConfigurations(patternDir);
       setLibraryConfigs(configs);
       setShowLibraryBrowserModal(true);
-    } catch (error) {
-      setSaveError(`Failed to load configuration library: ${error.message}`);
+    } catch (err) {
+      setImportError(`Failed to load library: ${err.message}`);
     } finally {
       setLibraryLoading(false);
     }
   };
 
-  // Handler for config library import for new version
-  const handleConfigLibraryImport = async () => {
-    setLibraryImportContext('new');
-    setLibraryLoading(true);
+  // Handler for selecting a library config
+  const handleSelectLibraryConfig = async (config) => {
+    setSelectedLibraryConfig(config);
 
-    try {
-      // Determine pattern based on settings
-      const pattern = settings?.IDPPattern?.includes('Pattern1')
-        ? 'pattern-1'
-        : settings?.IDPPattern?.includes('Pattern3')
-        ? 'pattern-3'
-        : 'pattern-2';
+    if (config.hasReadme) {
+      // Fetch and show README
+      const patternDir = getPatternDirectory(settings?.IDPPattern);
+      const file = await getFile(patternDir, config.name, 'README.md');
 
-      const configs = await listConfigurations(pattern);
-      setLibraryConfigs(configs);
-      setShowLibraryBrowserModal(true);
-    } catch (error) {
-      setSaveError(`Failed to load configuration library: ${error.message}`);
-    } finally {
-      setLibraryLoading(false);
-    }
-  };
-
-  // Handler for selecting a library configuration for current version
-  const handleLibraryConfigSelectForCurrentVersion = async (configName) => {
-    setShowLibraryBrowserModal(false);
-    setLibraryLoading(true);
-
-    try {
-      // Determine pattern based on settings
-      const pattern = settings?.IDPPattern?.includes('Pattern1')
-        ? 'pattern-1'
-        : settings?.IDPPattern?.includes('Pattern3')
-        ? 'pattern-3'
-        : 'pattern-2';
-
-      const configFile = await getFile(pattern, configName, 'config.yaml');
-
-      if (configFile && configFile.content) {
-        // Parse YAML content
-        const importedConfig = yaml.load(configFile.content);
-
-        if (importedConfig && typeof importedConfig === 'object') {
-          // Ensure default is loaded for merging
-          let defaultData = defaultVersionData;
-          if (!defaultData) {
-            try {
-              const defaultResponse = await fetchVersion('default');
-              if (defaultResponse && defaultResponse.configuration) {
-                let defaultConfig;
-                if (typeof defaultResponse.configuration === 'string') {
-                  defaultConfig = JSON.parse(defaultResponse.configuration);
-                } else {
-                  defaultConfig = defaultResponse.configuration;
-                }
-                defaultData = { ...defaultResponse, configuration: defaultConfig };
-                setDefaultVersionData(defaultData);
-              }
-            } catch (error) {
-              console.warn('Could not load default for merging:', error);
-            }
-          }
-
-          // Merge with default defaults to fill missing fields (deep merge)
-          let configToImport = importedConfig;
-          if (defaultData && defaultData.configuration) {
-            configToImport = deepMerge(defaultData.configuration, importedConfig);
-          }
-
-          setFormValues(configToImport);
-          setJsonContent(JSON.stringify(configToImport, null, 2));
-          setYamlContent(yaml.dump(configToImport));
-          if (configToImport.classes) {
-            setExtractionSchema(configToImport.classes);
-          }
-          if (configToImport.rule_classes) {
-            setRuleSchema(configToImport.rule_classes);
-          }
-        } else {
-          setImportError('Invalid configuration file format');
-        }
-      }
-    } catch (error) {
-      setImportError(`Failed to load configuration: ${error.message}`);
-    } finally {
-      setLibraryLoading(false);
-    }
-  };
-
-  // Handler for selecting a library configuration for new version
-  const handleLibraryConfigSelect = async (configName) => {
-    setLibraryLoading(true);
-
-    try {
-      // Determine pattern based on settings
-      const pattern = settings?.IDPPattern?.includes('Pattern1')
-        ? 'pattern-1'
-        : settings?.IDPPattern?.includes('Pattern3')
-        ? 'pattern-3'
-        : 'pattern-2';
-
-      const configFile = await getFile(pattern, configName, 'config.yaml');
-
-      if (configFile && configFile.content) {
-        // Parse YAML content
-        const importedConfig = yaml.load(configFile.content);
-
-        if (importedConfig && typeof importedConfig === 'object') {
-          // Ensure default is loaded for merging
-          const defaultData = await ensureDefaultLoaded();
-
-          // Merge with default defaults to fill in missing fields (deep merge)
-          let configToImport = importedConfig;
-          if (defaultData && defaultData.configuration) {
-            configToImport = deepMerge(defaultData.configuration, importedConfig);
-          }
-
-          setImportedConfigForNewVersion(configToImport);
-          // Use just the base name without path for version name
-          const baseName = configName.split('/').pop();
-          setNewVersionName(baseName);
-          setShowLibraryBrowserModal(false);
-        } else {
-          setImportError('Invalid configuration file format');
-        }
-      }
-    } catch (error) {
-      setImportError(`Failed to load configuration: ${error.message}`);
-    } finally {
-      setLibraryLoading(false);
-    }
-  };
-
-  // Handler for viewing README
-  const handleViewReadme = async (configName) => {
-    setLibraryLoading(true);
-
-    try {
-      // Determine pattern based on settings
-      const pattern = settings?.IDPPattern?.includes('Pattern1')
-        ? 'pattern-1'
-        : settings?.IDPPattern?.includes('Pattern3')
-        ? 'pattern-3'
-        : 'pattern-2';
-
-      const readmeFile = await getFile(pattern, configName, 'README.md');
-
-      if (readmeFile && readmeFile.content) {
-        setReadmeContent(readmeFile.content);
-        setSelectedLibraryConfig(configName);
+      if (file) {
+        setReadmeContent(file.content);
+        setShowLibraryBrowserModal(false);
         setShowReadmeModal(true);
+      } else {
+        // No README or error, import directly
+        await importFromLibrary(config);
       }
-    } catch (error) {
-      setSaveError(`Failed to load README: ${error.message}`);
-    } finally {
-      setLibraryLoading(false);
+    } else {
+      // No README, import directly
+      await importFromLibrary(config);
     }
   };
 
-  // Handle reset to default
-  // Handle field-level reset to default (for individual field restore buttons)
-  const handleFieldResetToDefault = async (fieldPath) => {
-    // Can't reset default fields
-    if (selectedVersion === 'default' || !defaultVersionData) {
-      return;
-    }
+  // Handler to import configuration from library
+  const importFromLibrary = async (config) => {
+    setShowReadmeModal(false);
+    setShowLibraryBrowserModal(false);
 
     try {
-      // Get the default value from default version
-      const defaultValue = getValueByPath(defaultVersionData.configuration, fieldPath);
+      const patternDir = getPatternDirectory(settings?.IDPPattern);
 
-      // Update only this field in formValues
-      const updatedFormValues = { ...formValues };
-      setValueByPath(updatedFormValues, fieldPath, defaultValue);
+      // Use the detected file type from the config object
+      const fileName = config.configFileType === 'json' ? 'config.json' : 'config.yaml';
+      const file = await getFile(patternDir, config.name, fileName);
 
-      // Save the updated configuration to the same version ID
-      await updateVersion(selectedVersion, updatedFormValues);
-
-      // Update UI state
-      setFormValues(updatedFormValues);
-      setJsonContent(JSON.stringify(updatedFormValues, null, 2));
-      setYamlContent(yaml.dump(updatedFormValues));
-    } catch (error) {
-      console.error('Field reset error:', error);
-      setSaveError(error.message || 'Failed to reset field to default');
-    }
-  };
-
-  // Handle full reset to default (All) - resets entire configuration to default
-  const handleResetToDefault = async () => {
-    setIsSaving(true);
-    setSaveError(null);
-    setSaveSuccess(false);
-
-    try {
-      // Can't reset default to itself
-      if (selectedVersion === 'default') {
-        setSaveError('Cannot reset default to itself');
+      if (!file) {
+        setImportError('Failed to load configuration file');
         return;
       }
 
-      // Need default data to reset to
-      if (!defaultVersionData) {
-        setSaveError('Default version not available for reset');
-        return;
-      }
+      // Parse based on file type
+      const importedConfig = fileName.endsWith('.json') ? JSON.parse(file.content) : yaml.load(file.content);
 
-      // Reset current version to match default
-      const defaultConfig = defaultVersionData.configuration;
-
-      // Save the default configuration to the same version ID
-      await updateVersion(selectedVersion, defaultConfig);
-
-      // Update UI state
-      setFormValues(defaultConfig);
-      setJsonContent(JSON.stringify(defaultConfig, null, 2));
-      setYamlContent(yaml.dump(defaultConfig));
-
-      if (defaultConfig.classes) {
-        setExtractionSchema(defaultConfig.classes);
-      }
-
-      setSaveSuccess(true);
-      setShowResetModal(false);
-    } catch (error) {
-      console.error('Reset error:', error);
-      setSaveError(error.message || 'Failed to reset to default');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Helper function to set value by path
-  const setValueByPath = (obj, path, value) => {
-    const keys = path.split('.');
-    const lastKey = keys.pop();
-    const target = keys.reduce((current, key) => {
-      if (!current[key]) current[key] = {};
-      return current[key];
-    }, obj);
-    target[lastKey] = value;
-  };
-
-  // Helper function to get value by path (e.g., "ocr.backend" -> formValues.ocr.backend)
-  const getValueByPath = (obj, path) => {
-    return path.split('.').reduce((current, key) => {
-      if (current && typeof current === 'object') {
-        // Handle array indices like "classes[0].name"
-        const arrayMatch = key.match(/^(.+)\[(\d+)\]$/);
-        if (arrayMatch) {
-          const [, arrayKey, index] = arrayMatch;
-          return current[arrayKey] && current[arrayKey][parseInt(index)];
-        }
-        return current[key];
-      }
-      return undefined;
-    }, obj);
-  };
-
-  // Check if a field is customized compared to default
-  const isCustomized = (path) => {
-    // Only show customization for versions other than default
-    if (selectedVersion === 'default' || !defaultVersionData) {
-      return false;
-    }
-
-    // Get value from current version and default
-    const currentValue = getValueByPath(formValues, path);
-    const defaultValue = getValueByPath(defaultVersionData.configuration, path);
-
-    // Deep comparison
-    return JSON.stringify(currentValue) !== JSON.stringify(defaultValue);
-  };
-
-  // Show versions table and selected version editor on same page
-  return (
-    <>
-      <SpaceBetween size="l">
-        {/* Versions Table - Collapsed by default */}
-        <ExpandableSection headerText="Configuration Versions" defaultExpanded={false}>
-          <ConfigurationVersionsTable
-            versions={versions}
-            loading={versionsLoading}
-            onVersionSelect={handleVersionSelect}
-            selectedVersionsForCompare={selectedVersionsForCompare}
-            currentlyOpenVersion={selectedVersion}
-            onVersionSelectForCompare={handleVersionSelectForCompare}
-            onCompareVersions={handleCompareVersions}
-            onActivateVersion={handleBulkActivateVersion}
-            onDeleteVersions={handleBulkDeleteVersions}
-            onImportAsNewVersion={handleImportAsNewVersion}
-            onEditVersion={handleEditVersion}
-          />
-        </ExpandableSection>
-
-        {/* Loading state for selected version */}
-        {loadingVersion && (
-          <Container header={<Header variant="h2">Loading Configuration</Header>}>
-            <Box textAlign="center" padding="l">
-              <Spinner size="large" />
-              <Box padding="s">Loading configuration version {selectedVersion}...</Box>
-            </Box>
-          </Container>
-        )}
-
-        {/* Configuration Editor for selected version */}
-        {selectedVersion && !loadingVersion && (
-          <Container
-            header={
-              <Header
-                variant="h2"
-                actions={
-                  <SpaceBetween direction="horizontal" size="xs">
-                    <SegmentedControl
-                      selectedId={viewMode}
-                      onChange={({ detail }) => setViewMode(detail.selectedId)}
-                      options={[
-                        { id: 'form', text: 'Form View' },
-                        { id: 'json', text: 'JSON View' },
-                        { id: 'yaml', text: 'YAML View' },
-                      ]}
-                    />
-                    {viewMode === 'json' && (
-                      <Button onClick={formatJson} iconName="file">
-                        Format JSON
-                      </Button>
-                    )}
-                    {viewMode === 'yaml' && (
-                      <Button onClick={formatYaml} iconName="file">
-                        Format YAML
-                      </Button>
-                    )}
-                    <Button
-                      onClick={() => {
-                        // Set default filename based on selected version
-                        if (selectedVersionData) {
-                          const versionName = selectedVersionData.versionName || selectedVersion;
-                          // Get description from versions array, not selectedVersionData
-                          const versionFromList = versions.find((v) => v.versionName === versionName);
-                          const description = versionFromList?.description;
-                          let filename = description ? `${versionName}_${description}` : versionName;
-                          // Sanitize filename: remove/replace special characters and spaces, clean up multiple underscores
-                          filename = filename
-                            .replace(/[^a-zA-Z0-9._]/g, '_') // Replace special chars with underscore
-                            .replace(/_+/g, '_') // Replace multiple underscores with single
-                            .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
-                          setExportFileName(filename);
-                          // Small delay to ensure state updates before modal opens
-                          setTimeout(() => setShowExportModal(true), 10);
-                        } else {
-                          setExportFileName('configuration');
-                          setTimeout(() => setShowExportModal(true), 10);
-                        }
-                      }}
-                    >
-                      Export
-                    </Button>
-                    <Button onClick={handleImportClick}>Import</Button>
-                    <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
-                    <Button onClick={() => window.location.reload()}>Refresh</Button>
-                    {isPattern1 && (
-                      <Button onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
-                        Sync BDA/IDP
-                      </Button>
-                    )}
-                    <Button onClick={() => setShowResetModal(true)} disabled={selectedVersion === 'default'}>
-                      Restore default (All)
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        const currentVersionData = versions.find((v) => v.versionName === selectedVersion);
-                        const currentVersionName = currentVersionData?.versionName || currentVersionData?.versionName;
-                        const defaultVersionName = currentVersionName ? `${currentVersionName}_copy` : `${selectedVersion}_copy`;
-                        setNewVersionName(defaultVersionName);
-                        setShowSaveAsNewModal(true);
-                      }}
-                    >
-                      Save as Version
-                    </Button>
-                    <Button
-                      variant={hasUnsavedChanges ? 'primary' : 'normal'}
-                      onClick={handleSave}
-                      loading={isSaving}
-                      disabled={!hasUnsavedChanges || selectedVersion === 'default'}
-                    >
-                      Save Changes
-                    </Button>
-                  </SpaceBetween>
-                }
-              >
-                Configuration Version (
-                {(() => {
-                  const currentVersionData = versions.find((v) => v.versionName === selectedVersion);
-                  return currentVersionData?.versionName || selectedVersion;
-                })()}
-                )
-              </Header>
+      if (importedConfig && typeof importedConfig === 'object') {
+        if (isLegacyFormat(importedConfig)) {
+          setPendingImportConfig(importedConfig);
+          setShowMigrationModal(true);
+        } else {
+          // Modern format - auto-save and refresh to get merged config with system defaults
+          // Use replaceCustom flag to replace existing Custom entirely (not merge)
+          setIsSaving(true);
+          try {
+            const success = await updateConfiguration({ ...importedConfig, replaceCustom: true });
+            if (success) {
+              await fetchConfiguration();
+              setSaveSuccess(true);
+            } else {
+              setImportError('Failed to import configuration');
             }
-          >
-            <SpaceBetween size="l">
-              {/* Success/Error alerts */}
-              {saveSuccess && (
-                <Alert type="success" dismissible onDismiss={() => setSaveSuccess(false)}>
-                  Configuration saved successfully!
-                </Alert>
-              )}
-              {syncSuccess && (
-                <Alert
-                  type="success"
-                  dismissible
-                  onDismiss={() => {
-                    setSyncSuccess(false);
-                    setSyncSuccessMessage('');
-                  }}
-                  header="BDA/IDP sync completed successfully"
-                >
-                  {syncSuccessMessage}
-                </Alert>
-              )}
-              {saveError && (
-                <Alert type="error" dismissible onDismiss={() => setSaveError(null)}>
-                  {saveError}
-                </Alert>
-              )}
-              {validationErrors.length > 0 && (
-                <Alert type="error" dismissible onDismiss={() => setValidationErrors([])}>
-                  <SpaceBetween size="s">
-                    <div>Configuration validation errors:</div>
-                    <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-                      {validationErrors.map((error, index) => (
-                        <li
-                          key={`validation-error-${error.field || 'unknown'}-${error.message.slice(0, 20)}-${index}`}
-                          style={{ marginBottom: '4px' }}
-                        >
-                          {error.message}
-                        </li>
-                      ))}
-                    </ul>
-                  </SpaceBetween>
-                </Alert>
-              )}
-              {syncError && (
-                <Alert type="error" dismissible onDismiss={() => setSyncError(null)} header="BDA/IDP sync error">
-                  <SpaceBetween size="s">
-                    {syncError.includes('Failed to sync classes:') ? (
-                      <div>
-                        <div>The following document classes failed to synchronize:</div>
-                        <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-                          {syncError
-                            .replace('Failed to sync classes: ', '')
-                            .split(', ')
-                            .map((classError) => (
-                              <li key={`sync-error-${classError.replace(/[^a-zA-Z0-9]/g, '-')}`} style={{ marginBottom: '4px' }}>
-                                {classError}
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      <div>{syncError}</div>
-                    )}
-                  </SpaceBetween>
-                </Alert>
-              )}
-
-              {/* Configuration content based on view mode */}
-              {viewMode === 'form' && (
-                <ConfigBuilder
-                  schema={{
-                    ...JSON.parse(selectedVersionData?.schema || '{}'),
-                    properties: Object.fromEntries(
-                      Object.entries(JSON.parse(selectedVersionData?.schema || '{}')?.properties || {}).filter(
-                        ([key]) => key !== 'classes',
-                      ),
-                    ),
-                  }}
-                  formValues={formValues}
-                  onChange={handleFormChange}
-                  extractionSchema={extractionSchema}
-                  isCustomized={isCustomized}
-                  onResetToDefault={handleFieldResetToDefault}
-                  showRuleSchema={isPattern2}
-                  ruleSchema={ruleSchema}
-                  onRuleSchemaChange={(schemaData, isDirty) => {
-                    setRuleSchema(schemaData);
-                    if (isDirty) {
-                      const updatedConfig = { ...formValues };
-                      // CRITICAL: Always set rule_classes, even if empty array
-                      if (schemaData === null) {
-                        updatedConfig.rule_classes = [];
-                      } else if (Array.isArray(schemaData)) {
-                        // Store as 'rule_classes' field with JSON Schema content
-                        updatedConfig.rule_classes = schemaData;
-                      }
-                      setFormValues(updatedConfig);
-                    }
-                  }}
-                  onSchemaChange={(schemaData, isDirty) => {
-                    setExtractionSchema(schemaData);
-                  }}
-                />
-              )}
-
-              {viewMode === 'json' && (
-                <Editor
-                  height="70vh"
-                  defaultLanguage="json"
-                  value={jsonContent}
-                  onChange={(value) => {
-                    setJsonContent(value);
-                    try {
-                      const parsed = JSON.parse(value);
-                      setFormValues(parsed);
-                      if (parsed.classes) {
-                        setExtractionSchema(parsed.classes);
-                      }
-                      if (parsed.rule_classes) {
-                        setRuleSchema(parsed.rule_classes);
-                      }
-                      try {
-                        const yamlString = yaml.dump(parsed);
-                        setYamlContent(yamlString);
-                      } catch (yamlError) {
-                        console.error('Error converting to YAML:', yamlError);
-                      }
-                    } catch (e) {
-                      console.warn('Invalid JSON in editor');
-                    }
-                  }}
-                  options={{
-                    minimap: { enabled: false },
-                    formatOnPaste: true,
-                    formatOnType: true,
-                    automaticLayout: true,
-                    scrollBeyondLastLine: false,
-                    folding: true,
-                    lineNumbers: 'on',
-                    renderLineHighlight: 'all',
-                    tabSize: 2,
-                  }}
-                />
-              )}
-
-              {viewMode === 'yaml' && (
-                <Editor
-                  height="70vh"
-                  defaultLanguage="yaml"
-                  value={yamlContent}
-                  onChange={(value) => {
-                    setYamlContent(value);
-                    try {
-                      const parsed = yaml.load(value);
-                      if (parsed && typeof parsed === 'object') {
-                        setFormValues(parsed);
-                        if (parsed.classes) {
-                          setExtractionSchema(parsed.classes);
-                        }
-                        if (parsed.rule_classes) {
-                          setRuleSchema(parsed.rule_classes);
-                        }
-                        const jsonString = JSON.stringify(parsed, null, 2);
-                        setJsonContent(jsonString);
-                      }
-                    } catch (e) {
-                      console.warn('Invalid YAML in editor');
-                    }
-                  }}
-                  options={{
-                    minimap: { enabled: false },
-                    formatOnPaste: true,
-                    formatOnType: true,
-                    automaticLayout: true,
-                    scrollBeyondLastLine: false,
-                    folding: true,
-                    lineNumbers: 'on',
-                    renderLineHighlight: 'all',
-                    tabSize: 2,
-                  }}
-                />
-              )}
-            </SpaceBetween>
-          </Container>
-        )}
-      </SpaceBetween>
-
-      {/* Save as New Version Modal */}
-      <Modal
-        visible={showSaveAsNewModal}
-        onDismiss={() => setShowSaveAsNewModal(false)}
-        header="Save as New Version"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowSaveAsNewModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleSaveAsNew}
-                loading={isSaving}
-                disabled={
-                  !newVersionName.trim() ||
-                  !validateVersionName(newVersionName) ||
-                  (newVersionDescription && !validateDescription(newVersionDescription))
-                }
-              >
-                Save as New Version
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <FormField
-          label="Version Name"
-          description="Enter a name for this configuration version"
-          errorText={
-            newVersionName && !validateVersionName(newVersionName)
-              ? 'Version name can only contain letters, numbers, hyphens, and underscores (max 50 characters)'
-              : ''
+          } catch (importErr) {
+            setImportError(`Import failed: ${importErr.message}`);
+          } finally {
+            setIsSaving(false);
           }
-        >
-          <Input
-            value={newVersionName}
-            onChange={({ detail }) => setNewVersionName(detail.value)}
-            placeholder={(() => {
-              const currentVersionData = versions.find((v) => v.versionName === selectedVersion);
-              const currentVersionName = currentVersionData?.versionName || currentVersionData?.versionName;
-              return currentVersionName ? `${currentVersionName}_copy` : `${selectedVersion}_copy`;
-            })()}
-            invalid={newVersionName && !validateVersionName(newVersionName)}
-          />
-        </FormField>
-        <FormField label="Description (Optional)" description="Provide additional details about this version">
-          <Input
-            value={newVersionDescription}
-            onChange={({ detail }) => setNewVersionDescription(detail.value)}
-            placeholder="Optional description"
-          />
-        </FormField>
-      </Modal>
+        }
+      } else {
+        setImportError('Invalid configuration format');
+      }
+    } catch (err) {
+      setImportError(`Import failed: ${err.message}`);
+    }
+  };
 
-      {/* Reset to Default Modal */}
+  if (loading) {
+    return (
+      <Container header={<Header variant="h2">Configuration</Header>}>
+        <Box textAlign="center" padding="l">
+          <Spinner size="large" />
+          <Box padding="s">Loading configuration...</Box>
+        </Box>
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container header={<Header variant="h2">Configuration</Header>}>
+        <Alert type="error" header="Error loading configuration">
+          <SpaceBetween size="s">
+            <div>{error}</div>
+            <Box>
+              <Button onClick={fetchConfiguration} variant="primary">
+                Retry
+              </Button>
+            </Box>
+          </SpaceBetween>
+        </Alert>
+      </Container>
+    );
+  }
+
+  if (!schema || !mergedConfig) {
+    return (
+      <Container header={<Header variant="h2">Configuration</Header>}>
+        <Alert type="error" header="Configuration not available">
+          <SpaceBetween size="s">
+            <div>Unable to load configuration schema or values.</div>
+            <Box>
+              <Button onClick={fetchConfiguration} variant="primary">
+                Retry
+              </Button>
+            </Box>
+          </SpaceBetween>
+        </Alert>
+      </Container>
+    );
+  }
+
+  return (
+    <SpaceBetween size="s">
+      {/* Configuration Versions Table */}
+      <ExpandableSection
+        headerText="Configuration Versions"
+        expanded={versionsTableExpanded}
+        onChange={({ detail }) => setVersionsTableExpanded(detail.expanded)}
+      >
+        <ConfigurationVersionsTable
+          versions={versions}
+          loading={versionsLoading}
+          onVersionSelect={handleVersionSelect}
+          selectedVersionsForCompare={selectedVersionsForCompare}
+          currentlyOpenVersion={selectedVersion || activeVersionName}
+          onVersionSelectForCompare={handleVersionSelectForCompare}
+          onCompareVersions={() => console.log('Compare:', selectedVersionsForCompare)}
+          onActivateVersion={handleActivateVersion}
+          onDeleteVersions={handleDeleteVersions}
+          onImportAsNewVersion={handleImportAsNewVersion}
+          onEditVersion={(version) => console.log('Edit version:', version)}
+        />
+      </ExpandableSection>
+
       <Modal
         visible={showResetModal}
         onDismiss={() => setShowResetModal(false)}
-        header="Reset to Default"
+        header="Reset All to Default"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
               <Button variant="link" onClick={() => setShowResetModal(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleResetToDefault} loading={isSaving}>
+              <Button variant="primary" onClick={handleResetAllToDefault} loading={isSaving}>
                 Reset
               </Button>
             </SpaceBetween>
           </Box>
         }
       >
-        <Box variant="span">
-          Are you sure you want to reset version {selectedVersion} to default values? This will overwrite all current settings.
-        </Box>
+        <Box variant="span">Are you sure you want to reset all configuration settings to default values? This action cannot be undone.</Box>
       </Modal>
 
-      {/* Export Modal */}
+      <Modal
+        visible={showSaveAsDefaultModal}
+        onDismiss={() => setShowSaveAsDefaultModal(false)}
+        header="Save as New Default"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowSaveAsDefaultModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => handleSave(true)} loading={isSaving}>
+                Save as Default
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="m">
+          <Box variant="span">
+            Are you sure you want to save the current configuration as the new default? This will replace the existing default configuration
+            and cannot be undone.
+          </Box>
+          <Alert type="warning" header="Important: Version upgrade considerations">
+            The default configuration may be overwritten when you update the solution to a new version. We recommend using the Export button
+            to download and save your configuration so you can easily restore it after an upgrade if needed.
+          </Alert>
+        </SpaceBetween>
+      </Modal>
+
       <Modal
         visible={showExportModal}
         onDismiss={() => setShowExportModal(false)}
@@ -1735,6 +1617,41 @@ const ConfigurationLayout = () => {
         </SpaceBetween>
       </Modal>
 
+      <Modal
+        visible={showMigrationModal}
+        onDismiss={handleMigrationCancel}
+        header="Configuration Migration Required"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={handleMigrationCancel}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleMigrationConfirm} loading={isSaving}>
+                Save and Migrate
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween direction="vertical" size="m">
+          <Box variant="span">
+            The configuration file you are importing uses a legacy format that needs to be migrated to the current JSON Schema format.
+          </Box>
+          <Alert type="info" header="What will happen">
+            <ul>
+              <li>The configuration will be automatically converted to the new format</li>
+              <li>All your settings and document classes will be preserved</li>
+              <li>The migrated configuration will be saved to the database</li>
+              <li>You can review the changes after migration</li>
+            </ul>
+          </Alert>
+          <Box variant="span">
+            Click &quot;Save and Migrate&quot; to proceed with the migration, or &quot;Cancel&quot; to abort the import.
+          </Box>
+        </SpaceBetween>
+      </Modal>
+
       {/* Import Source Selection Modal */}
       <Modal
         visible={showImportSourceModal}
@@ -1752,182 +1669,355 @@ const ConfigurationLayout = () => {
           <Button variant="primary" onClick={handleLocalFileImport} iconName="upload" fullWidth>
             Import from Local File
           </Button>
-          <Button onClick={handleConfigLibraryImportForCurrentVersion} iconName="folder" fullWidth>
+          <Button variant="normal" onClick={handleLibraryImport} iconName="folder" fullWidth loading={libraryLoading}>
             Import from Configuration Library
           </Button>
         </SpaceBetween>
       </Modal>
 
-      {/* Compare Versions Modal */}
+      {/* Configuration Library Browser Modal */}
       <Modal
-        visible={showCompareModal}
-        onDismiss={() => setShowCompareModal(false)}
-        size="max"
-        header="Compare Configuration Versions"
+        visible={showLibraryBrowserModal}
+        onDismiss={() => setShowLibraryBrowserModal(false)}
+        header={`Configuration Library - ${settings?.IDPPattern || 'Pattern'}`}
+        size="large"
         footer={
           <Box float="right">
-            <Button onClick={() => setShowCompareModal(false)}>Close</Button>
-          </Box>
-        }
-      >
-        <CompareVersionsContent selectedVersions={selectedVersionsForCompare} versions={versions} />
-      </Modal>
-
-      {/* Bulk Delete Confirmation Modal */}
-      <Modal
-        visible={showBulkDeleteModal}
-        onDismiss={() => setShowBulkDeleteModal(false)}
-        size="medium"
-        header="Confirm Delete"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button onClick={() => setShowBulkDeleteModal(false)}>Cancel</Button>
-              <Button variant="primary" onClick={confirmDeleteVersions}>
-                Delete {versionsToDelete.length} Version{versionsToDelete.length > 1 ? 's' : ''}
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <Box>Are you sure you want to delete the following configuration version{versionsToDelete.length > 1 ? 's' : ''}?</Box>
-          <Box>
-            <strong>Versions to delete:</strong> {versionsToDelete.join(', ')}
-          </Box>
-          <Alert type="warning">This action cannot be undone. The configuration versions will be permanently deleted.</Alert>
-        </SpaceBetween>
-      </Modal>
-
-      {/* Version Creation Confirmation Modal */}
-      <Modal
-        visible={showVersionConfirmationModal}
-        onDismiss={() => setShowVersionConfirmationModal(false)}
-        size="medium"
-        header={confirmationModalType === 'import' ? 'Version Imported Successfully' : 'Version Created Successfully'}
-        footer={
-          <Box float="right">
-            <Button variant="primary" onClick={() => setShowVersionConfirmationModal(false)}>
-              OK
+            <Button variant="link" onClick={() => setShowLibraryBrowserModal(false)}>
+              Cancel
             </Button>
           </Box>
         }
       >
         <SpaceBetween size="m">
-          <Alert type="success">
-            <Box>
-              <Icon name="status-positive" />{' '}
-              {confirmationModalType === 'import'
-                ? 'Configuration version has been imported and created successfully!'
-                : 'New configuration version has been created successfully!'}
-            </Box>
-          </Alert>
-          <Box>
-            <strong>Version ID:</strong> {newlyCreatedVersionId}
-          </Box>
-          <Box>
-            {confirmationModalType === 'import'
-              ? 'The imported configuration is now available in the configuration versions table above.'
-              : 'The new version is now available in the configuration versions table above.'}
-          </Box>
+          {libraryConfigs.length === 0 && (
+            <Alert type="info">No configurations found for {settings?.IDPPattern} in the Config Library</Alert>
+          )}
+
+          {libraryConfigs.map((config) => (
+            <Container key={config.name}>
+              <SpaceBetween size="xs">
+                <Box fontSize="heading-m" fontWeight="bold">
+                  {config.name}
+                </Box>
+                <SpaceBetween size="xs" direction="horizontal">
+                  <Box fontSize="body-s" color="text-body-secondary">
+                    Format: {config.configFileType?.toUpperCase() || 'YAML'}
+                  </Box>
+                  {config.hasReadme && (
+                    <Box fontSize="body-s" color="text-status-info">
+                      <Icon name="file" /> README available
+                    </Box>
+                  )}
+                </SpaceBetween>
+                <Box float="right">
+                  <Button variant="primary" onClick={() => handleSelectLibraryConfig(config)}>
+                    Select
+                  </Button>
+                </Box>
+              </SpaceBetween>
+            </Container>
+          ))}
         </SpaceBetween>
       </Modal>
 
-      {/* Activate Version Confirmation Modal */}
+      {/* README Preview Modal */}
       <Modal
-        visible={showActivateModal}
-        onDismiss={() => setShowActivateModal(false)}
-        size="medium"
-        header="Confirm Activation"
+        visible={showReadmeModal}
+        onDismiss={() => setShowReadmeModal(false)}
+        header={`Configuration: ${selectedLibraryConfig?.name}`}
+        size="large"
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
-              <Button onClick={() => setShowActivateModal(false)}>Cancel</Button>
-              <Button variant="primary" onClick={confirmActivateVersion}>
-                Activate Version
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <Box>
-            Are you sure you want to activate version <strong>{versionToActivate}</strong>?
-          </Box>
-          <Alert type="info">This version will become the active configuration used for all new document processing.</Alert>
-        </SpaceBetween>
-      </Modal>
-
-      {/* Activate Version Success Modal */}
-      <Modal
-        visible={showActivateConfirmationModal}
-        onDismiss={() => setShowActivateConfirmationModal(false)}
-        size="medium"
-        header="Version Activated Successfully"
-        footer={
-          <Box float="right">
-            <Button variant="primary" onClick={() => setShowActivateConfirmationModal(false)}>
-              OK
-            </Button>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <Alert type="success">
-            <Box>
-              <Icon name="status-positive" /> Configuration version has been activated successfully!
-            </Box>
-          </Alert>
-          <Box>
-            <strong>Active Version:</strong> {activatedVersionId}
-          </Box>
-          <Box>This version is now being used for all new document processing.</Box>
-        </SpaceBetween>
-      </Modal>
-
-      {/* Edit Version Modal */}
-      <Modal
-        visible={showEditDescriptionModal}
-        onDismiss={() => setShowEditDescriptionModal(false)}
-        header="Edit Version"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setShowEditDescriptionModal(false)}>
-                Cancel
-              </Button>
               <Button
-                variant="primary"
+                variant="link"
                 onClick={() => {
-                  console.log('Save button clicked in edit modal');
-                  confirmEditDescription();
+                  setShowReadmeModal(false);
+                  setShowLibraryBrowserModal(true);
                 }}
               >
-                Save
+                Go Back
+              </Button>
+              <Button variant="primary" onClick={() => importFromLibrary(selectedLibraryConfig)}>
+                Import This Configuration
               </Button>
             </SpaceBetween>
           </Box>
         }
       >
-        <SpaceBetween size="m">
-          {editingError && (
-            <Alert type="error" dismissible onDismiss={() => setEditingError(null)}>
-              {editingError}
+        <Box padding="l">
+          <ReactMarkdown>{readmeContent}</ReactMarkdown>
+        </Box>
+      </Modal>
+
+      <Container
+        header={
+          <Header
+            variant="h2"
+            actions={
+              <SpaceBetween direction="horizontal" size="xs">
+                <SegmentedControl
+                  selectedId={viewMode}
+                  onChange={({ detail }) => setViewMode(detail.selectedId)}
+                  options={[
+                    { id: 'form', text: 'Form View' },
+                    { id: 'json', text: 'JSON View' },
+                    { id: 'yaml', text: 'YAML View' },
+                  ]}
+                />
+                {viewMode === 'json' && (
+                  <Button onClick={formatJson} iconName="file">
+                    Format JSON
+                  </Button>
+                )}
+                {viewMode === 'yaml' && (
+                  <Button onClick={formatYaml} iconName="file">
+                    Format YAML
+                  </Button>
+                )}
+                <Button variant="normal" onClick={() => setShowExportModal(true)}>
+                  Export
+                </Button>
+                <Button variant="normal" onClick={handleImportClick}>
+                  Import
+                </Button>
+                <input id="import-file" type="file" accept=".json,.yaml,.yml" style={{ display: 'none' }} onChange={handleImport} />
+                <Button variant="normal" onClick={() => fetchConfiguration()} loading={refreshing} iconName="refresh">
+                  Refresh
+                </Button>
+                {isPattern1 && (
+                  <Button variant="normal" onClick={handleSyncBdaIdp} loading={isSyncing} iconName="refresh">
+                    Sync BDA/IDP
+                  </Button>
+                )}
+                <Button variant="normal" onClick={() => setShowResetModal(true)}>
+                  Restore default (All)
+                </Button>
+                <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)}>
+                  Save as default
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleSave(false)}
+                  loading={isSaving}
+                  disabled={!hasUnsavedChanges || validationErrors.length > 0}
+                >
+                  Save changes
+                </Button>
+              </SpaceBetween>
+            }
+          >
+            Configuration ({selectedVersion || activeVersionName})
+          </Header>
+        }
+      >
+        <Form>
+          {refreshing && (
+            <Alert type="info" header="Syncing configuration...">
+              <Box display="flex" alignItems="center">
+                <Spinner size="normal" />
+                <Box margin={{ left: 's' }}>Refreshing data from server</Box>
+              </Box>
             </Alert>
           )}
-          <FormField
-            label="Description"
-            errorText={editingDescription && !validateDescription(editingDescription) ? 'Description cannot exceed 200 characters' : ''}
-          >
-            <Input
-              value={editingDescription}
-              onChange={({ detail }) => setEditingDescription(detail.value)}
-              placeholder="Enter version description"
-              invalid={editingDescription && !validateDescription(editingDescription)}
-            />
-          </FormField>
-        </SpaceBetween>
-      </Modal>
+
+          {saveSuccess && (
+            <Alert type="success" dismissible onDismiss={() => setSaveSuccess(false)} header="Configuration saved successfully">
+              Your configuration changes have been saved.
+            </Alert>
+          )}
+
+          {importSuccess && (
+            <Alert type="success" dismissible onDismiss={() => setImportSuccess(false)} header="Configuration imported successfully">
+              The configuration has been imported from the library and loaded into the editor.
+            </Alert>
+          )}
+
+          {saveError && (
+            <Alert type="error" dismissible onDismiss={() => setSaveError(null)} header="Error saving configuration">
+              {saveError}
+            </Alert>
+          )}
+
+          {importError && (
+            <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import error">
+              {importError}
+            </Alert>
+          )}
+
+          {syncSuccess && (
+            <Alert
+              type="success"
+              dismissible
+              onDismiss={() => {
+                setSyncSuccess(false);
+                setSyncSuccessMessage('');
+              }}
+              header="BDA/IDP sync completed successfully"
+            >
+              {syncSuccessMessage}
+            </Alert>
+          )}
+
+          {syncError && (
+            <Alert type="error" dismissible onDismiss={() => setSyncError(null)} header="BDA/IDP sync error">
+              <SpaceBetween size="s">
+                {syncError.includes('Failed to sync classes:') ? (
+                  <div>
+                    <div>The following document classes failed to synchronize:</div>
+                    <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                      {syncError
+                        .replace('Failed to sync classes: ', '')
+                        .split(', ')
+                        .map((classError) => (
+                          <li key={`sync-error-${classError.replace(/[^a-zA-Z0-9]/g, '-')}`} style={{ marginBottom: '4px' }}>
+                            {classError}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div>{syncError}</div>
+                )}
+              </SpaceBetween>
+            </Alert>
+          )}
+
+          {validationErrors.length > 0 && (
+            <Alert type="warning" header="Validation errors">
+              <ul>
+                {validationErrors.map((e, index) => (
+                  // eslint-disable-next-line react/no-array-index-key
+                  <li key={index}>{e.message}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+
+          <Box padding="s">
+            {viewMode === 'form' && (
+              <SpaceBetween size="l">
+                <ConfigBuilder
+                  schema={{
+                    ...schema,
+                    properties: Object.fromEntries(Object.entries(schema?.properties || {}).filter(([key]) => key !== 'classes')),
+                  }}
+                  formValues={formValues}
+                  defaultConfig={defaultConfig}
+                  isCustomized={isCustomized}
+                  onResetToDefault={resetToDefault}
+                  onChange={handleFormChange}
+                  extractionSchema={extractionSchema}
+                  activeTabId={configBuilderActiveTab}
+                  onTabChange={setConfigBuilderActiveTab}
+                  showRuleSchema={isPattern2}
+                  onSchemaChange={(schemaData, isDirty) => {
+                    setExtractionSchema(schemaData);
+                    if (isDirty) {
+                      const updatedConfig = { ...formValues };
+                      // CRITICAL: Always set classes, even if empty array (to support wipe all functionality)
+                      // Handle null (no classes) by setting empty array
+                      if (schemaData === null) {
+                        updatedConfig.classes = [];
+                      } else if (Array.isArray(schemaData)) {
+                        // Store as 'classes' field with JSON Schema content
+                        updatedConfig.classes = schemaData;
+                      }
+                      setFormValues(updatedConfig);
+                      setJsonContent(JSON.stringify(updatedConfig, null, 2));
+                      try {
+                        setYamlContent(yaml.dump(updatedConfig));
+                      } catch (e) {
+                        console.error('Error converting to YAML:', e);
+                      }
+                    }
+                  }}
+                  onSchemaValidate={(valid, errors) => {
+                    if (!valid) {
+                      setValidationErrors(errors.map((e) => ({ message: `Document Schema: ${e.path} - ${e.message}` })));
+                    } else {
+                      setValidationErrors([]);
+                    }
+                  }}
+                  ruleSchema={ruleSchema}
+                  onRuleSchemaChange={(schemaData, isDirty) => {
+                    setRuleSchema(schemaData);
+                    if (isDirty) {
+                      const updatedConfig = { ...formValues };
+                      // CRITICAL: Always set rule_classes, even if empty array
+                      if (schemaData === null) {
+                        updatedConfig.rule_classes = [];
+                      } else if (Array.isArray(schemaData)) {
+                        // Store as 'rule_classes' field with JSON Schema content
+                        updatedConfig.rule_classes = schemaData;
+                      }
+                      setFormValues(updatedConfig);
+                      setJsonContent(JSON.stringify(updatedConfig, null, 2));
+                      try {
+                        setYamlContent(yaml.dump(updatedConfig));
+                      } catch (e) {
+                        console.error('Error converting to YAML:', e);
+                      }
+                    }
+                  }}
+                  onRuleSchemaValidate={(valid, errors) => {
+                    if (!valid) {
+                      setValidationErrors(errors.map((e) => ({ message: `Rule Schema: ${e.path} - ${e.message}` })));
+                    } else {
+                      setValidationErrors([]);
+                    }
+                  }}
+                />
+              </SpaceBetween>
+            )}
+
+            {viewMode === 'json' && (
+              <Editor
+                height="70vh"
+                defaultLanguage="json"
+                value={jsonContent}
+                onChange={handleJsonEditorChange}
+                onMount={handleEditorDidMount}
+                options={{
+                  minimap: { enabled: false },
+                  formatOnPaste: true,
+                  formatOnType: true,
+                  automaticLayout: true,
+                  scrollBeyondLastLine: false,
+                  folding: true,
+                  lineNumbers: 'on',
+                  renderLineHighlight: 'all',
+                  tabSize: 2,
+                }}
+              />
+            )}
+
+            {viewMode === 'yaml' && (
+              <Box>
+                <Editor
+                  height="70vh"
+                  defaultLanguage="yaml"
+                  value={yamlContent}
+                  onChange={handleYamlEditorChange}
+                  onMount={handleEditorDidMount}
+                  options={{
+                    minimap: { enabled: false },
+                    formatOnPaste: true,
+                    formatOnType: true,
+                    automaticLayout: true,
+                    scrollBeyondLastLine: false,
+                    folding: true,
+                    lineNumbers: 'on',
+                    renderLineHighlight: 'all',
+                    tabSize: 2,
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
+        </Form>
+      </Container>
 
       {/* Import as New Version Modal */}
       <Modal
@@ -1956,9 +2046,9 @@ const ConfigurationLayout = () => {
               <Button
                 variant="primary"
                 onClick={handleCreateVersionFromImport}
-                loading={isSaving}
                 disabled={
                   !importedConfigForNewVersion ||
+                  !newVersionName.trim() ||
                   !validateVersionName(newVersionName) ||
                   (newVersionDescription && !validateDescription(newVersionDescription))
                 }
@@ -1980,7 +2070,7 @@ const ConfigurationLayout = () => {
               >
                 Import from Local File
               </Button>
-              <Button onClick={handleConfigLibraryImport} iconName="folder" fullWidth>
+              <Button onClick={handleConfigLibraryImport} iconName="folder" fullWidth loading={libraryLoading}>
                 Import from Configuration Library
               </Button>
             </SpaceBetween>
@@ -1991,7 +2081,6 @@ const ConfigurationLayout = () => {
               style={{ display: 'none' }}
               onChange={handleImportFileForNewVersion}
             />
-            {/* Remove premature success banner */}
           </FormField>
 
           <FormField
@@ -2023,8 +2112,6 @@ const ConfigurationLayout = () => {
               invalid={newVersionDescription && !validateDescription(newVersionDescription)}
             />
           </FormField>
-
-          {/* Remove JSON merged configuration preview */}
         </SpaceBetween>
       </Modal>
 
@@ -2044,7 +2131,7 @@ const ConfigurationLayout = () => {
           <Box>
             <strong>Available Configurations</strong>
             <br />
-            Select a configuration to import into your current workspace.
+            Select a configuration to import as a new version.
           </Box>
 
           {libraryLoading ? (
@@ -2064,24 +2151,9 @@ const ConfigurationLayout = () => {
                   id: 'actions',
                   header: 'Actions',
                   cell: (item) => (
-                    <SpaceBetween direction="horizontal" size="xs">
-                      <Button
-                        variant="primary"
-                        size="small"
-                        onClick={() =>
-                          libraryImportContext === 'new'
-                            ? handleLibraryConfigSelect(item.name)
-                            : handleLibraryConfigSelectForCurrentVersion(item.name)
-                        }
-                      >
-                        Import
-                      </Button>
-                      {item.hasReadme && (
-                        <Button size="small" onClick={() => handleViewReadme(item.name)}>
-                          View README
-                        </Button>
-                      )}
-                    </SpaceBetween>
+                    <Button variant="primary" size="small" onClick={() => handleLibraryConfigSelect(item.name)}>
+                      Import
+                    </Button>
                   ),
                 },
               ]}
@@ -2099,50 +2171,7 @@ const ConfigurationLayout = () => {
           )}
         </SpaceBetween>
       </Modal>
-
-      {/* README Modal */}
-      <Modal
-        visible={showReadmeModal}
-        onDismiss={() => setShowReadmeModal(false)}
-        size="large"
-        header={`README - ${selectedLibraryConfig}`}
-        footer={
-          <Box float="right">
-            <Button onClick={() => setShowReadmeModal(false)}>Close</Button>
-          </Box>
-        }
-      >
-        <Box>
-          <ReactMarkdown>{readmeContent}</ReactMarkdown>
-        </Box>
-      </Modal>
-
-      {/* Bulk Delete Success Modal */}
-      <Modal
-        visible={showBulkDeleteSuccessModal}
-        onDismiss={() => setShowBulkDeleteSuccessModal(false)}
-        size="medium"
-        header="Versions Deleted Successfully"
-        footer={
-          <Box float="right">
-            <Button variant="primary" onClick={() => setShowBulkDeleteSuccessModal(false)}>
-              OK
-            </Button>
-          </Box>
-        }
-      >
-        <SpaceBetween size="m">
-          <Alert type="success">
-            <Box>
-              <Icon name="status-positive" /> Configuration versions have been deleted successfully!
-            </Box>
-          </Alert>
-          <Box>
-            <strong>Deleted Versions:</strong> {deletedVersionsDisplay}
-          </Box>
-        </SpaceBetween>
-      </Modal>
-    </>
+    </SpaceBetween>
   );
 };
 

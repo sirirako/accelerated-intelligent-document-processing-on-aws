@@ -7,6 +7,7 @@ export default gql`
     getConfigVersion(versionName: $versionName) {
       success
       Schema
+      Default
       Configuration
       error {
         type
