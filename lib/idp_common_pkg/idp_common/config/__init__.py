@@ -118,12 +118,12 @@ class ConfigurationReader:
     ) -> Union[IDPConfig, Dict[str, Any]]:
         """
         Get and merge Default and Custom configurations for runtime processing.
-        
+
         DESIGN PATTERN (CRITICAL):
         - Default: Full stack baseline (Pydantic validated)
         - Custom: SPARSE DELTAS ONLY (raw from DynamoDB, NO Pydantic defaults!)
         - Merged: Default deep-updated with Custom = final runtime config
-        
+
         This is THE method to use for all runtime document processing.
 
         Args:
@@ -137,7 +137,7 @@ class ConfigurationReader:
             default_config = self.get_configuration("Default", as_dict=True)
             if not default_config:
                 raise ValueError("Default configuration not found")
-            
+
             # Remove the 'Configuration' key as it's not part of the actual config
             default_config.pop("Configuration", None)
 
@@ -153,7 +153,9 @@ class ConfigurationReader:
                 # Merge: Default deep-updated with Custom deltas
                 merged_config = self.simple_merge(default_config, custom_config)
 
-            logger.info("Successfully merged Default + Custom configurations for runtime")
+            logger.info(
+                "Successfully merged Default + Custom configurations for runtime"
+            )
 
             # Return Pydantic model if requested
             if as_model:

@@ -719,9 +719,9 @@ class EvaluationService:
                 conf_threshold = confidence_value.get("confidence_threshold")
                 return {
                     "confidence": float(confidence_value["confidence"]),
-                    "confidence_threshold": float(conf_threshold)
-                    if conf_threshold is not None
-                    else None,
+                    "confidence_threshold": (
+                        float(conf_threshold) if conf_threshold is not None else None
+                    ),
                 }
 
             return None
@@ -1043,12 +1043,14 @@ class EvaluationService:
                 evaluation_method=evaluation_method_value,
                 evaluation_threshold=field_threshold,
                 comparator_type=field_config.get("comparator"),
-                confidence=confidence_info.get("confidence")
-                if confidence_info
-                else None,
-                confidence_threshold=confidence_info.get("confidence_threshold")
-                if confidence_info
-                else None,
+                confidence=(
+                    confidence_info.get("confidence") if confidence_info else None
+                ),
+                confidence_threshold=(
+                    confidence_info.get("confidence_threshold")
+                    if confidence_info
+                    else None
+                ),
                 weight=field_config.get("weight"),  # Stickler field weight
                 field_comparison_details=detailed_comparisons,  # Nested field-by-field comparisons
             )
