@@ -223,6 +223,8 @@ class DocumentAppSyncService:
         # Add Review Status fields from document model
         if document.hitl_status:
             input_data["HITLStatus"] = document.hitl_status
+        if getattr(document, "hitl_triggered", False):
+            input_data["HITLTriggered"] = document.hitl_triggered
         if document.hitl_sections_pending:
             input_data["HITLSectionsPending"] = document.hitl_sections_pending
         if document.hitl_sections_completed:

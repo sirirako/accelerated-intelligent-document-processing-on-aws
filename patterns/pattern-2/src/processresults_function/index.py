@@ -148,6 +148,7 @@ def handler(event, context):
     # Only set to PendingReview if not already reviewed (preserve completed/skipped status on reprocess)
     hitl_sections_pending = []
     if hitl_triggered:
+        document.hitl_triggered = True
         existing_status = document.hitl_status
         if existing_status not in ("Review Completed", "Review Skipped", "Completed", "Skipped"):
             for section in document.sections:

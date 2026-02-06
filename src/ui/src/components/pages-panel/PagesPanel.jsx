@@ -170,8 +170,8 @@ const PagesPanel = ({ pages, documentItem }) => {
   const isReviewerOnly = isReviewer && !isAdmin;
 
   // Edit Mode should be disabled for reviewers until they click Start Review (claim the document)
-  const hasReviewOwner = documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail;
-  const hitlTriggered = documentItem?.hitlTriggered;
+  const hasReviewOwner = !!(documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail);
+  const hitlTriggered = !!documentItem?.hitlTriggered;
 
   // Check HITL status
   const hitlStatusLower = documentItem?.hitlStatus?.toLowerCase().replace(/\s+/g, '') || '';
@@ -191,12 +191,27 @@ const PagesPanel = ({ pages, documentItem }) => {
   const isEditModeDisabled =
     isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped);
 
-  // Auto-exit edit mode when document starts processing (for reviewers only)
+  // Log for debugging
+  console.log('PagesPanel Edit Mode Check:', {
+    isReviewer,
+    isAdmin,
+    isReviewerOnly,
+    hitlTriggered,
+    hasReviewOwner,
+    hitlStatus: documentItem?.hitlStatus,
+    isHitlCompleted,
+    isHitlSkipped,
+    isDocumentProcessing,
+    isEditModeDisabled,
+  });
+
+  // Auto-exit edit mode for reviewers when document starts processing or HITL is completed/skipped
   useEffect(() => {
-    if (isReviewerOnly && isDocumentProcessing && isEditMode) {
+    if (isReviewerOnly && isEditMode && (isDocumentProcessing || isHitlCompleted || isHitlSkipped)) {
+      console.log('PagesPanel: Auto-exiting edit mode');
       setIsEditMode(false);
     }
-  }, [isReviewerOnly, isDocumentProcessing, isEditMode]);
+  }, [isReviewerOnly, isDocumentProcessing, isHitlCompleted, isHitlSkipped, isEditMode]);
 
   const loadThumbnails = async () => {
     if (!pages) return;
