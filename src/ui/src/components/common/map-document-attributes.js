@@ -11,13 +11,11 @@ const getHitlStatus = (status) => {
   return status;
 };
 
-// Helper function to check if HITL is completed
+// Helper function to check if HITL is completed (includes skipped as review is done)
 const isHitlCompleted = (status) => {
   if (!status) return false;
   const statusLower = status.toLowerCase();
-  return (
-    statusLower === 'completed' || statusLower.includes('complete') || statusLower.includes('done') || statusLower.includes('finished')
-  );
+  return statusLower === 'completed' || statusLower === 'skipped' || statusLower.includes('complete') || statusLower.includes('skipped');
 };
 
 /* Maps document attributes from API to a format that can be used in tables and panel */

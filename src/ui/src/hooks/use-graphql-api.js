@@ -264,11 +264,11 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
       if (periodsToLoad < 1) {
         baseDate = new Date(now);
         const numHours = parseInt(periodsToLoad * hoursInShard, 10);
-        residualHours = [...Array(numHours).keys()].map((h) => baseDate.getUTCHours() - h);
+        residualHours = [...Array(numHours).keys()].map((h) => (((baseDate.getUTCHours() - h) % 24) + 24) % 24);
       } else {
         baseDate = new Date(now - periodsToLoad * hoursInShard * 3600 * 1000);
         const residualBaseHour = baseDate.getUTCHours() % hoursInShard;
-        residualHours = [...Array(hoursInShard - residualBaseHour).keys()].map((h) => baseDate.getUTCHours() + h);
+        residualHours = [...Array(hoursInShard - residualBaseHour).keys()].map((h) => (baseDate.getUTCHours() + h) % 24);
       }
       const baseDateString = baseDate.toISOString().split('T')[0];
 

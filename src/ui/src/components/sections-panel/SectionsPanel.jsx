@@ -644,8 +644,9 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
 
   // Check if document has pending HITL review
   const hasPendingHITL = documentItem?.hitlTriggered && !documentItem?.hitlCompleted;
-  const isHitlSkipped = documentItem?.hitlStatus?.toLowerCase() === 'skipped';
-  const isHitlCompleted = documentItem?.hitlStatus?.toLowerCase() === 'completed';
+  const hitlStatusLower = documentItem?.hitlStatus?.toLowerCase().replace(/\s+/g, '') || '';
+  const isHitlSkipped = hitlStatusLower === 'skipped' || hitlStatusLower === 'reviewskipped';
+  const isHitlCompleted = hitlStatusLower === 'completed' || hitlStatusLower === 'reviewcompleted';
   // Show skip button only if HITL pending and not already completed/skipped
   const showSkipAllButton = isAdmin && hasPendingHITL && !isHitlCompleted && !isHitlSkipped;
 

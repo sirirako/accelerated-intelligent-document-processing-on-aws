@@ -67,6 +67,13 @@ def handler(event, context):
     # Update document status to POSTPROCESSING
     document.status = Status.POSTPROCESSING
     document_service = create_document_service()
+    
+    # Fetch current HITL status from DynamoDB (may have been updated by reviewer)
+    current_doc = document_service.get_document(document.input_key)
+    if current_doc:
+        document.hitl_status = current_doc.hitl_status
+        logger.info(f"Current HITL status from DynamoDB: {document.hitl_status}")
+    
     logger.info(f"Updating document status to {document.status}")
     document_service.update_document(document)
 
