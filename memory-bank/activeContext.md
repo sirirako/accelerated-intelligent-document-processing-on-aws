@@ -2,6 +2,59 @@
 
 ## Current Work Focus
 
+### TIFF Image Format Support Fix (February 6, 2026)
+**Status:** ✅ Completed
+
+#### Problem
+Processing TIFF image files failed during classification with error:
+```
+Error classifying page 1: Unsupported image format: TIFF
+```
+
+#### Root Cause
+1. Amazon Bedrock's multimodal APIs only support: **JPEG, PNG, GIF, WEBP**
+2. OCR step preserved TIFF format when storing page images to S3
+3. Classification step's `prepare_bedrock_image_attachment()` failed when encountering TIFF
+
+#### Solution
+Modified `_process_image_file_direct()` in `lib/idp_common_pkg/idp_common/ocr/service.py` to convert non-Bedrock-compatible formats (TIFF, BMP) to JPEG during OCR processing:
+
+```python
+# Define Bedrock-compatible formats
+BEDROCK_COMPATIBLE_FORMATS = {"jpeg", "jpg", "png", "gif", "webp"}
+
+# In _process_image_file_direct():
+if img_format not in self.BEDROCK_COMPATIBLE_FORMATS:
+    logger.info(f"Converting {img_format.upper()} to JPEG for Bedrock compatibility")
+    if pil_img.mode not in ("RGB", "L"):
+        pil_img = pil_img.convert("RGB")
+    img_buffer = io.BytesIO()
+    pil_img.save(img_buffer, format="JPEG", quality=95, optimize=True)
+    img_data = img_buffer.getvalue()
+    img_ext = "jpg"
+    img_format = "jpeg"
+```
+
+#### Key Learnings
+- **TIFF can be multi-page** (like PDF) - PyMuPDF handles this transparently
+- **PDF pages → always JPEG** (via `_extract_page_image()` which calls `pix.tobytes("jpeg")`)
+- **Image files → format was preserved** (now converted if not Bedrock-compatible)
+
+#### Data Flow After Fix
+```mermaid
+flowchart TD
+    A[TIFF/BMP File] --> B[OCR Step]
+    B --> C{Bedrock Compatible?}
+    C -->|No: TIFF, BMP| D[Convert to JPEG]
+    C -->|Yes: JPEG, PNG, GIF, WEBP| E[Keep Original]
+    D --> F[S3: pages/1/image.jpg]
+    E --> F
+    F --> G[Classification ✅]
+    G --> H[Extraction ✅]
+```
+
+---
+
 ### Page/Section Number Alignment Fix (Pattern-1 to Pattern-2)
 **Date:** February 6, 2026
 **Status:** ✅ Completed (Corrected)
