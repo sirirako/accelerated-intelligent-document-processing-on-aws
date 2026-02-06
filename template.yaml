@@ -31,6 +31,8 @@ Mappings:
   Pattern1ConfigurationMap:
     lending-package-sample:
       ConfigPath: "lending-package-sample"
+    docsplit:
+      ConfigPath: "docsplit"
     realkie-fcc-verified:
       ConfigPath: "realkie-fcc-verified"
     ocr-benchmark:
@@ -49,6 +51,8 @@ Mappings:
       ConfigPath: "rvl-cdip-with-few-shot-examples"
     bank-statement-sample:
       ConfigPath: "bank-statement-sample"
+    docsplit:
+      ConfigPath: "docsplit"
     realkie-fcc-verified:
       ConfigPath: "realkie-fcc-verified"
     ocr-benchmark:
@@ -124,6 +128,7 @@ Parameters:
     Default: "lending-package-sample"
     AllowedValues:
       - "lending-package-sample"
+      - "docsplit"
       - "realkie-fcc-verified"
       - "ocr-benchmark"
       - "rvl-cdip"
@@ -141,6 +146,7 @@ Parameters:
       - "rvl-cdip"
       - "rvl-cdip-with-few-shot-examples"
       - "bank-statement-sample"
+      - "docsplit"
       - "realkie-fcc-verified"
       - "ocr-benchmark"
       - "rule-validation"
