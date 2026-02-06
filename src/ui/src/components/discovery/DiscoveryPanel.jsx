@@ -19,6 +19,7 @@ import {
   Box,
   TextContent,
   ColumnLayout,
+  Select,
 } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 
@@ -26,12 +27,14 @@ import uploadDiscoveryDocument from '../../graphql/queries/uploadDiscoveryDocume
 import listDiscoveryJobs from '../../graphql/queries/listDiscoveryJobs';
 import onDiscoveryJobStatusChange from '../../graphql/subscriptions/onDiscoveryJobStatusChange';
 import useSettingsContext from '../../contexts/settings';
+import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import { getJsonValidationError } from '../common/utilities';
 
 const client = generateClient();
 
 const DiscoveryPanel = () => {
   const { settings } = useSettingsContext();
+  const { versions, loading: versionsLoading } = useConfigurationVersions();
   const [documentFile, setDocumentFile] = useState(null);
   const [groundTruthFile, setGroundTruthFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -41,7 +44,22 @@ const DiscoveryPanel = () => {
   const [discoveryJobs, setDiscoveryJobs] = useState([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
   const [isValidatingJson, setIsValidatingJson] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState(null);
   // Remove unused activeSubscriptions state since we manage subscriptions locally in useEffect
+
+  // Set default active version when versions load
+  useEffect(() => {
+    if (versions.length > 0 && !selectedVersion) {
+      const activeVersion = versions.find((version) => version.isActive);
+      if (activeVersion) {
+        const versionOption = {
+          label: `${activeVersion.versionName} (Active)`,
+          value: activeVersion.versionName,
+        };
+        setSelectedVersion(versionOption);
+      }
+    }
+  }, [versions, selectedVersion]);
 
   // Debounced status update to prevent rapid DOM changes
   const debouncedSetUploadStatus = useCallback((statusArray) => {
@@ -343,6 +361,7 @@ const DiscoveryPanel = () => {
           prefix: prefix || '',
           bucket: settings.DiscoveryBucket,
           groundTruthFileName: groundTruthFileName || '',
+          version: selectedVersion?.value,
         },
       });
 
@@ -426,6 +445,12 @@ const DiscoveryPanel = () => {
       sortingField: 'groundTruthKey',
     },
     {
+      id: 'version',
+      header: 'Version',
+      cell: (item) => item.version || 'N/A',
+      sortingField: 'version',
+    },
+    {
       id: 'status',
       header: 'Status',
       cell: (item) => getStatusIcon(item.status),
@@ -466,6 +491,23 @@ const DiscoveryPanel = () => {
               system will process both files and compare the extracted data against the ground truth.
             </p>
           </TextContent>
+
+          <FormField
+            label="Configuration Version"
+            description="Select which configuration version to save the discovered document schema to"
+          >
+            <Select
+              selectedOption={selectedVersion}
+              onChange={({ detail }) => setSelectedVersion(detail.selectedOption)}
+              options={versions.map((version) => ({
+                label: version.isActive ? `${version.versionName} (Active)` : version.versionName,
+                value: version.versionName,
+              }))}
+              placeholder={versions.length === 0 ? 'Loading versions...' : 'Select configuration version'}
+              disabled={isUploading || versionsLoading || versions.length === 0}
+              loadingText="Loading versions..."
+            />
+          </FormField>
 
           <ColumnLayout columns={2}>
             <FormField label="Document File" description="Select the document to analyze">
@@ -515,7 +557,7 @@ const DiscoveryPanel = () => {
             variant="primary"
             onClick={uploadFiles}
             loading={isUploading}
-            disabled={!documentFile || isUploading || isValidatingJson}
+            disabled={!documentFile || !selectedVersion || isUploading || isValidatingJson}
           >
             Start Discovery
           </Button>

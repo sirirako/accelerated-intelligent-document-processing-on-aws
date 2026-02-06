@@ -221,7 +221,7 @@ class TestBdaBlueprintService:
         # This should not raise an exception but should handle empty classes gracefully
         # Note: The current implementation has a bug with len(classess) < 0 which is never true
         # We'll test the actual behavior
-        result = service.create_blueprints_from_custom_configuration()
+        result = service.create_blueprints_from_custom_configuration("test-version")
 
         # Should complete without processing any classes
         assert result["status"] == "success"
@@ -237,7 +237,7 @@ class TestBdaBlueprintService:
         }
 
         # Should handle missing classes key gracefully
-        result = service.create_blueprints_from_custom_configuration()
+        result = service.create_blueprints_from_custom_configuration("test-version")
 
         assert result["status"] == "success"
         service.blueprint_creator.create_blueprint.assert_not_called()
@@ -254,7 +254,7 @@ class TestBdaBlueprintService:
 
         # Should raise exception on DynamoDB error
         with pytest.raises(Exception, match="Failed to process blueprint creation"):
-            service.create_blueprints_from_custom_configuration()
+            service.create_blueprints_from_custom_configuration("test-version")
 
     def test_create_blueprints_from_custom_configuration_partial_failure(
         self, service, mock_custom_configuration
@@ -284,7 +284,7 @@ class TestBdaBlueprintService:
 
         # Should continue processing despite individual failures
         # The method should complete and update configuration with successful blueprints
-        service.create_blueprints_from_custom_configuration()
+        service.create_blueprints_from_custom_configuration("test-version")
 
         # Should still update configuration despite partial failure
         service.config_manager.handle_update_custom_configuration.assert_called_once()
@@ -728,7 +728,7 @@ class TestBdaBlueprintService:
         service._blueprint_lookup = MagicMock(side_effect=mock_blueprint_lookup)
 
         # Execute the method
-        result = service.create_blueprints_from_custom_configuration()
+        result = service.create_blueprints_from_custom_configuration("test-version")
 
         # Verify the result
         assert isinstance(result, list)
@@ -857,7 +857,7 @@ class TestBdaBlueprintService:
         service._blueprint_lookup = MagicMock(side_effect=mock_blueprint_lookup)
 
         # Execute the method
-        service.create_blueprints_from_custom_configuration()
+        service.create_blueprints_from_custom_configuration("test-version")
 
         # Verify that handle_update_custom_configuration was called
         service.config_manager.handle_update_custom_configuration.assert_called_once()
@@ -900,7 +900,7 @@ class TestBdaBlueprintService:
         }
 
         # Execute the method
-        service.create_blueprints_from_custom_configuration()
+        service.create_blueprints_from_custom_configuration("test-version")
 
         # Verify that handle_update_custom_configuration was called
         service.config_manager.handle_update_custom_configuration.assert_called_once()

@@ -50,7 +50,9 @@ class ClassesDiscovery:
 
         return
 
-    def discovery_classes_with_document(self, input_bucket: str, input_prefix: str):
+    def discovery_classes_with_document(
+        self, input_bucket: str, input_prefix: str, version: str
+    ):
         """
         Create blueprint for document discovery.
         Process document/image:
@@ -61,15 +63,19 @@ class ClassesDiscovery:
         Args:
             input_bucket: S3 bucket name
             input_prefix: S3 prefix
+            version: Configuration version to save to
 
         Returns:
             status of blueprint creation
 
         Raises:
-            Exception: If blueprint creation fails
+            Exception: If blueprint creation fails or version is missing
         """
+        if not version:
+            raise Exception("Version parameter is required for discovery processing")
+
         logger.info(
-            f"Creating blueprint for document discovery: s3://{input_bucket}/{input_prefix}"
+            f"Creating blueprint for document discovery: s3://{input_bucket}/{input_prefix} (version: {version})"
         )
 
         try:
@@ -123,7 +129,9 @@ class ClassesDiscovery:
 
             # Update only the classes field, preserving all other config
             current_config.classes = classes
-            self.config_manager.save_configuration("Config", current_config)
+            self.config_manager.save_configuration(
+                "Config", current_config, version=version
+            )
 
             return {"status": "SUCCESS"}
 
@@ -135,7 +143,7 @@ class ClassesDiscovery:
             raise Exception(f"Failed to process document {input_prefix}: {str(e)}")
 
     def discovery_classes_with_document_and_ground_truth(
-        self, input_bucket: str, input_prefix: str, ground_truth_key: str
+        self, input_bucket: str, input_prefix: str, ground_truth_key: str, version: str
     ):
         """
         Create optimized blueprint using ground truth data.
@@ -203,7 +211,9 @@ class ClassesDiscovery:
 
             # Update only the classes field, preserving all other config
             current_config.classes = classes
-            self.config_manager.save_configuration("Config", current_config)
+            self.config_manager.save_configuration(
+                "Config", current_config, version=version
+            )
 
             return {"status": "SUCCESS"}
 

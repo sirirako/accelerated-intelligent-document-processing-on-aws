@@ -276,7 +276,7 @@ class TestClassesDiscovery:
 
         # Call the method
         result = service.discovery_classes_with_document(
-            "test-bucket", "test-document.pdf"
+            "test-bucket", "test-document.pdf", "test-version"
         )
 
         # Verify result
@@ -301,7 +301,9 @@ class TestClassesDiscovery:
         with pytest.raises(
             Exception, match="Failed to process document test-document.pdf"
         ):
-            service.discovery_classes_with_document("test-bucket", "test-document.pdf")
+            service.discovery_classes_with_document(
+                "test-bucket", "test-document.pdf", "test-version"
+            )
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     @patch("idp_common.bedrock.extract_text_from_response")
@@ -315,7 +317,9 @@ class TestClassesDiscovery:
         with pytest.raises(
             Exception, match="Failed to process document test-document.pdf"
         ):
-            service.discovery_classes_with_document("test-bucket", "test-document.pdf")
+            service.discovery_classes_with_document(
+                "test-bucket", "test-document.pdf", "test-version"
+            )
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     @patch("idp_common.bedrock.extract_text_from_response")
@@ -330,7 +334,9 @@ class TestClassesDiscovery:
         with pytest.raises(
             Exception, match="Failed to process document test-document.pdf"
         ):
-            service.discovery_classes_with_document("test-bucket", "test-document.pdf")
+            service.discovery_classes_with_document(
+                "test-bucket", "test-document.pdf", "test-version"
+            )
 
     @patch("idp_common.utils.s3util.S3Util.get_bytes")
     @patch("idp_common.bedrock.extract_text_from_response")
@@ -370,7 +376,7 @@ class TestClassesDiscovery:
 
         # Call the method
         result = service.discovery_classes_with_document_and_ground_truth(
-            "test-bucket", "test-document.pdf", "ground-truth.json"
+            "test-bucket", "test-document.pdf", "ground-truth.json", "test-version"
         )
 
         # Verify result
@@ -679,7 +685,7 @@ class TestClassesDiscovery:
             service.config_manager.get_configuration.return_value = existing_config
 
             result = service.discovery_classes_with_document(
-                "test-bucket", "test-document.pdf"
+                "test-bucket", "test-document.pdf", "test-version"
             )
 
             assert result["status"] == "SUCCESS"
@@ -734,7 +740,7 @@ class TestClassesDiscovery:
             )
 
             result = service.discovery_classes_with_document(
-                "test-bucket", "test-document.pdf"
+                "test-bucket", "test-document.pdf", "test-version"
             )
 
             assert result["status"] == "SUCCESS"
