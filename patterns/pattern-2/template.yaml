@@ -1205,7 +1205,7 @@ Resources:
             sectionLabel: Summarization Inference
             properties:
               enabled:
-                type: booleanss
+                type: boolean
                 description: Enable or disable document summarization
                 default: true
                 order: 0
