@@ -45,6 +45,8 @@ export default gql`
       HITLSectionsSkipped
       HITLReviewOwner
       HITLReviewOwnerEmail
+      HITLReviewedBy
+      HITLReviewedByEmail
       HITLReviewHistory
     }
   }

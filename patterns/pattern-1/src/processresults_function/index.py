@@ -937,69 +937,6 @@ def process_segments(
     return document, overall_hitl_triggered
 
 
-def handle_hitl_wait(event):
-    """
-    Handle HITL wait action by storing the task token for later workflow continuation.
-
-    Args:
-        event: Event containing task token and document information
-
-    Returns:
-        Dict confirming HITL wait setup
-    """
-    task_token = event.get("taskToken")
-    document = event.get("document", {})
-    # Support document_id, input_key, and object_key for compatibility with compressed/uncompressed formats
-    object_key = (
-        document.get("document_id")
-        or document.get("input_key")
-        or document.get("object_key")
-    )
-
-    if not task_token or not object_key:
-        raise ValueError(
-            f"taskToken and document key are required for HITL wait. Got taskToken={bool(task_token)}, document keys={list(document.keys())}"
-        )
-
-    logger.info(f"Setting up HITL wait for document {object_key}")
-
-    try:
-        # Store the task token directly in DynamoDB
-        tracking_table = os.environ.get("TRACKING_TABLE_NAME") or os.environ.get(
-            "TRACKING_TABLE"
-        )
-        if not tracking_table:
-            raise ValueError(
-                "TRACKING_TABLE_NAME or TRACKING_TABLE environment variable not set"
-            )
-
-        dynamodb = boto3.resource("dynamodb")
-        table = dynamodb.Table(tracking_table)
-        table.update_item(
-            Key={"PK": f"doc#{object_key}", "SK": "none"},
-            UpdateExpression="SET HITLTaskToken = :token, HITLStatus = :status",
-            ExpressionAttributeValues={
-                ":token": task_token,
-                ":status": "WaitingForReview",
-            },
-        )
-
-        logger.info(
-            f"Task token stored for document {object_key}, workflow will wait for HITL completion"
-        )
-
-        # Return immediately - the workflow will wait for send_task_success
-        return {
-            "HITLWaitSetup": True,
-            "ObjectKey": object_key,
-            "Message": "Workflow waiting for HITL completion",
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to store task token for document {object_key}: {str(e)}")
-        raise
-
-
 def handle_skip_bda(event, config):
     """
     Handle the skip_bda scenario where document already has pages/sections data.
@@ -1025,6 +962,13 @@ def handle_skip_bda(event, config):
     
     # Update document in AppSync
     document_service = create_document_service()
+    
+    # Fetch current HITL status from DynamoDB (may have been updated by reviewer)
+    current_doc = document_service.get_document(document.input_key)
+    if current_doc:
+        document.hitl_status = current_doc.hitl_status
+        logger.info(f"Current HITL status from DynamoDB: {document.hitl_status}")
+    
     logger.info(f"Updating document status to {document.status} for skip_bda scenario")
     document_service.update_document(document)
     
@@ -1044,16 +988,6 @@ def handle_skip_bda(event, config):
                 break
     
     logger.info(f"Skip BDA - hitl_triggered: {hitl_triggered}")
-    
-    # Update document status based on HITL requirement
-    if hitl_triggered:
-        document.status = Status.HITL_IN_PROGRESS
-        logger.info(f"Document requires human review, setting status to {document.status}")
-        document_service.update_document(document)
-    else:
-        # Don't update to COMPLETED here - let the workflow continue to Summarization/Evaluation
-        # The final status will be set after those steps complete
-        logger.info(f"Document will proceed to summarization/evaluation (skip_bda)")
     
     # Add metering information for skip scenario
     document.metering = document.metering or {}
@@ -1080,21 +1014,16 @@ def handler(event, context):
     """
     Process the BDA results and build a Document object with pages and sections.
     Can handle both single BDA response and arrays of BDA responses from blueprint changes.
-    Also handles HITL wait action to store task token for workflow continuation.
     Also handles skip_bda scenario for reprocessing with existing document data.
 
     Args:
-        event: Event containing BDA response information (single or array) or HITL wait action or skip_bda flag
+        event: Event containing BDA response information (single or array) or skip_bda flag
         context: Lambda context
 
     Returns:
-        Dict containing the processed document or HITL wait confirmation
+        Dict containing the processed document
     """
     logger.info(f"Processing event: {json.dumps(event)}")
-
-    # Check if this is a HITL wait action
-    if event.get("action") == "wait_for_hitl":
-        return handle_hitl_wait(event)
 
     config = get_config(as_model=True)
     
@@ -1116,6 +1045,23 @@ def handler(event, context):
 
     # Extract required information from the first response
     first_response = bda_responses[0]
+    
+    # Handle skipped BDA case (HITL reprocessing)
+    if first_response.get("metadata", {}).get("skipped"):
+        logger.info("BDA was skipped - document already has extraction data (HITL reprocessing)")
+        working_bucket = first_response["metadata"]["working_bucket"]
+        document = Document.load_document(first_response.get("document", {}), working_bucket, logger)
+        
+        # Check if HITL review is needed
+        hitl_triggered = is_hitl_enabled() and any(
+            section.confidence_threshold_alerts for section in document.sections
+        )
+        
+        return {
+            "document": document.serialize_document(working_bucket, "processresults_skip", logger),
+            "hitl_triggered": hitl_triggered
+        }
+    
     output_bucket = first_response.get("output_bucket")
 
     # Handle different response formats
@@ -1156,6 +1102,13 @@ def handler(event, context):
 
     # Update document status
     document_service = create_document_service()
+    
+    # Fetch current HITL status from DynamoDB (may have been updated by reviewer during reprocess)
+    current_doc = document_service.get_document(document.input_key)
+    if current_doc and current_doc.hitl_status:
+        document.hitl_status = current_doc.hitl_status
+        logger.info(f"Current HITL status from DynamoDB: {document.hitl_status}")
+    
     logger.info(f"Updating document status to {document.status}")
     document_service.update_document(document)
 
@@ -1319,48 +1272,21 @@ def handler(event, context):
         "BDAProject/bda/documents-standard": {"pages": standard_pages_count},
     }
 
-    # Update document status based on HITL requirement
-    if hitl_triggered:
-        # Set status to HITL_IN_PROGRESS when HITL is triggered
-        document.status = Status.HITL_IN_PROGRESS
-        logger.info(
-            f"Document requires human review, setting status to {document.status}"
-        )
-    else:
-        # Only mark as COMPLETED if no human review is needed
-        document.status = Status.COMPLETED
-        document.completion_time = datetime.datetime.now(
-            datetime.timezone.utc
-        ).isoformat()
-        logger.info(
-            f"Document processing complete, setting status to {document.status}"
-        )
-
-    document_service.update_document(document)
-
-    # Update HITLSectionsPending in DynamoDB if HITL is triggered
+    # Set Review Status on document model if HITL review is needed
+    # Only set to PendingReview if not already reviewed (preserve completed/skipped status on reprocess)
     if hitl_triggered and document.sections:
-        try:
-            tracking_table = os.environ.get("TRACKING_TABLE_NAME")
-            if tracking_table:
-                hitl_sections_pending = [
-                    section.section_id for section in document.sections
-                ]
-                dynamodb = boto3.resource("dynamodb")
-                table = dynamodb.Table(tracking_table)
-                table.update_item(
-                    Key={"PK": f"doc#{document.input_key}", "SK": "none"},
-                    UpdateExpression="SET HITLSectionsPending = :pending, HITLSectionsCompleted = :completed",
-                    ExpressionAttributeValues={
-                        ":pending": hitl_sections_pending,
-                        ":completed": [],
-                    },
-                )
-                logger.info(
-                    f"Updated HITLSectionsPending for document {document.input_key}: {hitl_sections_pending}"
-                )
-        except Exception as e:
-            logger.error(f"Failed to update HITLSectionsPending: {str(e)}")
+        existing_status = document.hitl_status
+        if existing_status not in ("Review Completed", "Review Skipped", "Completed", "Skipped"):
+            hitl_sections_pending = [section.section_id for section in document.sections]
+            document.hitl_status = "PendingReview"
+            document.hitl_sections_pending = hitl_sections_pending
+            document.hitl_sections_completed = []
+            logger.info(f"Document requires human review. Sections pending: {hitl_sections_pending}")
+        else:
+            logger.info(f"Document already reviewed (status: {existing_status}), preserving HITL status on reprocess")
+
+    # Update document (includes Review Status)
+    document_service.update_document(document)
 
     # Prepare response using new serialization method
     # Use working bucket for document compression

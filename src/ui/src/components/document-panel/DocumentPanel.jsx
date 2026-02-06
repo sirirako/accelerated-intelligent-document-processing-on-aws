@@ -422,7 +422,7 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
-              <strong>HITL Status</strong>
+              <strong>Review Status</strong>
             </Box>
             <div>{renderHitlStatus(item)}</div>
           </div>
@@ -434,6 +434,15 @@ const DocumentAttributes = ({ item }) => {
               <strong>Review Owner</strong>
             </Box>
             <div>{item.hitlReviewOwnerEmail || item.hitlReviewOwner || '-'}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>Review Completed By</strong>
+            </Box>
+            <div>{item.hitlReviewedByEmail || item.hitlReviewedBy || '-'}</div>
           </div>
         </SpaceBetween>
 

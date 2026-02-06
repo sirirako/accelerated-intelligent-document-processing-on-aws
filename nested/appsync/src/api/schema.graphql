@@ -33,6 +33,8 @@ type Document implements DynamoDbBase @aws_cognito_user_pools @aws_iam {
   HITLSectionsSkipped: [String]
   HITLReviewOwner: String
   HITLReviewOwnerEmail: String
+  HITLReviewedBy: String
+  HITLReviewedByEmail: String
   HITLReviewHistory: AWSJSON
   TraceId: String
 }
@@ -222,6 +224,8 @@ input UpdateDocumentInput {
   HITLSectionsSkipped: [String]
   HITLReviewOwner: String
   HITLReviewOwnerEmail: String
+  HITLReviewedBy: String
+  HITLReviewedByEmail: String
   HITLReviewHistory: AWSJSON
   TraceId: String
 }

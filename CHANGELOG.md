@@ -7,6 +7,14 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Human-in-the-Loop (HITL) Review Workflow Improvements**
+  - **Review Ownership Model**: Reviewers must now claim documents using "Start Review" before editing, preventing concurrent edits
+  - **Review In Progress Status**: New status displayed when a reviewer has claimed a document
+  - **Filtered Document List for Reviewers**: Reviewers now see only documents pending review or their own in-progress reviews
+  - **Admin Skip All Reviews**: Admins can skip all remaining section reviews without triggering document reprocessing
+  - **Release Review**: Reviewers can release claimed documents back to pending status; Admins can release any review
+  - **Review Completed By Field**: New column showing who completed or skipped the review (renamed from "Reviewed By")
+
 - **Enhanced BDA to IDP Sync for Pattern-1**
   - Separate "Sync from BDA" and "Sync to BDA" buttons in the UI for explicit directional control instead of bidirectional-only sync
   - Parallel blueprint processing for improved sync performance on configurations with many document classes
@@ -21,6 +29,18 @@ SPDX-License-Identifier: MIT-0
   - **Section Structure Protection**: Section structure (IDs, classes, page assignments) remains read-only as managed by BDA blueprints
   - **Skip Logic Implementation**: State machine automatically detects existing pages/sections data and bypasses BDA invocation for reprocessing scenarios
   - **Use Cases**: Correct extraction errors, add baseline data for evaluation comparison, re-run evaluation after data corrections, update document summaries
+
+### Changed
+
+- **Review Status Labels**: Renamed status values for consistency:
+  - "Pending Review" → "Review Pending"
+  - "Reviewed By" column → "Review Completed By"
+- **HITL Decoupled from Step Functions**: HITL review operations now update document status directly in DynamoDB without triggering workflow reprocessing, improving reliability and reducing unintended side effects
+
+### Fixed
+
+- **HITL Decimal Serialization Error**: Fixed "Object of type Decimal is not JSON serializable" error when performing HITL operations (Start Review, Release Review, Skip All Reviews) by properly converting DynamoDB Decimal types
+- **HITL Operations Clearing Estimated Cost**: Fixed issue where Start Review and Release Review operations were inadvertently clearing the Metering/Estimated Cost data by re-serializing the entire document; operations now update only HITL-specific fields
 
 
 ## [0.4.13]
@@ -203,7 +223,7 @@ SPDX-License-Identifier: MIT-0
     - Mark Section Review Complete to approve individual sections
     - Skip All Reviews (Admin only) to bypass pending reviews and continue workflow
     - Release Review to unlock document for other reviewers
-  - **Real-time Status Updates**: HITL Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
+  - **Real-time Status Updates**: Review Status, Review Status, Review Owner, and Reviewed By fields update in real-time across all user sessions via GraphQL subscriptions
   - See [Human-in-the-Loop Review Documentation](./docs/human-review.md) for detailed workflow information
   - **Note**: These are Phase 1 of HITL process updates. In upcoming phases, we are working to deliver futher improvements to human review capabilities with the ability to update document classification, extraction, and resubmit for incremental processing as part of a holistic approach to huiman reviews.
 - **User Management**

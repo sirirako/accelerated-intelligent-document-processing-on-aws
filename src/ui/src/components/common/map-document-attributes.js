@@ -3,7 +3,7 @@
 
 import { getDocumentConfidenceAlertCount } from './confidence-alerts-utils';
 
-// Helper function to determine HITL status without nested ternaries
+// Helper function to determine Review Status without nested ternaries
 const getHitlStatus = (status) => {
   if (!status || status === 'N/A') {
     return 'N/A';
@@ -11,13 +11,11 @@ const getHitlStatus = (status) => {
   return status;
 };
 
-// Helper function to check if HITL is completed
+// Helper function to check if HITL is completed (includes skipped as review is done)
 const isHitlCompleted = (status) => {
   if (!status) return false;
   const statusLower = status.toLowerCase();
-  return (
-    statusLower === 'completed' || statusLower.includes('complete') || statusLower.includes('done') || statusLower.includes('finished')
-  );
+  return statusLower === 'completed' || statusLower === 'skipped' || statusLower.includes('complete') || statusLower.includes('skipped');
 };
 
 /* Maps document attributes from API to a format that can be used in tables and panel */
@@ -53,6 +51,8 @@ const mapDocumentsAttributes = (documents) => {
     const hitlSectionsSkipped = item.HITLSectionsSkipped || [];
     const hitlReviewOwner = item.HITLReviewOwner || '';
     const hitlReviewOwnerEmail = item.HITLReviewOwnerEmail || '';
+    const hitlReviewedBy = item.HITLReviewedBy || '';
+    const hitlReviewedByEmail = item.HITLReviewedByEmail || '';
     // HITLReviewHistory comes as AWSJSON (string), parse if needed
     let hitlReviewHistory = item.HITLReviewHistory || [];
     if (typeof hitlReviewHistory === 'string') {
@@ -129,6 +129,8 @@ const mapDocumentsAttributes = (documents) => {
       hitlSectionsSkipped,
       hitlReviewOwner,
       hitlReviewOwnerEmail,
+      hitlReviewedBy,
+      hitlReviewedByEmail,
       hitlReviewHistory,
     };
 
