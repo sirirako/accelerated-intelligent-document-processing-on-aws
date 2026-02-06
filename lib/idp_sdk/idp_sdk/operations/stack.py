@@ -3,7 +3,7 @@
 
 """Stack operations for IDP SDK."""
 
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 from idp_sdk.models import DeletionResult, DeploymentResult, Pattern, StackResources
 
@@ -19,10 +19,12 @@ class StackOperation:
         stack_name: Optional[str] = None,
         pattern: Optional[Union[str, Pattern]] = None,
         admin_email: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> DeploymentResult:
         """Deploy IDP stack."""
-        return self._client.deploy(stack_name=stack_name, pattern=pattern, admin_email=admin_email, **kwargs)
+        return self._client.deploy(
+            stack_name=stack_name, pattern=pattern, admin_email=admin_email, **kwargs
+        )
 
     def delete(self, stack_name: Optional[str] = None, **kwargs) -> DeletionResult:
         """Delete IDP stack."""

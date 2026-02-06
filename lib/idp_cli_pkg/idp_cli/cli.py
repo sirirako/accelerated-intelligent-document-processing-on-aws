@@ -16,15 +16,15 @@ from typing import Optional
 
 import boto3
 import click
+from idp_sdk.core.batch_processor import BatchProcessor
+from idp_sdk.core.manifest_parser import validate_manifest
+from idp_sdk.core.progress_monitor import ProgressMonitor
+from idp_sdk.core.stack import StackDeployer, build_parameters
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
 from . import display
-from idp_sdk.core.batch_processor import BatchProcessor
-from idp_sdk.core.stack import StackDeployer, build_parameters
-from idp_sdk.core.manifest_parser import validate_manifest
-from idp_sdk.core.progress_monitor import ProgressMonitor
 
 # Configure logging
 logging.basicConfig(
@@ -1867,7 +1867,6 @@ def generate_manifest(
         s3_client = None
         if test_set:
             import boto3
-
             from idp_sdk.core.stack_info import StackInfo
 
             stack_info = StackInfo(stack_name, region)

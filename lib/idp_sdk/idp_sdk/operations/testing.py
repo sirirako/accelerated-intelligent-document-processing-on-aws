@@ -14,6 +14,19 @@ class TestingOperation:
     def __init__(self, client):
         self._client = client
 
-    def load_test(self, source_file: str, stack_name: Optional[str] = None, rate: int = 100, duration: int = 1, **kwargs) -> LoadTestResult:
+    def load_test(
+        self,
+        source_file: str,
+        stack_name: Optional[str] = None,
+        rate: int = 100,
+        duration: int = 1,
+        **kwargs,
+    ) -> LoadTestResult:
         """Run load test."""
-        return self._client.load_test(source_file=source_file, stack_name=stack_name, rate=rate, duration=duration, **kwargs)
+        return self._client.load_test(
+            source_file=source_file,
+            stack_name=stack_name,
+            rate=rate,
+            duration=duration,
+            **kwargs,
+        )
