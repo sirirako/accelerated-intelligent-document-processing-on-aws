@@ -149,7 +149,9 @@ def create_pdf_page_images(bda_result_bucket, output_bucket, object_key):
             img_bytes = pix.tobytes("jpeg")
 
             # Upload the image to S3 using the common library
-            image_key = f"{object_key}/pages/{page_num}/image.jpg"
+            # Use 1-based page numbering for consistency with pattern-2 and ground truth
+            page_id_1based = page_num + 1
+            image_key = f"{object_key}/pages/{page_id_1based}/image.jpg"
             s3_client.upload_fileobj(
                 io.BytesIO(img_bytes),
                 output_bucket,
@@ -206,8 +208,9 @@ def process_bda_sections(
             if not section_path:
                 continue
 
-            # Extract section ID from path
-            section_id = section_path.rstrip("/").split("/")[-1]
+            # Extract section ID from path (BDA uses 0-based, convert to 1-based)
+            raw_section_id = section_path.rstrip("/").split("/")[-1]
+            section_id = str(int(raw_section_id) + 1)  # Convert to 1-based
             target_section_path = f"{sections_output_prefix}{section_id}/"
 
             # List all files in the section folder
@@ -231,6 +234,9 @@ def process_bda_sections(
                         result_data = json.loads(
                             result_obj["Body"].read().decode("utf-8")
                         )
+
+                        # Note: page_indices remain 0-based in result.json (consistent with BDA and pattern-2)
+                        # Only page_ids and S3 paths use 1-based numbering
 
                         # Add confidence thresholds to explainability_info if present
                         if "explainability_info" in result_data:
@@ -290,7 +296,8 @@ def process_bda_sections(
                 page_indices = result_data.get("split_document", {}).get(
                     "page_indices", []
                 )
-                page_ids = [str(idx) for idx in (page_indices or [])]
+                # page_indices are 0-based, convert to 1-based page_ids
+                page_ids = [str(idx + 1) for idx in (page_indices or [])]
 
                 # Create the OutputJSONUri using the utility function
                 extraction_result_uri = build_s3_uri(output_bucket, result_path)
@@ -408,10 +415,10 @@ def extract_page_from_multipage_json(raw_json, page_index, confidence_threshold=
     # Create a copy of the JSON with just metadata
     single_page_json = {"metadata": raw_json.get("metadata", {})}
 
-    # Update metadata to reflect single page
+    # Update metadata to reflect single page (keep 0-based indexing for consistency)
     if "metadata" in single_page_json:
-        single_page_json["metadata"]["start_page_index"] = page_index
-        single_page_json["metadata"]["end_page_index"] = page_index
+        single_page_json["metadata"]["start_page_index"] = page_index  # 0-based
+        single_page_json["metadata"]["end_page_index"] = page_index    # 0-based
         single_page_json["metadata"]["number_of_pages"] = 1
 
     # Include document level info
@@ -535,7 +542,8 @@ def process_bda_pages(
                             logger.warning(f"Page in {obj_key} has no page_index")
                             continue
 
-                        page_id = str(page_index)
+                        # Convert from 0-based (BDA) to 1-based (consistency with pattern-2)
+                        page_id = str(page_index + 1)
 
                         # Extract a single page result.json for this page with confidence threshold
                         single_page_json = extract_page_from_multipage_json(
@@ -663,11 +671,11 @@ def process_keyvalue_details(
     last_page = str(page_indices[-1]) if page_indices else "0"
 
     def get_page(raw_page: int) -> str:
-        """Convert 1-based page to 0-based index and validate."""
+        """Get page number (geometry.page is already 1-based, and we now use 1-based page_indices)."""
         if raw_page is None:
             return last_page
-        adjusted = raw_page - 1
-        return str(adjusted) if adjusted in page_indices else last_page
+        # No adjustment needed - geometry.page is already 1-based and page_indices are now 1-based
+        return str(raw_page) if raw_page in page_indices else last_page
 
     def process_entry(key_path: list, entry: dict, page: int):
         target_page = get_page(page)
@@ -806,8 +814,10 @@ def process_segments(
             page_indices = custom_output.get("split_document", {}).get(
                 "page_indices", []
             )
+            # Convert page_indices from 0-based (BDA) to 1-based for consistency
+            page_indices_1based = [idx + 1 for idx in page_indices]
             pagespecific_details = process_keyvalue_details(
-                explainability_data, page_indices, confidence_threshold
+                explainability_data, page_indices_1based, confidence_threshold
             )
 
             # Create confidence threshold alerts for UI display
@@ -816,8 +826,8 @@ def process_segments(
             )
 
             # Update the corresponding document section with confidence alerts
-            # Find the section that contains these page indices
-            page_ids_str = [str(idx) for idx in page_indices]
+            # Find the section that contains these page indices (now 1-based)
+            page_ids_str = [str(idx) for idx in page_indices_1based]
             for section in document.sections:
                 # Check if this section's pages match the current segment's pages
                 if set(section.page_ids) == set(page_ids_str):
@@ -883,6 +893,7 @@ def process_segments(
             metadata = std_output.get("metadata", {})
             start_page = metadata.get("start_page_index", 0)
             end_page = metadata.get("end_page_index", 0)
+            # page_array stays 0-based (for internal use), page_ids are 1-based for display/S3 paths
             page_array = list(range(start_page, end_page + 1))
             item.update(
                 {
