@@ -652,7 +652,27 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
 
   // Edit Mode should be disabled for reviewers until they click Start Review (claim the document)
   const hasReviewOwner = documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail;
-  const isEditModeDisabled = isReviewerOnly && !hasReviewOwner;
+  const hitlTriggered = documentItem?.hitlTriggered;
+
+  // Check if document is currently processing (disable edit during reprocessing)
+  const processingStatuses = ['queued', 'running', 'processing', 'postprocessing', 'summarizing', 'evaluating'];
+  const docStatus = documentItem?.objectStatus?.toLowerCase() || '';
+  const isDocumentProcessing = processingStatuses.includes(docStatus);
+
+  // Disable edit mode for REVIEWERS only if:
+  // - HITL is triggered AND reviewer hasn't claimed review, OR
+  // - Document is processing, OR
+  // - HITL already completed/skipped
+  // Admins can always edit
+  const isEditModeDisabled =
+    isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped);
+
+  // Auto-exit edit mode when document starts processing (for reviewers only)
+  useEffect(() => {
+    if (isReviewerOnly && isDocumentProcessing && isEditMode) {
+      setIsEditMode(false);
+    }
+  }, [isReviewerOnly, isDocumentProcessing, isEditMode]);
 
   // Handle skip all sections review (Admin only)
   const handleSkipAllSections = async () => {
@@ -688,7 +708,7 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
         onDocumentUpdate((prev) => ({
           ...prev,
           objectStatus: updatedData.ObjectStatus || prev.objectStatus,
-          hitlStatus: updatedData.HITLStatus?.toLowerCase() || prev.hitlStatus,
+          hitlStatus: updatedData.HITLStatus || prev.hitlStatus,
           hitlSectionsPending: updatedData.HITLSectionsPending || [],
           hitlSectionsCompleted: updatedData.HITLSectionsCompleted || prev.hitlSectionsCompleted,
           hitlSectionsSkipped: updatedData.HITLSectionsSkipped || [],
@@ -1060,6 +1080,16 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
 
       if (!response?.success) {
         throw new Error(response?.message || 'Failed to process changes - no response received');
+      }
+
+      // Update document state with new HITL status (review completed via Save and Reprocess)
+      if (onDocumentUpdate) {
+        onDocumentUpdate((prev) => ({
+          ...prev,
+          hitlStatus: 'Review Completed',
+          hitlCompleted: true,
+          objectStatus: 'QUEUED',
+        }));
       }
 
       // Exit edit mode

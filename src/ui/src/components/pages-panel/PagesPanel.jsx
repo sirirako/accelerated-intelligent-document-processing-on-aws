@@ -171,7 +171,32 @@ const PagesPanel = ({ pages, documentItem }) => {
 
   // Edit Mode should be disabled for reviewers until they click Start Review (claim the document)
   const hasReviewOwner = documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail;
-  const isEditModeDisabled = isReviewerOnly && !hasReviewOwner;
+  const hitlTriggered = documentItem?.hitlTriggered;
+
+  // Check HITL status
+  const hitlStatusLower = documentItem?.hitlStatus?.toLowerCase().replace(/\s+/g, '') || '';
+  const isHitlCompleted = hitlStatusLower === 'completed' || hitlStatusLower === 'reviewcompleted';
+  const isHitlSkipped = hitlStatusLower === 'skipped' || hitlStatusLower === 'reviewskipped';
+
+  // Check if document is currently processing
+  const processingStatuses = ['queued', 'running', 'processing', 'postprocessing', 'summarizing', 'evaluating'];
+  const docStatus = documentItem?.objectStatus?.toLowerCase() || '';
+  const isDocumentProcessing = processingStatuses.includes(docStatus);
+
+  // Disable edit mode for REVIEWERS only if:
+  // - HITL is triggered AND reviewer hasn't claimed review, OR
+  // - Document is processing, OR
+  // - HITL already completed/skipped
+  // Admins can always edit
+  const isEditModeDisabled =
+    isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped);
+
+  // Auto-exit edit mode when document starts processing (for reviewers only)
+  useEffect(() => {
+    if (isReviewerOnly && isDocumentProcessing && isEditMode) {
+      setIsEditMode(false);
+    }
+  }, [isReviewerOnly, isDocumentProcessing, isEditMode]);
 
   const loadThumbnails = async () => {
     if (!pages) return;

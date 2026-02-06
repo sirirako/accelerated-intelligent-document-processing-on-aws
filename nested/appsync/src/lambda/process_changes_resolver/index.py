@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: MIT-0
 
 import json
-import os
-import boto3
 import logging
+import os
 from datetime import datetime, timezone
 
-# Import IDP Common modules
-from idp_common.models import Document, Section, Status
+import boto3
 from idp_common.docs_service import create_document_service
+
+# Import IDP Common modules
+from idp_common.models import Section, Status
 
 logger = logging.getLogger()
 logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
@@ -72,7 +73,9 @@ def handler(event, context):
             
             # Mark HITL review as completed when processing changes
             # This handles the case where user edits data and clicks "Process Changes"
-            if document.hitl_status and document.hitl_status not in ['Completed', 'Skipped']:
+            hitl_status_lower = (document.hitl_status or '').lower().replace(' ', '')
+            completed_statuses = ['completed', 'reviewcompleted', 'skipped', 'reviewskipped']
+            if document.hitl_status and hitl_status_lower not in completed_statuses:
                 identity = event.get('identity', {})
                 username = identity.get('username', 'system')
                 user_email = identity.get('claims', {}).get('email', '')
@@ -82,7 +85,7 @@ def handler(event, context):
                 completed_sections = list(document.hitl_sections_completed or [])
                 completed_sections.extend(pending_sections)
                 
-                document.hitl_status = 'Completed'
+                document.hitl_status = 'Review Completed'
                 document.hitl_sections_pending = []
                 document.hitl_sections_completed = completed_sections
                 
@@ -94,8 +97,9 @@ def handler(event, context):
                     table = dynamodb_resource.Table(tracking_table)
                     table.update_item(
                         Key={"PK": f"doc#{object_key}", "SK": "none"},
-                        UpdateExpression="SET HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail, HITLCompleted = :completed",
+                        UpdateExpression="SET HITLStatus = :status, HITLReviewedBy = :reviewedBy, HITLReviewedByEmail = :reviewedByEmail, HITLCompleted = :completed",
                         ExpressionAttributeValues={
+                            ":status": "Review Completed",
                             ":reviewedBy": username,
                             ":reviewedByEmail": user_email,
                             ":completed": True,
@@ -231,7 +235,7 @@ def handler(event, context):
         if working_bucket:
             # Use document compression (always compress with 0KB threshold)
             sqs_message_content = document.serialize_document(working_bucket, "process_changes", logger)
-            logger.info(f"Document compressed for SQS (always compress)")
+            logger.info("Document compressed for SQS (always compress)")
         else:
             # Fallback to direct document dict if no working bucket
             sqs_message_content = document.to_dict()
@@ -260,7 +264,7 @@ def handler(event, context):
             appsync_service = create_document_service(mode='appsync')
             document.status = Status.QUEUED  # Ensure status is QUEUED for UI
             updated_document = appsync_service.update_document(document)
-            logger.info(f"Updated document status to QUEUED in AppSync for immediate UI feedback")
+            logger.info("Updated document status to QUEUED in AppSync for immediate UI feedback")
         except Exception as e:
             logger.warning(f"Failed to update document status in AppSync: {str(e)}")
             # Don't fail the entire operation if AppSync update fails
