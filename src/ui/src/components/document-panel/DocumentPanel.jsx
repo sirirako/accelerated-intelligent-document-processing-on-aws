@@ -422,7 +422,7 @@ const DocumentAttributes = ({ item }) => {
         <SpaceBetween size="xs">
           <div>
             <Box margin={{ bottom: 'xxxs' }} color="text-label">
-              <strong>HITL Status</strong>
+              <strong>Review Status</strong>
             </Box>
             <div>{renderHitlStatus(item)}</div>
           </div>
@@ -434,6 +434,15 @@ const DocumentAttributes = ({ item }) => {
               <strong>Review Owner</strong>
             </Box>
             <div>{item.hitlReviewOwnerEmail || item.hitlReviewOwner || '-'}</div>
+          </div>
+        </SpaceBetween>
+
+        <SpaceBetween size="xs">
+          <div>
+            <Box margin={{ bottom: 'xxxs' }} color="text-label">
+              <strong>Review Completed By</strong>
+            </Box>
+            <div>{item.hitlReviewedByEmail || item.hitlReviewedBy || '-'}</div>
           </div>
         </SpaceBetween>
 
@@ -501,8 +510,11 @@ export const DocumentPanel = ({ item, setToolsOpen, getDocumentDetailsFromIds, o
 
   // Check if Start Review button should be shown
   const hasReviewOwner = localItem?.hitlReviewOwner || localItem?.hitlReviewOwnerEmail;
-  const hitlTriggered = localItem?.hitlTriggered && !localItem?.hitlCompleted;
-  const showStartReview = isReviewer && hitlTriggered && !hasReviewOwner;
+  const hitlStatusLower = localItem?.hitlStatus?.toLowerCase().replace(/\s+/g, '') || '';
+  const isHitlSkipped = hitlStatusLower === 'skipped' || hitlStatusLower === 'reviewskipped';
+  const isHitlCompleted = hitlStatusLower === 'completed' || hitlStatusLower === 'reviewcompleted';
+  const hasPendingHITL = localItem?.hitlTriggered && !isHitlCompleted && !isHitlSkipped;
+  const showStartReview = isReviewer && hasPendingHITL && !hasReviewOwner;
 
   // Handle Start Review button click
   const handleStartReview = async () => {

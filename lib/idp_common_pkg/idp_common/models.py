@@ -276,6 +276,10 @@ class Document:
 
     # HITL metadata
     hitl_metadata: List[HitlMetadata] = field(default_factory=list)
+    hitl_status: Optional[str] = None  # PendingReview, InProgress, Completed, Skipped
+    hitl_triggered: bool = False  # Whether HITL review was triggered for this document
+    hitl_sections_pending: List[str] = field(default_factory=list)
+    hitl_sections_completed: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert document to dictionary representation."""
@@ -349,6 +353,16 @@ class Document:
                 metadata.to_dict() for metadata in self.hitl_metadata
             ]
 
+        # Add Review Status fields
+        if self.hitl_status:
+            result["hitl_status"] = self.hitl_status
+        if self.hitl_triggered:
+            result["hitl_triggered"] = self.hitl_triggered
+        if self.hitl_sections_pending:
+            result["hitl_sections_pending"] = self.hitl_sections_pending
+        if self.hitl_sections_completed:
+            result["hitl_sections_completed"] = self.hitl_sections_completed
+
         return result
 
     @classmethod
@@ -418,6 +432,12 @@ class Document:
         hitl_metadata_data = data.get("hitl_metadata", [])
         for metadata_item in hitl_metadata_data:
             document.hitl_metadata.append(HitlMetadata.from_dict(metadata_item))
+
+        # Convert Review Status fields
+        document.hitl_status = data.get("hitl_status")
+        document.hitl_triggered = data.get("hitl_triggered", False)
+        document.hitl_sections_pending = data.get("hitl_sections_pending", [])
+        document.hitl_sections_completed = data.get("hitl_sections_completed", [])
 
         # Convert rule_validation_result if present (optional)
         if "rule_validation_result" in data:

@@ -67,7 +67,7 @@ def handler(event, context):
                                 hitl_meta.hitl_completed = True
                             logger.info(f"Synced HITL completion status from DynamoDB: {hitl_completed}")
             except Exception as e:
-                logger.warning(f"Failed to sync HITL status from DynamoDB: {str(e)}")
+                logger.warning(f"Failed to sync Review Status from DynamoDB: {str(e)}")
         
         # Update document status to SUMMARIZING
         document.status = Status.SUMMARIZING

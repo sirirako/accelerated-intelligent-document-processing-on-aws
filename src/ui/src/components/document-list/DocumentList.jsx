@@ -89,8 +89,9 @@ const DocumentList = () => {
         if (!doc.hitlTriggered) return false;
         // Exclude completed or skipped reviews
         if (doc.hitlCompleted) return false;
-        if (doc.hitlStatus?.toLowerCase() === 'skipped') return false;
-        if (doc.hitlStatus?.toLowerCase() === 'completed') return false;
+        const status = doc.hitlStatus?.toLowerCase().replace(/\s+/g, '') || '';
+        if (status === 'skipped' || status === 'reviewskipped') return false;
+        if (status === 'completed' || status === 'reviewcompleted') return false;
         // Show if unassigned or assigned to current user
         return !doc.hitlReviewOwner || doc.hitlReviewOwner === currentUsername;
       });

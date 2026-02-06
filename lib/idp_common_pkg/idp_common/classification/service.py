@@ -1860,9 +1860,9 @@ class ClassificationService:
             page_ids = list(document.pages.keys())
             section = self._create_section(
                 section_id="1",
-                doc_type=self.single_class_name
-                if self.single_class_name
-                else "undefined",
+                doc_type=(
+                    self.single_class_name if self.single_class_name else "undefined"
+                ),
                 pages=page_ids,
                 confidence=1.0,
             )
@@ -2498,9 +2498,9 @@ class ClassificationService:
             page_ids = list(document.pages.keys())
             section = Section(
                 section_id="1",
-                classification=self.single_class_name
-                if self.single_class_name
-                else "undefined",
+                classification=(
+                    self.single_class_name if self.single_class_name else "undefined"
+                ),
                 confidence=1.0,
                 page_ids=page_ids,
             )

@@ -169,12 +169,16 @@ class DocumentAppSyncService:
 
                         alert_data = {
                             "attributeName": alert.get("attribute_name"),
-                            "confidence": float(confidence_value)
-                            if confidence_value is not None
-                            else None,
-                            "confidenceThreshold": float(confidence_threshold_value)
-                            if confidence_threshold_value is not None
-                            else None,
+                            "confidence": (
+                                float(confidence_value)
+                                if confidence_value is not None
+                                else None
+                            ),
+                            "confidenceThreshold": (
+                                float(confidence_threshold_value)
+                                if confidence_threshold_value is not None
+                                else None
+                            ),
                         }
                         alerts_data.append(alert_data)
                     section_data["ConfidenceThresholdAlerts"] = alerts_data
@@ -216,8 +220,15 @@ class DocumentAppSyncService:
                 if latest_hitl.review_portal_url:
                     input_data["HITLReviewURL"] = latest_hitl.review_portal_url
 
-                # NOTE: Do NOT set HITLStatus here - it's managed by complete_section_review Lambda
-                # Setting it here would overwrite "Completed" or "Skipped" status set during review
+        # Add Review Status fields from document model
+        if document.hitl_status:
+            input_data["HITLStatus"] = document.hitl_status
+        if getattr(document, "hitl_triggered", False):
+            input_data["HITLTriggered"] = document.hitl_triggered
+        if document.hitl_sections_pending:
+            input_data["HITLSectionsPending"] = document.hitl_sections_pending
+        if document.hitl_sections_completed:
+            input_data["HITLSectionsCompleted"] = document.hitl_sections_completed
 
         # Add trace_id if available
         if document.trace_id:
