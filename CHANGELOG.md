@@ -5,6 +5,12 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed TestSet from RVL-CDIP-N-MP to DocSplit-Poly-Seq**
+  - Updated Test Studio test set name to better reflect its purpose as a document splitting and classification benchmark
+  - The underlying HuggingFace dataset source (`jordyvl/rvl_cdip_n_mp`) remains unchanged
+
 ### Added
 
 - **Enhanced BDA to IDP Sync for Pattern-1**
@@ -211,7 +217,7 @@ SPDX-License-Identifier: MIT-0
   - Cognito user groups (Admin, Reviewer) for role-based access control
   - Automatic user synchronization with Cognito
 
-- **RVL-CDIP-N-MP-Packets Test Set Auto-Deployment**
+- **DocSplit-Poly-Seq Test Set Auto-Deployment**
   - Automatically deploys 500 multi-page packet PDFs from HuggingFace dataset (https://huggingface.co/datasets/jordyvl/rvl_cdip_n_mp) during stack deployment
   - **13 Document Types**: invoice, email, form, letter, memo, resume, budget, news article, scientific publication, specification, questionnaire, handwritten, and language (non-English) documents
   - **Multi-Document Packets**: Each of 500 packets contains 2-10 distinct subdocuments of different types for comprehensive splitting and classification testing

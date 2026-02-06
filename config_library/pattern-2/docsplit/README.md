@@ -1,7 +1,7 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# RVL-CDIP Configuration
+# DocSplit (RVL-CDIP) Configuration
 
 This configuration is designed for the DocSplit-Poly-Seq test set and handles 13 diverse business and administrative document types.
 
