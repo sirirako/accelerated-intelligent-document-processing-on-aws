@@ -2,6 +2,82 @@
 
 ## Current Work Focus
 
+### Page/Section Number Alignment Fix (Pattern-1 to Pattern-2)
+**Date:** February 6, 2026
+**Status:** ✅ Completed (Corrected)
+
+#### Problem
+BDA (pattern-1) uses 0-based page and section indices, while pattern-2 and ground truth test sets use 1-based page IDs for S3 paths and display. Evaluation mismatches occurred when using the same test sets for both patterns.
+
+#### Understanding: Two Different Indexing Schemes
+There are two different concepts that must be kept distinct:
+
+| Concept | Base | Use Case | Example |
+|---------|------|----------|---------|
+| **page_indices** (array indices) | 0-based | Internal JSON references, result.json | `[0, 1, 2]` |
+| **page_id / section_id** (identifiers) | 1-based | S3 paths, display, Document model | `"1"`, `"2"`, `"3"` |
+
+#### Solution Implemented
+Modified `patterns/pattern-1/src/processresults_function/index.py` to:
+- Keep `page_indices` **0-based** in result.json (unchanged from BDA output)
+- Transform `page_id` and `section_id` to **1-based** for S3 paths and Document model
+
+```mermaid
+flowchart LR
+    subgraph "BDA Working Bucket"
+        W1["sections/0/result.json"]
+        W2["page_indices: [0, 1]"]
+    end
+    
+    subgraph "Output Bucket"
+        O1["sections/1/result.json"]
+        O2["page_indices: [0, 1] (unchanged)"]
+        O3["pages/1/image.jpg"]
+        O4["pages/2/image.jpg"]
+    end
+    
+    subgraph "Document Model"
+        D1["section_id: '1'"]
+        D2["page_ids: ['1', '2']"]
+    end
+    
+    W1 -->|"path +1"| O1
+    W2 -->|"no change"| O2
+    W1 -->|"page_indices[0]+1"| O3
+    W1 -->|"page_indices[1]+1"| O4
+    O1 -->|"section folder +1"| D1
+    O2 -->|"idx +1 for each"| D2
+```
+
+#### Changes Made
+
+| Function | Change |
+|----------|--------|
+| `create_pdf_page_images()` | S3 path: `pages/{page_num+1}/` (1-based) |
+| `process_bda_sections()` | section_id path: `"0"` → `"1"` (1-based S3 folder) |
+| `process_bda_sections()` | page_ids: Convert 0-based page_indices to 1-based strings |
+| `process_bda_sections()` | result.json `page_indices` stays **0-based** (no transformation) |
+| `process_bda_pages()` | page_id: `str(page_index + 1)` (1-based) |
+| `extract_page_from_multipage_json()` | metadata indices stay **0-based** |
+| `process_segments()` | page_indices_1based used for matching geometry.page (already 1-based) |
+
+#### Key Finding
+BDA output has **two different indexing conventions**:
+- `split_document.page_indices` → 0-based (matches array indexing)
+- `geometry[].page` → Already 1-based (matches human-readable page numbers)
+
+Both patterns now use this same convention - page_indices are 0-based arrays, page_ids are 1-based identifiers.
+
+#### Result
+Pattern-1 now outputs:
+- **result.json page_indices**: `[0, 1, 2]` (0-based, consistent with pattern-2)
+- **S3 paths**: `pages/1/`, `sections/1/` (1-based)
+- **Document page_ids**: `["1", "2", "3"]` (1-based)
+- **Document section_ids**: `["1", "2", "3"]` (1-based)
+
+---
+
+
 ### Default/Custom Configuration Design Pattern (CRITICAL)
 **Date:** January 22, 2026
 **Status:** Fixing implementation to match original design intent

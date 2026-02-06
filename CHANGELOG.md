@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pattern-1 Page/Section Number Alignment with Pattern-2 and Ground Truth**
+  - Fixed page and section numbering mismatch between Pattern-1 (BDA) and Pattern-2 that caused evaluation failures when using shared test sets
+  - **Root Cause**: BDA outputs 0-based indices while Pattern-2 and ground truth test sets use 1-based page IDs
+  - **Solution**: Pattern-1 postprocessing now transforms S3 paths and Document model IDs to 1-based (`pages/1/`, `sections/1/`, `page_ids: ["1", "2"]`) while preserving 0-based `page_indices` arrays in result.json for internal consistency
+  - **Key Distinction**: `page_indices` (array indices) remain 0-based, `page_id`/`section_id` (identifiers) are now 1-based
+  - Both patterns now align correctly for evaluation with shared test sets and ground truth data
+
 ### Changed
 
 - **Renamed TestSet from RVL-CDIP-N-MP to DocSplit-Poly-Seq**
