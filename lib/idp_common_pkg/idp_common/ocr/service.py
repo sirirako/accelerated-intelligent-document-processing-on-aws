@@ -571,6 +571,9 @@ class OcrService:
                 page_index, pdf_document, output_bucket, prefix
             )
 
+    # Formats supported by Amazon Bedrock multimodal APIs
+    BEDROCK_COMPATIBLE_FORMATS = {"jpeg", "jpg", "png", "gif", "webp"}
+
     def _process_image_file_direct(
         self,
         pdf_document: fitz.Document,
@@ -612,6 +615,22 @@ class OcrService:
             logger.debug(
                 f"Using original file content: {original_width}x{original_height} {img_format}"
             )
+
+            # Check if format needs conversion for Bedrock compatibility
+            # TIFF, BMP, and other non-Bedrock formats must be converted to JPEG
+            if img_format not in self.BEDROCK_COMPATIBLE_FORMATS:
+                logger.info(
+                    f"Converting {img_format.upper()} to JPEG for Bedrock compatibility"
+                )
+                # Convert to RGB mode if necessary (handles RGBA, CMYK, etc.)
+                if pil_img.mode not in ("RGB", "L"):
+                    pil_img = pil_img.convert("RGB")
+                # Save as JPEG
+                img_buffer = io.BytesIO()
+                pil_img.save(img_buffer, format="JPEG", quality=95, optimize=True)
+                img_data = img_buffer.getvalue()
+                img_ext = "jpg"
+                img_format = "jpeg"
 
             # Determine content type
             content_type_map = {

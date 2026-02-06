@@ -7,6 +7,11 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **TIFF Image Format Support for Bedrock-Compatible Processing**
+  - Fixed classification failure when processing TIFF image files ("Unsupported image format: TIFF")
+  - OCR step now converts non-Bedrock-compatible formats (TIFF, BMP) to JPEG during page image extraction
+  - Multi-page TIFF files handled like PDFs - each page becomes a separate document page
+
 - **Pattern-1 Page/Section Number Alignment with Pattern-2 and Ground Truth**
   - Fixed page and section numbering mismatch between Pattern-1 (BDA) and Pattern-2 that caused evaluation failures when using shared test sets
   - **Root Cause**: BDA outputs 0-based indices while Pattern-2 and ground truth test sets use 1-based page IDs
