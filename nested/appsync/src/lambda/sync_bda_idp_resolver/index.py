@@ -38,11 +38,19 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         
         logger.info(f"Using BDA project ARN: {bda_project_arn}")
         
+        # Get version from arguments, default to active version if not provided
+        version_name = event.get('arguments', {}).get('versionName')
+        if not version_name:
+            # Default to active version or "default" if no active version
+            version_name = "default"  # Could be enhanced to get actual active version
+        
+        logger.info(f"Syncing BDA with IDP configuration version: {version_name}")
+        
         # Initialize BDA service
         bda_service = BdaBlueprintService(dataAutomationProjectArn=bda_project_arn)
         
-        # Execute the sync operation (reuses existing logic)
-        result = bda_service.create_blueprints_from_custom_configuration()
+        # Execute the sync operation with version
+        result = bda_service.create_blueprints_from_custom_configuration(version_name)
 
         logger.info(f"BDA Service results: {result}")
         

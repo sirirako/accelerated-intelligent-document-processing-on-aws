@@ -13,7 +13,7 @@ import pytest
 
 # Import standard library modules first
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 # Import application modules
 from idp_common.discovery.classes_discovery import ClassesDiscovery
@@ -228,7 +228,7 @@ class TestClassesDiscoveryIntegration:
 
         # Execute the discovery workflow
         result = service_with_mocks.discovery_classes_with_document(
-            "test-discovery-bucket", "forms/w4-sample.pdf"
+            "test-discovery-bucket", "forms/w4-sample.pdf", "test-version"
         )
 
         # Verify successful completion
@@ -265,7 +265,7 @@ class TestClassesDiscoveryIntegration:
         service_with_mocks._mock_table.put_item.assert_called_once()
         put_item_args = service_with_mocks._mock_table.put_item.call_args[1]
 
-        assert put_item_args["Item"]["Configuration"] == "Config#v1"
+        assert put_item_args["Item"]["Configuration"] == "Config#test-version"
         classes = put_item_args["Item"]["classes"]
         assert len(classes) == 1
 
@@ -327,19 +327,22 @@ class TestClassesDiscoveryIntegration:
 
         # Execute the discovery workflow with ground truth
         result = service_with_mocks.discovery_classes_with_document_and_ground_truth(
-            "test-discovery-bucket", "forms/w4-sample.pdf", "ground-truth/w4-gt.json"
+            "test-discovery-bucket",
+            "forms/w4-sample.pdf",
+            "ground-truth/w4-gt.json",
+            "test-version",
         )
 
         # Verify successful completion
         assert result["status"] == "SUCCESS"
 
-        # Verify S3 was accessed for both files
+        # Verify S3 was accessed for both files in correct order
         assert mock_get_bytes.call_count == 2
-        mock_get_bytes.assert_any_call(
-            bucket="test-discovery-bucket", key="ground-truth/w4-gt.json"
-        )
-        mock_get_bytes.assert_any_call(
-            bucket="test-discovery-bucket", key="forms/w4-sample.pdf"
+        mock_get_bytes.assert_has_calls(
+            [
+                call(bucket="test-discovery-bucket", key="ground-truth/w4-gt.json"),
+                call(bucket="test-discovery-bucket", key="forms/w4-sample.pdf"),
+            ]
         )
 
         # Verify Bedrock was called with ground truth context
@@ -405,7 +408,7 @@ class TestClassesDiscoveryIntegration:
 
         # Execute discovery
         result = service_with_mocks.discovery_classes_with_document(
-            "test-discovery-bucket", "forms/w4-sample.pdf"
+            "test-discovery-bucket", "forms/w4-sample.pdf", "test-version"
         )
 
         # Verify successful completion
@@ -440,7 +443,7 @@ class TestClassesDiscoveryIntegration:
 
             with pytest.raises(Exception, match="Failed to process document"):
                 service_with_mocks.discovery_classes_with_document(
-                    "test-discovery-bucket", "forms/invalid-file.pdf"
+                    "test-discovery-bucket", "forms/invalid-file.pdf", "test-version"
                 )
 
             # Test Bedrock error
@@ -452,7 +455,7 @@ class TestClassesDiscoveryIntegration:
 
             with pytest.raises(Exception, match="Failed to process document"):
                 service_with_mocks.discovery_classes_with_document(
-                    "test-discovery-bucket", "forms/throttled-file.pdf"
+                    "test-discovery-bucket", "forms/throttled-file.pdf", "test-version"
                 )
 
     def test_different_file_formats(self, service_with_mocks):
@@ -510,7 +513,7 @@ class TestClassesDiscoveryIntegration:
 
             # Test with JPG file
             result = service_with_mocks.discovery_classes_with_document(
-                "test-discovery-bucket", "receipts/receipt.jpg"
+                "test-discovery-bucket", "receipts/receipt.jpg", "test-version"
             )
 
             assert result["status"] == "SUCCESS"

@@ -1210,6 +1210,9 @@ const ConfigurationLayout = () => {
 
       const result = await client.graphql({
         query: syncBdaIdpMutation,
+        variables: {
+          versionName: currentVersion,
+        },
       });
 
       logger.debug('Sync API response:', result);

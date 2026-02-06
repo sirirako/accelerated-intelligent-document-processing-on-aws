@@ -828,7 +828,7 @@ class BdaBlueprintService:
                 return blueprint
         return None
 
-    def create_blueprints_from_custom_configuration(self):
+    def create_blueprints_from_custom_configuration(self, version: str):
         """
         Create blueprint from custom configurations.
         Raises:
@@ -837,7 +837,9 @@ class BdaBlueprintService:
         logger.info("Creating blueprint for document ")
 
         try:
-            config_item = self.config_manager.get_configuration(config_type="Config")
+            config_item = self.config_manager.get_configuration(
+                config_type="Config", version=version
+            )
 
             # Type check: Config configuration should return IDPConfig which has classes attribute
             if not config_item:
