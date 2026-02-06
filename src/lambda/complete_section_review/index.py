@@ -414,6 +414,8 @@ def build_document_response(object_key):
         "EvaluationStatus": doc.get("EvaluationStatus", ""),
         "SummaryReportUri": doc.get("SummaryReportUri", ""),
         "HITLStatus": doc.get("HITLStatus", ""),
+        "HITLTriggered": doc.get("HITLTriggered", False),
+        "HITLCompleted": doc.get("HITLCompleted", False),
         "HITLReviewURL": doc.get("HITLReviewURL", ""),
         "HITLSectionsPending": doc.get("HITLSectionsPending", []),
         "HITLSectionsCompleted": doc.get("HITLSectionsCompleted", []),

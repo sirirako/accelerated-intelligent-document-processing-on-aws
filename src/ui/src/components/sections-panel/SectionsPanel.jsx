@@ -643,16 +643,27 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
   };
 
   // Check if document has pending HITL review
-  const hasPendingHITL = documentItem?.hitlTriggered && !documentItem?.hitlCompleted;
   const hitlStatusLower = documentItem?.hitlStatus?.toLowerCase().replace(/\s+/g, '') || '';
   const isHitlSkipped = hitlStatusLower === 'skipped' || hitlStatusLower === 'reviewskipped';
   const isHitlCompleted = hitlStatusLower === 'completed' || hitlStatusLower === 'reviewcompleted';
+  const hasPendingHITL = documentItem?.hitlTriggered && !isHitlCompleted && !isHitlSkipped;
   // Show skip button only if HITL pending and not already completed/skipped
-  const showSkipAllButton = isAdmin && hasPendingHITL && !isHitlCompleted && !isHitlSkipped;
+  const showSkipAllButton = isAdmin && hasPendingHITL;
+
+  // Log for debugging
+  logger.debug('HITL Status Check:', {
+    hitlStatus: documentItem?.hitlStatus,
+    hitlStatusLower,
+    isHitlSkipped,
+    isHitlCompleted,
+    hitlTriggered: documentItem?.hitlTriggered,
+    hasPendingHITL,
+    showSkipAllButton,
+  });
 
   // Edit Mode should be disabled for reviewers until they click Start Review (claim the document)
-  const hasReviewOwner = documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail;
-  const hitlTriggered = documentItem?.hitlTriggered;
+  const hasReviewOwner = !!(documentItem?.hitlReviewOwner || documentItem?.hitlReviewOwnerEmail);
+  const hitlTriggered = !!documentItem?.hitlTriggered;
 
   // Check if document is currently processing (disable edit during reprocessing)
   const processingStatuses = ['queued', 'running', 'processing', 'postprocessing', 'summarizing', 'evaluating'];
@@ -667,12 +678,15 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
   const isEditModeDisabled =
     isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped);
 
-  // Auto-exit edit mode when document starts processing (for reviewers only)
+  logger.debug('Edit Mode Check:', { isReviewerOnly, isEditModeDisabled, isHitlCompleted, isHitlSkipped });
+
+  // Auto-exit edit mode for reviewers when document starts processing or HITL is completed/skipped
   useEffect(() => {
-    if (isReviewerOnly && isDocumentProcessing && isEditMode) {
+    if (isReviewerOnly && isEditMode && (isDocumentProcessing || isHitlCompleted || isHitlSkipped)) {
+      logger.info('Auto-exiting edit mode due to status change');
       setIsEditMode(false);
     }
-  }, [isReviewerOnly, isDocumentProcessing, isEditMode]);
+  }, [isReviewerOnly, isDocumentProcessing, isHitlCompleted, isHitlSkipped, isEditMode]);
 
   // Handle skip all sections review (Admin only)
   const handleSkipAllSections = async () => {
@@ -705,18 +719,26 @@ const SectionsPanel = ({ sections, pages, documentItem, mergedConfig, onDocument
           }
         }
 
-        onDocumentUpdate((prev) => ({
-          ...prev,
-          objectStatus: updatedData.ObjectStatus || prev.objectStatus,
-          hitlStatus: updatedData.HITLStatus || prev.hitlStatus,
-          hitlSectionsPending: updatedData.HITLSectionsPending || [],
-          hitlSectionsCompleted: updatedData.HITLSectionsCompleted || prev.hitlSectionsCompleted,
-          hitlSectionsSkipped: updatedData.HITLSectionsSkipped || [],
-          hitlReviewOwner: updatedData.HITLReviewOwner || prev.hitlReviewOwner,
-          hitlReviewOwnerEmail: updatedData.HITLReviewOwnerEmail || prev.hitlReviewOwnerEmail,
-          hitlReviewHistory: reviewHistory || prev.hitlReviewHistory,
-          hitlCompleted: true,
-        }));
+        onDocumentUpdate((prev) => {
+          const newState = {
+            ...prev,
+            objectStatus: updatedData.ObjectStatus ?? prev.objectStatus,
+            hitlStatus: updatedData.HITLStatus ?? prev.hitlStatus,
+            hitlTriggered: updatedData.HITLTriggered ?? prev.hitlTriggered,
+            hitlCompleted: updatedData.HITLCompleted ?? true,
+            hitlSectionsPending: updatedData.HITLSectionsPending ?? [],
+            hitlSectionsCompleted: updatedData.HITLSectionsCompleted ?? prev.hitlSectionsCompleted,
+            hitlSectionsSkipped: updatedData.HITLSectionsSkipped ?? [],
+            hitlReviewOwner: updatedData.HITLReviewOwner ?? prev.hitlReviewOwner,
+            hitlReviewOwnerEmail: updatedData.HITLReviewOwnerEmail ?? prev.hitlReviewOwnerEmail,
+            hitlReviewHistory: reviewHistory ?? prev.hitlReviewHistory,
+          };
+          logger.info('Skip All Reviews - Updated document state:', {
+            hitlStatus: newState.hitlStatus,
+            hitlCompleted: newState.hitlCompleted,
+          });
+          return newState;
+        });
       }
     } catch (error) {
       logger.error('Failed to skip all sections review:', error);

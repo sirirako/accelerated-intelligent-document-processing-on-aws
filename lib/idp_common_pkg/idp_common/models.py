@@ -277,6 +277,7 @@ class Document:
     # HITL metadata
     hitl_metadata: List[HitlMetadata] = field(default_factory=list)
     hitl_status: Optional[str] = None  # PendingReview, InProgress, Completed, Skipped
+    hitl_triggered: bool = False  # Whether HITL review was triggered for this document
     hitl_sections_pending: List[str] = field(default_factory=list)
     hitl_sections_completed: List[str] = field(default_factory=list)
 
@@ -355,6 +356,8 @@ class Document:
         # Add Review Status fields
         if self.hitl_status:
             result["hitl_status"] = self.hitl_status
+        if self.hitl_triggered:
+            result["hitl_triggered"] = self.hitl_triggered
         if self.hitl_sections_pending:
             result["hitl_sections_pending"] = self.hitl_sections_pending
         if self.hitl_sections_completed:
@@ -432,6 +435,7 @@ class Document:
 
         # Convert Review Status fields
         document.hitl_status = data.get("hitl_status")
+        document.hitl_triggered = data.get("hitl_triggered", False)
         document.hitl_sections_pending = data.get("hitl_sections_pending", [])
         document.hitl_sections_completed = data.get("hitl_sections_completed", [])
 

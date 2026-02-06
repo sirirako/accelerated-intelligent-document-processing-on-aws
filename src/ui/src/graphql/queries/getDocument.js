@@ -39,6 +39,7 @@ export default gql`
       RuleValidationResultUri
       ExpiresAfter
       HITLStatus
+      HITLTriggered
       HITLReviewURL
       HITLSectionsPending
       HITLSectionsCompleted

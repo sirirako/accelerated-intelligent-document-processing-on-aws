@@ -86,8 +86,8 @@ const mapDocumentsAttributes = (documents) => {
     // Calculate confidence alert count
     const confidenceAlertCount = getDocumentConfidenceAlertCount(sections);
 
-    // Extract HITL metadata - use original working logic
-    const hitlTriggered = hitlStatus && hitlStatus !== 'N/A';
+    // Extract HITL metadata - use HITLTriggered from backend, fallback to status check
+    const hitlTriggered = item.HITLTriggered === true || (hitlStatus && hitlStatus !== 'N/A');
     const hitlCompleted = isHitlCompleted(hitlStatus);
 
     // Create a unique ID combining PK and SK for proper row tracking

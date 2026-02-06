@@ -38,6 +38,7 @@ export default gql`
       SummaryReportUri
       ExpiresAfter
       HITLStatus
+      HITLTriggered
       HITLReviewURL
       HITLSectionsPending
       HITLSectionsCompleted
