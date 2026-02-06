@@ -313,22 +313,25 @@ class ConfigurationManager:
             and isinstance(config, IDPConfig)
         ):
             old_default = self.get_configuration(CONFIG_TYPE_DEFAULT)
-            old_custom = self.get_configuration(CONFIG_TYPE_CUSTOM)
+            # CRITICAL: Use RAW Custom (no Pydantic defaults!) to preserve sparse delta pattern
+            old_custom_dict = self.get_raw_configuration(CONFIG_TYPE_CUSTOM)
 
-            if (
-                old_default
-                and old_custom
-                and isinstance(old_default, IDPConfig)
-                and isinstance(old_custom, IDPConfig)
-            ):
+            if old_default and old_custom_dict and isinstance(old_default, IDPConfig):
                 logger.info(
-                    "Syncing Custom config with new Default while preserving user customizations"
+                    "Syncing Custom config with new Default while preserving user customizations (sparse)"
                 )
-                new_custom = self.sync_custom_with_new_default(
-                    old_default, config, old_custom
+                new_custom_dict = self._sync_custom_with_new_default_sparse(
+                    old_default, config, old_custom_dict
                 )
-                # Save the synced custom config
-                self.save_configuration(CONFIG_TYPE_CUSTOM, new_custom, skip_sync=True)
+                # Save ONLY the sparse Custom deltas (NO Pydantic defaults!)
+                if new_custom_dict:
+                    self.save_raw_configuration(CONFIG_TYPE_CUSTOM, new_custom_dict)
+                else:
+                    # If no customizations remain, delete Custom
+                    try:
+                        self.delete_configuration(CONFIG_TYPE_CUSTOM)
+                    except Exception:
+                        pass
 
         # Create record
         record = ConfigurationRecord(configuration_type=config_type, config=config)
@@ -630,6 +633,52 @@ class ConfigurationManager:
         return True
 
     # ===== Private Methods =====
+
+    def _sync_custom_with_new_default_sparse(
+        self,
+        old_default: IDPConfig,
+        new_default: IDPConfig,
+        old_custom_dict: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Sync Custom config when Default is updated, preserving sparse delta pattern.
+
+        CRITICAL: This method preserves the sparse delta pattern by:
+        1. Taking the RAW old_custom_dict (NOT Pydantic-validated)
+        2. Returning ONLY customizations that still differ from new_default
+
+        Algorithm:
+        1. Get old_default and new_default as dicts
+        2. For each field in old_custom_dict:
+           - If value differs from new_default, keep it in result
+           - If value equals new_default, drop it (no longer a customization)
+        3. Return sparse delta dict (only actual customizations)
+
+        Args:
+            old_default: Previous default configuration (Pydantic model)
+            new_default: New default configuration being saved (Pydantic model)
+            old_custom_dict: RAW custom config dict (sparse deltas only!)
+
+        Returns:
+            New sparse custom dict with only fields that differ from new_default
+        """
+        from copy import deepcopy
+
+        old_default_dict = old_default.model_dump(mode="python")
+        new_default_dict = new_default.model_dump(mode="python")
+
+        # Start with a copy of existing Custom deltas
+        new_custom_dict = deepcopy(old_custom_dict)
+
+        # Strip any values that now match the new Default
+        # This ensures Custom only contains actual customizations
+        strip_matching_defaults(new_custom_dict, new_default_dict)
+
+        logger.info(
+            f"Synced Custom config (sparse): preserved {len(new_custom_dict)} top-level customizations"
+        )
+
+        return new_custom_dict
 
     def _read_record(self, config_type: str) -> Optional[ConfigurationRecord]:
         """
