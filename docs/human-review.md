@@ -21,6 +21,10 @@ SPDX-License-Identifier: MIT-0
 
 The GenAI-IDP solution supports Human-in-the-Loop (HITL) review capabilities through a built-in review system integrated directly into the Web UI. This feature enables human reviewers to validate and correct extracted information when the system's confidence falls below a specified threshold, ensuring accuracy for critical document processing workflows.
 
+
+Uploading 2026-02-06_17-04-41.mp4…
+
+
 **Supported Patterns:**
 - Pattern 1: BDA processing with HITL review
 - Pattern 2: Textract + Bedrock processing with HITL review
