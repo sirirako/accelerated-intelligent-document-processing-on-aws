@@ -5,22 +5,16 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Pattern-1 Page/Section Number Alignment with Pattern-2 and Ground Truth**
-  - Fixed page and section numbering mismatch between Pattern-1 (BDA) and Pattern-2 that caused evaluation failures when using shared test sets
-  - **Root Cause**: BDA outputs 0-based indices while Pattern-2 and ground truth test sets use 1-based page IDs
-  - **Solution**: Pattern-1 postprocessing now transforms S3 paths and Document model IDs to 1-based (`pages/1/`, `sections/1/`, `page_ids: ["1", "2"]`) while preserving 0-based `page_indices` arrays in result.json for internal consistency
-  - **Key Distinction**: `page_indices` (array indices) remain 0-based, `page_id`/`section_id` (identifiers) are now 1-based
-  - Both patterns now align correctly for evaluation with shared test sets and ground truth data
-
-### Changed
-
-- **Renamed TestSet from RVL-CDIP-N-MP to DocSplit-Poly-Seq**
-  - Updated Test Studio test set name to better reflect its purpose as a document splitting and classification benchmark
-  - The underlying HuggingFace dataset source (`jordyvl/rvl_cdip_n_mp`) remains unchanged
+## [0.4.14]
 
 ### Added
+
+- **Enhanced BDA to IDP Sync for Pattern-1**
+  - Separate "Sync from BDA" and "Sync to BDA" buttons in the UI for explicit directional control instead of bidirectional-only sync
+  - Parallel blueprint processing for improved sync performance on configurations with many document classes
+  - Orphaned blueprint cleanup automatically detects and removes BDA blueprints no longer defined in IDP configuration
+  - Warning notifications for skipped properties due to BDA limitations (nested arrays/objects), with guidance to flatten schemas using top-level `$defs`
+  - AWS standard blueprint filtering prevents unintended modifications to AWS-managed blueprints
 
 - **Human-in-the-Loop (HITL) Review Workflow Improvements**
   - **Review Ownership Model**: Reviewers must now claim documents using "Start Review" before editing, preventing concurrent edits
@@ -29,13 +23,6 @@ SPDX-License-Identifier: MIT-0
   - **Admin Skip All Reviews**: Admins can skip all remaining section reviews without triggering document reprocessing
   - **Release Review**: Reviewers can release claimed documents back to pending status; Admins can release any review
   - **Review Completed By Field**: New column showing who completed or skipped the review (renamed from "Reviewed By")
-
-- **Enhanced BDA to IDP Sync for Pattern-1**
-  - Separate "Sync from BDA" and "Sync to BDA" buttons in the UI for explicit directional control instead of bidirectional-only sync
-  - Parallel blueprint processing for improved sync performance on configurations with many document classes
-  - Orphaned blueprint cleanup automatically detects and removes BDA blueprints no longer defined in IDP configuration
-  - Warning notifications for skipped properties due to BDA limitations (nested arrays/objects), with guidance to flatten schemas using top-level `$defs`
-  - AWS standard blueprint filtering prevents unintended modifications to AWS-managed blueprints
 
 - **Pattern-1 Edit Mode with Data-Only Editing and Reprocessing**
   - Added Edit Mode capability for Pattern-1 (BDA) stacks, enabling users to edit extraction data without modifying section structure
@@ -47,16 +34,44 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
+- **HITL Decoupled from Step Functions**: HITL review operations now update document status directly in DynamoDB without triggering workflow reprocessing, improving reliability and reducing unintended side effects
+
+- **Renamed TestSet from RVL-CDIP-N-MP to DocSplit-Poly-Seq**
+  - Updated Test Studio test set name to better reflect its purpose as a document splitting and classification benchmark
+  - The underlying HuggingFace dataset source (`jordyvl/rvl_cdip_n_mp`) remains unchanged
+
 - **Review Status Labels**: Renamed status values for consistency:
   - "Pending Review" → "Review Pending"
   - "Reviewed By" column → "Review Completed By"
-- **HITL Decoupled from Step Functions**: HITL review operations now update document status directly in DynamoDB without triggering workflow reprocessing, improving reliability and reducing unintended side effects
 
 ### Fixed
 
 - **HITL Decimal Serialization Error**: Fixed "Object of type Decimal is not JSON serializable" error when performing HITL operations (Start Review, Release Review, Skip All Reviews) by properly converting DynamoDB Decimal types
+
 - **HITL Operations Clearing Estimated Cost**: Fixed issue where Start Review and Release Review operations were inadvertently clearing the Metering/Estimated Cost data by re-serializing the entire document; operations now update only HITL-specific fields
 
+- **Pattern-1 Page/Section Number Alignment with Pattern-2 and Ground Truth**
+  - Fixed page and section numbering mismatch between Pattern-1 (BDA) and Pattern-2 that caused evaluation failures when using shared test sets
+  - **Root Cause**: BDA outputs 0-based indices while Pattern-2 and ground truth test sets use 1-based page IDs
+  - **Solution**: Pattern-1 postprocessing now transforms S3 paths and Document model IDs to 1-based (`pages/1/`, `sections/1/`, `page_ids: ["1", "2"]`) while preserving 0-based `page_indices` arrays in result.json for internal consistency
+  - **Key Distinction**: `page_indices` (array indices) remain 0-based, `page_id`/`section_id` (identifiers) are now 1-based
+  - Both patterns now align correctly for evaluation with shared test sets and ground truth data
+
+- **TIFF Image Format Support for Bedrock-Compatible Processing**
+  - Fixed classification failure when processing TIFF image files ("Unsupported image format: TIFF")
+  - OCR step now converts non-Bedrock-compatible formats (TIFF, BMP) to JPEG during page image extraction
+  - Multi-page TIFF files handled like PDFs - each page becomes a separate document page
+
+- **Discovery Feature Overwriting Existing Classes During Class Discovery**
+  - Fixed issue where using Discovery to discover a new document type would delete all existing classes from the configuration
+  - **Root Cause**: Custom config `classes` array was replacing Default `classes` array during runtime merge, causing loss of existing classes
+  - **Solution**: Discovery now reads both Default and Custom classes, merges them with the newly discovered class, and saves the complete merged list to Custom config
+  - Ensures discovered classes are additive to existing configuration rather than replacing it
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.4.14.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.4.14.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.4.14.yaml`
 
 ## [0.4.13]
 
