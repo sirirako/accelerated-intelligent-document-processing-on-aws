@@ -60,6 +60,12 @@ SPDX-License-Identifier: MIT-0
   - OCR step now converts non-Bedrock-compatible formats (TIFF, BMP) to JPEG during page image extraction
   - Multi-page TIFF files handled like PDFs - each page becomes a separate document page
 
+- **Discovery Feature Overwriting Existing Classes During Class Discovery**
+  - Fixed issue where using Discovery to discover a new document type would delete all existing classes from the configuration
+  - **Root Cause**: Custom config `classes` array was replacing Default `classes` array during runtime merge, causing loss of existing classes
+  - **Solution**: Discovery now reads both Default and Custom classes, merges them with the newly discovered class, and saves the complete merged list to Custom config
+  - Ensures discovered classes are additive to existing configuration rather than replacing it
+
 
 ## [0.4.13]
 
