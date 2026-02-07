@@ -348,8 +348,8 @@ class TestClassesDiscoveryIntegration:
         ]["content"][0]["text"]
         service_with_mocks._mock_bedrock_client.return_value = mock_w4_bedrock_response
 
-        # Mock existing configuration with different forms in JSON Schema format
-        existing_item = IDPConfig(
+        # Mock existing Default configuration with different forms in JSON Schema format
+        existing_default = IDPConfig(
             classes=[
                 {
                     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -373,9 +373,12 @@ class TestClassesDiscoveryIntegration:
         )
         # Create mocks for config_manager methods
         service_with_mocks.config_manager.get_configuration = MagicMock(
-            return_value=existing_item
+            return_value=existing_default
         )
-        service_with_mocks.config_manager.save_configuration = MagicMock()
+        service_with_mocks.config_manager.get_raw_configuration = MagicMock(
+            return_value={}  # No existing Custom
+        )
+        service_with_mocks.config_manager.save_raw_configuration = MagicMock()
 
         # Execute discovery
         result = service_with_mocks.discovery_classes_with_document(
@@ -385,13 +388,15 @@ class TestClassesDiscoveryIntegration:
         # Verify successful completion
         assert result["status"] == "SUCCESS"
 
-        # Verify configuration was saved
+        # Verify configuration was saved using save_raw_configuration
+        service_with_mocks.config_manager.save_raw_configuration.assert_called_once()
         save_config_args = (
-            service_with_mocks.config_manager.save_configuration.call_args[0]
+            service_with_mocks.config_manager.save_raw_configuration.call_args[0]
         )
-        updated_classes = save_config_args[1].classes
+        assert save_config_args[0] == "Custom"  # First arg is config type
+        updated_classes = save_config_args[1]["classes"]  # Second arg is config dict
 
-        # Should have 2 classes: I-9 (unchanged) + W-4 (updated)
+        # Should have 2 classes: I-9 (from Default) + W-4 (updated)
         assert len(updated_classes) == 2
 
         # Find and verify the updated W-4 class (JSON Schema format)
