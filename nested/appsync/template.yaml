@@ -109,6 +109,10 @@ Parameters:
     Type: String
     Description: Name of the test set file copy SQS queue
   
+  TestResultCacheUpdateQueueName:
+    Type: String
+    Description: Name of the test result cache update SQS queue
+
   # Other resources
   CustomerManagedEncryptionKeyArn:
     Type: String
@@ -2822,11 +2826,8 @@ Resources:
                     - ShouldCreateReportingBucket
                     - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
                     - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
-        - Statement:
-            - Effect: Allow
-              Action:
-                - sqs:SendMessage
-              Resource: !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${TestResultCacheUpdateQueueUrl}"
+        - SQSSendMessagePolicy:
+            QueueName: !Ref TestResultCacheUpdateQueueName
         - Statement:
             - Effect: Allow
               Action:

@@ -200,13 +200,13 @@ const getDiff = (oldConfig, newConfig) => {
 const useConfiguration = (versionName = 'default') => {
   const [schema, setSchema] = useState(null);
   const [defaultConfig, setDefaultConfig] = useState(null);
-  const [versionConfig, setVersionConfig] = useState(null);
+  const [customConfig, setCustomConfig] = useState(null);
   const [mergedConfig, setMergedConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchConfiguration = async (silent = false) => {
+  const fetchConfiguration = async (versionName = 'default', silent = false) => {
     // Use different loading states for initial load vs background refresh
     if (silent) {
       setRefreshing(true);
@@ -215,7 +215,7 @@ const useConfiguration = (versionName = 'default') => {
     }
     setError(null);
     try {
-      logger.debug('Fetching configuration...');
+      logger.debug('Fetching configuration for versionName:', versionName);
       const result = await client.graphql({
         query: getConfigVersionQuery,
         variables: { versionName },
@@ -229,19 +229,19 @@ const useConfiguration = (versionName = 'default') => {
         throw new Error(errorMsg);
       }
 
-      const { Schema, Default, Configuration } = response;
+      const { Schema, Default, Custom } = response;
 
       // Log raw data types
       logger.debug('Raw data types:', {
         Schema: typeof Schema,
         Default: typeof Default,
-        Configuration: typeof Configuration,
+        Custom: typeof Custom,
       });
 
       // Enhanced parsing logic - handle both string and object types
       let schemaObj = Schema;
       let defaultObj = Default;
-      let versionObj = Configuration;
+      let customObj = Custom;
 
       // Parse schema if it's a string
       if (typeof Schema === 'string') {
@@ -271,23 +271,24 @@ const useConfiguration = (versionName = 'default') => {
         }
       }
 
-      // Parse version config - should not be empty
-      if (typeof Configuration === 'string' && Configuration) {
+      // Parse version config - use empty object if missing
+      if (typeof Custom === 'string' && Custom) {
         try {
-          versionObj = JSON.parse(Configuration);
+          customObj = JSON.parse(Custom);
           logger.debug('Version config parsed from string successfully');
         } catch (e) {
           logger.error('Error parsing version config string:', e);
           throw new Error(`Failed to parse version configuration: ${e.message}`);
         }
-      } else if (!Configuration) {
-        throw new Error('Version configuration is empty or missing');
+      } else if (!Custom) {
+        logger.warn('Version configuration is empty or missing, using empty object');
+        customObj = {};
       }
 
       // Debug the parsed objects
       logger.debug('Parsed schema:', schemaObj);
       logger.debug('Parsed default config:', defaultObj);
-      logger.debug('Parsed version config:', versionObj);
+      logger.debug('Parsed version config:', customObj);
 
       // Validate the parsed objects
       if (!schemaObj || typeof schemaObj !== 'object') {
@@ -302,10 +303,10 @@ const useConfiguration = (versionName = 'default') => {
 
       // Normalize boolean values in both default and version configs
       const normalizedDefaultObj = normalizeBooleans(defaultObj, schemaObj);
-      const normalizedVersionObj = normalizeBooleans(versionObj, schemaObj);
+      const normalizedCustomObj = normalizeBooleans(customObj, schemaObj);
 
       setDefaultConfig(normalizedDefaultObj);
-      setVersionConfig(normalizedVersionObj);
+      setCustomConfig(normalizedCustomObj);
 
       // IMPORTANT: Frontend merges Default + Custom for display
       // DESIGN PATTERN:
@@ -317,7 +318,7 @@ const useConfiguration = (versionName = 'default') => {
       // - Stack upgrades to safely update Default without losing user customizations
       // - Empty Custom = all defaults (clean reset capability)
       // - User customizations survive stack deployments
-      const activeConfig = deepMerge(normalizedDefaultObj, normalizedVersionObj);
+      const activeConfig = deepMerge(normalizedDefaultObj, normalizedCustomObj);
 
       logger.debug('Merged configuration (Default + Custom deltas):', activeConfig);
       // Double check the classification and extraction sections
@@ -343,10 +344,10 @@ const useConfiguration = (versionName = 'default') => {
     }
   };
 
-  const updateConfiguration = async (newCustomConfig) => {
+  const updateConfiguration = async (versionName, newCustomConfig, description = null) => {
     setError(null);
     try {
-      logger.debug('Updating config with:', newCustomConfig);
+      logger.debug('Updating config - versionName:', versionName, 'description:', description, 'config:', newCustomConfig);
 
       // Make sure we have a valid object to update with
       const configToUpdate =
@@ -361,11 +362,15 @@ const useConfiguration = (versionName = 'default') => {
       // Ensure we're sending a JSON string
       const configString = typeof configToUpdate === 'string' ? configToUpdate : JSON.stringify(configToUpdate);
 
-      logger.debug('Sending customConfig string:', configString);
+      logger.debug('Sending customConfig string for version', versionName, ':', configString);
 
       const result = await client.graphql({
         query: updateConfigurationMutation,
-        variables: { customConfig: configString },
+        variables: {
+          versionName,
+          customConfig: configString,
+          description,
+        },
       });
 
       const response = result.data.updateConfiguration;
@@ -378,12 +383,12 @@ const useConfiguration = (versionName = 'default') => {
       // Refetch silently to ensure backend and frontend are in sync
       // Silent mode prevents loading state changes that cause re-renders
       // The component will handle rehydration without full re-render
-      await fetchConfiguration(true);
+      await fetchConfiguration(versionName, true);
 
       return true;
     } catch (err) {
-      logger.error('Error updating configuration', err);
-      setError(`Failed to update configuration: ${err.message}`);
+      logger.error('Error updating configuration for version', versionName, ':', err);
+      setError(`Failed to update configuration for version ${versionName}: ${err.message}`);
       return false;
     }
   };
@@ -392,11 +397,11 @@ const useConfiguration = (versionName = 'default') => {
   // DESIGN: Set the default value - backend auto-cleans matching defaults from Custom
   // The strip_matching_defaults function on backend removes values matching Default
   const resetToDefault = async (path) => {
-    if (!path || !versionConfig || !defaultConfig) return false;
+    if (!path || !customConfig || !defaultConfig) return false;
 
     setError(null);
     try {
-      logger.debug(`Resetting path to default: ${path}`);
+      logger.debug(`Resetting path to default for version ${versionName}: ${path}`);
 
       // Get the default value for this path
       const defaultValue = getValueAtPath(defaultConfig, path);
@@ -410,7 +415,11 @@ const useConfiguration = (versionName = 'default') => {
       // Send the default value to backend
       const result = await client.graphql({
         query: updateConfigurationMutation,
-        variables: { customConfig: JSON.stringify(updatePayload) },
+        variables: {
+          versionName,
+          customConfig: JSON.stringify(updatePayload),
+          description: null,
+        },
       });
 
       const response = result.data.updateConfiguration;
@@ -420,14 +429,14 @@ const useConfiguration = (versionName = 'default') => {
         throw new Error(errorMsg);
       }
 
-      logger.debug(`Successfully reset path ${path} to default (backend auto-cleaned)`);
+      logger.debug(`Successfully reset path ${path} to default for version ${versionName} (backend auto-cleaned)`);
 
       // Optimistic update: remove the field from local version config
       // (Backend's auto-cleanup will have removed it since it matches Default)
-      const newVersionConfig = removeValueAtPath(versionConfig, path);
+      const newVersionConfig = removeValueAtPath(customConfig, path);
 
       // Update local state
-      setVersionConfig(newVersionConfig);
+      setCustomConfig(newVersionConfig);
       // mergedConfig = Default + Version (with field removed, Default value shows)
       setMergedConfig(deepMerge(defaultConfig, newVersionConfig));
 
@@ -436,7 +445,7 @@ const useConfiguration = (versionName = 'default') => {
       logger.error('Error resetting to default', err);
       setError(`Failed to reset to default: ${err.message}`);
       // Refetch on error to ensure consistency
-      await fetchConfiguration(true);
+      await fetchConfiguration(versionName, true);
       return false;
     }
   };
@@ -446,7 +455,7 @@ const useConfiguration = (versionName = 'default') => {
 
   // Check if a value is customized or default
   const isCustomized = (path) => {
-    if (!versionConfig || !path) {
+    if (!customConfig || !path) {
       return false;
     }
 
@@ -465,33 +474,33 @@ const useConfiguration = (versionName = 'default') => {
       };
 
       // Get values from both version and default configs
-      const versionValue = getValueAtPathSegments(versionConfig, pathSegments);
+      const customValue = getValueAtPathSegments(customConfig, pathSegments);
       const defaultValue = getValueAtPathSegments(defaultConfig, pathSegments);
 
       // First check if the version value exists
-      const versionValueExists = versionValue !== undefined;
+      const customValueExists = customValue !== undefined;
 
       // Special case for empty objects - they should count as not customized
       if (
-        versionValueExists &&
-        typeof versionValue === 'object' &&
-        versionValue !== null &&
-        !Array.isArray(versionValue) &&
-        Object.keys(versionValue).length === 0
+        customValueExists &&
+        typeof customValue === 'object' &&
+        customValue !== null &&
+        !Array.isArray(customValue) &&
+        Object.keys(customValue).length === 0
       ) {
         return false;
       }
 
       // Special case for arrays
-      if (versionValueExists && Array.isArray(versionValue)) {
+      if (customValueExists && Array.isArray(customValue)) {
         // Compare arrays for deep equality
         if (Array.isArray(defaultValue)) {
           // Different lengths means customized (including empty vs non-empty)
-          if (versionValue.length !== defaultValue.length) return true;
+          if (customValue.length !== defaultValue.length) return true;
 
           // Deep compare each element
-          for (let i = 0; i < versionValue.length; i += 1) {
-            if (JSON.stringify(versionValue[i]) !== JSON.stringify(defaultValue[i])) {
+          for (let i = 0; i < customValue.length; i += 1) {
+            if (JSON.stringify(customValue[i]) !== JSON.stringify(defaultValue[i])) {
               return true;
             }
           }
@@ -502,23 +511,23 @@ const useConfiguration = (versionName = 'default') => {
 
       // Deep compare objects
       if (
-        versionValueExists &&
-        typeof versionValue === 'object' &&
-        versionValue !== null &&
+        customValueExists &&
+        typeof customValue === 'object' &&
+        customValue !== null &&
         typeof defaultValue === 'object' &&
         defaultValue !== null
       ) {
-        return JSON.stringify(versionValue) !== JSON.stringify(defaultValue);
+        return JSON.stringify(customValue) !== JSON.stringify(defaultValue);
       }
 
       // Check for numeric equivalence (handles 5 vs 5.0, "5" vs 5, etc.)
       // This prevents false positives when Pydantic converts int to float
-      if (versionValueExists && isNumericValue(versionValue) && isNumericValue(defaultValue)) {
-        return !areNumericValuesEqual(versionValue, defaultValue);
+      if (customValueExists && isNumericValue(customValue) && isNumericValue(defaultValue)) {
+        return !areNumericValuesEqual(customValue, defaultValue);
       }
 
       // Simple value comparison for non-numeric values
-      return versionValueExists && versionValue !== defaultValue;
+      return customValueExists && customValue !== defaultValue;
     } catch (err) {
       logger.error(`Error in isCustomized for path: ${path}`, err);
       return false;
@@ -526,13 +535,13 @@ const useConfiguration = (versionName = 'default') => {
   };
 
   useEffect(() => {
-    fetchConfiguration();
+    fetchConfiguration(versionName);
   }, [versionName]); // Re-fetch when version changes
 
   return {
     schema,
     defaultConfig,
-    versionConfig,
+    customConfig,
     mergedConfig,
     loading,
     refreshing,

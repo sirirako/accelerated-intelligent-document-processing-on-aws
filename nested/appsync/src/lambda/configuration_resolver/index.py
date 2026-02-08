@@ -107,7 +107,7 @@ def handler(event, context):
                         "message": "Description cannot exceed 200 characters",
                     },
                 }
-            success = manager.handle_update_custom_configuration(manager, custom_config, version, description)
+            success = manager.handle_update_custom_configuration(custom_config, version, description)
             return {
                 "success": success,
                 "message": "Configuration updated successfully"

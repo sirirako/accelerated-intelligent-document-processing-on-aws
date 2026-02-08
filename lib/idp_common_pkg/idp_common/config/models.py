@@ -105,7 +105,8 @@ class ExtractionConfig(BaseModel):
         description="System prompt for extraction (populated from system defaults)",
     )
     task_prompt: str = Field(
-        default="", description="Task prompt template for extraction (populated from system defaults)"
+        default="",
+        description="Task prompt template for extraction (populated from system defaults)",
     )
     temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     top_p: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -195,7 +196,7 @@ class ClassificationConfig(BaseModel):
     @classmethod
     def parse_max_pages(cls, v: Any) -> str:
         """Parse maxPagesForClassification - accepts 'ALL' or numeric string/int.
-        
+
         Converts legacy value of 0 to 'ALL' for backward compatibility.
         Returns string to match UI schema enum: ['ALL', '1', '2', '3', '5', '10']
         """
@@ -671,8 +672,12 @@ class AgentsConfig(BaseModel):
 class PricingUnit(BaseModel):
     """Individual pricing unit within a service/API"""
 
-    name: str = Field(description="Unit name (e.g., 'pages', 'inputTokens', 'outputTokens')")
-    price: str = Field(description="Price as string (supports scientific notation like '6.0E-8')")
+    name: str = Field(
+        description="Unit name (e.g., 'pages', 'inputTokens', 'outputTokens')"
+    )
+    price: str = Field(
+        description="Price as string (supports scientific notation like '6.0E-8')"
+    )
 
     @field_validator("price", mode="before")
     @classmethod
@@ -686,8 +691,12 @@ class PricingUnit(BaseModel):
 class PricingEntry(BaseModel):
     """Single pricing entry with service/API name and associated units"""
 
-    name: str = Field(description="Service/API identifier (e.g., 'textract/detect_document_text', 'bedrock/us.amazon.nova-lite-v1:0')")
-    units: List[PricingUnit] = Field(description="List of pricing units for this service/API")
+    name: str = Field(
+        description="Service/API identifier (e.g., 'textract/detect_document_text', 'bedrock/us.amazon.nova-lite-v1:0')"
+    )
+    units: List[PricingUnit] = Field(
+        description="List of pricing units for this service/API"
+    )
 
 
 class PricingConfig(BaseModel):
@@ -721,7 +730,7 @@ class PricingConfig(BaseModel):
 
     pricing: List[PricingEntry] = Field(
         default_factory=list,
-        description="List of pricing entries with service/API name and units"
+        description="List of pricing entries with service/API name and units",
     )
 
     model_config = ConfigDict(
@@ -1049,10 +1058,11 @@ class IDPConfig(BaseModel):
     evaluation: EvaluationConfig = Field(
         default_factory=EvaluationConfig, description="Evaluation configuration"
     )
-    
+
     # Pricing configuration (optional - loaded separately but can be merged for convenience)
     pricing: Optional[List[PricingEntry]] = Field(
-        default=None, description="Pricing entries (optional - usually loaded from PricingConfig)"
+        default=None,
+        description="Pricing entries (optional - usually loaded from PricingConfig)",
     )
 
     # Rule validation specific fields (used in pattern-2/rule-validation)
@@ -1159,8 +1169,16 @@ class ConfigurationRecord(BaseModel):
     """
 
     configuration_type: str = Field(description="Configuration type (Config, Schema, Pricing)")
-    version: str = Field(description="Version Name")
+    version: Optional[str] = Field(default=None, description="Version Name")
     is_active: Optional[bool] = Field(default=None, description="Whether this version is active")
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def validate_version(cls, v: Any) -> Optional[str]:
+        """Ensure version field accepts None or string values"""
+        if v is None:
+            return None
+        return str(v) if v else None
     description: Optional[str] = Field(default=None, description="Version description")
     config: Annotated[
         Union[SchemaConfig, IDPConfig, PricingConfig], Discriminator("config_type")

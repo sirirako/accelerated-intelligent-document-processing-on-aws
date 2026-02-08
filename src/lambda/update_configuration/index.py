@@ -534,7 +534,7 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             # Save all configurations
             current_time = datetime.utcnow().isoformat() + "Z"
             for config_name, config_info in configurations.items():
-                if isinstance(config_info, dict) and "config" in config_info:
+                if config_name in ["default", "custom"]:
                     # Versioned format - use config_name as version
                     config_data = config_info["config"]
                     version = config_name
@@ -559,40 +559,31 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                             manager.save_configuration("Config", config_data, version=version, metadata=metadata)
                         else:
                             metadata = {"created_at": current_time, "updated_at": current_time}
-                            description = "System default" if version == "default" else None
+                            description = "System default" if version == "default" else ""
                             manager.save_configuration("Config", config_data, version=version, description=description, metadata=metadata)
-                        logger.info(f"Saved Config {version}")
+                        logger.info(f"Updated config version: {version} configuration")
                 else:
                     # Non-versioned configurations (Schema, DefaultPricing)
                     if migration_performed:
                         # Use direct DynamoDB operations when migration was performed
-                        metadata = {"updated_at": current_time}
-                        save_configuration_bypass_manager(config_name, config_info, metadata=metadata)
-                        logger.info(f"Updated {config_name} configuration (bypass mode)")
+                        save_configuration_bypass_manager(config_name, config_info)
+                        logger.info(f"Updated {config_name} configuration during migration")
                     else:
-                        # Use ConfigurationManager for normal operations
-                        existing_config = None
-                        try:
-                            existing_config = manager.get_configuration(config_name)
-                        except:
-                            pass
-                        
-                        if existing_config:
-                            metadata = {"updated_at": current_time}
-                        else:
-                            metadata = {"created_at": current_time, "updated_at": current_time}
-                        
-                        manager.save_configuration(config_name, config_info, metadata=metadata)
+                        # Use ConfigurationManager for normal operations                
+                        manager.save_configuration(config_name, config_info)
                         logger.info(f"Updated {config_name} configuration")
             # For Create: Activate custom if Custom was provided, otherwise default if Default provided
             if request_type == "Create":
-                if "Custom" in properties and "custom" in configurations:
-                    manager.activate_version("custom")
-                    logger.info("Activated custom (Custom configuration)")
-                elif "default" in configurations:
-                    manager.activate_version("default")
-                    logger.info("Activated default (Default configuration)")
-
+                try:
+                    if "custom" in configurations:
+                        manager.activate_version("custom")
+                        logger.info("Activated custom version)")
+                    elif "default" in configurations:
+                        manager.activate_version("default")
+                        logger.info("Activated default version")
+                except Exception as e:
+                    logger.error(f"Error activating version during create, error :{e}")
+                    
             cfnresponse.send(
                 event,
                 context,

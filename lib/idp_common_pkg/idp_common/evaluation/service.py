@@ -251,6 +251,10 @@ class EvaluationService:
         schema[X_AWS_IDP_DOCUMENT_TYPE] = document_class
         schema[X_AWS_IDP_EVALUATION_MATCH_THRESHOLD] = 0.8
 
+        # Normalize integer types to number to handle decimal values in extraction
+        # This prevents type mismatch errors when baseline has int but prediction has float
+        self._normalize_integer_to_number(schema)
+
         # Add evaluation method extensions recursively
         self._add_evaluation_extensions_recursive(schema)
 
@@ -264,6 +268,37 @@ class EvaluationService:
         )
 
         return schema
+
+    def _normalize_integer_to_number(self, schema: Dict[str, Any]) -> None:
+        """
+        Recursively convert 'integer' types to 'number' in auto-generated schemas.
+
+        This prevents Pydantic validation errors when the baseline data has an
+        integer value but the prediction has a float (e.g., baseline edited to 9999
+        but prediction is 2111.2). By using 'number' type instead of 'integer',
+        we allow both int and float values to pass validation.
+
+        Args:
+            schema: Schema object to modify in-place
+        """
+        schema_type = schema.get("type")
+
+        # Convert integer to number
+        if schema_type == "integer":
+            schema["type"] = "number"
+        elif isinstance(schema_type, list):
+            # Handle union types from genson (e.g., ["string", "integer"])
+            schema["type"] = ["number" if t == "integer" else t for t in schema_type]
+
+        # Recursively process nested structures
+        if "properties" in schema:
+            for prop_schema in schema["properties"].values():
+                self._normalize_integer_to_number(prop_schema)
+
+        if "items" in schema:
+            items = schema["items"]
+            if isinstance(items, dict):
+                self._normalize_integer_to_number(items)
 
     def _add_evaluation_extensions_recursive(self, schema: Dict[str, Any]) -> None:
         """
@@ -684,9 +719,9 @@ class EvaluationService:
                 conf_threshold = confidence_value.get("confidence_threshold")
                 return {
                     "confidence": float(confidence_value["confidence"]),
-                    "confidence_threshold": float(conf_threshold)
-                    if conf_threshold is not None
-                    else None,
+                    "confidence_threshold": (
+                        float(conf_threshold) if conf_threshold is not None else None
+                    ),
                 }
 
             return None
@@ -1008,12 +1043,14 @@ class EvaluationService:
                 evaluation_method=evaluation_method_value,
                 evaluation_threshold=field_threshold,
                 comparator_type=field_config.get("comparator"),
-                confidence=confidence_info.get("confidence")
-                if confidence_info
-                else None,
-                confidence_threshold=confidence_info.get("confidence_threshold")
-                if confidence_info
-                else None,
+                confidence=(
+                    confidence_info.get("confidence") if confidence_info else None
+                ),
+                confidence_threshold=(
+                    confidence_info.get("confidence_threshold")
+                    if confidence_info
+                    else None
+                ),
                 weight=field_config.get("weight"),  # Stickler field weight
                 field_comparison_details=detailed_comparisons,  # Nested field-by-field comparisons
             )
@@ -1235,12 +1272,23 @@ class EvaluationService:
                 if isinstance(value, str):
                     # Try to convert string to number
                     try:
-                        return float(value) if expected_type is float else int(value)
+                        return (
+                            float(value)
+                            if expected_type is float
+                            else int(float(value))
+                        )
                     except ValueError:
                         logger.warning(
                             f"Could not convert '{value}' to {expected_type} for field {field_name}"
                         )
                         return value
+                elif isinstance(value, float) and expected_type is int:
+                    # Coerce float to int when schema expects int
+                    # This handles cases where baseline has int but prediction has float
+                    return int(value)
+                elif isinstance(value, int) and expected_type is float:
+                    # Coerce int to float when schema expects float
+                    return float(value)
                 return value
 
             # Handle boolean

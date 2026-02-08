@@ -3,11 +3,24 @@
 
 // src/components/upload-document/UploadDocumentPanel.jsx
 import React, { useState, useEffect } from 'react';
-import { Button, Container, Header, SpaceBetween, FormField, StatusIndicator, Alert, Input, Select } from '@cloudscape-design/components';
+import {
+  Button,
+  Container,
+  Header,
+  SpaceBetween,
+  FormField,
+  StatusIndicator,
+  Alert,
+  Input,
+  FileUpload,
+  Select,
+} from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 
 import uploadDocument from '../../graphql/queries/uploadDocument';
+
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
+
 import useSettingsContext from '../../contexts/settings';
 
 const client = generateClient();
@@ -44,8 +57,8 @@ const UploadDocumentPanel = () => {
     );
   }
 
-  const handleFileChange = (e) => {
-    setSelectedFiles(Array.from(e.target.files));
+  const handleFileChange = (files) => {
+    setSelectedFiles(files);
     setUploadStatus([]);
     setError(null);
   };
@@ -182,8 +195,25 @@ const UploadDocumentPanel = () => {
           />
         </FormField>
 
-        <FormField label="Select files to upload">
-          <input type="file" multiple onChange={handleFileChange} disabled={isUploading} />
+        <FormField label="Select files to upload" constraintText="Supported formats: PDF, PNG, JPEG, TIFF. Multiple files allowed.">
+          <FileUpload
+            onChange={({ detail }) => handleFileChange(detail.value)}
+            value={selectedFiles}
+            i18nStrings={{
+              uploadButtonText: (multiple) => (multiple ? 'Choose files' : 'Choose file'),
+              dropzoneText: (multiple) => (multiple ? 'Drop files to upload' : 'Drop file to upload'),
+              removeFileAriaLabel: (fileIndex) => `Remove file ${fileIndex + 1}`,
+              errorIconAriaLabel: 'Error',
+              warningIconAriaLabel: 'Warning',
+            }}
+            accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif"
+            multiple
+            showFileSize
+            showFileLastModified
+            showFileThumbnail
+            tokenLimit={10}
+            disabled={isUploading}
+          />
         </FormField>
 
         <Button variant="primary" onClick={uploadFiles} loading={isUploading} disabled={selectedFiles.length === 0 || isUploading}>

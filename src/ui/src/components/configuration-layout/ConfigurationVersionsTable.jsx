@@ -17,7 +17,6 @@ const ConfigurationVersionsTable = ({
   onActivateVersion,
   onDeleteVersions,
   onImportAsNewVersion,
-  onEditVersion,
 }) => {
   // Log the versions data to console for debugging
   console.log('ConfigurationVersionsTable - versions data:', versions);
@@ -136,28 +135,29 @@ const ConfigurationVersionsTable = ({
   });
 
   return (
-    <Table
-      {...collectionProps}
-      columnDefinitions={columnDefinitions}
-      items={items}
-      loading={loading}
-      loadingText="Loading versions..."
-      resizableColumns
-      stripedRows
-      empty={
-        <Box margin={{ vertical: 'xs' }} textAlign="center" color="inherit">
-          <SpaceBetween size="m">
-            <b>No versions</b>
-            <Box variant="p" color="inherit">
-              No configuration versions found.
-            </Box>
-          </SpaceBetween>
-        </Box>
-      }
-      header={
-        <Header
-          variant="h2"
-          actions={
+    <SpaceBetween size="s">
+      <Table
+        {...collectionProps}
+        columnDefinitions={columnDefinitions}
+        items={items}
+        loading={loading}
+        loadingText="Loading versions..."
+        resizableColumns
+        stripedRows
+        empty={
+          <Box margin={{ vertical: 'xs' }} textAlign="center" color="inherit">
+            <SpaceBetween size="m">
+              <b>No versions</b>
+              <Box variant="p" color="inherit">
+                No configuration versions found.
+              </Box>
+            </SpaceBetween>
+          </Box>
+        }
+        header={
+          <SpaceBetween size="s">
+            <Header variant="h2">Configuration Versions ({filteredItemsCount})</Header>
+            {/* Action buttons row */}
             <SpaceBetween direction="horizontal" size="xs">
               <Button onClick={onCompareVersions} disabled={selectedVersionsForCompare.length < 2}>
                 Compare Selected ({selectedVersionsForCompare.length})
@@ -169,15 +169,6 @@ const ConfigurationVersionsTable = ({
                 }
               >
                 Activate
-              </Button>
-              <Button
-                onClick={() => {
-                  const selectedVersion = versions.find((v) => v.versionName === selectedVersionsForCompare[0]);
-                  onEditVersion?.(selectedVersion);
-                }}
-                disabled={selectedVersionsForCompare.length !== 1}
-              >
-                Edit Version
               </Button>
               <Button variant="normal" onClick={() => onImportAsNewVersion?.()} iconName="upload">
                 Import
@@ -196,14 +187,12 @@ const ConfigurationVersionsTable = ({
                 Delete Selected ({selectedVersionsForCompare.length})
               </Button>
             </SpaceBetween>
-          }
-        >
-          Configuration Versions ({filteredItemsCount})
-        </Header>
-      }
-      filter={<TextFilter {...filterProps} placeholder="Search versions..." />}
-      pagination={<Pagination {...paginationProps} />}
-    />
+          </SpaceBetween>
+        }
+        filter={<TextFilter {...filterProps} placeholder="Search versions..." />}
+        pagination={<Pagination {...paginationProps} />}
+      />
+    </SpaceBetween>
   );
 };
 
@@ -226,7 +215,6 @@ ConfigurationVersionsTable.propTypes = {
   onActivateVersion: PropTypes.func,
   onDeleteVersions: PropTypes.func,
   onImportAsNewVersion: PropTypes.func,
-  onEditVersion: PropTypes.func,
 };
 
 export default ConfigurationVersionsTable;
