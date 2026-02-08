@@ -6,9 +6,8 @@ import { generateClient } from 'aws-amplify/api';
 import { ConsoleLogger } from 'aws-amplify/utils';
 import getConfigVersionsQuery from '../graphql/queries/getConfigVersions';
 import getConfigVersionQuery from '../graphql/queries/getConfigVersion';
-import updateConfigurationMutation from '../graphql/queries/updateConfiguration';
+import useConfiguration from './use-configuration';
 import setActiveVersionMutation from '../graphql/queries/setActiveVersion';
-import saveAsNewVersionMutation from '../graphql/queries/saveAsNewVersion';
 import deleteConfigVersionMutation from '../graphql/queries/deleteConfigVersion';
 
 const client = generateClient();
@@ -18,6 +17,9 @@ const useConfigurationVersions = () => {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Get updateConfiguration from useConfiguration hook
+  const { updateConfiguration } = useConfiguration();
 
   const fetchVersions = async () => {
     setLoading(true);
@@ -36,7 +38,12 @@ const useConfigurationVersions = () => {
         throw new Error(response.error?.message || 'Failed to fetch versions');
       }
 
-      setVersions(response.versions || []);
+      const versions = response.versions || [];
+      logger.info(
+        'Fetched versions:',
+        versions.map((v) => ({ name: v.versionName, description: v.description, created: v.created, isActive: v.isActive })),
+      );
+      setVersions(versions);
     } catch (err) {
       logger.error('Error fetching configuration versions:', err);
       console.error('Full error object:', err);
@@ -66,33 +73,11 @@ const useConfigurationVersions = () => {
 
       return {
         schema: response.Schema,
-        configuration: response.Configuration,
+        default: response.Default,
+        custom: response.Custom,
       };
     } catch (err) {
       logger.error('Error fetching configuration version:', err);
-      throw err;
-    }
-  };
-
-  const updateVersion = async (versionName, configuration, description) => {
-    try {
-      const result = await client.graphql({
-        query: updateConfigurationMutation,
-        variables: {
-          versionName,
-          customConfig: JSON.stringify(configuration),
-          description,
-        },
-      });
-      const response = result.data.updateConfiguration;
-
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to update configuration');
-      }
-
-      return response;
-    } catch (err) {
-      logger.error('Error updating configuration version:', err);
       throw err;
     }
   };
@@ -121,26 +106,25 @@ const useConfigurationVersions = () => {
 
   const saveAsNewVersion = async (configuration, versionName, description) => {
     try {
-      const result = await client.graphql({
-        query: saveAsNewVersionMutation,
-        variables: {
-          versionName,
-          customConfig: JSON.stringify(configuration),
-          description,
-        },
-      });
-      const response = result.data.updateConfiguration;
+      // Add saveAsVersion flag to the configuration
+      const configWithFlag = {
+        ...configuration,
+        saveAsVersion: true,
+      };
 
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to save as new version');
+      // Use the same format as regular updateConfiguration calls with saveAsVersion flag
+      const success = await updateConfiguration(versionName, configWithFlag, description);
+
+      if (!success) {
+        throw new Error('Failed to save as new version');
       }
 
       // Refresh versions list after saving new version
       await fetchVersions();
 
-      return response;
+      return { success: true };
     } catch (err) {
-      logger.error('Error saving as new version:', err);
+      logger.error('Error saving as new version for', versionName, ':', err);
       throw err;
     }
   };
@@ -183,7 +167,6 @@ const useConfigurationVersions = () => {
     error,
     fetchVersions,
     fetchVersion,
-    updateVersion,
     setActiveVersion,
     saveAsNewVersion,
     deleteVersion,

@@ -41,15 +41,9 @@ def handler(event, context):
     
     # Load configuration - use document's version if specified, otherwise use active version
     config_version = getattr(document, 'config_version', None)
-    config = get_config(as_model=True, version=config_version)
-    
-    if config_version:
-        logger.info(f"Using configuration version {config_version} for document {document.id}")
-    else:
-        logger.info(f"Using active configuration for document {document.id}")
-    
+    config = get_config(as_model=True, version = config_version)
     # Use default=str to handle Decimal and other non-serializable types
-    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}")
+    logger.info(f"Config: {json.dumps(config.model_dump(), default=str)}, version name: {config_version}")
     
     # Log loaded document for troubleshooting
     logger.info(f"Loaded document - ID: {document.id}, input_key: {document.input_key}")

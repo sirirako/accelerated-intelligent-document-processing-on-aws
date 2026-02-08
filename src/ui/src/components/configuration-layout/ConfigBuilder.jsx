@@ -344,6 +344,8 @@ const ConfigBuilder = ({
   ruleSchema = null,
   onRuleSchemaChange = null,
   onRuleSchemaValidate = null,
+  versionDescription = '',
+  onDescriptionChange = null,
 }) => {
   // Track expanded state for all list items across the form - default to collapsed
   const [expandedItems, setExpandedItems] = useState({});
@@ -1461,7 +1463,23 @@ const ConfigBuilder = ({
             label: 'Configuration',
             content: (
               <Box style={{ height: 'calc(70vh - 60px)', overflow: 'auto' }} padding="s">
-                <SpaceBetween size="l">{getSortedProperties().map(renderTopLevelProperty)}</SpaceBetween>
+                <SpaceBetween size="l">
+                  {/* Version Description Field */}
+                  <FormField
+                    label="Version Description"
+                    description="Optional description for this configuration version (max 200 characters)"
+                    errorText={versionDescription && versionDescription.length > 200 ? 'Description cannot exceed 200 characters' : ''}
+                  >
+                    <Input
+                      value={versionDescription}
+                      onChange={({ detail }) => onDescriptionChange?.(detail.value)}
+                      placeholder="Enter a description for this configuration version..."
+                      invalid={versionDescription && versionDescription.length > 200}
+                    />
+                  </FormField>
+
+                  {getSortedProperties().map(renderTopLevelProperty)}
+                </SpaceBetween>
               </Box>
             ),
           },
@@ -1583,6 +1601,8 @@ ConfigBuilder.propTypes = {
   ruleSchema: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
   onRuleSchemaChange: PropTypes.func,
   onRuleSchemaValidate: PropTypes.func,
+  versionDescription: PropTypes.string,
+  onDescriptionChange: PropTypes.func,
 };
 
 export default ConfigBuilder;

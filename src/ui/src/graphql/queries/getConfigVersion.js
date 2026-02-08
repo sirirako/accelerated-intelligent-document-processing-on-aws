@@ -8,7 +8,7 @@ export default gql`
       success
       Schema
       Default
-      Configuration
+      Custom
       error {
         type
         message
