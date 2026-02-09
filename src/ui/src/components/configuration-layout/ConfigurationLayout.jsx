@@ -270,6 +270,9 @@ const ConfigurationLayout = () => {
   const [viewMode, setViewMode] = useState('form'); // Form view as default
   const [showResetModal, setShowResetModal] = useState(false);
   const [showSaveAsDefaultModal, setShowSaveAsDefaultModal] = useState(false);
+  const [showSaveAsVersionModal, setShowSaveAsVersionModal] = useState(false);
+  const [saveAsVersionName, setSaveAsVersionName] = useState('');
+  const [saveAsVersionDescription, setSaveAsVersionDescription] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFormat, setExportFormat] = useState('json');
   const [exportFileName, setExportFileName] = useState(currentVersionName || 'configuration');
@@ -1131,6 +1134,151 @@ const ConfigurationLayout = () => {
     }
   };
 
+  const handleSaveAsVersion = async () => {
+    // Validate content before saving
+    const currentErrors = validateCurrentContent();
+
+    if (currentErrors.length > 0) {
+      setValidationErrors(currentErrors);
+      setSaveError('Cannot save: Configuration contains validation errors');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveSuccess(false);
+    setSaveError(null);
+
+    try {
+      // Copy the compareWithDefault function from handleSave
+      const compareWithDefault = (current, defaultObj, path = '') => {
+        const newResult = {};
+
+        if (current === null || current === undefined || defaultObj === null || defaultObj === undefined) {
+          if (current !== null && current !== undefined && (defaultObj === null || defaultObj === undefined)) {
+            return { [path]: current };
+          }
+          return {};
+        }
+
+        if (typeof current !== typeof defaultObj) {
+          return { [path]: current };
+        }
+
+        if (Array.isArray(current)) {
+          if (!Array.isArray(defaultObj)) {
+            return { [path]: current };
+          }
+          if (JSON.stringify(current) !== JSON.stringify(defaultObj)) {
+            return { [path]: current };
+          }
+          return newResult;
+        }
+
+        if (typeof current === 'object') {
+          let allResults = {};
+          const allKeys = new Set([...Object.keys(current), ...Object.keys(defaultObj)]);
+
+          allKeys.forEach((key) => {
+            const newPath = path ? `${path}.${key}` : key;
+            if (!(key in defaultObj) && key in current) {
+              allResults = { ...allResults, [newPath]: current[key] };
+            } else if (key in defaultObj && key in current) {
+              const nestedResults = compareWithDefault(current[key], defaultObj[key], newPath);
+              allResults = { ...allResults, ...nestedResults };
+            }
+          });
+
+          return allResults;
+        }
+
+        if (isNumericValue(current) && isNumericValue(defaultObj)) {
+          if (!areNumericValuesEqual(current, defaultObj)) {
+            return { [path]: current };
+          }
+          return newResult;
+        }
+
+        if (current !== defaultObj) {
+          return { [path]: current };
+        }
+
+        return newResult;
+      };
+
+      const differences = compareWithDefault(formValues, mergedConfig);
+
+      const buildObjectFromPaths = (paths) => {
+        const newResult = {};
+        Object.entries(paths).forEach(([path, value]) => {
+          const pathParts = path.split('.');
+          if (pathParts.length === 1) {
+            Object.assign(newResult, { [path]: value });
+          } else {
+            const objectToMerge = pathParts.reduceRight((acc, part, index) => {
+              if (index === pathParts.length - 1) {
+                return { [part]: value };
+              }
+              return { [part]: acc };
+            }, {});
+
+            const deepMergeNested = (target, source) => {
+              const output = { ...target };
+              Object.keys(source).forEach((key) => {
+                if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
+                  if (typeof target[key] === 'object' && target[key] !== null && !Array.isArray(target[key])) {
+                    output[key] = deepMergeNested(target[key], source[key]);
+                  } else {
+                    output[key] = { ...source[key] };
+                  }
+                } else {
+                  output[key] = source[key];
+                }
+              });
+              return output;
+            };
+
+            Object.assign(newResult, deepMergeNested(newResult, objectToMerge));
+          }
+        });
+        return newResult;
+      };
+
+      const builtObject = buildObjectFromPaths(differences);
+
+      if (formValues.classes && Array.isArray(formValues.classes)) {
+        const classesChanged = JSON.stringify(formValues.classes) !== JSON.stringify(mergedConfig?.classes);
+        if (classesChanged) {
+          builtObject.classes = formValues.classes;
+        }
+      }
+
+      if (formValues.rule_classes && Array.isArray(formValues.rule_classes)) {
+        builtObject.rule_classes = formValues.rule_classes;
+      }
+
+      const success = await updateConfiguration(saveAsVersionName, builtObject, saveAsVersionDescription, true);
+
+      if (success) {
+        setSaveSuccess(true);
+        setShowSaveAsVersionModal(false);
+        setSaveAsVersionName('');
+        setSaveAsVersionDescription('');
+
+        // Select the new version and refresh
+        setSelectedVersion(saveAsVersionName);
+        await fetchVersions();
+        await fetchConfiguration(saveAsVersionName);
+      } else {
+        setSaveError('Failed to save as version. Please try again.');
+      }
+    } catch (err) {
+      console.error('Save as version error:', err);
+      setSaveError(`Error: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleFormChange = (newValues) => {
     setFormValues(newValues);
     try {
@@ -1578,6 +1726,58 @@ const ConfigurationLayout = () => {
       </Modal>
 
       <Modal
+        visible={showSaveAsVersionModal}
+        onDismiss={() => setShowSaveAsVersionModal(false)}
+        header="Save as New Version"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setShowSaveAsVersionModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleSaveAsVersion} loading={isSaving} disabled={!saveAsVersionName.trim()}>
+                Save as Version
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="m">
+          {saveError && (
+            <Alert type="error" header="Error">
+              {saveError}
+            </Alert>
+          )}
+          <FormField
+            label="Version Name"
+            description="Enter a unique name for this configuration version"
+            errorText={
+              saveAsVersionName && !/^[a-zA-Z0-9_-]+$/.test(saveAsVersionName)
+                ? 'Version name can only contain letters, numbers, hyphens, and underscores'
+                : ''
+            }
+          >
+            <Input
+              value={saveAsVersionName}
+              onChange={({ detail }) => setSaveAsVersionName(detail.value)}
+              placeholder="e.g., my-custom-config"
+            />
+          </FormField>
+          <FormField
+            label="Version Description (Optional)"
+            description="Optional description for this version (max 200 characters)"
+            errorText={saveAsVersionDescription && saveAsVersionDescription.length > 200 ? 'Description cannot exceed 200 characters' : ''}
+          >
+            <Input
+              value={saveAsVersionDescription}
+              onChange={({ detail }) => setSaveAsVersionDescription(detail.value)}
+              placeholder="Enter a description for this version..."
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      <Modal
         visible={showExportModal}
         onDismiss={() => setShowExportModal(false)}
         header="Export Configuration"
@@ -1796,6 +1996,13 @@ const ConfigurationLayout = () => {
                 </Button>
                 <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)}>
                   Save as default
+                </Button>
+                <Button
+                  variant="normal"
+                  onClick={() => setShowSaveAsVersionModal(true)}
+                  disabled={!hasUnsavedChanges || validationErrors.length > 0}
+                >
+                  Save as Version
                 </Button>
                 <Button
                   variant="primary"
