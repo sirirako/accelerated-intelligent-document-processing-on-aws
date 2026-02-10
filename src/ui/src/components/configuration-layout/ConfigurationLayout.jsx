@@ -2038,7 +2038,9 @@ const ConfigurationLayout = () => {
               </SpaceBetween>
             }
           >
-            Configuration: {selectedVersion || (activeVersionName && currentVersion?.isActive ? `${activeVersionName} (Active)` : activeVersionName)}{currentVersion?.description ? ` - ${currentVersion.description}` : ''}
+            Configuration:{' '}
+            {selectedVersion || (activeVersionName && currentVersion?.isActive ? `${activeVersionName} (Active)` : activeVersionName)}
+            {currentVersion?.description ? ` - ${currentVersion.description}` : ''}
           </Header>
         }
       >

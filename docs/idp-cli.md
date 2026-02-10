@@ -1751,7 +1751,8 @@ idp-cli config-upload [OPTIONS]
 - `--config-file`, `-f` (required): Path to configuration file (YAML or JSON)
 - `--validate/--no-validate`: Validate config before uploading (default: validate)
 - `--pattern`: Pattern for validation (auto-detected if not specified)
-- `--config-version`: Configuration version to update (e.g., v1, v2). Must exist. If not specified, updates active version
+- `--config-version`: Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created
+- `--version-description`: Description for the configuration version (used when creating new versions)
 - `--region`: AWS region (optional)
 
 **Examples:**
@@ -1760,8 +1761,11 @@ idp-cli config-upload [OPTIONS]
 # Upload config to active version
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
 
-# Upload to specific existing version
-idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version v2
+# Update existing version
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version Production
+
+# Create new version with description
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version NewVersion --version-description "Test configuration for new feature"
 
 # Skip validation (use with caution)
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
@@ -1773,10 +1777,18 @@ idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --patter
 **What Happens:**
 1. Loads and parses your YAML or JSON config file
 2. Validates against system defaults (unless `--no-validate`)
-3. Uploads to the stack's ConfigurationTable in DynamoDB
-4. Configuration is immediately active for new document processing
+3. If version exists: Updates the existing version by merging with current deltas
+4. If version doesn't exist: Creates new version with the uploaded configuration
+5. Uploads to the stack's ConfigurationTable in DynamoDB
+6. Configuration is immediately available for document processing
 
-This uses the same mechanism as the Web UI "Save Configuration" button.
+**Configuration Versioning:**
+- **No version specified**: Updates the currently active version
+- **Existing version**: Merges uploaded config with existing version customizations
+- **New version**: Creates new version using uploaded config as base (merged with system defaults)
+- **Version descriptions**: Can be added to new versions for better organization
+
+This uses the same mechanism as the Web UI configuration management system.
 
 ---
 

@@ -3297,7 +3297,11 @@ def config_validate(
 )
 @click.option(
     "--config-version",
-    help="Configuration version to update (e.g., v1, v2). Must exist. If not specified, updates active version.",
+    help="Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created.",
+)
+@click.option(
+    "--version-description",
+    help="Description for the configuration version (used when creating new versions)",
 )
 @click.option("--region", help="AWS region (optional)")
 def config_upload(
@@ -3306,6 +3310,7 @@ def config_upload(
     validate: bool,
     pattern: Optional[str],
     config_version: Optional[str],
+    version_description: Optional[str],
     region: Optional[str],
 ):
     """
@@ -3315,10 +3320,19 @@ def config_upload(
     stack's ConfigurationTable in DynamoDB. The config is merged with
     system defaults just like configurations saved through the Web UI.
 
+    Supports configuration versioning - can update existing versions or
+    create new versions with optional descriptions.
+
     Examples:
 
-      # Upload config with validation
+      # Upload config with validation (updates active version)
       idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
+
+      # Update existing version
+      idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version Production
+
+      # Create new version with description
+      idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version NewVersion --version-description "Test configuration for new feature"
 
       # Skip validation (use with caution)
       idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
@@ -3424,22 +3438,29 @@ def config_upload(
 
             manager = ConfigurationManager()
 
-            # If config_version specified, validate it exists
+            # If config_version specified, check if it exists
+            version_exists = False
             if config_version:
-                existing_config = manager.get_configuration(
-                    "Config", version=config_version
-                )
-                if not existing_config:
-                    console.print(
-                        f"[red]✗ Configuration version '{config_version}' does not exist[/red]"
+                try:
+                    existing_config = manager.get_configuration(
+                        "Config", version=config_version
                     )
+                    version_exists = existing_config is not None
+                except Exception:
+                    version_exists = False
+
+                if version_exists:
                     console.print(
-                        "Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
+                        f"[blue]Updating existing configuration version: {config_version}[/blue]"
                     )
-                    sys.exit(1)
-                console.print(
-                    f"[blue]Updating configuration version: {config_version}[/blue]"
-                )
+                else:
+                    console.print(
+                        f"[blue]Creating new configuration version: {config_version}[/blue]"
+                    )
+                    if version_description:
+                        console.print(f"[dim]Description: {version_description}[/dim]")
+                    # Add saveAsVersion flag for new versions
+                    user_config["saveAsVersion"] = True
             else:
                 console.print("[blue]Updating active configuration version[/blue]")
 
@@ -3447,7 +3468,7 @@ def config_upload(
             config_json = json.dumps(user_config)
 
             success = manager.handle_update_custom_configuration(
-                config_json, version_id=config_version
+                config_json, version=config_version, description=version_description
             )
 
             if success:

@@ -526,6 +526,56 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                 configurations["DefaultPricing"] = resolved_pricing
                 logger.info("Loaded DefaultPricing configuration")
 
+            # Process ALL other properties as configuration versions dynamically
+            excluded_properties = {
+                "ServiceToken", 
+                "Schema", 
+                "Default",
+                "Custom", 
+                "DefaultPricing", 
+                "ConfigLibraryHash",
+                "CustomClassificationModelARN",
+                "CustomExtractionModelARN"
+            }
+            
+            for prop_name, prop_value in properties.items():
+                if prop_name not in excluded_properties:
+                    try:
+                        # Skip if value is empty or not a string (likely not a config)
+                        if not prop_value or not isinstance(prop_value, str):
+                            logger.info(f"Skipping property {prop_name}: not a valid config reference")
+                            continue
+                            
+                        # Use property name as-is for version name (preserve case)
+                        version_name = prop_name
+                        logger.info(f"Processing configuration version: {prop_name} -> version '{version_name}'")
+                        
+                        resolved_config = resolve_content(prop_value)
+                        
+                        # Check if this looks like a schema (has "type": "object" at root)
+                        if isinstance(resolved_config, dict) and resolved_config.get("type") == "object":
+                            logger.warning(f"Skipping {prop_name}: appears to be a schema, not a config")
+                            continue
+                            
+                        # Check if this looks like pricing config
+                        if isinstance(resolved_config, dict) and "pricing" in resolved_config:
+                            logger.warning(f"Skipping {prop_name}: appears to be pricing config, not IDP config")
+                            continue
+                        
+                        if isinstance(resolved_config, dict):
+                            # Extract description before processing config
+                            description = resolved_config.pop("description", "")
+                            resolved_config.pop("pricing", None)
+                            logger.info(f"Merging {version_name} config with system defaults...")
+                            resolved_config = merge_custom_with_defaults(resolved_config)
+                            configurations[version_name] = {"config": resolved_config, "description": description}
+                        else:
+                            logger.warning(f"Skipping {prop_name}: resolved content is not a dictionary")
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to process property {prop_name} as config: {e}")
+                        continue
+
             # Apply region-specific model swapping to all configurations at once
             if region_type in ["us", "eu"] and configurations:
                 configurations = swap_model_ids(configurations, region_type)
@@ -557,7 +607,10 @@ def handler(event: Dict[str, Any], context: Any) -> None:
                         if existing_config:
                             manager.save_configuration("Config", config_data, version=version)
                         else:
-                            description = "System default" if version == "default" else ""
+                            # Get description from config_info if available, otherwise use default
+                            description = config_info.get("description", "")
+                            if not description:
+                                description = "System default" if version == "default" else ""
                             manager.save_configuration("Config", config_data, version=version, description=description)
                         logger.info(f"Updated config version: {version} configuration")
                 else:
