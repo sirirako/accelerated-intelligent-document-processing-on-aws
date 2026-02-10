@@ -27,8 +27,21 @@ class ConfigOperation:
         output: Optional[str] = None,
         include_prompts: bool = False,
         include_comments: bool = True,
+        **kwargs,
     ) -> ConfigCreateResult:
-        """Generate an IDP configuration template."""
+        """Generate an IDP configuration template.
+
+        Args:
+            features: Feature set to include
+            pattern: Pattern to use (pattern-1, pattern-2, pattern-3)
+            output: Optional output file path
+            include_prompts: Include prompt templates
+            include_comments: Include explanatory comments
+            **kwargs: Additional parameters
+
+        Returns:
+            ConfigCreateResult with generated configuration
+        """
         from idp_common.config.merge_utils import generate_config_template
 
         if "," in features:
@@ -54,8 +67,19 @@ class ConfigOperation:
         config_file: str,
         pattern: str = "pattern-2",
         show_merged: bool = False,
+        **kwargs,
     ) -> ConfigValidationResult:
-        """Validate a configuration file against system defaults."""
+        """Validate a configuration file against system defaults.
+
+        Args:
+            config_file: Path to configuration file
+            pattern: Pattern to validate against
+            show_merged: Include merged configuration in result
+            **kwargs: Additional parameters
+
+        Returns:
+            ConfigValidationResult with validation status
+        """
         from pathlib import Path
 
         import yaml
@@ -87,8 +111,20 @@ class ConfigOperation:
         output: Optional[str] = None,
         format: str = "full",
         pattern: Optional[str] = None,
+        **kwargs,
     ) -> ConfigDownloadResult:
-        """Download configuration from a deployed IDP stack."""
+        """Download configuration from a deployed IDP stack.
+
+        Args:
+            stack_name: Optional stack name override
+            output: Optional output file path
+            format: Format type ('full' or 'minimal')
+            pattern: Pattern override
+            **kwargs: Additional parameters
+
+        Returns:
+            ConfigDownloadResult with downloaded configuration
+        """
         import boto3
         import yaml
 
@@ -158,8 +194,20 @@ class ConfigOperation:
         stack_name: Optional[str] = None,
         validate: bool = True,
         pattern: Optional[str] = None,
+        **kwargs,
     ) -> ConfigUploadResult:
-        """Upload a configuration file to a deployed IDP stack."""
+        """Upload a configuration file to a deployed IDP stack.
+
+        Args:
+            config_file: Path to configuration file
+            stack_name: Optional stack name override
+            validate: Validate before uploading
+            pattern: Pattern for validation
+            **kwargs: Additional parameters
+
+        Returns:
+            ConfigUploadResult with upload status
+        """
         import json
         import os
 

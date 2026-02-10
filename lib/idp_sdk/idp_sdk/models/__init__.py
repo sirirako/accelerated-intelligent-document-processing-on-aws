@@ -3,11 +3,19 @@
 
 """IDP SDK Models - Pydantic models for typed responses."""
 
+from .assessment import (
+    AssessmentConfidenceResult,
+    AssessmentFieldConfidence,
+    AssessmentFieldGeometry,
+    AssessmentGeometryResult,
+    AssessmentMetrics,
+)
 from .base import DocumentState, Pattern, RerunStep, StackState
 from .batch import (
     BatchDeletionResult,
     BatchDownloadResult,
     BatchInfo,
+    BatchListResult,
     BatchRerunResult,
     BatchResult,
     BatchStatus,
@@ -21,11 +29,24 @@ from .config import (
 from .document import (
     DocumentDeletionResult,
     DocumentDownloadResult,
+    DocumentInfo,
+    DocumentListResult,
+    DocumentMetadata,
     DocumentRerunResult,
     DocumentStatus,
     DocumentUploadResult,
 )
+from .evaluation import (
+    BaselineInfo,
+    BaselineResult,
+    DeleteResult,
+    EvaluationBaselineListResult,
+    EvaluationMetrics,
+    EvaluationReport,
+    FieldComparison,
+)
 from .manifest import ManifestDocument, ManifestResult, ManifestValidationResult
+from .search import SearchCitation, SearchDocumentReference, SearchResult
 from .stack import StackDeletionResult, StackDeploymentResult, StackResources
 from .testing import LoadTestResult, StopWorkflowsResult
 
@@ -43,6 +64,7 @@ __all__ = [
     "BatchResult",
     "BatchStatus",
     "BatchInfo",
+    "BatchListResult",
     "BatchRerunResult",
     "BatchDownloadResult",
     "BatchDeletionResult",
@@ -52,6 +74,9 @@ __all__ = [
     "DocumentDownloadResult",
     "DocumentRerunResult",
     "DocumentDeletionResult",
+    "DocumentMetadata",
+    "DocumentInfo",
+    "DocumentListResult",
     # Config models
     "ConfigCreateResult",
     "ConfigValidationResult",
@@ -64,4 +89,22 @@ __all__ = [
     # Testing models
     "StopWorkflowsResult",
     "LoadTestResult",
+    # Search models
+    "SearchResult",
+    "SearchCitation",
+    "SearchDocumentReference",
+    # Evaluation models
+    "BaselineResult",
+    "BaselineInfo",
+    "EvaluationBaselineListResult",
+    "EvaluationReport",
+    "FieldComparison",
+    "EvaluationMetrics",
+    "DeleteResult",
+    # Assessment models
+    "AssessmentConfidenceResult",
+    "AssessmentFieldConfidence",
+    "AssessmentGeometryResult",
+    "AssessmentFieldGeometry",
+    "AssessmentMetrics",
 ]

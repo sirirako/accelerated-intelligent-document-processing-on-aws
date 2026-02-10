@@ -97,3 +97,28 @@ class BatchDownloadResult(BaseModel):
     files_downloaded: int = Field(description="Number of files downloaded")
     documents_downloaded: int = Field(description="Number of documents with downloads")
     output_dir: str = Field(description="Local output directory path")
+
+
+class BatchListResult(BaseModel):
+    """Result of a batch list operation with pagination.
+
+    This class is backward compatible - can be used as a list or access pagination.
+    """
+
+    batches: List[BatchInfo] = Field(description="List of batch information")
+    count: int = Field(description="Number of batches in this response")
+    next_token: Optional[str] = Field(
+        default=None, description="Token for retrieving next page of results"
+    )
+
+    def __iter__(self):
+        """Allow iteration over batches directly for backward compatibility."""
+        return iter(self.batches)
+
+    def __len__(self):
+        """Allow len() for backward compatibility."""
+        return len(self.batches)
+
+    def __getitem__(self, index):
+        """Allow indexing for backward compatibility."""
+        return self.batches[index]

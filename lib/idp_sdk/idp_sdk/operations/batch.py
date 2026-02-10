@@ -15,6 +15,7 @@ from idp_sdk.models import (
     BatchDeletionResult,
     BatchDownloadResult,
     BatchInfo,
+    BatchListResult,
     BatchRerunResult,
     BatchResult,
     BatchStatus,
@@ -46,8 +47,29 @@ class BatchOperation:
         number_of_files: Optional[int] = None,
         config_path: Optional[str] = None,
         context: Optional[str] = None,
+        **kwargs,
     ) -> BatchResult:
-        """Run inference on a batch of documents."""
+        """Run inference on a batch of documents.
+
+        Args:
+            source: Source path (auto-detects type: directory, manifest, or S3 URI)
+            manifest: Path to manifest CSV file
+            directory: Local directory containing documents
+            s3_uri: S3 URI (s3://bucket/prefix/)
+            test_set: Test set identifier
+            stack_name: Optional stack name override
+            batch_id: Optional custom batch ID
+            batch_prefix: Prefix for batch output
+            file_pattern: File pattern for directory/S3 scanning
+            recursive: Recursively scan directories
+            number_of_files: Limit number of files to process
+            config_path: Path to custom configuration file
+            context: Context for test set processing
+            **kwargs: Additional parameters
+
+        Returns:
+            BatchResult with batch processing information
+        """
         from idp_sdk.core.batch_processor import BatchProcessor
 
         name = self._client._require_stack(stack_name)
@@ -201,8 +223,20 @@ class BatchOperation:
         document_ids: Optional[List[str]] = None,
         batch_id: Optional[str] = None,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> BatchRerunResult:
-        """Rerun processing for existing documents from a specific step."""
+        """Rerun processing for existing documents from a specific step.
+
+        Args:
+            step: Pipeline step to rerun from
+            document_ids: List of document IDs to rerun
+            batch_id: Batch ID (will rerun all documents in batch)
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            BatchRerunResult with rerun statistics
+        """
         from idp_sdk.core.rerun_processor import RerunProcessor
 
         name = self._client._require_stack(stack_name)
@@ -234,12 +268,14 @@ class BatchOperation:
         self,
         batch_id: str,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> BatchStatus:
         """Get status of a batch.
 
         Args:
             batch_id: Batch identifier
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             BatchStatus with batch processing information
@@ -295,16 +331,28 @@ class BatchOperation:
     def list(
         self,
         limit: int = 10,
+        next_token: Optional[str] = None,
         stack_name: Optional[str] = None,
-    ) -> List[BatchInfo]:
-        """List recent batch processing jobs."""
+        **kwargs,
+    ) -> BatchListResult:
+        """List recent batch processing jobs.
+
+        Args:
+            limit: Maximum number of batches to return
+            next_token: Pagination token from previous request
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            BatchListResult with batches and optional next_token
+        """
         from idp_sdk.core.batch_processor import BatchProcessor
 
         name = self._client._require_stack(stack_name)
         processor = BatchProcessor(stack_name=name, region=self._client._region)
-        batches = processor.list_batches(limit=limit)
+        result = processor.list_batches(limit=limit, next_token=next_token)
 
-        return [
+        batches = [
             BatchInfo(
                 batch_id=b["batch_id"],
                 document_ids=b["document_ids"],
@@ -312,8 +360,14 @@ class BatchOperation:
                 failed=b.get("failed", 0),
                 timestamp=b.get("timestamp", ""),
             )
-            for b in batches
+            for b in result["batches"]
         ]
+
+        return BatchListResult(
+            batches=batches,
+            count=result["count"],
+            next_token=result.get("next_token"),
+        )
 
     def download_results(
         self,
@@ -321,8 +375,20 @@ class BatchOperation:
         output_dir: str,
         file_types: Optional[List[str]] = None,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> BatchDownloadResult:
-        """Download processing results from OutputBucket."""
+        """Download processing results from OutputBucket.
+
+        Args:
+            batch_id: Batch identifier
+            output_dir: Local directory to save results
+            file_types: List of file types to download
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            BatchDownloadResult with download statistics
+        """
         from idp_sdk.core.batch_processor import BatchProcessor
 
         name = self._client._require_stack(stack_name)
@@ -347,6 +413,7 @@ class BatchOperation:
         batch_id: str,
         output_dir: str,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> BatchDownloadResult:
         """Download original source files from InputBucket for all documents in a batch.
 
@@ -354,6 +421,7 @@ class BatchOperation:
             batch_id: Batch identifier
             output_dir: Local directory to save source files
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             BatchDownloadResult with download statistics
@@ -405,6 +473,7 @@ class BatchOperation:
         stack_name: Optional[str] = None,
         dry_run: bool = False,
         continue_on_error: bool = True,
+        **kwargs,
     ) -> BatchDeletionResult:
         """Permanently delete all documents in a batch and their associated data.
 
@@ -414,6 +483,7 @@ class BatchOperation:
             stack_name: Optional stack name override
             dry_run: If True, only simulate deletion without actually deleting
             continue_on_error: If True, continue deleting other documents if one fails
+            **kwargs: Additional parameters
 
         Returns:
             BatchDeletionResult with deletion statistics
@@ -490,8 +560,19 @@ class BatchOperation:
         stack_name: Optional[str] = None,
         skip_purge: bool = False,
         skip_stop: bool = False,
+        **kwargs,
     ) -> StopWorkflowsResult:
-        """Stop all running workflows for a stack."""
+        """Stop all running workflows for a stack.
+
+        Args:
+            stack_name: Optional stack name override
+            skip_purge: Skip purging the queue
+            skip_stop: Skip stopping executions
+            **kwargs: Additional parameters
+
+        Returns:
+            StopWorkflowsResult with stop statistics
+        """
         from idp_sdk.core.stop_workflows import WorkflowStopper
 
         name = self._client._require_stack(stack_name)

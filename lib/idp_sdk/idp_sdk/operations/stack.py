@@ -36,6 +36,7 @@ class StackOperation:
         wait: bool = True,
         no_rollback: bool = False,
         role_arn: Optional[str] = None,
+        **kwargs,
     ) -> StackDeploymentResult:
         """
         Deploy or update an IDP CloudFormation stack.
@@ -55,6 +56,7 @@ class StackOperation:
             wait: Wait for operation to complete (default: True)
             no_rollback: Disable rollback on failure
             role_arn: CloudFormation service role ARN
+            **kwargs: Additional parameters
 
         Returns:
             StackDeploymentResult with status and outputs
@@ -157,6 +159,7 @@ class StackOperation:
         empty_buckets: bool = False,
         force_delete_all: bool = False,
         wait: bool = True,
+        **kwargs,
     ) -> StackDeletionResult:
         """
         Delete an IDP CloudFormation stack.
@@ -166,6 +169,7 @@ class StackOperation:
             empty_buckets: Empty S3 buckets before deletion
             force_delete_all: Force delete ALL remaining resources
             wait: Wait for deletion to complete
+            **kwargs: Additional parameters
 
         Returns:
             StackDeletionResult with status
@@ -199,12 +203,15 @@ class StackOperation:
         except Exception as e:
             raise IDPStackError(f"Deletion failed: {e}") from e
 
-    def get_resources(self, stack_name: Optional[str] = None) -> StackResources:
+    def get_resources(
+        self, stack_name: Optional[str] = None, **kwargs
+    ) -> StackResources:
         """
         Get stack resources.
 
         Args:
             stack_name: CloudFormation stack name (uses default if not provided)
+            **kwargs: Additional parameters
 
         Returns:
             StackResources with bucket names, ARNs, etc.

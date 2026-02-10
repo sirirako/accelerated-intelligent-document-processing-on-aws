@@ -31,8 +31,24 @@ class ManifestOperation:
         recursive: bool = True,
         test_set: Optional[str] = None,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> ManifestResult:
-        """Generate a manifest file from directory or S3 URI."""
+        """Generate a manifest file from directory or S3 URI.
+
+        Args:
+            directory: Local directory path
+            s3_uri: S3 URI (s3://bucket/prefix/)
+            baseline_dir: Directory containing baseline data
+            output: Output manifest file path
+            file_pattern: File pattern for matching
+            recursive: Recursively scan directories
+            test_set: Test set identifier
+            stack_name: Optional stack name (required for test_set)
+            **kwargs: Additional parameters
+
+        Returns:
+            ManifestResult with generation statistics
+        """
         if not directory and not s3_uri:
             raise IDPConfigurationError("Must specify either directory or s3_uri")
 
@@ -138,8 +154,16 @@ class ManifestOperation:
             test_set_name=test_set if test_set_created else None,
         )
 
-    def validate(self, manifest_path: str) -> ManifestValidationResult:
-        """Validate a manifest file without processing."""
+    def validate(self, manifest_path: str, **kwargs) -> ManifestValidationResult:
+        """Validate a manifest file without processing.
+
+        Args:
+            manifest_path: Path to manifest file
+            **kwargs: Additional parameters
+
+        Returns:
+            ManifestValidationResult with validation status
+        """
         from idp_sdk.core.manifest_parser import parse_manifest, validate_manifest
 
         is_valid, error = validate_manifest(manifest_path)

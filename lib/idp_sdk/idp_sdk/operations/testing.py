@@ -22,8 +22,22 @@ class TestingOperation:
         duration: int = 1,
         schedule_file: Optional[str] = None,
         dest_prefix: str = "load-test",
+        **kwargs,
     ) -> LoadTestResult:
-        """Run load test by copying files to input bucket."""
+        """Run load test by copying files to input bucket.
+
+        Args:
+            source_file: Source file to copy
+            stack_name: Optional stack name override
+            rate: Files per minute for constant load
+            duration: Duration in minutes
+            schedule_file: Optional schedule file for variable load
+            dest_prefix: Destination prefix in S3
+            **kwargs: Additional parameters
+
+        Returns:
+            LoadTestResult with test statistics
+        """
         from idp_sdk.core.load_test import LoadTester
 
         name = self._client._require_stack(stack_name)

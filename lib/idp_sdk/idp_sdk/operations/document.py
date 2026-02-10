@@ -17,6 +17,9 @@ from idp_sdk.exceptions import (
 from idp_sdk.models import (
     DocumentDeletionResult,
     DocumentDownloadResult,
+    DocumentInfo,
+    DocumentListResult,
+    DocumentMetadata,
     DocumentRerunResult,
     DocumentStatus,
     DocumentUploadResult,
@@ -35,6 +38,7 @@ class DocumentOperation:
         file_path: str,
         document_id: Optional[str] = None,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> DocumentUploadResult:
         """Upload and process a single document.
 
@@ -42,6 +46,7 @@ class DocumentOperation:
             file_path: Path to local file to upload
             document_id: Optional custom document ID (defaults to filename without extension)
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             DocumentUploadResult with document_id and status
@@ -77,13 +82,14 @@ class DocumentOperation:
             raise IDPProcessingError(f"Failed to upload document: {e}") from e
 
     def get_status(
-        self, document_id: str, stack_name: Optional[str] = None
+        self, document_id: str, stack_name: Optional[str] = None, **kwargs
     ) -> DocumentStatus:
         """Get single document status.
 
         Args:
             document_id: Document identifier (S3 key)
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             DocumentStatus with processing information
@@ -122,6 +128,7 @@ class DocumentOperation:
         output_dir: str,
         file_types: Optional[List[str]] = None,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> DocumentDownloadResult:
         """Download processing results for a single document.
 
@@ -130,6 +137,7 @@ class DocumentOperation:
             output_dir: Local directory to download results to
             file_types: List of file types to download (pages, sections, summary, evaluation)
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             DocumentDownloadResult with download statistics
@@ -187,6 +195,7 @@ class DocumentOperation:
         document_id: str,
         output_path: str,
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> str:
         """Download original document source file.
 
@@ -194,6 +203,7 @@ class DocumentOperation:
             document_id: Document identifier (S3 key)
             output_path: Local file path to save document
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             Local file path where document was saved
@@ -228,6 +238,7 @@ class DocumentOperation:
         document_id: str,
         step: Union[str, RerunStep],
         stack_name: Optional[str] = None,
+        **kwargs,
     ) -> DocumentRerunResult:
         """Rerun processing for a single document from a specific step.
 
@@ -235,6 +246,7 @@ class DocumentOperation:
             document_id: Document identifier (S3 key)
             step: Pipeline step to rerun from (e.g., 'classification', 'extraction')
             stack_name: Optional stack name override
+            **kwargs: Additional parameters
 
         Returns:
             DocumentRerunResult with rerun status
@@ -261,7 +273,11 @@ class DocumentOperation:
             raise IDPProcessingError(f"Rerun failed: {e}") from e
 
     def delete(
-        self, document_id: str, stack_name: Optional[str] = None, dry_run: bool = False
+        self,
+        document_id: str,
+        stack_name: Optional[str] = None,
+        dry_run: bool = False,
+        **kwargs,
     ) -> DocumentDeletionResult:
         """Delete a single document and all associated data.
 
@@ -269,6 +285,7 @@ class DocumentOperation:
             document_id: Document identifier (S3 key)
             stack_name: Optional stack name override
             dry_run: If True, only simulate deletion without actually deleting
+            **kwargs: Additional parameters
 
         Returns:
             DocumentDeletionResult with deletion details
@@ -320,3 +337,89 @@ class DocumentOperation:
             )
         except Exception as e:
             raise IDPProcessingError(f"Document deletion failed: {e}") from e
+
+    def list(
+        self,
+        limit: int = 100,
+        next_token: Optional[str] = None,
+        stack_name: Optional[str] = None,
+        **kwargs,
+    ) -> DocumentListResult:
+        """List documents with pagination support.
+
+        Args:
+            limit: Maximum number of documents to return (default: 100)
+            next_token: Pagination token from previous request
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            DocumentListResult with documents and optional next_token
+        """
+        from idp_sdk.core.document_processor import DocumentProcessor
+
+        name = self._client._require_stack(stack_name)
+
+        try:
+            processor = DocumentProcessor(stack_name=name, region=self._client._region)
+            result = processor.list_documents(limit=limit, next_token=next_token)
+
+            documents = [
+                DocumentInfo(
+                    document_id=doc["document_id"],
+                    status=doc["status"],
+                    timestamp=doc["timestamp"],
+                    batch_id=doc.get("batch_id"),
+                )
+                for doc in result["documents"]
+            ]
+
+            return DocumentListResult(
+                documents=documents,
+                count=result["count"],
+                next_token=result.get("next_token"),
+            )
+        except Exception as e:
+            raise IDPProcessingError(f"Failed to list documents: {e}") from e
+
+    def get_metadata(
+        self,
+        document_id: str,
+        section_id: int = 1,
+        stack_name: Optional[str] = None,
+        **kwargs,
+    ) -> DocumentMetadata:
+        """Get extracted metadata and fields for a document section.
+
+        Args:
+            document_id: Document identifier (S3 key)
+            section_id: Section number (default: 1)
+            stack_name: Optional stack name override
+            **kwargs: Additional parameters
+
+        Returns:
+            DocumentMetadata with extracted fields and metadata
+        """
+        from idp_sdk.core.document_processor import DocumentProcessor
+
+        name = self._client._require_stack(stack_name)
+
+        try:
+            processor = DocumentProcessor(stack_name=name, region=self._client._region)
+            result = processor.get_metadata(
+                document_id=document_id, section_id=section_id
+            )
+
+            return DocumentMetadata(
+                document_id=result["document_id"],
+                section_id=result["section_id"],
+                document_class=result["document_class"],
+                fields=result["fields"],
+                confidence=result["confidence"],
+                page_count=result["page_count"],
+                metadata=result["metadata"],
+            )
+        except FileNotFoundError as e:
+            raise IDPResourceNotFoundError(str(e)) from e
+        except Exception as e:
+            raise IDPProcessingError(f"Failed to get metadata: {e}") from e

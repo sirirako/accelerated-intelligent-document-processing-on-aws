@@ -66,3 +66,47 @@ class DocumentDeletionResult(BaseModel):
         description="Details of deleted items (input_file, output_files, list_entries, document_record)",
     )
     errors: List[str] = Field(default_factory=list, description="Error messages if any")
+
+
+class DocumentMetadata(BaseModel):
+    """Extracted metadata and fields for a document section."""
+
+    document_id: str = Field(description="Document identifier")
+    section_id: int = Field(description="Section number")
+    document_class: Optional[str] = Field(
+        default=None, description="Classified document type"
+    )
+    fields: Dict[str, Any] = Field(
+        default_factory=dict, description="Extracted fields and values"
+    )
+    confidence: Optional[Dict[str, float]] = Field(
+        default=None, description="Confidence scores per field (if available)"
+    )
+    page_count: Optional[int] = Field(default=None, description="Number of pages")
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Additional metadata"
+    )
+
+
+class DocumentInfo(BaseModel):
+    """Basic document information for listing."""
+
+    document_id: str = Field(description="Document identifier")
+    status: DocumentState = Field(description="Processing status")
+    timestamp: Optional[datetime] = Field(default=None, description="Upload timestamp")
+    num_pages: Optional[int] = Field(default=None, description="Number of pages")
+    document_class: Optional[str] = Field(
+        default=None, description="Classified document type"
+    )
+
+
+class DocumentListResult(BaseModel):
+    """Paginated list of documents."""
+
+    documents: List[DocumentInfo] = Field(description="List of documents")
+    next_token: Optional[str] = Field(
+        default=None, description="Continuation token for next page"
+    )
+    total_count: Optional[int] = Field(
+        default=None, description="Total count if available"
+    )

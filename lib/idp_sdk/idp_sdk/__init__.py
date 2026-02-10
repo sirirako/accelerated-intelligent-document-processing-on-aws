@@ -34,32 +34,57 @@ from .exceptions import (
     IDPValidationError,
 )
 from .models import (
+    # Assessment models
+    AssessmentConfidenceResult,
+    AssessmentFieldConfidence,
+    AssessmentFieldGeometry,
+    AssessmentGeometryResult,
+    AssessmentMetrics,
+    # Batch models
     BatchDeletionResult,
     BatchDownloadResult,
     BatchInfo,
+    BatchListResult,
     BatchRerunResult,
     BatchResult,
     BatchStatus,
+    # Config models
     ConfigCreateResult,
     ConfigDownloadResult,
     ConfigUploadResult,
     ConfigValidationResult,
+    # Document models
     DocumentDeletionResult,
     DocumentDownloadResult,
+    DocumentInfo,
+    DocumentListResult,
+    DocumentMetadata,
     DocumentRerunResult,
     DocumentState,
     DocumentStatus,
     DocumentUploadResult,
+    # Evaluation models
+    EvaluationBaselineListResult,
+    EvaluationMetrics,
+    EvaluationReport,
+    # Manifest models
     LoadTestResult,
     ManifestDocument,
     ManifestResult,
     ManifestValidationResult,
+    # Enums
     Pattern,
     RerunStep,
+    # Search models
+    SearchCitation,
+    SearchDocumentReference,
+    SearchResult,
+    # Stack models
     StackDeletionResult,
     StackDeploymentResult,
     StackResources,
     StackState,
+    # Testing models
     StopWorkflowsResult,
 )
 
@@ -89,6 +114,7 @@ __all__ = [
     "BatchResult",
     "BatchStatus",
     "BatchInfo",
+    "BatchListResult",
     "BatchRerunResult",
     "BatchDownloadResult",
     "BatchDeletionResult",
@@ -98,6 +124,23 @@ __all__ = [
     "DocumentDownloadResult",
     "DocumentRerunResult",
     "DocumentDeletionResult",
+    "DocumentMetadata",
+    "DocumentInfo",
+    "DocumentListResult",
+    # Evaluation models
+    "EvaluationReport",
+    "EvaluationMetrics",
+    "EvaluationBaselineListResult",
+    # Assessment models
+    "AssessmentConfidenceResult",
+    "AssessmentFieldConfidence",
+    "AssessmentGeometryResult",
+    "AssessmentFieldGeometry",
+    "AssessmentMetrics",
+    # Search models
+    "SearchResult",
+    "SearchCitation",
+    "SearchDocumentReference",
     # Config models
     "ConfigCreateResult",
     "ConfigValidationResult",

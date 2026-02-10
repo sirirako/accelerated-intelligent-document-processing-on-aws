@@ -14,34 +14,78 @@ from .exceptions import IDPConfigurationError, IDPStackError
 
 class IDPClient:
     """
-    Python SDK client for IDP Accelerator.
+    Main entry point for the IDP (Intelligent Document Processing) SDK.
 
-    Provides programmatic access to all IDP capabilities through operation namespaces:
-    - client.stack: Stack deployment and management
-    - client.batch: Batch document processing
-    - client.document: Single document operations
-    - client.config: Configuration management
-    - client.manifest: Manifest file operations
-    - client.testing: Load testing operations
+    The IDPClient provides a unified interface to interact with AWS IDP Accelerator,
+    enabling automated document classification, data extraction, and quality assessment
+    for various document types (invoices, forms, contracts, etc.).
+
+    Business Context:
+        The IDP Accelerator automates document processing workflows by:
+        - Classifying documents into predefined types
+        - Extracting structured data from unstructured documents
+        - Validating extraction quality with confidence scores
+        - Evaluating results against baseline expectations
+        - Enabling semantic search across processed documents
+
+    Architecture:
+        The client organizes functionality into 9 operation namespaces:
+        - stack: Infrastructure deployment and management
+        - batch: Process multiple documents in bulk
+        - document: Process and manage individual documents
+        - evaluation: Compare results against baseline data
+        - assessment: Analyze extraction quality and confidence
+        - search: Query processed documents with natural language
+        - config: Manage pipeline configuration
+        - manifest: Generate and validate document manifests
+        - testing: Performance and load testing
+
+    Usage Patterns:
+        1. Stack-based operations (requires deployed stack):
+           >>> client = IDPClient(stack_name="my-idp-stack", region="us-west-2")
+           >>> result = client.batch.run(directory="./invoices")
+
+        2. Stack-less operations (config, manifest):
+           >>> client = IDPClient()
+           >>> client.config.create(features="min", output="config.yaml")
+
+        3. Per-operation stack override:
+           >>> client = IDPClient()
+           >>> client.batch.run(directory="./docs", stack_name="stack-1")
+           >>> client.batch.run(directory="./forms", stack_name="stack-2")
 
     Examples:
-        # Stack operations
-        >>> client = IDPClient()
-        >>> client.stack.deploy(stack_name="my-stack", pattern="pattern-2")
-        >>> resources = client.stack.get_resources()
+        Process a batch of documents:
+        >>> client = IDPClient(stack_name="my-stack")
+        >>> result = client.batch.run(directory="./documents")
+        >>> print(f"Queued {result.queued} documents")
+        >>> status = client.batch.get_status(result.batch_id)
+        >>> print(f"Completed: {status.completed}/{status.total}")
 
-        # Batch operations
-        >>> client = IDPClient(stack_name="my-stack", region="us-west-2")
-        >>> result = client.batch.run(source="./documents/")
-        >>> status = client.batch.get_status(batch_id=result.batch_id)
+        Get extracted data from a document:
+        >>> metadata = client.document.get_metadata(document_id="invoice-001.pdf")
+        >>> print(f"Document type: {metadata.document_class}")
+        >>> print(f"Extracted fields: {metadata.fields}")
 
-        # Config operations (no stack required)
-        >>> client = IDPClient()
-        >>> client.config.create(features="min", output="config.yaml")
-        >>> client.config.validate("config.yaml")
+        Check extraction confidence:
+        >>> confidence = client.assessment.get_confidence(document_id="invoice-001.pdf")
+        >>> for field, score in confidence.attributes.items():
+        ...     print(f"{field}: {score.confidence:.2%}")
 
-        # Manifest operations (no stack required)
-        >>> client.manifest.generate(directory="./docs/", output="manifest.csv")
+        Search processed documents:
+        >>> result = client.search.query("What is the total amount on invoice 12345?")
+        >>> print(f"Answer: {result.answer} (confidence: {result.confidence:.2%})")
+
+    Attributes:
+        stack: StackOperation - Infrastructure management
+        batch: BatchOperation - Bulk document processing
+        document: DocumentOperation - Single document operations
+        evaluation: EvaluationOperation - Baseline comparison and accuracy
+        assessment: AssessmentOperation - Quality metrics and confidence
+        search: SearchOperation - Knowledge base queries
+        config: ConfigOperation - Pipeline configuration
+        manifest: ManifestOperation - Document manifest management
+        testing: TestingOperation - Load and performance testing
     """
 
     def __init__(
@@ -53,8 +97,30 @@ class IDPClient:
         Initialize IDP SDK client.
 
         Args:
-            stack_name: CloudFormation stack name (optional, can be passed per-operation)
-            region: AWS region (optional, defaults to boto3 default)
+            stack_name: CloudFormation stack name. Required for most operations
+                       (batch, document, evaluation, assessment, search, testing).
+                       Optional for config and manifest operations.
+                       Can be overridden per-operation if needed.
+            region: AWS region (e.g., 'us-east-1', 'us-west-2').
+                   If not specified, uses boto3's default region resolution:
+                   1. AWS_DEFAULT_REGION environment variable
+                   2. AWS config file (~/.aws/config)
+                   3. EC2 instance metadata (if running on EC2)
+
+        Examples:
+            Initialize with stack name:
+            >>> client = IDPClient(stack_name="my-idp-stack")
+
+            Initialize with stack and region:
+            >>> client = IDPClient(stack_name="my-stack", region="us-west-2")
+
+            Initialize without stack (for config/manifest operations):
+            >>> client = IDPClient()
+            >>> client.config.create(features="min", output="config.yaml")
+
+        Raises:
+            IDPConfigurationError: If stack_name is required but not provided
+                                  when calling stack-dependent operations
         """
         self._stack_name = stack_name
         self._region = region
@@ -62,10 +128,13 @@ class IDPClient:
 
         # Initialize operation namespaces
         from idp_sdk.operations import (
+            AssessmentOperation,
             BatchOperation,
             ConfigOperation,
             DocumentOperation,
+            EvaluationOperation,
             ManifestOperation,
+            SearchOperation,
             StackOperation,
             TestingOperation,
         )
@@ -76,6 +145,9 @@ class IDPClient:
         self.config = ConfigOperation(self)
         self.manifest = ManifestOperation(self)
         self.testing = TestingOperation(self)
+        self.search = SearchOperation(self)
+        self.evaluation = EvaluationOperation(self)
+        self.assessment = AssessmentOperation(self)
 
     @property
     def stack_name(self) -> Optional[str]:
