@@ -697,11 +697,11 @@ class ConfigurationManager:
             # Save as Default: Frontend sends the complete merged config
             config = IDPConfig(**config_dict)
             
-            # Clear the current version first (make it empty/default)
-            self.save_raw_configuration(CONFIG_TYPE_CONFIG, None, version=version)
-            
-            # Then save as new default (this will sync all other versions including the now-empty current one)
+            # First save as new default (this will sync all other versions)
             self.save_configuration(CONFIG_TYPE_CONFIG, config, version=DEFAULT_VERSION, skip_sync=False)
+            
+            # Then clear the current version (make it empty/default)
+            self.save_raw_configuration(CONFIG_TYPE_CONFIG, None, version=version)
             
             logger.info(f"Saved current state version: {version} as new {DEFAULT_VERSION}, current version: {version} cleared")
         elif save_as_version: # create new version
