@@ -34,7 +34,7 @@ class ClassesDiscovery:
             self.config_manager = ConfigurationManager()
             self.config: IDPConfig = cast(
                 IDPConfig,
-                self.config_reader.get_configuration(
+                self.config_reader.get_merged_configuration(
                     "Config", as_model=True, version=self.version
                 ),
             )

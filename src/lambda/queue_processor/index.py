@@ -140,7 +140,6 @@ def process_message(record: Dict[str, Any]) -> Tuple[bool, str]:
         message_data = json.loads(message)
         document = Document.load_document(message_data, working_bucket, logger)
         object_key = document.input_key
-        
         logger.info(f"Processing message {message_id} for object {object_key}")
 
         # Check if document has been aborted before starting workflow

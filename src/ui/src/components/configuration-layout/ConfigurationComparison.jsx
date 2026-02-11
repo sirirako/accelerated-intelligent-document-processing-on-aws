@@ -68,28 +68,30 @@ const ConfigurationComparison = ({ versions, configs }) => {
       const values = {};
       let hasDifferences = false;
       let firstValue = null;
+      let firstValueSet = false;
 
       versions.forEach((version) => {
         const config = configsToCompare[version];
         const actualConfig = config.custom || {};
         const value = getNestedValue(actualConfig, path);
 
-        if (value !== null) {
-          // Normalize the value for comparison - backend style
-          const strValue = typeof value === 'string' ? value.trim() : String(value).trim();
-          values[version] = strValue;
+        // Always include the value, even if null/undefined (missing field)
+        const strValue =
+          value === null || value === undefined ? '<missing>' : typeof value === 'string' ? value.trim() : String(value).trim();
 
-          // Check for differences using normalized values
-          if (firstValue === null) {
-            firstValue = strValue;
-          } else if (firstValue !== strValue) {
-            hasDifferences = true;
-          }
+        values[version] = strValue;
+
+        // Check for differences using normalized values
+        if (!firstValueSet) {
+          firstValue = strValue;
+          firstValueSet = true;
+        } else if (firstValue !== strValue) {
+          hasDifferences = true;
         }
       });
 
-      // Only include if there are differences and at least 2 values
-      if (hasDifferences && Object.keys(values).length >= 2) {
+      // Include if there are differences (including missing vs present)
+      if (hasDifferences) {
         differences.push({
           field: path,
           values,
@@ -109,6 +111,7 @@ const ConfigurationComparison = ({ versions, configs }) => {
 
   // Format value for display
   const formatValue = (value) => {
+    if (value === '<missing>') return <Badge color="grey">Missing</Badge>;
     if (value === undefined) return <Badge color="grey">Not set</Badge>;
     if (value === null) return <Badge color="grey">null</Badge>;
     if (typeof value === 'boolean') return value ? 'true' : 'false';

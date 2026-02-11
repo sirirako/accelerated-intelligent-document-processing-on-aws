@@ -715,24 +715,24 @@ def _build_config_comparison(configs):
             
             value = get_nested_value(actual_config, path)
             
-            if value is not None:
-                # Normalize the value for comparison
-                if isinstance(value, str):
-                    # Strip whitespace and normalize string values
-                    str_value = value.strip()
-                else:
-                    str_value = str(value).strip()
-                
-                values[test_run_id] = str_value
-                
-                # Check for differences using normalized values
-                if first_value is None:
-                    first_value = str_value
-                elif first_value != str_value:
-                    has_differences = True
+            # Always include the value, even if None (missing field)
+            if value is None:
+                str_value = '<missing>'
+            elif isinstance(value, str):
+                str_value = value.strip()
+            else:
+                str_value = str(value).strip()
+            
+            values[test_run_id] = str_value
+            
+            # Check for differences using normalized values
+            if first_value is None:
+                first_value = str_value
+            elif first_value != str_value:
+                has_differences = True
         
-        # Only include if there are differences and at least 2 values
-        if has_differences and len(values) >= 2:
+        # Include if there are differences (including missing vs present)
+        if has_differences:
             differences.append({
                 'setting': path,
                 'values': values

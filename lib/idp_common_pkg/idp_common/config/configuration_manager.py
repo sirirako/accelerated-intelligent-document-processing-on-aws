@@ -428,21 +428,26 @@ class ConfigurationManager:
             ClientError: If DynamoDB operation fails
         """
         try:
-            # First, verify the version exists
-            target_record = self._read_record(CONFIG_TYPE_CONFIG, version)
-            if not target_record:
+            # First, verify the version exists by checking if key exists in DynamoDB
+            response = self.table.get_item(Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"})
+            if not response.get("Item"):
                 raise ValueError(f"Config version {version} not found")
             
-            # Read all config record and update isactive = False if active
+            # Deactivate all currently active versions
             for version_dict in self.list_config_versions():
-                version_record = self._read_record(CONFIG_TYPE_CONFIG, version=version_dict.get("versionName"))
-                if version_record and version_record.is_active:
-                    version_record.is_active = False
-                    self._write_record(version_record)
+                if version_dict.get("isActive"):
+                    self.table.update_item(
+                        Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version_dict.get('versionName')}"},
+                        UpdateExpression="SET IsActive = :false",
+                        ExpressionAttributeValues={":false": False}
+                    )
 
-            # Update target version record as active = True
-            target_record.is_active = True
-            self._write_record(target_record)
+            # Activate the target version
+            self.table.update_item(
+                Key={"Configuration": f"{CONFIG_TYPE_CONFIG}#{version}"},
+                UpdateExpression="SET IsActive = :true",
+                ExpressionAttributeValues={":true": True}
+            )
             logger.info(f"Activated Config version {version}")
         except ClientError as e:
             logger.error(f"Error activating version {version}: {e}")
@@ -685,14 +690,7 @@ class ConfigurationManager:
                 logger.info(f"Failed to resert version {version} to default: {e}")
             logger.info("Version {version} reset done - all defaults will now be used")
             return True
-        
-        # For empty config without special flags, nothing to do
-        if not config_dict or (isinstance(config_dict, dict) and len(config_dict) == 0):
-            logger.info(
-                "Empty configuration update with no special flags - no changes made"
-            )
-            return True
-
+    
         if save_as_default:
             # Save as Default: Frontend sends the complete merged config
             # This becomes the new baseline, saved over version
@@ -734,6 +732,12 @@ class ConfigurationManager:
             # Normal version config update - merge deltas into existing version
             # IMPORTANT: Use RAW version (no Pydantic defaults!) to preserve sparse pattern
             existing_version_dict = self.get_raw_configuration(CONFIG_TYPE_CONFIG, version=version)
+            descriptionUpdated = existing_version_dict.get("Description") != description
+            if not descriptionUpdated and (not config_dict or (isinstance(config_dict, dict) and len(config_dict) == 0)):
+                logger.info(
+                    "Empty configuration update with no special flags - no changes made"
+                )
+                return True
 
             # If Custom doesn't exist, start with empty dict (NOT Default!)
             # Custom should only contain user deltas

@@ -3441,10 +3441,11 @@ def config_upload(
             # If config_version specified, check if it exists
             version_exists = False
             if config_version:
-                # Check for default version update (not allowed)
+                # Check for default version update (warn user)
                 if config_version.lower() == "default":
-                    console.print("[red]✗ Default version cannot be updated[/red]")
-                    sys.exit(1)
+                    console.print(
+                        "[yellow]⚠️  Warning: This will update the default [system default] config version[/yellow]"
+                    )
 
                 try:
                     existing_config = manager.get_configuration(

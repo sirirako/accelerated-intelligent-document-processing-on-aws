@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 from idp_common.config.configuration_manager import ConfigurationManager
-from idp_common.config.models import ConfigurationRecord
 
 
 @pytest.mark.unit
@@ -20,41 +19,29 @@ class TestConfigurationManagerActivateVersion:
 
         manager = ConfigurationManager(table_name="test-table")
 
-        # Mock existing records
-        target_record = Mock(spec=ConfigurationRecord)
-        target_record.is_active = False
+        # Mock get_raw_configuration to return existing config
+        manager.get_raw_configuration = Mock(return_value={"notes": "test"})
 
-        other_record = Mock(spec=ConfigurationRecord)
-        other_record.is_active = True
-
-        # Mock methods
-        manager._read_record = Mock(
-            side_effect=[
-                target_record,  # Target version exists
-                other_record,  # Other active version
-            ]
-        )
-        manager._write_record = Mock()
+        # Mock list_config_versions to return active version
         manager.list_config_versions = Mock(
-            return_value=[{"versionName": "other-version"}]
+            return_value=[{"versionName": "other-version", "isActive": True}]
         )
 
         # Execute
         manager.activate_version("test-version")
 
-        # Verify
-        assert target_record.is_active is True
-        assert other_record.is_active is False
-        assert manager._write_record.call_count == 2
+        # Verify DynamoDB operations
+        assert mock_table.get_item.called
+        assert mock_table.update_item.call_count == 2  # Deactivate old + activate new
 
     @patch("idp_common.config.configuration_manager.boto3")
     def test_activate_version_not_found(self, mock_boto3):
         """Test activation of non-existent version."""
         mock_table = Mock()
         mock_boto3.resource.return_value.Table.return_value = mock_table
+        mock_table.get_item.return_value = {"Item": None}
 
         manager = ConfigurationManager(table_name="test-table")
-        manager._read_record = Mock(return_value=None)
 
         with pytest.raises(ValueError, match="Config version test-version not found"):
             manager.activate_version("test-version")

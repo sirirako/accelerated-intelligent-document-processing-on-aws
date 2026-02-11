@@ -1126,6 +1126,11 @@ const ConfigurationLayout = () => {
           return;
         }
 
+        // If only description changed, ensure we still send an update
+        if (Object.keys(builtObject).length === 0 && descriptionChanged) {
+          console.log('Only description changed, proceeding with save');
+        }
+
         Object.assign(customConfigToSave, builtObject);
         configToSave = customConfigToSave;
         console.log('Saving customized config:', configToSave);
