@@ -220,7 +220,7 @@ const useConfiguration = (versionName = 'default') => {
         query: getConfigVersionQuery,
         variables: { versionName },
       });
-      logger.debug('API response:', result);
+      logger.debug('API response version', versionName, result);
 
       const response = result.data.getConfigVersion;
 

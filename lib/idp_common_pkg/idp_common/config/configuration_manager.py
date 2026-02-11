@@ -202,7 +202,8 @@ class ConfigurationManager:
                         item["Description"] = description
                 
             stringified = ConfigurationRecord._stringify_values(config_dict)
-            item.update(stringified)
+            if stringified is not None:
+                item.update(stringified)
 
             self.table.put_item(Item=item)
             logger.info(f"Saved raw configuration (sparse delta): {config_type}, version: {version}")
@@ -694,13 +695,15 @@ class ConfigurationManager:
     
         if save_as_default:
             # Save as Default: Frontend sends the complete merged config
-            # This becomes the new baseline, saved over version
             config = IDPConfig(**config_dict)
-
-            # sync required as we need to sync other non default versions
+            
+            # Clear the current version first (make it empty/default)
+            self.save_raw_configuration(CONFIG_TYPE_CONFIG, None, version=version)
+            
+            # Then save as new default (this will sync all other versions including the now-empty current one)
             self.save_configuration(CONFIG_TYPE_CONFIG, config, version=DEFAULT_VERSION, skip_sync=False)
             
-            logger.info(f"Saved current state version: {version} as new {DEFAULT_VERSION}, version: {version} unchanged")
+            logger.info(f"Saved current state version: {version} as new {DEFAULT_VERSION}, current version: {version} cleared")
         elif save_as_version: # create new version
             # Save as new version (used for import operations)
             # Imported config is already merged with system defaults by frontend/import process
