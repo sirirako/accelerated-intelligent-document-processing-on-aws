@@ -2015,7 +2015,7 @@ const ConfigurationLayout = () => {
                     </Button>
                   </>
                 )}
-                <Button variant="normal" onClick={() => setShowResetModal(true)}>
+                <Button variant="normal" onClick={() => setShowResetModal(true)} disabled={currentVersionName === 'default'}>
                   Restore default (All)
                 </Button>
                 {/* Disable Save as default when already on default version */}

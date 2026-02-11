@@ -230,10 +230,11 @@ def handle_get_configuration(manager, version: str):
         # This is critical for the sparse delta pattern to work correctly
         version_dict = manager.get_raw_configuration(CONFIG_TYPE_CONFIG, version)
         
-        # If version doesn't exist or is empty, return empty dict
-        # DO NOT auto-copy Default → Verison (this breaks the delta pattern)
+        # If version dict doesn't exist or is empty, return empty dict
+        # DO NOT auto-copy Default → Custom (this breaks the delta pattern)
         if not version_dict:
-            raise ValueError(f"version {version} not found in configuration")
+            logger.info("Custom config is empty or not found - returning empty dict (expected behavior)")
+            version_dict = {}
 
         # Return all configurations as dicts (GraphQL requires JSON-serializable)
         result = {
