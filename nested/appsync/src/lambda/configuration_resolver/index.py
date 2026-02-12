@@ -226,6 +226,8 @@ def handle_get_configuration(manager, version: str):
 
         if not version:
             raise ValueError("version is missing")
+        
+        
         # Get Version configuration as RAW dict (NO Pydantic defaults!)
         # This is critical for the sparse delta pattern to work correctly
         version_dict = manager.get_raw_configuration(CONFIG_TYPE_CONFIG, version)
@@ -241,7 +243,7 @@ def handle_get_configuration(manager, version: str):
             "success": True,
             "Schema": schema_dict,
             "Default": default_dict,
-            "Custom": version_dict,
+            "Custom": {} if version == "default" else version_dict,
         }
 
         logger.info("Returning configuration (default=full, Version=deltas only)")

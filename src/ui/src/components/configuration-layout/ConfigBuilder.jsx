@@ -336,6 +336,7 @@ const ConfigBuilder = ({
   onResetToDefault = null,
   onChange,
   extractionSchema = null,
+  currentVersionName = null,
   onSchemaChange = null,
   onSchemaValidate = null,
   activeTabId: controlledActiveTabId = 'configuration',
@@ -556,6 +557,9 @@ const ConfigBuilder = ({
     current[lastSegment] = value;
     onChange(newValues);
   };
+
+  // Debug: Check if isCustomized function is properly passed
+  console.log('ConfigBuilder received isCustomized:', typeof isCustomized, !!isCustomized);
 
   // Define renderField first as a function declaration
   function renderField(key, property, path = '') {
@@ -1378,7 +1382,13 @@ const ConfigBuilder = ({
     const inputWithRestoreButton = isFieldCustomized ? (
       <Box display="flex" alignItems="center">
         <Box flex="1">{input}</Box>
-        <Button variant="link" onClick={handleRestoreDefault} className="restore-default-button" iconName="undo">
+        <Button
+          variant="link"
+          onClick={handleRestoreDefault}
+          className="restore-default-button"
+          iconName="undo"
+          disabled={!onResetToDefault}
+        >
           Restore default
         </Button>
       </Box>
@@ -1488,7 +1498,12 @@ const ConfigBuilder = ({
             label: 'Document Schema',
             content: (
               <Box style={{ height: 'calc(70vh - 60px)' }}>
-                <SchemaBuilder initialSchema={extractionSchema} onChange={onSchemaChange} onValidate={onSchemaValidate} />
+                <SchemaBuilder
+                  key={`schema-${currentVersionName || 'default'}`}
+                  initialSchema={extractionSchema}
+                  onChange={onSchemaChange}
+                  onValidate={onSchemaValidate}
+                />
               </Box>
             ),
           },
@@ -1593,6 +1608,7 @@ ConfigBuilder.propTypes = {
   onResetToDefault: PropTypes.func,
   onChange: PropTypes.func.isRequired,
   extractionSchema: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  currentVersionName: PropTypes.string,
   onSchemaChange: PropTypes.func,
   onSchemaValidate: PropTypes.func,
   activeTabId: PropTypes.string,

@@ -362,6 +362,13 @@ const ConfigurationLayout = () => {
       console.log('Setting form values from mergedConfig:', mergedConfig);
 
       // Make a deep copy to ensure we're not dealing with references
+      // Clear schemas first to ensure clean state
+      setExtractionSchema(null);
+      setRuleSchema(null);
+
+      // Switch to configuration tab when version changes to avoid stale schema display
+      setConfigBuilderActiveTab('configuration');
+
       const formData = JSON.parse(JSON.stringify(mergedConfig));
       setFormValues(formData);
 
@@ -2022,11 +2029,7 @@ const ConfigurationLayout = () => {
                 <Button variant="normal" onClick={() => setShowSaveAsDefaultModal(true)} disabled={currentVersionName === 'default'}>
                   Save as default
                 </Button>
-                <Button
-                  variant="normal"
-                  onClick={() => setShowSaveAsVersionModal(true)}
-                  disabled={!hasUnsavedChanges || validationErrors.length > 0}
-                >
+                <Button variant="normal" onClick={() => setShowSaveAsVersionModal(true)} disabled={validationErrors.length > 0}>
                   Save as Version
                 </Button>
                 {/* Disable Save changes when on default version */}
@@ -2135,9 +2138,10 @@ const ConfigurationLayout = () => {
                   formValues={formValues}
                   defaultConfig={defaultConfig}
                   isCustomized={isCustomized}
-                  onResetToDefault={resetToDefault}
+                  onResetToDefault={currentVersionName === 'default' ? null : resetToDefault}
                   onChange={handleFormChange}
                   extractionSchema={extractionSchema}
+                  currentVersionName={currentVersionName}
                   activeTabId={configBuilderActiveTab}
                   onTabChange={setConfigBuilderActiveTab}
                   showRuleSchema={isPattern2}
