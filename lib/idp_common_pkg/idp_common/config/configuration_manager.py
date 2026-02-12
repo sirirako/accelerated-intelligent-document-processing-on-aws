@@ -384,8 +384,8 @@ class ConfigurationManager:
                         f"Saving Version: {version_name} after sync with updated default, version dict {new_version_dict}"
                         )
                     self.save_raw_configuration(CONFIG_TYPE_CONFIG, config_dict=new_version_dict, version=version_name)
-
-
+            
+        
         if config_type == CONFIG_TYPE_CONFIG:
             # get existing record if saving existing version
             existing_record = self._read_record(CONFIG_TYPE_CONFIG, version)
@@ -646,13 +646,15 @@ class ConfigurationManager:
         Handle the updateConfiguration GraphQL mutation.
 
         DESIGN PATTERN (CRITICAL):
-        - Version stores ONLY user deltas (sparse)
+        - default stores default version (system default)
+        - Version stores ONLY user deltas (sparse) 
         - Frontend sends deltas to merge into existing Version
         - We DO NOT use Pydantic defaults when reading existing Version
 
         Operations:
-        - resetToDefault=True: Wont delete Version, no delta's to store
-        - saveAsDefault=True [OPTION removed], in versioning default can't be modified
+        - resetToDefault=True: Version config will be deleted as there is no delta
+        - saveAsDefault=True: Version config will be deleted as there is no delta, default replaced with version config
+        - saveAsVersion=True: Version config will be copied to new version, default unchanged
         - Normal update: Merge deltas into existing Version (raw, no Pydantic)
 
         Args:
@@ -839,9 +841,25 @@ class ConfigurationManager:
         old_default_dict = old_default.model_dump(mode="python")
         new_default_dict = new_default.model_dump(mode="python")
 
-        # Start with a copy of existing Custom deltas
-        new_custom_dict = deepcopy(old_custom_dict)
+        # Handle case where old_custom_dict is empty (version was same as old default)
+        if not old_custom_dict:
+            # Version was identical to old_default, so use old_default values
+            actual_version_dict = deepcopy(old_default_dict)
+        else:
+            # Version had customizations, so merge old_default + old_custom to get actual config
+            actual_version_dict = deepcopy(old_default_dict)
+            # Apply the old customizations to get the actual version config
+            def deep_merge_dict(base, overlay):
+                for key, value in overlay.items():
+                    if isinstance(value, dict) and key in base and isinstance(base[key], dict):
+                        deep_merge_dict(base[key], value)
+                    else:
+                        base[key] = value
+            deep_merge_dict(actual_version_dict, old_custom_dict)
 
+        # Now compute what parts of actual_version_dict differ from new_default
+        new_custom_dict = deepcopy(actual_version_dict)
+        
         # Strip any values that now match the new Default
         # This ensures Custom only contains actual customizations
         strip_matching_defaults(new_custom_dict, new_default_dict)
