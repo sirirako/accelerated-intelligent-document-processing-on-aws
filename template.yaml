@@ -868,6 +868,7 @@ Resources:
     Type: AWS::Serverless::Function
     Condition: CreateAgentCoreLambda
     Metadata:
+      BuildMethod: python3.12
       cfn_nag:
         rules_to_suppress:
           - id: W89
@@ -954,17 +955,33 @@ Resources:
                 - s3:ListBucket
                 - s3:GetBucketLocation
                 - s3:GetBucketVersioning
+              Resource:
+                - !Sub
+                  - "${BucketArn}"
+                  - BucketArn: !If
+                      - ShouldCreateReportingBucket
+                      - !GetAtt ReportingBucket.Arn
+                      - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+                - !GetAtt InputBucket.Arn
+                - !GetAtt OutputBucket.Arn
+                - "*"
+            - Effect: Allow
+              Action:
                 - s3:GetObject
                 - s3:PutObject
                 - s3:DeleteObject
                 - s3:AbortMultipartUpload
                 - s3:ListMultipartUploadParts
-              Resource: !Sub
-                - "${BucketArn}/*"
-                - BucketArn: !If
-                    - ShouldCreateReportingBucket
-                    - !GetAtt ReportingBucket.Arn
-                    - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+              Resource:
+                - !Sub
+                  - "${BucketArn}/*"
+                  - BucketArn: !If
+                      - ShouldCreateReportingBucket
+                      - !GetAtt ReportingBucket.Arn
+                      - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
+                - !Sub "${InputBucket.Arn}/*"
+                - !Sub "${OutputBucket.Arn}/*"
+                - "*"
             - Effect: Allow
               Action:
                 - glue:GetTable
@@ -1058,6 +1075,7 @@ Resources:
               Action:
                 - cloudformation:DescribeStackResources
                 - cloudformation:DescribeStacks
+                - cloudformation:ListStackResources
               Resource:
                 - !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
             - Effect: Allow

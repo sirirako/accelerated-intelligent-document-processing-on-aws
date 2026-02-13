@@ -2426,6 +2426,17 @@ STDERR:
             if result.returncode != 0:
                 raise Exception(f"Layer build failed: {result.stderr}")
 
+            # For agents layer, also install idp_sdk (copy files directly)
+            if layer_name == "agents":
+                self.console.print("[cyan]  Copying idp_sdk package files...[/cyan]")
+                sdk_source = "./lib/idp_sdk/idp_sdk"
+                sdk_dest = os.path.join(layer_python_dir, "idp_sdk")
+
+                if os.path.exists(sdk_dest):
+                    shutil.rmtree(sdk_dest)
+                shutil.copytree(sdk_source, sdk_dest)
+                self.log_verbose(f"  Copied idp_sdk from {sdk_source} to {sdk_dest}")
+
             # Remove Lambda runtime packages (already provided by Lambda runtime)
             # This saves ~100+ MB per layer and prevents size limit issues
             self.console.print(

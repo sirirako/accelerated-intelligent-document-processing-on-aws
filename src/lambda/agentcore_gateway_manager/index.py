@@ -122,30 +122,109 @@ def create_gateway(props, gateway_name, client):
     logger.info("Waiting for IAM propagation...")
     time.sleep(30)
 
-    # Add analytics Lambda target
-    logger.info("Adding analytics Lambda target...")
+    # Add IDP tools Lambda target with all tools
+    logger.info("Adding IDP tools Lambda target...")
     client.create_mcp_gateway_target(
         gateway=gateway,
-        name="AnalyticsLambdaTarget",
+        name="IDPToolsTarget",
         target_type="lambda",
         target_payload={
             "lambdaArn": lambda_arn,
             "toolSchema": {
                 "inlinePayload": [
                     {
-                        "description": "Provides information from GenAI Intelligent Document Processing System and answer user questions",
+                        "name": "idp_search",
+                        "description": "Search and query processed documents using natural language. Returns analytics, metrics, and document information from the IDP system.",
                         "inputSchema": {
+                            "type": "object",
                             "properties": {
                                 "query": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "description": "Natural language query about processed documents, metrics, or system status"
                                 }
                             },
-                            "required": [
-                                "query"
-                            ],
-                            "type": "object"
-                        },
-                        "name": "search_genaiidp"
+                            "required": ["query"]
+                        }
+                    },
+                    {
+                        "name": "idp_batch_run",
+                        "description": "Process multiple documents through the IDP pipeline. Supports S3 URIs, manifests, or test sets. Returns batch ID for status tracking.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "stack_name": {
+                                    "type": "string",
+                                    "description": "CloudFormation stack name (e.g., 'prod-idp', 'IDP')"
+                                },
+                                "source": {
+                                    "type": "string",
+                                    "description": "Source location - S3 URI (s3://bucket/prefix/), manifest S3 URI, or test set ID"
+                                },
+                                "options": {
+                                    "type": "object",
+                                    "description": "Optional processing parameters",
+                                    "properties": {
+                                        "file_pattern": {
+                                            "type": "string",
+                                            "description": "File pattern for filtering (default: '*.pdf')"
+                                        },
+                                        "recursive": {
+                                            "type": "boolean",
+                                            "description": "Include subdirectories (default: true)"
+                                        },
+                                        "batch_prefix": {
+                                            "type": "string",
+                                            "description": "Batch ID prefix (default: 'mcp-batch')"
+                                        },
+                                        "number_of_files": {
+                                            "type": "integer",
+                                            "description": "Limit number of files to process"
+                                        }
+                                    }
+                                },
+                                "region": {
+                                    "type": "string",
+                                    "description": "AWS region (optional, auto-detected if not provided)"
+                                }
+                            },
+                            "required": ["stack_name", "source"]
+                        }
+                    },
+                    {
+                        "name": "idp_batch_get_status",
+                        "description": "Get processing status for a batch of documents. Returns progress, timing, and error information.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "stack_name": {
+                                    "type": "string",
+                                    "description": "CloudFormation stack name"
+                                },
+                                "batch_id": {
+                                    "type": "string",
+                                    "description": "Batch identifier (e.g., 'mcp-batch-20250124-143000')"
+                                },
+                                "options": {
+                                    "type": "object",
+                                    "description": "Optional status parameters",
+                                    "properties": {
+                                        "detailed": {
+                                            "type": "boolean",
+                                            "description": "Include per-document details (default: false)"
+                                        },
+                                        "include_errors": {
+                                            "type": "boolean",
+                                            "description": "Include error details (default: true)"
+                                        }
+                                    }
+                                },
+                                "region": {
+                                    "type": "string",
+                                    "description": "AWS region (optional)"
+                                }
+                            },
+                            "required": ["stack_name", "batch_id"]
+                        }
                     }
                 ]
             },

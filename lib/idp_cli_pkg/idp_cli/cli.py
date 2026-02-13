@@ -1083,7 +1083,159 @@ def delete_documents_cmd(
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(name="re-process")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--step",
+    required=True,
+    type=click.Choice(["classification", "extraction"]),
+    help="Pipeline step to rerun from",
+)
+@click.option(
+    "--document-ids",
+    help="Comma-separated list of document IDs to reprocess",
+)
+@click.option(
+    "--batch-id",
+    help="Batch ID to get document IDs from (alternative to --document-ids)",
+)
+@click.option("--force", is_flag=True, help="Skip confirmation prompt")
+@click.option("--monitor", is_flag=True, help="Monitor progress until completion")
+@click.option(
+    "--refresh-interval",
+    default=5,
+    type=int,
+    help="Seconds between status checks (default: 5)",
+)
+@click.option("--region", help="AWS region (optional)")
+def re_process(
+    stack_name: str,
+    step: str,
+    document_ids: Optional[str],
+    batch_id: Optional[str],
+    force: bool,
+    monitor: bool,
+    refresh_interval: int,
+    region: Optional[str],
+):
+    """
+    Reprocess documents from a specific step
+    
+    Reprocesses documents already in InputBucket, leveraging existing OCR data.
+    
+    Steps:
+      - classification: Reruns classification and all subsequent steps
+      - extraction: Reruns extraction and assessment (keeps classification)
+    
+    Document ID Format: Use the S3 key format (e.g., "batch-id/document.pdf")
+    
+    Examples:
+    
+      # Rerun classification for specific documents
+      idp-cli re-process \\
+          --stack-name my-stack \\
+          --step classification \\
+          --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf" \\
+          --monitor
+      
+      # Rerun extraction for all documents in a batch
+      idp-cli re-process \\
+          --stack-name my-stack \\
+          --step extraction \\
+          --batch-id cli-batch-20251015-143000 \\
+          --monitor
+    """
+    # Call the existing rerun_inference implementation
+    return rerun_inference(
+        stack_name, step, document_ids, batch_id, force, monitor, refresh_interval, region
+    )
+
+
+# Hidden aliases for backward compatibility
+@cli.command(hidden=True)
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--manifest",
+    type=click.Path(exists=True),
+    help="Path to manifest file (CSV or JSON)",
+)
+@click.option(
+    "--dir",
+    "directory",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Local directory containing documents to process",
+)
+@click.option("--s3-uri", help="S3 URI to process (e.g., s3://bucket/prefix/)")
+@click.option("--test-set", help="Test set ID to process from test set bucket")
+@click.option(
+    "--context", help="Context description for test run (used with --test-set)"
+)
+@click.option(
+    "--batch-id",
+    help="Custom batch ID (auto-generated if not provided, ignored with --test-set)",
+)
+@click.option(
+    "--file-pattern",
+    default="*.pdf",
+    help="File pattern for directory/S3 scanning (default: *.pdf)",
+)
+@click.option(
+    "--recursive/--no-recursive",
+    default=True,
+    help="Include subdirectories when scanning (default: recursive)",
+)
+@click.option(
+    "--config",
+    type=click.Path(exists=True),
+    help="Path to configuration YAML file (optional)",
+)
+@click.option(
+    "--batch-prefix",
+    default="cli-batch",
+    help="Batch ID prefix (used only if --batch-id not provided, default: cli-batch)",
+)
+@click.option("--monitor", is_flag=True, help="Monitor progress until completion")
+@click.option(
+    "--refresh-interval",
+    default=5,
+    type=int,
+    help="Seconds between status checks (default: 5)",
+)
+@click.option("--region", help="AWS region (optional)")
+@click.option(
+    "--number-of-files",
+    type=int,
+    help="Limit number of files to process (for testing purposes)",
+)
+def run_inference(
+    stack_name: str,
+    manifest: Optional[str],
+    directory: Optional[str],
+    s3_uri: Optional[str],
+    test_set: Optional[str],
+    context: Optional[str],
+    batch_id: Optional[str],
+    file_pattern: str,
+    recursive: bool,
+    config: Optional[str],
+    batch_prefix: str,
+    monitor: bool,
+    refresh_interval: int,
+    region: Optional[str],
+    number_of_files: Optional[int],
+):
+    """
+    DEPRECATED: Use 'process' instead
+    """
+    # Call the new process implementation
+    return process(
+        stack_name, manifest, directory, s3_uri, test_set, context, batch_id,
+        file_pattern, recursive, config, batch_prefix, monitor, refresh_interval,
+        region, number_of_files
+    )
+
+
+@cli.command(name="rerun-inference", hidden=True)
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
 @click.option(
     "--step",
@@ -1119,32 +1271,12 @@ def rerun_inference(
     region: Optional[str],
 ):
     """
-    Rerun processing for existing documents from a specific step
-    
-    Reprocesses documents already in InputBucket, leveraging existing OCR data.
-    
-    Steps:
-      - classification: Reruns classification and all subsequent steps
-      - extraction: Reruns extraction and assessment (keeps classification)
-    
-    Document ID Format: Use the S3 key format (e.g., "batch-id/document.pdf")
-    
-    Examples:
-    
-      # Rerun classification for specific documents
-      idp-cli rerun-inference \\
-          --stack-name my-stack \\
-          --step classification \\
-          --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf" \\
-          --monitor
-      
-      # Rerun extraction for all documents in a batch
-      idp-cli rerun-inference \\
-          --stack-name my-stack \\
-          --step extraction \\
-          --batch-id cli-batch-20251015-143000 \\
-          --monitor
+    DEPRECATED: Use 're-process' instead
     """
+    # Call the new re-process implementation
+    return re_process(
+        stack_name, step, document_ids, batch_id, force, monitor, refresh_interval, region
+    )
     try:
         # Validate mutually exclusive options
         if not document_ids and not batch_id:
@@ -1308,7 +1440,7 @@ def rerun_inference(
     type=int,
     help="Limit number of files to process (for testing purposes)",
 )
-def run_inference(
+def process(
     stack_name: str,
     manifest: Optional[str],
     directory: Optional[str],
@@ -1326,7 +1458,7 @@ def run_inference(
     number_of_files: Optional[int],
 ):
     """
-    Run inference on a batch of documents
+    Process documents
 
     Specify documents using ONE of:
       --manifest: Explicit manifest file (CSV or JSON)
@@ -1345,31 +1477,31 @@ def run_inference(
     Examples:
 
       # Process from manifest file
-      idp-cli run-inference --stack-name my-stack --manifest docs.csv --monitor
+      idp-cli process --stack-name my-stack --manifest docs.csv --monitor
 
       # Process all PDFs in local directory
-      idp-cli run-inference --stack-name my-stack --dir ./documents/ --monitor
+      idp-cli process --stack-name my-stack --dir ./documents/ --monitor
 
       # Process with custom batch ID
-      idp-cli run-inference --stack-name my-stack --dir ./docs/ --batch-id my-experiment-v1 --monitor
+      idp-cli process --stack-name my-stack --dir ./docs/ --batch-id my-experiment-v1 --monitor
 
       # Process S3 URI (any bucket)
-      idp-cli run-inference --stack-name my-stack --s3-uri s3://data-lake/archive/2024/ --monitor
+      idp-cli process --stack-name my-stack --s3-uri s3://data-lake/archive/2024/ --monitor
 
       # Process with file pattern
-      idp-cli run-inference --stack-name my-stack --dir ./docs/ --file-pattern "invoice*.pdf"
+      idp-cli process --stack-name my-stack --dir ./docs/ --file-pattern "invoice*.pdf"
 
       # Process test set (integrates with Test Studio UI - use test set ID)
-      idp-cli run-inference --stack-name my-stack --test-set fcc-example-test --monitor
+      idp-cli process --stack-name my-stack --test-set fcc-example-test --monitor
 
       # Process test set with custom context
-      idp-cli run-inference --stack-name my-stack --test-set fcc-example-test --context "Experiment v2.1" --monitor
+      idp-cli process --stack-name my-stack --test-set fcc-example-test --context "Experiment v2.1" --monitor
 
       # Process test set with limited files for quick testing
-      idp-cli run-inference --stack-name my-stack --test-set fcc-example-test --number-of-files 5 --monitor
+      idp-cli process --stack-name my-stack --test-set fcc-example-test --number-of-files 5 --monitor
 
       # Process manifest with baselines (automatically creates "idp-cli" test set for Test Studio integration)
-      idp-cli run-inference --stack-name my-stack --manifest docs_with_baselines.csv --monitor
+      idp-cli process --stack-name my-stack --manifest docs_with_baselines.csv --monitor
     """
     try:
         # Validate mutually exclusive options
@@ -2110,17 +2242,17 @@ def generate_manifest(
             console.print()
             console.print("[bold]Next Steps: Run inference[/bold]")
             console.print(
-                f"  - Using test set: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
+                f"  - Using test set: [cyan]idp-cli process --test-set {test_set} --stack-name {stack_name} --monitor[/cyan]"
             )
             console.print(
-                f"  - With limited files: [cyan]idp-cli run-inference --test-set {test_set} --stack-name {stack_name} --number-of-files {{N}} --monitor[/cyan]"
+                f"  - With limited files: [cyan]idp-cli process --test-set {test_set} --stack-name {stack_name} --number-of-files {{N}} --monitor[/cyan]"
             )
             if output:
                 console.print(
-                    f"  - Using manifest: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --monitor[/cyan]"
+                    f"  - Using manifest: [cyan]idp-cli process --stack-name {stack_name} --manifest {output} --monitor[/cyan]"
                 )
                 console.print(
-                    f"  - With limited files: [cyan]idp-cli run-inference --stack-name {stack_name} --manifest {output} --number-of-files {{N}} --monitor[/cyan]"
+                    f"  - With limited files: [cyan]idp-cli process --stack-name {stack_name} --manifest {output} --number-of-files {{N}} --monitor[/cyan]"
                 )
         elif baseline_map:
             console.print("[bold]Baseline matching complete[/bold]")
@@ -2132,7 +2264,7 @@ def generate_manifest(
             )
             if output:
                 console.print(
-                    f"  2. Process: [cyan]idp-cli run-inference --stack-name <stack> --manifest {output}[/cyan]"
+                    f"  2. Process: [cyan]idp-cli process --stack-name <stack> --manifest {output}[/cyan]"
                 )
         console.print()
 
