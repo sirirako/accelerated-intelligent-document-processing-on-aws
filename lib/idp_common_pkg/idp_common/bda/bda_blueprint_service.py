@@ -1475,6 +1475,9 @@ class BdaBlueprintService:
         Raises:
             Exception: If conversion fails
         """
+        if not version:
+            raise ValueError("Converting AWS standard blueprints error missing version")
+
         logger.info(
             f"Converting AWS standard blueprints to custom blueprints for version {version}"
         )
@@ -1601,8 +1604,8 @@ class BdaBlueprintService:
 
                 # Convert AWS standard blueprints to custom blueprints (in parallel)
                 try:
-                    conversion_result = (
-                        self._convert_aws_standard_blueprints_to_custom()
+                    conversion_result = self._convert_aws_standard_blueprints_to_custom(
+                        version=version
                     )
 
                     if (

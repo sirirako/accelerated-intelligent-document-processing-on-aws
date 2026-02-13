@@ -59,7 +59,7 @@ def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         # Handle cleanup_orphaned direction separately
         if sync_direction == "cleanup_orphaned":
             logger.info("Executing orphaned blueprint cleanup")
-            cleanup_result = bda_service.cleanup_orphaned_blueprints()
+            cleanup_result = bda_service.cleanup_orphaned_blueprints(version=versionName)
             
             return {
                 "success": cleanup_result.get("success", False),
