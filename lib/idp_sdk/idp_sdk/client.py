@@ -355,6 +355,7 @@ class IDPClient:
         recursive: bool = True,
         number_of_files: Optional[int] = None,
         config_path: Optional[str] = None,
+        config_version: Optional[str] = None,
         context: Optional[str] = None,
     ) -> BatchResult:
         """
@@ -376,6 +377,7 @@ class IDPClient:
             recursive: Include subdirectories
             number_of_files: Limit number of files to process
             config_path: Path to configuration YAML file
+            config_version: Configuration version to use for processing
             context: Context description for test runs
 
         Returns:
@@ -415,6 +417,7 @@ class IDPClient:
             processor = BatchProcessor(
                 stack_name=name,
                 config_path=config_path,
+                config_version=config_version,
                 region=self._region,
             )
 
@@ -1274,6 +1277,7 @@ class IDPClient:
         output: Optional[str] = None,
         format: str = "full",
         pattern: Optional[str] = None,
+        config_version: Optional[str] = None,
     ) -> ConfigDownloadResult:
         """
         Download configuration from a deployed IDP stack.
@@ -1283,6 +1287,7 @@ class IDPClient:
             output: Output file path (optional)
             format: 'full' or 'minimal' (only differences from defaults)
             pattern: Pattern for minimal diff (auto-detected if not specified)
+            config_version: Configuration version to download (default: active version)
 
         Returns:
             ConfigDownloadResult with configuration
@@ -1312,7 +1317,9 @@ class IDPClient:
         from idp_common.config import ConfigurationReader
 
         reader = ConfigurationReader(table_name=config_table)
-        config_data = reader.get_merged_configuration(as_model=False)
+        config_data = reader.get_merged_configuration(
+            version=config_version, as_model=False
+        )
 
         # For minimal format, compute diff
         if format == "minimal":
@@ -1361,6 +1368,8 @@ class IDPClient:
         stack_name: Optional[str] = None,
         validate: bool = True,
         pattern: Optional[str] = None,
+        config_version: Optional[str] = None,
+        description: Optional[str] = None,
     ) -> ConfigUploadResult:
         """
         Upload a configuration file to a deployed IDP stack.
@@ -1370,6 +1379,8 @@ class IDPClient:
             stack_name: CloudFormation stack name (uses default if not provided)
             validate: Validate config before uploading
             pattern: Pattern for validation (auto-detected if not specified)
+            config_version: Configuration version to upload to (default: active version)
+            description: Description for the configuration version
 
         Returns:
             ConfigUploadResult with upload status
@@ -1430,7 +1441,9 @@ class IDPClient:
 
             manager = ConfigurationManager()
             config_json = json.dumps(user_config)
-            success = manager.handle_update_custom_configuration(config_json)
+            success = manager.handle_update_custom_configuration(
+                config_json, version=config_version, description=description
+            )
 
             return ConfigUploadResult(
                 success=success, error=None if success else "Upload failed"

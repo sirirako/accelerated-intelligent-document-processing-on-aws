@@ -1441,6 +1441,7 @@ Resources:
         DiscoveryQueueName: !GetAtt DiscoveryQueue.QueueName
         TestFileCopyQueueName: !GetAtt TestFileCopyQueue.QueueName
         TestSetFileCopyQueueName: !GetAtt TestSetFileCopyQueue.QueueName
+        TestResultCacheUpdateQueueName: !GetAtt TestResultCacheUpdateQueue.QueueName
         
         # Other resources
         CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
@@ -1769,6 +1770,7 @@ Resources:
               - "x-amz-date"
               - "Authorization"
               - "x-amz-security-token"
+              - "x-amz-meta-config-version"
             AllowedMethods:
               - PUT
               - POST
@@ -3439,9 +3441,14 @@ Resources:
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
           DATA_RETENTION_IN_DAYS: !Ref DataRetentionInDays
           OUTPUT_BUCKET: !Ref OutputBucket
+          CONFIG_TABLE: !Ref ConfigurationTable
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt DocumentQueue.QueueName
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigurationTable
+        - S3ReadPolicy:
+            BucketName: !Ref InputBucket
         - Statement:
             - Effect: Allow
               Action:
