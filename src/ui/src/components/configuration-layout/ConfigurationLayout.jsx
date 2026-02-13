@@ -1301,8 +1301,8 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      // Send current form values - captures any unsaved changes
-      const builtObject = { ...formValues };
+      // Send merged config like "Save as default" - ensures all fields are captured
+      const builtObject = deepMerge(customConfig || {}, formValues);
 
       const result = await saveAsNewVersion(builtObject, saveAsVersionName, saveAsVersionDescription);
 
