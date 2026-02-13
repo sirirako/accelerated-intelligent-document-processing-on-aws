@@ -255,7 +255,15 @@ class ConfigurationManager:
             return None
 
         if not version:
-            raise ValueError("version not provided")
+            # If no version specified, find and use active version
+            for version_dict in self.list_config_versions():
+                if version_dict.get("isActive"):
+                    version = version_dict.get("versionName")
+                    logger.info(f"Using active version: {version}")
+                    break
+            else:
+                logger.warning("No active version found, using default")
+                version = DEFAULT_VERSION
         
         # Get version as RAW dict (no Pydantic defaults!)
         version_dict = self.get_raw_configuration(CONFIG_TYPE_CONFIG, version)

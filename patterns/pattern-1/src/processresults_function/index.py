@@ -1114,6 +1114,9 @@ def handler(event, context):
     existing_document = document_service.get_document(object_key)
     input_config_version = getattr(existing_document, 'config_version', None) if existing_document else None
 
+    # Set config version on the new document object
+    document.config_version = input_config_version
+
     # Load configuration using the input document's version
     config = get_config(as_model=True, version=input_config_version)
 
