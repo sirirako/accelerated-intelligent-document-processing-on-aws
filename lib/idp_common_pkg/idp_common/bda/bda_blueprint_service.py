@@ -1646,8 +1646,8 @@ class BdaBlueprintService:
                 if not config_item:
                     return []  # Return empty list for consistency
 
-                if not classess or len(classess) == 0:
-                    return []  # Return empty list for consistency
+                # version is stored as sparse so it wont have class for default clone versions
+                # Let empty versions proceed to _synchronize_deletes to clear BDA
 
                 # Process classes in parallel
                 status, updated, modified = self._process_classes_parallel(
