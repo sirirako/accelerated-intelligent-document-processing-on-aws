@@ -148,18 +148,29 @@ class ConfigurationReader:
             # Remove the 'Configuration' key as it's not part of the actual config
             default_config.pop("Configuration", None)
 
+            # If no version specified, find and use active version
+            if not version:
+                for version_dict in self.manager.list_config_versions():
+                    if version_dict.get("isActive"):
+                        version = version_dict.get("versionName")
+                        logger.info(f"Using active version: {version}")
+                        break
+                else:
+                    logger.warning("No active version found, using default")
+                    version = "default"
+
             # Get Custom configuration as RAW dict (NO Pydantic defaults!)
             # This is critical for the sparse delta pattern to work correctly
             custom_config = self.manager.get_raw_configuration(config_type="Config", version=version)
 
             # If no custom config exists, use default as-is
             if not custom_config:
-                logger.info("No Custom configuration found, using Default only")
+                logger.info(f"No custom configuration found for version {version}, using default only")
                 merged_config = default_config
             else:
                 # Merge: Default deep-updated with Custom deltas
                 merged_config = self.simple_merge(default_config, custom_config)
-
+            
             logger.info(
                 "Successfully merged Default + Custom configurations for runtime"
             )
