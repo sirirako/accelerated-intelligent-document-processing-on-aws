@@ -393,59 +393,29 @@ const useConfiguration = (versionName = 'default') => {
     }
   };
 
-  // Reset a specific configuration path back to default
-  // DESIGN: Set the default value - backend auto-cleans matching defaults from Custom
-  // The strip_matching_defaults function on backend removes values matching Default
-  const resetToDefault = async (path) => {
-    if (!path || !customConfig || !defaultConfig) return false;
+  // Reset a specific configuration path back to its default value (LOCAL ONLY)
+  // This updates local form state only - user must click Save to persist.
+  // This makes "Restore to default" consistent with all other field edits.
+  const resetToDefault = (path) => {
+    if (!path || !defaultConfig) return false;
 
-    setError(null);
     try {
-      logger.debug(`Resetting path to default for version ${versionName}: ${path}`);
+      logger.debug(`Restoring path to default value (local): ${path}`);
 
       // Get the default value for this path
       const defaultValue = getValueAtPath(defaultConfig, path);
       logger.debug(`Default value at ${path}:`, defaultValue);
 
-      // Create a delta with the default value
-      // Backend will auto-clean this (strip_matching_defaults removes values that match Default)
-      const updatePayload = setValueAtPath({}, path, defaultValue);
-      logger.debug('Sending update payload (backend will auto-clean):', updatePayload);
-
-      // Send the default value to backend
-      const result = await client.graphql({
-        query: updateConfigurationMutation,
-        variables: {
-          versionName,
-          customConfig: JSON.stringify(updatePayload),
-          description: null,
-        },
-      });
-
-      const response = result.data.updateConfiguration;
-
-      if (!response.success) {
-        const errorMsg = response.error?.message || 'Failed to reset to default';
-        throw new Error(errorMsg);
+      if (defaultValue === undefined) {
+        logger.warn(`No default value found for path: ${path}`);
+        return false;
       }
 
-      logger.debug(`Successfully reset path ${path} to default for version ${versionName} (backend auto-cleaned)`);
-
-      // Optimistic update: remove the field from local version config
-      // (Backend's auto-cleanup will have removed it since it matches Default)
-      const newVersionConfig = removeValueAtPath(customConfig, path);
-
-      // Update local state
-      setCustomConfig(newVersionConfig);
-      // mergedConfig = Default + Version (with field removed, Default value shows)
-      setMergedConfig(deepMerge(defaultConfig, newVersionConfig));
-
-      return true;
+      // Return the default value - the caller (ConfigBuilder) will call updateValue()
+      // to set it in formValues, which triggers hasUnsavedChanges detection
+      return { path, defaultValue };
     } catch (err) {
-      logger.error('Error resetting to default', err);
-      setError(`Failed to reset to default: ${err.message}`);
-      // Refetch on error to ensure consistency
-      await fetchConfiguration(versionName, true);
+      logger.error('Error getting default value for path', err);
       return false;
     }
   };

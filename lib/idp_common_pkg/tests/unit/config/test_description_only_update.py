@@ -118,10 +118,9 @@ def test_description_only_update_with_rule_classes():
     assert saved_item["Description"] == "updated description"
     assert "UpdatedAt" in saved_item
 
-    # Verify rule_classes was cleaned up (removed because it matches default)
-    assert (
-        "rule_classes" not in saved_item
-    )  # Auto-cleanup removes fields matching defaults
+    # In full-config mode, rule_classes is preserved in the saved config
+    # (no longer stripped by auto-cleanup since we save complete configs)
+    assert "rule_classes" in saved_item  # Full config preserves all fields
 
 
 @pytest.mark.unit
