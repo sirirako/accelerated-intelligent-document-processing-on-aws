@@ -7,6 +7,20 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Configuration Versioning System**
+  - Manage multiple named configuration versions as complete, self-contained snapshots — no hidden merging or delta logic
+  - **Version Management UI**: Configuration Versions table with create, compare, activate, delete, and import operations; version comparison with CSV/JSON export
+  - **Full Config Storage**: Each version stores the complete configuration; editing and saving a version persists the full config, making behavior predictable and debuggable
+  - **Active Version**: One version is marked active for new document processing; selectable when uploading documents, running tests, or reprocessing
+  - **Version Tracking**: Config version recorded per document (S3 metadata + DynamoDB) and displayed across Document List, Document Details, Test Studio results, and all exports
+  - **Unsaved Changes Protection**: Per-field unsaved change indicators (orange dots), info banner with "Discard changes" button, and browser navigation guards (`beforeunload` + SPA hash navigation)
+  - **CLI Integration**: `--config-version` parameter for `run-inference`, `config-download`, and `config-upload` commands with version validation before processing
+  - **Test Studio Integration**: Version selector in Test Runner, version tracking per test run, version displayed in Test Results and Test Comparison views
+  - **Legacy Support**: Existing sparse-delta configs auto-detected and seamlessly migrated to full format on first read
+  - **Stack Upgrade Independence**: Stack upgrades update only the `default` version; user versions are locked snapshots that users explicitly manage
+  - **Documentation**: New [configuration-versions.md](docs/configuration-versions.md) with comprehensive feature documentation
+  - **~200 lines of merge/delta/sync code removed**: Eliminated runtime merge logic, auto-sync on default updates, null-as-deletion semantics, and auto-cleanup of matching defaults
+
 - **Custom Date Range Selector for Document List and Test Executions** - [GitHub Issue #177](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/177)
   - Added "Custom range..." option to the time period dropdown in both Document List and Test Studio → Test Results
   - Users can now select absolute start/end dates to query historical documents beyond the previous 30-day limit
