@@ -374,10 +374,12 @@ my-test-set/
 
 ### Configuration Versioning
 The Test Studio supports running tests with specific configuration versions:
-- **Version Selection**: Choose from available configuration versions (v0, v1, v2, etc.)
+- **Version Selection**: Choose from available configuration versions (e.g., `default`, `Production`, `v1`)
 - **Version Tracking**: Test results display which configuration version was used
 - **Version Comparison**: Compare test runs across different configuration versions
 - **Context Generation**: Test context automatically includes the selected version information
+
+For full details on configuration versioning, see [configuration-versions.md](configuration-versions.md).
 
 ### Test States
 - **QUEUED**: File copying jobs queued in SQS
