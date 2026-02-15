@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 Configuration Versions enable you to manage multiple configuration snapshots for your IDP solution, track which configuration was used for each document processed, and compare results across different configurations — all without redeploying your stack.
 
+
+https://github.com/user-attachments/assets/b1e0cf16-d2c4-4927-a9ec-767b8ac49c9d
+
+
 ## Overview
 
 Each configuration version is a **complete, self-contained configuration snapshot**. When you create or edit a version, the full configuration is saved — there is no hidden merging or delta logic. This makes behavior predictable and debuggable: what you save is exactly what gets used at runtime.
