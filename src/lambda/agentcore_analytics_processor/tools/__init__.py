@@ -7,11 +7,16 @@ from typing import Dict, Type
 from .base import IDPTool
 from .search import SearchTool
 from .batch_run import BatchRunTool
+from .batch_reprocess import BatchReprocessTool
 from .batch_status import BatchStatusTool
 
 # Tool registry
 TOOLS: Dict[str, Type[IDPTool]] = {
     "idp_search": SearchTool,
+    "process": BatchRunTool,
+    "reprocess": BatchReprocessTool,
+    "status": BatchStatusTool,
+    # Legacy aliases for backward compatibility
     "idp_batch_run": BatchRunTool,
     "idp_batch_get_status": BatchStatusTool,
 }
