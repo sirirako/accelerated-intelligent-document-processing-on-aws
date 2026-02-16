@@ -3717,15 +3717,23 @@ def config_activate(
             manager = ConfigurationManager()
 
             # Check if version exists
-            existing_config = manager.get_configuration("Config", version=config_version)
+            existing_config = manager.get_configuration(
+                "Config", version=config_version
+            )
             if not existing_config:
-                console.print(f"[red]✗ Configuration version '{config_version}' does not exist[/red]")
-                console.print(f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions")
+                console.print(
+                    f"[red]✗ Configuration version '{config_version}' does not exist[/red]"
+                )
+                console.print(
+                    f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
+                )
                 return
 
             # Activate the version
             manager.activate_version(config_version)
-            console.print(f"[green]✓ Successfully activated configuration version: {config_version}[/green]")
+            console.print(
+                f"[green]✓ Successfully activated configuration version: {config_version}[/green]"
+            )
             console.print("New documents will use this configuration immediately.")
 
         except Exception as e:
@@ -3797,10 +3805,13 @@ def config_list(stack_name: str):
                 console.print("[yellow]No configuration versions found[/yellow]")
                 return
 
-            console.print(f"\n[bold]Found {len(versions)} configuration version(s):[/bold]\n")
+            console.print(
+                f"\n[bold]Found {len(versions)} configuration version(s):[/bold]\n"
+            )
 
             # Create table for better formatting
             from rich.table import Table
+
             table = Table(show_header=True, header_style="bold blue")
             table.add_column("Version Name", style="cyan")
             table.add_column("Status", justify="center")
@@ -3810,9 +3821,19 @@ def config_list(stack_name: str):
 
             for version in sorted(versions, key=lambda x: x.get("versionName", "")):
                 version_name = version.get("versionName", "unknown")
-                status = "[bold green]ACTIVE[/bold green]" if version.get("isActive") else ""
-                created = version.get("createdAt", "").replace("T", " ").replace("Z", "") if version.get("createdAt") else ""
-                updated = version.get("updatedAt", "").replace("T", " ").replace("Z", "") if version.get("updatedAt") else ""
+                status = (
+                    "[bold green]ACTIVE[/bold green]" if version.get("isActive") else ""
+                )
+                created = (
+                    version.get("createdAt", "").replace("T", " ").replace("Z", "")
+                    if version.get("createdAt")
+                    else ""
+                )
+                updated = (
+                    version.get("updatedAt", "").replace("T", " ").replace("Z", "")
+                    if version.get("updatedAt")
+                    else ""
+                )
                 description = version.get("description", "")
 
                 table.add_row(version_name, status, created, updated, description)
@@ -3903,13 +3924,17 @@ def config_delete(
 
             # Confirmation prompt
             if not force:
-                if not click.confirm(f"Are you sure you want to delete configuration version '{config_version}'?"):
+                if not click.confirm(
+                    f"Are you sure you want to delete configuration version '{config_version}'?"
+                ):
                     console.print("[yellow]Deletion cancelled[/yellow]")
                     return
 
             # Delete the version (method handles all validations)
             manager.delete_configuration("Config", version=config_version)
-            console.print(f"[green]✓ Successfully deleted configuration version: {config_version}[/green]")
+            console.print(
+                f"[green]✓ Successfully deleted configuration version: {config_version}[/green]"
+            )
 
         except ValueError as e:
             console.print(f"[red]✗ {e}[/red]")

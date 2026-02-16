@@ -315,6 +315,7 @@ class ConfigOperation:
 
         try:
             import os
+
             from idp_common.config.configuration_manager import ConfigurationManager
 
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
@@ -362,15 +363,20 @@ class ConfigOperation:
 
         try:
             import os
+
             from idp_common.config.configuration_manager import ConfigurationManager
 
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
             manager = ConfigurationManager()
 
             # Check if version exists
-            existing_config = manager.get_configuration("Config", version=config_version)
+            existing_config = manager.get_configuration(
+                "Config", version=config_version
+            )
             if not existing_config:
-                raise ValueError(f"Configuration version '{config_version}' does not exist")
+                raise ValueError(
+                    f"Configuration version '{config_version}' does not exist"
+                )
 
             manager.activate_version(config_version)
             return {"success": True, "activated_version": config_version}
@@ -414,6 +420,7 @@ class ConfigOperation:
 
         try:
             import os
+
             from idp_common.config.configuration_manager import ConfigurationManager
 
             os.environ["CONFIGURATION_TABLE_NAME"] = config_table
