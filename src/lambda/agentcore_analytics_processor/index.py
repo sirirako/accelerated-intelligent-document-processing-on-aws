@@ -53,11 +53,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'No tool name in context'})
         }
     
-    # Strip target name prefix (handle ___ or __ delimiter) and leading underscore
+    # Strip target name prefix (handle ___ delimiter)
     if '___' in tool_name_full:
         tool_name = tool_name_full.split('___', 1)[1]
-    elif '__' in tool_name_full:
-        tool_name = tool_name_full.split('__', 1)[1]
     else:
         tool_name = tool_name_full
     

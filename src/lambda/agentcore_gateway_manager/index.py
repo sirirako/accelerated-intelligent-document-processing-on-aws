@@ -126,7 +126,7 @@ def create_gateway(props, gateway_name, client):
     logger.info("Adding IDP tools Lambda target...")
     client.create_mcp_gateway_target(
         gateway=gateway,
-        name="IDPToolsTarget",
+        name="IDPTools",
         target_type="lambda",
         target_payload={
             "lambdaArn": lambda_arn,
@@ -147,7 +147,7 @@ def create_gateway(props, gateway_name, client):
                         }
                     },
                     {
-                        "name": "idp_batch_run",
+                        "name": "process",
                         "description": "Process multiple documents through the IDP pipeline. Supports S3 URIs, manifests, or test sets. Returns batch ID for status tracking.",
                         "inputSchema": {
                             "type": "object",
@@ -191,7 +191,37 @@ def create_gateway(props, gateway_name, client):
                         }
                     },
                     {
-                        "name": "idp_batch_get_status",
+                        "name": "reprocess",
+                        "description": "Reprocess documents from a specific pipeline step. Supports classification or extraction reprocessing. Returns batch ID for status tracking.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "stack_name": {
+                                    "type": "string",
+                                    "description": "CloudFormation stack name (e.g., 'prod-idp', 'IDP')"
+                                },
+                                "step": {
+                                    "type": "string",
+                                    "description": "Pipeline step to reprocess from (classification or extraction)"
+                                },
+                                "document_ids": {
+                                    "type": "string",
+                                    "description": "Comma-separated list of document IDs to reprocess (alternative to batch_id)"
+                                },
+                                "batch_id": {
+                                    "type": "string",
+                                    "description": "Batch ID to get document IDs from (alternative to document_ids)"
+                                },
+                                "region": {
+                                    "type": "string",
+                                    "description": "AWS region (optional)"
+                                }
+                            },
+                            "required": ["stack_name", "step"]
+                        }
+                    },
+                    {
+                        "name": "status",
                         "description": "Get processing status for a batch of documents. Returns progress, timing, and error information.",
                         "inputSchema": {
                             "type": "object",
