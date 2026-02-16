@@ -64,15 +64,18 @@ class TestConfigOperationsMocked:
         mock_paginator.paginate.return_value = [
             {
                 "StackResourceSummaries": [
-                    {"LogicalResourceId": "ConfigurationTable", "PhysicalResourceId": "test-table"}
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
                 ]
             }
         ]
-        
+
         mock_manager = mock_manager_class.return_value
         mock_manager.list_config_versions.return_value = [
             {"versionName": "default", "isActive": False},
-            {"versionName": "v1", "isActive": True}
+            {"versionName": "v1", "isActive": True},
         ]
 
         # Test
@@ -93,13 +96,18 @@ class TestConfigOperationsMocked:
         mock_paginator.paginate.return_value = [
             {
                 "StackResourceSummaries": [
-                    {"LogicalResourceId": "ConfigurationTable", "PhysicalResourceId": "test-table"}
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
                 ]
             }
         ]
-        
+
         mock_manager = mock_manager_class.return_value
-        mock_manager.get_configuration.return_value = {"version": "v1"}  # Version exists
+        mock_manager.get_configuration.return_value = {
+            "version": "v1"
+        }  # Version exists
         mock_manager.activate_version.return_value = None
 
         # Test
@@ -120,11 +128,14 @@ class TestConfigOperationsMocked:
         mock_paginator.paginate.return_value = [
             {
                 "StackResourceSummaries": [
-                    {"LogicalResourceId": "ConfigurationTable", "PhysicalResourceId": "test-table"}
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
                 ]
             }
         ]
-        
+
         mock_manager = mock_manager_class.return_value
         mock_manager.get_configuration.return_value = None  # Version doesn't exist
 
@@ -145,11 +156,14 @@ class TestConfigOperationsMocked:
         mock_paginator.paginate.return_value = [
             {
                 "StackResourceSummaries": [
-                    {"LogicalResourceId": "ConfigurationTable", "PhysicalResourceId": "test-table"}
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
                 ]
             }
         ]
-        
+
         mock_manager = mock_manager_class.return_value
         mock_manager.delete_configuration.return_value = None
 
@@ -159,7 +173,9 @@ class TestConfigOperationsMocked:
 
         assert result["success"] is True
         assert result["deleted_version"] == "old-version"
-        mock_manager.delete_configuration.assert_called_once_with("Config", version="old-version")
+        mock_manager.delete_configuration.assert_called_once_with(
+            "Config", version="old-version"
+        )
 
     @patch("boto3.client")
     @patch("idp_common.config.configuration_manager.ConfigurationManager")
@@ -171,13 +187,18 @@ class TestConfigOperationsMocked:
         mock_paginator.paginate.return_value = [
             {
                 "StackResourceSummaries": [
-                    {"LogicalResourceId": "ConfigurationTable", "PhysicalResourceId": "test-table"}
+                    {
+                        "LogicalResourceId": "ConfigurationTable",
+                        "PhysicalResourceId": "test-table",
+                    }
                 ]
             }
         ]
-        
+
         mock_manager = mock_manager_class.return_value
-        mock_manager.delete_configuration.side_effect = ValueError("Cannot delete active version")
+        mock_manager.delete_configuration.side_effect = ValueError(
+            "Cannot delete active version"
+        )
 
         # Test
         client = IDPClient(stack_name="test-stack")
