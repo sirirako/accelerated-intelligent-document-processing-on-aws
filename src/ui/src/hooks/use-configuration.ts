@@ -11,17 +11,32 @@ import { deepMerge } from '../utils/configUtils';
 const client = generateClient();
 const logger = new ConsoleLogger('useConfiguration');
 
+/** Return type for the useConfiguration hook */
+interface UseConfigurationReturn {
+  schema: Record<string, unknown> | null;
+  defaultConfig: Record<string, unknown> | null;
+  customConfig: Record<string, unknown> | null;
+  mergedConfig: Record<string, unknown> | null;
+  loading: boolean;
+  refreshing: boolean;
+  error: string | null;
+  fetchConfiguration: (fetchVersionName?: string, silent?: boolean) => Promise<void>;
+  updateConfiguration: (targetVersionName: string, newCustomConfig: unknown, description?: string | null) => Promise<boolean>;
+  resetToDefault: (path: string) => { path: string; defaultValue: unknown } | false;
+  isCustomized: (path: string) => boolean;
+}
+
 // Utility function to check if two values are numerically equivalent
 // Handles cases where 5 and 5.0, or "5" and 5 should be considered equal
-const areNumericValuesEqual = (val1, val2) => {
+const areNumericValuesEqual = (val1: unknown, val2: unknown): boolean => {
   // If both are numbers, direct comparison
   if (typeof val1 === 'number' && typeof val2 === 'number') {
     return val1 === val2;
   }
 
   // Try to parse both as numbers
-  const num1 = typeof val1 === 'number' ? val1 : parseFloat(val1);
-  const num2 = typeof val2 === 'number' ? val2 : parseFloat(val2);
+  const num1 = typeof val1 === 'number' ? val1 : parseFloat(val1 as string);
+  const num2 = typeof val2 === 'number' ? val2 : parseFloat(val2 as string);
 
   // Both must be valid numbers for numeric comparison
   if (!Number.isNaN(num1) && !Number.isNaN(num2)) {
@@ -32,19 +47,19 @@ const areNumericValuesEqual = (val1, val2) => {
 };
 
 // Check if a value could be interpreted as a number
-const isNumericValue = (val) => {
+const isNumericValue = (val: unknown): boolean => {
   if (typeof val === 'number') return true;
   if (typeof val === 'string' && val.trim() !== '') {
-    return !Number.isNaN(parseFloat(val)) && isFinite(val);
+    return !Number.isNaN(parseFloat(val)) && isFinite(val as any);
   }
   return false;
 };
 
 // Utility function to normalize boolean values from strings
-const normalizeBooleans = (obj, schema) => {
+const normalizeBooleans = (obj: Record<string, unknown>, schema: Record<string, unknown>): Record<string, unknown> => {
   if (!obj || !schema) return obj;
 
-  const normalizeValue = (value, propertySchema) => {
+  const normalizeValue = (value: unknown, propertySchema: any): unknown => {
     // Handle boolean fields that might be strings
     if (propertySchema?.type === 'boolean') {
       if (typeof value === 'string') {
@@ -56,7 +71,7 @@ const normalizeBooleans = (obj, schema) => {
 
     // Handle objects recursively
     if (value && typeof value === 'object' && !Array.isArray(value) && propertySchema?.properties) {
-      const normalized = { ...value };
+      const normalized = { ...(value as Record<string, unknown>) };
       Object.keys(normalized).forEach((key) => {
         if (propertySchema.properties[key]) {
           normalized[key] = normalizeValue(normalized[key], propertySchema.properties[key]);
@@ -67,17 +82,17 @@ const normalizeBooleans = (obj, schema) => {
 
     // Handle arrays
     if (Array.isArray(value) && propertySchema?.items) {
-      return value.map((item) => normalizeValue(item, propertySchema.items));
+      return value.map((item: unknown) => normalizeValue(item, propertySchema.items));
     }
 
     return value;
   };
 
-  const normalized = { ...obj };
-  if (schema.properties) {
+  const normalized: Record<string, unknown> = { ...obj };
+  if ((schema as any).properties) {
     Object.keys(normalized).forEach((key) => {
-      if (schema.properties[key]) {
-        normalized[key] = normalizeValue(normalized[key], schema.properties[key]);
+      if ((schema as any).properties[key]) {
+        normalized[key] = normalizeValue(normalized[key], (schema as any).properties[key]);
       }
     });
   }
@@ -86,22 +101,22 @@ const normalizeBooleans = (obj, schema) => {
 };
 
 // Utility: Get value at path in nested object
-const getValueAtPath = (obj, path) => {
+const getValueAtPath = (obj: Record<string, unknown>, path: string): unknown => {
   if (!obj || !path) return undefined;
   const segments = path.split(/[.[\]]+/).filter(Boolean);
-  return segments.reduce((acc, segment) => {
+  return segments.reduce((acc: any, segment) => {
     if (acc === null || acc === undefined) return undefined;
     return acc[segment];
   }, obj);
 };
 
 // Utility: Set value at path in nested object (immutable)
-const setValueAtPath = (obj, path, value) => {
+const setValueAtPath = (obj: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> => {
   if (!obj || !path) return obj;
   const segments = path.split(/[.[\]]+/).filter(Boolean);
   const result = JSON.parse(JSON.stringify(obj)); // Deep clone
 
-  let current = result;
+  let current: any = result;
   for (let i = 0; i < segments.length - 1; i += 1) {
     const segment = segments[i];
     if (!(segment in current)) {
@@ -118,13 +133,13 @@ const setValueAtPath = (obj, path, value) => {
 
 // Utility: Remove value at path from nested object (immutable)
 // Returns new object with the path removed, and cleans up empty parent objects
-const removeValueAtPath = (obj, path) => {
+const removeValueAtPath = (obj: Record<string, unknown>, path: string): Record<string, unknown> => {
   if (!obj || !path) return obj;
   const segments = path.split(/[.[\]]+/).filter(Boolean);
   const result = JSON.parse(JSON.stringify(obj)); // Deep clone
 
   // Helper to remove empty parent objects recursively
-  const cleanupEmptyParents = (object, segs, depth = 0) => {
+  const cleanupEmptyParents = (object: any, segs: string[], depth: number = 0): void => {
     if (depth >= segs.length - 1) {
       // At the target level, delete the key
       delete object[segs[depth]];
@@ -149,10 +164,22 @@ const removeValueAtPath = (obj, path) => {
 // Utility: Compute diff between two configs (returns only changes)
 // Note: This only returns CHANGED values, never deletions
 // Custom config is always complete, never has missing keys
-const getDiff = (oldConfig, newConfig) => {
-  const diff = {};
+const getDiff = (oldConfig: Record<string, unknown>, newConfig: Record<string, unknown>): Record<string, unknown> => {
+  const diff: Record<string, unknown> = {};
 
-  const computeDiff = (oldObj, newObj, path = []) => {
+  const setDiffValue = (obj: Record<string, unknown>, path: string[], value: unknown): void => {
+    let current: any = obj;
+    for (let i = 0; i < path.length - 1; i += 1) {
+      const segment = path[i];
+      if (!(segment in current)) {
+        current[segment] = {};
+      }
+      current = current[segment];
+    }
+    current[path[path.length - 1]] = value;
+  };
+
+  const computeDiff = (oldObj: Record<string, unknown> | undefined, newObj: Record<string, unknown>, path: string[] = []): void => {
     // Only check for new or changed keys (no deletions)
     Object.keys(newObj).forEach((key) => {
       const newValue = newObj[key];
@@ -168,7 +195,7 @@ const getDiff = (oldConfig, newConfig) => {
         !Array.isArray(newValue) &&
         !Array.isArray(oldValue)
       ) {
-        computeDiff(oldValue, newValue, currentPath);
+        computeDiff(oldValue as Record<string, unknown>, newValue as Record<string, unknown>, currentPath);
       }
       // Value changed or is new
       else if (JSON.stringify(newValue) !== JSON.stringify(oldValue)) {
@@ -181,32 +208,20 @@ const getDiff = (oldConfig, newConfig) => {
     // "Reset to default" means setting the default VALUE, not deleting the key
   };
 
-  const setDiffValue = (obj, path, value) => {
-    let current = obj;
-    for (let i = 0; i < path.length - 1; i += 1) {
-      const segment = path[i];
-      if (!(segment in current)) {
-        current[segment] = {};
-      }
-      current = current[segment];
-    }
-    current[path[path.length - 1]] = value;
-  };
-
   computeDiff(oldConfig, newConfig);
   return diff;
 };
 
-const useConfiguration = (versionName = 'default') => {
-  const [schema, setSchema] = useState(null);
-  const [defaultConfig, setDefaultConfig] = useState(null);
-  const [customConfig, setCustomConfig] = useState(null);
-  const [mergedConfig, setMergedConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+const useConfiguration = (versionName: string = 'default'): UseConfigurationReturn => {
+  const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
+  const [defaultConfig, setDefaultConfig] = useState<Record<string, unknown> | null>(null);
+  const [customConfig, setCustomConfig] = useState<Record<string, unknown> | null>(null);
+  const [mergedConfig, setMergedConfig] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchConfiguration = async (fetchVersionName = 'default', silent = false) => {
+  const fetchConfiguration = async (fetchVersionName: string = 'default', silent: boolean = false): Promise<void> => {
     // Use different loading states for initial load vs background refresh
     if (silent) {
       setRefreshing(true);
@@ -217,12 +232,12 @@ const useConfiguration = (versionName = 'default') => {
     try {
       logger.debug('Fetching configuration for versionName:', fetchVersionName);
       const result = await client.graphql({
-        query: getConfigVersionQuery,
+        query: getConfigVersionQuery as any,
         variables: { versionName: fetchVersionName },
       });
       logger.debug('API response version', fetchVersionName, result);
 
-      const response = result.data.getConfigVersion;
+      const response = (result as any).data.getConfigVersion;
 
       if (!response.success) {
         const errorMsg = response.error?.message || 'Failed to load configuration';
@@ -248,7 +263,7 @@ const useConfiguration = (versionName = 'default') => {
         try {
           schemaObj = JSON.parse(Schema);
           logger.debug('Schema parsed from string successfully');
-        } catch (e) {
+        } catch (e: any) {
           logger.error('Error parsing schema string:', e);
           throw new Error(`Failed to parse schema data: ${e.message}`);
         }
@@ -265,7 +280,7 @@ const useConfiguration = (versionName = 'default') => {
         try {
           defaultObj = JSON.parse(Default);
           logger.debug('Default config parsed from string successfully');
-        } catch (e) {
+        } catch (e: any) {
           logger.error('Error parsing default config string:', e);
           throw new Error(`Failed to parse default configuration: ${e.message}`);
         }
@@ -276,7 +291,7 @@ const useConfiguration = (versionName = 'default') => {
         try {
           customObj = JSON.parse(Custom);
           logger.debug('Version config parsed from string successfully');
-        } catch (e) {
+        } catch (e: any) {
           logger.error('Error parsing version config string:', e);
           throw new Error(`Failed to parse version configuration: ${e.message}`);
         }
@@ -332,7 +347,7 @@ const useConfiguration = (versionName = 'default') => {
         logger.debug('Final classes (JSON Schema) data:', activeConfig.classes);
       }
       setMergedConfig(activeConfig);
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Error fetching configuration', err);
       setError(`Failed to load configuration: ${err.message}`);
     } finally {
@@ -344,14 +359,18 @@ const useConfiguration = (versionName = 'default') => {
     }
   };
 
-  const updateConfiguration = async (targetVersionName, newCustomConfig, description = null) => {
+  const updateConfiguration = async (
+    targetVersionName: string,
+    newCustomConfig: unknown,
+    description: string | null = null,
+  ): Promise<boolean> => {
     setError(null);
     try {
       logger.debug('Updating config - versionName:', targetVersionName, 'description:', description, 'config:', newCustomConfig);
 
       // Make sure we have a valid object to update with
       const configToUpdate =
-        !newCustomConfig || (typeof newCustomConfig === 'object' && Object.keys(newCustomConfig).length === 0)
+        !newCustomConfig || (typeof newCustomConfig === 'object' && Object.keys(newCustomConfig as Record<string, unknown>).length === 0)
           ? {} // Use empty object fallback
           : newCustomConfig;
 
@@ -365,7 +384,7 @@ const useConfiguration = (versionName = 'default') => {
       logger.debug('Sending customConfig string for version', targetVersionName, ':', configString);
 
       const result = await client.graphql({
-        query: updateConfigurationMutation,
+        query: updateConfigurationMutation as any,
         variables: {
           versionName: targetVersionName,
           customConfig: configString,
@@ -373,7 +392,7 @@ const useConfiguration = (versionName = 'default') => {
         },
       });
 
-      const response = result.data.updateConfiguration;
+      const response = (result as any).data.updateConfiguration;
 
       if (!response.success) {
         const errorMsg = response.error?.message || 'Failed to update configuration';
@@ -386,7 +405,7 @@ const useConfiguration = (versionName = 'default') => {
       await fetchConfiguration(targetVersionName, true);
 
       return true;
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Error updating configuration for version', targetVersionName, ':', err);
       setError(`Failed to update configuration for version ${targetVersionName}: ${err.message}`);
       return false;
@@ -396,7 +415,7 @@ const useConfiguration = (versionName = 'default') => {
   // Reset a specific configuration path back to its default value (LOCAL ONLY)
   // This updates local form state only - user must click Save to persist.
   // This makes "Restore to default" consistent with all other field edits.
-  const resetToDefault = (path) => {
+  const resetToDefault = (path: string): { path: string; defaultValue: unknown } | false => {
     if (!path || !defaultConfig) return false;
 
     try {
@@ -414,7 +433,7 @@ const useConfiguration = (versionName = 'default') => {
       // Return the default value - the caller (ConfigBuilder) will call updateValue()
       // to set it in formValues, which triggers hasUnsavedChanges detection
       return { path, defaultValue };
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Error getting default value for path', err);
       return false;
     }
@@ -424,7 +443,7 @@ const useConfiguration = (versionName = 'default') => {
   // Now uses simple diff-based approach above
 
   // Check if a value is customized or default
-  const isCustomized = (path) => {
+  const isCustomized = (path: string): boolean => {
     if (!customConfig || !path) {
       return false;
     }
@@ -434,8 +453,8 @@ const useConfiguration = (versionName = 'default') => {
       const pathSegments = path.split(/[.[\]]+/).filter(Boolean);
 
       // Helper function to get value at path segments for comparison
-      const getValueAtPathSegments = (obj, segments) => {
-        return segments.reduce((acc, segment) => {
+      const getValueAtPathSegments = (obj: Record<string, unknown> | null, segments: string[]): unknown => {
+        return segments.reduce((acc: any, segment) => {
           if (acc === null || acc === undefined || !Object.hasOwn(acc, segment)) {
             return undefined;
           }
@@ -456,7 +475,7 @@ const useConfiguration = (versionName = 'default') => {
         typeof customValue === 'object' &&
         customValue !== null &&
         !Array.isArray(customValue) &&
-        Object.keys(customValue).length === 0
+        Object.keys(customValue as Record<string, unknown>).length === 0
       ) {
         return false;
       }
@@ -498,7 +517,7 @@ const useConfiguration = (versionName = 'default') => {
 
       // Simple value comparison for non-numeric values
       return customValueExists && customValue !== defaultValue;
-    } catch (err) {
+    } catch (err: any) {
       logger.error(`Error in isCustomized for path: ${path}`, err);
       return false;
     }
