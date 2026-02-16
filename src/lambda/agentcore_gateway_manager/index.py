@@ -133,7 +133,7 @@ def create_gateway(props, gateway_name, client):
             "toolSchema": {
                 "inlinePayload": [
                     {
-                        "name": "idp_search",
+                        "name": "search",
                         "description": "Search and query processed documents using natural language. Returns analytics, metrics, and document information from the IDP system.",
                         "inputSchema": {
                             "type": "object",
@@ -175,10 +175,6 @@ def create_gateway(props, gateway_name, client):
                                         "batch_prefix": {
                                             "type": "string",
                                             "description": "Batch ID prefix (default: 'mcp-batch')"
-                                        },
-                                        "number_of_files": {
-                                            "type": "integer",
-                                            "description": "Limit number of files to process"
                                         }
                                     }
                                 },
@@ -191,7 +187,7 @@ def create_gateway(props, gateway_name, client):
                         }
                     },
                     {
-                        "name": "reprocess",
+                        "name": "re_process",
                         "description": "Reprocess documents from a specific pipeline step. Supports classification or extraction reprocessing. Returns batch ID for status tracking.",
                         "inputSchema": {
                             "type": "object",

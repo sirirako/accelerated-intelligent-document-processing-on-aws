@@ -12,13 +12,10 @@ from .batch_status import BatchStatusTool
 
 # Tool registry
 TOOLS: Dict[str, Type[IDPTool]] = {
-    "idp_search": SearchTool,
+    "search": SearchTool,
     "process": BatchRunTool,
-    "reprocess": BatchReprocessTool,
+    "re_process": BatchReprocessTool,
     "status": BatchStatusTool,
-    # Legacy aliases for backward compatibility
-    "idp_batch_run": BatchRunTool,
-    "idp_batch_get_status": BatchStatusTool,
 }
 
 

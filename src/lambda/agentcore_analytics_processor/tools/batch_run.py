@@ -49,8 +49,7 @@ class BatchRunTool(IDPTool):
                     s3_uri=source,
                     file_pattern=options.get("file_pattern", "*.pdf"),
                     recursive=options.get("recursive", True),
-                    output_prefix=options.get("batch_prefix", "mcp-batch"),
-                    number_of_files=options.get("number_of_files")
+                    output_prefix=options.get("batch_prefix", "mcp-batch")
                 )
             elif os.path.isdir(source):
                 logger.info("Processing from directory")
@@ -58,15 +57,13 @@ class BatchRunTool(IDPTool):
                     dir_path=source,
                     file_pattern=options.get("file_pattern", "*.pdf"),
                     recursive=options.get("recursive", True),
-                    output_prefix=options.get("batch_prefix", "mcp-batch"),
-                    number_of_files=options.get("number_of_files")
+                    output_prefix=options.get("batch_prefix", "mcp-batch")
                 )
             else:
                 logger.info("Processing from manifest")
                 result = processor.process_batch(
                     manifest_path=source,
-                    output_prefix=options.get("batch_prefix", "mcp-batch"),
-                    number_of_files=options.get("number_of_files")
+                    output_prefix=options.get("batch_prefix", "mcp-batch")
                 )
 
             # Format response
