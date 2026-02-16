@@ -21,9 +21,9 @@ from idp_sdk import IDPClient
 client = IDPClient(stack_name="my-idp-stack", region="us-west-2")
 
 # Process documents from a directory
-result = client.batch.run(directory="./documents/")
+result = client.batch.process(directory="./documents/")
 print(f"Batch ID: {result.batch_id}")
-print(f"Queued: {result.queued} documents")
+print(f"Queued: {result.documents_queued} documents")
 
 # Check processing status
 status = client.batch.get_status(batch_id=result.batch_id)
@@ -36,11 +36,11 @@ client.batch.download_results(
 )
 
 # Reprocess documents from a specific step
-rerun_result = client.batch.rerun(
+reprocess_result = client.batch.reprocess(
     step="extraction",
     batch_id=result.batch_id
 )
-print(f"Requeued: {rerun_result.documents_queued} documents")
+print(f"Requeued: {reprocess_result.documents_queued} documents")
 ```
 
 ## Configuration Management
@@ -71,7 +71,7 @@ if validation.valid:
     print("Configuration is valid")
 
 # Process documents using specific version
-result = client.batch.run(
+result = client.batch.process(
     directory="./documents/",
     config_version="production-v2"
 )
@@ -127,7 +127,7 @@ The SDK organizes functionality into 9 operation namespaces:
 client = IDPClient(stack_name="my-stack")
 
 # Start batch processing
-result = client.batch.run(directory="./invoices/")
+result = client.batch.process(directory="./invoices/")
 print(f"Started batch: {result.batch_id}")
 
 # Poll for status
@@ -144,14 +144,14 @@ while True:
 
 ```python
 # Reprocess from classification step
-rerun = client.batch.rerun(
+reprocess = client.batch.reprocess(
     step="classification",
     batch_id="my-batch-id"
 )
-print(f"Requeued {rerun.documents_queued} documents")
+print(f"Requeued {reprocess.documents_queued} documents")
 
 # Or reprocess specific documents
-rerun = client.batch.rerun(
+reprocess = client.batch.reprocess(
     step="extraction",
     document_ids=["doc1.pdf", "doc2.pdf"]
 )
@@ -168,7 +168,7 @@ client.config.upload(
 )
 
 # Process with specific version
-result = client.batch.run(
+result = client.batch.process(
     directory="./docs/",
     config_version="v2.0"
 )

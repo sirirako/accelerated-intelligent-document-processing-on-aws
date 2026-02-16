@@ -173,7 +173,7 @@ def create_gateway(props, gateway_name, client):
                         }
                     },
                     {
-                        "name": "re_process",
+                        "name": "reprocess",
                         "description": "Reprocess documents from a specific pipeline step. Supports classification or extraction reprocessing. Returns batch ID for status tracking.",
                         "inputSchema": {
                             "type": "object",

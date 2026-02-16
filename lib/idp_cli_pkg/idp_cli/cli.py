@@ -1230,7 +1230,7 @@ def process(
     )
 
 
-@cli.command(name="re-process")
+@cli.command(name="reprocess")
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
 @click.option(
     "--step",
@@ -1255,7 +1255,7 @@ def process(
     help="Seconds between status checks (default: 5)",
 )
 @click.option("--region", help="AWS region (optional)")
-def re_process(
+def reprocess(
     stack_name: str,
     step: str,
     document_ids: Optional[str],
@@ -1279,14 +1279,14 @@ def re_process(
     Examples:
     
       # Rerun classification for specific documents
-      idp-cli re-process \\
+      idp-cli reprocess \\
           --stack-name my-stack \\
           --step classification \\
           --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf" \\
           --monitor
       
       # Rerun extraction for all documents in a batch
-      idp-cli re-process \\
+      idp-cli reprocess \\
           --stack-name my-stack \\
           --step extraction \\
           --batch-id cli-batch-20251015-143000 \\
@@ -1413,7 +1413,7 @@ def run_inference(
     )
 
 
-@cli.command(name="rerun-inference", hidden=True)
+@cli.command(name="rerun-inference")
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
 @click.option(
     "--step",
@@ -1449,10 +1449,10 @@ def rerun_inference(
     region: Optional[str],
 ):
     """
-    DEPRECATED: Use 're-process' instead
+    DEPRECATED: Use 'reprocess' instead
     """
-    # Call the new re-process implementation
-    return re_process(
+    # Call the new reprocess implementation
+    return _rerun_inference_impl(
         stack_name,
         step,
         document_ids,
