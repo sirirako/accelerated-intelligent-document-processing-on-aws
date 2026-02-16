@@ -924,6 +924,7 @@ Resources:
             ]
           CLOUDWATCH_LOG_GROUP_PREFIX: !Sub "/aws/lambda/${AWS::StackName}"
           SETTINGS_PARAMETER_NAME: !Ref SettingsParameter
+          MCP_SERVER_BUCKET: !Ref MCPContentBucket
       LoggingConfig:
         LogGroup: !Ref AgentCoreAnalyticsLambdaLogGroup
       Policies:
@@ -970,7 +971,7 @@ Resources:
                       - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
                 - !GetAtt InputBucket.Arn
                 - !GetAtt OutputBucket.Arn
-                - "*"
+                - !GetAtt MCPContentBucket.Arn
             - Effect: Allow
               Action:
                 - s3:GetObject
@@ -987,7 +988,7 @@ Resources:
                       - !Sub "arn:${AWS::Partition}:s3:::${ReportingBucketName}"
                 - !Sub "${InputBucket.Arn}/*"
                 - !Sub "${OutputBucket.Arn}/*"
-                - "*"
+                - !Sub "${MCPContentBucket.Arn}/*"
             - Effect: Allow
               Action:
                 - glue:GetTable
@@ -1614,6 +1615,57 @@ Resources:
       CompatibleRuntimes:
         - python3.12
         - python3.13
+
+  ##########################################################################
+  # MCP Content Bucket for base64 document processing
+  ##########################################################################
+
+  MCPContentBucket:
+    Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref CustomerManagedEncryptionKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: mcp-content-bucket-logs/
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteMCPTempFiles
+            Status: Enabled
+            Prefix: mcp-temp/
+            ExpirationInDays: 7
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  MCPContentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MCPContentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnforceSSLOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "${MCPContentBucket.Arn}/*"
+              - !Sub "${MCPContentBucket.Arn}"
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
 
   ##########################################################################
   # S3 buckets for data processing, webUI static assets, and logging
@@ -7004,3 +7056,6 @@ Outputs:
     Condition: CreateAgentCoreLambda
     Description: MCP Authorization URL
     Value: !Sub "https://${GetDomain.OutputString}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
+  MCPContentBucketConsoleURL:
+    Description: MCP server content bucket console URL
+    Value: !Sub https://s3.console.aws.amazon.com/s3/buckets/${MCPContentBucket}
