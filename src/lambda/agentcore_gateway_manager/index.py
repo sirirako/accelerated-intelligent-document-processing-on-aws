@@ -148,42 +148,28 @@ def create_gateway(props, gateway_name, client):
                     },
                     {
                         "name": "process",
-                        "description": "Process multiple documents through the IDP pipeline. Supports S3 URIs, manifests, or test sets. Returns batch ID for status tracking.",
+                        "description": "Process documents through the IDP pipeline. Accepts S3 locations or base64-encoded content. Intelligently handles missing information by requesting specific details.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "stack_name": {
+                                "location": {
                                     "type": "string",
-                                    "description": "CloudFormation stack name (e.g., 'prod-idp', 'IDP')"
+                                    "description": "S3 URI for batch processing (e.g., 's3://bucket/documents/'). Optional if content is provided."
                                 },
-                                "source": {
+                                "content": {
                                     "type": "string",
-                                    "description": "Source location - S3 URI (s3://bucket/prefix/), manifest S3 URI, or test set ID"
+                                    "description": "Base64-encoded document content for single document processing. Optional if location is provided."
                                 },
-                                "options": {
-                                    "type": "object",
-                                    "description": "Optional processing parameters",
-                                    "properties": {
-                                        "file_pattern": {
-                                            "type": "string",
-                                            "description": "File pattern for filtering (default: '*.pdf')"
-                                        },
-                                        "recursive": {
-                                            "type": "boolean",
-                                            "description": "Include subdirectories (default: true)"
-                                        },
-                                        "batch_prefix": {
-                                            "type": "string",
-                                            "description": "Batch ID prefix (default: 'mcp-batch')"
-                                        }
-                                    }
-                                },
-                                "region": {
+                                "name": {
                                     "type": "string",
-                                    "description": "AWS region (optional, auto-detected if not provided)"
+                                    "description": "Document filename with extension (e.g., 'invoice.pdf', 'contract.docx'). Required if content is provided; optional for S3 locations."
+                                },
+                                "prefix": {
+                                    "type": "string",
+                                    "description": "Optional batch ID prefix (default: 'mcp-batch')"
                                 }
                             },
-                            "required": ["stack_name", "source"]
+                            "required": []
                         }
                     },
                     {
