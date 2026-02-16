@@ -4,6 +4,7 @@
 """Batch reprocess tool for reprocessing documents from a specific step"""
 
 import logging
+import os
 from typing import Any, Dict, Optional
 from .base import IDPTool
 
@@ -17,9 +18,21 @@ TOOL_UPDATED = "2025-01-09T19:30:00Z"
 class BatchReprocessTool(IDPTool):
     """Reprocess documents from a specific pipeline step"""
 
+    def __init__(self):
+        """Initialize with stack name from environment"""
+        # Try AWS_STACK_NAME first, then extract from Lambda function name
+        self.stack_name = os.environ.get('AWS_STACK_NAME')
+        if not self.stack_name:
+            lambda_name = os.environ.get('AWS_LAMBDA_FUNCTION_NAME', '')
+            # Extract stack name by removing -agentcore-analytics suffix
+            if lambda_name.endswith('-agentcore-analytics'):
+                self.stack_name = lambda_name.replace('-agentcore-analytics', '')
+            else:
+                self.stack_name = lambda_name
+        logger.info(f"BatchReprocessTool initialized with stack_name: {self.stack_name}")
+
     def execute(
         self,
-        stack_name: str,
         step: str,
         document_ids: Optional[str] = None,
         batch_id: Optional[str] = None,
@@ -30,7 +43,7 @@ class BatchReprocessTool(IDPTool):
         logger.info(f"=== Batch Reprocess Tool ===")
         logger.info(f"Version: {TOOL_VERSION}")
         logger.info(f"Updated: {TOOL_UPDATED}")
-        logger.info(f"Parameters: stack_name={stack_name}, step={step}, document_ids={document_ids}, batch_id={batch_id}, region={region}")
+        logger.info(f"Parameters: step={step}, document_ids={document_ids}, batch_id={batch_id}, region={region}")
         
         from idp_sdk.core.rerun_processor import RerunProcessor
 
@@ -42,8 +55,8 @@ class BatchReprocessTool(IDPTool):
             if document_ids and batch_id:
                 raise ValueError("Cannot specify both document_ids and batch_id")
 
-            logger.info(f"Initializing RerunProcessor with stack: {stack_name}")
-            processor = RerunProcessor(stack_name=stack_name, region=region)
+            logger.info(f"Initializing RerunProcessor with stack: {self.stack_name}")
+            processor = RerunProcessor(stack_name=self.stack_name, region=region)
             logger.info("RerunProcessor initialized successfully")
             
             # Get document IDs
@@ -83,6 +96,5 @@ class BatchReprocessTool(IDPTool):
             return {
                 "success": False,
                 "error": str(e),
-                "stack_name": stack_name,
                 "step": step
             }

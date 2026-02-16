@@ -4,6 +4,7 @@
 """Batch status tool for checking processing status"""
 
 import logging
+import os
 from typing import Any, Dict, Optional
 from .base import IDPTool
 
@@ -17,9 +18,21 @@ TOOL_UPDATED = "2025-01-09T19:30:00Z"
 class BatchStatusTool(IDPTool):
     """Get processing status for a batch"""
 
+    def __init__(self):
+        """Initialize with stack name from environment"""
+        # Try AWS_STACK_NAME first, then extract from Lambda function name
+        self.stack_name = os.environ.get('AWS_STACK_NAME')
+        if not self.stack_name:
+            lambda_name = os.environ.get('AWS_LAMBDA_FUNCTION_NAME', '')
+            # Extract stack name by removing -agentcore-analytics suffix
+            if lambda_name.endswith('-agentcore-analytics'):
+                self.stack_name = lambda_name.replace('-agentcore-analytics', '')
+            else:
+                self.stack_name = lambda_name
+        logger.info(f"BatchStatusTool initialized with stack_name: {self.stack_name}")
+
     def execute(
         self,
-        stack_name: str,
         batch_id: str,
         options: Optional[Dict[str, Any]] = None,
         region: Optional[str] = None,
@@ -29,7 +42,7 @@ class BatchStatusTool(IDPTool):
         logger.info(f"=== Batch Status Tool ===")
         logger.info(f"Version: {TOOL_VERSION}")
         logger.info(f"Updated: {TOOL_UPDATED}")
-        logger.info(f"Parameters: stack_name={stack_name}, batch_id={batch_id}, region={region}")
+        logger.info(f"Parameters: batch_id={batch_id}, region={region}")
         
         from idp_sdk.client import IDPClient
 
@@ -37,7 +50,7 @@ class BatchStatusTool(IDPTool):
 
         try:
             # Initialize SDK client
-            client = IDPClient(stack_name=stack_name, region=region)
+            client = IDPClient(stack_name=self.stack_name, region=region)
 
             # Call SDK batch.get_status() method
             status = client.batch.get_status(batch_id=batch_id)
@@ -77,6 +90,5 @@ class BatchStatusTool(IDPTool):
             return {
                 "success": False,
                 "error": str(e),
-                "stack_name": stack_name,
                 "batch_id": batch_id
             }

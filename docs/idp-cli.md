@@ -25,8 +25,8 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 - [Commands Reference](#commands-reference)
   - [deploy](#deploy)
   - [delete](#delete)
-  - [run-inference](#run-inference)
-  - [rerun-inference](#rerun-inference)
+  - [process](#process)
+  - [reprocess](#reprocess)
   - [status](#status)
   - [download-results](#download-results)
   - [delete-documents](#delete-documents)
@@ -90,7 +90,7 @@ idp-cli deploy \
     --wait
 
 # 2. Process documents from a local directory
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-idp-stack \
     --dir ./my-documents/ \
     --monitor
@@ -445,12 +445,14 @@ Proceeding with stack deletion...
 
 ---
 
-### `run-inference`
+### `process` / `run-inference`
 
 Process a batch of documents.
 
 **Usage:**
 ```bash
+idp-cli process [OPTIONS]
+# or (deprecated alias)
 idp-cli run-inference [OPTIONS]
 ```
 
@@ -485,59 +487,59 @@ Other options (`--dir`, `--s3-uri`) are for general document processing but won'
 
 ```bash
 # Process from local directory
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --dir ./documents/ \
     --monitor
 
 # Process from manifest with baselines (enables evaluation)
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --manifest documents-with-baselines.csv \
     --monitor
 
 # Process from manifest with limited files
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --manifest documents-with-baselines.csv \
     --number-of-files 10 \
     --monitor
 
 # Process test set (integrates with Test Studio UI - use test set ID)
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --test-set fcc-example-test \
     --monitor
 
 # Process test set with limited files for quick testing
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --test-set fcc-example-test \
     --number-of-files 5 \
     --monitor
 
 # Process test set with custom context (for tracking in Test Studio)
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --test-set fcc-example-test \
     --context "Model v2.1 - improved prompts" \
     --monitor
 
 # Process S3 URI
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --s3-uri archive/2024/ \
     --monitor
 
 # Process with specific configuration version
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --dir ./documents/ \
     --config-version v2 \
     --monitor
 
 # Process test set with configuration version
-idp-cli run-inference \
+idp-cli process \
     --stack-name my-stack \
     --test-set fcc-example-test \
     --config-version v1 \
@@ -547,12 +549,14 @@ idp-cli run-inference \
 
 ---
 
-### `rerun-inference`
+### `reprocess` / `rerun-inference`
 
 Reprocess existing documents from a specific pipeline step.
 
 **Usage:**
 ```bash
+idp-cli reprocess [OPTIONS]
+# or (deprecated alias)
 idp-cli rerun-inference [OPTIONS]
 ```
 
@@ -580,21 +584,21 @@ idp-cli rerun-inference [OPTIONS]
 
 ```bash
 # Rerun classification for specific documents
-idp-cli rerun-inference \
+idp-cli reprocess \
     --stack-name my-stack \
     --step classification \
     --document-ids "batch-123/doc1.pdf,batch-123/doc2.pdf" \
     --monitor
 
 # Rerun extraction for entire batch
-idp-cli rerun-inference \
+idp-cli reprocess \
     --stack-name my-stack \
     --step extraction \
     --batch-id cli-batch-20251015-143000 \
     --monitor
 
 # Automated rerun (skip confirmation - perfect for CI/CD)
-idp-cli rerun-inference \
+idp-cli reprocess \
     --stack-name my-stack \
     --step classification \
     --batch-id test-set \
@@ -951,7 +955,7 @@ When using `--test-set`, the command:
 Process the created test set:
 ```bash
 # Using test set ID (from UI or after creation)
-idp-cli run-inference --stack-name IDP --test-set fcc-example-test --monitor
+idp-cli process --stack-name IDP --test-set fcc-example-test --monitor
 
 # Or using S3 URI to process input files directly
 idp-cli run-inference --stack-name IDP --s3-uri s3://test-set-bucket/fcc-example-test/input/

@@ -14,7 +14,7 @@ from .batch_status import BatchStatusTool
 TOOLS: Dict[str, Type[IDPTool]] = {
     "search": SearchTool,
     "process": BatchRunTool,
-    "re_process": BatchReprocessTool,
+    "reprocess": BatchReprocessTool,
     "status": BatchStatusTool,
 }
 
