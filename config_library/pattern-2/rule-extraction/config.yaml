@@ -1,3 +1,5 @@
+processing_mode: bedrock
+
 notes: Default settings for lending-package-sample configuration
 ocr:
   backend: textract

@@ -1,3 +1,5 @@
+processing_mode: bedrock
+
 notes: Rule validation configuration for healthcare/insurance prior authorization
 ocr:
   backend: textract

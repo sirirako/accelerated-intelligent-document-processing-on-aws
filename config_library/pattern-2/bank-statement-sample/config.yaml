@@ -3,6 +3,8 @@
 
 # All settings not explicitly defined here are inherited from system defaults.
 
+processing_mode: bedrock
+
 notes: Bank statement sample settings for Pattern2 (Bedrock LLM)
 
 classes:

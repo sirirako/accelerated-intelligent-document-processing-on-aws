@@ -1073,6 +1073,13 @@ class IDPConfig(BaseModel):
         default="Config", description="Configuration type"
     )
 
+    processing_mode: Optional[Literal["bedrock", "bda"]] = Field(
+        default=None,
+        description="Processing mode: 'bedrock' for direct Bedrock FM calls (Pattern 2), "
+        "'bda' for Bedrock Data Automation (Pattern 1). "
+        "When not set, the mode is determined by the deployed pattern.",
+    )
+
     notes: Optional[str] = Field(default=None, description="Configuration notes")
     ocr: OCRConfig = Field(default_factory=OCRConfig, description="OCR configuration")
     classification: ClassificationConfig = Field(
