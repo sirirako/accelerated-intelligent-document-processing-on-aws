@@ -1502,6 +1502,25 @@ const ConfigBuilder = ({
       property,
     );
 
+    // Check top-level dependsOn before rendering (hides entire sections when dependency not met)
+    if (property.dependsOn) {
+      const depField = property.dependsOn.field;
+      const depValues = Array.isArray(property.dependsOn.values) ? property.dependsOn.values : [property.dependsOn.value];
+      const currentValue = getValueAtPath(formValues, depField);
+      // Handle boolean comparison: normalize string "true"/"false" to actual booleans
+      let normalizedValue = currentValue;
+      if (typeof currentValue === 'string' && (currentValue === 'true' || currentValue === 'false')) {
+        normalizedValue = currentValue === 'true';
+      }
+      const normalizedDepValues = depValues.map(v => {
+        if (typeof v === 'string' && (v === 'true' || v === 'false')) return v === 'true';
+        return v;
+      });
+      if (!normalizedDepValues.includes(normalizedValue)) {
+        return null;
+      }
+    }
+
     // If property should have a section container, wrap it
     if (shouldUseContainer(key, property)) {
       const sectionTitle = property.sectionLabel;
