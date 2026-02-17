@@ -216,7 +216,7 @@ def detect_pattern_from_config(config: Dict[str, Any]) -> str:
         config: Configuration dictionary
         
     Returns:
-        Pattern name (pattern-1, pattern-2, or pattern-3)
+        Pattern name (pattern-1 or pattern-2)
     """
     # Check classification method
     classification_method = config.get("classification", {}).get("classificationMethod", "")
@@ -224,7 +224,6 @@ def detect_pattern_from_config(config: Dict[str, Any]) -> str:
     if classification_method == "bda":
         return "pattern-1"
     elif classification_method == "udop":
-        return "pattern-3"
     else:
         # Default to pattern-2 (most common - Textract + Bedrock LLM)
         return "pattern-2"

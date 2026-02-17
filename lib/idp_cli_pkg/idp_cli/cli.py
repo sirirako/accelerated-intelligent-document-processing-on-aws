@@ -160,7 +160,7 @@ def cli():
 @click.option("--stack-name", required=True, help="CloudFormation stack name")
 @click.option(
     "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    type=click.Choice(["pattern-1", "pattern-2"]),
     help="IDP pattern to deploy (required for new stacks)",
 )
 @click.option(
@@ -3007,7 +3007,7 @@ def remove_residual_resources_from_deleted_stacks(
 )
 @click.option(
     "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    type=click.Choice(["pattern-1", "pattern-2"]),
     default="pattern-2",
     help="Pattern to use for defaults (default: pattern-2)",
 )
@@ -3124,7 +3124,7 @@ def config_create(
 )
 @click.option(
     "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    type=click.Choice(["pattern-1", "pattern-2"]),
     default="pattern-2",
     help="Pattern to validate against (default: pattern-2)",
 )
@@ -3291,7 +3291,7 @@ def config_validate(
 )
 @click.option(
     "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    type=click.Choice(["pattern-1", "pattern-2"]),
     help="Pattern for validation (auto-detected if not specified)",
 )
 @click.option(
@@ -3383,8 +3383,6 @@ def config_upload(
                         detected_pattern = "pattern-1"
                     elif "Pattern2" in logical_id:
                         detected_pattern = "pattern-2"
-                    elif "Pattern3" in logical_id:
-                        detected_pattern = "pattern-3"
 
             if not config_table:
                 console.print("[red]✗ ConfigurationTable not found in stack[/red]")
@@ -3519,7 +3517,7 @@ def config_upload(
 )
 @click.option(
     "--pattern",
-    type=click.Choice(["pattern-1", "pattern-2", "pattern-3"]),
+    type=click.Choice(["pattern-1", "pattern-2"]),
     help="Pattern for minimal diff (auto-detected if not specified)",
 )
 @click.option(
@@ -3618,7 +3616,6 @@ def config_download(
                 if classification_method == "bda":
                     pattern = "pattern-1"
                 elif classification_method == "udop":
-                    pattern = "pattern-3"
                 else:
                     pattern = "pattern-2"
                 console.print(f"[dim]Auto-detected pattern: {pattern}[/dim]")

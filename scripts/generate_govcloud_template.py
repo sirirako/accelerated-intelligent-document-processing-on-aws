@@ -777,7 +777,7 @@ class GovCloudTemplateGenerator:
                 func_def['Properties']['Policies'] = cleaned_policies
         
         # Clean nested stack parameters comprehensively (all patterns need AppSync params removed)
-        pattern_stacks = ['PATTERN1STACK', 'PATTERN2STACK', 'PATTERN3STACK']
+        pattern_stacks = ['PATTERN1STACK', 'PATTERN2STACK']
         for stack_name in pattern_stacks:
             if stack_name in resources:
                 stack_params = resources[stack_name].get('Properties', {}).get('Parameters', {})
@@ -1027,7 +1027,7 @@ class GovCloudTemplateGenerator:
             issues.append(f"Missing core resources: {', '.join(missing_core)}")
         
         # Check that pattern nested stacks are still present
-        pattern_stacks = {'PATTERN1STACK', 'PATTERN2STACK', 'PATTERN3STACK'}
+        pattern_stacks = {'PATTERN1STACK', 'PATTERN2STACK'}
         present_patterns = pattern_stacks & set(resources.keys())
         if not present_patterns:
             issues.append("No pattern stacks found - at least one pattern should be present")

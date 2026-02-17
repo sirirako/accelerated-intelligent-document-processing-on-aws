@@ -63,7 +63,6 @@ System defaults are located in:
 lib/idp_common_pkg/idp_common/config/system_defaults/
 ├── pattern-1.yaml    # BDA pattern defaults
 ├── pattern-2.yaml    # Bedrock LLM pattern defaults
-└── pattern-3.yaml    # UDOP pattern defaults
 ```
 
 ## Patterns
@@ -114,7 +113,6 @@ config_library/
 │   ├── realkie-fcc-verified/
 │   ├── rvl-cdip/
 │   └── rvl-cdip-with-few-shot-examples/
-└── pattern-3/                     # Pattern 3 (UDOP) configurations
     ├── README.md
     └── rvl-cdip/
 ```

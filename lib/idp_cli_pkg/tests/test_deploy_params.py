@@ -102,15 +102,12 @@ class TestParameterPreservation:
         """Test pattern name to CloudFormation value mapping"""
         params1 = build_parameters(pattern="pattern-1")
         params2 = build_parameters(pattern="pattern-2")
-        params3 = build_parameters(pattern="pattern-3")
 
         assert "Pattern1" in params1["IDPPattern"]
         assert "BDA" in params1["IDPPattern"]
 
         assert "Pattern2" in params2["IDPPattern"]
         assert "Textract and Bedrock" in params2["IDPPattern"]
-
-        assert "Pattern3" in params3["IDPPattern"]
         assert "SageMaker" in params3["IDPPattern"]
 
     def test_build_parameters_none_values_excluded(self):

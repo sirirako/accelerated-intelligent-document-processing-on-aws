@@ -43,7 +43,7 @@ class StackOperation:
 
         Args:
             stack_name: CloudFormation stack name (uses default if not provided)
-            pattern: IDP pattern (pattern-1, pattern-2, pattern-3) - required for new stacks
+            pattern: IDP pattern (pattern-1, pattern-2) - required for new stacks
             admin_email: Admin user email - required for new stacks
             template_url: URL to CloudFormation template in S3
             from_code: Path to project root for building from source
