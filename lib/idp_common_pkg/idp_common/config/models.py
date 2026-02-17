@@ -1025,6 +1025,7 @@ IDP_CONFIG_DEPRECATED_FIELDS = {
     "output_bucket",
     "textract_page_tracker",
     "summary",
+    "processing_mode",  # Renamed to use_bda (bool) in Phase 1
 }
 
 
