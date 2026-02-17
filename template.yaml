@@ -64,14 +64,6 @@ Mappings:
     default:
       ConfigPath: "rvl-cdip"
 
-  Pattern3ConfigurationMap:
-    rvl-cdip:
-      ConfigPath: "rvl-cdip"
-    rvl-cdip-package-sample:  # for backward compatibility when updating existing stacks
-      ConfigPath: "rvl-cdip"
-    default:
-      ConfigPath: "rvl-cdip"
-
 Parameters:
   # Authorization params
   AdminEmail:
@@ -100,7 +92,6 @@ Parameters:
     AllowedValues:
       - Pattern1 - Packet or Media processing with Bedrock Data Automation (BDA)
       - Pattern2 - Packet processing with Textract and Bedrock
-      - Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock
     Description: >-
       Built-in IDP workflow patterns - see README for pattern descriptions.
 
@@ -164,22 +155,6 @@ Parameters:
     Type: String
     Default: ""
     Description: Specify Custom Fine Tuned Extraction Model ARN. Leave blank to use pretrained model specified in the selected configuration.
-
-  Pattern3UDOPModelArtifactPath:
-    Type: String
-    Default: "<PUBLIC_SAMPLE_UDOP_MODEL>"
-    AllowedPattern: "^(|s3://.*)$"
-    Description: For Pattern-3, provide S3 path to the UDOP model.tar.gz file (e.g., s3://bucket-name/path/to/model.tar.gz)
-
-  Pattern3Configuration:
-    Type: String
-    Default: "rvl-cdip"
-    AllowedValues:
-      - "rvl-cdip"
-      - "default"
-      - "rvl-cdip-package-sample" # for backward compatibility when updating existing stacks
-    Description: >-
-      Select the configuration preset for Pattern 3. Each configuration contains pre-tuned settings for specific document processing scenarios - see https://github.com/aws-samples/sample-genai-idp/blob/main/config_library/README.md. Note: Custom configuration overrides the selected pattern configuration when provided.
 
   # Evaluation
   EvaluationBaselineBucketName:
@@ -423,17 +398,6 @@ Parameters:
     AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2}(,\s*([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2})*$'
     ConstraintDescription: Must be valid comma-separated list of IPv4 CIDR ranges
 
-Rules:
-  Pattern3UDOPModelArtifactPath:
-    RuleCondition:
-      !Equals [
-        !Ref IDPPattern,
-        "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-      ]
-    Assertions:
-      - Assert: !Not [ !Equals [ !Ref Pattern3UDOPModelArtifactPath, "" ] ]
-        AssertDescription: UDOP Model Artifact Path is required when IDPPattern is 'Pattern1'
-
 Conditions:
   IsPattern1:
     !Equals [
@@ -446,11 +410,6 @@ Conditions:
       "Pattern2 - Packet processing with Textract and Bedrock",
     ]
 
-  IsPattern3:
-    !Equals [
-      !Ref IDPPattern,
-      "Pattern3 - Packet processing with Textract, SageMaker(UDOP), and Bedrock",
-    ]
   ShouldCreateBDASampleProject:
     !And [ !Condition IsPattern1, !Equals [ !Ref Pattern1BDAProjectArn, "" ] ]
   HasPattern1BDAProjectArn:
@@ -510,11 +469,6 @@ Metadata:
           - Pattern2Configuration
           - Pattern2CustomClassificationModelARN
           - Pattern2CustomExtractionModelARN
-      - Label:
-          default: "Pattern 3 Configuration"
-        Parameters:
-          - Pattern3Configuration
-          - Pattern3UDOPModelArtifactPath
       - Label:
           default: "Custom Configuration"
         Parameters:
@@ -581,10 +535,6 @@ Metadata:
         default: "Pattern1 - Configuration Preset"
       Pattern2Configuration:
         default: "Pattern2 - Configuration Preset"
-      Pattern3UDOPModelArtifactPath:
-        default: "Pattern3 - UDOP Model Artifact Path"
-      Pattern3Configuration:
-        default: "Pattern3 - Configuration Preset"
       CustomConfigPath:
         default: "Custom Configuration Path"
       PostProcessingLambdaHookFunctionArn:
@@ -1320,62 +1270,6 @@ Resources:
           - !Ref EvaluationBaselineBucket
           - !Ref EvaluationBaselineBucketName
         SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
-        EnableECRImageScanning: !Ref EnableECRImageScanning
-
-  PATTERN3STACK:
-    DependsOn:
-      - IsStacknameLengthOK
-      - CopyConfigurationFiles
-    Type: AWS::CloudFormation::Stack
-    Condition: IsPattern3
-    Properties:
-      # yamllint disable rule:line-length
-      TemplateURL: ./patterns/pattern-3/.aws-sam/packaged.yaml
-      Parameters:
-        StackName: !Ref AWS::StackName
-        InputBucket: !Ref InputBucket
-        ConfigurationBucket: !Ref ConfigurationBucket
-        OutputBucket: !Ref OutputBucket
-        WorkingBucket: !Ref WorkingBucket
-        TrackingTable: !Ref TrackingTable
-        CustomerManagedEncryptionKeyArn: !GetAtt CustomerManagedEncryptionKey.Arn
-        LogRetentionDays: !Ref LogRetentionDays
-        LogLevel: !Ref LogLevel
-        ExecutionTimeThresholdMs: !Ref ExecutionTimeThresholdMs
-        BedrockGuardrailId: !Ref BedrockGuardrailId
-        BedrockGuardrailVersion: !Ref BedrockGuardrailVersion
-        UDOPModelArtifactPath: !Ref Pattern3UDOPModelArtifactPath
-        UpdateConfigurationFunctionArn: !GetAtt UpdateConfigurationFunction.Arn
-        AppSyncApiUrl: !GetAtt GraphQLApi.GraphQLUrl
-        AppSyncApiArn: !GetAtt GraphQLApi.Arn
-        ConfigurationTable: !Ref ConfigurationTable
-        ConfigurationDefaultS3Uri: !If
-          - HasCustomConfigPath
-          - !Ref CustomConfigPath
-          - !Sub
-            - "s3://${ConfigurationBucket}/config_library/pattern-3/${ConfigPath}/config.yaml"
-            - ConfigPath:
-                !FindInMap [
-                  Pattern3ConfigurationMap,
-                  !Ref Pattern3Configuration,
-                  ConfigPath,
-                ]
-        ConfigLibraryHash: "<CONFIG_LIBRARY_HASH_TOKEN>"
-        EnableXRayTracing: !Ref EnableXRayTracing
-        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
-        ReportingBucket: !If
-          - ShouldCreateReportingBucket
-          - !Ref ReportingBucket
-          - !Ref ReportingBucketName
-        BaselineBucket: !If
-          - ShouldCreateEvaluationBaselineBucket
-          - !Ref EvaluationBaselineBucket
-          - !Ref EvaluationBaselineBucketName
-        SaveReportingFunctionName: !Ref SaveReportingDataFunctionV2
-        ImageVersion: "<PATTERN3_IMAGE_VERSION>"
-        ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
-        ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
-        SourceZipfile: "<PATTERN3_SOURCE_ZIPFILE_TOKEN>"
         EnableECRImageScanning: !Ref EnableECRImageScanning
 
   ##########################################################################
@@ -3293,22 +3187,13 @@ Resources:
             - !If
               - IsPattern1
               - !GetAtt PATTERN1STACK.Outputs.PatternLogGroups
-              - !If
-                - IsPattern2
-                - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
-                - !GetAtt PATTERN3STACK.Outputs.PatternLogGroups
+              - !GetAtt PATTERN2STACK.Outputs.PatternLogGroups
         StateMachineArn: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-          - !If
-            - IsPattern2
+          - IsPattern2
             - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
             - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
         StateMachineName: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-          - !If
-            - IsPattern2
+          - IsPattern2
             - !GetAtt PATTERN2STACK.Outputs.StateMachineName
             - !GetAtt PATTERN1STACK.Outputs.StateMachineName
         KnowledgeBaseId: !If
@@ -3517,10 +3402,7 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           STATE_MACHINE_ARN: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
+            - IsPattern2
               - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
               - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
           APPSYNC_API_URL: !GetAtt GraphQLApi.GraphQLUrl
@@ -3532,10 +3414,7 @@ Resources:
             QueueName: !GetAtt DocumentQueue.QueueName
         - StepFunctionsExecutionPolicy:
             StateMachineName: !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineName
-              - !If
-                - IsPattern2
+              - IsPattern2
                 - !GetAtt PATTERN2STACK.Outputs.StateMachineName
                 - !GetAtt PATTERN1STACK.Outputs.StateMachineName
         - DynamoDBCrudPolicy:
@@ -3703,10 +3582,7 @@ Resources:
         detail:
           stateMachineArn:
             - !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-              - !If
-                - IsPattern2
+              - IsPattern2
                 - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
                 - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
           status:
@@ -3835,10 +3711,7 @@ Resources:
         detail:
           stateMachineArn:
             - !If
-              - IsPattern3
-              - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-              - !If
-                - IsPattern2
+              - IsPattern2
                 - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
                 - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
           status:
@@ -3971,10 +3844,7 @@ Resources:
       Dimensions:
         - Name: StateMachineArn
           Value: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
+            - IsPattern2
               - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
               - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
       AlarmActions:
@@ -3994,10 +3864,7 @@ Resources:
       Dimensions:
         - Name: StateMachineArn
           Value: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
+            - IsPattern2
               - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
               - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
       AlarmActions:
@@ -4362,17 +4229,11 @@ Resources:
             ]
           }
         - StateMachineArn: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-            - !If
-              - IsPattern2
+            - IsPattern2
               - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
               - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
           StateMachineLogGroup: !If
-            - IsPattern3
-            - !GetAtt PATTERN3STACK.Outputs.StateMachineLogGroup
-            - !If
-              - IsPattern2
+            - IsPattern2
               - !GetAtt PATTERN2STACK.Outputs.StateMachineLogGroup
               - !GetAtt PATTERN1STACK.Outputs.StateMachineLogGroup
 
@@ -4426,10 +4287,7 @@ Resources:
       ServiceToken: !GetAtt DashboardMergerFunction.Arn
       Dashboard1Name: !Ref MainTemplateSubsetDashboard
       Dashboard2Name: !If
-        - IsPattern3
-        - !GetAtt PATTERN3STACK.Outputs.DashboardName
-        - !If
-          - IsPattern2
+        - IsPattern2
           - !GetAtt PATTERN2STACK.Outputs.DashboardName
           - !GetAtt PATTERN1STACK.Outputs.DashboardName
       MergedDashboardName: !Sub "${AWS::StackName}-${AWS::Region}"
@@ -6882,10 +6740,7 @@ Outputs:
   StateMachineArn:
     Description: Step Functions State machine ARN
     Value: !If
-      - IsPattern3
-      - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-      - !If
-        - IsPattern2
+      - IsPattern2
         - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
         - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
   StateMachineConsoleURL:
@@ -6893,10 +6748,7 @@ Outputs:
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/states/home?region=${AWS::Region}#/statemachines/view/${StateMachineArn}
       - StateMachineArn: !If
-          - IsPattern3
-          - !GetAtt PATTERN3STACK.Outputs.StateMachineArn
-          - !If
-            - IsPattern2
+          - IsPattern2
             - !GetAtt PATTERN2STACK.Outputs.StateMachineArn
             - !GetAtt PATTERN1STACK.Outputs.StateMachineArn
 
