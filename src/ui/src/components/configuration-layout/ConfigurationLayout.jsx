@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Container,
   Header,
@@ -264,8 +264,8 @@ const ConfigurationLayout = () => {
 
       setCompareData(comparisonData);
       setShowCompareModal(true);
-    } catch (error) {
-      console.error('Failed to fetch configurations for comparison:', error);
+    } catch (err) {
+      console.error('Failed to fetch configurations for comparison:', err);
     } finally {
       setComparingVersions(false);
     }
@@ -303,8 +303,8 @@ const ConfigurationLayout = () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       setSelectedVersion(versionName); // Select the activated version (useEffect will fetch config)
-    } catch (error) {
-      console.error('Failed to activate version:', error);
+    } catch (err) {
+      console.error('Failed to activate version:', err);
     }
   };
 
@@ -324,8 +324,8 @@ const ConfigurationLayout = () => {
       await setActiveVersion(versionName);
       await new Promise((resolve) => setTimeout(resolve, 500));
       setSelectedVersion(versionName);
-    } catch (error) {
-      console.error('Failed to sync and activate version:', error);
+    } catch (err) {
+      console.error('Failed to sync and activate version:', err);
     }
   };
 
@@ -368,9 +368,9 @@ const ConfigurationLayout = () => {
       setNewVersionName('');
       setNewVersionDescription('');
       setShowImportSourceModal(false); // Also close import source modal
-    } catch (error) {
-      logger.error('Create version error:', error);
-      console.error('Create version error:', error);
+    } catch (err) {
+      logger.error('Create version error:', err);
+      console.error('Create version error:', err);
     }
   };
 
@@ -387,8 +387,8 @@ const ConfigurationLayout = () => {
       if (selectedVersion && versionNames.includes(selectedVersion)) {
         setSelectedVersion(null);
       }
-    } catch (error) {
-      console.error('Failed to delete versions:', error);
+    } catch (err) {
+      console.error('Failed to delete versions:', err);
     }
   };
 
@@ -446,7 +446,40 @@ const ConfigurationLayout = () => {
     return formChanged || descriptionChanged;
   }, [formValues, mergedConfig, versionDescription, currentVersion?.description]);
 
-  // Hooks for configuration library
+  // Warn user before leaving page with unsaved changes
+  // Both beforeunload (browser close/refresh) and hashchange (SPA navigation)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    const handleHashChange = () => {
+      // For SPA hash-based routing, intercept navigation when there are unsaved changes
+      if (hasUnsavedChanges) {
+        // eslint-disable-next-line no-alert
+        const confirmed = window.confirm('You have unsaved configuration changes. Are you sure you want to leave?');
+        if (!confirmed) {
+          // Restore the hash to the config page
+          window.history.pushState(null, '', `${window.location.pathname}#/documents/config`);
+        }
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, [hasUnsavedChanges]);
+
+  // Discard unsaved changes by re-loading the current config from server
+  const handleDiscardChanges = useCallback(async () => {
+    await fetchConfiguration(currentVersionName, false);
+    setVersionDescription(currentVersion?.description || '');
+  }, [currentVersionName, currentVersion?.description, fetchConfiguration]);
+
   // Hooks for configuration library
   const { listConfigurations, getFile } = useConfigurationLibrary();
   const { settings } = useSettingsContext();
@@ -1301,8 +1334,8 @@ const ConfigurationLayout = () => {
     setSaveError(null);
 
     try {
-      // Send complete merged configuration - backend will handle stripping defaults
-      const builtObject = { ...mergedConfig };
+      // Send merged config like "Save as default" - ensures all fields are captured
+      const builtObject = deepMerge(customConfig || {}, formValues);
 
       const result = await saveAsNewVersion(builtObject, saveAsVersionName, saveAsVersionDescription);
 
@@ -2159,6 +2192,19 @@ const ConfigurationLayout = () => {
             </Alert>
           )}
 
+          {hasUnsavedChanges && currentVersionName !== 'default' && (
+            <Alert
+              type="info"
+              action={
+                <Button variant="normal" onClick={handleDiscardChanges} loading={refreshing}>
+                  Discard changes
+                </Button>
+              }
+            >
+              You have unsaved changes. Click <strong>Save changes</strong> to persist, or <strong>Discard changes</strong> to revert.
+            </Alert>
+          )}
+
           <Box padding="s">
             {viewMode === 'form' && (
               <SpaceBetween size="l">
@@ -2169,6 +2215,7 @@ const ConfigurationLayout = () => {
                   }}
                   formValues={formValues}
                   defaultConfig={defaultConfig}
+                  mergedConfig={mergedConfig}
                   isCustomized={isCustomized}
                   onResetToDefault={currentVersionName === 'default' ? null : resetToDefault}
                   onChange={handleFormChange}

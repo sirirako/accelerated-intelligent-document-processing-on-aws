@@ -1781,16 +1781,18 @@ idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --patter
 **What Happens:**
 1. Loads and parses your YAML or JSON config file
 2. Validates against system defaults (unless `--no-validate`)
-3. If version exists: Updates the existing version by merging with current deltas
-4. If version doesn't exist: Creates new version with the uploaded configuration
+3. If version exists: Updates the existing version with the uploaded configuration (saved as a complete snapshot)
+4. If version doesn't exist: Creates a new version with the uploaded configuration
 5. Uploads to the stack's ConfigurationTable in DynamoDB
 6. Configuration is immediately available for document processing
 
 **Configuration Versioning:**
 - **No version specified**: Updates the currently active version
-- **Existing version**: Merges uploaded config with existing version customizations
-- **New version**: Creates new version using uploaded config as base (merged with system defaults)
+- **Existing version**: Saves the uploaded configuration as the full version snapshot
+- **New version**: Creates a new independent version with the uploaded configuration
 - **Version descriptions**: Can be added to new versions for better organization
+
+For full details on configuration versioning, see [configuration-versions.md](configuration-versions.md).
 
 This uses the same mechanism as the Web UI configuration management system.
 

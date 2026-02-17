@@ -124,51 +124,35 @@ class ConfigurationReader:
         self, *, as_model: bool = False, version: Optional[str] = None
     ) -> Union[IDPConfig, Dict[str, Any]]:
         """
-        Get and merge Default and Custom configurations for runtime processing.
+        Get the full configuration for a version, ready for runtime processing.
 
-        DESIGN PATTERN (CRITICAL):
-        - Default: Full stack baseline (Pydantic validated)
-        - Custom: SPARSE DELTAS ONLY (raw from DynamoDB, NO Pydantic defaults!)
-        - Merged: Default deep-updated with Custom = final runtime config
+        Each version stores a complete, self-contained configuration.
+        Legacy sparse delta configs are auto-detected and migrated on first read.
 
         This is THE method to use for all runtime document processing.
 
         Args:
             as_model: If True, return IDPConfig Pydantic model. If False (default), return dict.
+            version: Optional version to load. If None, uses active version.
 
         Returns:
-            Merged configuration as IDPConfig or dictionary
+            Full configuration as IDPConfig or dictionary
         """
         try:
-            # Get Default configuration (Pydantic validated - this is correct for Default)
-            default_config = self.get_configuration(config_type="Config", as_dict=True, version="default")
-            if not default_config:
-                raise ValueError("Default configuration not found")
+            # Use ConfigurationManager.get_merged_configuration which handles:
+            # - Full config format (new): direct read
+            # - Legacy sparse format: merge with default + auto-migrate
+            config = self.manager.get_merged_configuration(version=version)
 
-            # Remove the 'Configuration' key as it's not part of the actual config
-            default_config.pop("Configuration", None)
+            if config is None:
+                raise ValueError(f"Configuration not found for version: {version}")
 
-            # Get Custom configuration as RAW dict (NO Pydantic defaults!)
-            # This is critical for the sparse delta pattern to work correctly
-            custom_config = self.manager.get_raw_configuration(config_type="Config", version=version)
-
-            # If no custom config exists, use default as-is
-            if not custom_config:
-                logger.info("No Custom configuration found, using Default only")
-                merged_config = default_config
-            else:
-                # Merge: Default deep-updated with Custom deltas
-                merged_config = self.simple_merge(default_config, custom_config)
-
-            logger.info(
-                "Successfully merged Default + Custom configurations for runtime"
-            )
-
-            # Return Pydantic model if requested
             if as_model:
-                return IDPConfig(**merged_config)
+                return config
 
-            return merged_config
+            # Return as dict
+            return config.model_dump(mode="python")
+
         except Exception as e:
             logger.error(f"Error getting merged configuration: {str(e)}")
             raise
