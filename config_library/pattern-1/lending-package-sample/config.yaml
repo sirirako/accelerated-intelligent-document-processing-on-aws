@@ -3,6 +3,8 @@
 
 # All settings are currently inherited from system defaults.
 
+processing_mode: bda
+
 notes: Default settings for Pattern1 (BDA)
 classes:
   - $schema: https://json-schema.org/draft/2020-12/schema

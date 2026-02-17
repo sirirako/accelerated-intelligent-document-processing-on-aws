@@ -3,6 +3,8 @@
 
 # All settings not explicitly defined here are inherited from system defaults.
 
+processing_mode: bedrock
+
 notes: RVL-CDIP document classification benchmark - 16 document classes - for Pattern2 (Bedrock LLM). Assessment and summarization disabled by default.
 
 assessment:
