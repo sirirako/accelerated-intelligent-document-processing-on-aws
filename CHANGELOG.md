@@ -13,6 +13,7 @@ SPDX-License-Identifier: MIT-0
 - **Added `process` and `reprocess` CLI commands for batch operations via command line**
   - **Maintained `run-inference` and `rerun-inference` CLI commands with deprecation notices**
 - **React UI TypeScript Migration (Phases 1–2)** — Added TypeScript tooling foundation (`tsconfig.json`, `@types/*`, ESLint overrides for `.ts/.tsx`) and migrated all 5 contexts, 16 hooks, constants, and utility modules from JavaScript to TypeScript with proper interfaces and type annotations. No runtime behavior changes; JS and TS coexist for incremental migration. ([#187](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/187), [#188](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/188), [#191](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/191))
+- **Configuration Version Management Commands for CLI and SDK** — Added `config-list`, `config-activate`, and `config-delete` CLI commands and corresponding `client.config.list()`, `client.config.activate()`, `client.config.delete()` SDK operations for programmatic configuration version management. Includes safety protections (default/active version deletion prevention, confirmation prompts, existence validation), `--force` flag for automation, and Rich table output for version listing.
 
 ### Fixed
 
