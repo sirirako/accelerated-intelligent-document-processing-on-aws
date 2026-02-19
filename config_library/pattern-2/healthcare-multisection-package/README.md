@@ -17,25 +17,14 @@ This directory contains a specialized configuration for processing healthcare do
 - **Usage**: This configuration serves as a reference implementation for healthcare document processing workflows (AWS For Health workshop demo configuration)
 - **Known Limitations**: Will require adjustments for organization-specific form layouts and regional healthcare documentation standards
 
-## Overview
-
-The healthcare multisection package configuration is designed to handle complex healthcare document packages containing multiple document types. This configuration showcases the full capabilities of the GenAI IDP Accelerator for healthcare industry use cases.
-
-The configuration processes healthcare documents to extract:
-
-- Patient and insured information (simple and group attributes)
-- Medical and clinical information (group attributes)
-- Service line items and charges (list attributes)
-- Insurance and payment details (group attributes)
-
 ## Key Components
 
 ### Document Classes
 
 The configuration defines **10 document classes** with comprehensive nested attributes:
 
-#### 1. Health-Insurance-Claim-Form (CMS-1500 Style)
-Standard health insurance claim form for processing medical claims.
+#### 1. Health-Insurance-Claim-Form
+Health insurance claim form for processing medical claims.
 - **Group Attributes**: PatientInformation, MedicalInformation, PaymentInformation, InsuredInformation, OtherInsuredInformation, EmploymentInformation, InsurancePlanInformation, PhysicianInformation
 - **List Attributes**: ServiceInformation (Date-of-Service, Procedures, Charges, Diagnosis-Code, etc.)
 
@@ -144,36 +133,6 @@ The assessment component evaluates extraction confidence for each attribute, inc
   - EXACT: For IDs, account numbers, codes, dates
   - FUZZY: For names, addresses, descriptions
   - LLM: For clinical narratives and complex medical text
-
-## Key Differences from Default Configuration
-
-### 1. Multi-Document Type Support
-
-This configuration supports 10 distinct document types commonly found in healthcare workflows, enabling:
-- Mixed document package processing where the sections vary in layout types and complexity levels
-- Intelligent document classification
-- Type-specific extraction schemas
-
-### 2. Healthcare Industry Specialization
-
-- Optimized schemas for CMS-1500 claim forms
-- Structured extraction for clinical documents (discharge summaries, pathology reports)
-- Insurance and billing document support
-- Patient identity verification (Driver License)
-
-### 3. Extensive Use of Group Attributes
-
-The configuration extensively uses group attributes to organize related information:
-- Patient demographics grouped together
-- Payment and billing information consolidated
-- Medical information structured hierarchically
-
-### 4. LLM Evaluation for Clinical Content
-
-Uses LLM-based evaluation methods for complex clinical content where exact matching is not appropriate:
-- Medical histories and symptoms
-- Clinical assessments and recommendations
-- Diagnosis descriptions
 
 ## Sample Documents
 
