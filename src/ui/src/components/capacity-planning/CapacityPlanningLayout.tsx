@@ -277,6 +277,7 @@ const CapacityPlanningLayout = () => {
   const [selectedDocuments, setSelectedDocuments] = useState<RecentDocument[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isDateRangeModalVisible, setIsDateRangeModalVisible] = useState(false);
+  const [latencyTimeRange, setLatencyTimeRange] = useState<SelectOption>({ label: 'Last 24 hours', value: '24' });
 
   // Helper function to add notifications
   const addNotification = (type: string, content: React.ReactNode, header: string | null = null, dismissible = true) => {
@@ -1390,6 +1391,7 @@ const CapacityPlanningLayout = () => {
         pattern: getDeployedPattern().toLowerCase(), // API expects lowercase pattern name
         timeSlots: JSON.stringify(timeSlotsForAPI),
         granularAssessmentEnabled: isGranularAssessmentEnabled(),
+        latencyMetricsHours: parseInt(latencyTimeRange.value, 10),
       };
 
       // Validate input before sending
@@ -3598,7 +3600,30 @@ const CapacityPlanningLayout = () => {
 
             {/* Latency Distribution Histogram */}
             {results?.success && results?.latencyDistribution && (
-              <Container header={<Header variant="h2">Processing Latency Distribution</Header>}>
+              <Container
+                header={
+                  <Header
+                    variant="h2"
+                    actions={
+                      <Select
+                        selectedOption={latencyTimeRange}
+                        onChange={({ detail }) => setLatencyTimeRange(detail.selectedOption as SelectOption)}
+                        options={[
+                          { label: 'Last 4 hours', value: '4' },
+                          { label: 'Last 12 hours', value: '12' },
+                          { label: 'Last 24 hours', value: '24' },
+                          { label: 'Last 2 days', value: '48' },
+                          { label: 'Last 7 days', value: '168' },
+                          { label: 'Last 30 days', value: '720' },
+                          { label: 'All time', value: '8760' },
+                        ]}
+                      />
+                    }
+                  >
+                    Processing Latency Distribution
+                  </Header>
+                }
+              >
                 <SpaceBetween size="l">
                   <Box>
                     <div style={{ marginBottom: '16px' }}>
