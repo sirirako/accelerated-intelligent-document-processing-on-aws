@@ -89,6 +89,8 @@ def get_real_latency_metrics(pattern):
         # Query recent documents with pagination support
         # Use attribute_exists with correct attribute name (Metering, not meteringData)
         # Time filter: only use recent documents for latency metrics (default 24 hours)
+        # Read latencyMetricsHours from input if provided (passed from UI time range selector)
+        # Falls back to environment variable, then default 24 hours
         latency_metrics_hours = int(os.environ.get("LATENCY_METRICS_HOURS", "24"))
         min_recent_docs = int(os.environ.get("LATENCY_METRICS_MIN_DOCS", "5"))
         cutoff_time = datetime.utcnow() - timedelta(hours=latency_metrics_hours)
@@ -1757,6 +1759,16 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             total_docs_per_hour += docs_per_hour_config
             total_pages_per_hour += docs_per_hour_config * avg_pages
             total_tokens_per_hour += doc_total_tokens * docs_per_hour_config
+
+        # Override LATENCY_METRICS_HOURS from UI input if provided
+        latency_metrics_hours_input = input_data.get("latencyMetricsHours")
+        if latency_metrics_hours_input:
+            os.environ["LATENCY_METRICS_HOURS"] = str(int(latency_metrics_hours_input))
+            # Clear cache so new time range takes effect
+            global _processing_times_cache, _cache_expiry
+            _processing_times_cache = {}
+            _cache_expiry = 0
+            print(f"🔍 Using latency metrics time range from UI: {latency_metrics_hours_input}h")
 
         # Calculate latency distribution based on processing pattern and load
         latency_distribution = calculate_latency_distribution(
