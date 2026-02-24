@@ -283,12 +283,29 @@ def deploy_and_test_pattern(stack_prefix, pattern_config, admin_email, template_
         # Step 5: Verify result content
         print(f"[{pattern_name}] Step 5: Verifying result content...")
 
-        # Find the result file at the specified location
-        cmd = f"find {results_dir} -path '*/{result_location}' | head -1"
-        result = run_command(cmd)
-        result_file = result.stdout.strip()
+        # Retry logic for finding result file
+        result_file = None
+        for attempt in range(3):
+            # Find the result file at the specified location
+            cmd = f"find {results_dir} -path '*/{result_location}' | head -1"
+            result = run_command(cmd, check=False)
+            result_file = result.stdout.strip()
+
+            if result_file:
+                break
+            
+            if attempt < 2:
+                print(f"[{pattern_name}] Result file not found, waiting 30 seconds (attempt {attempt + 1}/3)...")
+                import time
+                time.sleep(30)
 
         if not result_file:
+            # Debug: List what files were actually downloaded
+            cmd = f"find {results_dir} -name 'result.json' | head -10"
+            debug_result = run_command(cmd, check=False)
+            print(f"[{pattern_name}] Found result.json files:")
+            print(debug_result.stdout)
+            
             print(f"[{pattern_name}] ❌ No result file found at {result_location}")
             return {
                 "stack_name": stack_name,
