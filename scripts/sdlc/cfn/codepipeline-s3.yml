@@ -363,7 +363,6 @@ Resources:
 
   CodeBuildRoleS3Policy:
     Type: 'AWS::IAM::Policy'
-    Condition: CreateCodeBuildRole
     Properties:
       PolicyName: CodeBuildS3Access
       Roles: 
@@ -388,7 +387,6 @@ Resources:
 
   CodeBuildLogsPolicy:
     Type: 'AWS::IAM::Policy'
-    Condition: CreateCodeBuildRole
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -404,14 +402,11 @@ Resources:
         Statement:
           - Effect: Allow
             Action:
-              - 'logs:CreateLogGroup'
-              - 'logs:CreateLogStream'
-              - 'logs:PutLogEvents'
+              - 'logs:*'
             Resource: '*'
 
   CodeBuildBedrockPolicy:
     Type: 'AWS::IAM::Policy'
-    Condition: CreateCodeBuildRole
     Properties:
       PolicyName: CodeBuildBedrockAccess
       Roles: 
@@ -427,7 +422,6 @@ Resources:
 
   CodeBuildKMSPolicy:
     Type: 'AWS::IAM::Policy'
-    Condition: CreateCodeBuildRole
     Properties:
       PolicyName: CodeBuildKMSAccess
       Roles: 
@@ -437,9 +431,8 @@ Resources:
         Statement:
           - Effect: Allow
             Action:
-              - 'kms:Decrypt'
-              - 'kms:GenerateDataKey'
-            Resource: !If [CreateKMSKey, !GetAtt PipelineKMSKey.Arn, !Ref KMSKeyArn]
+              - 'kms:*'
+            Resource: '*'
 
   # CloudWatch Events Rule to trigger pipeline on S3 changes
   PipelineTriggerRule:
