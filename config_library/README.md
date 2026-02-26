@@ -15,6 +15,15 @@ The Configuration Library:
 - Enables teams to share and reuse successful configurations
 - Showcases advanced features like few-shot example prompting for improved accuracy
 
+## Processing Modes
+
+The unified architecture supports two processing modes, controlled by the `use_bda` flag:
+
+- **Pipeline mode** (`use_bda: false`, default) — Uses Amazon Textract for OCR, then Bedrock LLM (Nova or Claude) for classification, extraction, assessment, and summarization step by step.
+- **BDA mode** (`use_bda: true`) — Uses Bedrock Data Automation for end-to-end processing.
+
+All presets default to pipeline mode. To switch to BDA mode, simply set `use_bda: true` in your configuration — the same class schemas work with both modes.
+
 ## System Defaults and Configuration Inheritance
 
 Configurations in this library **inherit from system defaults**, meaning you only need to specify what differs from the defaults. This makes configurations:
@@ -27,6 +36,7 @@ Configurations in this library **inherit from system defaults**, meaning you onl
 
 ```yaml
 # All settings inherit from system defaults
+use_bda: false
 notes: "My document processing configuration"
 
 classes:
@@ -61,23 +71,13 @@ classes:
 System defaults are located in:
 ```
 lib/idp_common_pkg/idp_common/config/system_defaults/
-├── pattern-1.yaml    # BDA pattern defaults
-├── pattern-2.yaml    # Bedrock LLM pattern defaults
+├── pattern-1.yaml    # BDA mode defaults
+├── pattern-2.yaml    # Pipeline mode defaults
 ```
-
-## Patterns
-
-The GenAI IDP Accelerator supports three distinct architectural patterns, each with its own configuration requirements:
-
-- **Pattern 1**: Uses Amazon Bedrock Data Automation (BDA) for document processing tasks
-- **Pattern 2**: Uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction
-- **Pattern 3**: Uses UDOP (Unified Document Processing) for page classification and grouping, followed by Claude for information extraction
-
-Each configuration in this library is designed for a specific pattern.
 
 ## Few-Shot Example Support
 
-The accelerator supports few-shot example prompting to improve processing accuracy by providing concrete examples of documents and their expected outputs. This is demonstrated in the `pattern-2/rvl-cdip-with-few-shot-examples/` configuration.
+The accelerator supports few-shot example prompting to improve processing accuracy by providing concrete examples of documents and their expected outputs. This is demonstrated in the `unified/rvl-cdip-with-few-shot-examples/` configuration.
 
 ## Validation Levels
 
@@ -96,25 +96,19 @@ Each configuration's README.md should include its validation level and supportin
 config_library/
 ├── README.md                      # This file
 ├── TEMPLATE_README.md             # Template for new configuration READMEs
-├── pattern-1/                     # Pattern 1 (BDA) configurations
-│   ├── README.md
-│   ├── lending-package-sample/
-│   ├── lending-package-sample-govcloud/
-│   ├── ocr-benchmark/
-│   ├── realkie-fcc-verified/
-│   └── rvl-cdip/
-├── pattern-2/                     # Pattern 2 (Bedrock LLM) configurations
+├── unified/                       # Configuration presets (use_bda toggles BDA vs pipeline)
 │   ├── README.md
 │   ├── bank-statement-sample/
-│   ├── criteria-validation/
+│   ├── docsplit/
+│   ├── healthcare-multisection-package/
 │   ├── lending-package-sample/
 │   ├── lending-package-sample-govcloud/
 │   ├── ocr-benchmark/
 │   ├── realkie-fcc-verified/
+│   ├── rule-extraction/
+│   ├── rule-validation/
 │   ├── rvl-cdip/
 │   └── rvl-cdip-with-few-shot-examples/
-    ├── README.md
-    └── rvl-cdip/
 ```
 
 Each configuration directory contains:
@@ -126,15 +120,14 @@ Each configuration directory contains:
 
 To add a new configuration to the library:
 
-1. **Determine the appropriate pattern** for your use case (Pattern 1, 2, or 3)
-
-2. **Create a new directory** with a descriptive name that reflects the use case:
+1. **Create a new directory** with a descriptive name that reflects the use case:
    ```
-   mkdir -p config_library/pattern-X/your_use_case_name
+   mkdir -p config_library/unified/your_use_case_name
    ```
 
-3. **Create a minimal configuration** - Start with just `notes` and `classes`:
+2. **Create a minimal configuration** - Start with just `notes` and `classes`:
    ```yaml
+   use_bda: false
    notes: "Description of your use case"
    
    classes:
@@ -147,19 +140,18 @@ To add a new configuration to the library:
          # ... your fields
    ```
 
-4. **Add overrides only if needed** - Most configurations don't need to override defaults
+3. **Add overrides only if needed** - Most configurations don't need to override defaults
 
-5. **Create a README.md** in your use case directory using the TEMPLATE_README.md as a guide. Include:
+4. **Create a README.md** in your use case directory using the TEMPLATE_README.md as a guide. Include:
    - Description of the use case
-   - Pattern association (Pattern 1, 2, or 3)
    - Validation level with supporting evidence
    - Key changes made to the configuration
    - Findings and results
    - Any limitations or considerations
 
-6. **Include sample documents** in a samples/ directory to demonstrate the configuration's effectiveness
+5. **Include sample documents** in a samples/ directory to demonstrate the configuration's effectiveness
 
-7. **Test your configuration** thoroughly before contributing
+6. **Test your configuration** thoroughly before contributing
 
 ### Adding Few-Shot Examples
 

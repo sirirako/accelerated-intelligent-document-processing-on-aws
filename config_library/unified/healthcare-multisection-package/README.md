@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains a specialized configuration for processing healthcare document packages using the GenAI IDP Accelerator. This configuration demonstrates comprehensive multi-document type support for healthcare workflows including claims processing, patient records, and insurance documentation.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM (Nova/Claude) for classification, extraction, assessment, and summarization. Set use_bda: true for BDA mode.
 
 ## Validation Level
 

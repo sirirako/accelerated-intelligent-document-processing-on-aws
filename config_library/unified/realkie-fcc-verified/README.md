@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains the default (starting point) configuration for the FCC Invoices in the RealKIE-FCC-Verified dataset used to benchmark the GenAI IDP Accelerator. This configuration is specifically designed for processing the FCC invoice samples using Test Studio.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2
+**Default Mode**: Pipeline (use_bda: false). Set use_bda: true for BDA mode.
 
 ## Validation Level
 

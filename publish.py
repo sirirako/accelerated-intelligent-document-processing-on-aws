@@ -748,16 +748,10 @@ STDERR:
             build_template_path = os.path.join(
                 directory, ".aws-sam", "build", "template.yaml"
             )
-            # Use different name for pattern-2 container deployment
-            if directory == "patterns/pattern-2" and self.pattern2_use_containers:
-                packaged_template_path = os.path.join(
-                    directory, ".aws-sam", "packaged-container.yaml"
-                )
-            else:
-                # Use standard packaged.yaml name
-                packaged_template_path = os.path.join(
-                    directory, ".aws-sam", "packaged.yaml"
-                )
+            # Use standard packaged.yaml name
+            packaged_template_path = os.path.join(
+                directory, ".aws-sam", "packaged.yaml"
+            )
 
             cmd = [
                 "sam",
@@ -777,8 +771,6 @@ STDERR:
             # Patterns with container images need --image-repository even with SkipBuild: True
             # SAM package uses this to generate correct ImageUri references in the template
             if directory in [
-                "patterns/pattern-1",
-                "patterns/pattern-2",
                 "patterns/unified",
             ]:
                 placeholder_ecr = (
@@ -796,20 +788,6 @@ STDERR:
 
             if not success:
                 raise Exception("SAM package failed")
-
-            # For Pattern-2 with containers, ensure packaged.yaml exists with standard name
-            if directory == "patterns/pattern-2" and self.pattern2_use_containers:
-                standard_packaged_path = os.path.join(
-                    directory, ".aws-sam", "packaged.yaml"
-                )
-                # If using a different packaged name, copy to standard name for main template compatibility
-                if packaged_template_path != standard_packaged_path:
-                    import shutil
-
-                    shutil.copy2(packaged_template_path, standard_packaged_path)
-                    self.log_verbose(
-                        "Created packaged.yaml copy for Pattern-2 compatibility"
-                    )
 
             # Log S3 upload location for Lambda artifacts
             self.console.print(

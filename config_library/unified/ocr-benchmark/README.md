@@ -21,9 +21,9 @@ The OCR Benchmark dataset contains diverse document types with ground truth JSON
 | **SHIFT_SCHEDULE** | Employee scheduling | title, facility, employees[] with shifts |
 
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2
+**Default Mode**: Pipeline (use_bda: false). Set use_bda: true for BDA mode.
 
 ## Validation Level
 

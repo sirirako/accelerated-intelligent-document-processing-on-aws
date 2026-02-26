@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains the rule validation configuration for the GenAI IDP Accelerator. This configuration is specifically designed for processing healthcare prior authorization (PA) packets with automated rule validation against medical coding guidelines such as NCCI (National Correct Coding Initiative) rules.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Amazon Textract for OCR and Amazon Bedrock models for classification, extraction, and rule validation
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM for classification, extraction, and rule validation. Set use_bda: true for BDA mode.
 
 ## Validation Level
 
@@ -171,7 +171,7 @@ To use this rule validation configuration:
 
 2. **As a Template**: Copy this configuration to a new directory and modify it for your specific medical coding rules:
    ```bash
-   cp -r config_library/pattern-2/rule-validation config_library/pattern-2/your_use_case_name
+   cp -r config_library/unified/rule-validation config_library/unified/your_use_case_name
    ```
 
 3. **For Testing**: Use this configuration as a baseline for comparing the performance of customized rule validation configurations.
