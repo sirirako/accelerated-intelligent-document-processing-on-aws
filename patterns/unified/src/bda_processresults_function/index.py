@@ -1300,12 +1300,14 @@ def handler(event, context):
     document_service.update_document(document)
 
     # Create page images (only need to do this once)
+    # Note: Page image creation is non-critical (cosmetic for UI thumbnails).
+    # Failure should not propagate as a document error since downstream steps
+    # (e.g., evaluation) treat document.errors as indicators of processing failure.
     try:
         page_count = create_pdf_page_images(input_bucket, output_bucket, object_key)
         logger.info(f"Successfully created and uploaded {page_count} page images to S3")
     except Exception as e:
-        logger.error(f"Error creating page images: {str(e)}")
-        document.errors.append(f"Error creating page images: {str(e)}")
+        logger.warning(f"Error creating page images (non-critical): {str(e)}")
 
     # Process each BDA response
 

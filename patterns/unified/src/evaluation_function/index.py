@@ -199,6 +199,12 @@ def handler(event, context):
         # Create evaluation service
         evaluation_service = evaluation.EvaluationService(config=config)
         
+        # Snapshot pre-existing errors from earlier pipeline steps (e.g., page image creation)
+        # so we only check for NEW errors introduced during evaluation
+        pre_existing_errors = set(actual_document.errors) if actual_document.errors else set()
+        if pre_existing_errors:
+            logger.info(f"Document has {len(pre_existing_errors)} pre-existing error(s) from earlier pipeline steps (will not cause evaluation failure)")
+        
         # Run evaluation
         logger.info(f"Starting evaluation for document {actual_document.id}")
         evaluated_document = evaluation_service.evaluate_document(
@@ -207,9 +213,10 @@ def handler(event, context):
             store_results=True
         )
         
-        # Check for evaluation errors
-        if evaluated_document.errors:
-            error_msg = f"Evaluation encountered errors: {evaluated_document.errors}"
+        # Check for evaluation-specific errors only (ignore pre-existing errors from earlier steps)
+        new_errors = [e for e in evaluated_document.errors if e not in pre_existing_errors]
+        if new_errors:
+            error_msg = f"Evaluation encountered errors: {new_errors}"
             logger.error(error_msg)
             # Update status in AppSync but keep using evaluated_document (don't overwrite)
             update_document_evaluation_status(evaluated_document, EvaluationStatus.FAILED)
