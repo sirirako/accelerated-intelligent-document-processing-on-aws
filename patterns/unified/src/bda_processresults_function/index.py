@@ -10,7 +10,7 @@ from decimal import Decimal
 from urllib.parse import urlparse
 
 import boto3
-import fitz  # PyMuPDF
+import pypdfium2 as pdfium
 from botocore.exceptions import ClientError
 from idp_common import metrics
 from idp_common.config import get_config
@@ -153,18 +153,20 @@ def create_pdf_page_images(bda_result_bucket, output_bucket, object_key):
         pdf_content = s3_client.get_object(Bucket=bda_result_bucket, Key=object_key)[
             "Body"
         ].read()
-        pdf_stream = io.BytesIO(pdf_content)
 
-        # Open the PDF using PyMuPDF
-        pdf_document = fitz.open(stream=pdf_stream, filetype="pdf")
+        # Open the PDF using pypdfium2
+        pdf_document = pdfium.PdfDocument(pdf_content)
 
         # Process each page
         for page_num in range(len(pdf_document)):
-            # Render page to an image (pixmap)
-            pix = pdf_document[page_num].get_pixmap()
+            # Render page to a PIL image
+            page = pdf_document[page_num]
+            pil_img = page.render(scale=150 / 72).to_pil()
 
-            # Save the image to a BytesIO object
-            img_bytes = pix.tobytes("jpeg")
+            # Save the image to a BytesIO object as JPEG
+            img_buffer = io.BytesIO()
+            pil_img.save(img_buffer, format="JPEG", quality=95)
+            img_bytes = img_buffer.getvalue()
 
             # Upload the image to S3 using the common library
             # Use 1-based page numbering for consistency with pattern-2 and ground truth
