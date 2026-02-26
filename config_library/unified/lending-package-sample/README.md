@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains the default-lending configuration for the GenAI IDP Accelerator. This configuration is specifically designed for processing lending and financial document packages commonly used in loan applications, underwriting, and financial verification processes.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Textract or Amazon Bedrock models for both page classification/grouping and information extraction
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM (Nova/Claude) for classification, extraction, assessment, and summarization. Set use_bda: true for BDA mode.
 
 ## Validation Level
 
@@ -96,7 +96,7 @@ This configuration is optimized for processing lending document packages that ty
 
 To use this default-lending configuration:
 
-1. **Direct Deployment**: Deploy the GenAI IDP Accelerator with this Pattern-2 configuration for lending document processing workflows.
+1. **Direct Deployment**: Deploy the GenAI IDP Accelerator with this configuration for lending document processing workflows.
 
 2. **Loan Processing Integration**: Integrate with existing loan origination systems for automated document processing and data extraction.
 

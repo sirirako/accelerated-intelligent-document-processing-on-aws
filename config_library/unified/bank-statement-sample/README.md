@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains a specialized configuration for processing bank statements using the GenAI IDP Accelerator. This configuration demonstrates the new nested attribute support including simple attributes, group attributes, and list attributes.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM (Nova/Claude) for classification, extraction, assessment, and summarization. Set use_bda: true for BDA mode.
 
 ## Validation Level
 

@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains the rule extraction configuration for the GenAI IDP Accelerator. This configuration is specifically designed for extracting business rules and compliance requirements from healthcare policy documents, medical coding guidelines, and regulatory documentation.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Amazon Textract for OCR and Amazon Bedrock models for classification and extraction
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM for classification and extraction. Set use_bda: true for BDA mode.
 
 ## Validation Level
 
@@ -70,8 +70,8 @@ This configuration is ideal for:
 
 ## Getting Started
 
-1. Deploy the IDP stack with Pattern 2 selected
-2. Choose "rule-extraction" from the Pattern2Configuration dropdown
+1. Deploy the IDP stack with the IDP stack
+2. Choose "rule-extraction" from the ConfigurationPreset dropdown
 3. Upload policy or guideline documents to the input bucket
 4. Extracted rules will be available in structured JSON format in the output bucket
 

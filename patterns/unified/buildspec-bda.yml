@@ -14,9 +14,9 @@ phases:
       - echo "Building BDA Docker images..."
       - echo "Using IMAGE_VERSION from environment (content-based hash)"
       - echo "Image tag will be $IMAGE_VERSION"
-      - export FUNCTION_bda_invoke="patterns/pattern-1/src/bda_invoke_function"
-      - export FUNCTION_bda_completion="patterns/pattern-1/src/bda_completion_function"
-      - export FUNCTION_bda_processresults="patterns/pattern-1/src/processresults_function"
+      - export FUNCTION_bda_invoke="patterns/unified/src/bda_invoke_function"
+      - export FUNCTION_bda_completion="patterns/unified/src/bda_completion_function"
+      - export FUNCTION_bda_processresults="patterns/unified/src/bda_processresults_function"
       - |
         for func_var in FUNCTION_bda_invoke FUNCTION_bda_completion FUNCTION_bda_processresults; do
           func_path="${!func_var}"

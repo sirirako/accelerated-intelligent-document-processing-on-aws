@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This configuration is designed for the DocSplit-Poly-Seq test set and handles 13 diverse business and administrative document types.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM (Nova/Claude) for classification, extraction, assessment, and summarization. Set use_bda: true for BDA mode.
 
 ## Test Set Compatibility
 
@@ -114,7 +114,7 @@ To use this default configuration:
 
 2. **As a Template**: Copy this configuration to a new directory and modify it for your specific use case:
    ```bash
-   cp -r config_library/pattern-2/default config_library/pattern-2/your_use_case_name
+   cp -r config_library/unified/default config_library/unified/your_use_case_name
    ```
 
 3. **For Testing**: Use this configuration as a baseline for comparing the performance of customized configurations.

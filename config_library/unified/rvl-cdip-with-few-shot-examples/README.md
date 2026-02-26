@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT-0
 
 This directory contains a comprehensive configuration example for the GenAI IDP Accelerator demonstrating few-shot example prompting for both classification and extraction tasks. This configuration showcases how to use concrete document examples with images and expected outputs to improve processing accuracy.
 
-## Pattern Association
+## Processing Mode
 
-**Pattern**: Pattern-2 - Uses Amazon Bedrock with Nova or Claude models for both page classification/grouping and information extraction
+**Default Mode**: Pipeline (use_bda: false) — Uses Amazon Textract for OCR, then Bedrock LLM (Nova/Claude) for classification, extraction, assessment, and summarization. Set use_bda: true for BDA mode.
 
 ## Validation Level
 
@@ -64,7 +64,7 @@ classes:
               "sender_name": "Will E. Clark",
               "sender_address": "206 Maple Street P.O. Box 1056 Murray Kentucky 42071-1056",
               ...
-        imagePath: "config_library/pattern-2/few_shot_example/example-images/letter1.jpg"
+        imagePath: "config_library/unified/few_shot_example/example-images/letter1.jpg"
 ```
 
 ### Classification Settings
@@ -126,7 +126,7 @@ The system supports flexible image path resolution:
 Deploy with this configuration to see few-shot prompting in action:
 ```bash
 # Use the few_shot_example configuration
-CONFIG_BUCKET_URI="s3://your-bucket/config_library/pattern-2/few_shot_example/"
+CONFIG_BUCKET_URI="s3://your-bucket/config_library/unified/few_shot_example/"
 ```
 
 ### 2. Add Your Own Examples
@@ -143,7 +143,7 @@ To add examples for existing classes:
          expected attributes are:
              "attribute1": "example_value1",
              "attribute2": "example_value2"
-       imagePath: "config_library/pattern-2/few_shot_example/example-images/your_example.jpg"
+       imagePath: "config_library/unified/few_shot_example/example-images/your_example.jpg"
    ```
 
 ### 3. Create New Classes with Examples
