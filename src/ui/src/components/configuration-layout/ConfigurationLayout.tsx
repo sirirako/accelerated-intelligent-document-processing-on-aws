@@ -545,8 +545,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
   // Helper function to check if Pattern-1 is selected
   const isPattern1 = (settings?.IDPPattern as string | undefined)?.includes('Pattern1');
 
-  // Helper function to check if Pattern-2 is selected (for Rule Schema feature)
-  const isPattern2 = (settings?.IDPPattern as string | undefined)?.includes('Pattern2');
+  // Rule Schema/Validation is available in all modes (Unified, Pattern2, etc.) - only excluded for Pattern1-only
+  const showRuleSchema = !isPattern1;
 
   // Initialize form values from merged config
   useEffect(() => {
@@ -2327,7 +2327,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   currentVersionName={currentVersionName}
                   activeTabId={configBuilderActiveTab}
                   onTabChange={setConfigBuilderActiveTab}
-                  showRuleSchema={isPattern2}
+                  showRuleSchema={showRuleSchema}
                   versionDescription={versionDescription}
                   onDescriptionChange={setVersionDescription}
                   onSchemaChange={(schemaData: unknown, isDirty: boolean) => {

@@ -313,7 +313,7 @@
                     "BackoffRate": 2
                 }
             ],
-            "Next": "CheckRuleValidationEnabled"
+            "Next": "CheckHITLRequired"
         },
         "CheckRuleValidationEnabled": {
             "Type": "Choice",
@@ -332,7 +332,7 @@
                 "document.$": "$.Result.document"
             },
             "ResultPath": "$.RuleValidationOrchestrationResult",
-            "Next": "CheckHITLRequired"
+            "Next": "SummarizationStep"
         },
         "ProcessRuleValidationSections": {
             "Type": "Map",
@@ -401,7 +401,7 @@
                 }
             ],
             "ResultPath": "$.RuleValidationOrchestrationResult",
-            "Next": "CheckHITLRequired"
+            "Next": "SummarizationStep"
         },
 
         "CheckHITLRequired": {
@@ -413,12 +413,12 @@
                     "Next": "MarkHITLPending"
                 }
             ],
-            "Default": "SummarizationStep"
+            "Default": "CheckRuleValidationEnabled"
         },
         "MarkHITLPending": {
             "Type": "Pass",
             "Comment": "Document marked for async HITL review, workflow continues without waiting",
-            "Next": "SummarizationStep"
+            "Next": "CheckRuleValidationEnabled"
         },
         "SummarizationStep": {
             "Type": "Task",

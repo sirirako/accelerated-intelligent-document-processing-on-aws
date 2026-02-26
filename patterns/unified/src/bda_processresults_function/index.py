@@ -37,11 +37,29 @@ def is_hitl_enabled(config_version=None):
     try:
         config = get_config(as_model=True, version=config_version)
         hitl_enabled = config.assessment.hitl_enabled
-        logger.info(f"HITL enabled check: {hitl_enabled}")
+        logger.info(f"HITL enabled from config: {hitl_enabled}")
         return hitl_enabled
     except Exception as e:
         logger.warning(f"Failed to get HITL config: {e}", exc_info=True)
         return False  # Default to disabled if config unavailable
+
+
+def is_rule_validation_enabled(config_version=None):
+    """Check if rule validation is enabled and has rules configured."""
+    try:
+        config = get_config(as_model=True, version=config_version)
+        if hasattr(config, 'rule_validation') and config.rule_validation:
+            enabled = config.rule_validation.enabled
+            if enabled and hasattr(config, 'rule_classes'):
+                if not config.rule_classes or len(config.rule_classes) == 0:
+                    logger.info("Rule validation enabled but no rule_classes configured - skipping")
+                    return False
+            logger.info(f"Rule validation enabled: {enabled}")
+            return enabled
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to get rule validation config: {e}", exc_info=True)
+        return False
 
 
 def create_metadata_file(file_uri, class_type, file_type=None):
@@ -1151,9 +1169,13 @@ def handle_skip_bda(event):
         logger.warning("WORKING_BUCKET not set, using output_bucket for compression")
         working_bucket = output_bucket
     
+    # Check if rule validation is enabled for this config version
+    rule_validation_enabled = is_rule_validation_enabled(config_version)
+
     response = {
         "document": document.serialize_document(working_bucket, "processresults_skip", logger),
         "hitl_triggered": hitl_triggered,
+        "rule_validation_enabled": rule_validation_enabled,
         "bda_response_count": 0,
         "skip_bda": True
     }
@@ -1210,7 +1232,8 @@ def handler(event, context):
         
         return {
             "document": document.serialize_document(working_bucket, "processresults_skip", logger),
-            "hitl_triggered": hitl_triggered
+            "hitl_triggered": hitl_triggered,
+            "rule_validation_enabled": is_rule_validation_enabled(config_version),
         }
     
     output_bucket = first_response.get("output_bucket")
@@ -1461,11 +1484,15 @@ def handler(event, context):
         )
         working_bucket = output_bucket
 
+    # Check if rule validation is enabled for this config version
+    rule_validation_enabled = is_rule_validation_enabled(input_config_version)
+
     response = {
         "document": document.serialize_document(
             working_bucket, "processresults", logger
         ),
         "hitl_triggered": hitl_triggered,
+        "rule_validation_enabled": rule_validation_enabled,
         "bda_response_count": len(bda_responses),
     }
 
