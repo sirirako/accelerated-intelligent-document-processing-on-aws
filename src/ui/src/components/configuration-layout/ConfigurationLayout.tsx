@@ -523,6 +523,11 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const getPatternDirectory = (idpPattern: string | undefined): string | null => {
     if (!idpPattern) return null;
 
+    // Handle "Unified" pattern
+    if (idpPattern.toLowerCase().includes('unified')) {
+      return 'unified';
+    }
+
     // Extract pattern number from string like "Pattern1 - Description" or "Pattern2 - Description"
     const match = idpPattern.match(/Pattern(\d+)/i);
     if (match) {
@@ -1727,10 +1732,11 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
       // Use the detected file type from the config object
       const fileName = config.configFileType === 'json' ? 'config.json' : 'config.yaml';
+      logger.debug('Importing from library:', { patternDir, configName: config.name, fileName });
       const file = await getFile(patternDir, config.name, fileName);
 
       if (!file) {
-        setImportError('Failed to load configuration file');
+        setImportError(`Failed to load configuration file: ${patternDir}/${config.name}/${fileName}`);
         return;
       }
 
@@ -2216,6 +2222,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
           {saveError && (
             <Alert type="error" dismissible onDismiss={() => setSaveError(null)} header="Error saving configuration">
               {saveError}
+            </Alert>
+          )}
+
+          {importError && !importedConfigForNewVersion && (
+            <Alert type="error" dismissible onDismiss={() => setImportError(null)} header="Import Error">
+              {importError}
             </Alert>
           )}
 
