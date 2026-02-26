@@ -2,11 +2,44 @@
 
 ## Current Work Focus
 
-### Pattern Unification: Phase 2 — COMPLETE (February 17, 2026)
-**Status:** ✅ All code changes complete. Ready for deploy & test.
+### Pattern Unification: Phase 3 — Cleanup Complete (February 26, 2026)
+**Status:** ✅ All cleanup work streams complete. Ready for deploy & test.
 
-#### What Was Done
-Merged the two separate IDP patterns (Pattern-1/BDA and Pattern-2/Pipeline) into a single unified pattern. The `use_bda` configuration flag (set at runtime via the UI) determines whether documents are processed via BDA or the step-by-step pipeline.
+#### What Was Done (This Session)
+
+**Work Stream A: GovCloud Script** ✅ (previous session)
+- Updated `scripts/generate_govcloud_template.py` with 6 changes for unified pattern
+
+**Work Stream B: Delete Old Pattern Directories** ✅
+- Deleted `patterns/pattern-1/` and `patterns/pattern-2/` (source now in `patterns/unified/`)
+- Fixed all active code references before deletion:
+  - `patterns/unified/buildspec-bda.yml` — paths → `patterns/unified/src/`
+  - `patterns/unified/buildspec-pipeline.yml` — paths → `patterns/unified/src/`
+  - `publish.py` — removed dead pattern-2 container code, cleaned image-repository list
+  - `scripts/sdlc/validate_service_role_permissions.py` — templates list → `patterns/unified/template.yaml`
+  - `scripts/sdlc/README_validate_buildspec.md` — example paths updated
+
+**Config Library Cleanup** ✅
+- Added missing `healthcare-multisection-package` to `config_library/unified/`
+- Deleted `config_library/pattern-1/` and `config_library/pattern-2/`
+- Updated all 11 preset `config.yaml` notes (removed "Pattern2 (Bedrock LLM)" references)
+- Updated all 11 preset `README.md` files (Pattern Association → Processing Mode)
+- Updated few-shot example image paths from `config_library/pattern-2/` → `config_library/unified/`
+- Rewrote `config_library/unified/README.md` and `config_library/README.md`
+
+**Rule Validation for Unified Pattern** ✅
+- Moved rule validation from pipeline-only to shared workflow (5 state machine pointer changes)
+- Added `is_rule_validation_enabled()` to BDA processresults function + `rule_validation_enabled` in all 3 response dicts
+- Updated UI to always show Rule Schema tab (`showRuleSchema = !isPattern1`)
+
+**Work Stream C: Docs Updates** ✅
+- Added deprecation banners to `docs/pattern-1.md` and `docs/pattern-2.md`
+- Updated `docs/architecture.md` — new Unified Pattern Architecture section replacing old pattern sections
+- Updated `docs/deployment.md` — unified processing mode description replacing pattern selector
+- Updated `docs/configuration.md` — parameter updates, processing mode description
+- Updated `docs/README.md` — updated diagram references
+
+**Work Stream D: BDA Presets** ✅ — Decided no action needed. All configs stay as pipeline mode; users toggle `use_bda` in UI.
 
 #### Architecture Summary (Unified)
 ```
@@ -18,8 +51,8 @@ Main template (template.yaml)
         ├── 1 SourceZipfile (unified-source-{hash}.zip)
         ├── Unified State Machine (routes via use_bda flag)
         │     ├── BDA branch: InvokeBDA → BDAProcessResults → shared tail
-        │     └── Pipeline branch: OCR → Classification → Extraction → Assessment → ProcessResults → RuleValidation → shared tail
-        │     └── Shared tail: HITL check → Summarization → Evaluation
+        │     └── Pipeline branch: OCR → Classification → Extraction → Assessment → ProcessResults → shared tail
+        │     └── Shared tail: HITL check → Rule Validation → Summarization → Evaluation
         ├── 12 Lambda Functions:
         │     BDA: InvokeBDAFunction, BDAProcessResultsFunction, BDACompletionFunction
         │     Pipeline: OCRFunction, ClassificationFunction, ExtractionFunction,
@@ -29,80 +62,19 @@ Main template (template.yaml)
         └── Supporting: BDAMetadataTable, BDAEventRule, CloudWatch Dashboard
 ```
 
-#### Key Files Modified/Created
-- **`patterns/unified/template.yaml`** — Unified CloudFormation nested stack (single ECR, CodeBuild, all Lambda functions)
-- **`patterns/unified/buildspec.yml`** — Builds all 12 Docker images sequentially
-- **`patterns/unified/src/`** — All 12 function directories (BDA functions from pattern-1, Pipeline functions from pattern-2)
-- **`patterns/unified/statemachine/workflow.asl.json`** — Routes via `use_bda` flag
-- **`config_library/unified/`** — Configuration presets (copy of pattern-2 library)
-- **`template.yaml`** — Main stack: single `PATTERNSTACK`, no `IDPPattern` selector, consolidated `ConfigurationPreset` parameter
-- **`publish.py`** — `package_unified_source()`, unified tokens (`<UNIFIED_IMAGE_VERSION>`, `<UNIFIED_SOURCE_ZIPFILE_TOKEN>`), component dependency map
-- **`nested/appsync/template.yaml`** — Removed `IsPattern1` conditional (BDA resolvers always created)
-
-#### Key Design Decisions
-1. **Single ECR + Single CodeBuild** — All 12 images built sequentially from one source zip
-2. **Source in `patterns/unified/src/`** — Copied from pattern-1/pattern-2, with BDA processresults renamed to `bda_processresults_function`
-3. **Pattern-2 schema as superset** — `UpdateSchemaConfig` from pattern-2 includes `use_bda` toggle and all step-by-step config sections
-4. **Shared functions from Pipeline** — Summarization/Evaluation use pattern-2 versions (superset with LambdaHook support)
-5. **Config from `config_library/unified/`** — Same as pattern-2 configs for now; `use_bda` toggle is in the schema, not the preset configs
-
-#### Resource Naming
-- BDA-specific: `BDAProcessResultsFunction`, `BDAMetadataTable`, `BDACompletionFunction`
-- Pipeline-specific: `OCRFunction`, `ClassificationFunction`, etc. (no prefix)
-- Shared: `DocumentProcessingStateMachine`, `ECRRepository`, `DockerBuildProject`
-
-#### Parameters (Main Template)
-- **Removed**: `IDPPattern`, `Pattern1Configuration`, `Pattern2Configuration`
-- **Added**: `ConfigurationPreset` (single dropdown, default `lending-package-sample`)
-- **Relabeled**: BDA Project ARN, Custom Classification/Extraction Model ARNs (removed "Pattern1"/"Pattern2" prefixes)
-- **Kept** (parameter names preserved for updates): `Pattern1BDAProjectArn`, `Pattern2CustomClassificationModelARN`, `Pattern2CustomExtractionModelARN`
-
-#### Token Flow (publish.py → template.yaml → unified template)
-```
-publish.py:
-  package_unified_source() → unified-source-{hash}.zip → S3
-  
-template.yaml tokens:
-  <UNIFIED_SOURCE_ZIPFILE_TOKEN> → unified-source-{hash}.zip
-  <UNIFIED_IMAGE_VERSION> → {hash} (extracted from zipfile name)
-  
-PATTERNSTACK params:
-  ImageVersion: "{hash}"
-  SourceZipfile: "unified-source-{hash}.zip"
-```
-
-### BDA Routing Fix (February 23, 2026)
-**Status:** ✅ Code changes complete. Ready for deploy & test.
-
-Fixed 3 bugs preventing BDA processing from being triggered:
-1. **Bug #0 (Blocking):** `CONFIG_TABLE` env var was missing from QueueProcessor Lambda — `os.environ.get('CONFIG_TABLE')` always returned `None`, so `use_bda` always defaulted to `False`
-2. **Bug #1:** Even with CONFIG_TABLE set, the raw DynamoDB `get_item` read could never find `use_bda` because config data is gzip-compressed — needed to use `ConfigurationManager` to decompress
-3. **Bug #2:** BDA Project ARN was static from CloudFormation deploy time (`${BDAProjectArn}` substitution), but BDA projects are now per-config-version — changed to `$.document.bda_project_arn` from state machine input
-
-**Files Modified:**
-- `src/lambda/queue_processor/index.py` — Uses `ConfigurationManager` to read `use_bda` + `bda_project_arn` per config version
-- `template.yaml` — Added `CONFIG_TABLE` env var and `DynamoDBReadPolicy` to QueueProcessor
-- `patterns/unified/statemachine/workflow.asl.json` — `BDA_InvokeDataAutomation` now uses `"BDAProjectArn.$": "$.document.bda_project_arn"` (dynamic from input)
-
-**Safety features added:**
-- If `use_bda=True` but no BDA project ARN is linked, falls back to pipeline mode with clear warning log
-- If `CONFIG_TABLE` env var is missing, logs warning and defaults to pipeline mode
-
-### Remaining Work (Next Session)
+### Remaining Work
 
 #### 🔴 High Priority
 1. **Deploy & Test** — `python publish.py <bucket> <prefix> <region> --clean-build` → deploy as new stack
 2. **Fix any deploy issues** — Watch for template validation errors, CodeBuild failures, etc.
 
-#### 🟡 Medium Priority  
-3. **Validate Makefile/CI** — `make validate-buildspec` checks `patterns/*/buildspec.yml` — may need to include `patterns/unified/buildspec.yml`
-4. **GovCloud template** — `scripts/generate_govcloud_template.py` may reference old pattern paths
-5. **CI/CD pipeline** — `.gitlab-ci.yml` may reference old pattern paths
+#### 🟡 Medium Priority
+3. **Validate Makefile/CI** — `make validate-buildspec` checks `patterns/*/buildspec.yml`
+4. **CI/CD pipeline** — `.gitlab-ci.yml` may reference old pattern paths (check needed)
 
-#### 🟢 Low Priority
-6. **Clean up old dirs** — `patterns/pattern-1/`, `patterns/pattern-2/` still exist (source now in `unified/src/`)
-7. **Update docs** — `docs/pattern-1.md`, `docs/pattern-2.md`, deployment docs
-8. **Config library enhancement** — Add `use_bda: true` variant configs for BDA-specific presets
+#### 🟢 Low Priority (Incremental)
+5. **Update remaining 25+ docs** — Other doc files still mention Pattern-1/2 in contextual ways; can be updated incrementally
+6. **CLAUDE.md** — Still references old pattern paths in some examples
 
 ---
 
@@ -120,3 +92,23 @@ Same outputs as before — no breaking changes:
 - `StateMachineName`, `StateMachineArn`, `StateMachineLogGroup`
 - `PatternLogGroups` (all 12 function log groups + state machine)
 - `DashboardName`, `DashboardArn`
+
+### Config Library Structure
+```
+config_library/
+├── unified/          # 11 presets, all use_bda: false by default
+│   ├── bank-statement-sample/
+│   ├── docsplit/
+│   ├── healthcare-multisection-package/
+│   ├── lending-package-sample/
+│   ├── lending-package-sample-govcloud/
+│   ├── ocr-benchmark/
+│   ├── realkie-fcc-verified/
+│   ├── rule-extraction/
+│   ├── rule-validation/
+│   ├── rvl-cdip/
+│   └── rvl-cdip-with-few-shot-examples/
+├── pricing.yaml
+├── README.md
+└── TEMPLATE_README.md
+```
