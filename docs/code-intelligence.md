@@ -30,9 +30,11 @@ User → Agent Companion Chat → Orchestrator Agent
 ```
 
 - The **Orchestrator Agent** automatically routes code-related queries to the Code Intelligence Agent when it is enabled
-- Users control whether the agent is active via the **Code Intelligence toggle** in the chat interface
+- Users control whether the agent is active via the **"Enable Code Intelligence Agent"** checkbox in the chat interface
 - When disabled, the orchestrator will not route any queries to this agent
 - The agent shares the same conversation memory, streaming infrastructure, and UI as all other companion chat agents
+
+![Agent Companion Chat Interface](../images/agent_companion_chat.png)
 
 For full details on the Agent Companion Chat architecture, session management, streaming, and multi-agent orchestration, see the [Agent Companion Chat documentation](./agent-companion-chat.md).
 
@@ -136,11 +138,11 @@ The Code Intelligence Agent has access to specialized tools for comprehensive co
 ### Accessing the Feature
 
 1. Log in to the GenAI IDP Web UI
-2. Navigate to **Agent Chat** in the main navigation
-3. Enable the **Code Intelligence** toggle in the chat interface
+2. Navigate to **Agent Companion Chat** in the main navigation
+3. Check the **"Enable Code Intelligence Agent"** checkbox at the bottom of the chat interface
 4. Start asking code-related questions — the orchestrator will automatically route them to the Code Intelligence Agent
 
-> **Note**: Code Intelligence is disabled by default for security reasons. Enable it only when you need code assistance and ensure your queries contain no sensitive information.
+> **Note**: Code Intelligence is disabled by default for security reasons. Enable it only when you need code assistance and ensure your queries contain no sensitive information. A warning message reminds you: *"Avoid sharing sensitive information, the Code Intelligence Agent may use third-party services."*
 
 ### Types of Questions
 
@@ -287,7 +289,7 @@ The Code Intelligence Agent shares infrastructure with the Agent Companion Chat:
 1. **Keep Disabled by Default**: Only enable Code Intelligence when you specifically need code assistance
 2. **Review Your Questions**: Ensure queries contain no sensitive information before sending
 3. **Use Other Agents for System Data**: Use Analytics or Error Analyzer agents for queries involving your actual system data
-4. **Disable After Use**: Toggle Code Intelligence off when you're done with code-related questions
+4. **Disable After Use**: Uncheck the Code Intelligence toggle when you're done with code-related questions
 
 ## Troubleshooting
 
@@ -298,7 +300,7 @@ The Code Intelligence Agent shares infrastructure with the Agent Companion Chat:
 - Contact your administrator if the feature should be available
 
 **Agent Not Responding to Code Questions:**
-- Ensure the Code Intelligence toggle is **enabled** in the chat interface
+- Ensure the **"Enable Code Intelligence Agent"** checkbox is checked in the chat interface
 - Check CloudWatch logs for the `agent_chat_processor` Lambda function
 - Verify Bedrock model access is enabled for your selected model
 
