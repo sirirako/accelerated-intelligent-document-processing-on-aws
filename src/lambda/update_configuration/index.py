@@ -694,19 +694,29 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             if previous_idp_pattern and "pattern" in previous_idp_pattern.lower() and "1" in previous_idp_pattern:
                 logger.info(f"Detected former Pattern-1 stack (PreviousIDPPattern={previous_idp_pattern}) — auto-enabling BDA on all config versions")
                 try:
-                    all_versions = manager.list_versions()
+                    all_versions = manager.list_config_versions()
                     for ver in all_versions:
-                        ver_name = ver.get("version", "")
+                        ver_name = ver.get("versionName", "")
                         try:
                             ver_config = manager.get_configuration("Config", ver_name)
-                            if ver_config and isinstance(ver_config, dict):
-                                if not ver_config.get("use_bda"):
-                                    ver_config["use_bda"] = True
-                                    manager.save_configuration("Config", ver_config, version=ver_name)
+                            if ver_config:
+                                # Convert Pydantic model to dict if needed
+                                if hasattr(ver_config, 'model_dump'):
+                                    ver_config_dict = ver_config.model_dump()
+                                elif isinstance(ver_config, dict):
+                                    ver_config_dict = ver_config
+                                else:
+                                    ver_config_dict = dict(ver_config)
+                                if not ver_config_dict.get("use_bda"):
+                                    ver_config_dict["use_bda"] = True
+                                    manager.save_configuration("Config", ver_config_dict, version=ver_name)
                                     logger.info(f"Set use_bda=true on config version '{ver_name}'")
                                 # Also set bdaSyncStatus to needs-sync
-                                manager.set_bda_project_arn(ver_name, sync_status="needs-sync")
-                                logger.info(f"Set bdaSyncStatus=needs-sync on config version '{ver_name}'")
+                                try:
+                                    manager.set_bda_project_arn(ver_name, sync_status="needs-sync")
+                                    logger.info(f"Set bdaSyncStatus=needs-sync on config version '{ver_name}'")
+                                except Exception as sync_err:
+                                    logger.warning(f"Failed to set bdaSyncStatus on version '{ver_name}': {sync_err}")
                         except Exception as ve:
                             logger.warning(f"Failed to auto-enable BDA on version '{ver_name}': {ve}")
                 except Exception as e:
