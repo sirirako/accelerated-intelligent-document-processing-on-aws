@@ -1,6 +1,15 @@
 """
-Lambda function to deploy the RealKIE-FCC-Verified dataset from HuggingFace
+Lambda function to deploy the Fake W-2 Tax Form dataset from HuggingFace
 to the TestSetBucket during stack deployment.
+
+Source: https://huggingface.co/datasets/singhsays/fake-w2-us-tax-form-dataset
+Original: https://www.kaggle.com/datasets/mcvishnu1/fake-w2-us-tax-form-dataset (CC0: Public Domain)
+
+This deployer:
+1. Downloads parquet files for all 3 splits (train, test, validation) from HuggingFace
+2. Extracts JPG images and ground truth from parquet data
+3. Converts gt_parse ground truth to accelerator inference_result format
+4. Uploads images and baselines to S3
 """
 
 import json
@@ -32,33 +41,41 @@ TESTSET_BUCKET = os.environ.get('TESTSET_BUCKET')
 TRACKING_TABLE = os.environ.get('TRACKING_TABLE')
 
 # Constants
-DATASET_NAME = 'RealKIE-FCC-Verified'
-DATASET_PREFIX = 'realkie-fcc-verified/'
-TEST_SET_ID = 'realkie-fcc-verified'
+DATASET_NAME = 'Fake-W2-Tax-Forms'
+DATASET_PREFIX = 'fake-w2/'
+TEST_SET_ID = 'fake-w2'
+HF_REPO_ID = 'singhsays/fake-w2-us-tax-form-dataset'
+
+# Parquet files for each split
+PARQUET_FILES = {
+    'train': 'data/train-00000-of-00001-26677581e561d5be.parquet',
+    'test': 'data/test-00000-of-00001-d2b8d24cfd674b24.parquet',
+    'validation': 'data/validation-00000-of-00001-dec92c2111026d5a.parquet',
+}
 
 
 def handler(event, context):
     """
-    Main Lambda handler for deploying the FCC dataset.
+    Main Lambda handler for deploying the Fake W-2 dataset.
     """
     logger.info(f"Event: {json.dumps(event)}")
-    
+
     try:
         request_type = event['RequestType']
-        
+
         if request_type == 'Delete':
             # On stack deletion, we leave the data in place
             logger.info("Delete request - keeping dataset in place")
             cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
             return
-        
+
         # Extract properties
         properties = event['ResourceProperties']
         dataset_version = properties.get('DatasetVersion', '1.0')
         dataset_description = properties.get('DatasetDescription', '')
-        
+
         logger.info(f"Processing dataset version: {dataset_version}")
-        
+
         # Check if dataset already exists with this version
         if check_existing_version(dataset_version):
             logger.info(f"Dataset version {dataset_version} already deployed, updating description only")
@@ -67,13 +84,13 @@ def handler(event, context):
                 'Message': f'Dataset version {dataset_version} already exists, description updated'
             })
             return
-        
+
         # Download and deploy the dataset
         result = deploy_dataset(dataset_version, dataset_description)
-        
+
         logger.info(f"Dataset deployment completed: {result}")
         cfnresponse.send(event, context, cfnresponse.SUCCESS, result)
-        
+
     except Exception as e:
         logger.error(f"Error deploying dataset: {str(e)}", exc_info=True)
         # Graceful degradation: don't fail the stack due to test set download issues.
@@ -125,11 +142,11 @@ def check_existing_version(version: str) -> bool:
                 'SK': 'metadata'
             }
         )
-        
+
         if 'Item' in response:
             existing_version = response['Item'].get('datasetVersion', '')
             logger.info(f"Found existing dataset version: {existing_version}")
-            
+
             # Check if version matches, status is not FAILED, and files exist
             if existing_version == version:
                 existing_status = response['Item'].get('status', '')
@@ -138,203 +155,187 @@ def check_existing_version(version: str) -> bool:
                     return False
                 # Verify at least some files exist in S3
                 try:
-                    response = s3_client.list_objects_v2(
+                    s3_response = s3_client.list_objects_v2(
                         Bucket=TESTSET_BUCKET,
                         Prefix=f'{DATASET_PREFIX}input/',
                         MaxKeys=1
                     )
-                    if response.get('KeyCount', 0) > 0:
+                    if s3_response.get('KeyCount', 0) > 0:
                         logger.info("Files exist in S3, skipping deployment")
                         return True
                 except Exception as e:
                     logger.warning(f"Error checking S3 files: {e}")
-        
+
         return False
-        
+
     except Exception as e:
         logger.warning(f"Error checking existing version: {e}")
         return False
 
 
-def get_page_count(data_dict: dict, idx: int) -> int:
+def convert_gt_to_inference_result(gt_parse: dict) -> dict:
     """
-    Get the number of pages for a document by counting image files.
-    
-    The RealKIE-FCC-Verified dataset contains an 'image_files' column 
-    with a list of image filenames, one per page.
-    
-    Args:
-        data_dict: Parquet data dictionary
-        idx: Document index
-        
-    Returns:
-        Number of pages (image file count)
+    Convert the gt_parse ground truth format to a flat inference_result dict.
+    The gt_parse fields are already flat key-value pairs matching W-2 box numbers,
+    so we pass them through with string conversion for consistency.
     """
-    image_files = data_dict['image_files'][idx]
-    if image_files and isinstance(image_files, list):
-        return len(image_files)
-    
-    logger.warning(f"Could not determine page count for document index {idx}")
-    return 0
+    result = {}
+    for key, value in gt_parse.items():
+        # Convert "None" strings to empty string, and numbers to strings
+        if value == "None" or value is None:
+            result[key] = ""
+        elif isinstance(value, (int, float)):
+            result[key] = str(value)
+        else:
+            result[key] = str(value)
+    return result
 
 
 def deploy_dataset(version: str, description: str) -> Dict[str, Any]:
     """
-    Deploy the dataset by downloading PDFs and ground truth from HuggingFace
-    using lightweight hf_hub_download and pyarrow.
+    Deploy the dataset by downloading parquet files from HuggingFace,
+    extracting images and ground truth, and uploading to S3.
     """
     try:
         # Ensure cache directory exists in /tmp (Lambda's writable directory)
         cache_dir = '/tmp/huggingface/hub'
         os.makedirs(cache_dir, exist_ok=True)
         logger.info(f"Using cache directory: {cache_dir}")
-        
-        logger.info(f"Downloading dataset from HuggingFace: amazon-agi/RealKIE-FCC-Verified")
-        
-        # Download the parquet file with metadata using hf_hub_download
-        parquet_path = hf_hub_download(
-            repo_id="amazon-agi/RealKIE-FCC-Verified",
-            filename="data/test-00000-of-00001.parquet",
-            repo_type="dataset",
-            cache_dir=cache_dir
-        )
-        
-        logger.info(f"Downloaded parquet metadata file")
-        
-        # Read parquet file with pyarrow
-        table = pq.read_table(parquet_path)
-        data_dict = table.to_pydict()
-        
-        num_documents = len(data_dict['id'])
-        logger.info(f"Loaded {num_documents} documents from parquet")
-        
-        # TEMPORARY: Log parquet schema for debugging
-        logger.info(f"Parquet schema: {table.schema}")
-        logger.info(f"Available columns: {list(data_dict.keys())}")
-        
-        # Sample first document to see structure (if exists)
-        if num_documents > 0:
-            sample_keys = list(data_dict.keys())
-            logger.info(f"Sample document column names: {sample_keys}")
-            # Log a few sample values (avoiding large data)
-            for key in sample_keys[:5]:
-                value = data_dict[key][0]
-                if isinstance(value, (list, dict)):
-                    logger.info(f"  {key}: {type(value).__name__} with {len(value) if hasattr(value, '__len__') else 'N/A'} items")
-                else:
-                    logger.info(f"  {key}: {type(value).__name__}")
-        
-        # Process and upload each document
+
         file_count = 0
         skipped_count = 0
-        total_pages = 0
-        page_count_distribution = {}
-        
-        for idx in range(num_documents):
-            try:
-                document_id = data_dict['id'][idx]
-                json_response = data_dict['json_response'][idx]
-                
-                if not json_response:
-                    logger.warning(f"Skipping {document_id}: no json_response")
-                    skipped_count += 1
-                    continue
-                
-                # Get page count from images
-                page_count = get_page_count(data_dict, idx)
-                
-                # Validate page count
-                if page_count == 0:
-                    logger.warning(f"Skipping {document_id}: no pages found (page_count=0)")
-                    skipped_count += 1
-                    continue
-                
-                # Track statistics
-                total_pages += page_count
-                page_count_distribution[page_count] = page_count_distribution.get(page_count, 0) + 1
-                
-                logger.info(f"Processing {document_id} ({page_count} pages)")
-                
-                # Download PDF file from HuggingFace repository using hf_hub_download
+        split_counts = {}
+
+        # Process each split
+        for split_name, parquet_filename in PARQUET_FILES.items():
+            logger.info(f"Processing split: {split_name} ({parquet_filename})")
+
+            # Download the parquet file
+            parquet_path = hf_hub_download(
+                repo_id=HF_REPO_ID,
+                filename=parquet_filename,
+                repo_type="dataset",
+                cache_dir=cache_dir
+            )
+
+            logger.info(f"Downloaded parquet file for {split_name}")
+
+            # Read parquet file
+            table = pq.read_table(parquet_path)
+            num_rows = table.num_rows
+            logger.info(f"Split {split_name}: {num_rows} documents")
+
+            split_file_count = 0
+
+            for idx in range(num_rows):
                 try:
-                    pdf_path = hf_hub_download(
-                        repo_id="amazon-agi/RealKIE-FCC-Verified",
-                        filename=f"pdfs/{document_id}",
-                        repo_type="dataset",
-                        cache_dir=cache_dir
-                    )
-                    
-                    # Read the downloaded PDF
-                    with open(pdf_path, 'rb') as f:
-                        pdf_bytes = f.read()
-                    
-                    logger.info(f"Downloaded PDF for {document_id} ({len(pdf_bytes):,} bytes)")
-                    
-                    # Upload PDF to input folder
-                    pdf_key = f'{DATASET_PREFIX}input/{document_id}'
+                    # Extract image bytes
+                    image_data = table.column('image')[idx].as_py()
+                    if image_data is None:
+                        logger.warning(f"Skipping {split_name}/{idx}: no image data")
+                        skipped_count += 1
+                        continue
+
+                    # Handle image data - may be dict with 'bytes' key or raw bytes
+                    if isinstance(image_data, dict):
+                        image_bytes = image_data.get('bytes', None)
+                    elif isinstance(image_data, bytes):
+                        image_bytes = image_data
+                    else:
+                        logger.warning(f"Skipping {split_name}/{idx}: unexpected image type {type(image_data)}")
+                        skipped_count += 1
+                        continue
+
+                    if not image_bytes:
+                        logger.warning(f"Skipping {split_name}/{idx}: empty image bytes")
+                        skipped_count += 1
+                        continue
+
+                    # Extract ground truth
+                    gt_str = table.column('ground_truth')[idx].as_py()
+                    if not gt_str:
+                        logger.warning(f"Skipping {split_name}/{idx}: no ground truth")
+                        skipped_count += 1
+                        continue
+
+                    gt_data = json.loads(gt_str)
+                    gt_parse = gt_data.get('gt_parse', {})
+
+                    if not gt_parse:
+                        logger.warning(f"Skipping {split_name}/{idx}: empty gt_parse")
+                        skipped_count += 1
+                        continue
+
+                    # Create document filename
+                    doc_filename = f"w2_{split_name}_{idx:04d}.jpg"
+
+                    # Upload image to input folder
+                    input_key = f'{DATASET_PREFIX}input/{doc_filename}'
                     s3_client.put_object(
                         Bucket=TESTSET_BUCKET,
-                        Key=pdf_key,
-                        Body=pdf_bytes,
-                        ContentType='application/pdf'
+                        Key=input_key,
+                        Body=image_bytes,
+                        ContentType='image/jpeg'
                     )
-                    
+
+                    # Convert ground truth to inference_result format
+                    inference_result = convert_gt_to_inference_result(gt_parse)
+
+                    # Create baseline with document classification fields
+                    result_json = {
+                        "document_class": {
+                            "type": "W2"
+                        },
+                        "split_document": {
+                            "page_indices": [0]
+                        },
+                        "inference_result": inference_result
+                    }
+
+                    # Upload ground truth baseline
+                    baseline_key = f'{DATASET_PREFIX}baseline/{doc_filename}/sections/1/result.json'
+                    s3_client.put_object(
+                        Bucket=TESTSET_BUCKET,
+                        Key=baseline_key,
+                        Body=json.dumps(result_json, indent=2),
+                        ContentType='application/json'
+                    )
+
+                    file_count += 1
+                    split_file_count += 1
+
+                    if file_count % 100 == 0:
+                        logger.info(f"Processed {file_count} documents so far...")
+
                 except Exception as e:
-                    logger.error(f"Error downloading/uploading PDF for {document_id}: {e}")
+                    logger.error(f"Error processing {split_name}/{idx}: {e}")
                     skipped_count += 1
                     continue
-                
-                # Generate zero-indexed page_indices array
-                page_indices = list(range(page_count))
-                
-                # Create enhanced baseline with document split classification fields
-                result_json = {
-                    "document_class": {
-                        "type": "Invoice"
-                    },
-                    "split_document": {
-                        "page_indices": page_indices
-                    },
-                    "inference_result": json_response
-                }
-                
-                # Upload ground truth baseline
-                result_key = f'{DATASET_PREFIX}baseline/{document_id}/sections/1/result.json'
-                s3_client.put_object(
-                    Bucket=TESTSET_BUCKET,
-                    Key=result_key,
-                    Body=json.dumps(result_json, indent=2),
-                    ContentType='application/json'
-                )
-                
-                file_count += 1
-                
-                if file_count % 10 == 0:
-                    logger.info(f"Processed {file_count}/{num_documents} documents...")
-                    
-            except Exception as e:
-                logger.error(f"Error processing document {idx} ({document_id}): {e}")
-                skipped_count += 1
-                continue
-        
-        # Log comprehensive statistics
+
+            split_counts[split_name] = split_file_count
+            logger.info(f"Split {split_name}: deployed {split_file_count} documents")
+
+            # Clean up parquet file from /tmp to free space for next split
+            try:
+                os.remove(parquet_path)
+            except Exception:
+                pass
+
+        # Log statistics
         logger.info(f"Successfully deployed {file_count} documents (skipped {skipped_count})")
-        logger.info(f"Total pages across all documents: {total_pages}")
-        logger.info(f"Average pages per document: {total_pages / file_count if file_count > 0 else 0:.2f}")
-        logger.info(f"Page count distribution: {dict(sorted(page_count_distribution.items()))}")
-        
+        logger.info(f"Split counts: {split_counts}")
+
         # Create test set record in DynamoDB
-        create_testset_record(version, description, file_count)
-        
+        create_testset_record(version, description, file_count, split_counts)
+
         return {
             'DatasetVersion': version,
             'FileCount': file_count,
             'SkippedCount': skipped_count,
-            'TotalPages': total_pages,
-            'PageCountDistribution': page_count_distribution,
-            'Message': f'Successfully deployed {file_count} documents with enhanced baseline files (doc split fields included)'
+            'SplitCounts': split_counts,
+            'Message': f'Successfully deployed {file_count} W-2 tax form documents'
         }
-        
+
     except Exception as e:
         logger.error(f"Error deploying dataset: {e}", exc_info=True)
         raise
@@ -358,7 +359,7 @@ def create_failed_testset_record(version: str, error_message: str):
         'status': 'FAILED',
         'createdAt': timestamp,
         'datasetVersion': version,
-        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified',
+        'source': f'huggingface:{HF_REPO_ID}',
         'description': (
             f'⚠️ Deployment failed: {error_message[:500]}. '
             f'This test set could not be downloaded from its source. '
@@ -370,27 +371,32 @@ def create_failed_testset_record(version: str, error_message: str):
     logger.info(f"Created FAILED test set record in DynamoDB: {TEST_SET_ID}")
 
 
-def create_testset_record(version: str, description: str, file_count: int):
+def create_testset_record(version: str, description: str, file_count: int,
+                          split_counts: Dict[str, int]):
     """
     Create or update the test set record in DynamoDB.
     """
     table = dynamodb.Table(TRACKING_TABLE)  # type: ignore[attr-defined]
     timestamp = datetime.utcnow().isoformat() + 'Z'
-    
+
     item = {
         'PK': f'testset#{TEST_SET_ID}',
         'SK': 'metadata',
         'id': TEST_SET_ID,
         'name': DATASET_NAME,
-        'description': description,
         'filePattern': '',
         'fileCount': file_count,
         'status': 'COMPLETED',
         'createdAt': timestamp,
         'datasetVersion': version,
-        'source': 'huggingface:amazon-agi/RealKIE-FCC-Verified',
-        'description': description or 'RealKIE-FCC-Verified dataset from HuggingFace'
+        'source': f'huggingface:{HF_REPO_ID}',
+        'splitCounts': split_counts,
+        'description': description or (
+            'Fake W-2 Tax Form dataset - 2,000 synthetic US W-2 tax form images '
+            'with 45-field structured ground truth for extraction evaluation. '
+            'CC0: Public Domain license.'
+        )
     }
-    
+
     table.put_item(Item=item)
     logger.info(f"Created test set record in DynamoDB: {TEST_SET_ID}")
