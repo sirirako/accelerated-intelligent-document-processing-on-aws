@@ -2720,10 +2720,6 @@ Resources:
                 - bedrock:ListBlueprints
                 - bedrock:DeleteBlueprint
               Resource:
-                - !If
-                  - HasBDAProjectArn
-                  - !Ref Pattern1BDAProjectArn
-                  - !Ref Pattern1BDAProjectArn
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:data-automation-project/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:aws:blueprint/*"
