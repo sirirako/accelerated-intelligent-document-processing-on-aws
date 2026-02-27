@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.5.0]
+
 ### Added
 
 - **Unified Pattern** — Merged Pattern-1 (BDA) and Pattern-2 (Pipeline) into a single deployment. Switch between BDA and Pipeline processing modes at runtime using the `use_bda` configuration toggle — no redeployment needed. Use [Test Studio](./docs/test-studio.md) to compare accuracy and cost across both modes to find the optimal approach for your documents. See the [Migration Guide](./docs/migration-v04-to-v05.md) for upgrade instructions.
@@ -41,6 +43,11 @@ SPDX-License-Identifier: MIT-0
 - **Fixed insufficient Lambda memory for Extraction, Assessment, and Evaluation functions in unified pattern template** — Increased MemorySize from 512 MB (Extraction, Assessment) and 1024 MB (Evaluation) to 4096 MB to match all other document processing Lambda functions, preventing potential out-of-memory errors during document processing. ([#205](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/205))
 
 - **Fixed DOCX processing to extract text from embedded images and correct page splitting** — DOCX files with embedded images (e.g., `<w:drawing>` elements) now have image content OCR'd and included in the extracted text instead of being silently skipped. Page splitting now uses DOCX metadata (explicit page breaks, image display dimensions from `wp:extent`, section properties) instead of inaccurate height estimates, producing correct page boundaries.
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.0.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.0.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.0.yaml`
 
 ## [0.4.16]
 
