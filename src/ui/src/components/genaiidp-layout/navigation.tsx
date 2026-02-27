@@ -26,18 +26,18 @@ export const documentsNavHeader = { text: 'Tools', href: `#${DEFAULT_PATH}` };
 // Full navigation items for Admin users
 export const adminNavItems = [
   { type: 'link', text: 'Document List', href: `#${DOCUMENTS_PATH}` },
-  { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Upload Document(s)', href: `#${UPLOAD_DOCUMENT_PATH}` },
+  { type: 'link', text: 'Document KB', href: `#${DOCUMENTS_KB_QUERY_PATH}` },
   { type: 'link', text: 'Agent Companion Chat', href: `#${AGENT_CHAT_PATH}` },
   {
     type: 'section',
     text: 'Configuration',
     items: [
+      { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
       { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
       { type: 'link', text: 'Capacity Planning', href: `#${CAPACITY_PLANNING_PATH}` },
-      { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
-      { type: 'link', text: 'View/Edit Pricing', href: `#${PRICING_PATH}` },
       { type: 'link', text: 'User Management', href: `#${USER_MANAGEMENT_PATH}` },
+      { type: 'link', text: 'View/Edit Pricing', href: `#${PRICING_PATH}` },
     ],
   },
   {
