@@ -82,15 +82,14 @@ Your experience depends on how your BDA project was set up:
 
 #### If your stack created a sample BDA project automatically
 
-The sample BDA project is preserved in your AWS account, but the link between it and your configuration is lost during the upgrade.
+The sample BDA project is preserved in your AWS account. BDA mode (`use_bda: true`) is automatically enabled on all configuration versions during the upgrade, but the link between the project and your configuration is lost.
 
 **What to do:**
 1. Go to the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) → **Data Automation** → **Projects**
 2. Find your project (named `{your-stack-name}-Project`)
 3. Copy the project ARN
 4. In the IDP Web UI, go to **View/Edit Config**
-5. Toggle `use_bda` to **true** and save
-6. Click **Sync from BDA** and paste the project ARN
+5. Click **Sync from BDA** and paste the project ARN
 
 This re-links your BDA project and imports its blueprints into your configuration.
 
@@ -112,6 +111,8 @@ The configuration preset names are the same — only the internal directory stru
 | rule-validation | ✅ Available |
 | rule-extraction | ✅ Available |
 | healthcare-multisection-package | ✅ New |
+| fake-w2 | ✅ New — 2,000 synthetic W-2 tax forms with structured ground truth |
+| lending-package-sample-govcloud | ✅ New — GovCloud-compatible model IDs |
 
 ### Removed Parameters
 
@@ -122,6 +123,8 @@ These CloudFormation parameters are no longer used:
 | `IDPPattern` | No longer needed — processing mode is set in the configuration |
 | `Pattern1Configuration` | Replaced by `ConfigurationPreset` |
 | `Pattern2Configuration` | Replaced by `ConfigurationPreset` |
+
+> **Note:** The new `ConfigurationPreset` parameter selects which preset configuration to load for new stacks or when changing presets. The default is `lending-package-sample`. During a stack update, your existing configuration versions are preserved — `ConfigurationPreset` only affects the `default` version's initial settings.
 
 ### New Feature: Rule Validation for BDA
 
