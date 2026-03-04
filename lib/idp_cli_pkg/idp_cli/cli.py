@@ -3731,8 +3731,18 @@ def config_upload(
             if success:
                 console.print("[green]✓ Configuration uploaded successfully[/green]")
                 console.print()
-                console.print("[bold]Configuration is now active![/bold]")
-                console.print("New documents will use this configuration immediately.")
+                if config_version:
+                    console.print(
+                        f"[bold]Configuration version '{config_version}' uploaded![/bold]"
+                    )
+                    console.print(
+                        "Use --config-version parameter to process documents with this version."
+                    )
+                else:
+                    console.print("[bold]Configuration is now active![/bold]")
+                    console.print(
+                        "New documents will use this configuration immediately."
+                    )
             else:
                 console.print("[red]✗ Failed to upload configuration[/red]")
                 sys.exit(1)
