@@ -720,7 +720,7 @@ type Query @aws_cognito_user_pools @aws_iam {
   # User Management
   listUsers: UserList @aws_cognito_user_pools
   # HITL Pending Reviews
-  listPendingReviewDocuments: DocumentList @aws_cognito_user_pools
+  listPendingReviewDocuments(limit: Int, nextToken: String): DocumentList @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools @aws_iam {
