@@ -3,6 +3,7 @@
 /* eslint-disable react/no-unstable-nested-components, react/no-array-index-key */
 import React, { useState, useMemo, useEffect } from 'react';
 import { generateClient } from 'aws-amplify/api';
+import { calculateCapacity as calculateCapacityOp } from '../../graphql/generated';
 import {
   Container,
   Header,
@@ -27,6 +28,7 @@ import useSettingsContext from '../../contexts/settings';
 import useDocumentsContext from '../../contexts/documents';
 import DocumentPickerModal from './DocumentPickerModal';
 import DateRangeModal from '../common/DateRangeModal';
+import { parseMetering } from '../../graphql/awsjson-parsers';
 
 // Type definitions for configuration and state
 interface Configuration {
@@ -663,10 +665,8 @@ const CapacityPlanningLayout = () => {
       const validationErrors = [];
       const validDocuments = candidateDocuments
         .map((doc) => {
-          let meteringData = {};
-          try {
-            meteringData = typeof doc.Metering === 'string' ? JSON.parse(doc.Metering) : doc.Metering;
-          } catch (e) {
+          const meteringData = parseMetering(doc.Metering as string) || {};
+          if (!meteringData || Object.keys(meteringData).length === 0) {
             console.warn('Failed to parse metering data for', doc.ObjectKey);
             return null;
           }
@@ -1478,60 +1478,13 @@ const CapacityPlanningLayout = () => {
       // Create client inside the function to ensure Amplify is configured
       const client = generateClient();
       const response = await client.graphql({
-        query: `
-          query CalculateCapacity($input: String!) {
-            calculateCapacity(input: $input) {
-              success
-              errorMessage
-              metrics {
-                label
-                value
-              }
-              quotaRequirements {
-                service
-                category
-                currentQuota
-                requiredQuota
-                statusText
-                modelId
-              }
-              latencyDistribution {
-                p50
-                p75
-                p90
-                p95
-                p99
-                procP50
-                procP75
-                procP90
-                procP95
-                procP99
-                queueP50
-                queueP75
-                queueP90
-                queueP95
-                queueP99
-                baseLatency
-                queueLatency
-                totalLatency
-                exceedsLimit
-                maxAllowed
-              }
-              calculationDetails {
-                quotasUsed {
-                  bedrock_models
-                }
-              }
-              recommendations
-            }
-          }
-        `,
+        query: calculateCapacityOp,
         variables: { input: JSON.stringify(input) },
       });
 
       console.log('📊 Capacity calculation response:', response);
 
-      const responseData = (response as { data?: { calculateCapacity?: CapacityResult } }).data;
+      const responseData = response.data;
       if (responseData?.calculateCapacity) {
         // The response now has the proper GraphQL structure
         const result = responseData.calculateCapacity;
