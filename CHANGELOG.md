@@ -15,6 +15,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
+- **OCR Benchmark Config Optimization** — Optimized `config_library/unified/ocr-benchmark` configuration with targeted field descriptions, explicit model/prompt/OCR settings, and corrected date format (YYYY-MM-DD to match ground truth). Improved overall extraction accuracy from 51.5% to 75.2% on the full 293-document benchmark at equivalent cost (~$2.62). Classification remains 100% across all 9 document classes. ([#220](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/220))
+
 - **GraphQL Type Generation & Unit Testing** — Replaced 60+ hand-written GraphQL query/mutation/subscription files with auto-generated types via `@graphql-codegen`, added typed AWSJSON parsers with unit tests (vitest + jsdom), and integrated a CI codegen-check to prevent type drift.
 
 ### Fixed
