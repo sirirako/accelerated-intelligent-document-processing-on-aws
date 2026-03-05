@@ -23,6 +23,8 @@ SPDX-License-Identifier: MIT-0
 
 - **AgentCore Gateway Manager** — Fixed the issue where gateway was not getting deleted once stack is deleted.
 
+- **Configuration Page Error Display** — Fixed `[object Object]` error message when configuration loading fails (e.g., due to Lambda throttling) by properly extracting error messages from Amplify GraphQL error responses.
+
 
 ## [0.5.0]
 
