@@ -133,6 +133,73 @@ def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> 
     return template_path, None
 
 
+def _display_deployment_failure(deployer, stack_name: str, result: dict):
+    """
+    Display detailed failure analysis when a deployment fails.
+
+    Recursively collects failure events from main and nested stacks
+    to identify and display root causes.
+
+    Args:
+        deployer: StackDeployer instance
+        stack_name: Stack name
+        result: Deployment result dictionary
+    """
+    console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
+    console.print(f"Status: {result.get('status')}")
+    console.print()
+
+    # Get detailed failure analysis
+    try:
+        analysis = deployer.get_deployment_failure_analysis(stack_name)
+        root_causes = analysis.get("root_causes", [])
+        all_failures = analysis.get("all_failures", [])
+
+        if root_causes:
+            console.print("[bold red]Root Cause Analysis:[/bold red]")
+            console.print("━" * 70)
+            for i, rc in enumerate(root_causes, 1):
+                stack_path = rc.get("stack_path", "")
+                resource = rc.get("resource", "Unknown")
+                resource_type = rc.get("resource_type", "")
+                reason = rc.get("reason", "Unknown")
+
+                # Build the location string
+                if stack_path:
+                    location = f"{stack_path} → {resource}"
+                else:
+                    location = resource
+
+                # Add resource type if available
+                type_hint = f" ({resource_type})" if resource_type else ""
+
+                console.print(f"  [red]✗[/red] {location}{type_hint}")
+                console.print(f"    [yellow]{reason}[/yellow]")
+                if i < len(root_causes):
+                    console.print()
+
+            console.print("━" * 70)
+
+            # Show count of cascade/other failures for context
+            cascade_count = sum(1 for f in all_failures if f.get("is_cascade"))
+            if cascade_count > 0:
+                console.print(
+                    f"[dim]  ({cascade_count} additional resource(s) cancelled due to the above failure(s))[/dim]"
+                )
+
+            console.print()
+        else:
+            # No root causes found - fall back to simple error
+            console.print(f"Error: {result.get('error', 'Unknown')}")
+            console.print()
+
+    except Exception as e:
+        # If analysis fails, fall back to simple error message
+        logger.debug(f"Failure analysis error: {e}")
+        console.print(f"Error: {result.get('error', 'Unknown')}")
+        console.print()
+
+
 # Region-specific template URLs
 TEMPLATE_URLS = {
     "us-west-2": "https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main.yaml",
@@ -341,9 +408,7 @@ def deploy(
                 )
                 console.print()
             else:
-                console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
-                console.print(f"Status: {result.get('status')}")
-                console.print(f"Error: {result.get('error', 'Unknown')}")
+                _display_deployment_failure(deployer, stack_name, result)
                 sys.exit(1)
 
             return  # Exit after monitoring
@@ -472,9 +537,7 @@ def deploy(
                 )
                 console.print()
         else:
-            console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
-            console.print(f"Status: {result.get('status')}")
-            console.print(f"Error: {result.get('error', 'Unknown')}")
+            _display_deployment_failure(deployer, stack_name, result)
             sys.exit(1)
 
     except FileNotFoundError as e:
