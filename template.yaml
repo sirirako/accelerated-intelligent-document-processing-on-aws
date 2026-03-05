@@ -2900,11 +2900,24 @@ Resources:
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
+        - AttributeName: HITLPendingReview
+          AttributeType: S
+        - AttributeName: InitialEventTime
+          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: HITLPendingReviewIndex
+          KeySchema:
+            - AttributeName: HITLPendingReview
+              KeyType: HASH
+            - AttributeName: InitialEventTime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
       TimeToLiveSpecification:
         AttributeName: ExpiresAfter
         Enabled: true

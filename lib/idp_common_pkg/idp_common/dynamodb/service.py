@@ -40,6 +40,25 @@ def convert_floats_to_decimal(obj):
         return obj
 
 
+def convert_decimals_to_native(obj):
+    """
+    Recursively convert Decimal values to int or float for JSON serialization.
+
+    Args:
+        obj: Object that may contain Decimal values (e.g. from DynamoDB)
+
+    Returns:
+        Object with Decimals converted to int (if whole) or float
+    """
+    if isinstance(obj, Decimal):
+        return int(obj) if obj % 1 == 0 else float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_decimals_to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_decimals_to_native(i) for i in obj]
+    return obj
+
+
 class DocumentDynamoDBService:
     """
     Service for interacting directly with DynamoDB to manage Documents.
@@ -279,6 +298,14 @@ class DocumentDynamoDBService:
             set_expressions.append("#HITLStatus = :HITLStatus")
             expression_names["#HITLStatus"] = "HITLStatus"
             expression_values[":HITLStatus"] = document.hitl_status
+            # Maintain sparse GSI attribute for pending review queries
+            # "PendingReview" = initial trigger, "Review Pending" = after release_review,
+            # "InProgress" = after claim_review
+            pending_statuses = ("PendingReview", "Review Pending", "InProgress")
+            if document.hitl_status in pending_statuses:
+                set_expressions.append("#HITLPendingReview = :HITLPendingReview")
+                expression_names["#HITLPendingReview"] = "HITLPendingReview"
+                expression_values[":HITLPendingReview"] = "true"
         if document.hitl_sections_pending:
             set_expressions.append("#HITLSectionsPending = :HITLSectionsPending")
             expression_names["#HITLSectionsPending"] = "HITLSectionsPending"
@@ -290,7 +317,18 @@ class DocumentDynamoDBService:
                 document.hitl_sections_completed
             )
 
+        # Build update expression with optional REMOVE clause
         update_expression = "SET " + ", ".join(set_expressions)
+
+        # Remove HITLPendingReview GSI attribute when review is completed/skipped
+        remove_expressions = []
+        if document.hitl_status:
+            pending_statuses = ("PendingReview", "Review Pending", "InProgress")
+            if document.hitl_status not in pending_statuses:
+                remove_expressions.append("HITLPendingReview")
+        if remove_expressions:
+            update_expression += " REMOVE " + ", ".join(remove_expressions)
+
         # Convert any float values to Decimal for DynamoDB compatibility
         expression_values = convert_floats_to_decimal(expression_values)  # type: ignore[assignment]
 
