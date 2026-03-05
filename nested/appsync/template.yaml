@@ -289,6 +289,7 @@ Resources:
                   - !GetAtt GetAgentChatMessagesFunction.Arn
                   - !GetAtt DeleteAgentChatSessionFunction.Arn
                   - !GetAtt ListDocumentsByDateRangeResolverFunction.Arn
+                  - !GetAtt ListPendingReviewResolverFunction.Arn
                   - !GetAtt SyncBdaIdpResolverFunction.Arn
 
   # Lambda function for Create Document resolver
@@ -3611,6 +3612,91 @@ Resources:
       DataSourceName: !GetAtt ListDocumentsByDateRangeDataSource.Name
       TypeName: Query
       FieldName: listDocumentsByDateRange
+
+
+  ##########################################################################
+  # ListPendingReviewResolverFunctionLogGroup
+  ##########################################################################
+  ListPendingReviewResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      RetentionInDays: !Ref LogRetentionDays
+
+
+  ##########################################################################
+  # ListPendingReviewResolverFunction
+  ##########################################################################
+  ListPendingReviewResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver function"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data"
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: ./src/lambda/list_pending_review_resolver
+      Description: Lambda function to list pending HITL review documents via GraphQL API
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE_NAME: !Ref TrackingTableName
+      LoggingConfig:
+        LogGroup: !Ref ListPendingReviewResolverFunctionLogGroup
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackingTableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:GenerateDataKey*
+                - kms:DescribeKey
+              Resource: !Ref CustomerManagedEncryptionKeyArn
+
+
+  ##########################################################################
+  # ListPendingReviewDataSource
+  ##########################################################################
+  ListPendingReviewDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      Name: ListPendingReviewDataSource
+      Description: Lambda function for listing pending HITL review documents
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt ListPendingReviewResolverFunction.Arn
+
+
+  ##########################################################################
+  # ListPendingReviewResolver
+  ##########################################################################
+  ListPendingReviewResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      DataSourceName: !GetAtt ListPendingReviewDataSource.Name
+      TypeName: Query
+      FieldName: listPendingReviewDocuments
 
 
   ##########################################################################

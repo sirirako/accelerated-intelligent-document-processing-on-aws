@@ -899,6 +899,22 @@ class ConfigurationManager:
         if record.configuration_type == CONFIG_TYPE_CONFIG:
             item[_FULL_CONFIG_MARKER] = _FULL_CONFIG_VALUE
 
+        # Preserve BDA metadata fields from existing record (put_item replaces the
+        # entire item, so fields set by set_bda_project_arn() would be lost)
+        _BDA_FIELDS = ("BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt")
+        config_key = item.get("Configuration")
+        if config_key and any(f not in item for f in _BDA_FIELDS):
+            try:
+                existing = self.table.get_item(
+                    Key={"Configuration": config_key},
+                    ProjectionExpression=", ".join(_BDA_FIELDS),
+                ).get("Item", {})
+                for field in _BDA_FIELDS:
+                    if field in existing and field not in item:
+                        item[field] = existing[field]
+            except Exception as e:
+                logger.warning(f"Failed to preserve BDA metadata: {e}")
+
         # Compress config data to avoid DynamoDB 400KB item limit
         compressed_item = self._compress_item(item)
 
