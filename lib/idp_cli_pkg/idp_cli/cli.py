@@ -3017,6 +3017,10 @@ def stop_workflows(
     default="load-test",
     help="Destination prefix in input bucket (default: load-test)",
 )
+@click.option(
+    "--config-version",
+    help="Configuration version to use for processing (default: active version)",
+)
 @click.option("--region", help="AWS region (optional)")
 def load_test(
     stack_name: str,
@@ -3025,6 +3029,7 @@ def load_test(
     duration: int,
     schedule: Optional[str],
     dest_prefix: str,
+    config_version: Optional[str],
     region: Optional[str],
 ):
     """
@@ -3047,6 +3052,9 @@ def load_test(
       # Use S3 source file
       idp-cli load-test --stack-name my-stack --source-file s3://my-bucket/test.pdf --rate 500
 
+      # Load test with a specific config version
+      idp-cli load-test --stack-name my-stack --source-file samples/invoice.pdf --rate 100 --config-version v2
+
     Schedule file format (CSV):
       minute,count
       1,100
@@ -3064,6 +3072,7 @@ def load_test(
                 source_file=source_file,
                 schedule_file=schedule,
                 dest_prefix=dest_prefix,
+                config_version=config_version,
             )
         else:
             # Run constant rate load test
@@ -3072,6 +3081,7 @@ def load_test(
                 rate=rate,
                 duration=duration,
                 dest_prefix=dest_prefix,
+                config_version=config_version,
             )
 
         if not result["success"]:
