@@ -289,6 +289,7 @@ Resources:
                   - !GetAtt GetAgentChatMessagesFunction.Arn
                   - !GetAtt DeleteAgentChatSessionFunction.Arn
                   - !GetAtt ListDocumentsByDateRangeResolverFunction.Arn
+                  - !GetAtt ListDocumentsGSIResolverFunction.Arn
                   - !GetAtt SyncBdaIdpResolverFunction.Arn
 
   # Lambda function for Create Document resolver
@@ -3477,51 +3478,6 @@ Resources:
         $util.toJson($ctx.result)
 
 
-  ##########################################################################
-  # ListDocumentResolver
-  ##########################################################################
-  ListDocumentResolver:
-    Type: AWS::AppSync::Resolver
-    Properties:
-      ApiId: !Ref GraphQLApiId
-      TypeName: Query
-      FieldName: listDocuments
-      DataSourceName: !GetAtt TrackingTableDataSource.Name
-      RequestMappingTemplate: |
-        {
-            "version": "2018-05-29",
-            "operation": "Scan",
-            "filter": {
-                #if($context.arguments.startDateTime && $context.arguments.endDateTime)
-                    "expression": "InitialEventTime BETWEEN :startDateTime AND :endDateTime",
-                    "expressionValues": {
-                        ":startDateTime": { "S": "$context.arguments.startDateTime" },
-                        ":endDateTime": { "S": "$context.arguments.endDateTime" }
-                    }
-                #elseif($context.arguments.startDateTime)
-                    "expression": "InitialEventTime >= :startDateTime",
-                    "expressionValues": {
-                        ":startDateTime": { "S": "$context.arguments.startDateTime" }
-                    }
-                #elseif($context.arguments.endDateTime)
-                    "expression": "InitialEventTime <= :endDateTime",
-                    "expressionValues": {
-                        ":endDateTime": { "S": "$context.arguments.endDateTime" }
-                    }
-                #end
-            },
-            #if($context.prev.result)
-                "nextToken": "$context.prev.result.nextToken",
-            #end
-            "limit": 50,
-            "consistentRead": false,
-            "select": "ALL_ATTRIBUTES"
-        }
-      ResponseMappingTemplate: |
-        {
-            "Documents": $util.toJson($ctx.result.items),
-            "nextToken": $util.toJson($ctx.result.nextToken)
-        }
 
 
   ##########################################################################
@@ -3611,6 +3567,85 @@ Resources:
       DataSourceName: !GetAtt ListDocumentsByDateRangeDataSource.Name
       TypeName: Query
       FieldName: listDocumentsByDateRange
+
+  ##########################################################################
+  # ListDocumentsGSI - GSI-based document list and count resolvers
+  ##########################################################################
+  ListDocumentsGSIResolverFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      RetentionInDays: !Ref LogRetentionDays
+
+  ListDocumentsGSIResolverFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Function does not require VPC access"
+          - id: W92
+            reason: "Function does not require reserved concurrency"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for AppSync resolver"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency"
+    Properties:
+      PermissionsBoundary:
+        !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Handler: index.handler
+      Runtime: python3.12
+      CodeUri: src/lambda/list_documents_gsi_resolver/
+      Timeout: 30
+      MemorySize: 256
+      LoggingConfig:
+        LogGroup: !Ref ListDocumentsGSIResolverFunctionLogGroup
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE_NAME: !Ref TrackingTableName
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TrackingTableName}/index/TypeDateIndex"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !Ref CustomerManagedEncryptionKeyArn
+
+  ListDocumentsGSIDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      Name: ListDocumentsGSIDataSource
+      Description: Lambda function for GSI-based document listing and counting
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt ListDocumentsGSIResolverFunction.Arn
+
+  # Reuses the logical ID 'ListDocumentResolver' from the old VTL resolver
+  # so CloudFormation updates in-place instead of create+delete conflict
+  ListDocumentResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      DataSourceName: !GetAtt ListDocumentsGSIDataSource.Name
+      TypeName: Query
+      FieldName: listDocuments
+
+  GetDocumentCountResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      DataSourceName: !GetAtt ListDocumentsGSIDataSource.Name
+      TypeName: Query
+      FieldName: getDocumentCount
 
 
   ##########################################################################

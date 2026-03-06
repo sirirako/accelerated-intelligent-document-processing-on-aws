@@ -33,7 +33,8 @@ import ConfigBuilder from './ConfigBuilder';
 import ConfigurationVersionsTable from './ConfigurationVersionsTable';
 import ConfigurationComparison from './ConfigurationComparison';
 import { deepMerge } from '../../utils/configUtils';
-import syncBdaIdpMutation from '../../graphql/queries/syncBdaIdp';
+import { syncBdaIdp } from '../../graphql/generated';
+import { parseConfigurationData } from '../../graphql/awsjson-parsers';
 
 const client = generateClient();
 const logger = new ConsoleLogger('ConfigurationLayout');
@@ -248,7 +249,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
         // Parse schema if it's a string
         if (typeof rawConfig.schema === 'string') {
-          schemaObj = JSON.parse(rawConfig.schema);
+          schemaObj = parseConfigurationData(rawConfig.schema);
         }
 
         // Unwrap nested Schema object if present
@@ -258,12 +259,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
         // Parse default config if it's a string
         if (typeof rawConfig.default === 'string') {
-          defaultObj = JSON.parse(rawConfig.default);
+          defaultObj = parseConfigurationData(rawConfig.default);
         }
 
         // Parse custom config if it's a string
         if (typeof rawConfig.custom === 'string' && rawConfig.custom) {
-          customObj = JSON.parse(rawConfig.custom);
+          customObj = parseConfigurationData(rawConfig.custom);
         } else if (!rawConfig.custom) {
           customObj = {};
         }
@@ -1500,16 +1501,15 @@ const ConfigurationLayout = (): React.JSX.Element => {
       }
 
       const result = await client.graphql({
-        query: syncBdaIdpMutation as unknown as string,
+        query: syncBdaIdp,
         variables,
       });
 
       logger.debug('Sync API response:', result);
 
-      const resultData = (result as unknown as Record<string, Record<string, unknown>>).data;
-      const response = (resultData.syncBdaIdp || {}) as Record<string, unknown>;
+      const response = result.data.syncBdaIdp;
 
-      if (response.success) {
+      if (response?.success) {
         setSyncSuccess(true);
         const directionLabel =
           (
@@ -1522,11 +1522,11 @@ const ConfigurationLayout = (): React.JSX.Element => {
         setSyncSuccessMessage(String(response.message || `Document classes have been synchronized ${directionLabel}.`));
 
         // If there are partial failures, also show the error details
-        const syncErr = response.error as Record<string, unknown> | undefined;
+        const syncErr = response.error;
         if (syncErr && syncErr.type === 'PARTIAL_SYNC_ERROR') {
           // Show both success and error for partial failures
           setTimeout(() => {
-            setSyncError(syncErr.message as string);
+            setSyncError(syncErr.message ?? null);
           }, 100); // Small delay to show success first
         }
 
@@ -1535,8 +1535,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
 
         // Only auto-dismiss if there are no warnings in the message
         // Warnings indicate BDA limitations that users should read
-        const hasWarnings =
-          (response.message as string | undefined)?.includes('WARNING') || (response.warnings as unknown[] | undefined)?.length > 0;
+        const hasWarnings = response.message?.includes('WARNING');
         if (!hasWarnings) {
           setTimeout(() => {
             setSyncSuccess(false);
@@ -1556,9 +1555,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
           }
         }
       } else {
-        const errorMsg = String(
-          (response.error as Record<string, unknown> | undefined)?.message || response.message || 'Sync operation failed',
-        );
+        const errorMsg = String(response?.error?.message || response?.message || 'Sync operation failed');
         setSyncError(errorMsg);
         logger.error('Sync failed:', errorMsg);
       }

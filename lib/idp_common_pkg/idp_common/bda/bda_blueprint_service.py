@@ -973,8 +973,12 @@ class BdaBlueprintService:
         processed_properties = {}
 
         for name, value in properties.items():
-            # Skip $ref properties
+            # Handle $ref properties — normalize path and include with instruction
             if REF_FIELD in value:
+                processed_properties[name] = {
+                    REF_FIELD: self._normalize_ref_path(value[REF_FIELD]),
+                    "instruction": "-",
+                }
                 continue
 
             # Skip nested objects - BDA doesn't support them
