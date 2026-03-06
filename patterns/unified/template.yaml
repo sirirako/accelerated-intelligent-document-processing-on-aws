@@ -292,6 +292,10 @@ Resources:
                   - "eu.anthropic.claude-opus-4-6-v1"
                   - "eu.anthropic.claude-opus-4-6-v1:1m"
                   - "qwen.qwen3-vl-235b-a22b"
+                  - "us.meta.llama4-maverick-17b-instruct-v1:0"
+                  - "us.meta.llama4-scout-17b-instruct-v1:0"
+                  - "google.gemma-3-27b-it"
+                  - "nvidia.nemotron-nano-12b-v2"
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -646,6 +650,10 @@ Resources:
                   - "eu.anthropic.claude-opus-4-6-v1"
                   - "eu.anthropic.claude-opus-4-6-v1:1m"
                   - "qwen.qwen3-vl-235b-a22b"
+                  - "us.meta.llama4-maverick-17b-instruct-v1:0"
+                  - "us.meta.llama4-scout-17b-instruct-v1:0"
+                  - "google.gemma-3-27b-it"
+                  - "nvidia.nemotron-nano-12b-v2"
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -816,6 +824,10 @@ Resources:
                   - "eu.anthropic.claude-opus-4-6-v1"
                   - "eu.anthropic.claude-opus-4-6-v1:1m"
                   - "qwen.qwen3-vl-235b-a22b"
+                  - "us.meta.llama4-maverick-17b-instruct-v1:0"
+                  - "us.meta.llama4-scout-17b-instruct-v1:0"
+                  - "google.gemma-3-27b-it"
+                  - "nvidia.nemotron-nano-12b-v2"
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -983,6 +995,10 @@ Resources:
                     "eu.anthropic.claude-opus-4-6-v1",
                     "eu.anthropic.claude-opus-4-6-v1:1m",
                     "qwen.qwen3-vl-235b-a22b",
+                    "us.meta.llama4-maverick-17b-instruct-v1:0",
+                    "us.meta.llama4-scout-17b-instruct-v1:0",
+                    "google.gemma-3-27b-it",
+                    "nvidia.nemotron-nano-12b-v2",
                     "global.amazon.nova-2-lite-v1:0",
                     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1077,6 +1093,10 @@ Resources:
                     "eu.anthropic.claude-opus-4-6-v1",
                     "eu.anthropic.claude-opus-4-6-v1:1m",
                     "qwen.qwen3-vl-235b-a22b",
+                    "us.meta.llama4-maverick-17b-instruct-v1:0",
+                    "us.meta.llama4-scout-17b-instruct-v1:0",
+                    "google.gemma-3-27b-it",
+                    "nvidia.nemotron-nano-12b-v2",
                     "global.amazon.nova-2-lite-v1:0",
                     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1167,6 +1187,10 @@ Resources:
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
                         "qwen.qwen3-vl-235b-a22b",
+                        "us.meta.llama4-maverick-17b-instruct-v1:0",
+                        "us.meta.llama4-scout-17b-instruct-v1:0",
+                        "google.gemma-3-27b-it",
+                        "nvidia.nemotron-nano-12b-v2",
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1252,6 +1276,10 @@ Resources:
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
                         "qwen.qwen3-vl-235b-a22b",
+                        "us.meta.llama4-maverick-17b-instruct-v1:0",
+                        "us.meta.llama4-scout-17b-instruct-v1:0",
+                        "google.gemma-3-27b-it",
+                        "nvidia.nemotron-nano-12b-v2",
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1337,6 +1365,10 @@ Resources:
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
                         "qwen.qwen3-vl-235b-a22b",
+                        "us.meta.llama4-maverick-17b-instruct-v1:0",
+                        "us.meta.llama4-scout-17b-instruct-v1:0",
+                        "google.gemma-3-27b-it",
+                        "nvidia.nemotron-nano-12b-v2",
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1451,6 +1483,10 @@ Resources:
                       - "eu.anthropic.claude-opus-4-6-v1"
                       - "eu.anthropic.claude-opus-4-6-v1:1m"
                       - "qwen.qwen3-vl-235b-a22b"
+                      - "us.meta.llama4-maverick-17b-instruct-v1:0"
+                      - "us.meta.llama4-scout-17b-instruct-v1:0"
+                      - "google.gemma-3-27b-it"
+                      - "nvidia.nemotron-nano-12b-v2"
                     default: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                     order: 0
               error_analyzer:
@@ -1558,6 +1594,10 @@ Resources:
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
                         "qwen.qwen3-vl-235b-a22b",
+                        "us.meta.llama4-maverick-17b-instruct-v1:0",
+                        "us.meta.llama4-scout-17b-instruct-v1:0",
+                        "google.gemma-3-27b-it",
+                        "nvidia.nemotron-nano-12b-v2",
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1645,6 +1685,10 @@ Resources:
                         "eu.anthropic.claude-opus-4-6-v1",
                         "eu.anthropic.claude-opus-4-6-v1:1m",
                         "qwen.qwen3-vl-235b-a22b",
+                        "us.meta.llama4-maverick-17b-instruct-v1:0",
+                        "us.meta.llama4-scout-17b-instruct-v1:0",
+                        "google.gemma-3-27b-it",
+                        "nvidia.nemotron-nano-12b-v2",
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -1723,11 +1767,11 @@ Resources:
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Keep last 10 images",
+                "description": "Keep last 15 images",
                 "selection": {
                   "tagStatus": "any",
                   "countType": "imageCountMoreThan",
-                  "countNumber": 10
+                  "countNumber": 15
                 },
                 "action": {
                   "type": "expire"
@@ -3477,14 +3521,19 @@ Resources:
               "width": 8,
               "height": 6,
               "properties": {
-                "metrics": [],
+                "metrics": [
+                  [{"expression": "m1/PERIOD(m1)*60", "label": "OCR Throttles per Minute"}],
+                  [{"expression": "m2/PERIOD(m2)*60", "label": "OCR Non-Retryable Errors per Minute"}],
+                  ["${StackName}", "OCRThrottles", {"id": "m1", "stat": "Sum", "visible": false}],
+                  [".", "OCRNonRetryableErrors", {"id": "m2", "stat": "Sum", "visible": false}]
+                ],
                 "region": "${AWS::Region}",
-                "title": "Blank",
+                "title": "OCR Throttling & Errors (per Minute)",
                 "view": "timeSeries",
                 "period": 60,
                 "yAxis": {
                   "left": {
-                    "label": "N/A"
+                    "label": "Count per Minute"
                   }
                 }
               }
@@ -4116,6 +4165,38 @@ Resources:
                 "region": "${AWS::Region}",
                 "title": "ProcessResults Lambda Errors",
                 "view": "table"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 84,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${OCRFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${ClassificationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${ExtractionFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${AssessmentFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${SummarizationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${EvaluationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${RuleValidationFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${InvokeBDAFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${BDAProcessResultsFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${BDACompletionFunction}", {"stat": "Sum"}],
+                  [".", ".", ".", "${ProcessResultsFunction}", {"stat": "Sum"}]
+                ],
+                "region": "${AWS::Region}",
+                "title": "Lambda Concurrency Throttles (429) - All Functions",
+                "view": "timeSeries",
+                "period": 60,
+                "stacked": true,
+                "yAxis": {
+                  "left": {
+                    "label": "Throttle Count"
+                  }
+                }
               }
             }
           ]
