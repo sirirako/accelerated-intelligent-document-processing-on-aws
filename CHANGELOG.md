@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.5.1]
+
 ### Added
 
 - **Scalable Document List and Test Executions** — Comprehensive redesign to eliminate UI and backend bottlenecks when working with thousands of documents. ([#203](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/203))
@@ -42,6 +44,10 @@ SPDX-License-Identifier: MIT-0
 
 - **Configuration Page Error Display** — Fixed `[object Object]` error message when configuration loading fails (e.g., due to Lambda throttling) by properly extracting error messages from Amplify GraphQL error responses.
 
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.1.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.1.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.1.yaml`
 
 ## [0.5.0]
 
