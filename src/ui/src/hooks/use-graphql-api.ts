@@ -34,6 +34,7 @@ interface UseGraphQlApiParams {
 interface UseGraphQlApiReturn {
   documents: Document[];
   isDocumentsListLoading: boolean;
+  hasListBeenLoaded: boolean;
   getDocumentDetailsFromIds: (objectKeys: string[]) => Promise<Document[]>;
   setIsDocumentsListLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setPeriodsToLoad: React.Dispatch<React.SetStateAction<number>>;
@@ -226,6 +227,12 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
 
   // ── Document Loading (GSI-based, paginated with cap) ────────────────
 
+  // Track whether the initial list load has been explicitly requested.
+  // This prevents listDocuments from firing on mount when the user is on
+  // a non-list page (e.g., document details, config). The DocumentList
+  // component triggers the initial load by calling setIsDocumentsListLoading(true).
+  const hasListBeenRequestedRef = useRef<boolean>(false);
+
   /**
    * Fetch documents for a date range using the GSI-based listDocuments query.
    * Paginates through results up to MAX_DOCUMENTS_TO_LOAD to avoid excessive API calls.
@@ -286,6 +293,9 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
 
   useEffect(() => {
     if (isDocumentsListLoading) {
+      // Mark that the list has been requested at least once. This allows
+      // the periodsToLoad watcher to auto-reload on subsequent changes.
+      hasListBeenRequestedRef.current = true;
       logger.debug('document list is loading');
       setTimeout(() => {
         setDocuments([]);
@@ -297,7 +307,8 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
 
   useEffect(() => {
     logger.debug('list period changed', periodsToLoad);
-    if (!customDateRange) {
+    if (!customDateRange && hasListBeenRequestedRef.current) {
+      // Only auto-reload when the period changes AFTER the first load was requested
       setIsDocumentsListLoading(true);
     }
   }, [periodsToLoad]);
@@ -365,6 +376,7 @@ const useGraphQlApi = ({ initialPeriodsToLoad = DOCUMENT_LIST_SHARDS_PER_DAY * 2
   return {
     documents,
     isDocumentsListLoading,
+    hasListBeenLoaded: hasListBeenRequestedRef.current,
     getDocumentDetailsFromIds,
     setIsDocumentsListLoading,
     setPeriodsToLoad,
