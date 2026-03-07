@@ -89,8 +89,21 @@ const DocumentList = (): React.JSX.Element => {
   const deleteDocuments = documentsContext.deleteDocuments as (ids: string[]) => Promise<unknown>;
   const reprocessDocuments = documentsContext.reprocessDocuments as (ids: string[], version?: string) => Promise<unknown>;
   const abortWorkflows = documentsContext.abortWorkflows as (ids: string[]) => Promise<unknown>;
+  const hasListBeenLoaded = documentsContext.hasListBeenLoaded as boolean;
 
   const [preferences, setPreferences] = useLocalStorage('documents-list-preferences', DEFAULT_PREFERENCES);
+
+  // Trigger document list load when DocumentList mounts for the first time.
+  // The useGraphQlApi hook no longer auto-triggers listDocuments on mount (to avoid
+  // unnecessary API calls on non-list pages like document details or config).
+  // If the list has already been loaded (e.g., navigating back from document details),
+  // display the cached documents immediately — no re-fetch needed.
+  // The user can always click Refresh to force a fresh fetch.
+  useEffect(() => {
+    if (!isDocumentsListLoading && !hasListBeenLoaded) {
+      setIsDocumentsListLoading(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter documents for reviewers - show only pending HITL reviews (not completed/skipped)
   const filteredDocumentList = useMemo(() => {
