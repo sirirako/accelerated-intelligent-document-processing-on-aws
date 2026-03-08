@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table.
+- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Removed `Bedrock Data Automation (BDA) Project ARN` CloudFormation parameter** — The deploy-time `Pattern1BDAProjectArn` parameter has been removed as it was redundant with the per-config-version BDA project management already available in the Web UI, CLI, and GraphQL API. BDA projects are now managed entirely post-deployment: enable `use_bda: true` in your configuration, then use "Sync to BDA" to create or link a BDA project, or "Sync from BDA" to import from any existing BDA project. This simplifies the deployment experience (one fewer parameter) and better aligns the CloudFormation interface with the system's actual architecture. Existing deployed stacks are unaffected — runtime BDA project ARN resolution reads from DynamoDB per-version tracking, not from the CloudFormation parameter. Also removed the unused `nested/bda-lending-project/` directory (dead code not referenced by any template) and the legacy `BDA_PROJECT_ARN` environment variable fallback from the sync resolver.
 
@@ -46,7 +46,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **OCR Benchmark Config Optimization** — Optimized `config_library/unified/ocr-benchmark` configuration with targeted field descriptions, explicit model/prompt/OCR settings, and corrected date format (YYYY-MM-DD to match ground truth). Improved overall extraction accuracy from 51.5% to 75.2% on the full 293-document benchmark at equivalent cost (~$2.62). Classification remains 100% across all 9 document classes. ([#220](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/220))
 
@@ -88,7 +87,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Switched `idp_sdk` pyproject.toml to auto-discovery** — Replaced explicit subpackage listing with `setuptools.packages.find` using `include = ["idp_sdk*"]` so new subpackages are automatically included without manual pyproject.toml updates.
 
@@ -226,7 +224,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **HITL Decoupled from Step Functions**: HITL review operations now update document status directly in DynamoDB without triggering workflow reprocessing, improving reliability and reducing unintended side effects
 
@@ -372,7 +369,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Scripts Directory Reorganization**
   - Consolidated development environment setup scripts into `scripts/setup/` subdirectory
@@ -471,7 +467,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **HITL Configuration**
   - HITL is now disabled by default in the configuration
@@ -488,7 +483,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Lambda Layers Architecture for Improved Build Efficiency**
   - Replaced bundled `idp_common` package dependencies in individual Lambda functions with three shared Lambda Layers
@@ -647,7 +641,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Test Studio UI Enhancements for Improved Table Layouts and User Experience**
   - Added resizable columns and CollectionPreferences with wrap lines for all tables in TestComparison and TestResults
@@ -802,7 +795,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Improved Temperature and Top_P Parameter Logic for Deterministic Output**
   - Changed inference parameter selection logic to allow `temperature=0.0` for deterministic output (recommended by Anthropic and other model providers)
@@ -963,7 +955,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Containerized Pattern-1 and Pattern-3 Deployment Pipelines**
   - Migrated Pattern-1 and Pattern-3 Lambda functions to Docker image deployments (following Pattern-2 approach from v0.3.20)
@@ -998,7 +989,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Configuration Library Updates with JSON Schema Support**
   - Updated configuration library with JSON schema format for lending package, bank statement, and RVL-CDIP package samples
@@ -1132,7 +1122,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Migrated Evaluation from EventBridge Trigger to Step Functions Workflow**
   - Moved evaluation processing from external EventBridge-triggered Lambda to integrated Step Functions workflow step
@@ -1189,7 +1178,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Containerized Pattern-2 deployment pipeline** that builds and pushes all Lambda images via CodeBuild using the new Dockerfile, plus automated ECR cleanup and tests.
   - Lambda docker image deployments have a 10 GB image size limit compared to the 250 MB zip limit of regular deployment. This however doesn't allow for viewing the code in the AWS console.
@@ -1287,7 +1275,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - Add UI code lint/validation to publish.py script
 
@@ -1465,7 +1452,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Reverted to python3.12 runtime to resolve build package dependency problems**
 
@@ -1542,7 +1528,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Updated Python Lambda Runtime to 3.13**
 
@@ -1613,7 +1598,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - Updated lending_package.pdf sample with more realistic driver's license image
 
@@ -1644,7 +1628,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Converted text confidence data format from JSON to markdown table for improved readability and reduced token usage**
   - Removed unnecessary "page_count" field
@@ -1743,7 +1726,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Default behavior for image attachment in Pattern-2 and Pattern3**
   - If the prompt contains a `{DOCUMENT_IMAGE}` placeholder, keep the current behavior (insert image at placeholder)
@@ -1913,7 +1895,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - Pin packages to tested versions to avoid vulnerability from incompatible new package versions.
 - Updated reporting data to use document's queued_time for consistent timestamps
@@ -2077,7 +2058,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - **Simplified Model Configuration Architecture**
   - Removed individual model parameters from main template: `Pattern1SummarizationModel`, `Pattern2ClassificationModel`, `Pattern2ExtractionModel`, `Pattern2SummarizationModel`, `Pattern3ExtractionModel`, `Pattern3SummarizationModel`, `EvaluationLLMModelId`
@@ -2124,7 +2104,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Changed
 
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
 
 - Refactored code for better maintainability
 - Updated UI components to support markdown table viewing
