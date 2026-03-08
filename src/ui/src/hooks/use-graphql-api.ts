@@ -7,6 +7,7 @@ import { ConsoleLogger } from 'aws-amplify/utils';
 import useAppContext from '../contexts/app';
 import {
   listDocuments,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getDocumentCount,
   getDocument,
   deleteDocument,
@@ -50,6 +51,7 @@ interface GraphQLSubscriptionRef {
   unsubscribe: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface DocumentListItem {
   ObjectKey: string;
   PK?: string;
