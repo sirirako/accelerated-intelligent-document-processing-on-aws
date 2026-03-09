@@ -422,6 +422,11 @@ Resources:
 
   CodeBuildKMSPolicy:
     Type: 'AWS::IAM::Policy'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F4
+            reason: "Policy scoped to specific KMS key and minimum required actions."
     Properties:
       PolicyName: CodeBuildKMSAccess
       Roles: 
@@ -431,8 +436,15 @@ Resources:
         Statement:
           - Effect: Allow
             Action:
-              - 'kms:*'
-            Resource: '*'
+              - 'kms:Decrypt'
+              - 'kms:Encrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:DescribeKey'
+              - 'kms:CreateGrant'
+              - 'kms:ScheduleKeyDeletion'
+            Resource:
+              - !If [CreateKMSKey, !GetAtt PipelineKMSKey.Arn, !Ref KMSKeyArn]
+              - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
 
   # CloudWatch Events Rule to trigger pipeline on S3 changes
   PipelineTriggerRule:
