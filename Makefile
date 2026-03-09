@@ -236,6 +236,32 @@ fastcommit: fastlint
 	git commit -am "$${COMMIT_MESSAGE}" && \
 	git push
 
+# Build and serve the documentation site locally
+# Usage: make docs          - rebuild and serve preview
+#        make docs-setup    - one-time setup (symlinks + npm install)
+#        make docs-build    - build only (no serve)
+docs: docs-build
+	@echo "Starting docs preview server..."
+	cd docs-site && npm run preview
+
+docs-setup:
+	@echo "Setting up documentation site..."
+	cd docs-site && bash setup.sh && npm install
+	@echo -e "$(GREEN)✅ Docs site setup complete!$(NC)"
+
+docs-build: docs-setup
+	@echo "Building documentation site..."
+	cd docs-site && npm run build
+	@echo -e "$(GREEN)✅ Docs site built! $(NC)"
+	@echo "Preview at: http://localhost:4321"
+
+# Deploy docs to GitHub Pages (from local build)
+docs-deploy: docs-build
+	@echo "Deploying documentation site to GitHub Pages..."
+	touch docs-site/dist/.nojekyll
+	cd docs-site && npx gh-pages -d dist --dotfiles
+	@echo -e "$(GREEN)✅ Docs deployed to GitHub Pages!$(NC)"
+
 # DSR (Deliverable Security Review) targets
 dsr-setup:
 	@echo "Setting up DSR tool..."
