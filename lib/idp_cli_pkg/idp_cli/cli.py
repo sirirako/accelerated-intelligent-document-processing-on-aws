@@ -4545,10 +4545,10 @@ def discover(
             )
             console.print("[green]✓ Batch discovery complete[/green]")
 
-        if stack_name and succeeded > 0:
+        if stack_name and config_version and succeeded > 0:
             console.print(
                 f"[green]✓ Schema(s) saved to configuration"
-                f"{' (version: ' + config_version + ')' if config_version else ''}[/green]"
+                f" (version: {config_version})[/green]"
             )
 
         if failed > 0:
