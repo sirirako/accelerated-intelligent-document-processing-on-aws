@@ -24,6 +24,7 @@ import useUserRole from '../../hooks/use-user-role';
 import useAppContext from '../../contexts/app';
 import useSettingsContext from '../../contexts/settings';
 import { listUsers, createUser as createUserMutation, deleteUser as deleteUserMutation } from '../../graphql/generated';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const logger = new ConsoleLogger('UserManagementLayout');
 
@@ -113,8 +114,7 @@ const UserManagementLayout = (): React.JSX.Element => {
         setUsers(usersList);
       } catch (err) {
         logger.error('Failed to load users:', err);
-        const errorMessage = err.errors?.[0]?.message || err.message || 'Unknown error';
-        setError(`Failed to load users: ${errorMessage}`);
+        setError(`Failed to load users: ${getErrorMessage(err)}`);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -160,9 +160,7 @@ const UserManagementLayout = (): React.JSX.Element => {
       await loadUsers();
     } catch (err) {
       logger.error('Failed to create user:', err);
-      // Extract error message from GraphQL error structure
-      const errorMessage = err.errors?.[0]?.message || err.message || 'Unknown error';
-      setError(`Failed to create user: ${errorMessage}`);
+      setError(`Failed to create user: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
     }
@@ -195,8 +193,7 @@ const UserManagementLayout = (): React.JSX.Element => {
       await loadUsers();
     } catch (err) {
       logger.error('Failed to delete user:', err);
-      const errorMessage = err.errors?.[0]?.message || err.message || 'Unknown error';
-      setError(`Failed to delete user: ${errorMessage}`);
+      setError(`Failed to delete user: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
     }
@@ -244,13 +241,13 @@ const UserManagementLayout = (): React.JSX.Element => {
     {
       id: 'email',
       header: 'Email',
-      cell: (item) => item.email,
+      cell: (item: User) => item.email,
       sortingField: 'email',
     },
     {
       id: 'persona',
       header: 'Role',
-      cell: (item) => (
+      cell: (item: User) => (
         <Box {...({ color: item.persona === 'Admin' ? 'text-status-info' : 'text-body-default' } as Record<string, unknown>)}>
           {item.persona}
         </Box>
@@ -260,19 +257,21 @@ const UserManagementLayout = (): React.JSX.Element => {
     {
       id: 'status',
       header: 'Status',
-      cell: (item) => <StatusIndicator type={item.status === 'active' ? 'success' : 'stopped'}>{item.status || 'active'}</StatusIndicator>,
+      cell: (item: User) => (
+        <StatusIndicator type={item.status === 'active' ? 'success' : 'stopped'}>{item.status || 'active'}</StatusIndicator>
+      ),
       sortingField: 'status',
     },
     {
       id: 'createdAt',
       header: 'Created',
-      cell: (item) => (item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'),
+      cell: (item: User) => (item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'),
       sortingField: 'createdAt',
     },
     {
       id: 'actions',
       header: 'Actions',
-      cell: (item) => (
+      cell: (item: User) => (
         <Button variant="link" onClick={() => deleteUser(item.userId, item.email)} disabled={loading || refreshing}>
           Delete
         </Button>
@@ -370,8 +369,8 @@ const UserManagementLayout = (): React.JSX.Element => {
               </FormField>
               <FormField label="Role" description="Admin users can manage other users and configurations">
                 <Select
-                  selectedOption={personaOptions.find((opt) => opt.value === persona)}
-                  onChange={({ detail }) => setPersona(detail.selectedOption.value)}
+                  selectedOption={personaOptions.find((opt) => opt.value === persona) ?? null}
+                  onChange={({ detail }) => setPersona(detail.selectedOption.value ?? '')}
                   options={personaOptions}
                 />
               </FormField>
