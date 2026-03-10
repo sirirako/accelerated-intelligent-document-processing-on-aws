@@ -138,7 +138,16 @@ const StandardClassCatalog: React.FC<StandardClassCatalogProps> = ({ onImport, e
               >
                 <SpaceBetween size="xs">
                   <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                    <span onClick={(e) => e.stopPropagation()}>
+                    <span
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation();
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
                       <Checkbox checked={isSelected} onChange={() => toggleSelection(classId)} />
                     </span>
                     <Box fontWeight="bold" fontSize="body-m">
@@ -165,7 +174,17 @@ const StandardClassCatalog: React.FC<StandardClassCatalogProps> = ({ onImport, e
                     </Box>
                   )}
 
-                  <div onClick={(e) => e.stopPropagation()} style={{ paddingLeft: '20px' }}>
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    style={{ paddingLeft: '20px' }}
+                  >
                     <ExpandableSection headerText="Preview attributes" variant="footer">
                       <Container disableContentPaddings>
                         <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
