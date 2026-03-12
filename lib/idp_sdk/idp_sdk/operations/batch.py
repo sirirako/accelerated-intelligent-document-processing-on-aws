@@ -102,27 +102,37 @@ class BatchOperation:
             )
 
         try:
+            # BatchProcessor.__init__ signature: (stack_name, config_path=None, region=None)
+            # config_version is NOT a constructor arg — pass it to the processing methods instead
             processor = BatchProcessor(
                 stack_name=name,
                 config_path=config_path,
-                config_version=config_version,
                 region=self._client._region,
             )
 
             if test_set:
-                # Enhancement 1: pass config_version to _process_test_set
                 result = self._process_test_set(
                     processor, test_set, context, number_of_files, config_version
                 )
             elif manifest:
-                result = processor.process_batch(
+                # Pass config_version to process_batch if the method supports it
+                import inspect
+
+                manifest_sig = inspect.signature(processor.process_batch)
+                manifest_kwargs = dict(
                     manifest_path=manifest,
                     output_prefix=batch_prefix,
                     batch_id=batch_id,
                     number_of_files=number_of_files,
                 )
+                if "config_version" in manifest_sig.parameters and config_version:
+                    manifest_kwargs["config_version"] = config_version
+                result = processor.process_batch(**manifest_kwargs)
             elif directory:
-                result = processor.process_batch_from_directory(
+                import inspect
+
+                dir_sig = inspect.signature(processor.process_batch_from_directory)
+                dir_kwargs = dict(
                     dir_path=directory,
                     file_pattern=file_pattern,
                     recursive=recursive,
@@ -130,8 +140,12 @@ class BatchOperation:
                     batch_id=batch_id,
                     number_of_files=number_of_files,
                 )
+                if "config_version" in dir_sig.parameters and config_version:
+                    dir_kwargs["config_version"] = config_version
+                result = processor.process_batch_from_directory(**dir_kwargs)
             else:
-                # Enhancement 1 (minor gap): forward config_version for S3 URI source
+                import inspect
+
                 s3_kwargs = dict(
                     s3_uri=s3_uri,
                     file_pattern=file_pattern,
@@ -139,9 +153,6 @@ class BatchOperation:
                     output_prefix=batch_prefix,
                     batch_id=batch_id,
                 )
-                # Pass config_version if the processor method accepts it
-                import inspect
-
                 sig = inspect.signature(processor.process_batch_from_s3_uri)
                 if "config_version" in sig.parameters and config_version:
                     s3_kwargs["config_version"] = config_version
