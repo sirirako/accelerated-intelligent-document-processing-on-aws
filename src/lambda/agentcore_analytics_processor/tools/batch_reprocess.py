@@ -45,7 +45,7 @@ class BatchReprocessTool(IDPTool):
         logger.info(f"Updated: {TOOL_UPDATED}")
         logger.info(f"Parameters: step={step}, document_ids={document_ids}, batch_id={batch_id}, region={region}")
         
-        from idp_sdk.core.rerun_processor import RerunProcessor
+        from idp_sdk._core.rerun_processor import RerunProcessor
 
         try:
             # Validate mutually exclusive options

@@ -38,7 +38,7 @@ class TestingOperation:
         Returns:
             LoadTestResult with test statistics
         """
-        from idp_sdk.core.load_test import LoadTester
+        from idp_sdk._core.load_test import LoadTester
 
         name = self._client._require_stack(stack_name)
         tester = LoadTester(stack_name=name, region=self._client._region)

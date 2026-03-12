@@ -98,7 +98,7 @@ class BatchRunTool(IDPTool):
     def _process_s3_location(self, location: str, prefix: Optional[str]) -> Dict[str, Any]:
         """Process S3 location using existing BatchProcessor"""
         try:
-            from idp_sdk.core.batch_processor import BatchProcessor
+            from idp_sdk._core.batch_processor import BatchProcessor
             
             processor = BatchProcessor(stack_name=self.stack_name)
             batch_prefix = prefix or 'mcp-batch'
@@ -131,7 +131,7 @@ class BatchRunTool(IDPTool):
     def _process_base64_content(self, content: str, name: str, prefix: Optional[str]) -> Dict[str, Any]:
         """Process base64 content by uploading to MCP temp S3 first"""
         try:
-            from idp_sdk.core.batch_processor import BatchProcessor
+            from idp_sdk._core.batch_processor import BatchProcessor
             
             logger.info(f"Base64 processing for: {name}")
             

@@ -16,10 +16,7 @@ from typing import Optional
 
 import boto3
 import click
-from idp_sdk.core.batch_processor import BatchProcessor
-from idp_sdk.core.manifest_parser import validate_manifest
-from idp_sdk.core.progress_monitor import ProgressMonitor
-from idp_sdk.core.stack import StackDeployer, build_parameters
+from idp_sdk import IDPClient
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
@@ -133,7 +130,7 @@ def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> 
     return template_path, None
 
 
-def _display_deployment_failure(deployer, stack_name: str, result: dict):
+def _display_deployment_failure(client, stack_name: str, result):
     """
     Display detailed failure analysis when a deployment fails.
 
@@ -141,62 +138,64 @@ def _display_deployment_failure(deployer, stack_name: str, result: dict):
     to identify and display root causes.
 
     Args:
-        deployer: StackDeployer instance
+        client: IDPClient instance
         stack_name: Stack name
-        result: Deployment result dictionary
+        result: StackMonitorResult or StackDeploymentResult
     """
-    console.print(f"\n[red]✗ Stack {result['operation']} failed![/red]")
-    console.print(f"Status: {result.get('status')}")
+    operation = (
+        result.operation
+        if hasattr(result, "operation")
+        else result.get("operation", "UNKNOWN")
+    )
+    status = (
+        result.status if hasattr(result, "status") else result.get("status", "UNKNOWN")
+    )
+    error = result.error if hasattr(result, "error") else result.get("error", "Unknown")
+
+    console.print(f"\n[red]✗ Stack {operation} failed![/red]")
+    console.print(f"Status: {status}")
     console.print()
 
     # Get detailed failure analysis
     try:
-        analysis = deployer.get_deployment_failure_analysis(stack_name)
-        root_causes = analysis.get("root_causes", [])
-        all_failures = analysis.get("all_failures", [])
+        analysis = client.stack.get_failure_analysis(stack_name)
 
-        if root_causes:
+        if analysis.root_causes:
             console.print("[bold red]Root Cause Analysis:[/bold red]")
             console.print("━" * 70)
-            for i, rc in enumerate(root_causes, 1):
-                stack_path = rc.get("stack_path", "")
-                resource = rc.get("resource", "Unknown")
-                resource_type = rc.get("resource_type", "")
-                reason = rc.get("reason", "Unknown")
-
+            for i, cause in enumerate(analysis.root_causes, 1):
                 # Build the location string
-                if stack_path:
-                    location = f"{stack_path} → {resource}"
+                if cause.stack_path:
+                    location = f"{cause.stack_path} → {cause.resource}"
                 else:
-                    location = resource
+                    location = cause.resource
 
                 # Add resource type if available
-                type_hint = f" ({resource_type})" if resource_type else ""
+                type_hint = f" ({cause.resource_type})" if cause.resource_type else ""
 
                 console.print(f"  [red]✗[/red] {location}{type_hint}")
-                console.print(f"    [yellow]{reason}[/yellow]")
-                if i < len(root_causes):
+                console.print(f"    [yellow]{cause.reason}[/yellow]")
+                if i < len(analysis.root_causes):
                     console.print()
 
             console.print("━" * 70)
 
             # Show count of cascade/other failures for context
-            cascade_count = sum(1 for f in all_failures if f.get("is_cascade"))
-            if cascade_count > 0:
+            if analysis.cascade_count > 0:
                 console.print(
-                    f"[dim]  ({cascade_count} additional resource(s) cancelled due to the above failure(s))[/dim]"
+                    f"[dim]  ({analysis.cascade_count} additional resource(s) cancelled due to the above failure(s))[/dim]"
                 )
 
             console.print()
         else:
             # No root causes found - fall back to simple error
-            console.print(f"Error: {result.get('error', 'Unknown')}")
+            console.print(f"Error: {error or 'Unknown'}")
             console.print()
 
     except Exception as e:
         # If analysis fails, fall back to simple error message
         logger.debug(f"Failure analysis error: {e}")
-        console.print(f"Error: {result.get('error', 'Unknown')}")
+        console.print(f"Error: {error or 'Unknown'}")
         console.print()
 
 
@@ -354,15 +353,15 @@ def deploy(
                     f"Please provide --template-url explicitly for other regions."
                 )
 
-        # Initialize deployer
-        deployer = StackDeployer(region=region)
+        # Initialize SDK client
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Check if stack has an operation in progress
-        in_progress = deployer.get_stack_operation_in_progress(stack_name)
+        in_progress = client.stack.check_in_progress()
         if in_progress:
             # Stack has an operation in progress - switch to monitoring mode
-            operation = in_progress["operation"]
-            status = in_progress["status"]
+            operation = in_progress.operation
+            status = in_progress.status
 
             console.print(
                 f"[bold yellow]Stack '{stack_name}' has an operation in progress[/bold yellow]"
@@ -373,19 +372,18 @@ def deploy(
             console.print()
 
             # Monitor the existing operation
-            result = deployer.monitor_stack_progress(stack_name, operation)
+            with console.status(f"[bold cyan]Monitoring {operation}...[/bold cyan]"):
+                result = client.stack.monitor(operation=operation)
 
             # Show results
-            is_success = result.get("success", False)
-
-            if is_success:
+            if result.success:
                 console.print(
-                    f"\n[green]✓ Stack {result['operation']} completed successfully![/green]\n"
+                    f"\n[green]✓ Stack {result.operation} completed successfully![/green]\n"
                 )
 
                 # Show outputs for non-delete operations
                 if operation != "DELETE":
-                    outputs = result.get("outputs", {})
+                    outputs = result.outputs
                     if outputs:
                         console.print("[bold]Important Outputs:[/bold]")
                         console.print(
@@ -408,13 +406,13 @@ def deploy(
                 )
                 console.print()
             else:
-                _display_deployment_failure(deployer, stack_name, result)
+                _display_deployment_failure(client, stack_name, result)
                 sys.exit(1)
 
             return  # Exit after monitoring
 
         # Check if stack exists
-        stack_exists = deployer._stack_exists(stack_name)
+        stack_exists = client.stack.exists()
 
         if stack_exists:
             # Stack exists - updating (all parameters are optional)
@@ -447,61 +445,40 @@ def deploy(
                     key, value = param.split("=", 1)
                     additional_params[key.strip()] = value.strip()
 
-        # Build parameters - only pass explicitly provided values
-        # Convert Click defaults to None when not explicitly provided by user
-        cfn_parameters = build_parameters(
-            admin_email=admin_email,
-            max_concurrent=max_concurrent if max_concurrent != 100 else None,
-            log_level=log_level if log_level != "INFO" else None,
-            enable_hitl=enable_hitl if enable_hitl != "false" else None,
-            custom_config=custom_config,
-            additional_params=additional_params,
-            region=region,
-            stack_name=stack_name,
-        )
-
-        # Debug: Show CustomConfigPath if present
-        if "CustomConfigPath" in cfn_parameters:
-            console.print(
-                f"[yellow]DEBUG: CustomConfigPath = {cfn_parameters['CustomConfigPath']}[/yellow]"
-            )
+        # Deploy stack via SDK (build_parameters is called internally by client.stack.deploy)
+        # Debug: show custom config path hint before deploy
+        if custom_config:
+            console.print(f"[yellow]DEBUG: CustomConfig = {custom_config}[/yellow]")
 
         # Deploy stack
         with console.status("[bold green]Deploying stack..."):
-            if template_path:
-                # Deploy from local template (built from code)
-                result = deployer.deploy_stack(
-                    stack_name=stack_name,
-                    template_path=template_path,
-                    parameters=cfn_parameters,
-                    wait=wait,
-                    no_rollback=no_rollback,
-                    role_arn=role_arn,
-                )
-            else:
-                # Deploy from template URL
-                result = deployer.deploy_stack(
-                    stack_name=stack_name,
-                    template_url=template_url,
-                    parameters=cfn_parameters,
-                    wait=wait,
-                    no_rollback=no_rollback,
-                    role_arn=role_arn,
-                )
+            result = client.stack.deploy(
+                template_url=template_url,
+                template_path=template_path,
+                admin_email=admin_email,
+                max_concurrent=max_concurrent if max_concurrent != 100 else None,
+                log_level=log_level if log_level != "INFO" else None,
+                enable_hitl=enable_hitl == "true" if enable_hitl != "false" else None,
+                custom_config=custom_config,
+                parameters=additional_params,
+                wait=wait,
+                no_rollback=no_rollback,
+                role_arn=role_arn,
+            )
 
         # Show results
         # Success if operation completed successfully OR was successfully initiated
-        is_success = result.get("success") or result.get("status") == "INITIATED"
+        is_success = result.success or result.status == "INITIATED"
 
         if is_success:
-            if result.get("success"):
+            if result.success:
                 # Completed (with --wait)
                 console.print(
-                    f"\n[green]✓ Stack {result['operation']} completed successfully![/green]\n"
+                    f"\n[green]✓ Stack {result.operation} completed successfully![/green]\n"
                 )
 
                 # Show outputs
-                outputs = result.get("outputs", {})
+                outputs = result.outputs
                 if outputs:
                     console.print("[bold]Important Outputs:[/bold]")
                     console.print(
@@ -526,7 +503,7 @@ def deploy(
             else:
                 # Initiated (without --wait)
                 console.print(
-                    f"\n[green]✓ Stack {result['operation']} initiated successfully![/green]\n"
+                    f"\n[green]✓ Stack {result.operation} initiated successfully![/green]\n"
                 )
                 console.print("[bold]Monitor progress:[/bold]")
                 console.print(f"  AWS Console: CloudFormation → Stacks → {stack_name}")
@@ -537,7 +514,7 @@ def deploy(
                 )
                 console.print()
         else:
-            _display_deployment_failure(deployer, stack_name, result)
+            _display_deployment_failure(client, stack_name, result)
             sys.exit(1)
 
     except FileNotFoundError as e:
@@ -603,13 +580,13 @@ def delete(
       idp-cli delete --stack-name test-stack --force --wait
     """
     try:
-        deployer = StackDeployer(region=region)
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Check if stack has an operation in progress
-        in_progress = deployer.get_stack_operation_in_progress(stack_name)
+        in_progress = client.stack.check_in_progress()
         if in_progress:
-            operation = in_progress["operation"]
-            status = in_progress["status"]
+            operation = in_progress.operation
+            status = in_progress.status
 
             if operation == "DELETE":
                 # Delete already in progress - monitor it
@@ -622,16 +599,17 @@ def delete(
                 console.print()
 
                 # Monitor the deletion
-                result = deployer.monitor_stack_progress(stack_name, "DELETE")
+                with console.status("[bold cyan]Monitoring DELETE...[/bold cyan]"):
+                    result = client.stack.monitor(operation="DELETE")
 
-                if result.get("success"):
+                if result.success:
                     console.print("\n[green]✓ Stack deleted successfully![/green]")
                     console.print(f"Stack: {stack_name}")
-                    console.print(f"Status: {result.get('status')}")
+                    console.print(f"Status: {result.status}")
                 else:
                     console.print("\n[red]✗ Stack deletion failed![/red]")
-                    console.print(f"Status: {result.get('status')}")
-                    console.print(f"Error: {result.get('error', 'Unknown')}")
+                    console.print(f"Status: {result.status}")
+                    console.print(f"Error: {result.error or 'Unknown'}")
                     sys.exit(1)
 
                 return  # Exit after monitoring
@@ -668,11 +646,14 @@ def delete(
                         console.print()
 
                         # Monitor the current operation
-                        result = deployer.monitor_stack_progress(stack_name, operation)
+                        with console.status(
+                            f"[bold cyan]Monitoring {operation}...[/bold cyan]"
+                        ):
+                            monitor_result = client.stack.monitor(operation=operation)
 
-                        if not result.get("success"):
+                        if not monitor_result.success:
                             console.print(f"\n[red]✗ {operation} failed![/red]")
-                            console.print(f"Status: {result.get('status')}")
+                            console.print(f"Status: {monitor_result.status}")
                             # Continue to deletion - user may still want to delete failed stack
                         else:
                             console.print(f"\n[green]✓ {operation} completed![/green]")
@@ -696,36 +677,39 @@ def delete(
                     console.print()
 
                     if operation == "UPDATE":
-                        cancel_result = deployer.cancel_update_stack(stack_name)
-                        if not cancel_result.get("success"):
+                        cancel_result = client.stack.cancel_update()
+                        if not cancel_result.success:
                             console.print(
-                                f"[yellow]Warning: Could not cancel update: {cancel_result.get('error')}[/yellow]"
+                                f"[yellow]Warning: Could not cancel update: {cancel_result.error}[/yellow]"
                             )
 
                     # Wait for stable state
-                    stable_result = deployer.wait_for_stable_state(
-                        stack_name, timeout_seconds=1200
-                    )
+                    with console.status(
+                        "[bold cyan]Waiting for stable state...[/bold cyan]"
+                    ):
+                        stable_result = client.stack.wait_for_stable_state(
+                            timeout_seconds=1200
+                        )
 
-                    if not stable_result.get("success"):
+                    if not stable_result.success:
                         console.print(
-                            f"[red]✗ Timeout waiting for stable state: {stable_result.get('error')}[/red]"
+                            f"[red]✗ Timeout waiting for stable state: {stable_result.message}[/red]"
                         )
                         sys.exit(1)
 
                     console.print(
-                        f"[green]✓ Stack reached stable state: {stable_result.get('status')}[/green]"
+                        f"[green]✓ Stack reached stable state: {stable_result.status}[/green]"
                     )
                     console.print()
 
         # Check if stack exists
-        if not deployer._stack_exists(stack_name):
+        if not client.stack.exists():
             console.print(f"[red]✗ Stack '{stack_name}' does not exist[/red]")
             sys.exit(1)
 
         # Get bucket information
         console.print(f"[bold blue]Analyzing stack: {stack_name}[/bold blue]")
-        bucket_info = deployer.get_bucket_info(stack_name)
+        bucket_info = client.stack.get_bucket_info()
 
         # Show warning with bucket details
         console.print()
@@ -742,9 +726,9 @@ def delete(
             console.print("[bold]S3 Buckets:[/bold]")
             has_data = False
             for bucket in bucket_info:
-                obj_count = bucket.get("object_count", 0)
-                size = bucket.get("size_display", "Unknown")
-                logical_id = bucket.get("logical_id", "Unknown")
+                obj_count = bucket.object_count
+                size = bucket.size_display
+                logical_id = bucket.logical_id
 
                 if obj_count > 0:
                     has_data = True
@@ -812,23 +796,22 @@ def delete(
         # Perform deletion
         console.print()
         with console.status("[bold red]Deleting stack..."):
-            result = deployer.delete_stack(
-                stack_name=stack_name,
+            result = client.stack.delete(
                 empty_buckets=empty_buckets,
                 wait=wait,
             )
 
         # Show CloudFormation deletion results
-        if result.get("success"):
+        if result.success:
             console.print("\n[green]✓ Stack deleted successfully![/green]")
             console.print(f"Stack: {stack_name}")
-            console.print(f"Status: {result.get('status')}")
+            console.print(f"Status: {result.status}")
         else:
             console.print("\n[red]✗ Stack deletion failed![/red]")
-            console.print(f"Status: {result.get('status')}")
-            console.print(f"Error: {result.get('error', 'Unknown')}")
+            console.print(f"Status: {result.status}")
+            console.print(f"Error: {result.error or 'Unknown'}")
 
-            if "bucket" in result.get("error", "").lower():
+            if result.error and "bucket" in result.error.lower():
                 console.print()
                 console.print(
                     "[yellow]Tip: Try again with --empty-buckets or --force-delete-all flag[/yellow]"
@@ -853,9 +836,7 @@ def delete(
             console.print("[bold blue]━" * 60 + "[/bold blue]")
 
             try:
-                # Use stack ID for deleted stacks (CloudFormation requires ID for deleted stacks)
-                stack_identifier = result.get("stack_id", stack_name)
-                cleanup_result = deployer.cleanup_retained_resources(stack_identifier)
+                cleanup_result = result.cleanup_result or {}
 
                 # Show cleanup summary
                 console.print()
@@ -911,7 +892,7 @@ def delete(
                 )
         else:
             # Standard deletion without force-delete-all
-            if result.get("success"):
+            if result.success:
                 console.print()
                 console.print(
                     "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
@@ -996,6 +977,7 @@ def delete_documents_cmd(
     try:
         import boto3
         from idp_common.delete_documents import delete_documents, get_documents_by_batch
+        from idp_sdk import IDPClient
 
         # Validate input
         if not document_ids and not batch_id:
@@ -1011,15 +993,13 @@ def delete_documents_cmd(
             sys.exit(1)
 
         # Get stack resources
-        from idp_sdk.core.stack_info import StackInfo
-
         console.print(f"[bold blue]Connecting to stack: {stack_name}[/bold blue]")
-        stack_info = StackInfo(stack_name, region)
-        resources = stack_info.get_resources()
+        client = IDPClient(stack_name=stack_name, region=region)
+        resources = client.stack.get_resources()
 
-        input_bucket = resources.get("InputBucket")
-        output_bucket = resources.get("OutputBucket")
-        tracking_table_name = resources.get("DocumentsTable")
+        input_bucket = resources.input_bucket
+        output_bucket = resources.output_bucket
+        tracking_table_name = resources.documents_table
 
         if not all([input_bucket, output_bucket, tracking_table_name]):
             console.print("[red]✗ Error: Could not find required stack resources[/red]")
@@ -1167,8 +1147,9 @@ def _process_impl(
             console.print("[red]✗ Error: Cannot specify multiple input sources[/red]")
             sys.exit(1)
 
-        # Initialize processor
-        processor = BatchProcessor(stack_name=stack_name, region=region)
+        from idp_sdk import IDPClient
+
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Handle test set processing
         if test_set:
@@ -1177,69 +1158,71 @@ def _process_impl(
                 test_set_name=test_set,
                 context=context,
                 region=region,
-                processor=processor,
+                client=client,
                 number_of_files=number_of_files,
                 config_version=config_version,
             )
+            # test_set path returns legacy dict — extract fields
+            result_batch_id = batch_result["batch_id"]
+            result_queued = batch_result.get(
+                "queued", batch_result.get("documents_queued", 0)
+            )
+            result_uploaded = batch_result.get("uploaded", 0)
+            result_failed = batch_result.get("failed", 0)
         else:
-            # Handle manifest/directory/S3 processing
+            # Handle manifest/directory/S3 processing via IDPClient
             if manifest:
-                batch_result = processor.process_batch(
-                    manifest_path=manifest,
-                    output_prefix=batch_prefix,
+                result = client.batch.process(
+                    manifest=manifest,
+                    batch_prefix=batch_prefix,
                     batch_id=batch_id,
                     number_of_files=number_of_files,
                     config_version=config_version,
                 )
             elif directory:
-                batch_result = processor.process_batch_from_directory(
-                    dir_path=directory,
+                result = client.batch.process(
+                    directory=directory,
                     file_pattern=file_pattern,
                     recursive=recursive,
-                    output_prefix=batch_prefix,
+                    batch_prefix=batch_prefix,
                     batch_id=batch_id,
                     number_of_files=number_of_files,
                     config_version=config_version,
                 )
             elif s3_uri:
-                batch_result = processor.process_batch_from_s3_uri(
+                result = client.batch.process(
                     s3_uri=s3_uri,
                     file_pattern=file_pattern,
                     recursive=recursive,
-                    output_prefix=batch_prefix,
+                    batch_prefix=batch_prefix,
                     batch_id=batch_id,
                 )
             else:
                 raise ValueError("No input source specified")
 
+            result_batch_id = result.batch_id
+            result_queued = result.documents_queued
+            result_uploaded = result.documents_uploaded
+            result_failed = result.documents_failed
+
         # Show results
         console.print()
-        console.print(f"[bold blue]Batch ID: {batch_result['batch_id']}[/bold blue]")
-        console.print(
-            f"Documents queued: {batch_result.get('queued', batch_result.get('documents_queued', 0))}"
-        )
+        console.print(f"[bold blue]Batch ID: {result_batch_id}[/bold blue]")
+        console.print(f"Documents queued: {result_queued}")
 
-        if batch_result.get("uploaded", 0) > 0:
-            console.print(f"Files uploaded: {batch_result['uploaded']}")
-        if batch_result.get("skipped", 0) > 0:
-            console.print(f"Files skipped: {batch_result['skipped']}")
-        if batch_result.get("failed", 0) > 0:
-            console.print(f"[red]Files failed: {batch_result['failed']}[/red]")
+        if result_uploaded > 0:
+            console.print(f"Files uploaded: {result_uploaded}")
+        if result_failed > 0:
+            console.print(f"[red]Files failed: {result_failed}[/red]")
 
         console.print()
 
         # Monitor if requested
-        if (
-            monitor
-            and batch_result.get("queued", batch_result.get("documents_queued", 0)) > 0
-        ):
+        if monitor and result_queued > 0:
             _monitor_progress(
-                stack_name=stack_name,
-                batch_id=batch_result["batch_id"],
-                document_ids=batch_result.get("document_ids", []),
+                client=client,
+                batch_id=result_batch_id,
                 refresh_interval=refresh_interval,
-                region=region,
-                resources=processor.resources,
             )
 
     except Exception as e:
@@ -1652,22 +1635,26 @@ def _rerun_inference_impl(
             )
             sys.exit(1)
 
-        from idp_sdk.core.rerun_processor import RerunProcessor
+        from idp_sdk import IDPClient
 
-        # Initialize processor
         console.print(
-            f"[bold blue]Initializing rerun processor for stack: {stack_name}[/bold blue]"
+            f"[bold blue]Initializing reprocess for stack: {stack_name}[/bold blue]"
         )
-        processor = RerunProcessor(stack_name=stack_name, region=region)
+        client = IDPClient(stack_name=stack_name, region=region)
 
-        # Get document IDs
+        # Get document count for confirmation display
         if document_ids:
             doc_id_list = [doc_id.strip() for doc_id in document_ids.split(",")]
             console.print(f"Processing {len(doc_id_list)} specified documents")
+            reprocess_doc_ids = doc_id_list
+            reprocess_batch_id = None
         else:
             console.print(f"Getting document IDs from batch: {batch_id}")
-            doc_id_list = processor.get_batch_document_ids(batch_id)
+            # Pre-fetch IDs for count display (SDK will re-fetch internally if batch_id passed)
+            doc_id_list = client.batch.get_document_ids(batch_id)
             console.print(f"Found {len(doc_id_list)} documents in batch")
+            reprocess_doc_ids = doc_id_list
+            reprocess_batch_id = None  # Pass explicit list so SDK doesn't re-fetch
 
         # Show what will be cleared based on step
         console.print()
@@ -1704,40 +1691,38 @@ def _rerun_inference_impl(
                 console.print("[yellow]Rerun cancelled[/yellow]")
                 return
 
-        # Perform rerun
+        # Perform reprocess via SDK
         console.print()
         with console.status(
             f"[bold green]Reprocessing {len(doc_id_list)} documents..."
         ):
-            results = processor.rerun_documents(
-                document_ids=doc_id_list, step=step, monitor=monitor
+            result = client.batch.reprocess(
+                step=step,
+                document_ids=reprocess_doc_ids,
+                batch_id=reprocess_batch_id,
             )
 
         # Show results
         console.print()
-        if results["documents_queued"] > 0:
+        if result.documents_queued > 0:
             console.print(
-                f"[green]✓ Queued {results['documents_queued']} documents for {step} reprocessing[/green]"
+                f"[green]✓ Queued {result.documents_queued} documents for {step} reprocessing[/green]"
             )
 
-        if results["documents_failed"] > 0:
+        if result.documents_failed > 0:
             console.print(
-                f"[red]✗ Failed to queue {results['documents_failed']} documents[/red]"
+                f"[red]✗ Failed to queue {result.documents_failed} documents[/red]"
             )
-            for failed in results["failed_documents"]:
+            for failed in result.failed_documents:
                 console.print(f"  • {failed['object_key']}: {failed['error']}")
 
         console.print()
 
-        if monitor and results["documents_queued"] > 0:
-            # Monitor progress using existing monitoring function
+        if monitor and result.documents_queued > 0:
             _monitor_progress(
-                stack_name=stack_name,
+                client=client,
                 batch_id=batch_id or "rerun",
-                document_ids=doc_id_list,
                 refresh_interval=refresh_interval,
-                region=region,
-                resources=processor.resources,
             )
 
     except Exception as e:
@@ -1849,9 +1834,6 @@ def status(
             )
             sys.exit(1)
 
-        # Initialize processor to get resources
-        processor = BatchProcessor(stack_name=stack_name, region=region)
-
         # Get document IDs to monitor
         if batch_id:
             # Use TrackingTableSearcher for PK substring search
@@ -1962,22 +1944,22 @@ def status(
                 )
                 console.print()
 
+            from idp_sdk import IDPClient as _IDPClient
+
+            _client = _IDPClient(stack_name=stack_name, region=region)
             # Monitor until completion
             _monitor_progress(
-                stack_name=stack_name,
+                client=_client,
                 batch_id=identifier,
-                document_ids=document_ids,
                 refresh_interval=refresh_interval,
-                region=region,
-                resources=processor.resources,
             )
         else:
-            # Show current status once
-            monitor = ProgressMonitor(
-                stack_name=stack_name, resources=processor.resources, region=region
-            )
-            status_data = monitor.get_batch_status(document_ids)
-            stats = monitor.calculate_statistics(status_data)
+            # Show current status once via IDPClient
+            from idp_sdk import IDPClient as _IDPClient
+
+            _client = _IDPClient(stack_name=stack_name, region=region)
+            batch_status = _client.batch.get_status(identifier)
+            status_data, stats = _batch_status_to_display_dicts(batch_status)
 
             if output_format == "json":
                 # JSON output for programmatic use
@@ -2025,10 +2007,12 @@ def list_batches(stack_name: str, limit: int, region: Optional[str]):
       idp-cli list-batches --stack-name my-stack --limit 5
     """
     try:
-        processor = BatchProcessor(stack_name=stack_name, region=region)
-        batches = processor.list_batches(limit=limit)
+        from idp_sdk import IDPClient
 
-        if not batches:
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.batch.list(limit=limit)
+
+        if not result.batches:
             console.print("[yellow]No batches found[/yellow]")
             return
 
@@ -2040,13 +2024,13 @@ def list_batches(stack_name: str, limit: int, region: Optional[str]):
         table.add_column("Failed", justify="right")
         table.add_column("Timestamp")
 
-        for batch in batches:
+        for batch in result.batches:
             table.add_row(
-                batch["batch_id"],
-                str(len(batch["document_ids"])),
-                str(batch["queued"]),
-                str(batch["failed"]),
-                batch["timestamp"][:19],  # Trim timestamp
+                batch.batch_id,
+                str(len(batch.document_ids)),
+                str(batch.queued),
+                str(batch.failed),
+                batch.timestamp[:19],  # Trim timestamp
             )
 
         console.print()
@@ -2096,27 +2080,29 @@ def download_results(
       idp-cli download-results --stack-name my-stack --batch-id <id> --output-dir ./results/ --file-types evaluation
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Downloading results for batch: {batch_id}[/bold blue]"
         )
 
-        processor = BatchProcessor(stack_name=stack_name, region=region)
+        client = IDPClient(stack_name=stack_name, region=region)
 
         # Parse file types
         if file_types == "all":
-            types_list = ["pages", "sections", "summary", "evaluation"]
+            types_list = ["all"]
         else:
             types_list = [t.strip() for t in file_types.split(",")]
 
         # Download results
-        result = processor.download_batch_results(
+        result = client.batch.download_results(
             batch_id=batch_id, output_dir=output_dir, file_types=types_list
         )
 
         console.print(
-            f"\n[green]✓ Downloaded {result['files_downloaded']} files to {output_dir}[/green]"
+            f"\n[green]✓ Downloaded {result.files_downloaded} files to {output_dir}[/green]"
         )
-        console.print(f"  Documents: {result['documents_downloaded']}")
+        console.print(f"  Documents: {result.documents_downloaded}")
         console.print(f"  Output: {output_dir}/{batch_id}/")
         console.print()
 
@@ -2243,10 +2229,9 @@ def generate_manifest(
         s3_client = None
         if test_set:
             import boto3
-            from idp_sdk.core.stack_info import StackInfo
 
-            stack_info = StackInfo(stack_name, region)
-            resources = stack_info.get_resources()
+            _client = IDPClient(stack_name=stack_name, region=region)
+            resources = _client._get_stack_resources(stack_name)
             test_set_bucket = resources.get("TestSetBucket")
             if not test_set_bucket:
                 console.print(
@@ -2470,10 +2455,8 @@ def generate_manifest(
 
         if test_set:
             # Auto-register test set in tracking table
-            from idp_cli.stack_info import StackInfo
-
-            stack_info = StackInfo(stack_name, region=region)
-            resources = stack_info.get_resources()
+            _client2 = IDPClient(stack_name=stack_name, region=region)
+            resources = _client2._get_stack_resources(stack_name)
             _invoke_test_set_resolver(stack_name, test_set, region, resources)
 
             console.print(
@@ -2534,7 +2517,10 @@ def validate_manifest_cmd(manifest: str):
       idp-cli validate-manifest --manifest documents.csv
     """
     try:
-        is_valid, error = validate_manifest(manifest)
+        _client = IDPClient()
+        result = _client.manifest.validate(manifest_path=manifest)
+        is_valid = result.valid
+        error = result.error
 
         if is_valid:
             console.print(f"[green]✓ Manifest is valid: {manifest}[/green]")
@@ -2549,40 +2535,139 @@ def validate_manifest_cmd(manifest: str):
         sys.exit(1)
 
 
+def _batch_status_to_display_dicts(batch_status):
+    """
+    Convert a BatchStatus Pydantic model to the legacy dict format expected by display.py.
+
+    display.py functions (create_live_display, show_final_summary, etc.) consume:
+      status_data = {"completed": [...], "running": [...], "queued": [...], "failed": [...], "total": N}
+      stats       = {"total": N, "completed": N, "failed": N, "running": N, "queued": N,
+                     "all_complete": bool, "success_rate": float (0-100),
+                     "completion_percentage": float, "avg_duration_seconds": float}
+    """
+    completed_docs = []
+    running_docs = []
+    queued_docs = []
+    failed_docs = []
+
+    total_duration = 0.0
+    duration_count = 0
+
+    for doc in batch_status.documents:
+        doc_dict = {
+            "document_id": doc.document_id,
+            "status": doc.status,
+            "start_time": doc.start_time or "",
+            "end_time": doc.end_time or "",
+            "duration": doc.duration_seconds or 0,
+            "num_pages": doc.num_pages,
+            "num_sections": doc.num_sections,
+            "error": doc.error or "",
+        }
+        status_upper = (doc.status or "").upper()
+        if status_upper == "COMPLETED":
+            completed_docs.append(doc_dict)
+            if doc.duration_seconds:
+                total_duration += doc.duration_seconds
+                duration_count += 1
+        elif status_upper == "FAILED":
+            failed_docs.append(doc_dict)
+        elif status_upper in (
+            "RUNNING",
+            "CLASSIFYING",
+            "EXTRACTING",
+            "ASSESSING",
+            "SUMMARIZING",
+            "EVALUATING",
+        ):
+            running_docs.append(doc_dict)
+        else:
+            queued_docs.append(doc_dict)
+
+    total = batch_status.total
+    completed = len(completed_docs)
+    failed = len(failed_docs)
+    running = len(running_docs)
+    queued = len(queued_docs)
+
+    status_data = {
+        "total": total,
+        "completed": completed_docs,
+        "running": running_docs,
+        "queued": queued_docs,
+        "failed": failed_docs,
+    }
+
+    avg_duration = total_duration / duration_count if duration_count > 0 else 0.0
+    completion_pct = (completed + failed) / total * 100.0 if total > 0 else 0.0
+    # SDK returns success_rate as 0.0–1.0; display expects 0–100
+    success_rate = batch_status.success_rate * 100.0
+
+    stats = {
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": running,
+        "queued": queued,
+        "all_complete": batch_status.all_complete,
+        "success_rate": success_rate,
+        "completion_percentage": completion_pct,
+        "avg_duration_seconds": avg_duration,
+    }
+
+    return status_data, stats
+
+
 def _monitor_progress(
-    stack_name: str,
+    client,
     batch_id: str,
-    document_ids: list,
     refresh_interval: int,
-    region: Optional[str],
-    resources: dict,
+    # Legacy keyword arguments kept for backward-compat callers not yet migrated
+    stack_name: Optional[str] = None,
+    document_ids: Optional[list] = None,
+    region: Optional[str] = None,
+    resources: Optional[dict] = None,
 ):
     """
-    Monitor batch progress with live updates
+    Monitor batch progress with live updates using IDPClient.
 
     Args:
-        stack_name: CloudFormation stack name
+        client: IDPClient instance (preferred) OR pass stack_name+region for legacy callers
         batch_id: Batch identifier
-        document_ids: List of document IDs to monitor
         refresh_interval: Seconds between status checks
-        region: AWS region
-        resources: Stack resources dictionary
+        stack_name: (legacy) CloudFormation stack name
+        document_ids: (legacy, unused) kept for signature compatibility
+        region: (legacy) AWS region
+        resources: (legacy, unused) kept for signature compatibility
     """
-    monitor = ProgressMonitor(stack_name=stack_name, resources=resources, region=region)
+    from idp_sdk import IDPClient as _IDPClient
+
+    # Support legacy callers that still pass stack_name/region instead of a client
+    if not isinstance(client, _IDPClient):
+        # client arg was actually stack_name (positional from old callers)
+        # Reconstruct: _monitor_progress(stack_name, batch_id, document_ids, ...)
+        # Old signature: _monitor_progress(stack_name, batch_id, document_ids, refresh_interval, region, resources)
+        # New callers pass client= as first arg; legacy code path below handles old callers
+        _stack_name = stack_name or client
+        idp_client = _IDPClient(stack_name=_stack_name, region=region)
+    else:
+        idp_client = client
 
     display.show_monitoring_header(batch_id)
 
     start_time = time.time()
+    status_data = {}
+    stats = {}
 
     try:
         with Live(console=console, refresh_per_second=1) as live:
             while True:
-                # Get current status
-                status_data = monitor.get_batch_status(document_ids)
-                stats = monitor.calculate_statistics(status_data)
+                # Get current status via SDK
+                batch_status = idp_client.batch.get_status(batch_id)
+                status_data, stats = _batch_status_to_display_dicts(batch_status)
                 elapsed_time = time.time() - start_time
 
-                # Update display
+                # Update display (display.py receives legacy dict format)
                 layout = display.create_live_display(
                     batch_id=batch_id,
                     status_data=status_data,
@@ -2604,14 +2689,20 @@ def _monitor_progress(
         console.print(
             "[yellow]Monitoring stopped. Processing continues in background.[/yellow]"
         )
-        display.show_monitoring_instructions(stack_name, batch_id)
+        _sn = stack_name or (
+            client
+            if not isinstance(client, _IDPClient)
+            else getattr(idp_client, "_stack_name", batch_id)
+        )
+        display.show_monitoring_instructions(_sn or batch_id, batch_id)
         return
     except Exception as e:
         logger.error(f"Monitoring error: {e}", exc_info=True)
         console.print()
         console.print(f"[red]Monitoring error: {e}[/red]")
         console.print("[yellow]You can check status later with:[/yellow]")
-        display.show_monitoring_instructions(stack_name, batch_id)
+        _sn = stack_name or batch_id
+        display.show_monitoring_instructions(_sn, batch_id)
         return
 
     # Show final summary
@@ -2625,13 +2716,24 @@ def _process_test_set(
     test_set_name: str,
     context: Optional[str],
     region: Optional[str],
-    processor,
+    client,
     number_of_files: Optional[int] = None,
     config_version: Optional[str] = None,
 ):
     """Common function to process test sets"""
+    # Resolve resources dict from IDPClient for Lambda helper functions
+    _resources_obj = client.stack.get_resources()
+    resources = {
+        "InputBucket": _resources_obj.input_bucket,
+        "OutputBucket": _resources_obj.output_bucket,
+        "DocumentsTable": _resources_obj.documents_table,
+        "TestSetBucket": getattr(_resources_obj, "test_set_bucket", None),
+        "StateMachineArn": getattr(_resources_obj, "state_machine_arn", None),
+        "DocumentQueue": getattr(_resources_obj, "document_queue", None),
+    }
+
     # Auto-detect test set using test_set_resolver lambda
-    _invoke_test_set_resolver(stack_name, test_set_name, region, processor.resources)
+    _invoke_test_set_resolver(stack_name, test_set_name, region, resources)
 
     # Invoke test runner lambda
     test_run_result = _invoke_test_runner(
@@ -2639,7 +2741,7 @@ def _process_test_set(
         test_set_name,
         context,
         region,
-        processor.resources,
+        resources,
         number_of_files,
         config_version,
     )
@@ -2647,7 +2749,7 @@ def _process_test_set(
 
     # Get document IDs from test set for monitoring
     document_ids = _get_test_set_document_ids(
-        stack_name, test_set_name, batch_id, region, processor.resources
+        stack_name, test_set_name, batch_id, region, resources
     )
 
     # If numberOfFiles was specified, limit document_ids to match actual queued count
@@ -2990,36 +3092,35 @@ def stop_workflows(
       idp-cli stop-workflows --stack-name my-stack --skip-purge
     """
     try:
-        from idp_sdk.core.stop_workflows import WorkflowStopper
+        from idp_sdk import IDPClient
 
         console.print(
             f"[bold blue]Stopping workflows for stack: {stack_name}[/bold blue]"
         )
         console.print()
 
-        stopper = WorkflowStopper(stack_name=stack_name, region=region)
-        results = stopper.stop_all(skip_purge=skip_purge, skip_stop=skip_stop)
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.batch.stop_workflows(skip_purge=skip_purge, skip_stop=skip_stop)
 
-        # Show results
-        if results["executions_stopped"]:
-            exec_result = results["executions_stopped"]
-            if exec_result.get("error"):
-                console.print(f"[red]✗ Failed: {exec_result.get('error')}[/red]")
+        # Show executions stopped result
+        if result.executions_stopped:
+            exec_result = result.executions_stopped
+            if exec_result.error:
+                console.print(f"[red]✗ Failed: {exec_result.error}[/red]")
                 sys.exit(1)
 
             console.print(
-                f"\n[green]✓ Stopped {exec_result['total_stopped']} executions[/green]"
+                f"\n[green]✓ Stopped {exec_result.total_stopped} executions[/green]"
             )
-            if exec_result.get("total_failed", 0) > 0:
+            if exec_result.total_failed > 0:
                 console.print(
-                    f"[yellow]  {exec_result['total_failed']} failed to stop[/yellow]"
+                    f"[yellow]  {exec_result.total_failed} failed to stop[/yellow]"
                 )
 
             # Show verification result
-            remaining = exec_result.get("remaining", 0)
-            if remaining > 0:
+            if exec_result.remaining > 0:
                 console.print(
-                    f"[red]⚠ Warning: {remaining} executions still running[/red]"
+                    f"[red]⚠ Warning: {exec_result.remaining} executions still running[/red]"
                 )
                 console.print(
                     "[yellow]  New executions may have started during stop operation[/yellow]"
@@ -3033,15 +3134,15 @@ def stop_workflows(
                 )
 
         # Show documents aborted result
-        if results.get("documents_aborted"):
-            abort_result = results["documents_aborted"]
-            if abort_result.get("error"):
+        if result.documents_aborted:
+            abort_result = result.documents_aborted
+            if abort_result.error:
                 console.print(
-                    f"[yellow]⚠ Could not abort queued documents: {abort_result.get('error')}[/yellow]"
+                    f"[yellow]⚠ Could not abort queued documents: {abort_result.error}[/yellow]"
                 )
-            elif abort_result.get("documents_aborted", 0) > 0:
+            elif abort_result.documents_aborted > 0:
                 console.print(
-                    f"\n[green]✓ Updated {abort_result['documents_aborted']} queued documents to ABORTED status[/green]"
+                    f"\n[green]✓ Updated {abort_result.documents_aborted} queued documents to ABORTED status[/green]"
                 )
 
     except Exception as e:
@@ -3125,30 +3226,18 @@ def load_test(
       3,500
     """
     try:
-        from idp_sdk.core.load_test import LoadTester
+        _client = IDPClient(stack_name=stack_name, region=region)
+        result = _client.testing.load_test(
+            source_file=source_file,
+            stack_name=stack_name,
+            rate=rate,
+            duration=duration,
+            schedule_file=schedule,
+            dest_prefix=dest_prefix,
+        )
 
-        tester = LoadTester(stack_name=stack_name, region=region)
-
-        if schedule:
-            # Run scheduled load test
-            result = tester.run_scheduled_load(
-                source_file=source_file,
-                schedule_file=schedule,
-                dest_prefix=dest_prefix,
-                config_version=config_version,
-            )
-        else:
-            # Run constant rate load test
-            result = tester.run_constant_load(
-                source_file=source_file,
-                rate=rate,
-                duration=duration,
-                dest_prefix=dest_prefix,
-                config_version=config_version,
-            )
-
-        if not result["success"]:
-            console.print(f"[red]✗ Load test failed: {result.get('error')}[/red]")
+        if not result.success:
+            console.print(f"[red]✗ Load test failed: {result.error}[/red]")
             sys.exit(1)
 
     except Exception as e:
@@ -3247,15 +3336,17 @@ def remove_residual_resources_from_deleted_stacks(
       idp-cli remove-deleted-stack-resources --check-stack-regions us-east-1,us-west-2,eu-central-1,eu-west-1
     """
     try:
-        from idp_sdk.core.cleanup_orphaned import OrphanedResourceCleanup
-
         # Parse regions list
         regions_list = [r.strip() for r in check_stack_regions.split(",")]
 
-        cleanup = OrphanedResourceCleanup(region=region, profile=profile)
-        results = cleanup.run_cleanup(
-            dry_run=dry_run, auto_approve=auto_approve, regions=regions_list
+        client = IDPClient(region=region)
+        cleanup_result = client.stack.cleanup_orphaned(
+            dry_run=dry_run,
+            auto_approve=auto_approve,
+            regions=regions_list,
+            profile=profile,
         )
+        results = cleanup_result.results
 
         # Print summary
         console.print()
@@ -3637,168 +3728,50 @@ def config_upload(
       idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --no-validate
     """
     try:
-        import json
-
-        import boto3
-        import yaml
+        from idp_sdk import IDPClient
 
         console.print(f"[bold blue]Uploading config to stack: {stack_name}[/bold blue]")
         console.print(f"Config file: {config_file}")
         console.print()
 
-        # Load the config file
-        try:
-            with open(config_file, "r", encoding="utf-8") as f:
-                content = f.read()
+        client = IDPClient(stack_name=stack_name, region=region)
 
-            if config_file.endswith(".json"):
-                user_config = json.loads(content)
-            else:
-                user_config = yaml.safe_load(content)
-
-            console.print("[green]✓ Config file loaded[/green]")
-        except Exception as e:
-            console.print(f"[red]✗ Failed to load config file: {e}[/red]")
-            sys.exit(1)
-
-        # Get ConfigurationTable from stack resources
-        cfn = boto3.client("cloudformation", region_name=region)
-
-        try:
-            paginator = cfn.get_paginator("list_stack_resources")
-            config_table = None
-            detected_pattern = None
-
-            for page in paginator.paginate(StackName=stack_name):
-                for resource in page.get("StackResourceSummaries", []):
-                    logical_id = resource.get("LogicalResourceId", "")
-                    if logical_id == "ConfigurationTable":
-                        config_table = resource.get("PhysicalResourceId")
-                    # Try to detect pattern from stack resources
-                    if "Pattern1" in logical_id:
-                        detected_pattern = "pattern-1"
-                    elif "Pattern2" in logical_id:
-                        detected_pattern = "pattern-2"
-
-            if not config_table:
-                console.print("[red]✗ ConfigurationTable not found in stack[/red]")
-                sys.exit(1)
-
-            console.print(f"[dim]ConfigurationTable: {config_table}[/dim]")
-
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
-            sys.exit(1)
-
-        # Auto-detect pattern for validation
-        validation_pattern = detected_pattern or "pattern-2"
-
-        # Validate if requested
-        if validate:
-            try:
-                from idp_common.config.merge_utils import validate_config
-
-                result = validate_config(user_config, pattern=validation_pattern)
-
-                if result["valid"]:
-                    console.print("[green]✓ Config validation passed[/green]")
-                    if result["warnings"]:
-                        for warning in result["warnings"]:
-                            console.print(f"  [yellow]⚠ {warning}[/yellow]")
-                else:
-                    console.print("[red]✗ Config validation failed:[/red]")
-                    for error in result["errors"]:
-                        console.print(f"  [red]• {error}[/red]")
-                    console.print()
-                    console.print(
-                        "[yellow]Use --no-validate to skip validation (not recommended)[/yellow]"
-                    )
-                    sys.exit(1)
-            except ImportError:
-                console.print(
-                    "[yellow]⚠ Validation skipped - idp_common not available[/yellow]"
-                )
-
-        # Upload to DynamoDB using ConfigurationManager
-        try:
-            import os
-
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            # Set env var for ConfigurationManager to find the table
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            if region:
-                os.environ["AWS_DEFAULT_REGION"] = region
-
-            manager = ConfigurationManager()
-
-            # If config_version specified, check if it exists
-            version_exists = False
-            if config_version:
-                # Check for default version update (warn user)
-                if config_version.lower() == "default":
-                    console.print(
-                        "[yellow]⚠️  Warning: This will update the default [system default] config version[/yellow]"
-                    )
-
-                try:
-                    existing_config = manager.get_configuration(
-                        "Config", version=config_version
-                    )
-                    version_exists = existing_config is not None
-                except Exception:
-                    version_exists = False
-
-                if version_exists:
-                    console.print(
-                        f"[blue]Updating existing configuration version: {config_version}[/blue]"
-                    )
-                else:
-                    console.print(
-                        f"[blue]Creating new configuration version: {config_version}[/blue]"
-                    )
-                    if version_description:
-                        console.print(f"[dim]Description: {version_description}[/dim]")
-                    # Add saveAsVersion flag for new versions
-                    user_config["saveAsVersion"] = True
-            else:
-                console.print("[blue]Updating active configuration version[/blue]")
-
-            # Convert to JSON string (the method expects JSON string or dict)
-            config_json = json.dumps(user_config)
-
-            success = manager.handle_update_custom_configuration(
-                config_json, version=config_version, description=version_description
-            )
-
-            if success:
-                console.print("[green]✓ Configuration uploaded successfully[/green]")
-                console.print()
-                if config_version:
-                    console.print(
-                        f"[bold]Configuration version '{config_version}' uploaded![/bold]"
-                    )
-                    console.print(
-                        "Use --config-version parameter to process documents with this version."
-                    )
-                else:
-                    console.print("[bold]Configuration is now active![/bold]")
-                    console.print(
-                        "New documents will use this configuration immediately."
-                    )
-            else:
-                console.print("[red]✗ Failed to upload configuration[/red]")
-                sys.exit(1)
-
-        except ImportError:
-            console.print("[red]✗ idp_common not installed[/red]")
+        # Warn for default version
+        if config_version and config_version.lower() == "default":
             console.print(
-                "[yellow]Install idp_common_pkg or run from project root[/yellow]"
+                "[yellow]⚠️  Warning: This will update the default [system default] config version[/yellow]"
             )
+
+        result = client.config.upload(
+            config_file=config_file,
+            validate=validate,
+            config_version=config_version,
+            description=version_description,
+        )
+
+        if not result.success:
+            console.print(
+                f"[red]✗ Failed to upload configuration: {result.error}[/red]"
+            )
+            if result.error and "Validation" in result.error:
+                console.print(
+                    "[yellow]Use --no-validate to skip validation (not recommended)[/yellow]"
+                )
             sys.exit(1)
-        except Exception as e:
-            console.print(f"[red]✗ Failed to upload configuration: {e}[/red]")
-            sys.exit(1)
+
+        console.print("[green]✓ Configuration uploaded successfully[/green]")
+        console.print()
+        if config_version:
+            action = "created" if result.version_created else "updated"
+            console.print(
+                f"[bold]Configuration version '{config_version}' {action}![/bold]"
+            )
+            console.print(
+                "Use --config-version parameter to process documents with this version."
+            )
+        else:
+            console.print("[bold]Configuration is now active![/bold]")
+            console.print("New documents will use this configuration immediately.")
 
     except Exception as e:
         logger.error(f"Error uploading config: {e}", exc_info=True)
@@ -3851,95 +3824,29 @@ def config_download(
       idp-cli config-download --stack-name my-stack
     """
     try:
-        import boto3
-        import yaml
+        from idp_sdk import IDPClient
 
         console.print(
             f"[bold blue]Downloading config from stack: {stack_name}[/bold blue]"
         )
 
-        # Get ConfigurationTable by looking up stack resource
-        cfn = boto3.client("cloudformation", region_name=region)
-
-        try:
-            # List stack resources to find ConfigurationTable
-            paginator = cfn.get_paginator("list_stack_resources")
-            config_table = None
-
-            for page in paginator.paginate(StackName=stack_name):
-                for resource in page.get("StackResourceSummaries", []):
-                    if resource.get("LogicalResourceId") == "ConfigurationTable":
-                        config_table = resource.get("PhysicalResourceId")
-                        break
-                if config_table:
-                    break
-
-            if not config_table:
-                console.print(
-                    "[red]✗ ConfigurationTable not found in stack resources[/red]"
-                )
-                sys.exit(1)
-
-            console.print(f"[dim]Using table: {config_table}[/dim]")
-
-            # Use idp_common's ConfigurationReader
-            from idp_common.config import ConfigurationReader
-
-            reader = ConfigurationReader(table_name=config_table)
-            config_data = reader.get_configuration(
-                "Config", version=config_version, as_model=False
-            )
-            console.print("[green]✓ Configuration retrieved[/green]")
-
-        except ImportError:
-            console.print(
-                "[red]✗ idp_common not installed - run from project root or install idp_common_pkg[/red]"
-            )
-            sys.exit(1)
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get configuration: {e}[/red]")
-            sys.exit(1)
-
-        # For minimal format, compute diff from defaults
-        if output_format == "minimal":
-            from idp_common.config.merge_utils import (
-                get_diff_dict,
-                load_system_defaults,
-            )
-
-            # Auto-detect pattern from config
-            classification_method = config_data.get("classification", {}).get(
-                "classificationMethod", ""
-            )
-            diff_pattern = (
-                "pattern-1" if classification_method == "bda" else "pattern-2"
-            )
-
-            defaults = load_system_defaults(diff_pattern)
-            config_data = get_diff_dict(defaults, config_data)
-            console.print("[dim]Showing only differences from defaults[/dim]")
-
-        # Convert to YAML
-        yaml_content = yaml.dump(
-            config_data,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-            width=120,
+        client = IDPClient(stack_name=stack_name, region=region)
+        result = client.config.download(
+            format=output_format,
+            config_version=config_version,
+            output=output,
         )
 
         if output:
-            with open(output, "w", encoding="utf-8") as f:
-                f.write(f"# Configuration downloaded from stack: {stack_name}\n")
-                f.write(f"# Format: {output_format}\n\n")
-                f.write(yaml_content)
             console.print(f"[green]✓ Configuration saved to: {output}[/green]")
         else:
             console.print()
-            console.print(yaml_content)
+            console.print(result.yaml_content)
 
     except Exception as e:
         logger.error(f"Error downloading config: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
 
 
 @cli.command(name="config-activate")
@@ -3974,146 +3881,48 @@ def config_activate(
       idp-cli config-activate --stack-name my-stack --config-version default
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Activating config version in stack: {stack_name}[/bold blue]"
         )
         console.print(f"Version: {config_version}")
+        console.print()
 
-        # Get stack resources
-        try:
-            config_table = None
-            cf_client = boto3.client("cloudformation")
-            resources = cf_client.list_stack_resources(StackName=stack_name)
-            for resource in resources["StackResourceSummaries"]:
-                if resource["LogicalResourceId"] == "ConfigurationTable":
-                    config_table = resource.get("PhysicalResourceId")
-                if config_table:
-                    break
+        client = IDPClient(stack_name=stack_name)
+        result = client.config.activate(config_version=config_version)
 
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
-            return
-
-        if not config_table:
+        if not result.success:
             console.print(
-                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+                f"[red]✗ Failed to activate configuration version '{config_version}': {result.error}[/red]"
             )
-            return
-
-        console.print(f"[dim]Using table: {config_table}[/dim]")
-
-        # Check version and sync to BDA if needed
-        try:
-            from idp_common.bda.bda_blueprint_service import BdaBlueprintService
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            os.environ["STACK_NAME"] = stack_name
-            manager = ConfigurationManager()
-
-            # Check if version exists
-            existing_config = manager.get_configuration(
-                "Config", version=config_version
-            )
-            if not existing_config:
+            if result.error and "does not exist" in result.error:
                 console.print(
-                    f"[red]✗ Configuration version '{config_version}' does not exist[/red]"
+                    f"Use 'idp-cli config-list --stack-name {stack_name}' to see available versions"
                 )
-                console.print(
-                    f"Use 'idp-cli config-download --stack-name {stack_name}' to see available versions"
-                )
-                return
+            sys.exit(1)
 
-            # Check if BDA sync is needed (matching UI behavior)
-            use_bda = (
-                existing_config.use_bda
-                if hasattr(existing_config, "use_bda")
-                else False
-            )
-            if use_bda:
+        # Show BDA sync results if performed
+        if result.bda_synced:
+            if result.bda_classes_failed > 0:
                 console.print(
-                    "[yellow]Configuration has use_bda enabled, syncing to BDA...[/yellow]"
+                    f"[yellow]⚠ BDA sync partial: {result.bda_classes_synced} succeeded, "
+                    f"{result.bda_classes_failed} failed[/yellow]"
+                )
+            else:
+                console.print(
+                    f"[green]✓ Successfully synced {result.bda_classes_synced} classes to BDA[/green]"
                 )
 
-                try:
-                    # Get or create BDA project
-                    bda_project_arn = manager.get_bda_project_arn(config_version)
-                    bda_service = BdaBlueprintService(
-                        dataAutomationProjectArn=bda_project_arn
-                    )
-
-                    if not bda_project_arn:
-                        console.print(
-                            "[dim]No BDA project linked, creating new project...[/dim]"
-                        )
-                        bda_project_arn = bda_service.get_or_create_project_for_version(
-                            config_version
-                        )
-                        console.print(
-                            f"[dim]Created BDA project: {bda_project_arn}[/dim]"
-                        )
-
-                    # Sync IDP to BDA (matching UI resolver logic)
-                    bda_service.dataAutomationProjectArn = bda_project_arn
-                    result = bda_service.create_blueprints_from_custom_configuration(
-                        sync_direction="idp_to_bda",
-                        version=config_version,
-                        sync_mode="replace",
-                    )
-
-                    # Process results
-                    sync_failed = []
-                    sync_succeeded = []
-                    if isinstance(result, list):
-                        for item in result:
-                            if item.get("status") == "success":
-                                sync_succeeded.append(item.get("class"))
-                            else:
-                                sync_failed.append(item.get("class", "Unknown"))
-
-                    if len(sync_succeeded) == 0 and len(sync_failed) > 0:
-                        console.print(
-                            f"[red]✗ BDA sync failed for all {len(sync_failed)} classes[/red]"
-                        )
-                        console.print("[red]Activation aborted[/red]")
-                        return
-                    elif len(sync_failed) > 0:
-                        console.print(
-                            f"[yellow]⚠ Partial sync: {len(sync_succeeded)} succeeded, {len(sync_failed)} failed[/yellow]"
-                        )
-                        manager.set_bda_project_arn(
-                            config_version, bda_project_arn, "partial"
-                        )
-                    else:
-                        console.print(
-                            f"[green]✓ Successfully synced {len(sync_succeeded)} classes to BDA[/green]"
-                        )
-                        manager.set_bda_project_arn(
-                            config_version, bda_project_arn, "synced"
-                        )
-
-                except Exception as e:
-                    console.print(f"[red]✗ Failed to sync to BDA: {e}[/red]")
-                    console.print("[red]Activation aborted[/red]")
-                    return
-
-            # Activate the version
-            manager.activate_version(config_version)
-            console.print(
-                f"[green]✓ Successfully activated configuration version: {config_version}[/green]"
-            )
-            console.print("New documents will use this configuration immediately.")
-
-        except ValueError as e:
-            console.print(f"[red]✗ {e}[/red]")
-            return
-        except Exception as e:
-            console.print(f"[red]✗ Failed to activate configuration version: {e}[/red]")
-            return
+        console.print(
+            f"[green]✓ Successfully activated configuration version: {config_version}[/green]"
+        )
+        console.print("New documents will use this configuration immediately.")
 
     except Exception as e:
+        logger.error(f"Error activating config: {e}", exc_info=True)
         console.print(f"[red]✗ Failed to activate configuration: {e}[/red]")
-        return
+        sys.exit(1)
 
 
 @cli.command(name="config-list")
@@ -4134,90 +3943,56 @@ def config_list(stack_name: str):
       idp-cli config-list --stack-name my-stack
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Listing configuration versions in stack: {stack_name}[/bold blue]"
         )
 
-        # Get stack resources
-        try:
-            config_table = None
-            cf_client = boto3.client("cloudformation")
-            resources = cf_client.list_stack_resources(StackName=stack_name)
-            for resource in resources["StackResourceSummaries"]:
-                if resource["LogicalResourceId"] == "ConfigurationTable":
-                    config_table = resource.get("PhysicalResourceId")
-                if config_table:
-                    break
+        client = IDPClient(stack_name=stack_name)
+        result = client.config.list()
 
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
+        if not result.versions:
+            console.print("[yellow]No configuration versions found[/yellow]")
             return
 
-        if not config_table:
-            console.print(
-                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+        console.print(
+            f"\n[bold]Found {result.count} configuration version(s):[/bold]\n"
+        )
+
+        table = Table(show_header=True, header_style="bold blue")
+        table.add_column("Version Name", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Created", style="dim")
+        table.add_column("Updated", style="dim")
+        table.add_column("Description", style="green")
+
+        for version in sorted(result.versions, key=lambda v: v.version_name):
+            status = "[bold green]ACTIVE[/bold green]" if version.is_active else ""
+            created = (
+                version.created_at.replace("T", " ").replace("Z", "")
+                if version.created_at
+                else ""
             )
-            return
-
-        console.print(f"[dim]Using table: {config_table}[/dim]")
-
-        # List configuration versions
-        try:
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            manager = ConfigurationManager()
-            versions = manager.list_config_versions()
-
-            if not versions:
-                console.print("[yellow]No configuration versions found[/yellow]")
-                return
-
-            console.print(
-                f"\n[bold]Found {len(versions)} configuration version(s):[/bold]\n"
+            updated = (
+                version.updated_at.replace("T", " ").replace("Z", "")
+                if version.updated_at
+                else ""
+            )
+            table.add_row(
+                version.version_name,
+                status,
+                created,
+                updated,
+                version.description or "",
             )
 
-            # Create table for better formatting
-            from rich.table import Table
-
-            table = Table(show_header=True, header_style="bold blue")
-            table.add_column("Version Name", style="cyan")
-            table.add_column("Status", justify="center")
-            table.add_column("Created", style="dim")
-            table.add_column("Updated", style="dim")
-            table.add_column("Description", style="green")
-
-            for version in sorted(versions, key=lambda x: x.get("versionName", "")):
-                version_name = version.get("versionName", "unknown")
-                status = (
-                    "[bold green]ACTIVE[/bold green]" if version.get("isActive") else ""
-                )
-                created = (
-                    version.get("createdAt", "").replace("T", " ").replace("Z", "")
-                    if version.get("createdAt")
-                    else ""
-                )
-                updated = (
-                    version.get("updatedAt", "").replace("T", " ").replace("Z", "")
-                    if version.get("updatedAt")
-                    else ""
-                )
-                description = version.get("description", "")
-
-                table.add_row(version_name, status, created, updated, description)
-
-            console.print(table)
-
-        except ValueError as e:
-            console.print(f"[red]✗ {e}[/red]")
-            return
-        except Exception as e:
-            console.print(f"[red]✗ Failed to list configuration versions: {e}[/red]")
-            return
+        console.print(table)
 
     except Exception as e:
+        logger.error(f"Error listing configs: {e}", exc_info=True)
         console.print(f"[red]✗ Failed to list configurations: {e}[/red]")
-        return
+        sys.exit(1)
 
 
 @cli.command(name="config-delete")
@@ -4255,65 +4030,36 @@ def config_delete(
       idp-cli config-delete --stack-name my-stack --config-version old-version --force
     """
     try:
+        from idp_sdk import IDPClient
+
         console.print(
             f"[bold blue]Deleting config version from stack: {stack_name}[/bold blue]"
         )
         console.print(f"Version: {config_version}")
 
-        # Get stack resources
-        try:
-            config_table = None
-            cf_client = boto3.client("cloudformation")
-            resources = cf_client.list_stack_resources(StackName=stack_name)
-            for resource in resources["StackResourceSummaries"]:
-                if resource["LogicalResourceId"] == "ConfigurationTable":
-                    config_table = resource.get("PhysicalResourceId")
-                if config_table:
-                    break
+        # Confirmation prompt
+        if not force:
+            if not click.confirm(
+                f"Are you sure you want to delete configuration version '{config_version}'?"
+            ):
+                console.print("[yellow]Deletion cancelled[/yellow]")
+                return
 
-        except Exception as e:
-            console.print(f"[red]✗ Failed to get stack resources: {e}[/red]")
-            return
+        client = IDPClient(stack_name=stack_name)
+        result = client.config.delete(config_version=config_version)
 
-        if not config_table:
+        if not result.success:
             console.print(
-                "[red]✗ ConfigurationTable not found in stack resources[/red]"
+                f"[red]✗ Failed to delete configuration version '{config_version}': {result.error}[/red]"
             )
-            return
+            sys.exit(1)
 
-        console.print(f"[dim]Using table: {config_table}[/dim]")
-
-        # Delete the version
-        try:
-            from idp_common.config.configuration_manager import ConfigurationManager
-
-            os.environ["CONFIGURATION_TABLE_NAME"] = config_table
-            manager = ConfigurationManager()
-
-            # Confirmation prompt
-            if not force:
-                if not click.confirm(
-                    f"Are you sure you want to delete configuration version '{config_version}'?"
-                ):
-                    console.print("[yellow]Deletion cancelled[/yellow]")
-                    return
-
-            # Delete the version (method handles all validations)
-            manager.delete_configuration("Config", version=config_version)
-            console.print(
-                f"[green]✓ Successfully deleted configuration version: {config_version}[/green]"
-            )
-
-        except ValueError as e:
-            console.print(f"[red]✗ {e}[/red]")
-            return
-        except Exception as e:
-            console.print(f"[red]✗ Failed to delete configuration version: {e}[/red]")
-            return
+        console.print(
+            f"[green]✓ Successfully deleted configuration version: {config_version}[/green]"
+        )
 
     except Exception as e:
-        console.print(f"[red]✗ Failed to delete configuration: {e}[/red]")
-        return
+        logger.error(f"Error deleting config version: {e}", exc_info=True)
         console.print(f"[red]✗ Error: {e}[/red]")
         sys.exit(1)
 
