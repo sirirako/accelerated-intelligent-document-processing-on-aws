@@ -74,17 +74,17 @@ class TestConfigOperationsMocked:
 
         mock_manager = mock_manager_class.return_value
         mock_manager.list_config_versions.return_value = [
-            {"versionName": "default", "isActive": False},
-            {"versionName": "v1", "isActive": True},
+            {"version_name": "default", "is_active": False},
+            {"version_name": "v1", "is_active": True},
         ]
 
         # Test
         client = IDPClient(stack_name="test-stack")
         result = client.config.list()
 
-        assert result["count"] == 2
-        assert len(result["versions"]) == 2
-        assert result["versions"][0]["versionName"] == "default"
+        assert result.count == 2
+        assert len(result.versions) == 2
+        assert result.versions[0].version_name == "default"
 
     @patch("boto3.client")
     @patch("idp_common.config.configuration_manager.ConfigurationManager")
@@ -114,8 +114,8 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.activate("v1")
 
-        assert result["success"] is True
-        assert result["activated_version"] == "v1"
+        assert result.success is True
+        assert result.activated_version == "v1"
         mock_manager.activate_version.assert_called_once_with("v1")
 
     @patch("boto3.client")
@@ -143,8 +143,8 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.activate("nonexistent")
 
-        assert result["success"] is False
-        assert "does not exist" in result["error"]
+        assert result.success is False
+        assert "does not exist" in result.error
 
     @patch("boto3.client")
     @patch("idp_common.config.configuration_manager.ConfigurationManager")
@@ -171,8 +171,8 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.delete("old-version")
 
-        assert result["success"] is True
-        assert result["deleted_version"] == "old-version"
+        assert result.success is True
+        assert result.deleted_version == "old-version"
         mock_manager.delete_configuration.assert_called_once_with(
             "Config", version="old-version"
         )
@@ -204,5 +204,5 @@ class TestConfigOperationsMocked:
         client = IDPClient(stack_name="test-stack")
         result = client.config.delete("active-version")
 
-        assert result["success"] is False
-        assert "Cannot delete active version" in result["error"]
+        assert result.success is False
+        assert "Cannot delete active version" in result.error
