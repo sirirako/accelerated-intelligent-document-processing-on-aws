@@ -19,6 +19,20 @@ SPDX-License-Identifier: MIT-0
 
 - **Removed `Bedrock Data Automation (BDA) Project ARN` CloudFormation parameter** — The deploy-time `Pattern1BDAProjectArn` parameter has been removed as it was redundant with the per-config-version BDA project management already available in the Web UI, CLI, and GraphQL API. BDA projects are now managed entirely post-deployment: enable `use_bda: true` in your configuration, then use "Sync to BDA" to create or link a BDA project, or "Sync from BDA" to import from any existing BDA project. This simplifies the deployment experience (one fewer parameter) and better aligns the CloudFormation interface with the system's actual architecture. Existing deployed stacks are unaffected — runtime BDA project ARN resolution reads from DynamoDB per-version tracking, not from the CloudFormation parameter. Also removed the unused `nested/bda-lending-project/` directory (dead code not referenced by any template) and the legacy `BDA_PROJECT_ARN` environment variable fallback from the sync resolver.
 
+- **SDK Client Interface** — Introduced `IDPClient` as the single public entry point for all IDP operations, with typed namespace access (`client.batch`, `client.stack`, `client.config`, `client.manifest`, `client.testing`).
+
+- **Typed Return Models** — SDK operations return Pydantic models instead of raw dictionaries, enabling IDE auto-complete, type checking, and consistent error handling.
+
+- **Configuration Validation Enhancements** — Manifest and config validation now reports deprecated and unknown fields, enabling stricter validation policies.
+
+- **Configuration Upload Version Detection** — Uploading a configuration now detects whether a version exists and correctly handles new version creation vs. updates.
+
+- **Private Internal Modules** — Internal SDK modules renamed from `core/` to `_core/` to clearly signal private API boundaries, with lint rules enforcing the boundary.
+
+- **CLI Refactored to Use SDK** — CLI commands now route through `IDPClient` instead of importing internal modules directly, improving maintainability and ensuring consistent behavior across CLI, Web UI, and programmatic access.
+
+- **Stack Deploy/Delete Enhanced** — Deploy and delete commands now use expanded SDK stack operations for in-progress detection, monitoring, cancel-update, and failure analysis.
+
 ### Fixed
 
 - **CLI: Remove deprecated `--pattern` references** — Updated `idp-cli.md` and CLI code to reflect the unified pattern architecture. Removed `--pattern` from all deploy and config command examples/options.
@@ -26,6 +40,8 @@ SPDX-License-Identifier: MIT-0
 - **Discovery no longer injects default config classes into target version** — Previously, running Discovery on a configuration version would merge all classes from the `default` version into the target version alongside the newly discovered class. Now Discovery only adds/updates the discovered class within the target version's own class list, keeping the version's classes exactly as the user curated them.
 
 - **Documentation: Comprehensive review and cleanup** — Fixed outdated references, broken links, and missing content across documentation files.
+
+- **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
 
 ## [0.5.1]
 
