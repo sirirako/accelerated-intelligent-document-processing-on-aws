@@ -27,6 +27,8 @@ SPDX-License-Identifier: MIT-0
 
 - **Documentation: Comprehensive review and cleanup** — Fixed outdated references, broken links, and missing content across documentation files.
 
+- **Inference Profile pricing ARN truncation in UI** — Fixed pricing display and cost breakdown truncation for Bedrock Application Inference Profile ARNs containing multiple `/` characters (e.g., `bedrock/arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/088k6ehrxpci`). The UI was splitting on all `/` separators instead of preserving the full ARN, causing the profile ID to be dropped in the Pricing page display, Test Studio cost breakdowns, and CSV exports. Backend pricing lookup was not affected. ([#237](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/237))
+
 ## [0.5.1]
 
 ### Added
