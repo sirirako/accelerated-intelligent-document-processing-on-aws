@@ -112,12 +112,12 @@ class BatchRunTool(IDPTool):
             return {
                 'success': True,
                 'batch_id': result.batch_id,
-                'documents_queued': result.queued,
+                'documents_queued': result.documents_queued,
                 'summary': {
-                    'queued': result.queued,
-                    'failed': result.failed,
+                    'queued': result.documents_queued,
+                    'failed': result.documents_failed,
                 },
-                'message': f"Successfully queued {result.queued} documents for processing"
+                'message': f"Successfully queued {result.documents_queued} documents for processing"
             }
         except Exception as e:
             logger.error(f"S3 processing failed: {e}", exc_info=True)
@@ -181,7 +181,7 @@ class BatchRunTool(IDPTool):
                 batch_prefix=batch_id,
                 batch_id=batch_id,
             )
-            logger.info(f"Batch processing completed: batch_id={result.batch_id}, queued={result.queued}")
+            logger.info(f"Batch processing completed: batch_id={result.batch_id}, queued={result.documents_queued}")
 
             # Step 6: Return success
             return {
