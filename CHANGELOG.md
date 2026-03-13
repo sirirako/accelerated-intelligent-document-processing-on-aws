@@ -7,18 +7,6 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Standard Class Catalog** — When adding a new document class in the Schema Builder, users can now choose between **Custom Class** (define from scratch) and **Standard Class** (import from a catalog of 35 pre-built document types). Standard classes are derived from AWS BDA standard blueprints and include common document types like Invoice, Receipt, W-2, Bank Statement, Payslip, US Driver License, US Passport, various tax forms (1040, 941, 940, W-9, 1098, 1099), insurance cards, birth/death/marriage certificates, and more. Each standard class comes with a complete extraction schema including attributes, descriptions, and nested types. Imported classes are fully editable. Run `make classes-from-bda` to refresh the catalog from the BDA API.
-
-- **Documentation Site** — Added a hosted documentation site built with [Astro Starlight](https://starlight.astro.build/), auto-deployed to GitHub Pages. Provides full-text search (Pagefind), sidebar navigation organized by topic, dark/light mode, and a professional landing page — all sourced directly from the existing `docs/` markdown files with zero content duplication. Browse at [aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws](https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/).
-
-- **Discovery accessible from CLI and SDK** — Discovery can now be run programmatically via the IDP SDK (`client.discovery.run()`) and CLI (`idp-cli discover`), enabling users with many document classes to automate schema generation without the Web UI. Supports both modes: without ground truth (exploratory) and with ground truth (optimized). ([#228](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/228))
-
-### Changed
-
-- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
-
-- **Removed `Bedrock Data Automation (BDA) Project ARN` CloudFormation parameter** — The deploy-time `Pattern1BDAProjectArn` parameter has been removed as it was redundant with the per-config-version BDA project management already available in the Web UI, CLI, and GraphQL API. BDA projects are now managed entirely post-deployment: enable `use_bda: true` in your configuration, then use "Sync to BDA" to create or link a BDA project, or "Sync from BDA" to import from any existing BDA project. This simplifies the deployment experience (one fewer parameter) and better aligns the CloudFormation interface with the system's actual architecture. Existing deployed stacks are unaffected — runtime BDA project ARN resolution reads from DynamoDB per-version tracking, not from the CloudFormation parameter. Also removed the unused `nested/bda-lending-project/` directory (dead code not referenced by any template) and the legacy `BDA_PROJECT_ARN` environment variable fallback from the sync resolver.
-
 - **SDK Client Interface** — Introduced `IDPClient` as the single public entry point for all IDP operations, with typed namespace access (`client.batch`, `client.stack`, `client.config`, `client.manifest`, `client.testing`).
 
 - **Typed Return Models** — SDK operations return Pydantic models instead of raw dictionaries, enabling IDE auto-complete, type checking, and consistent error handling.
@@ -35,13 +23,41 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
+
+
+## [0.5.2]
+
+### Added
+
+- **Multi-tenancy with Role-Based Access Control (RBAC)** — 4-role model (Admin, Author, Reviewer, Viewer) with server-side AppSync auth directives, server-side Reviewer document filtering, and UI adaptation. Admin has full access; Author can edit config and process documents but cannot manage users or delete config versions; Viewer has read-only access (editors, save buttons, and edit mode all disabled); Reviewer sees only HITL-pending documents. Non-admin roles can be scoped to specific use cases via `allowedConfigVersions`. See `docs/rbac.md`.
+
+- **Standard Class Catalog** — When adding a new document class in the Schema Builder, users can now choose between **Custom Class** (define from scratch) and **Standard Class** (import from a catalog of 35 pre-built document types). Standard classes are derived from AWS BDA standard blueprints and include common document types like Invoice, Receipt, W-2, Bank Statement, Payslip, US Driver License, US Passport, various tax forms (1040, 941, 940, W-9, 1098, 1099), insurance cards, birth/death/marriage certificates, and more. Each standard class comes with a complete extraction schema including attributes, descriptions, and nested types. Imported classes are fully editable. Run `make classes-from-bda` to refresh the catalog from the BDA API.
+
+- **Documentation Site** — Added a hosted documentation site built with [Astro Starlight](https://starlight.astro.build/), auto-deployed to GitHub Pages. Provides full-text search (Pagefind), sidebar navigation organized by topic, dark/light mode, and a professional landing page — all sourced directly from the existing `docs/` markdown files with zero content duplication. Browse at [aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws](https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/).
+
+- **Discovery accessible from CLI and SDK** — Discovery can now be run programmatically via the IDP SDK (`client.discovery.run()`) and CLI (`idp-cli discover`), enabling users with many document classes to automate schema generation without the Web UI. Supports both modes: without ground truth (exploratory) and with ground truth (optimized). ([#228](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/228))
+
+### Changed
+
+- **Sync to BDA no longer auto-activates the config version** — Previously, performing "Sync to BDA" would automatically set the current config version as active. Since each config version now has its own BDA project, auto-activation is unnecessary. Users can manually choose which version to activate via the Versions table. The "Sync to BDA" confirmation modal text has been updated accordingly.
+
+- **Removed `Bedrock Data Automation (BDA) Project ARN` CloudFormation parameter** — The deploy-time `Pattern1BDAProjectArn` parameter has been removed as it was redundant with the per-config-version BDA project management already available in the Web UI, CLI, and GraphQL API. BDA projects are now managed entirely post-deployment: enable `use_bda: true` in your configuration, then use "Sync to BDA" to create or link a BDA project, or "Sync from BDA" to import from any existing BDA project. This simplifies the deployment experience (one fewer parameter) and better aligns the CloudFormation interface with the system's actual architecture. Existing deployed stacks are unaffected — runtime BDA project ARN resolution reads from DynamoDB per-version tracking, not from the CloudFormation parameter. Also removed the unused `nested/bda-lending-project/` directory (dead code not referenced by any template) and the legacy `BDA_PROJECT_ARN` environment variable fallback from the sync resolver.
+
+### Fixed
+
 - **CLI: Remove deprecated `--pattern` references** — Updated `idp-cli.md` and CLI code to reflect the unified pattern architecture. Removed `--pattern` from all deploy and config command examples/options.
 
 - **Discovery no longer injects default config classes into target version** — Previously, running Discovery on a configuration version would merge all classes from the `default` version into the target version alongside the newly discovered class. Now Discovery only adds/updates the discovered class within the target version's own class list, keeping the version's classes exactly as the user curated them.
 
 - **Documentation: Comprehensive review and cleanup** — Fixed outdated references, broken links, and missing content across documentation files.
 
-- **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
+- **Inference Profile pricing ARN truncation in UI** — Fixed pricing display and cost breakdown truncation for Bedrock Application Inference Profile ARNs containing multiple `/` characters (e.g., `bedrock/arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/088k6ehrxpci`). The UI was splitting on all `/` separators instead of preserving the full ARN, causing the profile ID to be dropped in the Pricing page display, Test Studio cost breakdowns, and CSV exports. Backend pricing lookup was not affected. ([#237](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/237))
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.2.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.2.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.2.yaml`
 
 ## [0.5.1]
 

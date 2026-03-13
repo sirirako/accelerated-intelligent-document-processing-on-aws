@@ -732,8 +732,7 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
   const [openViewerSectionIndex, setOpenViewerSectionIndex] = useState<number | null>(null);
   const { mergedConfig: configuration } = useConfiguration();
   const { settings: settings2 } = useSettingsContext();
-  const { isReviewer, isAdmin } = useUserRole();
-  const isReviewerOnly = isReviewer && !isAdmin;
+  const { isReviewerOnly, canWrite, canReview } = useUserRole();
 
   // Check if current pattern is Pattern-1 (for data-only edit mode)
   const isPattern1 = () => {
@@ -747,7 +746,7 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
   const isHitlCompleted = hitlStatusLower === 'completed' || hitlStatusLower === 'reviewcompleted';
   const hasPendingHITL = documentItem?.hitlTriggered && !isHitlCompleted && !isHitlSkipped;
   // Show skip button only if HITL pending and not already completed/skipped
-  const showSkipAllButton = isAdmin && hasPendingHITL;
+  const showSkipAllButton = canReview && hasPendingHITL;
 
   // Log for debugging
   logger.debug('HITL Status Check:', {
@@ -769,13 +768,13 @@ const SectionsPanel = ({ sections, pages = [], documentItem, mergedConfig, onDoc
   const docStatus = documentItem?.objectStatus?.toLowerCase() || '';
   const isDocumentProcessing = processingStatuses.includes(docStatus);
 
-  // Disable edit mode for REVIEWERS only if:
-  // - HITL is triggered AND reviewer hasn't claimed review, OR
-  // - Document is processing, OR
-  // - HITL already completed/skipped
-  // Admins can always edit
+  // Disable edit mode if:
+  // - User has no write or review permissions (Viewer role), OR
+  // - REVIEWER only: HITL triggered but not claimed, document processing, or HITL completed/skipped
+  // Admins and Authors can always edit
   const isEditModeDisabled =
-    isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped);
+    (!canWrite && !canReview) ||
+    (isReviewerOnly && ((hitlTriggered && !hasReviewOwner) || isDocumentProcessing || isHitlCompleted || isHitlSkipped));
 
   logger.debug('Edit Mode Check:', { isReviewerOnly, isEditModeDisabled, isHitlCompleted, isHitlSkipped });
 
