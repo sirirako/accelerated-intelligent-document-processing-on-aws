@@ -14,8 +14,8 @@ from .base import IDPTool
 logger = logging.getLogger(__name__)
 
 # Version marker
-TOOL_VERSION = "SDK-v2-enhanced"
-TOOL_UPDATED = "2025-01-24T16:30:00Z"
+TOOL_VERSION = "SDK-v3"
+TOOL_UPDATED = "2026-03-13T00:00:00Z"
 
 
 class BatchRunTool(IDPTool):
@@ -46,18 +46,18 @@ class BatchRunTool(IDPTool):
         logger.info(f"=== Batch Run Tool ===")
         logger.info(f"Version: {TOOL_VERSION}")
         logger.info(f"Parameters: location={location}, content={'<base64>' if content else None}, name={name}, prefix={prefix}")
-        
+
         # Validate parameters
         validation = self._validate_parameters(location, content, name)
         if not validation['valid']:
             return validation['error_response']
-        
+
         # Route to appropriate handler
         if content:
             return self._process_base64_content(content, name, prefix)
         else:
             return self._process_s3_location(location, prefix)
-    
+
     def _validate_parameters(self, location: Optional[str], content: Optional[str], name: Optional[str]) -> Dict[str, Any]:
         """Validate parameters and return validation result"""
         # Check if at least one source provided
@@ -70,7 +70,7 @@ class BatchRunTool(IDPTool):
                     'message': "Please provide either: (1) S3 location (e.g., 's3://bucket/documents/') or (2) base64-encoded document content"
                 }
             }
-        
+
         # Check if name provided when content provided
         if content and not name:
             return {
@@ -81,7 +81,7 @@ class BatchRunTool(IDPTool):
                     'message': "When providing document content, please specify the filename with extension (e.g., 'invoice.pdf')"
                 }
             }
-        
+
         # Validate filename to prevent path traversal
         if name and ('..' in name or name.startswith('/')):
             return {
@@ -92,33 +92,32 @@ class BatchRunTool(IDPTool):
                     'message': "Filename cannot contain '..' or start with '/'"
                 }
             }
-        
+
         return {'valid': True}
-    
+
     def _process_s3_location(self, location: str, prefix: Optional[str]) -> Dict[str, Any]:
-        """Process S3 location using existing BatchProcessor"""
+        """Process S3 location using IDPClient public API"""
         try:
-            from idp_sdk._core.batch_processor import BatchProcessor
-            
-            processor = BatchProcessor(stack_name=self.stack_name)
+            from idp_sdk.client import IDPClient
+
+            client = IDPClient(stack_name=self.stack_name)
             batch_prefix = prefix or 'mcp-batch'
-            result = processor.process_batch_from_s3_uri(
+            result = client.batch.process(
                 s3_uri=location,
                 file_pattern="*.pdf",
                 recursive=True,
-                output_prefix=batch_prefix
+                batch_prefix=batch_prefix,
             )
-            
+
             return {
                 'success': True,
-                'batch_id': result['batch_id'],
-                'documents_queued': result.get('queued', 0),
+                'batch_id': result.batch_id,
+                'documents_queued': result.queued,
                 'summary': {
-                    'queued': result.get('queued', 0),
-                    'skipped': result.get('skipped', 0),
-                    'failed': result.get('failed', 0)
+                    'queued': result.queued,
+                    'failed': result.failed,
                 },
-                'message': f"Successfully queued {result.get('queued', 0)} documents for processing"
+                'message': f"Successfully queued {result.queued} documents for processing"
             }
         except Exception as e:
             logger.error(f"S3 processing failed: {e}", exc_info=True)
@@ -127,14 +126,14 @@ class BatchRunTool(IDPTool):
                 'error': 'processing_failed',
                 'message': f'Failed to queue documents for processing: {str(e)}'
             }
-    
+
     def _process_base64_content(self, content: str, name: str, prefix: Optional[str]) -> Dict[str, Any]:
-        """Process base64 content by uploading to MCP temp S3 first"""
+        """Process base64 content by uploading to MCP temp S3 first, then processing via IDPClient"""
         try:
-            from idp_sdk._core.batch_processor import BatchProcessor
-            
+            from idp_sdk.client import IDPClient
+
             logger.info(f"Base64 processing for: {name}")
-            
+
             # Step 1: Decode base64
             try:
                 document_binary = base64.b64decode(content)
@@ -146,12 +145,12 @@ class BatchRunTool(IDPTool):
                     'error': 'invalid_base64',
                     'message': 'The provided content is not valid base64'
                 }
-            
+
             # Step 2: Generate batch ID and temp S3 key
             batch_id = self._generate_batch_id('mcp-content')
             temp_s3_key = f"temp/{batch_id}/{name}"
             logger.info(f"Generated batch_id: {batch_id}, temp_key: {temp_s3_key}")
-            
+
             # Step 3: Get MCP content bucket
             mcp_bucket = os.environ.get('MCP_SERVER_BUCKET')
             if not mcp_bucket:
@@ -161,9 +160,9 @@ class BatchRunTool(IDPTool):
                     'error': 'missing_bucket_config',
                     'message': 'MCP server bucket not configured'
                 }
-            
+
             logger.info(f"Uploading to MCP bucket: {mcp_bucket}")
-            
+
             # Step 4: Upload to MCP temp S3
             s3_client = boto3.client('s3')
             s3_client.put_object(
@@ -172,27 +171,27 @@ class BatchRunTool(IDPTool):
                 Body=document_binary
             )
             logger.info(f"Uploaded to S3: s3://{mcp_bucket}/{temp_s3_key}")
-            
-            # Step 5: Use existing S3 processing logic with MCP bucket URI
-            processor = BatchProcessor(stack_name=self.stack_name)
+
+            # Step 5: Process via IDPClient public API using temp S3 URI
+            client = IDPClient(stack_name=self.stack_name)
             temp_s3_uri = f"s3://{mcp_bucket}/temp/{batch_id}/"
-            result = processor.process_batch_from_s3_uri(
+            result = client.batch.process(
                 s3_uri=temp_s3_uri,
                 file_pattern="*.pdf",
-                output_prefix=batch_id,
-                batch_id=batch_id
+                batch_prefix=batch_id,
+                batch_id=batch_id,
             )
-            logger.info(f"Batch processing completed: {result}")
-            
+            logger.info(f"Batch processing completed: batch_id={result.batch_id}, queued={result.queued}")
+
             # Step 6: Return success
             return {
                 'success': True,
-                'batch_id': result['batch_id'],
+                'batch_id': result.batch_id,
                 'documents_queued': 1,
                 'document_name': os.path.basename(name),
                 'message': 'Document queued for processing'
             }
-        
+
         except Exception as e:
             logger.error(f"Base64 processing failed: {e}", exc_info=True)
             return {
@@ -200,7 +199,7 @@ class BatchRunTool(IDPTool):
                 'error': 'processing_failed',
                 'message': f'Failed to queue document for processing: {str(e)}'
             }
-    
+
     def _generate_batch_id(self, prefix: Optional[str]) -> str:
         """Generate batch ID with timestamp only"""
         prefix = prefix or 'mcp-batch'
