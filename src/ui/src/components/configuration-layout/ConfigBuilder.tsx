@@ -415,7 +415,7 @@ interface ConfigBuilderProps {
   mergedConfig?: Record<string, unknown> | null;
   isCustomized?: ((key: string) => boolean) | null;
   onResetToDefault?: ((key: string) => void) | null;
-  onChange: (values: Record<string, unknown>) => void;
+  onChange?: (values: Record<string, unknown>) => void;
   extractionSchema?: Record<string, unknown> | unknown[] | null;
   currentVersionName?: string | null;
   onSchemaChange?: ((schema: unknown, isDirty: boolean) => void) | null;
@@ -609,7 +609,7 @@ const ConfigBuilder = ({
       // Only delete the property if it exists
       if (current && typeof current === 'object' && lastSegment in current) {
         delete current[lastSegment];
-        onChange(newValues);
+        onChange?.(newValues);
       }
       return;
     }
@@ -637,7 +637,7 @@ const ConfigBuilder = ({
 
       const [lastSegment] = segments.slice(-1);
       current[lastSegment] = value; // Preserve the empty array
-      onChange(newValues);
+      onChange?.(newValues);
       return;
     }
 
@@ -660,7 +660,7 @@ const ConfigBuilder = ({
 
     const [lastSegment] = segments.slice(-1);
     current[lastSegment] = value;
-    onChange(newValues);
+    onChange?.(newValues);
   };
 
   // Debug: Check if isCustomized function is properly passed

@@ -24,6 +24,7 @@ interface ConfigurationVersionsTableProps {
   onActivateVersion?: (versionName: string) => void;
   onDeleteVersions?: (versionNames: string[]) => void;
   onImportAsNewVersion?: () => void;
+  isAdmin?: boolean;
 }
 
 const ConfigurationVersionsTable = ({
@@ -37,6 +38,7 @@ const ConfigurationVersionsTable = ({
   onActivateVersion,
   onDeleteVersions,
   onImportAsNewVersion,
+  isAdmin = false,
 }: ConfigurationVersionsTableProps): React.JSX.Element => {
   // Log the versions data to console for debugging
   console.log('ConfigurationVersionsTable - versions data:', versions);
@@ -197,9 +199,11 @@ const ConfigurationVersionsTable = ({
               >
                 Activate
               </Button>
-              <Button variant="normal" onClick={() => onImportAsNewVersion?.()} iconName="upload">
-                Import
-              </Button>
+              {isAdmin && (
+                <Button variant="normal" onClick={() => onImportAsNewVersion?.()} iconName="upload">
+                  Import
+                </Button>
+              )}
               <Button
                 variant="primary"
                 onClick={() => {
