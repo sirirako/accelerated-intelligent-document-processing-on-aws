@@ -259,10 +259,10 @@ class ConfigOperation:
     def upload(
         self,
         config_file: str,
+        config_version: str,
         stack_name: Optional[str] = None,
         validate: bool = True,
         pattern: Optional[str] = None,
-        config_version: Optional[str] = None,
         description: Optional[str] = None,
         **kwargs,
     ) -> ConfigUploadResult:
@@ -270,10 +270,12 @@ class ConfigOperation:
 
         Args:
             config_file: Path to configuration file
+            config_version: Configuration version to upload to (e.g., "default", "v1", "v2").
+                Use "default" to update the base default configuration.
+                If the version doesn't exist, it will be created.
             stack_name: Optional stack name override
             validate: Validate before uploading
             pattern: Pattern for validation
-            config_version: Configuration version to upload to (default: active version)
             description: Description for the configuration version
             **kwargs: Additional parameters
 

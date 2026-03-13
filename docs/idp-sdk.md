@@ -882,14 +882,39 @@ else:
 
 Upload configuration to a deployed stack.
 
+**Parameters:**
+- `config_file` (str, required): Path to the YAML or JSON configuration file
+- `config_version` (str, required): Version to upload to (e.g., `"default"`, `"v1"`, `"production"`). If the version doesn't exist, it will be created automatically.
+- `stack_name` (str, optional): Stack name override
+- `validate` (bool, optional): Validate configuration before uploading (default: `True`)
+- `pattern` (str, optional): Pattern to validate against (default: `"pattern-2"`)
+- `description` (str, optional): Description for the configuration version
+
+**Returns:** `ConfigUploadResult` with `success`, `version`, `version_created`, and `error`
+
 ```python
+# Upload to the default version
 result = client.config.upload(
     config_file="./my-config.yaml",
+    config_version="default",
     validate=True
 )
 
 if result.success:
     print("Configuration uploaded")
+
+# Create a new named version
+result = client.config.upload(
+    config_file="./my-config.yaml",
+    config_version="v2",
+    description="Updated extraction rules"
+)
+
+if result.success:
+    if result.version_created:
+        print(f"New version created: {result.version}")
+    else:
+        print(f"Version updated: {result.version}")
 ```
 
 ### config.download()

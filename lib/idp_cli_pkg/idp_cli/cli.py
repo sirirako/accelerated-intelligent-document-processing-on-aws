@@ -1211,6 +1211,8 @@ def _process_impl(
                     recursive=recursive,
                     batch_prefix=batch_prefix,
                     batch_id=batch_id,
+                    number_of_files=number_of_files,
+                    config_version=config_version,
                 )
             else:
                 raise ValueError("No input source specified")
@@ -3249,6 +3251,7 @@ def load_test(
             duration=duration,
             schedule_file=schedule,
             dest_prefix=dest_prefix,
+            config_version=config_version,
         )
 
         if not result.success:
@@ -3875,9 +3878,11 @@ def config_download(
     required=True,
     help="Configuration version to activate",
 )
+@click.option("--region", help="AWS region (optional)")
 def config_activate(
     stack_name: str,
     config_version: str,
+    region: str = None,
 ):
     """
     Activate a configuration version in a deployed IDP stack
@@ -3904,7 +3909,7 @@ def config_activate(
         console.print(f"Version: {config_version}")
         console.print()
 
-        client = IDPClient(stack_name=stack_name)
+        client = IDPClient(stack_name=stack_name, region=region)
         result = client.config.activate(config_version=config_version)
 
         if not result.success:
@@ -3946,7 +3951,8 @@ def config_activate(
     required=True,
     help="CloudFormation stack name",
 )
-def config_list(stack_name: str):
+@click.option("--region", help="AWS region (optional)")
+def config_list(stack_name: str, region: str = None):
     """
     List all configuration versions in a deployed IDP stack
 
@@ -3964,7 +3970,7 @@ def config_list(stack_name: str):
             f"[bold blue]Listing configuration versions in stack: {stack_name}[/bold blue]"
         )
 
-        client = IDPClient(stack_name=stack_name)
+        client = IDPClient(stack_name=stack_name, region=region)
         result = client.config.list()
 
         if not result.versions:
@@ -4026,10 +4032,12 @@ def config_list(stack_name: str):
     is_flag=True,
     help="Skip confirmation prompt",
 )
+@click.option("--region", help="AWS region (optional)")
 def config_delete(
     stack_name: str,
     config_version: str,
     force: bool,
+    region: str = None,
 ):
     """
     Delete a configuration version from a deployed IDP stack
@@ -4060,7 +4068,7 @@ def config_delete(
                 console.print("[yellow]Deletion cancelled[/yellow]")
                 return
 
-        client = IDPClient(stack_name=stack_name)
+        client = IDPClient(stack_name=stack_name, region=region)
         result = client.config.delete(config_version=config_version)
 
         if not result.success:
