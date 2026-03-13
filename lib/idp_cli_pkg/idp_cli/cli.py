@@ -798,14 +798,32 @@ def delete(
         with console.status("[bold red]Deleting stack..."):
             result = client.stack.delete(
                 empty_buckets=empty_buckets,
+                force_delete_all=force_delete_all,
                 wait=wait,
             )
 
-        # Show CloudFormation deletion results
+        # Show CloudFormation deletion results.
+        # success=True  → deletion completed (waited to DELETE_COMPLETE)
+        # success=False + status=INITIATED → deletion started but not waited on
+        # success=False + other status    → genuine failure
+        initiated_only = not result.success and result.status == "INITIATED"
+
         if result.success:
             console.print("\n[green]✓ Stack deleted successfully![/green]")
             console.print(f"Stack: {stack_name}")
             console.print(f"Status: {result.status}")
+        elif initiated_only:
+            console.print("\n[green]✓ Stack deletion initiated![/green]")
+            console.print(f"Stack: {stack_name}")
+            console.print(f"Region: {region or 'default'}")
+            console.print()
+            console.print("[bold]Monitor progress in the AWS Console:[/bold]")
+            console.print(f"  CloudFormation → Stacks → {stack_name}")
+            console.print()
+            console.print("[bold]Or wait for it with:[/bold]")
+            console.print(
+                f"  [cyan]idp-cli delete --stack-name {stack_name} --force --wait[/cyan]"
+            )
         else:
             console.print("\n[red]✗ Stack deletion failed![/red]")
             console.print(f"Status: {result.status}")
@@ -825,8 +843,8 @@ def delete(
                     "[yellow]Stack deletion failed, but continuing with force cleanup...[/yellow]"
                 )
 
-        # Post-deletion cleanup if --force-delete-all
-        cleanup_result = None
+        # Post-deletion cleanup results from --force-delete-all.
+        # The SDK already ran cleanup_retained_resources(); we just display the results.
         if force_delete_all:
             console.print()
             console.print("[bold blue]━" * 60 + "[/bold blue]")
@@ -890,18 +908,15 @@ def delete(
                 console.print(
                     "[yellow]Some resources may remain - check AWS Console[/yellow]"
                 )
-        else:
-            # Standard deletion without force-delete-all
-            if result.success:
-                console.print()
-                console.print(
-                    "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
-                )
-                console.print("Delete it manually if no longer needed:")
-                console.print(
-                    "  [cyan]aws s3 rb s3://<logging-bucket-name> --force[/cyan]"
-                )
-                console.print()
+        elif result.success:
+            # Standard deletion without force-delete-all — stack was fully deleted
+            console.print()
+            console.print(
+                "[bold]Note:[/bold] LoggingBucket (if exists) is retained by design."
+            )
+            console.print("Delete it manually if no longer needed:")
+            console.print("  [cyan]aws s3 rb s3://<logging-bucket-name> --force[/cyan]")
+            console.print()
 
     except Exception as e:
         logger.error(f"Error deleting stack: {e}", exc_info=True)

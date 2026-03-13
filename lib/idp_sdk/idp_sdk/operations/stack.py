@@ -175,7 +175,9 @@ class StackOperation:
         Args:
             stack_name: CloudFormation stack name (uses default if not provided)
             empty_buckets: Empty S3 buckets before deletion
-            force_delete_all: Force delete ALL remaining resources
+            force_delete_all: Force delete ALL remaining resources after CloudFormation
+                deletion completes. When True, wait is automatically set to True so
+                that retained resources can be identified after deletion.
             wait: Wait for deletion to complete
             **kwargs: Additional parameters
 
@@ -187,11 +189,15 @@ class StackOperation:
         name = self._client._require_stack(stack_name)
         deployer = StackDeployer(region=self._client._region)
 
+        # force_delete_all requires waiting for CloudFormation deletion to finish
+        # before we can identify and clean up retained resources.
+        effective_wait = wait or force_delete_all
+
         try:
             result = deployer.delete_stack(
                 stack_name=name,
                 empty_buckets=empty_buckets,
-                wait=wait,
+                wait=effective_wait,
             )
 
             cleanup_result = None
@@ -199,9 +205,15 @@ class StackOperation:
                 stack_identifier = result.get("stack_id", name)
                 cleanup_result = deployer.cleanup_retained_resources(stack_identifier)
 
+            # When deletion was only initiated (no wait), success is not set in the
+            # underlying result dict.  Treat INITIATED as a successful initiation so
+            # callers can distinguish "failed to start" from "started but not waited".
+            status = result.get("status", "UNKNOWN")
+            success = result.get("success", status == "INITIATED")
+
             return StackDeletionResult(
-                success=result.get("success", False),
-                status=result.get("status", "UNKNOWN"),
+                success=success,
+                status=status,
                 stack_name=name,
                 stack_id=result.get("stack_id"),
                 error=result.get("error"),
