@@ -144,6 +144,7 @@ class TestConfigOperationsMocked:
         result = client.config.activate("nonexistent")
 
         assert result.success is False
+        assert result.error is not None
         assert "does not exist" in result.error
 
     @patch("boto3.client")
@@ -205,4 +206,5 @@ class TestConfigOperationsMocked:
         result = client.config.delete("active-version")
 
         assert result.success is False
+        assert result.error is not None
         assert "Cannot delete active version" in result.error
