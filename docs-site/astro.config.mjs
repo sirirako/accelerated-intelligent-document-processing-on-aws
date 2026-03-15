@@ -144,7 +144,7 @@ export default defineConfig({
               slug: "aws-services-and-roles",
             },
             {
-              label: "Role-Based Access Control",
+              label: "Role-Based Access Control (RBAC)",
               slug: "rbac",
             },
             { label: "GovCloud Deployment", slug: "govcloud-deployment" },
