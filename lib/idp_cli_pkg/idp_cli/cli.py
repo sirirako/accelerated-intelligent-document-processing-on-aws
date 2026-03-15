@@ -819,10 +819,28 @@ def delete(
             )
 
         # Show CloudFormation deletion results
-        if result.get("success"):
-            console.print("\n[green]✓ Stack deleted successfully![/green]")
-            console.print(f"Stack: {stack_name}")
-            console.print(f"Status: {result.get('status')}")
+        # Success if operation completed successfully OR was successfully initiated
+        is_success = result.get("success") or result.get("status") == "INITIATED"
+
+        if is_success:
+            if result.get("success"):
+                # Completed (with --wait)
+                console.print("\n[green]✓ Stack deleted successfully![/green]")
+                console.print(f"Stack: {stack_name}")
+                console.print(f"Status: {result.get('status')}")
+            else:
+                # Initiated (without --wait)
+                console.print(
+                    "\n[green]✓ Stack deletion initiated successfully![/green]"
+                )
+                console.print()
+                console.print("[bold]Monitor progress:[/bold]")
+                console.print(f"  AWS Console: CloudFormation → Stacks → {stack_name}")
+                console.print()
+                console.print("[bold]Or use --wait flag to monitor in CLI:[/bold]")
+                console.print(
+                    f"  [cyan]idp-cli delete --stack-name {stack_name} --wait[/cyan]"
+                )
         else:
             console.print("\n[red]✗ Stack deletion failed![/red]")
             console.print(f"Status: {result.get('status')}")
