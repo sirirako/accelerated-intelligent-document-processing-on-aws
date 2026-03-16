@@ -39,6 +39,7 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [list-batches](#list-batches)
   - [stop-workflows](#stop-workflows)
   - [load-test](#load-test)
+  - [discover](#discover)
   - [remove-deleted-stack-resources](#remove-deleted-stack-resources)
   - [config-create](#config-create)
   - [config-validate](#config-validate)
@@ -269,7 +270,7 @@ idp-cli delete [OPTIONS]
 - `--force`: Skip confirmation prompt
 - `--empty-buckets`: Empty S3 buckets before deletion (required if buckets contain data)
 - `--force-delete-all`: Force delete ALL remaining resources after CloudFormation deletion (S3 buckets, CloudWatch logs, DynamoDB tables)
-- `--wait / --no-wait`: Wait for deletion to complete (default: wait)
+- `--wait`: Wait for deletion to complete (default: no-wait)
 - `--region`: AWS region (optional)
 
 **S3 Bucket Behavior:**
@@ -1085,7 +1086,20 @@ Validate a manifest file without processing.
 
 **Usage:**
 ```bash
+idp-cli validate-manifest [OPTIONS]
+```
+
+**Options:**
+- `--manifest` (required): Path to manifest file to validate (CSV or JSON)
+
+**Examples:**
+
+```bash
+# Validate a CSV manifest
 idp-cli validate-manifest --manifest documents.csv
+
+# Validate a JSON manifest
+idp-cli validate-manifest --manifest documents.json
 ```
 
 ---
@@ -1096,7 +1110,25 @@ List recent batch processing jobs.
 
 **Usage:**
 ```bash
-idp-cli list-batches --stack-name my-stack --limit 10
+idp-cli list-batches [OPTIONS]
+```
+
+**Options:**
+- `--stack-name` (required): CloudFormation stack name
+- `--limit`: Maximum number of batches to list (default: 10)
+- `--region`: AWS region (optional)
+
+**Examples:**
+
+```bash
+# List last 10 batches (default)
+idp-cli list-batches --stack-name my-stack
+
+# List last 5 batches
+idp-cli list-batches --stack-name my-stack --limit 5
+
+# List with specific region
+idp-cli list-batches --stack-name my-stack --limit 20 --region us-west-2
 ```
 
 ---
@@ -1799,17 +1831,21 @@ idp-cli config-validate [OPTIONS]
 ```
 
 **Options:**
-- `--custom-config` (required): Path to configuration file to validate
+- `--config-file`, `-f` (required): Path to configuration file to validate
 - `--show-merged`: Show the full merged configuration
+- `--strict`: Fail validation if config contains unknown or deprecated fields
 
 **Examples:**
 
 ```bash
 # Validate a config file
-idp-cli config-validate --custom-config ./my-config.yaml
+idp-cli config-validate --config-file ./my-config.yaml
 
 # Show full merged config
-idp-cli config-validate --custom-config ./config.yaml --show-merged
+idp-cli config-validate --config-file ./config.yaml --show-merged
+
+# Strict mode (fails if config has unknown or deprecated fields — useful for CI/CD)
+idp-cli config-validate --config-file ./config.yaml --strict
 ```
 
 ---
@@ -1861,7 +1897,7 @@ idp-cli config-upload [OPTIONS]
 - `--stack-name` (required): CloudFormation stack name
 - `--config-file`, `-f` (required): Path to configuration file (YAML or JSON)
 - `--validate/--no-validate`: Validate config before uploading (default: validate)
-- `--config-version`: Configuration version to update (e.g., v1, v2). If version doesn't exist, it will be created
+- `--config-version` (required): Configuration version to update (e.g., `default`, `v1`, `v2`). If the version doesn't exist, it will be created automatically.
 - `--version-description`: Description for the configuration version (used when creating new versions)
 - `--region`: AWS region (optional)
 
@@ -1869,7 +1905,7 @@ idp-cli config-upload [OPTIONS]
 
 ```bash
 # Upload config to active version
-idp-cli config-upload --stack-name my-stack --config-file ./config.yaml
+idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version default
 
 # Update existing version
 idp-cli config-upload --stack-name my-stack --config-file ./config.yaml --config-version Production
@@ -1988,7 +2024,6 @@ idp-cli config-delete --stack-name my-stack --config-version old-version --force
 6. Configuration is immediately available for document processing
 
 **Configuration Versioning:**
-- **No version specified**: Updates the currently active version
 - **Existing version**: Saves the uploaded configuration as the full version snapshot
 - **New version**: Creates a new independent version with the uploaded configuration
 - **Version descriptions**: Can be added to new versions for better organization

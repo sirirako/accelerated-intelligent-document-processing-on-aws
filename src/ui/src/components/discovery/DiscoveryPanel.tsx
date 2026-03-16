@@ -5,7 +5,7 @@
 /* eslint-disable react/no-array-index-key */
 
 // src/components/discovery/DiscoveryPanel.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Container,
@@ -20,14 +20,21 @@ import {
   TextContent,
   ColumnLayout,
   Select,
+  ExpandableSection,
+  Badge,
+  TextFilter,
+  Pagination,
+  CollectionPreferences,
 } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 import { generateClient } from 'aws-amplify/api';
 
-import { uploadDiscoveryDocument, listDiscoveryJobs, onDiscoveryJobStatusChange } from '../../graphql/generated';
+import { uploadDiscoveryDocument, listDiscoveryJobs, onDiscoveryJobStatusChange, deleteDiscoveryJob } from '../../graphql/generated';
 import useSettingsContext from '../../contexts/settings';
 import useConfigurationVersions from '../../hooks/use-configuration-versions';
 import { getJsonValidationError } from '../common/utilities';
+import { formatConfigVersionLink } from '../test-studio/utils/configVersionUtils';
+import type { ConfigVersion } from '../test-studio/utils/configVersionUtils';
 
 const client = generateClient();
 
@@ -47,7 +54,33 @@ interface DiscoveryJob {
   status: string;
   createdAt?: string;
   updatedAt?: string;
+  errorMessage?: string;
+  discoveredClassName?: string;
+  statusMessage?: string;
 }
+
+/**
+ * Parse an ISO timestamp, normalizing timezone.
+ * Backend timestamps may or may not have a Z suffix — treat all as UTC.
+ */
+const parseUtcTimestamp = (iso: string): number => {
+  // If no timezone info at the end of the string, append Z to treat as UTC (Lambda runs in UTC)
+  // Check for: trailing Z, or +HH:MM / -HH:MM offset at end
+  const hasTimezone = /[Zz]$|[+-]\d{2}:\d{2}$|[+-]\d{4}$|[+-]\d{2}$/.test(iso);
+  const normalized = hasTimezone ? iso : `${iso}Z`;
+  return new Date(normalized).getTime();
+};
+
+/** Format elapsed time since a given ISO timestamp. Returns e.g. "0:45" or "2:15". */
+const formatElapsed = (startIso: string | undefined): string => {
+  if (!startIso) return '—';
+  const start = parseUtcTimestamp(startIso);
+  if (Number.isNaN(start)) return '—';
+  const elapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 const DiscoveryPanel = (): React.JSX.Element => {
   const { settings } = useSettingsContext();
@@ -62,7 +95,25 @@ const DiscoveryPanel = (): React.JSX.Element => {
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
   const [isValidatingJson, setIsValidatingJson] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<SelectProps.Option | null>(null);
-  // Remove unused activeSubscriptions state since we manage subscriptions locally in useEffect
+  const [, setTick] = useState(0); // Force re-render for elapsed time
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [filterText, setFilterText] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+  const TIME_RANGE_OPTIONS: SelectProps.Option[] = [
+    { value: '1', label: 'Last hour' },
+    { value: '24', label: 'Last 24 hours' },
+    { value: '48', label: 'Last 2 days' },
+    { value: '168', label: 'Last 7 days' },
+    { value: 'all', label: 'All time' },
+  ];
+  const [selectedTimeRange, setSelectedTimeRange] = useState<SelectProps.Option>(TIME_RANGE_OPTIONS[2]); // Default: 2 days
+  const [selectedJobs, setSelectedJobs] = useState<DiscoveryJob[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [tablePreferences, setTablePreferences] = useState({
+    pageSize: PAGE_SIZE,
+    visibleContent: ['documentKey', 'version', 'status', 'createdAt', 'elapsed', 'result'],
+  });
 
   // Set default to active version (or first scoped version) when versions load
   useEffect(() => {
@@ -94,14 +145,10 @@ const DiscoveryPanel = (): React.JSX.Element => {
     setIsLoadingJobs(true);
     try {
       const response = await client.graphql({ query: listDiscoveryJobs });
-      // Access the DiscoveryJobs array from the response
-      console.log('loadDiscoveryJobs done');
-      console.log(response);
       type ListJobsResp = Record<string, Record<string, Record<string, DiscoveryJob[]>>>;
       const jobs = (response as unknown as ListJobsResp).data.listDiscoveryJobs?.DiscoveryJobs || [];
       setDiscoveryJobs(jobs);
     } catch (err) {
-      console.error(err);
       console.error('Error loading discovery jobs:', err);
       setError(`Failed to load discovery jobs: ${(err as Error).message}`);
     } finally {
@@ -114,7 +161,6 @@ const DiscoveryPanel = (): React.JSX.Element => {
     const originalError = console.error;
     const originalWindowError = window.onerror;
 
-    // Suppress console errors
     console.error = (...args) => {
       if (args[0]?.includes?.('ResizeObserver loop completed with undelivered notifications')) {
         return;
@@ -122,10 +168,9 @@ const DiscoveryPanel = (): React.JSX.Element => {
       originalError.apply(console, args);
     };
 
-    // Suppress window errors
     window.onerror = (message, source, lineno, colno, errorObj) => {
       if (typeof message === 'string' && message?.includes?.('ResizeObserver loop completed with undelivered notifications')) {
-        return true; // Prevent default error handling
+        return true;
       }
       if (originalWindowError) {
         return originalWindowError(message, source, lineno, colno, errorObj);
@@ -133,7 +178,6 @@ const DiscoveryPanel = (): React.JSX.Element => {
       return false;
     };
 
-    // Also handle unhandled promise rejections
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       if (event.reason?.message?.includes?.('ResizeObserver loop completed with undelivered notifications')) {
         event.preventDefault();
@@ -154,11 +198,24 @@ const DiscoveryPanel = (): React.JSX.Element => {
     loadDiscoveryJobs();
   }, []);
 
-  // Set up a subscription for new discovery jobs (if such a subscription exists)
-  // This would be similar to how documents subscribe to onCreateDocument
-  // For now, we'll rely on the upload process to refresh the list
+  // Timer for elapsed time display — tick every 5s when there are active jobs
+  useEffect(() => {
+    const hasActiveJobs = discoveryJobs.some((j) => j.status === 'PENDING' || j.status === 'IN_PROGRESS');
+    if (hasActiveJobs && !tickRef.current) {
+      tickRef.current = setInterval(() => setTick((t) => t + 1), 5000);
+    } else if (!hasActiveJobs && tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    return () => {
+      if (tickRef.current) {
+        clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
+    };
+  }, [discoveryJobs]);
 
-  // Update a specific job in the list
+  // Update a specific job in the list — FIX: spread ALL fields from the update, not just status
   const updateDiscoveryJob = useCallback((updatedJob: DiscoveryJob) => {
     console.log('Updating discovery job status:', updatedJob);
     setDiscoveryJobs((currentJobs) => {
@@ -166,7 +223,14 @@ const DiscoveryPanel = (): React.JSX.Element => {
       if (jobIndex >= 0) {
         const newJobs = [...currentJobs];
         const oldJob = newJobs[jobIndex];
-        newJobs[jobIndex] = { ...oldJob, status: updatedJob.status };
+        // Merge ALL updated fields from subscription (not just status)
+        // Set updatedAt to now when terminal status arrives via subscription
+        // (subscription doesn't include updatedAt, so we capture it client-side)
+        const merged = { ...oldJob, ...updatedJob };
+        if (updatedJob.status === 'COMPLETED' || updatedJob.status === 'FAILED') {
+          merged.updatedAt = new Date().toISOString();
+        }
+        newJobs[jobIndex] = merged;
         console.log(`Updated job ${updatedJob.jobId}: ${oldJob.status} -> ${updatedJob.status}`);
         return newJobs;
       }
@@ -175,21 +239,12 @@ const DiscoveryPanel = (): React.JSX.Element => {
     });
   }, []);
 
-  // Set up global subscription for all discovery job updates (similar to document updates)
+  // Set up subscriptions for active discovery jobs
   useEffect(() => {
-    console.log('Setting up global discovery job subscription');
-
-    // Note: This is a simplified approach. In a production system, you might want to
-    // subscribe to all jobs or use a different pattern, but for now we'll subscribe
-    // to individual jobs as they're created.
-
-    // We'll set up subscriptions for active jobs, but with better lifecycle management
     const subscriptions = new Map();
 
     discoveryJobs.forEach((job) => {
       if (job.status === 'PENDING' || job.status === 'IN_PROGRESS') {
-        console.log(`Setting up subscription for discovery job: ${job.jobId}`);
-
         type GqlSubscription = {
           subscribe: (callbacks: Record<string, unknown>) => { unsubscribe: () => void };
         };
@@ -200,10 +255,9 @@ const DiscoveryPanel = (): React.JSX.Element => {
         const subscription = observable.subscribe({
             next: (data: { data?: { onDiscoveryJobStatusChange?: DiscoveryJob } }) => {
               console.log('Discovery job status changed:', data);
-              const updatedJob = data?.data?.onDiscoveryJobStatusChange;
-              if (updatedJob) {
-                // Directly update the specific job instead of refreshing entire list
-                updateDiscoveryJob(updatedJob);
+              const changedJob = data?.data?.onDiscoveryJobStatusChange;
+              if (changedJob) {
+                updateDiscoveryJob(changedJob);
                 return;
               }
               console.warn('Received subscription update but no job data, falling back to refresh');
@@ -218,11 +272,7 @@ const DiscoveryPanel = (): React.JSX.Element => {
       }
     });
 
-    // Subscriptions are managed locally in this effect
-
-    // Cleanup function
     return () => {
-      console.log('Cleaning up discovery job subscriptions');
       subscriptions.forEach((subscription) => {
         subscription.unsubscribe();
       });
@@ -260,17 +310,14 @@ const DiscoveryPanel = (): React.JSX.Element => {
       return;
     }
 
-    // Start validation
     setIsValidatingJson(true);
     setError(null);
 
-    // Validate JSON content
     const reader = new FileReader();
     reader.onload = (event: ProgressEvent<FileReader>) => {
       try {
         const content = event.target?.result as string;
 
-        // Check if file is empty
         if (!content || content.trim().length === 0) {
           setError('Ground truth file is empty. Please select a valid JSON file.');
           setGroundTruthFile(null);
@@ -279,9 +326,7 @@ const DiscoveryPanel = (): React.JSX.Element => {
           return;
         }
 
-        JSON.parse(content); // This will throw if invalid JSON
-
-        // JSON is valid, set the file
+        JSON.parse(content);
         setGroundTruthFile(file);
         setUploadStatus([]);
         setError(null);
@@ -291,7 +336,6 @@ const DiscoveryPanel = (): React.JSX.Element => {
         setError(`Invalid JSON format in ground truth file: ${friendlyError}`);
         setGroundTruthFile(null);
         setIsValidatingJson(false);
-        // Clear the file input
         e.target.value = '';
       }
     };
@@ -315,34 +359,24 @@ const DiscoveryPanel = (): React.JSX.Element => {
   ): Promise<void> => {
     try {
       const presignedPostData = JSON.parse(presignedUrl);
-      console.log(`Parsed presigned POST data for ${fileType}:`, presignedPostData);
 
       const formData = new FormData();
-
-      // Add all the fields from the presigned POST data to the form
       Object.entries(presignedPostData.fields).forEach(([key, value]) => {
         formData.append(key, value as string);
       });
-
-      // Append the file last
       formData.append('file', file);
 
-      // Post the form to S3
       const uploadResponse = await fetch(presignedPostData.url, {
         method: 'POST',
         body: formData,
       });
 
-      console.log(`Upload response status for ${fileType}: ${uploadResponse.status}`);
-
       if (!uploadResponse.ok) {
-        console.error(`Upload failed with status: ${uploadResponse.status}`);
         const errorText = await uploadResponse.text().catch(() => 'Could not read error response');
-        console.error(`Error details: ${errorText}`);
+        console.error(`Upload failed: ${errorText}`);
         throw new Error(`HTTP error! status: ${uploadResponse.status}`);
       }
 
-      console.log(`Successfully uploaded ${fileType}: ${file.name}`);
       statusArray.push({
         file: file.name,
         type: fileType,
@@ -359,7 +393,6 @@ const DiscoveryPanel = (): React.JSX.Element => {
       });
     }
 
-    // Update status after each file with debounced update
     debouncedSetUploadStatus(statusArray);
   };
 
@@ -376,9 +409,6 @@ const DiscoveryPanel = (): React.JSX.Element => {
     const newUploadStatus: UploadStatusItem[] = [];
 
     try {
-      // Upload document file
-      console.log(`Getting upload credentials for document: ${documentFile.name}, ${documentFile.type}....`);
-      console.log(`Uploading to discovery bucket: ${settings.DiscoveryBucket}...`);
       let groundTruthFileName = null;
       if (groundTruthFile) {
         groundTruthFileName = groundTruthFile.name;
@@ -406,16 +436,10 @@ const DiscoveryPanel = (): React.JSX.Element => {
       if (!docUsePost) {
         throw new Error('Server returned PUT method which is not supported. Please update your backend code.');
       }
-      // Upload document file to S3
-      console.log(`Uploading document ${documentFile.name} to S3...`);
+
       await uploadFileToS3(documentFile, docPresignedUrl, docObjectKey, 'document', newUploadStatus);
 
       if (groundTruthFile) {
-        // Upload ground truth file
-        console.log(`Getting upload credentials for ground truth: ${groundTruthFile.name}...`);
-
-        // Upload ground truth file to S3
-        console.log(`Uploading ground truth ${groundTruthFile.name} to S3...`);
         await uploadFileToS3(
           groundTruthFile,
           docGroundTruthPresignedUrl ?? '',
@@ -424,7 +448,7 @@ const DiscoveryPanel = (): React.JSX.Element => {
           newUploadStatus,
         );
       }
-      // Refresh discovery jobs list
+
       await loadDiscoveryJobs();
     } catch (err) {
       console.error('Error in overall upload process:', err);
@@ -433,12 +457,26 @@ const DiscoveryPanel = (): React.JSX.Element => {
       setIsUploading(false);
     }
   };
-  /*
-  const formatTimestamp = (timestamp) => {
-      console.log( 'Timestamp is: ');
-      return timestamp;
+
+  const handleDeleteSelectedJobs = async () => {
+    if (selectedJobs.length === 0) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await Promise.all(
+        selectedJobs.map((job) =>
+          client.graphql({ query: deleteDiscoveryJob, variables: { jobId: job.jobId } })
+        )
+      );
+      setSelectedJobs([]);
+      await loadDiscoveryJobs();
+    } catch (err) {
+      console.error('Error deleting discovery jobs:', err);
+      setError(`Failed to delete jobs: ${(err as Error).message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
- */
 
   const getStatusIcon = (status: string): React.JSX.Element => {
     switch (status) {
@@ -455,48 +493,175 @@ const DiscoveryPanel = (): React.JSX.Element => {
     }
   };
 
+  /** Render the Result / Details column — the key UX improvement. */
+  const renderResultCell = (item: DiscoveryJob): React.JSX.Element => {
+    // SUCCESS: show discovered class name prominently
+    if (item.status === 'COMPLETED' && item.discoveredClassName) {
+      return (
+        <Box>
+          <Badge color="green">{item.discoveredClassName}</Badge>
+        </Box>
+      );
+    }
+
+    // COMPLETED but no class name (backward compatibility with old jobs)
+    if (item.status === 'COMPLETED') {
+      return (
+        <Box fontSize="body-s" color="text-body-secondary">
+          {item.statusMessage || 'Discovery completed'}
+        </Box>
+      );
+    }
+
+    // FAILED: show error message prominently
+    if (item.status === 'FAILED') {
+      const errorMsg = item.errorMessage || item.statusMessage || 'Unknown error';
+      return (
+        <ExpandableSection
+          variant="footer"
+          headerText="Show error details"
+          defaultExpanded={false}
+        >
+          <Box fontSize="body-s" color="text-status-error">
+            {errorMsg}
+          </Box>
+        </ExpandableSection>
+      );
+    }
+
+    // IN_PROGRESS or PENDING: show live status message
+    if (item.statusMessage) {
+      return (
+        <Box fontSize="body-s" color="text-body-secondary">
+          <StatusIndicator type="in-progress">{item.statusMessage}</StatusIndicator>
+        </Box>
+      );
+    }
+
+    // Default for PENDING with no message yet
+    if (item.status === 'PENDING') {
+      return (
+        <Box fontSize="body-s" color="text-body-secondary">
+          Waiting in queue...
+        </Box>
+      );
+    }
+
+    return <span>—</span>;
+  };
+
+  /** Extract the original filename from the document key, stripping the timestamp prefix added by the upload resolver. */
+  const getOriginalFileName = (documentKey: string | undefined): string => {
+    if (!documentKey) return '—';
+    // Key format: "document/20260316_204035_OriginalName.pdf" or "prefix/document/20260316_204035_OriginalName.pdf"
+    const fileName = documentKey.split('/').pop() || documentKey;
+    // Strip leading YYYYMMDD_HHMMSS_ prefix if present
+    const stripped = fileName.replace(/^\d{8}_\d{6}_/, '');
+    return stripped || fileName;
+  };
+
+  // Sort jobs by createdAt descending (newest first), then filter by search text
+  const sortedJobs = [...discoveryJobs].sort((a, b) => {
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dateB - dateA;
+  });
+
+  // Compute time range cutoff
+  const timeRangeCutoff = selectedTimeRange.value === 'all'
+    ? 0
+    : Date.now() - (Number(selectedTimeRange.value) * 60 * 60 * 1000);
+
+  const filteredJobs = sortedJobs.filter((job) => {
+    // Time range filter
+    if (timeRangeCutoff > 0 && job.createdAt) {
+      const jobTime = parseUtcTimestamp(job.createdAt);
+      if (!Number.isNaN(jobTime) && jobTime < timeRangeCutoff) return false;
+    }
+    // Text filter
+    if (filterText) {
+      const search = filterText.toLowerCase();
+      const docName = getOriginalFileName(job.documentKey).toLowerCase();
+      const matchesText = (
+        docName.includes(search) ||
+        (job.version || '').toLowerCase().includes(search) ||
+        (job.status || '').toLowerCase().includes(search) ||
+        (job.discoveredClassName || '').toLowerCase().includes(search) ||
+        (job.errorMessage || '').toLowerCase().includes(search)
+      );
+      if (!matchesText) return false;
+    }
+    return true;
+  });
+
+  // Paginate
+  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / PAGE_SIZE));
+  const paginatedJobs = filteredJobs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const discoveryJobsColumns = [
-    {
-      id: 'jobId',
-      header: 'Job ID',
-      cell: (item: DiscoveryJob) => item.jobId || 'N/A',
-      sortingField: 'jobId',
-    },
     {
       id: 'documentKey',
       header: 'Document',
-      cell: (item: DiscoveryJob) => (item.documentKey ? item.documentKey.split('/').pop() : 'N/A'),
+      cell: (item: DiscoveryJob) => getOriginalFileName(item.documentKey),
       sortingField: 'documentKey',
     },
     {
-      id: 'groundTruthKey',
-      header: 'Ground Truth',
-      cell: (item: DiscoveryJob) => (item.groundTruthKey ? item.groundTruthKey.split('/').pop() : 'N/A'),
-      sortingField: 'groundTruthKey',
-    },
-    {
       id: 'version',
-      header: 'Version',
-      cell: (item: DiscoveryJob) => item.version || 'N/A',
-      sortingField: 'version',
+      header: 'Config Version',
+      cell: (item: DiscoveryJob) => formatConfigVersionLink(item.version, versions as unknown as ConfigVersion[]),
+      width: 140,
     },
     {
       id: 'status',
       header: 'Status',
       cell: (item: DiscoveryJob) => getStatusIcon(item.status),
       sortingField: 'status',
+      width: 140,
     },
     {
       id: 'createdAt',
-      header: 'Created At',
-      cell: (item: DiscoveryJob) => item.createdAt || 'N/A',
+      header: 'Created',
+      cell: (item: DiscoveryJob) => {
+        if (!item.createdAt) return '—';
+        try {
+          return new Date(item.createdAt).toLocaleString(undefined, {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          });
+        } catch {
+          return item.createdAt;
+        }
+      },
       sortingField: 'createdAt',
+      width: 150,
     },
     {
-      id: 'updatedAt',
-      header: 'Updated At',
-      cell: (item: DiscoveryJob) => item.updatedAt || 'N/A',
-      sortingField: 'updatedAt',
+      id: 'elapsed',
+      header: 'Duration',
+      cell: (item: DiscoveryJob) => {
+        if (item.status === 'COMPLETED' || item.status === 'FAILED') {
+          // Show total duration: from createdAt to updatedAt
+          if (item.createdAt && item.updatedAt) {
+            const start = parseUtcTimestamp(item.createdAt);
+            const end = parseUtcTimestamp(item.updatedAt);
+            if (!Number.isNaN(start) && !Number.isNaN(end)) {
+              const elapsed = Math.max(0, Math.floor((end - start) / 1000));
+              const mins = Math.floor(elapsed / 60);
+              const secs = elapsed % 60;
+              return `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+          }
+          return '—';
+        }
+        // Show live elapsed time for active jobs
+        return formatElapsed(item.createdAt);
+      },
+      width: 90,
+    },
+    {
+      id: 'result',
+      header: 'Result',
+      cell: (item: DiscoveryJob) => renderResultCell(item),
+      minWidth: 250,
     },
   ];
 
@@ -517,8 +682,8 @@ const DiscoveryPanel = (): React.JSX.Element => {
         <SpaceBetween size="l">
           <TextContent>
             <p>
-              Upload a document and its corresponding ground truth data (JSON format) to start a discovery analysis. The
-              system will process both files and compare the extracted data against the ground truth.
+              Upload a document to start a discovery analysis. The system will use AI to analyze the document structure
+              and generate a document class schema. Optionally upload ground truth data (JSON) to guide the discovery.
             </p>
           </TextContent>
 
@@ -551,7 +716,7 @@ const DiscoveryPanel = (): React.JSX.Element => {
               )}
             </FormField>
 
-            <FormField label="Ground Truth File" description="Select the JSON file with expected results">
+            <FormField label="Ground Truth File (optional)" description="JSON file with expected field structure">
               <input
                 type="file"
                 onChange={handleGroundTruthFileChange}
@@ -597,11 +762,6 @@ const DiscoveryPanel = (): React.JSX.Element => {
                     <StatusIndicator type={item.status === 'success' ? 'success' : 'error'}>
                       {item.type}: {item.file}{' '}
                       {item.status === 'success' ? 'Uploaded successfully' : `Failed - ${item.error}`}
-                      {item.status === 'success' && (
-                        <div>
-                          <small>Object Key: {item.objectKey}</small>
-                        </div>
-                      )}
                     </StatusIndicator>
                   </div>
                 ))}
@@ -611,34 +771,113 @@ const DiscoveryPanel = (): React.JSX.Element => {
         </SpaceBetween>
       </Container>
 
-      <Container header={<Header variant="h2">Discovery Jobs</Header>}>
-        <Table
-          columnDefinitions={discoveryJobsColumns}
-          items={discoveryJobs}
-          loading={isLoadingJobs}
-          loadingText="Loading discovery jobs..."
-          empty={
-            <Box textAlign="center" color="inherit">
-              <b>No discovery jobs found</b>
-              <Box padding={{ bottom: 's' }} variant="p" color="inherit">
-                Upload documents to start discovery analysis.
-              </Box>
+      <Table
+        columnDefinitions={discoveryJobsColumns}
+        items={paginatedJobs}
+        loading={isLoadingJobs}
+        loadingText="Loading discovery jobs..."
+        sortingDisabled
+        resizableColumns
+        selectionType="multi"
+        selectedItems={selectedJobs}
+        onSelectionChange={({ detail }) => setSelectedJobs(detail.selectedItems as DiscoveryJob[])}
+        trackBy="jobId"
+        visibleColumns={tablePreferences.visibleContent}
+        variant="container"
+        filter={
+          <TextFilter
+            filteringPlaceholder="Find discovery jobs"
+            filteringText={filterText}
+            onChange={({ detail }) => {
+              setFilterText(detail.filteringText);
+              setCurrentPage(1);
+            }}
+          />
+        }
+        pagination={
+          <Pagination
+            currentPageIndex={currentPage}
+            pagesCount={totalPages}
+            onChange={({ detail }) => setCurrentPage(detail.currentPageIndex)}
+          />
+        }
+        empty={
+          <Box textAlign="center" color="inherit">
+            <b>No discovery jobs found</b>
+            <Box padding={{ bottom: 's' }} variant="p" color="inherit">
+              {filterText ? 'No jobs match the current filter.' : 'Upload documents above to start discovery analysis.'}
             </Box>
-          }
-          header={
-            <Header
-              counter={`(${discoveryJobs.length})`}
-              actions={
-                <Button iconName="refresh" onClick={loadDiscoveryJobs} loading={isLoadingJobs}>
-                  Refresh
-                </Button>
-              }
-            >
-              Discovery Jobs
-            </Header>
-          }
-        />
-      </Container>
+          </Box>
+        }
+        header={
+          <Header
+            counter={`(${filteredJobs.length})`}
+            actions={
+              <SpaceBetween direction="horizontal" size="xs">
+                <Select
+                  selectedOption={selectedTimeRange}
+                  onChange={({ detail }) => {
+                    setSelectedTimeRange(detail.selectedOption);
+                    setCurrentPage(1);
+                  }}
+                  options={TIME_RANGE_OPTIONS}
+                  triggerVariant="option"
+                />
+                <Button
+                  iconName="refresh"
+                  variant="icon"
+                  onClick={loadDiscoveryJobs}
+                  loading={isLoadingJobs}
+                  ariaLabel="Refresh discovery jobs"
+                />
+                <Button
+                  iconName="remove"
+                  variant="icon"
+                  onClick={handleDeleteSelectedJobs}
+                  loading={isDeleting}
+                  disabled={selectedJobs.length === 0}
+                  ariaLabel="Delete selected discovery jobs"
+                />
+              </SpaceBetween>
+            }
+          >
+            Discovery Jobs
+          </Header>
+        }
+        preferences={
+          <CollectionPreferences
+            title="Preferences"
+            confirmLabel="Confirm"
+            cancelLabel="Cancel"
+            preferences={tablePreferences}
+            onConfirm={({ detail }) => setTablePreferences(detail as typeof tablePreferences)}
+            pageSizePreference={{
+              title: 'Page size',
+              options: [
+                { value: 10, label: '10 jobs' },
+                { value: 25, label: '25 jobs' },
+                { value: 50, label: '50 jobs' },
+              ],
+            }}
+            visibleContentPreference={{
+              title: 'Visible columns',
+              options: [
+                {
+                  label: 'Job properties',
+                  options: [
+                    { id: 'documentKey', label: 'Document' },
+                    { id: 'version', label: 'Config Version' },
+                    { id: 'status', label: 'Status' },
+                    { id: 'createdAt', label: 'Created' },
+                    { id: 'elapsed', label: 'Duration' },
+                    { id: 'result', label: 'Result' },
+                  ],
+                },
+              ],
+            }}
+          />
+        }
+      />
     </SpaceBetween>
   );
 };

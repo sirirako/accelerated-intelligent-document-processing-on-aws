@@ -5,9 +5,63 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Discovery UX Overhaul** — Comprehensive improvements to the Discovery UI experience:
+  - **Real-time progress updates** — Live status messages during processing (e.g., "Analyzing document structure with AI...", "Saving to configuration...")
+  - **Discovered class name display** — On success, shows the discovered document class name (e.g., `W4-Form`) as a green badge in the Result column
+  - **Failure root cause visibility** — Error details shown in an expandable section with user-friendly messages for common failures (throttling, timeouts, permissions, etc.)
+  - **Search and filter** — Text filter bar to search across document name, config version, status, class name, and error messages
+  - **Time range selector** — Filter jobs by Last hour, 24 hours, 2 days, 7 days, or All time
+  - **Pagination** — Client-side pagination with configurable page size (10/25/50)
+  - **Delete discovery jobs** — New `deleteDiscoveryJob` GraphQL mutation with multi-select + delete in the UI (Admin/Author only)
+  - **Column preferences** — Settings gear icon (CollectionPreferences) for page size and column visibility
+  - **Config Version hyperlinks** — Version column links to the configuration editor, consistent with Document List page
+  - **Duration column** — Shows live elapsed time for active jobs, total processing time for completed jobs
+  - **Clean document names** — Strips the timestamp prefix from uploaded filenames for cleaner display
+  - **Resizable columns** — Users can drag column borders to adjust widths
+  - **Sorted by newest** — Jobs sorted by creation date descending
+
+- **Discovery S3 Upload Race Condition Fix** — Replaced the hardcoded `time.sleep(30)` in the discovery processor with smart S3 polling (`_wait_for_s3_object`) using exponential backoff (2s initial, 10s max, 60s timeout). The processor now waits only as long as needed for the browser upload to complete.
+
+- **Discovery GraphQL Schema Enhancements** — Added `discoveredClassName`, `statusMessage` fields to `DiscoveryJob`, `DiscoveryJobListItem` types and `updateDiscoveryJobStatus` mutation. Added `deleteDiscoveryJob` mutation with VTL resolver. All changes are additive and backward-compatible.
+
+- **SDK Client Interface** — Introduced `IDPClient` as the single public entry point for all IDP operations, with typed namespace access (`client.batch`, `client.stack`, `client.config`, `client.manifest`, `client.testing`).
+
+- **Typed Return Models** — SDK operations return Pydantic models instead of raw dictionaries, enabling IDE auto-complete, type checking, and consistent error handling.
+
+- **Configuration Validation Enhancements** — Manifest and config validation now reports deprecated and unknown fields, enabling stricter validation policies.
+
+- **Configuration Upload Version Detection** — Uploading a configuration now detects whether a version exists and correctly handles new version creation vs. updates.
+
+- **Private Internal Modules** — Internal SDK modules renamed from `core/` to `_core/` to clearly signal private API boundaries, with lint rules enforcing the boundary.
+
+- **CLI Refactored to Use SDK** — CLI commands now route through `IDPClient` instead of importing internal modules directly, improving maintainability and ensuring consistent behavior across CLI, Web UI, and programmatic access.
+
+- **Stack Deploy/Delete Enhanced** — Deploy and delete commands now use expanded SDK stack operations for in-progress detection, monitoring, cancel-update, and failure analysis.
+
+### Changed
+
+- **SDK: `batch.run()` renamed to `batch.process()`** — The `run()` method is now deprecated and emits a `DeprecationWarning`. Existing code using `client.batch.run(...)` will continue to work but should be migrated to `client.batch.process(...)`.
+
+- **SDK: `batch.rerun()` renamed to `batch.reprocess()`** — The `rerun()` method is now deprecated and emits a `DeprecationWarning`. Existing code using `client.batch.rerun(...)` should be migrated to `client.batch.reprocess(...)`. Same applies to `client.document.rerun()` → `client.document.reprocess()`.
+
+- **SDK: `stack.delete()` now waits by default** — The `wait` parameter on `client.stack.delete()` now defaults to `True` (previously the delete operation returned immediately). Scripts relying on the old fire-and-forget behavior should explicitly pass `wait=False`.
+
+- **CLI: `run-inference` renamed to `process`** — The `idp-cli run-inference` command is now deprecated. Use `idp-cli process` instead. The old command remains available for backward compatibility with a deprecation notice.
+
+- **CLI: `rerun-inference` renamed to `reprocess`** — The `idp-cli rerun-inference` command is now deprecated. Use `idp-cli reprocess` instead. The old command remains available for backward compatibility with a deprecation notice.
+
 ### Fixed
 
+- **Discovery subscription handler dropping errorMessage and other fields** — Fixed bug where the UI subscription handler did `{ ...oldJob, status: updatedJob.status }`, discarding all fields except status from real-time subscription updates. Error messages, discovered class names, and status messages were being sent by the backend but silently dropped by the UI. Now spreads all fields: `{ ...oldJob, ...updatedJob }`.
+
+- **Discovery processor S3 race condition causing NoSuchKey failures** — The discovery upload resolver sends the SQS message before the browser finishes uploading the file to S3 via presigned POST. Previously worked around with a hardcoded `time.sleep(30)`. Replaced with `_wait_for_s3_object()` that polls S3 with exponential backoff (2s initial, 10s max, 60s timeout), proceeding as soon as the file appears.
+
 - **GovCloud template: fix unresolved RBAC resource dependencies** — Added `AuthorGroup`, `ViewerGroup`, `GetMyProfileResolver`, and `UpdateUserResolver` to GovCloud removal lists so they are stripped alongside the `UserPool` they depend on.
+
+- **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
+
 
 ## [0.5.2]
 

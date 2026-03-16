@@ -1786,6 +1786,20 @@ Resources:
           #set($updateExpression = "${updateExpression}, #errorMessage = :errorMessage")
         #end
 
+        ## Set discoveredClassName (optional)
+        #if($ctx.args.discoveredClassName)
+          $util.qr($expNames.put("#discoveredClassName", "discoveredClassName"))
+          $util.qr($expValues.put(":discoveredClassName", $util.dynamodb.toDynamoDB($ctx.args.discoveredClassName)))
+          #set($updateExpression = "${updateExpression}, #discoveredClassName = :discoveredClassName")
+        #end
+
+        ## Set statusMessage (optional)
+        #if($ctx.args.statusMessage)
+          $util.qr($expNames.put("#statusMessage", "statusMessage"))
+          $util.qr($expValues.put(":statusMessage", $util.dynamodb.toDynamoDB($ctx.args.statusMessage)))
+          #set($updateExpression = "${updateExpression}, #statusMessage = :statusMessage")
+        #end
+
         ## Set updatedAt to current timestamp
         $util.qr($expNames.put("#updatedAt", "updatedAt"))
         $util.qr($expValues.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
@@ -1812,6 +1826,32 @@ Resources:
         }
       ResponseMappingTemplate: |-
         $util.toJson($ctx.result)
+
+  ##########################################################################
+  # DeleteDiscoveryJobResolver
+  ##########################################################################
+  DeleteDiscoveryJobResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      TypeName: Mutation
+      FieldName: deleteDiscoveryJob
+      DataSourceName: !GetAtt DiscoveryTableDataSource.Name
+      RequestMappingTemplate: |-
+        {
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "jobId": $util.dynamodb.toDynamoDBJson($ctx.args.jobId)
+          }
+        }
+      ResponseMappingTemplate: |-
+        #if($ctx.error)
+          $util.error($ctx.error.message, $ctx.error.type)
+        #else
+          true
+        #end
 
   ##########################################################################
   # Discovery Processor Function

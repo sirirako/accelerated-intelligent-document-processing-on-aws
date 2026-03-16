@@ -8,6 +8,9 @@ query ListDiscoveryJobs {
       createdAt
       updatedAt
       errorMessage
+      version
+      discoveredClassName
+      statusMessage
     }
     nextToken
   }
