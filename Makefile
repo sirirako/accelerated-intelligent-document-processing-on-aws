@@ -75,6 +75,9 @@ setup:
 # Start the UI development server
 # Usage: make ui-start [STACK_NAME=<stack-name>]
 ui-start:
+ifndef STACK_NAME
+	$(error STACK_NAME is not set. Usage: make ui-start STACK_NAME)
+endif
 	@if [ -n "$(STACK_NAME)" ]; then \
 		echo "Retrieving .env configuration from stack $(STACK_NAME)..."; \
 		ENV_CONTENT=$$(aws cloudformation describe-stacks \
@@ -133,7 +136,7 @@ test-capacity-coverage:
 	@echo -e "$(GREEN)✅ Coverage report generated at src/lambda/calculate_capacity/htmlcov/index.html$(NC)"
 
 # Run both linting and formatting in one command
-lint: ruff-lint format check-arn-partitions validate-buildspec ui-lint
+lint: ruff-lint format check-arn-partitions validate-buildspec ui-lint codegen-check
 fastlint: ruff-lint format check-arn-partitions validate-buildspec
 
 # Run linting checks and fix issues automatically

@@ -197,9 +197,11 @@ export type DisPresignedUrlResponse = {
 };
 
 export type DiscoveryJob = {
+  discoveredClassName?: Maybe<Scalars['String']['output']>;
   errorMessage?: Maybe<Scalars['String']['output']>;
   jobId: Scalars['ID']['output'];
   status: Scalars['String']['output'];
+  statusMessage?: Maybe<Scalars['String']['output']>;
 };
 
 export type DiscoveryJobList = {
@@ -209,11 +211,13 @@ export type DiscoveryJobList = {
 
 export type DiscoveryJobListItem = {
   createdAt?: Maybe<Scalars['String']['output']>;
+  discoveredClassName?: Maybe<Scalars['String']['output']>;
   documentKey?: Maybe<Scalars['String']['output']>;
   errorMessage?: Maybe<Scalars['String']['output']>;
   groundTruthKey?: Maybe<Scalars['String']['output']>;
   jobId: Scalars['ID']['output'];
   status: Scalars['String']['output'];
+  statusMessage?: Maybe<Scalars['String']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   version?: Maybe<Scalars['String']['output']>;
 };
@@ -355,6 +359,7 @@ export type Mutation = {
   deleteAgentJob?: Maybe<Scalars['Boolean']['output']>;
   deleteChatSession?: Maybe<Scalars['Boolean']['output']>;
   deleteConfigVersion?: Maybe<UpdateConfigurationResponse>;
+  deleteDiscoveryJob: Scalars['Boolean']['output'];
   deleteDocument: Scalars['Boolean']['output'];
   deleteTestSets: Scalars['Boolean']['output'];
   deleteTests: Scalars['Boolean']['output'];
@@ -443,6 +448,11 @@ export type MutationDeleteChatSessionArgs = {
 
 export type MutationDeleteConfigVersionArgs = {
   versionName: Scalars['String']['input'];
+};
+
+
+export type MutationDeleteDiscoveryJobArgs = {
+  jobId: Scalars['ID']['input'];
 };
 
 
@@ -545,9 +555,11 @@ export type MutationUpdateConfigurationArgs = {
 
 
 export type MutationUpdateDiscoveryJobStatusArgs = {
+  discoveredClassName?: InputMaybe<Scalars['String']['input']>;
   errorMessage?: InputMaybe<Scalars['String']['input']>;
   jobId: Scalars['ID']['input'];
   status: Scalars['String']['input'];
+  statusMessage?: InputMaybe<Scalars['String']['input']>;
 };
 
 

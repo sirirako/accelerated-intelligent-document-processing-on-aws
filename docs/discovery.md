@@ -530,14 +530,21 @@ discovery:
 5. Click "Start Discovery" to begin analysis
 
 **Monitoring Progress:**
-- Real-time job status updates via GraphQL subscriptions
-- Progress indicators and status messages
-- Error notifications and troubleshooting guidance
-- Estimated completion times
+- Real-time progress messages via GraphQL subscriptions (e.g., "Analyzing document structure with AI...", "Saving to configuration...")
+- Live elapsed time counter for active jobs
+- Discovered document class name shown as a green badge on success (e.g., `W4-Form`)
+- Failure root cause displayed in expandable error details with user-friendly messages
+- Search/filter bar to find jobs by document name, config version, status, or class name
+- Time range selector (Last hour, 24 hours, 2 days, 7 days, All time)
+- Pagination with configurable page size
+- Resizable columns and column visibility preferences (settings gear icon)
+- Multi-select with delete capability to clean up old jobs
 
 **Reviewing Results:**
-- Interactive preview of discovered structure
-- Field-by-field review and validation
+- Discovered class name prominently displayed as a badge in the Result column
+- Config Version hyperlinked to the configuration editor
+- Original document filename displayed (timestamp prefix stripped)
+- Duration column showing total processing time
 - Export options for configuration integration
 - Comparison with existing configurations
 
