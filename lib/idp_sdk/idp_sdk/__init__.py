@@ -51,10 +51,14 @@ from .models import (
     BatchResult,
     BatchStatus,
     # Config models
+    ConfigActivateResult,
     ConfigCreateResult,
+    ConfigDeleteResult,
     ConfigDownloadResult,
+    ConfigListResult,
     ConfigUploadResult,
     ConfigValidationResult,
+    ConfigVersionInfo,
     # Document models
     DocumentDeletionResult,
     DocumentDownloadResult,
@@ -63,6 +67,8 @@ from .models import (
     DocumentMetadata,
     DocumentReprocessResult,
     DocumentRerunResult,
+    # Testing models
+    DocumentsAbortedResult,
     DocumentState,
     DocumentStatus,
     DocumentUploadResult,
@@ -70,11 +76,14 @@ from .models import (
     EvaluationBaselineListResult,
     EvaluationMetrics,
     EvaluationReport,
+    ExecutionsStoppedResult,
     # Manifest models
     LoadTestResult,
     ManifestDocument,
     ManifestResult,
     ManifestValidationResult,
+    # Stack models
+    OrphanedResourceCleanupResult,
     # Enums
     Pattern,
     RerunStep,
@@ -82,12 +91,10 @@ from .models import (
     SearchCitation,
     SearchDocumentReference,
     SearchResult,
-    # Stack models
     StackDeletionResult,
     StackDeploymentResult,
     StackResources,
     StackState,
-    # Testing models
     StopWorkflowsResult,
 )
 
@@ -113,6 +120,7 @@ __all__ = [
     "StackDeploymentResult",
     "StackDeletionResult",
     "StackResources",
+    "OrphanedResourceCleanupResult",
     # Batch models
     "BatchResult",
     "BatchProcessResult",
@@ -152,11 +160,17 @@ __all__ = [
     "ConfigValidationResult",
     "ConfigDownloadResult",
     "ConfigUploadResult",
+    "ConfigActivateResult",
+    "ConfigVersionInfo",
+    "ConfigListResult",
+    "ConfigDeleteResult",
     # Manifest models
     "ManifestDocument",
     "ManifestResult",
     "ManifestValidationResult",
     # Testing models
     "StopWorkflowsResult",
+    "ExecutionsStoppedResult",
+    "DocumentsAbortedResult",
     "LoadTestResult",
 ]

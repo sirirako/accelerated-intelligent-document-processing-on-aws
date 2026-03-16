@@ -5,9 +5,40 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **SDK Client Interface** — Introduced `IDPClient` as the single public entry point for all IDP operations, with typed namespace access (`client.batch`, `client.stack`, `client.config`, `client.manifest`, `client.testing`).
+
+- **Typed Return Models** — SDK operations return Pydantic models instead of raw dictionaries, enabling IDE auto-complete, type checking, and consistent error handling.
+
+- **Configuration Validation Enhancements** — Manifest and config validation now reports deprecated and unknown fields, enabling stricter validation policies.
+
+- **Configuration Upload Version Detection** — Uploading a configuration now detects whether a version exists and correctly handles new version creation vs. updates.
+
+- **Private Internal Modules** — Internal SDK modules renamed from `core/` to `_core/` to clearly signal private API boundaries, with lint rules enforcing the boundary.
+
+- **CLI Refactored to Use SDK** — CLI commands now route through `IDPClient` instead of importing internal modules directly, improving maintainability and ensuring consistent behavior across CLI, Web UI, and programmatic access.
+
+- **Stack Deploy/Delete Enhanced** — Deploy and delete commands now use expanded SDK stack operations for in-progress detection, monitoring, cancel-update, and failure analysis.
+
+### Changed
+
+- **SDK: `batch.run()` renamed to `batch.process()`** — The `run()` method is now deprecated and emits a `DeprecationWarning`. Existing code using `client.batch.run(...)` will continue to work but should be migrated to `client.batch.process(...)`.
+
+- **SDK: `batch.rerun()` renamed to `batch.reprocess()`** — The `rerun()` method is now deprecated and emits a `DeprecationWarning`. Existing code using `client.batch.rerun(...)` should be migrated to `client.batch.reprocess(...)`. Same applies to `client.document.rerun()` → `client.document.reprocess()`.
+
+- **SDK: `stack.delete()` now waits by default** — The `wait` parameter on `client.stack.delete()` now defaults to `True` (previously the delete operation returned immediately). Scripts relying on the old fire-and-forget behavior should explicitly pass `wait=False`.
+
+- **CLI: `run-inference` renamed to `process`** — The `idp-cli run-inference` command is now deprecated. Use `idp-cli process` instead. The old command remains available for backward compatibility with a deprecation notice.
+
+- **CLI: `rerun-inference` renamed to `reprocess`** — The `idp-cli rerun-inference` command is now deprecated. Use `idp-cli reprocess` instead. The old command remains available for backward compatibility with a deprecation notice.
+
 ### Fixed
 
 - **GovCloud template: fix unresolved RBAC resource dependencies** — Added `AuthorGroup`, `ViewerGroup`, `GetMyProfileResolver`, and `UpdateUserResolver` to GovCloud removal lists so they are stripped alongside the `UserPool` they depend on.
+
+- **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
+
 
 ## [0.5.2]
 

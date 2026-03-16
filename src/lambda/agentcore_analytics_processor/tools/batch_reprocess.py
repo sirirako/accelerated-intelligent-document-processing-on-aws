@@ -11,8 +11,8 @@ from .base import IDPTool
 logger = logging.getLogger(__name__)
 
 # Version marker
-TOOL_VERSION = "SDK-v2"
-TOOL_UPDATED = "2025-01-09T19:30:00Z"
+TOOL_VERSION = "SDK-v3"
+TOOL_UPDATED = "2026-03-13T00:00:00Z"
 
 
 class BatchReprocessTool(IDPTool):
@@ -39,56 +39,56 @@ class BatchReprocessTool(IDPTool):
         region: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Execute batch reprocessing using SDK core modules"""
+        """Execute batch reprocessing using IDPClient public API"""
         logger.info(f"=== Batch Reprocess Tool ===")
         logger.info(f"Version: {TOOL_VERSION}")
         logger.info(f"Updated: {TOOL_UPDATED}")
         logger.info(f"Parameters: step={step}, document_ids={document_ids}, batch_id={batch_id}, region={region}")
-        
-        from idp_sdk.core.rerun_processor import RerunProcessor
+
+        from idp_sdk.client import IDPClient
 
         try:
             # Validate mutually exclusive options
             if not document_ids and not batch_id:
                 raise ValueError("Must specify either document_ids or batch_id")
-            
+
             if document_ids and batch_id:
                 raise ValueError("Cannot specify both document_ids and batch_id")
 
-            logger.info(f"Initializing RerunProcessor with stack: {self.stack_name}")
-            processor = RerunProcessor(stack_name=self.stack_name, region=region)
-            logger.info("RerunProcessor initialized successfully")
-            
-            # Get document IDs
+            logger.info(f"Initializing IDPClient with stack: {self.stack_name}")
+            client = IDPClient(stack_name=self.stack_name, region=region)
+            logger.info("IDPClient initialized successfully")
+
+            # Parse document_ids string into list if provided
+            doc_id_list = None
             if document_ids:
                 doc_id_list = [doc_id.strip() for doc_id in document_ids.split(",")]
                 logger.info(f"Processing {len(doc_id_list)} specified documents")
             else:
-                logger.info(f"Getting document IDs from batch: {batch_id}")
-                doc_id_list = processor.get_batch_document_ids(batch_id)
-                logger.info(f"Found {len(doc_id_list)} documents in batch")
+                logger.info(f"Will resolve document IDs from batch: {batch_id}")
 
-            # Perform reprocessing
-            logger.info(f"Reprocessing {len(doc_id_list)} documents from step: {step}")
-            results = processor.rerun_documents(
-                document_ids=doc_id_list,
+            # Perform reprocessing via public SDK API
+            # batch.reprocess() handles batch_id -> document_id resolution internally
+            logger.info(f"Reprocessing documents from step: {step}")
+            result = client.batch.reprocess(
                 step=step,
-                monitor=False
+                document_ids=doc_id_list,
+                batch_id=batch_id,
             )
 
-            # Format response
-            logger.info(f"Batch reprocessing completed. Result: {results}")
+            # Format response using typed BatchReprocessResult model attributes
+            logger.info(f"Batch reprocessing completed: queued={result.documents_queued}, failed={result.documents_failed}")
             return {
                 "success": True,
                 "batch_id": batch_id or "rerun",
-                "documents_queued": results.get("documents_queued", 0),
-                "documents_failed": results.get("documents_failed", 0),
+                "documents_queued": result.documents_queued,
+                "documents_failed": result.documents_failed,
                 "step": step,
                 "summary": {
-                    "queued": results.get("documents_queued", 0),
-                    "failed": results.get("documents_failed", 0)
+                    "queued": result.documents_queued,
+                    "failed": result.documents_failed,
                 },
-                "message": f"Successfully queued {results.get('documents_queued', 0)} documents for {step} reprocessing"
+                "message": f"Successfully queued {result.documents_queued} documents for {step} reprocessing"
             }
 
         except Exception as e:
