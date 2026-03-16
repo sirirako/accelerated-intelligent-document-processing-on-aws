@@ -335,10 +335,6 @@ class StackDeployer:
         Returns:
             Dictionary with final status
         """
-        from rich.console import Console
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-
-        console = Console()
         logger.info(f"Waiting for stack {stack_name} to reach stable state...")
 
         stable_states = [
@@ -356,58 +352,46 @@ class StackDeployer:
 
         start_time = time.time()
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Waiting for stable state: {stack_name}", total=None
-            )
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > timeout_seconds:
+                return {
+                    "success": False,
+                    "error": f"Timeout after {timeout_seconds}s",
+                    "status": "TIMEOUT",
+                }
 
-            while True:
-                elapsed = time.time() - start_time
-                if elapsed > timeout_seconds:
+            try:
+                status = self._get_stack_status(stack_name)
+
+                if status is None:
+                    # Stack doesn't exist (deleted)
                     return {
-                        "success": False,
-                        "error": f"Timeout after {timeout_seconds}s",
-                        "status": "TIMEOUT",
+                        "success": True,
+                        "status": "DELETE_COMPLETE",
+                        "message": "Stack no longer exists",
                     }
 
-                try:
-                    status = self._get_stack_status(stack_name)
+                logger.info(f"Stack {stack_name} status: {status} ({int(elapsed)}s)")
 
-                    if status is None:
-                        # Stack doesn't exist (deleted)
-                        return {
-                            "success": True,
-                            "status": "DELETE_COMPLETE",
-                            "message": "Stack no longer exists",
-                        }
+                if status in stable_states:
+                    return {
+                        "success": True,
+                        "status": status,
+                        "message": f"Stack reached stable state: {status}",
+                    }
 
-                    progress.update(
-                        task,
-                        description=f"[cyan]Current status: {status} ({int(elapsed)}s)",
-                    )
+                time.sleep(10)
 
-                    if status in stable_states:
-                        return {
-                            "success": True,
-                            "status": status,
-                            "message": f"Stack reached stable state: {status}",
-                        }
-
-                    time.sleep(10)
-
-                except Exception as e:
-                    if "does not exist" in str(e):
-                        return {
-                            "success": True,
-                            "status": "DELETE_COMPLETE",
-                            "message": "Stack no longer exists",
-                        }
-                    logger.error(f"Error checking stack status: {e}")
-                    raise
+            except Exception as e:
+                if "does not exist" in str(e):
+                    return {
+                        "success": True,
+                        "status": "DELETE_COMPLETE",
+                        "message": "Stack no longer exists",
+                    }
+                logger.error(f"Error checking stack status: {e}")
+                raise
 
     def monitor_stack_progress(self, stack_name: str, operation: str) -> Dict:
         """
@@ -423,10 +407,6 @@ class StackDeployer:
         Returns:
             Dictionary with final status
         """
-        from rich.console import Console
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-
-        console = Console()
         logger.info(f"Monitoring {operation} operation for stack: {stack_name}")
 
         # Define completion statuses for each operation type
@@ -457,89 +437,76 @@ class StackDeployer:
 
         target_statuses = complete_statuses.get(operation, [])
         success_set = success_statuses.get(operation, [])
+        last_event_time = None
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Monitoring {operation}: {stack_name}", total=None
-            )
-            last_event_time = None
-
-            while True:
-                try:
-                    # For DELETE, handle the case where stack is completely gone
-                    if operation == "DELETE":
-                        try:
-                            response = self.cfn.describe_stacks(StackName=stack_name)
-                            stacks = response.get("Stacks", [])
-                        except self.cfn.exceptions.ClientError as e:
-                            if "does not exist" in str(e):
-                                # Stack deleted successfully
-                                return {
-                                    "stack_name": stack_name,
-                                    "operation": operation,
-                                    "status": "DELETE_COMPLETE",
-                                    "success": True,
-                                }
-                            raise
-                    else:
+        while True:
+            try:
+                # For DELETE, handle the case where stack is completely gone
+                if operation == "DELETE":
+                    try:
                         response = self.cfn.describe_stacks(StackName=stack_name)
                         stacks = response.get("Stacks", [])
-
-                    if not stacks:
-                        if operation == "DELETE":
+                    except self.cfn.exceptions.ClientError as e:
+                        if "does not exist" in str(e):
+                            # Stack deleted successfully
                             return {
                                 "stack_name": stack_name,
                                 "operation": operation,
                                 "status": "DELETE_COMPLETE",
                                 "success": True,
                             }
-                        raise ValueError(f"Stack {stack_name} not found")
+                        raise
+                else:
+                    response = self.cfn.describe_stacks(StackName=stack_name)
+                    stacks = response.get("Stacks", [])
 
-                    stack = stacks[0]
-                    status = stack.get("StackStatus", "")
-
-                    # Get recent events
-                    events = self.get_stack_events(stack_name, limit=5)
-                    if events and events[0]["timestamp"] != last_event_time:
-                        last_event_time = events[0]["timestamp"]
-                        # Show most recent event
-                        latest = events[0]
-                        resource = latest["resource"]
-                        resource_status = latest["status"]
-                        progress.update(
-                            task,
-                            description=f"[cyan]{operation}: {resource} - {resource_status}",
-                        )
-
-                    if status in target_statuses:
-                        # Operation complete
-                        is_success = status in success_set
-
-                        result = {
+                if not stacks:
+                    if operation == "DELETE":
+                        return {
                             "stack_name": stack_name,
                             "operation": operation,
-                            "status": status,
-                            "success": is_success,
-                            "outputs": self._get_stack_outputs(stack)
-                            if is_success and operation != "DELETE"
-                            else {},
+                            "status": "DELETE_COMPLETE",
+                            "success": True,
                         }
+                    raise ValueError(f"Stack {stack_name} not found")
 
-                        if not is_success:
-                            result["error"] = self._get_stack_failure_reason(stack_name)
+                stack = stacks[0]
+                status = stack.get("StackStatus", "")
 
-                        return result
+                # Log recent events
+                events = self.get_stack_events(stack_name, limit=5)
+                if events and events[0]["timestamp"] != last_event_time:
+                    last_event_time = events[0]["timestamp"]
+                    latest = events[0]
+                    logger.info(
+                        f"{operation}: {latest['resource']} - {latest['status']}"
+                    )
 
-                    # Wait before next check
-                    time.sleep(10)
+                if status in target_statuses:
+                    # Operation complete
+                    is_success = status in success_set
 
-                except Exception as e:
-                    logger.error(f"Error monitoring stack: {e}")
-                    raise
+                    result = {
+                        "stack_name": stack_name,
+                        "operation": operation,
+                        "status": status,
+                        "success": is_success,
+                        "outputs": self._get_stack_outputs(stack)
+                        if is_success and operation != "DELETE"
+                        else {},
+                    }
+
+                    if not is_success:
+                        result["error"] = self._get_stack_failure_reason(stack_name)
+
+                    return result
+
+                # Wait before next check
+                time.sleep(10)
+
+            except Exception as e:
+                logger.error(f"Error monitoring stack: {e}")
+                raise
 
     def _get_stack_parameters(self, stack_name: str) -> Dict[str, str]:
         """
@@ -621,7 +588,7 @@ class StackDeployer:
 
     def _wait_for_completion(self, stack_name: str, operation: str) -> Dict:
         """
-        Wait for stack operation to complete with progress display
+        Wait for stack operation to complete
 
         Args:
             stack_name: Stack name
@@ -630,10 +597,6 @@ class StackDeployer:
         Returns:
             Dictionary with final status
         """
-        from rich.console import Console
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-
-        console = Console()
         logger.info(f"Waiting for {operation} to complete...")
 
         complete_statuses = {
@@ -658,64 +621,51 @@ class StackDeployer:
 
         target_statuses = complete_statuses[operation]
         success_set = success_statuses[operation]
+        last_event_time = None
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]{operation} stack: {stack_name}", total=None
-            )
-            last_event_time = None
+        while True:
+            try:
+                response = self.cfn.describe_stacks(StackName=stack_name)
+                stacks = response.get("Stacks", [])
 
-            while True:
-                try:
-                    response = self.cfn.describe_stacks(StackName=stack_name)
-                    stacks = response.get("Stacks", [])
+                if not stacks:
+                    raise ValueError(f"Stack {stack_name} not found")
 
-                    if not stacks:
-                        raise ValueError(f"Stack {stack_name} not found")
+                stack = stacks[0]
+                status = stack.get("StackStatus", "")
 
-                    stack = stacks[0]
-                    status = stack.get("StackStatus", "")
+                # Log recent events
+                events = self.get_stack_events(stack_name, limit=5)
+                if events and events[0]["timestamp"] != last_event_time:
+                    last_event_time = events[0]["timestamp"]
+                    latest = events[0]
+                    logger.info(
+                        f"{operation}: {latest['resource']} - {latest['status']}"
+                    )
 
-                    # Get recent events
-                    events = self.get_stack_events(stack_name, limit=5)
-                    if events and events[0]["timestamp"] != last_event_time:
-                        last_event_time = events[0]["timestamp"]
-                        # Show most recent event
-                        latest = events[0]
-                        resource = latest["resource"]
-                        resource_status = latest["status"]
-                        progress.update(
-                            task,
-                            description=f"[cyan]{operation}: {resource} - {resource_status}",
-                        )
+                if status in target_statuses:
+                    # Operation complete
+                    is_success = status in success_set
 
-                    if status in target_statuses:
-                        # Operation complete
-                        is_success = status in success_set
+                    result = {
+                        "stack_name": stack_name,
+                        "operation": operation,
+                        "status": status,
+                        "success": is_success,
+                        "outputs": self._get_stack_outputs(stack),
+                    }
 
-                        result = {
-                            "stack_name": stack_name,
-                            "operation": operation,
-                            "status": status,
-                            "success": is_success,
-                            "outputs": self._get_stack_outputs(stack),
-                        }
+                    if not is_success:
+                        result["error"] = self._get_stack_failure_reason(stack_name)
 
-                        if not is_success:
-                            result["error"] = self._get_stack_failure_reason(stack_name)
+                    return result
 
-                        return result
+                # Wait before next check
+                time.sleep(10)
 
-                    # Wait before next check
-                    time.sleep(10)
-
-                except Exception as e:
-                    logger.error(f"Error waiting for stack: {e}")
-                    raise
+            except Exception as e:
+                logger.error(f"Error waiting for stack: {e}")
+                raise
 
     def _get_stack_outputs(self, stack: Dict) -> Dict[str, str]:
         """Extract stack outputs as dictionary"""
@@ -1042,61 +992,48 @@ class StackDeployer:
         Returns:
             Dictionary with final status
         """
-        from rich.console import Console
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-
-        console = Console()
         logger.info("Waiting for DELETE to complete...")
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(f"[cyan]DELETE stack: {stack_name}", total=None)
+        while True:
+            try:
+                response = self.cfn.describe_stacks(StackName=stack_name)
+                stacks = response.get("Stacks", [])
 
-            while True:
-                try:
-                    response = self.cfn.describe_stacks(StackName=stack_name)
-                    stacks = response.get("Stacks", [])
+                if not stacks:
+                    # Stack no longer exists - deletion complete
+                    return {
+                        "stack_name": stack_name,
+                        "operation": "DELETE",
+                        "status": "DELETE_COMPLETE",
+                        "success": True,
+                    }
 
-                    if not stacks:
-                        # Stack no longer exists - deletion complete
-                        return {
-                            "stack_name": stack_name,
-                            "operation": "DELETE",
-                            "status": "DELETE_COMPLETE",
-                            "success": True,
-                        }
+                stack = stacks[0]
+                status = stack.get("StackStatus", "")
+                logger.info(f"DELETE status: {status}")
 
-                    stack = stacks[0]
-                    status = stack.get("StackStatus", "")
+                if status == "DELETE_FAILED":
+                    return {
+                        "stack_name": stack_name,
+                        "operation": "DELETE",
+                        "status": status,
+                        "success": False,
+                        "error": self._get_stack_failure_reason(stack_name),
+                    }
 
-                    # Update progress with current status
-                    progress.update(task, description=f"[cyan]DELETE: {status}")
+                # Wait before next check
+                time.sleep(10)
 
-                    if status == "DELETE_FAILED":
-                        return {
-                            "stack_name": stack_name,
-                            "operation": "DELETE",
-                            "status": status,
-                            "success": False,
-                            "error": self._get_stack_failure_reason(stack_name),
-                        }
-
-                    # Wait before next check
-                    time.sleep(10)
-
-                except self.cfn.exceptions.ClientError as e:
-                    if "does not exist" in str(e):
-                        # Stack deleted successfully
-                        return {
-                            "stack_name": stack_name,
-                            "operation": "DELETE",
-                            "status": "DELETE_COMPLETE",
-                            "success": True,
-                        }
-                    raise
+            except self.cfn.exceptions.ClientError as e:
+                if "does not exist" in str(e):
+                    # Stack deleted successfully
+                    return {
+                        "stack_name": stack_name,
+                        "operation": "DELETE",
+                        "status": "DELETE_COMPLETE",
+                        "success": True,
+                    }
+                raise
 
     def get_bucket_info(self, stack_name: str) -> List[Dict]:
         """
@@ -1326,10 +1263,6 @@ class StackDeployer:
         Raises:
             Exception: If distributions still exist after max wait time
         """
-        from rich.console import Console
-
-        console = Console()
-
         # Get CloudFront distributions from stack
         distributions = self._get_stack_cloudfront_distributions(stack_name)
 
@@ -1337,8 +1270,8 @@ class StackDeployer:
             logger.info("No CloudFront distributions found in stack")
             return
 
-        console.print(
-            f"[cyan]Verifying {len(distributions)} CloudFront distribution(s) are deleted...[/cyan]"
+        logger.info(
+            f"Verifying {len(distributions)} CloudFront distribution(s) are deleted..."
         )
 
         cloudfront = boto3.client("cloudfront")
@@ -1369,7 +1302,7 @@ class StackDeployer:
                         )
 
                     # Distribution still exists - wait for it to be deleted
-                    console.print(
+                    logger.info(
                         f"  Waiting for {logical_id} ({dist_id}) to be deleted... "
                         f"Status: {status}, Enabled: {enabled} ({int(elapsed)}s elapsed)"
                     )
@@ -1377,12 +1310,16 @@ class StackDeployer:
 
                 except cloudfront.exceptions.NoSuchDistribution:
                     # Distribution deleted - good to proceed
-                    console.print(f"  ✓ {logical_id} ({dist_id}) is deleted")
+                    logger.info(
+                        f"CloudFront distribution {logical_id} ({dist_id}) is deleted"
+                    )
                     break
                 except Exception as e:
                     if "NoSuchDistribution" in str(e):
                         # Distribution deleted
-                        console.print(f"  ✓ {logical_id} ({dist_id}) is deleted")
+                        logger.info(
+                            f"CloudFront distribution {logical_id} ({dist_id}) is deleted"
+                        )
                         break
                     else:
                         raise
@@ -1520,12 +1457,7 @@ class StackDeployer:
         Returns:
             Cleanup summary with deleted resources and errors
         """
-        from rich.console import Console
-        from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
-
-        console = Console()
-
-        console.print("\n[bold blue]Analyzing retained resources...[/bold blue]")
+        logger.info("Analyzing retained resources...")
 
         # Get resources that weren't deleted by CloudFormation
         retained = self.get_retained_resources_after_deletion(stack_identifier)
@@ -1546,7 +1478,7 @@ class StackDeployer:
                 )
 
         # Discover auto-created log groups that CloudFormation doesn't track
-        console.print("[cyan]Discovering auto-created log groups...[/cyan]")
+        logger.info("Discovering auto-created log groups...")
         auto_created_log_groups = self._discover_auto_created_log_groups(stack_name)
 
         # Merge auto-created log groups with CloudFormation-tracked ones
@@ -1575,20 +1507,21 @@ class StackDeployer:
         )
 
         if total == 0:
-            console.print(
-                "[green]✓ No retained resources found - CloudFormation deleted everything![/green]"
+            logger.info(
+                "No retained resources found - CloudFormation deleted everything!"
             )
             return {"total_deleted": 0, "errors": []}
 
-        console.print(f"Found {total} retained resources:")
-        console.print(f"  • DynamoDB Tables: {len(retained['dynamodb_tables'])}")
-        console.print(f"  • CloudWatch Logs: {len(retained['log_groups'])}")
-        console.print(f"  • S3 Buckets: {len(retained['s3_buckets'])}")
+        logger.info(
+            f"Found {total} retained resources: "
+            f"DynamoDB={len(retained['dynamodb_tables'])}, "
+            f"Logs={len(retained['log_groups'])}, "
+            f"S3={len(retained['s3_buckets'])}"
+        )
 
         if retained["other"]:
-            console.print(f"  • Other: {len(retained['other'])}")
-            console.print(
-                "[yellow]Warning: Some resources cannot be auto-deleted[/yellow]"
+            logger.warning(
+                f"  Other ({len(retained['other'])}): some resources cannot be auto-deleted"
             )
 
         results = {
@@ -1598,115 +1531,86 @@ class StackDeployer:
             "errors": [],
         }
 
-        # Delete each type with progress bar
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        ) as progress:
-            # Phase 1: DynamoDB
-            if retained["dynamodb_tables"]:
-                task = progress.add_task(
-                    "Deleting DynamoDB tables...",
-                    total=len(retained["dynamodb_tables"]),
+        # Phase 1: DynamoDB
+        for table in retained["dynamodb_tables"]:
+            try:
+                self._delete_dynamodb_table(table["physical_id"])
+                results["dynamodb_deleted"].append(table["physical_id"])
+                logger.info(f"Deleted DynamoDB table: {table['physical_id']}")
+            except Exception as e:
+                results["errors"].append(
+                    {
+                        "resource": table["physical_id"],
+                        "type": "DynamoDB",
+                        "error": str(e),
+                    }
                 )
-                for table in retained["dynamodb_tables"]:
-                    try:
-                        self._delete_dynamodb_table(table["physical_id"])
-                        results["dynamodb_deleted"].append(table["physical_id"])
-                    except Exception as e:
-                        results["errors"].append(
-                            {
-                                "resource": table["physical_id"],
-                                "type": "DynamoDB",
-                                "error": str(e),
-                            }
-                        )
-                    progress.advance(task)
 
-            # Phase 2: Log Groups
-            if retained["log_groups"]:
-                task = progress.add_task(
-                    "Deleting CloudWatch logs...", total=len(retained["log_groups"])
+        # Phase 2: Log Groups
+        for log_group in retained["log_groups"]:
+            try:
+                self._delete_log_group(log_group["physical_id"])
+                results["logs_deleted"].append(log_group["physical_id"])
+                logger.info(f"Deleted log group: {log_group['physical_id']}")
+            except Exception as e:
+                results["errors"].append(
+                    {
+                        "resource": log_group["physical_id"],
+                        "type": "LogGroup",
+                        "error": str(e),
+                    }
                 )
-                for log_group in retained["log_groups"]:
-                    try:
-                        self._delete_log_group(log_group["physical_id"])
-                        results["logs_deleted"].append(log_group["physical_id"])
-                    except Exception as e:
-                        results["errors"].append(
-                            {
-                                "resource": log_group["physical_id"],
-                                "type": "LogGroup",
-                                "error": str(e),
-                            }
-                        )
-                    progress.advance(task)
 
-            # Phase 3: Verify CloudFront distributions are deleted before S3 buckets
-            # This prevents orphaned CloudFront distributions pointing to deleted S3 origins
-            if retained["s3_buckets"]:
-                console.print()
-                console.print(
-                    "[cyan]Verifying CloudFront distributions are deleted...[/cyan]"
+        # Phase 3: Verify CloudFront distributions are deleted before S3 buckets
+        if retained["s3_buckets"]:
+            logger.info("Verifying CloudFront distributions are deleted...")
+            try:
+                self._verify_cloudfront_distributions_deleted(stack_name)
+                logger.info("CloudFront distributions verified as deleted")
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"CloudFront verification failed: {error_msg}")
+                results["errors"].append(
+                    {
+                        "resource": "CloudFront Distribution",
+                        "type": "CloudFront",
+                        "error": error_msg,
+                    }
                 )
+                # Do not proceed with S3 deletion if CloudFront still exists
+                logger.warning(
+                    "Skipping S3 bucket deletion to prevent orphaned CloudFront distributions"
+                )
+                return results
+
+        # Phase 4: S3 Buckets (LoggingBucket last)
+        if retained["s3_buckets"]:
+            # Separate LoggingBucket from others
+            logging_bucket = None
+            regular_buckets = []
+
+            for bucket in retained["s3_buckets"]:
+                if "logging" in bucket["logical_id"].lower():
+                    logging_bucket = bucket
+                else:
+                    regular_buckets.append(bucket)
+
+            # Delete regular buckets first, then logging bucket
+            all_buckets = regular_buckets + ([logging_bucket] if logging_bucket else [])
+
+            for bucket in all_buckets:
                 try:
-                    self._verify_cloudfront_distributions_deleted(stack_name)
-                    console.print(
-                        "[green]✓ CloudFront distributions verified as deleted[/green]"
-                    )
+                    self._empty_and_delete_bucket(bucket["physical_id"])
+                    results["buckets_deleted"].append(bucket["physical_id"])
+                    logger.info(f"Deleted S3 bucket: {bucket['physical_id']}")
                 except Exception as e:
-                    error_msg = str(e)
-                    console.print(
-                        f"[red]✗ CloudFront verification failed: {error_msg}[/red]"
-                    )
                     results["errors"].append(
                         {
-                            "resource": "CloudFront Distribution",
-                            "type": "CloudFront",
-                            "error": error_msg,
+                            "resource": bucket["physical_id"],
+                            "type": "S3Bucket",
+                            "error": str(e),
                         }
                     )
-                    # Do not proceed with S3 deletion if CloudFront still exists
-                    console.print(
-                        "[yellow]Skipping S3 bucket deletion to prevent orphaned CloudFront distributions[/yellow]"
-                    )
-                    return results
-
-            # Phase 4: S3 Buckets (LoggingBucket last)
-            if retained["s3_buckets"]:
-                # Separate LoggingBucket from others
-                logging_bucket = None
-                regular_buckets = []
-
-                for bucket in retained["s3_buckets"]:
-                    if "logging" in bucket["logical_id"].lower():
-                        logging_bucket = bucket
-                    else:
-                        regular_buckets.append(bucket)
-
-                # Delete regular buckets first, then logging bucket
-                all_buckets = regular_buckets + (
-                    [logging_bucket] if logging_bucket else []
-                )
-
-                task = progress.add_task(
-                    "Deleting S3 buckets...", total=len(all_buckets)
-                )
-                for bucket in all_buckets:
-                    try:
-                        self._empty_and_delete_bucket(bucket["physical_id"])
-                        results["buckets_deleted"].append(bucket["physical_id"])
-                    except Exception as e:
-                        results["errors"].append(
-                            {
-                                "resource": bucket["physical_id"],
-                                "type": "S3Bucket",
-                                "error": str(e),
-                            }
-                        )
-                    progress.advance(task)
 
         return results
 
