@@ -362,6 +362,19 @@ export const getFileContents = /* GraphQL */ `
   }
 ` as GeneratedQuery<GetFileContentsQueryVariables, GetFileContentsQuery>;
 
+export const getMyProfile = /* GraphQL */ `
+  query GetMyProfile {
+    getMyProfile {
+      userId
+      email
+      persona
+      status
+      createdAt
+      allowedConfigVersions
+    }
+  }
+` as GeneratedQuery<GetMyProfileQueryVariables, GetMyProfileQuery>;
+
 export const getPricing = /* GraphQL */ `
   query GetPricing {
     getPricing {
@@ -775,7 +788,6 @@ export const onUpdateDocument = /* GraphQL */ `
       HITLReviewHistory
       ConfigVersion
       HITLCompleted
-      ConfidenceAlertCount
       TraceId
     }
   }
@@ -974,6 +986,19 @@ export const updatePricing = /* GraphQL */ `
   }
 ` as GeneratedMutation<UpdatePricingMutationVariables, UpdatePricingMutation>;
 
+export const updateUser = /* GraphQL */ `
+  mutation UpdateUser($userId: ID!, $allowedConfigVersions: [String]) {
+    updateUser(userId: $userId, allowedConfigVersions: $allowedConfigVersions) {
+      userId
+      email
+      persona
+      status
+      createdAt
+      allowedConfigVersions
+    }
+  }
+` as GeneratedMutation<UpdateUserMutationVariables, UpdateUserMutation>;
+
 export const uploadDiscoveryDocument = /* GraphQL */ `
   mutation UploadDiscoveryDocument($fileName: String!, $contentType: String, $prefix: String, $bucket: String, $groundTruthFileName: String, $version: String) {
     uploadDiscoveryDocument(fileName: $fileName, contentType: $contentType, prefix: $prefix, bucket: $bucket, groundTruthFileName: $groundTruthFileName, version: $version) {
@@ -995,32 +1020,6 @@ export const uploadDocument = /* GraphQL */ `
     }
   }
 ` as GeneratedMutation<UploadDocumentMutationVariables, UploadDocumentMutation>;
-
-export const getMyProfile = /* GraphQL */ `
-  query GetMyProfile {
-    getMyProfile {
-      userId
-      email
-      persona
-      status
-      createdAt
-      allowedConfigVersions
-    }
-  }
-` as GeneratedQuery<GetMyProfileQueryVariables, GetMyProfileQuery>;
-
-export const updateUser = /* GraphQL */ `
-  mutation UpdateUser($userId: ID!, $allowedConfigVersions: [String]) {
-    updateUser(userId: $userId, allowedConfigVersions: $allowedConfigVersions) {
-      userId
-      email
-      persona
-      status
-      createdAt
-      allowedConfigVersions
-    }
-  }
-` as GeneratedMutation<UpdateUserMutationVariables, UpdateUserMutation>;
 
 export const validateTestFileName = /* GraphQL */ `
   query ValidateTestFileName($fileName: String!) {
