@@ -315,6 +315,7 @@ class StackOperation:
         stack_name: Optional[str] = None,
         operation: str = "UPDATE",
         poll_interval_seconds: int = 10,
+        timeout_seconds: int = 3600,
         **kwargs,
     ) -> StackMonitorResult:
         """
@@ -327,6 +328,8 @@ class StackOperation:
             stack_name: Stack name (uses default if not provided)
             operation: Operation type being monitored: 'CREATE', 'UPDATE', or 'DELETE'
             poll_interval_seconds: Seconds between CloudFormation API polls (default: 10)
+            timeout_seconds: Maximum seconds to wait before returning a timeout result
+                (default: 3600 = 1 hour)
 
         Returns:
             StackMonitorResult with final success/status/outputs/error
@@ -362,7 +365,18 @@ class StackOperation:
         target_statuses = complete_statuses.get(operation, [])
         success_set = success_statuses.get(operation, [])
 
+        start = time.time()
         while True:
+            elapsed = time.time() - start
+            if elapsed > timeout_seconds:
+                return StackMonitorResult(
+                    success=False,
+                    operation=operation,
+                    status="TIMEOUT",
+                    stack_name=name,
+                    error=f"Timed out after {timeout_seconds}s waiting for {operation} to complete",
+                )
+
             try:
                 if operation == "DELETE":
                     try:
