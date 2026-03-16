@@ -21,6 +21,18 @@ SPDX-License-Identifier: MIT-0
 
 - **Stack Deploy/Delete Enhanced** — Deploy and delete commands now use expanded SDK stack operations for in-progress detection, monitoring, cancel-update, and failure analysis.
 
+### Changed
+
+- **SDK: `batch.run()` renamed to `batch.process()`** — The `run()` method is now deprecated and emits a `DeprecationWarning`. Existing code using `client.batch.run(...)` will continue to work but should be migrated to `client.batch.process(...)`.
+
+- **SDK: `batch.rerun()` renamed to `batch.reprocess()`** — The `rerun()` method is now deprecated and emits a `DeprecationWarning`. Existing code using `client.batch.rerun(...)` should be migrated to `client.batch.reprocess(...)`. Same applies to `client.document.rerun()` → `client.document.reprocess()`.
+
+- **SDK: `stack.delete()` now waits by default** — The `wait` parameter on `client.stack.delete()` now defaults to `True` (previously the delete operation returned immediately). Scripts relying on the old fire-and-forget behavior should explicitly pass `wait=False`.
+
+- **CLI: `run-inference` renamed to `process`** — The `idp-cli run-inference` command is now deprecated. Use `idp-cli process` instead. The old command remains available for backward compatibility with a deprecation notice.
+
+- **CLI: `rerun-inference` renamed to `reprocess`** — The `idp-cli rerun-inference` command is now deprecated. Use `idp-cli reprocess` instead. The old command remains available for backward compatibility with a deprecation notice.
+
 ### Fixed
 
 - **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
