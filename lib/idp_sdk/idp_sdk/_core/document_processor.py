@@ -14,7 +14,7 @@ from typing import Dict, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from idp_sdk.core.stack_info import StackInfo
+from idp_sdk._core.stack_info import StackInfo
 
 logger = logging.getLogger(__name__)
 
