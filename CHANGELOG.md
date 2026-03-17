@@ -26,6 +26,13 @@ SPDX-License-Identifier: MIT-0
   - **Enhanced stack operations** — Deploy and delete commands support in-progress detection, live monitoring, cancel-update, and failure analysis.
   - **Private API boundaries** — Internal modules renamed from `core/` to `_core/` with lint rules enforcing the boundary.
 
+- **Discovery CLI & SDK Enhancements** — New capabilities in `idp-cli discover` and `client.discovery` that bring parity with the Web UI's Discovery features:
+  - **Class Name Hints** — `--class-hint` (CLI) / `class_name_hint=` (SDK) to pre-label discovered classes, guiding the LLM's `$id` output.
+  - **Multi-Section Page Ranges** — `--page-range "1-3" --page-label "W2 Form"` (CLI, repeatable) / `discovery.run_multi_section(page_ranges=[...])` (SDK) to discover multiple document classes from a single multi-page PDF.
+  - **AI Auto-Detect Sections** — `--auto-detect` / `--detect-only` (CLI) / `discovery.auto_detect_sections()` (SDK) to automatically identify document section boundaries using LLM analysis, then optionally discover each section.
+  - **BDA Sync Command** — New `idp-cli config-sync-bda` command and `client.config.sync_bda()` SDK method for explicit bidirectional synchronization between IDP configuration classes and BDA blueprints. Supports `--direction` (bidirectional, bda-to-idp, idp-to-bda) and `--mode` (replace, merge).
+  - **New Models** — `AutoDetectResult`, `AutoDetectSection`, `ConfigSyncBdaResult`, `page_range` field on `DiscoveryResult`.
+
 ### Changed
 
 - **SDK & CLI: Renamed processing commands for clarity** — Old names are deprecated (emit `DeprecationWarning`) but remain available for backward compatibility:
