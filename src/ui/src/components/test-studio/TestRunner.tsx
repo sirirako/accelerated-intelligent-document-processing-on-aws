@@ -36,6 +36,14 @@ interface TestRunnerProps {
   activeTestRuns: ActiveTestRun[];
 }
 
+// Mapping from auto-deployed test set names to their corresponding config version names
+const TEST_SET_CONFIG_MAP: Record<string, string> = {
+  'Fake-W2-Tax-Forms': 'fake-w2',
+  'DocSplit-Poly-Seq': 'docsplit',
+  'OmniAI-OCR-Benchmark': 'ocr-benchmark',
+  'RealKIE-FCC-Verified': 'realkie-fcc-verified',
+};
+
 const TestRunner = ({
   onTestStart,
   onTestComplete: _onTestComplete,
@@ -215,6 +223,20 @@ const TestRunner = ({
             onChange={({ detail }) => {
               setSelectedTestSet(detail.selectedOption);
               setNumberOfFiles(''); // Reset numberOfFiles when test set changes
+              // Auto-select matching config version for known test sets, otherwise reset to active
+              const testSetData = testSets.find((ts) => ts.id === detail.selectedOption.value);
+              const matchingVersion = testSetData ? TEST_SET_CONFIG_MAP[testSetData.name] : undefined;
+              const versionOptions = getVersionOptions();
+              if (matchingVersion) {
+                const matchOption = versionOptions.find((opt) => opt.value === matchingVersion);
+                if (matchOption) {
+                  setSelectedVersion(matchOption);
+                  return;
+                }
+              }
+              const activeVersion = versions.find((v) => v.isActive);
+              const activeOption = activeVersion ? versionOptions.find((opt) => opt.value === activeVersion.versionName) : null;
+              setSelectedVersion(activeOption ?? versionOptions[0] ?? null);
             }}
             options={testSetOptions}
             placeholder="Choose a test set..."
