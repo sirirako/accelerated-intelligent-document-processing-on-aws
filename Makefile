@@ -26,12 +26,12 @@ ifndef V
 endif
 	@echo "Updating version to $(V)..."
 	@echo "$(V)" > VERSION
-	@sed -i '' 's/^version = ".*"/version = "$(V)"/' lib/idp_cli_pkg/pyproject.toml
-	@sed -i '' 's/^version = ".*"/version = "$(V)"/' lib/idp_sdk/pyproject.toml
-	@sed -i '' 's/^version = ".*"/version = "$(V)"/' lib/idp_common_pkg/pyproject.toml
-	@sed -i '' 's/version=".*"/version="$(V)"/' lib/idp_common_pkg/setup.py
-	@sed -i '' 's/@click.version_option(version=".*")/@click.version_option(version="$(V)")/' lib/idp_cli_pkg/idp_cli/cli.py
-	@sed -i '' 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_sdk/idp_sdk/__init__.py
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_cli_pkg/pyproject.toml && rm -f lib/idp_cli_pkg/pyproject.toml.bak
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_sdk/pyproject.toml && rm -f lib/idp_sdk/pyproject.toml.bak
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_common_pkg/pyproject.toml && rm -f lib/idp_common_pkg/pyproject.toml.bak
+	@sed -i.bak 's/version=".*"/version="$(V)"/' lib/idp_common_pkg/setup.py && rm -f lib/idp_common_pkg/setup.py.bak
+	@sed -i.bak 's/@click.version_option(version=".*")/@click.version_option(version="$(V)")/' lib/idp_cli_pkg/idp_cli/cli.py && rm -f lib/idp_cli_pkg/idp_cli/cli.py.bak
+	@sed -i.bak 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_sdk/idp_sdk/__init__.py && rm -f lib/idp_sdk/idp_sdk/__init__.py.bak
 	@echo -e "$(GREEN)✅ Version updated to $(V) in:$(NC)"
 	@echo "  - VERSION"
 	@echo "  - lib/idp_cli_pkg/pyproject.toml"
