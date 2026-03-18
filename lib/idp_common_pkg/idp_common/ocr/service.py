@@ -430,8 +430,9 @@ class OcrService:
                         # Many fillable PDFs (e.g., government forms) lack appearance
                         # streams for form fields — flatten() forces PDFium to generate
                         # them and merge into page content so render() can display them.
-                        # Requires init_forms() to have been called before page retrieval.
-                        page.flatten()
+                        # Only applies when PDF has form fields (formenv is set by init_forms).
+                        if page.formenv is not None:
+                            page.flatten()
                         page_images[i] = self._extract_page_image(page, True, i + 1)
 
                     pdf_document.close()
@@ -1151,9 +1152,9 @@ class OcrService:
                 content_type="application/json",
             )
 
-        # Memory cleanup
-        img_bytes = None
-        ocr_img_bytes = None
+        # Memory cleanup - delete references to free large image buffers
+        del img_bytes
+        del ocr_img_bytes
 
         t2 = time.time()
         logger.debug(
